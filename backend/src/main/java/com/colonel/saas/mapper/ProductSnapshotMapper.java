@@ -38,14 +38,15 @@ public interface ProductSnapshotMapper extends BaseMapper<ProductSnapshot> {
      * 按活动统计有效商品快照的上游状态分布。
      *
      * @param activityId 活动 ID
-     * @return total / pendingReview / promoting / rejected / terminated / expired
+     * @return total / pendingReview / promoting / rejected / terminated / canceled / expired
      */
     @Select("""
-            SELECT COUNT(*) FILTER (WHERE status IN (0, 1, 2, 3, 6)) AS "total",
+            SELECT COUNT(*) FILTER (WHERE status IN (0, 1, 2, 3, 4, 6)) AS "total",
                    COUNT(*) FILTER (WHERE status = 0) AS "pendingReview",
                    COUNT(*) FILTER (WHERE status = 1) AS "promoting",
                    COUNT(*) FILTER (WHERE status = 2) AS "rejected",
                    COUNT(*) FILTER (WHERE status = 3) AS "terminated",
+                   COUNT(*) FILTER (WHERE status = 4) AS "canceled",
                    COUNT(*) FILTER (WHERE status = 6) AS "expired"
               FROM product_snapshot
              WHERE activity_id = #{activityId}

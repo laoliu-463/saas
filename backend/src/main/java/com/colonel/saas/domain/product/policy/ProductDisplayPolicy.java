@@ -39,7 +39,7 @@ public class ProductDisplayPolicy {
     public static final String DECISION_DISPLAY = "DISPLAY";
     public static final String DECISION_HIDE_ALL = "HIDE_ALL";
     private static final String ACTIVITY_PRODUCT_QUERY_STATUS_HINT =
-            "商品状态仅支持 0=待审核、1=推广中、2=申请未通过、3=合作已终止、6=合作已到期";
+            "商品状态仅支持 0=待审核、1=推广中、2=申请未通过、3=合作已终止、4=合作前取消、6=合作已到期";
 
     private static final Comparator<ProductDisplayRelationInput> PRIORITY_COMPARATOR = Comparator
             .comparing(ProductDisplayRelationInput::hasTrafficSupport)
@@ -248,7 +248,7 @@ public class ProductDisplayPolicy {
 
     public List<Integer> activityProductFilterStatuses(Integer status) {
         if (status == null) {
-            return List.of(0, 1, 2, 3, 6);
+            return List.of(0, 1, 2, 3, 4, 6);
         }
         if (!isSupportedActivityProductQueryStatus(status)) {
             return List.of();
@@ -262,6 +262,7 @@ public class ProductDisplayPolicy {
                 || status == 1
                 || status == 2
                 || status == 3
+                || status == 4
                 || status == 6;
     }
 
@@ -276,6 +277,7 @@ public class ProductDisplayPolicy {
         counts.put("promoting", statusCountValue(rawCounts, "promoting"));
         counts.put("rejected", statusCountValue(rawCounts, "rejected"));
         counts.put("terminated", statusCountValue(rawCounts, "terminated"));
+        counts.put("canceled", statusCountValue(rawCounts, "canceled"));
         counts.put("expired", statusCountValue(rawCounts, "expired"));
         return counts;
     }
@@ -355,6 +357,9 @@ public class ProductDisplayPolicy {
         if ("terminated".equals(allianceStatus) && Objects.equals(upstreamStatus, 3)) {
             return true;
         }
+        if ("canceled".equals(allianceStatus) && Objects.equals(upstreamStatus, 4)) {
+            return true;
+        }
         if ("expired".equals(allianceStatus) && Objects.equals(upstreamStatus, 6)) {
             return true;
         }
@@ -363,6 +368,7 @@ public class ProductDisplayPolicy {
             case "promoting" -> containsAny(upstreamStatusText, "推广中", "推广");
             case "rejected" -> containsAny(upstreamStatusText, "未通过", "拒绝", "申请未通过");
             case "terminated" -> containsAny(upstreamStatusText, "终止", "已终止");
+            case "canceled" -> containsAny(upstreamStatusText, "合作前取消", "取消");
             case "expired" -> containsAny(upstreamStatusText, "过期", "已过期", "到期", "已到期");
             default -> true;
         };
@@ -643,6 +649,8 @@ public class ProductDisplayPolicy {
                     return "REJECTED";
                 case 3:
                     return "TERMINATED";
+                case 4:
+                    return "CANCELED";
                 case 6:
                     return "EXPIRED";
                 default:
@@ -655,6 +663,9 @@ public class ProductDisplayPolicy {
         }
         if (text.contains("未通过") || text.contains("拒绝")) {
             return "REJECTED";
+        }
+        if (text.contains("合作前取消") || text.contains("取消")) {
+            return "CANCELED";
         }
         if (text.contains("终止")) {
             return "TERMINATED";

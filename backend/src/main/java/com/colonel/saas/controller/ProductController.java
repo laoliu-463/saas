@@ -130,7 +130,7 @@ public class ProductController extends BaseController {
      * @param supportsAds       是否支持投流：1/0（可选）
      * @param salesRange        近 30 天销量区间：lt100/100_999/1k_29k/gte30000（可选）
      * @param promotionLink     转链状态：PENDING/LINKED/FAILED（可选）
-     * @param allianceStatus    联盟推广状态：promoting/pending_audit/rejected/terminated/expired（可选）
+     * @param allianceStatus    联盟推广状态：promoting/pending_audit/rejected/terminated/canceled/expired（可选）
      * @param commission        佣金区间：gt20/10_20/lt10（可选）
      * @param hasSample         是否有寄样规则：1/0（可选）
      * @param assignee          负责人过滤：assigned/unassigned（可选）
@@ -181,7 +181,7 @@ public class ProductController extends BaseController {
             @Parameter(description = "是否支持投流：1/0。") @RequestParam(required = false) String supportsAds,
             @Parameter(description = "近 30 天销量区间：lt100/100_999/1k_29k/gte30000。") @RequestParam(required = false) String salesRange,
             @Parameter(description = "转链状态：PENDING/LINKED/FAILED。") @RequestParam(required = false) String promotionLink,
-            @Parameter(description = "联盟推广状态：promoting/pending_audit/rejected/terminated/expired。") @RequestParam(required = false) String allianceStatus,
+            @Parameter(description = "联盟推广状态：promoting/pending_audit/rejected/terminated/canceled/expired。") @RequestParam(required = false) String allianceStatus,
             @Parameter(description = "佣金区间：gt20/10_20/lt10。") @RequestParam(required = false) String commission,
             @Parameter(description = "是否有寄样规则：1/0。") @RequestParam(required = false) String hasSample,
             @Parameter(description = "负责人过滤：assigned/unassigned。") @RequestParam(required = false) String assignee,

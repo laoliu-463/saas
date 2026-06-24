@@ -388,6 +388,7 @@ class ProductServiceActivityStatusIndependenceTest {
                 "promoting", 726L,
                 "rejected", 486L,
                 "terminated", 46L,
+                "canceled", 4L,
                 "expired", 6L));
 
         Map<String, Object> view = productService.buildActivityProductListViewFromDb(
@@ -400,6 +401,7 @@ class ProductServiceActivityStatusIndependenceTest {
                 "promoting", 726L,
                 "rejected", 486L,
                 "terminated", 46L,
+                "canceled", 4L,
                 "expired", 6L));
     }
 

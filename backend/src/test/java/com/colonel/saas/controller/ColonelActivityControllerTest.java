@@ -449,15 +449,42 @@ class ColonelActivityControllerTest {
     @Test
     void listProducts_shouldRejectUnsupportedActivityProductStatus() throws Exception {
         mockMvc.perform(get("/colonel/activities/{activityId}/products", "100018")
-                        .param("status", "4")
+                        .param("status", "9")
                         .requestAttr("roleCodes", List.of(RoleCodes.ADMIN)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(400))
-                .andExpect(jsonPath("$.msg").value("商品状态仅支持 0=待审核、1=推广中、2=申请未通过、3=合作已终止、6=合作已到期"));
+                .andExpect(jsonPath("$.msg").value("商品状态仅支持 0=待审核、1=推广中、2=申请未通过、3=合作已终止、4=合作前取消、6=合作已到期"));
 
         verify(productService, never()).hasActivitySnapshots("100018");
         verify(productService, never()).buildActivityProductListViewFromDb(
                 any(), any(), any(), any(), any(), any(), any(), any(), any());
+        verify(douyinProductGateway, never()).queryActivityProducts(any());
+    }
+
+    @Test
+    void listProducts_shouldAllowCanceledActivityProductStatus() throws Exception {
+        Map<String, Object> listView = new LinkedHashMap<>();
+        listView.put("activityId", "100018");
+        listView.put("total", 1);
+        listView.put("items", List.of(Map.of(
+                "productId", 9004L,
+                "status", 4,
+                "statusText", "合作前取消"
+        )));
+        when(productService.hasActivitySnapshots("100018")).thenReturn(true);
+        when(productService.buildActivityProductListViewFromDb("100018", 20, null, null, null, 4, null, null, null))
+                .thenReturn(listView);
+
+        mockMvc.perform(get("/colonel/activities/{activityId}/products", "100018")
+                        .param("count", "20")
+                        .param("status", "4")
+                        .requestAttr("roleCodes", List.of(RoleCodes.ADMIN)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.items[0].status").value(4))
+                .andExpect(jsonPath("$.data.items[0].statusText").value("合作前取消"));
+
+        verify(productService).buildActivityProductListViewFromDb("100018", 20, null, null, null, 4, null, null, null);
         verify(douyinProductGateway, never()).queryActivityProducts(any());
     }
 
@@ -551,6 +578,34 @@ class ColonelActivityControllerTest {
                 .andExpect(jsonPath("$.data.jobId").value("activity-product-sync-1"))
                 .andExpect(jsonPath("$.data.syncStatus").value("ACCEPTED"))
                 .andExpect(jsonPath("$.data.message").value("商品同步已转入后台执行"));
+
+        verify(productActivityManualSyncService).trigger("100018", null, null);
+        verify(productService, never()).refreshActivitySnapshots(any());
+    }
+
+    @Test
+    void syncProducts_shouldReturnLockedWhenManualSyncLockIsHeld() throws Exception {
+        when(productActivityManualSyncService.trigger("100018", null, null)).thenReturn(
+                new ProductActivityManualSyncService.SyncTriggerResult(
+                        "100018",
+                        null,
+                        "LOCKED",
+                        "商品同步全局锁被占用，请等待当前商品同步或回补任务完成后重试",
+                        "product:backfill:global:job:lock",
+                        "scheduler",
+                        120L));
+
+        mockMvc.perform(post("/colonel/activities/{activityId}/products/sync", "100018")
+                        .requestAttr("roleCodes", List.of(RoleCodes.ADMIN)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.activityId").value("100018"))
+                .andExpect(jsonPath("$.data.jobId").value(org.hamcrest.Matchers.nullValue()))
+                .andExpect(jsonPath("$.data.syncStatus").value("LOCKED"))
+                .andExpect(jsonPath("$.data.message").value("商品同步全局锁被占用，请等待当前商品同步或回补任务完成后重试"))
+                .andExpect(jsonPath("$.data.lockKey").value("product:backfill:global:job:lock"))
+                .andExpect(jsonPath("$.data.lockOwner").value("scheduler"))
+                .andExpect(jsonPath("$.data.lockTtlSeconds").value(120));
 
         verify(productActivityManualSyncService).trigger("100018", null, null);
         verify(productService, never()).refreshActivitySnapshots(any());

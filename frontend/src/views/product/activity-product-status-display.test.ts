@@ -19,15 +19,17 @@ describe('activity-product-status-display', () => {
       { productId: 'P-2', status: 0, statusText: '待审核', bizStatus: 'APPROVED', selectedToLibrary: true },
       { productId: 'P-3', status: 2, statusText: '申请未通过', bizStatus: 'APPROVED', selectedToLibrary: true },
       { productId: 'P-4', status: 3, statusText: '合作已终止', bizStatus: 'LINKED', selectedToLibrary: true },
-      { productId: 'P-5', status: 6, statusText: '合作已到期', bizStatus: 'ASSIGNED', selectedToLibrary: true }
+      { productId: 'P-5', status: 4, statusText: '合作前取消', bizStatus: 'ASSIGNED', selectedToLibrary: true },
+      { productId: 'P-6', status: 6, statusText: '合作已到期', bizStatus: 'ASSIGNED', selectedToLibrary: true }
     ]
 
     expect(countActivityProductStatusGroups(rows)).toEqual({
-      total: 5,
+      total: 6,
       pendingReview: 1,
       promoting: 1,
       rejected: 1,
       terminated: 1,
+      canceled: 1,
       expired: 1
     })
   })
@@ -44,6 +46,7 @@ describe('activity-product-status-display', () => {
       ['promoting', '推广中', 2],
       ['rejected', '申请未通过', 1],
       ['terminated', '合作已终止', 0],
+      ['canceled', '合作前取消', 0],
       ['expired', '合作已到期', 0]
     ])
     expect(activityProductStageToAllianceStatus('promoting')).toBe('promoting')
@@ -60,6 +63,7 @@ describe('activity-product-status-display', () => {
       promoting: 726,
       rejected: 486,
       terminated: 46,
+      canceled: 4,
       expired: 6
     })
     const stages = buildActivityProductStatusStages(counts)
@@ -69,6 +73,7 @@ describe('activity-product-status-display', () => {
       ['promoting', 726, '99+'],
       ['rejected', 486, '99+'],
       ['terminated', 46, '46'],
+      ['canceled', 4, '4'],
       ['expired', 6, '6']
     ])
     expect(formatActivityProductStatusCount(99)).toBe('99')
@@ -93,7 +98,13 @@ describe('activity-product-status-display', () => {
     })
   })
 
-  it('does not map unsupported upstream status 4 into a public activity status', () => {
+  it('maps upstream status 4 to canceled without treating it as terminated', () => {
     expect(isActivityProductStageMatch({ status: 4, statusText: '合作前取消' }, 'terminated')).toBe(false)
+    expect(isActivityProductStageMatch({ status: 4, statusText: '合作前取消' }, 'canceled')).toBe(true)
+    expect(resolveActivityProductOfficialStatusView({ status: 4, statusText: '合作前取消' })).toMatchObject({
+      status: 'CANCELED',
+      label: '合作前取消',
+      allianceStatus: 'canceled'
+    })
   })
 })

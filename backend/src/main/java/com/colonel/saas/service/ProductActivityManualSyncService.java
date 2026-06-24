@@ -100,20 +100,50 @@ public class ProductActivityManualSyncService {
             return new SyncTriggerResult("", null, "INVALID");
         }
         String jobId = "activity-product-sync-" + UUID.randomUUID();
+        String lockOwner = manualSyncLockOwner(jobId, normalizedActivityId);
+        String activityLockKey = JobLockKeys.productBackfillActivityLock(normalizedActivityId);
         ProductSyncJobLog jobLog;
+        ManualSyncLockState lockState;
         synchronized (runningJobIdsByActivity) {
             String existingJobId = runningJobIdsByActivity.get(normalizedActivityId);
             if (existingJobId != null) {
                 return new SyncTriggerResult(normalizedActivityId, existingJobId, "RUNNING");
+            }
+            lockState = tryAcquireManualSyncLocks(normalizedActivityId, activityLockKey, lockOwner);
+            if (!lockState.acquired()) {
+                return new SyncTriggerResult(
+                        normalizedActivityId,
+                        null,
+                        "LOCKED",
+                        lockState.message(),
+                        lockState.lockKey(),
+                        lockState.lockOwner(),
+                        lockState.lockTtlSeconds());
             }
             jobLog = startJob(jobId, normalizedActivityId, requestedBy);
             runningJobIdsByActivity.put(normalizedActivityId, jobId);
         }
         try {
             ProductSyncJobLog asyncJobLog = jobLog;
-            CompletableFuture.runAsync(() -> runSync(normalizedActivityId, appId, asyncJobLog), syncExecutor);
+            ManualSyncLockState asyncLockState = lockState;
+            CompletableFuture.runAsync(
+                    () -> runSync(
+                            normalizedActivityId,
+                            appId,
+                            asyncJobLog,
+                            activityLockKey,
+                            lockOwner,
+                            asyncLockState.acquiredActivityLock(),
+                            asyncLockState.acquiredGlobalLock()),
+                    syncExecutor);
         } catch (RuntimeException ex) {
             finishFailedJob(jobLog, ex);
+            releaseManualSyncLocks(
+                    normalizedActivityId,
+                    activityLockKey,
+                    lockState.acquiredActivityLock(),
+                    lockState.acquiredGlobalLock(),
+                    lockOwner);
             runningJobIdsByActivity.remove(normalizedActivityId, jobId);
             throw ex;
         }
@@ -166,21 +196,15 @@ public class ProductActivityManualSyncService {
         return log;
     }
 
-    private void runSync(String activityId, String appId, ProductSyncJobLog jobLog) {
-        String activityLockKey = JobLockKeys.productBackfillActivityLock(activityId);
-        boolean acquiredGlobalLock = false;
-        boolean acquiredActivityLock = false;
+    private void runSync(
+            String activityId,
+            String appId,
+            ProductSyncJobLog jobLog,
+            String activityLockKey,
+            String lockOwner,
+            boolean acquiredActivityLock,
+            boolean acquiredGlobalLock) {
         try {
-            if (jobLockService != null) {
-                acquiredGlobalLock = jobLockService.tryAcquire(JobLockKeys.PRODUCT_BACKFILL_GLOBAL, MANUAL_SYNC_LOCK_TTL);
-                if (!acquiredGlobalLock) {
-                    throw new IllegalStateException("商品同步全局锁被占用，请等待当前商品同步或回补任务完成后重试");
-                }
-                acquiredActivityLock = jobLockService.tryAcquire(activityLockKey, MANUAL_SYNC_LOCK_TTL);
-                if (!acquiredActivityLock) {
-                    throw new IllegalStateException("当前活动商品同步锁被占用，请等待当前活动任务完成后重试");
-                }
-            }
             colonelActivityService.syncActivitySummaryFromUpstream(activityId, appId);
             ProductService.ActivityProductRefreshResult result =
                     productService.refreshActivitySnapshots(
@@ -210,8 +234,43 @@ public class ProductActivityManualSyncService {
             finishFailedJob(jobLog, ex);
             log.warn("ProductActivityManualSync failed, activityId={}", activityId, ex);
         } finally {
-            releaseManualSyncLocks(activityId, activityLockKey, acquiredActivityLock, acquiredGlobalLock);
+            releaseManualSyncLocks(activityId, activityLockKey, acquiredActivityLock, acquiredGlobalLock, lockOwner);
             runningJobIdsByActivity.remove(activityId, jobLog.getJobId());
+        }
+    }
+
+    private ManualSyncLockState tryAcquireManualSyncLocks(String activityId, String activityLockKey, String lockOwner) {
+        if (jobLockService == null) {
+            return ManualSyncLockState.acquired(activityLockKey, false, false);
+        }
+        boolean acquiredGlobalLock = jobLockService.tryAcquire(
+                JobLockKeys.PRODUCT_BACKFILL_GLOBAL,
+                MANUAL_SYNC_LOCK_TTL,
+                lockOwner);
+        if (!acquiredGlobalLock) {
+            return ManualSyncLockState.locked(
+                    activityLockKey,
+                    JobLockKeys.PRODUCT_BACKFILL_GLOBAL,
+                    safeCurrentLockOwner(JobLockKeys.PRODUCT_BACKFILL_GLOBAL),
+                    safeCurrentLockTtlSeconds(JobLockKeys.PRODUCT_BACKFILL_GLOBAL),
+                    "商品同步全局锁被占用，请等待当前商品同步或回补任务完成后重试");
+        }
+        boolean acquiredActivityLock = false;
+        try {
+            acquiredActivityLock = jobLockService.tryAcquire(activityLockKey, MANUAL_SYNC_LOCK_TTL, lockOwner);
+            if (!acquiredActivityLock) {
+                return ManualSyncLockState.locked(
+                        activityLockKey,
+                        activityLockKey,
+                        safeCurrentLockOwner(activityLockKey),
+                        safeCurrentLockTtlSeconds(activityLockKey),
+                        "当前活动商品同步锁被占用，请等待当前活动任务完成后重试");
+            }
+            return ManualSyncLockState.acquired(activityLockKey, true, true);
+        } finally {
+            if (!acquiredActivityLock) {
+                releaseManualSyncLocks(activityId, activityLockKey, false, true, lockOwner);
+            }
         }
     }
 
@@ -219,22 +278,49 @@ public class ProductActivityManualSyncService {
             String activityId,
             String activityLockKey,
             boolean acquiredActivityLock,
-            boolean acquiredGlobalLock) {
+            boolean acquiredGlobalLock,
+            String lockOwner) {
         if (jobLockService == null) {
             return;
         }
         try {
             if (acquiredActivityLock) {
-                jobLockService.release(activityLockKey);
+                jobLockService.releaseWithOwner(activityLockKey, lockOwner);
             }
             if (acquiredGlobalLock) {
-                jobLockService.release(JobLockKeys.PRODUCT_BACKFILL_GLOBAL);
+                jobLockService.releaseWithOwner(JobLockKeys.PRODUCT_BACKFILL_GLOBAL, lockOwner);
             }
         } catch (Exception ex) {
             log.warn("ProductActivityManualSync lock release failed, activityId={}, message={}",
                     activityId,
                     ex.getMessage());
         }
+    }
+
+    private String safeCurrentLockOwner(String lockKey) {
+        try {
+            return jobLockService == null ? null : jobLockService.currentLockValue(lockKey);
+        } catch (Exception ex) {
+            log.warn("ProductActivityManualSync lock owner query failed, lockKey={}, message={}",
+                    lockKey,
+                    ex.getMessage());
+            return null;
+        }
+    }
+
+    private long safeCurrentLockTtlSeconds(String lockKey) {
+        try {
+            return jobLockService == null ? 0L : jobLockService.currentLockTtlSeconds(lockKey);
+        } catch (Exception ex) {
+            log.warn("ProductActivityManualSync lock ttl query failed, lockKey={}, message={}",
+                    lockKey,
+                    ex.getMessage());
+            return 0L;
+        }
+    }
+
+    private String manualSyncLockOwner(String jobId, String activityId) {
+        return "manual:" + jobId + ":activity:" + activityId;
     }
 
     private void updateRunningProgress(ProductSyncJobLog jobLog, ProductService.ActivityProductRefreshProgress progress) {
@@ -409,7 +495,60 @@ public class ProductActivityManualSyncService {
         }
     }
 
-    public record SyncTriggerResult(String activityId, String jobId, String syncStatus) {
+    private record ManualSyncLockState(
+            boolean acquired,
+            String activityLockKey,
+            boolean acquiredActivityLock,
+            boolean acquiredGlobalLock,
+            String lockKey,
+            String lockOwner,
+            long lockTtlSeconds,
+            String message) {
+        private static ManualSyncLockState acquired(
+                String activityLockKey,
+                boolean acquiredActivityLock,
+                boolean acquiredGlobalLock) {
+            return new ManualSyncLockState(
+                    true,
+                    activityLockKey,
+                    acquiredActivityLock,
+                    acquiredGlobalLock,
+                    null,
+                    null,
+                    0L,
+                    null);
+        }
+
+        private static ManualSyncLockState locked(
+                String activityLockKey,
+                String lockKey,
+                String lockOwner,
+                long lockTtlSeconds,
+                String message) {
+            return new ManualSyncLockState(
+                    false,
+                    activityLockKey,
+                    false,
+                    false,
+                    lockKey,
+                    lockOwner,
+                    lockTtlSeconds,
+                    message);
+        }
+    }
+
+    public record SyncTriggerResult(
+            String activityId,
+            String jobId,
+            String syncStatus,
+            String message,
+            String lockKey,
+            String lockOwner,
+            long lockTtlSeconds) {
+        public SyncTriggerResult(String activityId, String jobId, String syncStatus) {
+            this(activityId, jobId, syncStatus, null, null, null, 0L);
+        }
+
         public SyncTriggerResult(String activityId, String syncStatus) {
             this(activityId, null, syncStatus);
         }

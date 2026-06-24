@@ -43,7 +43,7 @@
         <div>
           <div class="activity-workbench-title">活动商品推进</div>
           <div class="activity-workbench-subtitle">
-            {{ activityLoadSummary }}；推广中 {{ activityStats.promoting }} 个，待审核 {{ activityStats.pendingReview }} 个，未通过/终止/到期 {{ blockedUpstreamStatusCount }} 个。
+            {{ activityLoadSummary }}；推广中 {{ activityStats.promoting }} 个，待审核 {{ activityStats.pendingReview }} 个，未通过/终止/取消/到期 {{ blockedUpstreamStatusCount }} 个。
           </div>
         </div>
         <div class="activity-workbench-actions">
@@ -493,6 +493,7 @@ const officialStatusCounts = computed(() => ({
   PROMOTING: activityStats.value.promoting,
   REJECTED: activityStats.value.rejected,
   TERMINATED: activityStats.value.terminated,
+  CANCELED: activityStats.value.canceled,
   EXPIRED: activityStats.value.expired
 }))
 
@@ -501,7 +502,7 @@ const activityLoadSummary = computed(() =>
 )
 
 const blockedUpstreamStatusCount = computed(() =>
-  activityStats.value.rejected + activityStats.value.terminated + activityStats.value.expired
+  activityStats.value.rejected + activityStats.value.terminated + activityStats.value.canceled + activityStats.value.expired
 )
 
 const activityStages = computed(() => buildActivityProductStatusStages(activityStats.value))
@@ -892,6 +893,7 @@ const officialStatusToAllianceStatus: Record<ProductOfficialStatus, string> = {
   PROMOTING: 'promoting',
   REJECTED: 'rejected',
   TERMINATED: 'terminated',
+  CANCELED: 'canceled',
   EXPIRED: 'expired'
 }
 
@@ -900,6 +902,7 @@ const officialStatusToActivityStage: Record<ProductOfficialStatus, ActivityProdu
   PROMOTING: 'promoting',
   REJECTED: 'rejected',
   TERMINATED: 'terminated',
+  CANCELED: 'canceled',
   EXPIRED: 'expired'
 }
 
@@ -1105,20 +1108,25 @@ const syncActivityProductsFromRemote = async (activityId: string) => {
     const res: any = await syncActivityProducts(selectedActivityId)
     const data = res?.data || {}
     const jobId = normalizeText(data.jobId)
+    const syncStatus = normalizeText(data.syncStatus)
     dialogs.value.syncActivityProducts = false
-    if (jobId && shouldPollActivityProductSyncJob(data.syncStatus)) {
+    if (jobId && shouldPollActivityProductSyncJob(syncStatus)) {
       message.info('商品同步已提交，完成后自动刷新列表')
       scheduleActivityProductSyncJobPolling(selectedActivityId, jobId)
       return
     }
-    if (isActivityProductSyncSuccess(data.syncStatus)) {
+    if (syncStatus === 'LOCKED') {
+      message.warning(normalizeText(data.message) || '后台商品同步正在执行，请稍后重试')
+      return
+    }
+    if (isActivityProductSyncSuccess(syncStatus)) {
       message.success('商品同步完成，已更新商品列表')
       await refreshProductsAfterActivitySync(selectedActivityId)
       return
     }
     message.success('商品同步已提交，正在自动刷新列表')
     await refreshProductsAfterActivitySync(selectedActivityId)
-    schedulePostSyncRefreshes(selectedActivityId, data.syncStatus)
+    schedulePostSyncRefreshes(selectedActivityId, syncStatus)
   } catch (error: any) {
     notifyApiFailure(error, message, { fallbackMessage: '发起商品同步失败' })
   } finally {
@@ -1885,7 +1893,7 @@ watch(
 
 .activity-stage-row {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 10px;
 }
 

@@ -2,6 +2,7 @@ package com.colonel.saas.service;
 
 import com.colonel.saas.entity.ProductSyncJobLog;
 import com.colonel.saas.gateway.douyin.DouyinProductGateway;
+import com.colonel.saas.job.JobLockKeys;
 import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
 import com.colonel.saas.mapper.ProductSyncJobLogMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -19,6 +20,7 @@ import java.util.concurrent.Executor;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -36,6 +38,8 @@ class ProductActivityManualSyncServiceTest {
     private ColonelsettlementActivityMapper activityMapper;
     @Mock
     private ProductSyncJobLogMapper jobLogMapper;
+    @Mock
+    private DistributedJobLockService jobLockService;
 
     @BeforeEach
     void setUp() {
@@ -139,6 +143,40 @@ class ProductActivityManualSyncServiceTest {
         ArgumentCaptor<ProductSyncJobLog> jobLogCaptor = ArgumentCaptor.forClass(ProductSyncJobLog.class);
         verify(jobLogMapper).updateById(jobLogCaptor.capture());
         assertThat(jobLogCaptor.getValue().getStatus()).isEqualTo("PARTIAL");
+    }
+
+    @Test
+    void trigger_shouldReturnLockedWithoutCreatingJobWhenGlobalLockIsHeld() {
+        when(jobLockService.tryAcquire(eq(JobLockKeys.PRODUCT_BACKFILL_GLOBAL), any(), any(String.class)))
+                .thenReturn(false);
+        when(jobLockService.currentLockValue(JobLockKeys.PRODUCT_BACKFILL_GLOBAL)).thenReturn("scheduler");
+        when(jobLockService.currentLockTtlSeconds(JobLockKeys.PRODUCT_BACKFILL_GLOBAL)).thenReturn(120L);
+        ProductActivityManualSyncService service = new ProductActivityManualSyncService(
+                productService,
+                colonelActivityService,
+                activityMapper,
+                jobLogMapper,
+                jobLockService,
+                null,
+                Runnable::run);
+
+        ProductActivityManualSyncService.SyncTriggerResult result = service.trigger("ACT-1", null);
+
+        assertThat(result.activityId()).isEqualTo("ACT-1");
+        assertThat(result.jobId()).isNull();
+        assertThat(result.syncStatus()).isEqualTo("LOCKED");
+        assertThat(result.message()).contains("商品同步全局锁被占用");
+        assertThat(result.lockKey()).isEqualTo(JobLockKeys.PRODUCT_BACKFILL_GLOBAL);
+        assertThat(result.lockOwner()).isEqualTo("scheduler");
+        assertThat(result.lockTtlSeconds()).isEqualTo(120L);
+        verify(jobLogMapper, never()).insert(any(ProductSyncJobLog.class));
+        verify(productService, never()).refreshActivitySnapshots(
+                any(DouyinProductGateway.ActivityProductQueryRequest.class),
+                anyInt(),
+                anyInt(),
+                anyLong(),
+                any());
+        verify(colonelActivityService, never()).syncActivitySummaryFromUpstream(any(), any());
     }
 
     @Test

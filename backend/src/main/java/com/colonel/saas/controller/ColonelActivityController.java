@@ -26,6 +26,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import org.springframework.util.StringUtils;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -174,9 +175,20 @@ public class ColonelActivityController extends BaseController {
         payload.put("activityId", triggerResult.activityId());
         payload.put("jobId", triggerResult.jobId());
         payload.put("syncStatus", triggerResult.syncStatus());
-        payload.put("message", "RUNNING".equals(triggerResult.syncStatus())
-                ? "商品同步已在后台执行，请稍后刷新列表"
-                : "商品同步已转入后台执行");
+        String message;
+        if ("RUNNING".equals(triggerResult.syncStatus())) {
+            message = "商品同步已在后台执行，请稍后刷新列表";
+        } else if ("LOCKED".equals(triggerResult.syncStatus())) {
+            message = StringUtils.hasText(triggerResult.message())
+                    ? triggerResult.message()
+                    : "后台商品同步正在执行，请稍后重试";
+            payload.put("lockKey", triggerResult.lockKey());
+            payload.put("lockOwner", triggerResult.lockOwner());
+            payload.put("lockTtlSeconds", triggerResult.lockTtlSeconds());
+        } else {
+            message = "商品同步已转入后台执行";
+        }
+        payload.put("message", message);
         return ok(payload);
     }
 

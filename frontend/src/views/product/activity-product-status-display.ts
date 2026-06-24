@@ -8,6 +8,7 @@ export type ActivityProductStatusStageKey =
   | 'promoting'
   | 'rejected'
   | 'terminated'
+  | 'canceled'
   | 'expired'
 
 export type ActivityProductStatusTagType = 'success' | 'warning' | 'error' | 'info' | 'default'
@@ -18,6 +19,7 @@ export interface ActivityProductStatusCounts {
   promoting: number
   rejected: number
   terminated: number
+  canceled: number
   expired: number
 }
 
@@ -68,6 +70,13 @@ const OFFICIAL_STATUS_VIEWS: Record<ProductOfficialStatus, ActivityProductStatus
     tagType: 'default',
     hint: '上游活动商品合作已终止'
   },
+  CANCELED: {
+    status: 'CANCELED',
+    label: '合作前取消',
+    allianceStatus: 'canceled',
+    tagType: 'default',
+    hint: '上游活动商品合作前取消'
+  },
   EXPIRED: {
     status: 'EXPIRED',
     label: '合作已到期',
@@ -82,6 +91,7 @@ const STAGE_ORDER: Array<Exclude<ActivityProductStatusStageKey, 'all'>> = [
   'promoting',
   'rejected',
   'terminated',
+  'canceled',
   'expired'
 ]
 
@@ -90,6 +100,7 @@ const STAGE_TO_OFFICIAL_STATUS: Record<Exclude<ActivityProductStatusStageKey, 'a
   promoting: 'PROMOTING',
   rejected: 'REJECTED',
   terminated: 'TERMINATED',
+  canceled: 'CANCELED',
   expired: 'EXPIRED'
 }
 
@@ -104,6 +115,7 @@ export function countActivityProductStatusGroups(rows: ProductManageRow[]): Acti
     promoting: 0,
     rejected: 0,
     terminated: 0,
+    canceled: 0,
     expired: 0
   }
 
@@ -113,6 +125,7 @@ export function countActivityProductStatusGroups(rows: ProductManageRow[]): Acti
     else if (status === 'PROMOTING') counts.promoting += 1
     else if (status === 'REJECTED') counts.rejected += 1
     else if (status === 'TERMINATED') counts.terminated += 1
+    else if (status === 'CANCELED') counts.canceled += 1
     else if (status === 'EXPIRED') counts.expired += 1
   })
 
@@ -133,6 +146,7 @@ export function normalizeActivityProductStatusCounts(
     promoting: normalizeCount(value?.promoting),
     rejected: normalizeCount(value?.rejected),
     terminated: normalizeCount(value?.terminated),
+    canceled: normalizeCount(value?.canceled),
     expired: normalizeCount(value?.expired)
   }
 }

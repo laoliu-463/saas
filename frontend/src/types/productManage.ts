@@ -3,6 +3,7 @@ export type ProductOfficialStatus =
   | 'PROMOTING'
   | 'REJECTED'
   | 'TERMINATED'
+  | 'CANCELED'
   | 'EXPIRED'
 
 export type ProductPublishStatus =
@@ -161,6 +162,7 @@ export const officialStatusOptions: { label: string; value: ProductOfficialStatu
   { label: '推广中', value: 'PROMOTING' },
   { label: '申请未通过', value: 'REJECTED' },
   { label: '合作已终止', value: 'TERMINATED' },
+  { label: '合作前取消', value: 'CANCELED' },
   { label: '合作已到期', value: 'EXPIRED' }
 ]
 

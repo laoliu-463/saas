@@ -90,7 +90,7 @@
            AND ps.status = #{promotionStatus}
                </when>
                <otherwise>
-           AND ps.status IN (0, 1, 2, 3, 6)
+           AND ps.status IN (0, 1, 2, 3, 4, 6)
                </otherwise>
            </choose>
            <if test="productInfo != null and productInfo != ''">
