@@ -1068,10 +1068,7 @@ const pollActivityProductSyncJob = async (
 
 const scheduleActivityProductSyncJobPolling = (activityId: string, jobId: string) => {
   clearPostSyncRefreshTimers()
-  postSyncPollTimer = window.setTimeout(() => {
-    postSyncPollTimer = null
-    void pollActivityProductSyncJob(activityId, jobId)
-  }, ACTIVITY_PRODUCT_SYNC_POLL_INTERVAL_MS)
+  void pollActivityProductSyncJob(activityId, jobId)
 }
 
 const openSyncActivityProductsDialog = () => {

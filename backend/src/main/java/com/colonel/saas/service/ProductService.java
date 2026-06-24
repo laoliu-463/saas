@@ -1730,14 +1730,39 @@ public class ProductService {
     @Transactional(rollbackFor = Exception.class)
     public ActivityProductRefreshResult refreshActivitySnapshots(
             DouyinProductGateway.ActivityProductQueryRequest request,
+            long pageIntervalMs) {
+        return refreshActivitySnapshots(
+                request,
+                productSyncActivityProductMaxPagesPerActivity,
+                productSyncActivityProductMaxRowsPerActivity,
+                pageIntervalMs);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public ActivityProductRefreshResult refreshActivitySnapshots(
+            DouyinProductGateway.ActivityProductQueryRequest request,
             int maxPagesPerActivity,
             int maxRowsPerActivity) {
+        return refreshActivitySnapshots(
+                request,
+                maxPagesPerActivity,
+                maxRowsPerActivity,
+                normalizedProductActivitySyncPageIntervalMs());
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public ActivityProductRefreshResult refreshActivitySnapshots(
+            DouyinProductGateway.ActivityProductQueryRequest request,
+            int maxPagesPerActivity,
+            int maxRowsPerActivity,
+            long pageIntervalMs) {
         if (request == null || !StringUtils.hasText(request.activityId())) {
             return new ActivityProductRefreshResult(0, 0, 0, 0, 0);
         }
         int pageSize = Math.min(Math.max(request.count() == null ? productSyncActivityProductPageSize : request.count(), 1), 20);
         int normalizedMaxPages = Math.max(maxPagesPerActivity <= 0 ? productSyncActivityProductMaxPagesPerActivity : maxPagesPerActivity, 1);
         int normalizedMaxRows = Math.max(maxRowsPerActivity <= 0 ? productSyncActivityProductMaxRowsPerActivity : maxRowsPerActivity, 1);
+        long normalizedPageIntervalMs = normalizedProductActivitySyncPageIntervalMs(pageIntervalMs);
         java.util.concurrent.atomic.AtomicInteger pageCounter = new java.util.concurrent.atomic.AtomicInteger();
         ActivityProductPaginationRunner.Result pageResult = ActivityProductPaginationRunner.run(
                 request,
@@ -1755,7 +1780,7 @@ public class ProductService {
                             stats.skippedCount(),
                             stats.libraryEntryCount());
                 },
-                pageNo -> sleepBeforeNextActivityProductPage(request.activityId(), pageNo - 1));
+                pageNo -> sleepBeforeNextActivityProductPage(request.activityId(), pageNo - 1, normalizedPageIntervalMs));
         int createdCount = pageResult.createdCount();
         int updatedCount = pageResult.updatedCount();
         int skippedCount = pageResult.skippedCount();
@@ -1788,7 +1813,7 @@ public class ProductService {
                 skippedCount,
                 syncStatus,
                 null);
-        log.info("Activity product sync summary, activityId={}, pagesFetched={}, fetchedRows={}, distinctProductIds={}, duplicateProductIds={}, created={}, updated={}, skipped={}, libraryEntryCount={}, stoppedReason={}, stillHasNextWhenStopped={}, complete={}",
+        log.info("Activity product sync summary, activityId={}, pagesFetched={}, fetchedRows={}, distinctProductIds={}, duplicateProductIds={}, created={}, updated={}, skipped={}, libraryEntryCount={}, pageIntervalMs={}, stoppedReason={}, stillHasNextWhenStopped={}, complete={}",
                 request.activityId(),
                 pageResult.pagesFetched(),
                 pageResult.fetchedRows(),
@@ -1798,6 +1823,7 @@ public class ProductService {
                 updatedCount,
                 skippedCount,
                 libraryEntryCount,
+                normalizedPageIntervalMs,
                 pageResult.stopReason(),
                 pageResult.stillHasNextWhenStopped(),
                 pageResult.complete());
@@ -1915,8 +1941,8 @@ public class ProductService {
         return text.contains("429") || text.contains("rate") || text.contains("limit") || text.contains("限流");
     }
 
-    private void sleepBeforeNextActivityProductPage(String activityId, int pageNo) {
-        sleepQuietly(normalizedProductActivitySyncPageIntervalMs(), "page", activityId, pageNo, 0);
+    private void sleepBeforeNextActivityProductPage(String activityId, int pageNo, long pageIntervalMs) {
+        sleepQuietly(pageIntervalMs, "page", activityId, pageNo, 0);
     }
 
     private void sleepBeforeRetry(String activityId, int pageNo, int attempt) {
@@ -1927,6 +1953,10 @@ public class ProductService {
 
     private long normalizedProductActivitySyncPageIntervalMs() {
         return Math.min(1000L, Math.max(300L, productActivitySyncPageIntervalMs));
+    }
+
+    private long normalizedProductActivitySyncPageIntervalMs(long pageIntervalMs) {
+        return Math.min(1000L, Math.max(300L, pageIntervalMs));
     }
 
     private void sleepQuietly(long millis, String phase, String activityId, int pageNo, int attempt) {

@@ -29,6 +29,7 @@ import java.util.concurrent.Executor;
 public class ProductActivityManualSyncService {
 
     private static final int DEFAULT_PAGE_SIZE = 20;
+    private static final long DEFAULT_MANUAL_PAGE_INTERVAL_MS = 300L;
     private static final String JOB_TYPE = "activity_product_manual_sync";
     private static final String SCOPE_PREFIX = "ACTIVITY:";
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
@@ -41,6 +42,8 @@ public class ProductActivityManualSyncService {
     private final Map<String, String> runningJobIdsByActivity = new ConcurrentHashMap<>();
     @Value("${product.sync.activityProduct.pageSize:20}")
     private int pageSize;
+    @Value("${product.sync.activityProduct.manual-page-interval-ms:300}")
+    private long manualPageIntervalMs = DEFAULT_MANUAL_PAGE_INTERVAL_MS;
 
     public ProductActivityManualSyncService(
             ProductService productService,
@@ -132,7 +135,9 @@ public class ProductActivityManualSyncService {
         try {
             colonelActivityService.syncActivitySummaryFromUpstream(activityId, appId);
             ProductService.ActivityProductRefreshResult result =
-                    productService.refreshActivitySnapshots(buildQueryRequest(activityId, appId));
+                    productService.refreshActivitySnapshots(
+                            buildQueryRequest(activityId, appId),
+                            normalizedManualPageIntervalMs());
             if (result.complete()) {
                 activityMapper.touchLastSyncAt(activityId, LocalDateTime.now());
             }
@@ -229,6 +234,10 @@ public class ProductActivityManualSyncService {
 
     private int normalizedPageSize() {
         return Math.min(Math.max(pageSize <= 0 ? DEFAULT_PAGE_SIZE : pageSize, 1), 20);
+    }
+
+    private long normalizedManualPageIntervalMs() {
+        return Math.min(1000L, Math.max(300L, manualPageIntervalMs));
     }
 
     private String activityIdFromScope(String scope) {

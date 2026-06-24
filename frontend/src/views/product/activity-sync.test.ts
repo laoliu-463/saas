@@ -78,8 +78,8 @@ describe('activity-sync', () => {
   })
 
   it('classifies manual sync job statuses for completion polling', () => {
-    expect(ACTIVITY_PRODUCT_SYNC_POLL_INTERVAL_MS).toBe(1000)
-    expect(ACTIVITY_PRODUCT_SYNC_MAX_POLLS).toBe(300)
+    expect(ACTIVITY_PRODUCT_SYNC_POLL_INTERVAL_MS).toBe(500)
+    expect(ACTIVITY_PRODUCT_SYNC_MAX_POLLS).toBe(600)
     expect(shouldPollActivityProductSyncJob('ACCEPTED')).toBe(true)
     expect(shouldPollActivityProductSyncJob('RUNNING')).toBe(true)
     expect(shouldPollActivityProductSyncJob('SUCCESS')).toBe(false)

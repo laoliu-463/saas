@@ -38,7 +38,9 @@ class ProductActivityManualSyncServiceTest {
 
     @BeforeEach
     void setUp() {
-        lenient().when(productService.refreshActivitySnapshots(any()))
+        lenient().when(productService.refreshActivitySnapshots(
+                        any(DouyinProductGateway.ActivityProductQueryRequest.class),
+                        eq(300L)))
                 .thenReturn(new ProductService.ActivityProductRefreshResult(3, 1, 1, 2, 0));
     }
 
@@ -59,7 +61,7 @@ class ProductActivityManualSyncServiceTest {
         verify(colonelActivityService).syncActivitySummaryFromUpstream("ACT-1", null);
         ArgumentCaptor<DouyinProductGateway.ActivityProductQueryRequest> captor =
                 ArgumentCaptor.forClass(DouyinProductGateway.ActivityProductQueryRequest.class);
-        verify(productService).refreshActivitySnapshots(captor.capture());
+        verify(productService).refreshActivitySnapshots(captor.capture(), eq(300L));
         assertThat(captor.getValue().activityId()).isEqualTo("ACT-1");
         assertThat(captor.getValue().count()).isEqualTo(20);
         verify(activityMapper).touchLastSyncAt(eq("ACT-1"), any(LocalDateTime.class));
@@ -100,7 +102,9 @@ class ProductActivityManualSyncServiceTest {
 
     @Test
     void trigger_shouldNotTouchLastSyncAtWhenRefreshIsIncomplete() {
-        when(productService.refreshActivitySnapshots(any()))
+        when(productService.refreshActivitySnapshots(
+                        any(DouyinProductGateway.ActivityProductQueryRequest.class),
+                        eq(300L)))
                 .thenReturn(new ProductService.ActivityProductRefreshResult(
                         2_000,
                         1,
