@@ -4,6 +4,8 @@ import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.douyin.DouyinApiClient;
 import com.colonel.saas.gateway.douyin.contract.DouyinContractFixtureProvider;
 import com.colonel.saas.gateway.douyin.contract.DouyinUpstreamModeSupport;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.util.HashMap;
@@ -32,6 +34,8 @@ import java.util.Map;
  */
 @Service
 public class ProductApi {
+
+    private static final Logger log = LoggerFactory.getLogger(ProductApi.class);
 
     /** 默认每页数量 */
     private static final int DEFAULT_COUNT = 20;
@@ -170,7 +174,24 @@ public class ProductApi {
         putIfNotBlank(params, "cooperation_info", cooperationInfo);
         params.put("cooperation_type", normalizeCooperationType(cooperationType));
         putIfNotBlank(params, "product_info", productInfo);
-        putIfNotNull(params, "status", normalizeProductStatus(status));
+        Integer normalizedStatus = normalizeProductStatus(status);
+        putIfNotNull(params, "status", normalizedStatus);
+
+        log.debug(
+                "listProductsByActivity request | appId={} activityId={} activity_id_raw={} status(raw)={} status(norm)={} searchType={} sortType={} count={} cooperationType={} retrieveMode={} cursor={} page={}",
+                appId,
+                activityId,
+                parseActivityId(activityId),
+                status,
+                normalizedStatus,
+                searchType,
+                sortType,
+                count,
+                cooperationType,
+                retrieveMode,
+                cursor,
+                page
+        );
 
         long mode = normalizeRetrieveMode(retrieveMode);
         params.put("retrieve_mode", mode);

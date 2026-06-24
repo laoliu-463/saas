@@ -18,6 +18,7 @@ import java.util.concurrent.Executor;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -40,7 +41,10 @@ class ProductActivityManualSyncServiceTest {
     void setUp() {
         lenient().when(productService.refreshActivitySnapshots(
                         any(DouyinProductGateway.ActivityProductQueryRequest.class),
-                        eq(300L)))
+                        anyInt(),
+                        anyInt(),
+                        eq(300L),
+                        any()))
                 .thenReturn(new ProductService.ActivityProductRefreshResult(3, 1, 1, 2, 0));
     }
 
@@ -61,7 +65,7 @@ class ProductActivityManualSyncServiceTest {
         verify(colonelActivityService).syncActivitySummaryFromUpstream("ACT-1", null);
         ArgumentCaptor<DouyinProductGateway.ActivityProductQueryRequest> captor =
                 ArgumentCaptor.forClass(DouyinProductGateway.ActivityProductQueryRequest.class);
-        verify(productService).refreshActivitySnapshots(captor.capture(), eq(300L));
+        verify(productService).refreshActivitySnapshots(captor.capture(), eq(3000), eq(50000), eq(300L), any());
         assertThat(captor.getValue().activityId()).isEqualTo("ACT-1");
         assertThat(captor.getValue().count()).isEqualTo(20);
         verify(activityMapper).touchLastSyncAt(eq("ACT-1"), any(LocalDateTime.class));
@@ -104,7 +108,10 @@ class ProductActivityManualSyncServiceTest {
     void trigger_shouldNotTouchLastSyncAtWhenRefreshIsIncomplete() {
         when(productService.refreshActivitySnapshots(
                         any(DouyinProductGateway.ActivityProductQueryRequest.class),
-                        eq(300L)))
+                        anyInt(),
+                        anyInt(),
+                        eq(300L),
+                        any()))
                 .thenReturn(new ProductService.ActivityProductRefreshResult(
                         2_000,
                         1,

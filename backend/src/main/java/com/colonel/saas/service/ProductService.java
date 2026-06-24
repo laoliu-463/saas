@@ -1745,6 +1745,9 @@ public class ProductService {
         }
     }
 
+    public record ActivityProductRefreshProgress(int pagesFetched) {
+    }
+
     @Transactional(rollbackFor = Exception.class)
     public ActivityProductRefreshResult refreshActivitySnapshots(DouyinProductGateway.ActivityProductQueryRequest request) {
         return refreshActivitySnapshots(
@@ -1782,6 +1785,16 @@ public class ProductService {
             int maxPagesPerActivity,
             int maxRowsPerActivity,
             long pageIntervalMs) {
+        return refreshActivitySnapshots(request, maxPagesPerActivity, maxRowsPerActivity, pageIntervalMs, null);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public ActivityProductRefreshResult refreshActivitySnapshots(
+            DouyinProductGateway.ActivityProductQueryRequest request,
+            int maxPagesPerActivity,
+            int maxRowsPerActivity,
+            long pageIntervalMs,
+            java.util.function.Consumer<ActivityProductRefreshProgress> progressConsumer) {
         if (request == null || !StringUtils.hasText(request.activityId())) {
             return new ActivityProductRefreshResult(0, 0, 0, 0, 0);
         }
@@ -1790,6 +1803,7 @@ public class ProductService {
         int normalizedMaxRows = Math.max(maxRowsPerActivity <= 0 ? productSyncActivityProductMaxRowsPerActivity : maxRowsPerActivity, 1);
         long normalizedPageIntervalMs = normalizedProductActivitySyncPageIntervalMs(pageIntervalMs);
         java.util.concurrent.atomic.AtomicInteger pageCounter = new java.util.concurrent.atomic.AtomicInteger();
+        java.util.concurrent.atomic.AtomicInteger progressPageCounter = new java.util.concurrent.atomic.AtomicInteger();
         ActivityProductPaginationRunner.Result pageResult = ActivityProductPaginationRunner.run(
                 request,
                 new ActivityProductPaginationRunner.Options(
@@ -1800,6 +1814,7 @@ public class ProductService {
                 pageRequest -> queryActivityProductsWithRetry(pageRequest, pageCounter.getAndIncrement()),
                 page -> {
                     ActivitySnapshotUpsertStats stats = upsertSnapshotsWithStats(request.activityId(), page.items());
+                    notifyActivityProductRefreshProgress(progressConsumer, progressPageCounter.incrementAndGet());
                     return new ActivityProductPaginationRunner.PageWriteStats(
                             stats.createdCount(),
                             stats.updatedCount(),
@@ -1818,8 +1833,9 @@ public class ProductService {
                     request.activityId(), request.status(), staleDeletedCount);
         }
 
+        int repairLimit = Math.min(Math.max(10000, pageResult.distinctProductIds()), 50000);
         ProductDisplayRuleService.LibraryRepairResult repairResult =
-                productDisplayRuleService.repairLibraryStateForActivity(request.activityId(), false, 10000);
+                productDisplayRuleService.repairLibraryStateForActivity(request.activityId(), false, repairLimit);
         log.info("Activity product library state repair after refresh, activityId={}, scanned={}, promoting={}, willSelectToLibrary={}, willDisplay={}, unchanged={}",
                 request.activityId(),
                 repairResult.scanned(),
@@ -1970,6 +1986,21 @@ public class ProductService {
 
     private void sleepBeforeNextActivityProductPage(String activityId, int pageNo, long pageIntervalMs) {
         sleepQuietly(pageIntervalMs, "page", activityId, pageNo, 0);
+    }
+
+    private void notifyActivityProductRefreshProgress(
+            java.util.function.Consumer<ActivityProductRefreshProgress> progressConsumer,
+            int pagesFetched) {
+        if (progressConsumer == null) {
+            return;
+        }
+        try {
+            progressConsumer.accept(new ActivityProductRefreshProgress(Math.max(pagesFetched, 0)));
+        } catch (Exception ex) {
+            log.warn("Activity product refresh progress callback failed, pagesFetched={}, message={}",
+                    pagesFetched,
+                    ex.getMessage());
+        }
     }
 
     private void sleepBeforeRetry(String activityId, int pageNo, int attempt) {
