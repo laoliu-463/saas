@@ -44,6 +44,7 @@ import com.colonel.saas.domain.user.facade.dto.UserOwnershipReference;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -73,6 +74,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -161,6 +163,8 @@ public class ProductService {
     private final ProductDomainEventPublisher productDomainEventPublisher;
     /** 商品库展示优先级策略（DDD-PRODUCT-002，不含置顶） */
     private final ProductDisplayPolicy productDisplayPolicy;
+    /** 活动商品列表 Redis 短 TTL 缓存；单元测试未注入时自动回退 DB 直查。 */
+    private ActivityProductRedisCacheService activityProductRedisCacheService;
     @Value("${douyin.real.promotion-write-enabled:false}")
     private boolean realPromotionWriteEnabled;
     @Value("${douyin.real.allow-promotion-write:false}")
@@ -223,6 +227,11 @@ public class ProductService {
         this.productDomainEventPublisher = productDomainEventPublisher;
         this.productDisplayPolicy = productDisplayPolicy;
         this.copyPromotionApplicationService = copyPromotionApplicationService;
+    }
+
+    @Autowired(required = false)
+    void setActivityProductRedisCacheService(ActivityProductRedisCacheService activityProductRedisCacheService) {
+        this.activityProductRedisCacheService = activityProductRedisCacheService;
     }
 
     public IPage<Product> getPage(long page, long size, Integer status) {
@@ -1390,6 +1399,7 @@ public class ProductService {
                 null
         );
         productDisplayRuleService.applyForProductId(snapshot.getProductId());
+        evictActivityProductCache(snapshot.getActivityId());
         return getById(id);
     }
 
@@ -1478,6 +1488,7 @@ public class ProductService {
         int skipped = 0;
         int libraryEntryCount = 0;
         int unchanged = 0;
+        int stateUpdated = 0;
         for (DouyinProductGateway.ActivityProductItem item : sortedItems) {
             String productId = String.valueOf(item.productId());
             if (!StringUtils.hasText(productId)) {
@@ -1520,7 +1531,11 @@ public class ProductService {
             }
             if (stateChanged) {
                 operationStateMapper.updateById(state);
+                stateUpdated++;
             }
+        }
+        if (created > 0 || updated > 0 || libraryEntryCount > 0 || stateUpdated > 0) {
+            evictActivityProductCache(activityId);
         }
         return new ActivitySnapshotUpsertStats(created, updated, skipped, libraryEntryCount, unchanged);
     }
@@ -1802,6 +1817,7 @@ public class ProductService {
                 repairResult.willDisplay(),
                 repairResult.unchanged());
         productDisplayRuleService.applyForActivityId(request.activityId());
+        evictActivityProductCache(request.activityId());
         ColonelsettlementActivity activity = colonelActivityMapper.selectByActivityId(request.activityId());
         String syncStatus = pageResult.complete() ? "SUCCESS" : syncStatusForStopReason(pageResult.stopReason());
         productDomainEventPublisher.publishActivitySyncCompleted(
@@ -2083,6 +2099,23 @@ public class ProductService {
             String sortBy,
             String goodsTags,
             String productTags) {
+        return withActivityProductListCache(
+                activityId,
+                activityProductListCacheQuery(count, cursor, productInfo, bizStatus, promotionStatus, sortBy, goodsTags, productTags),
+                () -> buildActivityProductListViewFromDbUncached(
+                        activityId, count, cursor, productInfo, bizStatus, promotionStatus, sortBy, goodsTags, productTags));
+    }
+
+    private Map<String, Object> buildActivityProductListViewFromDbUncached(
+            String activityId,
+            Integer count,
+            String cursor,
+            String productInfo,
+            String bizStatus,
+            Integer promotionStatus,
+            String sortBy,
+            String goodsTags,
+            String productTags) {
         int pageSize = Math.min(Math.max(count == null ? 20 : count, 1), 20);
         int offset = parseCursor(cursor);
         BizStatusFilter bizStatusFilter = resolveBizStatusFilter(activityId, bizStatus);
@@ -2178,8 +2211,57 @@ public class ProductService {
     }
 
     private Map<String, Object> loadActivityProductStatusCounts(String activityId) {
+        if (activityProductRedisCacheService != null) {
+            return activityProductRedisCacheService.getOrLoadActivityProductStatusCounts(
+                    activityId,
+                    () -> loadActivityProductStatusCountsUncached(activityId));
+        }
+        return loadActivityProductStatusCountsUncached(activityId);
+    }
+
+    private Map<String, Object> loadActivityProductStatusCountsUncached(String activityId) {
         Map<String, Object> raw = snapshotMapper.selectActivityStatusCounts(activityId);
         return productDisplayPolicy.normalizeActivityProductStatusCounts(raw);
+    }
+
+    private Map<String, Object> withActivityProductListCache(
+            String activityId,
+            String queryKey,
+            Supplier<Map<String, Object>> loader) {
+        if (activityProductRedisCacheService == null) {
+            return loader.get();
+        }
+        return activityProductRedisCacheService.getOrLoadActivityProductList(activityId, queryKey, loader);
+    }
+
+    private String activityProductListCacheQuery(
+            Integer count,
+            String cursor,
+            String productInfo,
+            String bizStatus,
+            Integer promotionStatus,
+            String sortBy,
+            String goodsTags,
+            String productTags) {
+        return String.join("|",
+                "count=" + (count == null ? "" : count),
+                "cursor=" + normalizeCacheToken(cursor),
+                "productInfo=" + normalizeCacheToken(productInfo),
+                "bizStatus=" + normalizeCacheToken(bizStatus),
+                "promotionStatus=" + (promotionStatus == null ? "" : promotionStatus),
+                "sortBy=" + normalizeCacheToken(sortBy),
+                "goodsTags=" + normalizeCacheToken(goodsTags),
+                "productTags=" + normalizeCacheToken(productTags));
+    }
+
+    private String normalizeCacheToken(String value) {
+        return value == null ? "" : value.trim();
+    }
+
+    private void evictActivityProductCache(String activityId) {
+        if (activityProductRedisCacheService != null) {
+            activityProductRedisCacheService.evictActivity(activityId);
+        }
     }
 
     private List<Map<String, Object>> buildActivityProductItems(String activityId, List<ProductSnapshot> snapshots) {
@@ -2361,6 +2443,7 @@ public class ProductService {
         detail.put("selectedToLibrary", true);
         detail.put("libraryVisible", true);
         productDisplayRuleService.applyForProductId(productId);
+        evictActivityProductCache(activityId);
         return detail;
     }
 
@@ -2401,6 +2484,7 @@ public class ProductService {
         log.setOperationPayload(String.valueOf(payload));
         log.setOperationRemark("绑定活动成功");
         operationLogMapper.insert(log);
+        evictActivityProductCache(activityId);
         return getActivityProductDetail(activityId, productId);
     }
 
@@ -2443,6 +2527,7 @@ public class ProductService {
                     assigneeId,
                     operatorId);
         }
+        evictActivityProductCache(activityId);
         return getActivityProductDetail(activityId, productId);
     }
 
@@ -2490,6 +2575,7 @@ public class ProductService {
                 true,
                 null
         );
+        evictActivityProductCache(activityId);
         return getActivityProductDetail(activityId, productId);
     }
 
@@ -2562,6 +2648,7 @@ public class ProductService {
                     }
             );
             productDisplayRuleService.applyForProductId(productId);
+            evictActivityProductCache(activityId);
             Map<String, Object> detail = getActivityProductDetail(activityId, productId);
             detail.put("selectedToLibrary", true);
             detail.put("libraryVisible", true);
@@ -2594,6 +2681,7 @@ public class ProductService {
                     current.setLastOperationAt(LocalDateTime.now());
                 }
         );
+        evictActivityProductCache(activityId);
         return getActivityProductDetail(activityId, productId);
     }
 
@@ -2640,6 +2728,7 @@ public class ProductService {
         log.setOperationRemark(reason.trim());
         operationLogMapper.insert(log);
 
+        evictActivityProductCache(activityId);
         return getActivityProductDetail(activityId, productId);
     }
 
@@ -2963,6 +3052,7 @@ public class ProductService {
                         true,
                         null
                 );
+                evictActivityProductCache(snapshot.getActivityId());
                 return result;
             }
             productBizStatusService.changeStatus(
@@ -2980,6 +3070,7 @@ public class ProductService {
                         current.setExternalUniqueId(finalExternalId);
                     }
             );
+            evictActivityProductCache(snapshot.getActivityId());
             return result;
         } catch (RuntimeException ex) {
             Map<String, Object> payload = new LinkedHashMap<>();
