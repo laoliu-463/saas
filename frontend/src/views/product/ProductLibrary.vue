@@ -1,5 +1,5 @@
 ﻿<template>
-  <div class="product-page app-page" data-testid="product-library-page">
+  <div ref="productPageRef" class="product-page app-page" data-testid="product-library-page">
     <PageHeader
       title="商品库"
       description="沉淀完成的共享商品库，对全员可见，可直接复用历史商品结果。"
@@ -213,6 +213,7 @@ const currentPage = ref(1)
 const nextCursor = ref('')
 const hasMore = ref(false)
 const totalCount = ref(0)
+const productPageRef = ref<HTMLElement | null>(null)
 const loadMoreTrigger = ref<HTMLElement | null>(null)
 const productGridRef = ref<HTMLElement | null>(null)
 const viewportTop = ref(0)
@@ -232,7 +233,9 @@ const showDetail = ref(false)
 const detailRefreshKey = ref(0)
 const manualCopyDialog = ref(createEmptyManualCopyDialogState())
 let loadMoreObserver: IntersectionObserver | null = null
+let loadMoreObserverRoot: Element | null = null
 let productGridViewportRaf: number | null = null
+let productScrollTarget: Window | HTMLElement | null = null
 
 const canCopyPromotionLink = computed(() =>
   hasAccess(authStore.roleCodes, [ROLE_CODES.CHANNEL_LEADER, ROLE_CODES.CHANNEL_STAFF])
@@ -336,16 +339,79 @@ const updateCoarsePointerGrid = () => {
   coarsePointerGrid.value = window.matchMedia('(hover: none), (pointer: coarse)').matches
 }
 
+const isWindowScrollTarget = (target: Window | HTMLElement | null): target is Window =>
+  typeof window !== 'undefined' && target === window
+
+const isScrollableProductElement = (element: HTMLElement) => {
+  if (typeof window === 'undefined') return false
+  const overflowY = window.getComputedStyle(element).overflowY
+  return /(auto|scroll|overlay)/.test(overflowY) && element.scrollHeight > element.clientHeight + 1
+}
+
+const resolveProductScrollTarget = (): Window | HTMLElement | null => {
+  if (typeof window === 'undefined') return null
+  const root = productGridRef.value || productPageRef.value
+  if (!root) return window
+
+  let current: HTMLElement | null = root
+  while (current && current !== document.body && current !== document.documentElement) {
+    if (isScrollableProductElement(current)) return current
+    current = current.parentElement
+  }
+  return window
+}
+
+const removeProductScrollTargetListener = () => {
+  productScrollTarget?.removeEventListener('scroll', scheduleProductGridViewportUpdate)
+}
+
+const syncProductScrollTarget = () => {
+  const nextTarget = resolveProductScrollTarget()
+  if (!nextTarget || nextTarget === productScrollTarget) return
+  removeProductScrollTargetListener()
+  productScrollTarget = nextTarget
+  productScrollTarget.addEventListener('scroll', scheduleProductGridViewportUpdate, { passive: true })
+  loadMoreObserver?.disconnect()
+  loadMoreObserver = null
+  loadMoreObserverRoot = null
+}
+
+const getProductScrollTop = () => {
+  if (typeof window === 'undefined') return 0
+  if (productScrollTarget && !isWindowScrollTarget(productScrollTarget)) {
+    return productScrollTarget.scrollTop || 0
+  }
+  return window.scrollY || window.pageYOffset || 0
+}
+
+const getProductViewportHeight = () => {
+  if (typeof window === 'undefined') return viewportHeight.value
+  if (productScrollTarget && !isWindowScrollTarget(productScrollTarget)) {
+    return productScrollTarget.clientHeight || window.innerHeight || viewportHeight.value
+  }
+  return window.innerHeight || viewportHeight.value
+}
+
 const updateProductGridViewport = () => {
   if (typeof window === 'undefined') return
-  viewportTop.value = window.scrollY || window.pageYOffset || 0
-  viewportHeight.value = window.innerHeight || viewportHeight.value
-  viewportWidth.value = window.innerWidth || viewportWidth.value
+  syncProductScrollTarget()
+  const scrollTop = getProductScrollTop()
+  viewportTop.value = scrollTop
+  viewportHeight.value = getProductViewportHeight()
+  viewportWidth.value = productScrollTarget && !isWindowScrollTarget(productScrollTarget)
+    ? productScrollTarget.clientWidth || window.innerWidth || viewportWidth.value
+    : window.innerWidth || viewportWidth.value
   updateCoarsePointerGrid()
   const grid = productGridRef.value
   if (!grid) return
   const rect = grid.getBoundingClientRect()
-  productGridTop.value = rect.top + viewportTop.value
+  if (productScrollTarget && !isWindowScrollTarget(productScrollTarget)) {
+    const scrollRect = productScrollTarget.getBoundingClientRect()
+    productGridTop.value = rect.top - scrollRect.top + scrollTop
+    productGridWidth.value = rect.width || productScrollTarget.clientWidth || viewportWidth.value
+    return
+  }
+  productGridTop.value = rect.top + scrollTop
   productGridWidth.value = rect.width || viewportWidth.value
 }
 
@@ -580,13 +646,21 @@ const getLoadMoreObserver = () => {
   if (typeof window === 'undefined' || typeof window.IntersectionObserver === 'undefined') {
     return null
   }
+  const nextRoot = productScrollTarget && !isWindowScrollTarget(productScrollTarget)
+    ? productScrollTarget
+    : null
+  if (loadMoreObserver && loadMoreObserverRoot !== nextRoot) {
+    loadMoreObserver.disconnect()
+    loadMoreObserver = null
+  }
   if (!loadMoreObserver) {
+    loadMoreObserverRoot = nextRoot
     loadMoreObserver = new window.IntersectionObserver((entries) => {
       if (entries.some((entry) => entry.isIntersecting)) {
         triggerLoadMore('auto')
       }
     }, {
-      root: null,
+      root: nextRoot,
       rootMargin: '1200px 0px',
       threshold: 0
     })
@@ -595,6 +669,7 @@ const getLoadMoreObserver = () => {
 }
 
 const refreshLoadMoreObserver = () => {
+  syncProductScrollTarget()
   const observer = getLoadMoreObserver()
   if (!observer) return
   observer.disconnect()
@@ -796,8 +871,8 @@ const loadFilterOptions = async () => {
 
 onMounted(async () => {
   if (typeof window !== 'undefined') {
+    syncProductScrollTarget()
     updateProductGridViewport()
-    window.addEventListener('scroll', scheduleProductGridViewportUpdate, { passive: true })
     window.addEventListener('resize', scheduleProductGridViewportUpdate, { passive: true })
   }
   // 首次进入：把 query.activityId 同步进 filters 作为"硬筛选"。
@@ -839,10 +914,12 @@ watch(
 onBeforeUnmount(() => {
   loadMoreObserver?.disconnect()
   loadMoreObserver = null
+  loadMoreObserverRoot = null
   if (typeof window !== 'undefined') {
-    window.removeEventListener('scroll', scheduleProductGridViewportUpdate)
+    removeProductScrollTargetListener()
     window.removeEventListener('resize', scheduleProductGridViewportUpdate)
   }
+  productScrollTarget = null
   if (productGridViewportRaf !== null) {
     cancelFrame(productGridViewportRaf)
     productGridViewportRaf = null

@@ -163,9 +163,18 @@ describe('ProductLibrary infinite scroll', () => {
   function createLayoutScrollHarness() {
     const scrollRoot = document.createElement('div')
     scrollRoot.className = 'n-layout-scroll-container'
+    scrollRoot.style.overflowY = 'auto'
     Object.defineProperty(scrollRoot, 'clientHeight', {
       configurable: true,
       value: 900
+    })
+    Object.defineProperty(scrollRoot, 'clientWidth', {
+      configurable: true,
+      value: 1280
+    })
+    Object.defineProperty(scrollRoot, 'scrollHeight', {
+      configurable: true,
+      value: 20000
     })
     Object.defineProperty(scrollRoot, 'scrollTop', {
       configurable: true,
