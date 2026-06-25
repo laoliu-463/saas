@@ -177,6 +177,52 @@ class ProductActivityManualSyncServiceTest {
     }
 
     @Test
+    void trigger_shouldRunPrioritySyncWithRequestedRowsAndStatuses() {
+        when(productService.refreshActivitySnapshots(
+                        any(DouyinProductGateway.ActivityProductQueryRequest.class),
+                        anyInt(),
+                        anyInt(),
+                        eq(300L),
+                        any()))
+                .thenReturn(
+                        new ProductService.ActivityProductRefreshResult(20, 0, 10, 10, 0),
+                        new ProductService.ActivityProductRefreshResult(30, 0, 10, 20, 0));
+        ProductActivityManualSyncService service = new ProductActivityManualSyncService(
+                productService,
+                colonelActivityService,
+                activityMapper,
+                jobLogMapper,
+                Runnable::run);
+
+        ProductActivityManualSyncService.SyncTriggerResult result = service.trigger(
+                "ACT-1",
+                null,
+                null,
+                new ProductActivityManualSyncService.SyncOptions("PRIORITY_1000", 1000, List.of(0, 1)));
+
+        assertThat(result.syncStatus()).isEqualTo("QUEUED");
+        ArgumentCaptor<DouyinProductGateway.ActivityProductQueryRequest> requestCaptor =
+                ArgumentCaptor.forClass(DouyinProductGateway.ActivityProductQueryRequest.class);
+        ArgumentCaptor<Integer> maxRowsCaptor = ArgumentCaptor.forClass(Integer.class);
+        verify(productService, times(2)).refreshActivitySnapshots(
+                requestCaptor.capture(),
+                eq(3000),
+                maxRowsCaptor.capture(),
+                eq(300L),
+                any());
+        assertThat(requestCaptor.getAllValues()).extracting(DouyinProductGateway.ActivityProductQueryRequest::status)
+                .containsExactly(0, 1);
+        assertThat(maxRowsCaptor.getAllValues()).containsExactly(1000, 980);
+        verify(productService, never()).refreshActivitySnapshotsByStatusPartitions(
+                any(DouyinProductGateway.ActivityProductQueryRequest.class),
+                anyInt(),
+                anyInt(),
+                anyLong(),
+                anyInt(),
+                any());
+    }
+
+    @Test
     void trigger_shouldKeepDifferentActivityQueuedWhenUpstreamStartIntervalIsNotReached() {
         ProductActivityManualSyncService service = new ProductActivityManualSyncService(
                 productService,

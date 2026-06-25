@@ -334,6 +334,14 @@ import type {
 
 type ProductAction = 'audit' | 'assign' | 'auditOwner'
 type AssignDialogMode = 'businessOwner' | 'auditOwner'
+type ProductSyncMode = 'FULL' | 'PRIORITY_1000'
+
+interface ProductSyncActivityConfirmPayload {
+  activityId: string
+  syncMode: ProductSyncMode
+  maxRowsPerActivity?: number
+  priorityStatuses?: number[]
+}
 
 const PRODUCT_LIST_PAGE_SIZE = 5
 const PRODUCT_TABLE_SCROLL_X = 1968
@@ -1092,8 +1100,15 @@ const openSyncActivityProductsDialog = () => {
   }
 }
 
-const syncActivityProductsFromRemote = async (activityId: string) => {
-  const selectedActivityId = normalizeText(activityId)
+const syncActivityProductsFromRemote = async (payload: ProductSyncActivityConfirmPayload | string) => {
+  const selectedActivityId = normalizeText(typeof payload === 'string' ? payload : payload.activityId)
+  const syncRequest = typeof payload === 'string'
+    ? undefined
+    : {
+        syncMode: payload.syncMode,
+        maxRowsPerActivity: payload.maxRowsPerActivity,
+        priorityStatuses: payload.priorityStatuses
+      }
   if (!selectedActivityId) {
     message.warning('缺少活动 ID，暂时无法同步活动商品')
     return
@@ -1116,7 +1131,7 @@ const syncActivityProductsFromRemote = async (activityId: string) => {
   clearBatchSelection()
   syncing.value = true
   try {
-    const res: any = await syncActivityProducts(selectedActivityId, {
+    const res: any = await syncActivityProducts(selectedActivityId, syncRequest, {
       suppressErrorNotice: true
     })
     const data = res?.data || {}

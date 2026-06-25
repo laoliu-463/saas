@@ -161,6 +161,7 @@ public class ColonelActivityController extends BaseController {
     public ApiResult<Map<String, Object>> syncProducts(
             @Parameter(description = "团长活动 ID。") @PathVariable("activityId") String activityId,
             @Parameter(description = "抖音应用 appId。") @RequestParam(name = "appId", required = false) String appId,
+            @RequestBody(required = false) ProductSyncRequest request,
             @RequestAttribute(value = "userId", required = false) UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
@@ -169,12 +170,20 @@ public class ColonelActivityController extends BaseController {
                 userId,
                 deptId,
                 activityAccessService.normalizeRoles(roleCodes));
+        ProductActivityManualSyncService.SyncOptions syncOptions = toSyncOptions(request);
         ProductActivityManualSyncService.SyncTriggerResult triggerResult =
-                productActivityManualSyncService.trigger(activityId, appId, userId);
+                syncOptions == null
+                        ? productActivityManualSyncService.trigger(activityId, appId, userId)
+                        : productActivityManualSyncService.trigger(activityId, appId, userId, syncOptions);
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("activityId", triggerResult.activityId());
         payload.put("jobId", triggerResult.jobId());
         payload.put("syncStatus", triggerResult.syncStatus());
+        if (syncOptions != null) {
+            payload.put("syncMode", syncOptions.syncMode());
+            payload.put("maxRowsPerActivity", syncOptions.maxRowsPerActivity());
+            payload.put("priorityStatuses", syncOptions.priorityStatuses());
+        }
         String message;
         if ("QUEUED".equals(triggerResult.syncStatus())) {
             message = "商品同步已排队，系统将在当前同步资源可用后自动执行";
@@ -196,6 +205,22 @@ public class ColonelActivityController extends BaseController {
         }
         payload.put("message", message);
         return ok(payload);
+    }
+
+    private ProductActivityManualSyncService.SyncOptions toSyncOptions(ProductSyncRequest request) {
+        if (request == null) {
+            return null;
+        }
+        boolean hasSyncMode = StringUtils.hasText(request.getSyncMode());
+        boolean hasMaxRows = request.getMaxRowsPerActivity() != null;
+        boolean hasPriorityStatuses = request.getPriorityStatuses() != null && !request.getPriorityStatuses().isEmpty();
+        if (!hasSyncMode && !hasMaxRows && !hasPriorityStatuses) {
+            return null;
+        }
+        return new ProductActivityManualSyncService.SyncOptions(
+                request.getSyncMode(),
+                request.getMaxRowsPerActivity(),
+                request.getPriorityStatuses());
     }
 
     @Operation(summary = "查询活动商品同步任务状态", description = "查询一键同步商品后台任务状态，前端用于在 SUCCESS/PARTIAL/FAILED 终态后刷新活动商品列表。")
@@ -455,6 +480,36 @@ public class ColonelActivityController extends BaseController {
 
         public void setAssigneeId(UUID assigneeId) {
             this.assigneeId = assigneeId;
+        }
+    }
+
+    public static class ProductSyncRequest {
+        private String syncMode;
+        private Integer maxRowsPerActivity;
+        private List<Integer> priorityStatuses;
+
+        public String getSyncMode() {
+            return syncMode;
+        }
+
+        public void setSyncMode(String syncMode) {
+            this.syncMode = syncMode;
+        }
+
+        public Integer getMaxRowsPerActivity() {
+            return maxRowsPerActivity;
+        }
+
+        public void setMaxRowsPerActivity(Integer maxRowsPerActivity) {
+            this.maxRowsPerActivity = maxRowsPerActivity;
+        }
+
+        public List<Integer> getPriorityStatuses() {
+            return priorityStatuses;
+        }
+
+        public void setPriorityStatuses(List<Integer> priorityStatuses) {
+            this.priorityStatuses = priorityStatuses;
         }
     }
 }

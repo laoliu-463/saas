@@ -22,6 +22,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InOrder;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
@@ -581,6 +582,38 @@ class ColonelActivityControllerTest {
 
         verify(productActivityManualSyncService).trigger("100018", null, null);
         verify(productService, never()).refreshActivitySnapshots(any());
+    }
+
+    @Test
+    void syncProducts_shouldPassPrioritySyncOptionsToManualSyncService() throws Exception {
+        when(productActivityManualSyncService.trigger(
+                eq("100018"),
+                eq(null),
+                eq(null),
+                any(ProductActivityManualSyncService.SyncOptions.class))).thenReturn(
+                new ProductActivityManualSyncService.SyncTriggerResult(
+                        "100018",
+                        "activity-product-sync-1",
+                        "QUEUED"));
+
+        mockMvc.perform(post("/colonel/activities/{activityId}/products/sync", "100018")
+                        .requestAttr("roleCodes", List.of(RoleCodes.ADMIN))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"syncMode\":\"PRIORITY_1000\",\"maxRowsPerActivity\":1000,\"priorityStatuses\":[0,1]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.syncStatus").value("QUEUED"))
+                .andExpect(jsonPath("$.data.syncMode").value("PRIORITY_1000"))
+                .andExpect(jsonPath("$.data.maxRowsPerActivity").value(1000))
+                .andExpect(jsonPath("$.data.priorityStatuses[0]").value(0))
+                .andExpect(jsonPath("$.data.priorityStatuses[1]").value(1));
+
+        ArgumentCaptor<ProductActivityManualSyncService.SyncOptions> optionsCaptor =
+                ArgumentCaptor.forClass(ProductActivityManualSyncService.SyncOptions.class);
+        verify(productActivityManualSyncService).trigger(eq("100018"), eq(null), eq(null), optionsCaptor.capture());
+        assertThat(optionsCaptor.getValue().syncMode()).isEqualTo("PRIORITY_1000");
+        assertThat(optionsCaptor.getValue().maxRowsPerActivity()).isEqualTo(1000);
+        assertThat(optionsCaptor.getValue().priorityStatuses()).containsExactly(0, 1);
     }
 
     @Test

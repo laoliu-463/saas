@@ -26,6 +26,12 @@ const ACTIVITY_PRODUCT_LIST_TIMEOUT_MS = 30000;
 const ACTIVITY_PRODUCT_SYNC_TIMEOUT_MS = 30000;
 const ACTIVITY_PRODUCT_SYNC_JOB_TIMEOUT_MS = 15000;
 
+export interface ActivityProductSyncRequest {
+  syncMode?: 'FULL' | 'PRIORITY_1000';
+  maxRowsPerActivity?: number;
+  priorityStatuses?: number[];
+}
+
 /**
  * 分页获取活动商品列表
  *
@@ -313,8 +319,12 @@ export const getActivityProductOperationLogs = (
  * @param activityId - 活动 ID
  * @returns 同步任务结果
  */
-export const syncActivityProducts = (activityId: string | number, config: RequestConfig = {}) =>
-  request.post(`/colonel/activities/${activityId}/products/sync`, undefined, {
+export const syncActivityProducts = (
+  activityId: string | number,
+  data?: ActivityProductSyncRequest,
+  config: RequestConfig = {}
+) =>
+  request.post(`/colonel/activities/${activityId}/products/sync`, data, {
     timeout: ACTIVITY_PRODUCT_SYNC_TIMEOUT_MS,
     ...config
   });

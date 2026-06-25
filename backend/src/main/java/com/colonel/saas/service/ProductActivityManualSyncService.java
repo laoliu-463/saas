@@ -22,6 +22,7 @@ import org.springframework.util.StringUtils;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -53,6 +54,9 @@ public class ProductActivityManualSyncService {
     private static final String STATUS_SUCCESS = "SUCCESS";
     private static final String STATUS_PARTIAL = "PARTIAL";
     private static final String STATUS_FAILED = "FAILED";
+    private static final String SYNC_MODE_FULL = "FULL";
+    private static final String SYNC_MODE_PRIORITY_1000 = "PRIORITY_1000";
+    private static final List<Integer> DEFAULT_PRIORITY_SYNC_STATUSES = List.of(0, 1);
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private final ProductService productService;
@@ -119,10 +123,15 @@ public class ProductActivityManualSyncService {
     }
 
     public SyncTriggerResult trigger(String activityId, String appId, UUID requestedBy) {
+        return trigger(activityId, appId, requestedBy, null);
+    }
+
+    public SyncTriggerResult trigger(String activityId, String appId, UUID requestedBy, SyncOptions options) {
         String normalizedActivityId = activityId == null ? "" : activityId.trim();
         if (!StringUtils.hasText(normalizedActivityId)) {
             return new SyncTriggerResult("", null, "INVALID");
         }
+        ResolvedSyncOptions resolvedOptions = resolveSyncOptions(options);
         String jobId = "activity-product-sync-" + UUID.randomUUID();
         ProductSyncJobLog jobLog;
         synchronized (activeJobsByActivity) {
@@ -151,7 +160,7 @@ public class ProductActivityManualSyncService {
                         null,
                         0L);
             }
-            jobLog = createQueuedJob(jobId, normalizedActivityId, appId, requestedBy);
+            jobLog = createQueuedJob(jobId, normalizedActivityId, appId, requestedBy, resolvedOptions);
             if (!jobId.equals(jobLog.getJobId())) {
                 activeJobsByActivity.put(normalizedActivityId, jobLog);
                 String triggerStatus = jobLog.getStatus();
@@ -207,7 +216,12 @@ public class ProductActivityManualSyncService {
                 jobLog.getErrorMessage());
     }
 
-    private ProductSyncJobLog createQueuedJob(String jobId, String activityId, String appId, UUID requestedBy) {
+    private ProductSyncJobLog createQueuedJob(
+            String jobId,
+            String activityId,
+            String appId,
+            UUID requestedBy,
+            ResolvedSyncOptions options) {
         ProductSyncJobLog log = new ProductSyncJobLog();
         LocalDateTime now = LocalDateTime.now();
         log.setId(UUID.randomUUID());
@@ -221,8 +235,12 @@ public class ProductActivityManualSyncService {
         requestParams.put("activityId", activityId);
         requestParams.put("pageSize", normalizedPageSize());
         requestParams.put("maxPagesPerActivity", normalizedManualMaxPagesPerActivity());
-        requestParams.put("maxRowsPerActivity", normalizedManualMaxRowsPerActivity());
+        requestParams.put("maxRowsPerActivity", options.maxRowsPerActivity());
         requestParams.put("statusPartitionParallelism", normalizedManualStatusPartitionParallelism());
+        requestParams.put("syncMode", options.syncMode());
+        if (!options.priorityStatuses().isEmpty()) {
+            requestParams.put("priorityStatuses", options.priorityStatuses());
+        }
         requestParams.put("queuedAt", now.toString());
         requestParams.put("lastQueueAttemptAt", now.toString());
         if (StringUtils.hasText(appId)) {
@@ -379,16 +397,11 @@ public class ProductActivityManualSyncService {
             boolean acquiredActivityLock,
             boolean acquiredGlobalLock) {
         try {
+            ResolvedSyncOptions syncOptions = resolveSyncOptions(jobLog.getRequestParamsJson());
             colonelActivityService.syncActivitySummaryFromUpstream(activityId, appId);
             ProductService.ActivityProductRefreshResult result =
-                    productService.refreshActivitySnapshotsByStatusPartitions(
-                            buildQueryRequest(activityId, appId),
-                            normalizedManualMaxPagesPerActivity(),
-                            normalizedManualMaxRowsPerActivity(),
-                            normalizedManualPageIntervalMs(),
-                            normalizedManualStatusPartitionParallelism(),
-                            progress -> updateRunningProgress(jobLog, progress));
-            if (result.complete()) {
+                    refreshActivityProducts(activityId, appId, syncOptions, progress -> updateRunningProgress(jobLog, progress));
+            if (result.complete() && syncOptions.priorityStatuses().isEmpty()) {
                 activityMapper.touchLastSyncAt(activityId, LocalDateTime.now());
             }
             finishJob(jobLog, result, result.complete() ? STATUS_SUCCESS : STATUS_PARTIAL, null);
@@ -412,6 +425,89 @@ public class ProductActivityManualSyncService {
             releaseManualSyncLocks(activityId, activityLockKey, acquiredActivityLock, acquiredGlobalLock, lockOwner);
             activeJobsByActivity.remove(activityId, jobLog);
         }
+    }
+
+    private ProductService.ActivityProductRefreshResult refreshActivityProducts(
+            String activityId,
+            String appId,
+            ResolvedSyncOptions syncOptions,
+            java.util.function.Consumer<ProductService.ActivityProductRefreshProgress> progressConsumer) {
+        DouyinProductGateway.ActivityProductQueryRequest queryRequest = buildQueryRequest(activityId, appId, null);
+        if (syncOptions.priorityStatuses().isEmpty()) {
+            return productService.refreshActivitySnapshotsByStatusPartitions(
+                    queryRequest,
+                    normalizedManualMaxPagesPerActivity(),
+                    syncOptions.maxRowsPerActivity(),
+                    normalizedManualPageIntervalMs(),
+                    normalizedManualStatusPartitionParallelism(),
+                    progressConsumer);
+        }
+        return refreshActivityProductsByPriorityStatuses(queryRequest, syncOptions, progressConsumer);
+    }
+
+    private ProductService.ActivityProductRefreshResult refreshActivityProductsByPriorityStatuses(
+            DouyinProductGateway.ActivityProductQueryRequest baseRequest,
+            ResolvedSyncOptions syncOptions,
+            java.util.function.Consumer<ProductService.ActivityProductRefreshProgress> progressConsumer) {
+        int syncedProductCount = 0;
+        int libraryEntryCount = 0;
+        int createdCount = 0;
+        int updatedCount = 0;
+        int skippedCount = 0;
+        int pagesFetched = 0;
+        int fetchedRows = 0;
+        int distinctProductIds = 0;
+        int duplicateProductIds = 0;
+        String stoppedReason = "PRIORITY_SCOPE_COMPLETED";
+        boolean stillHasNextWhenStopped = false;
+        boolean complete = true;
+        int remainingRows = syncOptions.maxRowsPerActivity();
+
+        for (Integer status : syncOptions.priorityStatuses()) {
+            if (remainingRows <= 0) {
+                stoppedReason = "REQUESTED_MAX_ROWS_REACHED";
+                stillHasNextWhenStopped = true;
+                complete = true;
+                break;
+            }
+            ProductService.ActivityProductRefreshResult result = productService.refreshActivitySnapshots(
+                    buildQueryRequest(baseRequest.activityId(), baseRequest.appId(), status),
+                    normalizedManualMaxPagesPerActivity(),
+                    remainingRows,
+                    normalizedManualPageIntervalMs(),
+                    progressConsumer);
+            syncedProductCount += result.syncedProductCount();
+            libraryEntryCount += result.libraryEntryCount();
+            createdCount += result.createdCount();
+            updatedCount += result.updatedCount();
+            skippedCount += result.skippedCount();
+            pagesFetched += result.pagesFetched();
+            fetchedRows += result.fetchedRows();
+            distinctProductIds += result.distinctProductIds();
+            duplicateProductIds += result.duplicateProductIds();
+            remainingRows -= Math.max(result.fetchedRows(), 0);
+            if (!result.complete()) {
+                boolean requestedLimitReached = "MAX_ROWS_REACHED".equals(result.stoppedReason()) || remainingRows <= 0;
+                stoppedReason = requestedLimitReached ? "REQUESTED_MAX_ROWS_REACHED" : result.stoppedReason();
+                stillHasNextWhenStopped = result.stillHasNextWhenStopped();
+                complete = requestedLimitReached;
+                break;
+            }
+        }
+
+        return new ProductService.ActivityProductRefreshResult(
+                syncedProductCount,
+                libraryEntryCount,
+                createdCount,
+                updatedCount,
+                skippedCount,
+                pagesFetched,
+                fetchedRows,
+                distinctProductIds,
+                duplicateProductIds,
+                stoppedReason,
+                stillHasNextWhenStopped,
+                complete);
     }
 
     private ManualSyncLockState tryAcquireManualSyncLocks(String activityId, String activityLockKey, String lockOwner) {
@@ -610,6 +706,10 @@ public class ProductActivityManualSyncService {
     }
 
     private DouyinProductGateway.ActivityProductQueryRequest buildQueryRequest(String activityId, String appId) {
+        return buildQueryRequest(activityId, appId, null);
+    }
+
+    private DouyinProductGateway.ActivityProductQueryRequest buildQueryRequest(String activityId, String appId, Integer status) {
         return new DouyinProductGateway.ActivityProductQueryRequest(
                 appId,
                 activityId,
@@ -619,7 +719,7 @@ public class ProductActivityManualSyncService {
                 null,
                 null,
                 null,
-                null,
+                status,
                 1L,
                 null,
                 null);
@@ -670,10 +770,96 @@ public class ProductActivityManualSyncService {
     }
 
     private int normalizedManualMaxRowsPerActivity() {
+        return normalizedManualMaxRowsPerActivity(null);
+    }
+
+    private int normalizedManualMaxRowsPerActivity(Integer requestedMaxRowsPerActivity) {
+        if (requestedMaxRowsPerActivity != null) {
+            return Math.min(Math.max(requestedMaxRowsPerActivity, 1), MAX_MANUAL_MAX_ROWS_PER_ACTIVITY);
+        }
         int configured = manualMaxRowsPerActivity <= 0
                 ? DEFAULT_MANUAL_MAX_ROWS_PER_ACTIVITY
                 : manualMaxRowsPerActivity;
         return Math.min(Math.max(configured, 1), MAX_MANUAL_MAX_ROWS_PER_ACTIVITY);
+    }
+
+    private ResolvedSyncOptions resolveSyncOptions(SyncOptions options) {
+        if (options == null) {
+            return new ResolvedSyncOptions(
+                    SYNC_MODE_FULL,
+                    normalizedManualMaxRowsPerActivity(),
+                    List.of());
+        }
+        String syncMode = StringUtils.hasText(options.syncMode())
+                ? options.syncMode().trim().toUpperCase()
+                : SYNC_MODE_FULL;
+        if (SYNC_MODE_PRIORITY_1000.equals(syncMode)) {
+            return new ResolvedSyncOptions(
+                    SYNC_MODE_PRIORITY_1000,
+                    normalizedManualMaxRowsPerActivity(
+                            options.maxRowsPerActivity() == null ? 1000 : options.maxRowsPerActivity()),
+                    normalizePriorityStatuses(options.priorityStatuses(), DEFAULT_PRIORITY_SYNC_STATUSES));
+        }
+        return new ResolvedSyncOptions(
+                SYNC_MODE_FULL,
+                normalizedManualMaxRowsPerActivity(options.maxRowsPerActivity()),
+                normalizePriorityStatuses(options.priorityStatuses(), List.of()));
+    }
+
+    private ResolvedSyncOptions resolveSyncOptions(String requestParamsJson) {
+        if (!StringUtils.hasText(requestParamsJson)) {
+            return resolveSyncOptions((SyncOptions) null);
+        }
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> map = OBJECT_MAPPER.readValue(requestParamsJson, LinkedHashMap.class);
+            String syncMode = map.get("syncMode") == null ? SYNC_MODE_FULL : String.valueOf(map.get("syncMode"));
+            Integer maxRowsPerActivity = toInteger(map.get("maxRowsPerActivity"));
+            List<Integer> priorityStatuses = toIntegerList(map.get("priorityStatuses"));
+            return resolveSyncOptions(new SyncOptions(syncMode, maxRowsPerActivity, priorityStatuses));
+        } catch (JsonProcessingException ex) {
+            return resolveSyncOptions((SyncOptions) null);
+        }
+    }
+
+    private List<Integer> normalizePriorityStatuses(List<Integer> statuses, List<Integer> defaultStatuses) {
+        List<Integer> rawStatuses = statuses == null || statuses.isEmpty() ? defaultStatuses : statuses;
+        List<Integer> normalized = new ArrayList<>();
+        for (Integer status : rawStatuses) {
+            if (status == null || !List.of(0, 1, 2, 3, 4, 6).contains(status) || normalized.contains(status)) {
+                continue;
+            }
+            normalized.add(status);
+        }
+        return List.copyOf(normalized);
+    }
+
+    private Integer toInteger(Object value) {
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        if (value != null && StringUtils.hasText(String.valueOf(value))) {
+            try {
+                return Integer.parseInt(String.valueOf(value).trim());
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    private List<Integer> toIntegerList(Object value) {
+        if (!(value instanceof List<?> list)) {
+            return List.of();
+        }
+        List<Integer> result = new ArrayList<>();
+        for (Object item : list) {
+            Integer parsed = toInteger(item);
+            if (parsed != null) {
+                result.add(parsed);
+            }
+        }
+        return result;
     }
 
     private String activityIdFromScope(String scope) {
@@ -771,6 +957,18 @@ public class ProductActivityManualSyncService {
                     lockTtlSeconds,
                     message);
         }
+    }
+
+    public record SyncOptions(
+            String syncMode,
+            Integer maxRowsPerActivity,
+            List<Integer> priorityStatuses) {
+    }
+
+    private record ResolvedSyncOptions(
+            String syncMode,
+            int maxRowsPerActivity,
+            List<Integer> priorityStatuses) {
     }
 
     public record SyncTriggerResult(
