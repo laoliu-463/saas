@@ -555,7 +555,7 @@ public class ProductService {
                 safeFilter.listed(),
                 safeFilter.productId());
         if (snapshots.isEmpty() && total == 0L) {
-            return null;
+            return emptySelectedLibraryPage(currentPage, pageSize);
         }
 
         Map<String, ProductOperationState> stateMap = loadOperationStatesForSnapshots(snapshots);

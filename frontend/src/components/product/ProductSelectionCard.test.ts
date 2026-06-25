@@ -224,6 +224,15 @@ describe('ProductSelectionCard hover drawer', () => {
     expect(metricsGrid.text()).toContain('-') // service fee rate
   })
 
+  it('商品图片使用懒加载和异步解码，降低批量渲染压力', () => {
+    const wrapper = mountCard({ card: { ...baseCard, imageUrl: 'https://example.test/product.jpg' } })
+    const image = wrapper.find('.selection-card__img')
+
+    expect(image.exists()).toBe(true)
+    expect(image.attributes('loading')).toBe('lazy')
+    expect(image.attributes('decoding')).toBe('async')
+  })
+
   it('提供复制ID和复制链接按钮且行为正确', async () => {
     const wrapper = mountCard()
     const copyIdBtn = wrapper.find('[data-testid="product-copy-id"]')
