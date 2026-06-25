@@ -42,7 +42,7 @@ class PerformanceSummaryServiceTest {
 
     @Test
     void aggregateEstimate_shouldUseEstimateColumns() {
-        when(jdbcTemplate.queryForMap(contains("pr.estimate_service_fee"), any(Object[].class)))
+        when(jdbcTemplate.queryForMap(contains("co.estimate_service_fee"), any(Object[].class)))
                 .thenReturn(Map.of(
                         "order_count", 3L,
                         "order_amount", 9000L,
@@ -71,7 +71,7 @@ class PerformanceSummaryServiceTest {
 
     @Test
     void aggregateEffective_shouldUseEffectiveColumns() {
-        when(jdbcTemplate.queryForMap(contains("pr.effective_service_fee"), any(Object[].class)))
+        when(jdbcTemplate.queryForMap(contains("co.effective_service_fee"), any(Object[].class)))
                 .thenReturn(Map.of(
                         "order_count", 2L,
                         "order_amount", 5000L,
@@ -93,7 +93,7 @@ class PerformanceSummaryServiceTest {
     @Test
     void aggregateEffective_shouldUseExpenseDirectlyFromDB() {
         // 服务费支出直接从 DB 取值，不使用反推公式
-        when(jdbcTemplate.queryForMap(contains("pr.effective_service_fee"), any(Object[].class)))
+        when(jdbcTemplate.queryForMap(contains("co.effective_service_fee"), any(Object[].class)))
                 .thenReturn(summaryRowWithExpense(2L, 5000L, 400L, 40L, 5L, 390L, 39L, 19L, 332L));
 
         PerformanceTrackSummaryDTO track = service.aggregateEffective(
@@ -106,7 +106,7 @@ class PerformanceSummaryServiceTest {
 
     @Test
     void aggregateEffective_shouldNotDeductTechServiceFeeFromSettlementProfit() {
-        when(jdbcTemplate.queryForMap(contains("pr.effective_service_fee"), any(Object[].class)))
+        when(jdbcTemplate.queryForMap(contains("co.effective_service_fee"), any(Object[].class)))
                 .thenReturn(summaryRowWithExpense(2L, 5000L, 400L, 40L, 5L, 390L, 39L, 19L, 332L));
 
         PerformanceTrackSummaryDTO track = service.aggregateEffective(
@@ -119,7 +119,7 @@ class PerformanceSummaryServiceTest {
 
     @Test
     void getSummary_shouldUseSafeEmptyQueryAndMapInvalidNumbers() {
-        when(jdbcTemplate.queryForMap(contains("pr.estimate_service_fee"), any(Object[].class)))
+        when(jdbcTemplate.queryForMap(contains("co.estimate_service_fee"), any(Object[].class)))
                 .thenReturn(Map.of(
                         "order_count", "bad-number",
                         "service_fee_income", "1200",
@@ -128,7 +128,7 @@ class PerformanceSummaryServiceTest {
                         "recruiter_commission", 30L,
                         "channel_commission", 12L,
                         "gross_profit", 99L));
-        when(jdbcTemplate.queryForMap(contains("pr.effective_service_fee"), any(Object[].class)))
+        when(jdbcTemplate.queryForMap(contains("co.effective_service_fee"), any(Object[].class)))
                 .thenReturn(summaryRow(1L, 2000L, 160L, 16L, 144L, 14L, 7L, 123L));
 
         var summary = service.getSummary(
@@ -157,7 +157,7 @@ class PerformanceSummaryServiceTest {
         query.setTimeFilterType("pay");
         query.setTimeStart(start);
         query.setTimeEnd(end);
-        when(jdbcTemplate.queryForMap(contains("pr.estimate_service_fee"), any(Object[].class)))
+        when(jdbcTemplate.queryForMap(contains("co.estimate_service_fee"), any(Object[].class)))
                 .thenReturn(summaryRow(1L, 100L, 10L, 1L, 9L, 2L, 3L, 4L));
 
         service.aggregateEstimate(
@@ -168,14 +168,18 @@ class PerformanceSummaryServiceTest {
         ArgumentCaptor<Object[]> argsCaptor = ArgumentCaptor.forClass(Object[].class);
         verify(jdbcTemplate).queryForMap(sqlCaptor.capture(), argsCaptor.capture());
         assertThat(sqlCaptor.getValue())
-                .contains("pr.activity_id = ?")
-                .contains("pr.product_id = ?")
+                .contains("FROM colonelsettlement_order co")
+                .contains("LEFT JOIN performance_records pr ON pr.order_id = co.order_id")
+                .contains("co.deleted = 0")
+                .doesNotContain("pr.is_valid = TRUE")
+                .contains("co.colonel_activity_id = ?")
+                .contains("co.product_id = ?")
                 .contains("pr.partner_id = ?")
-                .contains("pr.talent_id = ?")
-                .contains("pr.order_status = ?")
-                .contains("COALESCE(pr.order_create_time, co.create_time) >= ?")
-                .contains("COALESCE(pr.order_create_time, co.create_time) < ?")
-                .doesNotContain("AND pr.settle_time IS NOT NULL");
+                .contains("co.talent_id = ?")
+                .contains("co.order_status = ?")
+                .contains("COALESCE(co.order_create_time, co.create_time) >= ?")
+                .contains("COALESCE(co.order_create_time, co.create_time) < ?")
+                .doesNotContain("AND co.settle_time IS NOT NULL");
         assertThat(argsCaptor.getValue())
                 .containsExactly("ACT-1", "P-1", 9L, talentId, 2, start, end);
     }
@@ -188,7 +192,7 @@ class PerformanceSummaryServiceTest {
         query.setTimeFilterType("settle");
         query.setTimeStart(start);
         query.setTimeEnd(end);
-        when(jdbcTemplate.queryForMap(contains("pr.effective_service_fee"), any(Object[].class)))
+        when(jdbcTemplate.queryForMap(contains("co.effective_service_fee"), any(Object[].class)))
                 .thenReturn(summaryRow(1L, 100L, 10L, 1L, 9L, 2L, 3L, 4L));
 
         service.aggregateEffective(
@@ -199,10 +203,10 @@ class PerformanceSummaryServiceTest {
         ArgumentCaptor<Object[]> argsCaptor = ArgumentCaptor.forClass(Object[].class);
         verify(jdbcTemplate).queryForMap(sqlCaptor.capture(), argsCaptor.capture());
         assertThat(sqlCaptor.getValue())
-                .contains("pr.settle_time >= ?")
-                .contains("pr.settle_time < ?")
-                .contains("AND pr.settle_time IS NOT NULL")
-                .contains("AND (pr.settle_time IS NOT NULL OR pr.effective_service_fee > 0)");
+                .contains("co.settle_time >= ?")
+                .contains("co.settle_time < ?")
+                .contains("AND co.settle_time IS NOT NULL")
+                .contains("AND (co.settle_time IS NOT NULL OR co.effective_service_fee > 0)");
         assertThat(argsCaptor.getValue()).containsExactly(start, end);
     }
 
@@ -211,7 +215,7 @@ class PerformanceSummaryServiceTest {
         UUID userId = UUID.fromString("22222222-2222-2222-2222-222222222222");
         PerformanceSummaryQuery query = new PerformanceSummaryQuery();
         query.setChannelId(userId);
-        when(jdbcTemplate.queryForMap(contains("pr.estimate_service_fee"), any(Object[].class)))
+        when(jdbcTemplate.queryForMap(contains("co.estimate_service_fee"), any(Object[].class)))
                 .thenReturn(summaryRow(1L, 100L, 10L, 1L, 9L, 2L, 3L, 4L));
 
         service.aggregateEstimate(

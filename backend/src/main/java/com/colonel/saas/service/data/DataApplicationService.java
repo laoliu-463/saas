@@ -160,7 +160,7 @@ public class DataApplicationService extends BaseController {
     /** 短 TTL 缓存服务，用于指标缓存与筛选项缓存 */
     private final ShortTtlCacheService shortTtlCacheService;
 
-    /** 业绩指标聚合查询服务，负责从 performance_records 表聚合核心指标与趋势数据 */
+    /** 业绩指标聚合查询服务，负责用订单事实补齐核心指标并关联 performance_records 业绩字段 */
     private final PerformanceMetricsQueryService performanceMetricsQueryService;
 
     /** 订单业绩查询门面，负责订单列表/详情的业绩补全 */

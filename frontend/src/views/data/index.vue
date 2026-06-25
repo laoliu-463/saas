@@ -246,7 +246,7 @@
         </div>
       </div>
 
-      <!-- 业绩域双轨汇总：展示 performance_records 表的预估轨和结算轨订单数及订单额 -->
+      <!-- 业绩域双轨汇总：订单事实对齐明细，业绩字段关联 performance_records -->
       <div v-if="performanceSummary" class="breakdown-section app-section-panel" data-testid="dashboard-performance-summary">
         <h3 class="section-title">业绩双轨汇总</h3>
         <div class="breakdown-tags">
@@ -634,7 +634,7 @@ const timeScopeLabel = computed(() => timeField.value === 'createTime' ? '按创
 
 const metricScopeText = computed(() => {
   if (timeField.value === 'createTime') {
-    return '服务费 / 提成按当前创建轨订单字段汇总'
+    return '订单事实对齐明细，收益 / 提成按业绩记录汇总'
   }
   const settleOrders = toNumber(metricsSettle.value?.todayOrderCount ?? metricsSettle.value?.totalOrders)
   return settleOrders > 0
@@ -644,7 +644,7 @@ const metricScopeText = computed(() => {
 
 const timeScopeDescription = computed(() => (
   timeField.value === 'createTime'
-    ? '按订单创建时间统计，仅统计有效订单，不等于付款订单额 - 退款订单额；付费/退款为状态或付款退款口径，与创建轨卡片不可直接相减对账。'
+    ? '按订单创建时间统计，订单数和订单额对齐订单明细中的全部订单事实；收益 / 提成按业绩记录汇总。'
     : '按结算时间统计，仅纳入已结算订单，适合收益复核'
 ))
 

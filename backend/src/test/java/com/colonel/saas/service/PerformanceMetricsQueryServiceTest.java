@@ -50,7 +50,7 @@ class PerformanceMetricsQueryServiceTest {
 
     @Test
     void aggregateRange_shouldUseEstimateColumnsForCreateTrack() {
-        when(jdbcTemplate.queryForMap(contains("pr.estimate_service_fee"), any(Object[].class)))
+        when(jdbcTemplate.queryForMap(contains("co.estimate_service_fee"), any(Object[].class)))
                 .thenReturn(Map.of(
                         "order_count", 2L,
                         "order_amount_cent", 5000L,
@@ -76,7 +76,7 @@ class PerformanceMetricsQueryServiceTest {
     }
 
     @Test
-    void aggregateRange_shouldFilterInvalidRecordsAndKeepCreateTrackSeparateFromPayTrack() {
+    void aggregateRange_shouldAlignCreateTrackWithAllOrderFacts() {
         when(jdbcTemplate.queryForMap(any(String.class), any(Object[].class)))
                 .thenReturn(Map.of(
                         "order_count", 1L,
@@ -102,10 +102,40 @@ class PerformanceMetricsQueryServiceTest {
         verify(jdbcTemplate).queryForMap(sqlCaptor.capture(), any(Object[].class));
         String sql = sqlCaptor.getValue();
 
-        assertThat(sql).contains("pr.is_valid = TRUE");
+        assertThat(sql).contains("FROM colonelsettlement_order co");
+        assertThat(sql).contains("LEFT JOIN performance_records pr ON pr.order_id = co.order_id");
+        assertThat(sql).contains("co.deleted = 0");
+        assertThat(sql).doesNotContain("pr.is_valid = TRUE");
         assertThat(sql).contains("co.create_time >= ?");
         assertThat(sql).contains("co.create_time < ?");
         assertThat(sql).doesNotContain("co.pay_time");
+    }
+
+    @Test
+    void trendByDay_shouldAlignCreateTrackWithAllOrderFacts() {
+        when(jdbcTemplate.queryForList(any(String.class), any(Object[].class)))
+                .thenReturn(List.of(Map.of(
+                        "stat_date", LocalDate.now().toString(),
+                        "order_count", 2L,
+                        "order_amount_cent", 5000L)));
+
+        LocalDate today = LocalDate.now();
+        service.trendByDay(
+                today.atStartOfDay(),
+                today.plusDays(1).atStartOfDay(),
+                "createTime",
+                UUID.randomUUID(),
+                null,
+                DataScope.ALL);
+
+        ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
+        verify(jdbcTemplate).queryForList(sqlCaptor.capture(), any(Object[].class));
+        String sql = sqlCaptor.getValue();
+
+        assertThat(sql).contains("FROM colonelsettlement_order co");
+        assertThat(sql).contains("LEFT JOIN performance_records pr ON pr.order_id = co.order_id");
+        assertThat(sql).contains("COALESCE(SUM(co.order_amount), 0) AS order_amount_cent");
+        assertThat(sql).doesNotContain("pr.is_valid = TRUE");
     }
 
     @Test

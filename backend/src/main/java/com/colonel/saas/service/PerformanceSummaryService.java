@@ -19,7 +19,8 @@ import java.util.UUID;
 /**
  * 业绩指标卡片双轨汇总服务。
  * <p>
- * 负责从业绩明细表（{@code performance_records}）聚合出看板卡片所需的汇总指标，
+ * 负责从订单事实表（{@code colonelsettlement_order}）聚合出看板卡片所需的汇总指标，
+ * 并左关联业绩明细表（{@code performance_records}）补充提成归属字段，
  * 支持 cohort 时间维度（下单时间 / 结算时间）与金额轨道维度（预估 / 实收）的双轨分离查询。
  * </p>
  *
@@ -44,10 +45,10 @@ import java.util.UUID;
 @Service
 public class PerformanceSummaryService {
 
-    /** 多表连接基础 FROM 子句：业绩明细表左关联订单表 */
+    /** 多表连接基础 FROM 子句：订单事实表左关联业绩明细表 */
     private static final String BASE_FROM = """
-            FROM performance_records pr
-            LEFT JOIN colonelsettlement_order co ON co.order_id = pr.order_id AND co.deleted = 0
+            FROM colonelsettlement_order co
+            LEFT JOIN performance_records pr ON pr.order_id = co.order_id
             """;
 
     /** Spring JDBC 模板，用于原生 SQL 查询 */
@@ -95,12 +96,12 @@ public class PerformanceSummaryService {
     }
 
     /**
-     * 聚合预估轨道指标（基于下单时间 cohort + pay_amount 金额维度）。
+     * 聚合预估轨道指标（基于下单时间 cohort + order_amount 金额维度）。
      * <p>
      * 处理流程：
      * <ol>
      *   <li>构建数据权限 + 查询条件的 WHERE 子句</li>
-     *   <li>拼接预估轨道 SQL（SUM 聚合 pay_amount、estimate_service_fee 等字段）</li>
+     *   <li>拼接预估轨道 SQL（SUM 聚合 order_amount、estimate_service_fee 等订单字段）</li>
      *   <li>执行查询并映射为 {@link PerformanceTrackSummaryDTO}</li>
      * </ol>
      *
@@ -116,10 +117,10 @@ public class PerformanceSummaryService {
         String sql = """
                 SELECT
                     COUNT(*) AS order_count,
-                    COALESCE(SUM(pr.pay_amount), 0) AS order_amount,
-                    COALESCE(SUM(pr.estimate_service_fee), 0) AS service_fee_income,
-                    COALESCE(SUM(pr.estimate_tech_service_fee), 0) AS tech_service_fee,
-                    COALESCE(SUM(pr.estimate_service_fee_expense), 0) AS service_fee_expense,
+                    COALESCE(SUM(co.order_amount), 0) AS order_amount,
+                    COALESCE(SUM(co.estimate_service_fee), 0) AS service_fee_income,
+                    COALESCE(SUM(co.estimate_tech_service_fee), 0) AS tech_service_fee,
+                    COALESCE(SUM(co.estimate_service_fee_expense), 0) AS service_fee_expense,
                     COALESCE(SUM(pr.estimate_service_profit), 0) AS service_fee_profit,
                     COALESCE(SUM(pr.estimate_recruiter_commission), 0) AS recruiter_commission,
                     COALESCE(SUM(pr.estimate_channel_commission), 0) AS channel_commission,
@@ -146,16 +147,16 @@ public class PerformanceSummaryService {
         // 第一步：构建 SQL 参数列表和 WHERE 条件
         List<Object> args = new ArrayList<>();
         StringBuilder where = buildScopeCondition(query, context, args);
-        // 第二步：追加实收轨道过滤条件——仅统计已结算记录
-        where.append(" AND (pr.settle_time IS NOT NULL OR pr.effective_service_fee > 0)");
-        // 第三步：拼接实收轨道聚合 SQL（使用 effective_* 系列金额字段）
+        // 第二步：追加实收轨道过滤条件——仅统计已结算订单事实
+        where.append(" AND (co.settle_time IS NOT NULL OR co.effective_service_fee > 0)");
+        // 第三步：拼接实收轨道聚合 SQL（使用 effective_* 系列订单字段）
         String sql = """
                 SELECT
                     COUNT(*) AS order_count,
-                    COALESCE(SUM(pr.settle_amount), 0) AS order_amount,
-                    COALESCE(SUM(pr.effective_service_fee), 0) AS service_fee_income,
-                    COALESCE(SUM(pr.effective_tech_service_fee), 0) AS tech_service_fee,
-                    COALESCE(SUM(pr.effective_service_fee_expense), 0) AS service_fee_expense,
+                    COALESCE(SUM(co.settle_amount), 0) AS order_amount,
+                    COALESCE(SUM(co.effective_service_fee), 0) AS service_fee_income,
+                    COALESCE(SUM(co.effective_tech_service_fee), 0) AS tech_service_fee,
+                    COALESCE(SUM(co.effective_service_fee_expense), 0) AS service_fee_expense,
                     COALESCE(SUM(pr.effective_service_profit), 0) AS service_fee_profit,
                     COALESCE(SUM(pr.effective_recruiter_commission), 0) AS recruiter_commission,
                     COALESCE(SUM(pr.effective_channel_commission), 0) AS channel_commission,
@@ -170,7 +171,7 @@ public class PerformanceSummaryService {
      * <p>
      * 处理流程：
      * <ol>
-     *   <li>以 {@code pr.is_valid = TRUE} 为基准条件</li>
+     *   <li>以 {@code co.deleted = 0} 为基准条件</li>
      *   <li>追加数据权限范围条件（{@link PerformanceAccessScope}）</li>
      *   <li>追加用户指定的筛选条件（渠道、招募官、活动等）</li>
      *   <li>追加 cohort 时间区间筛选</li>
@@ -185,8 +186,8 @@ public class PerformanceSummaryService {
             PerformanceSummaryQuery query,
             PerformanceAccessContext context,
             List<Object> args) {
-        // 第一步：以"仅统计有效业绩记录"为基准条件
-        StringBuilder where = new StringBuilder(" WHERE pr.is_valid = TRUE ");
+        // 第一步：以订单事实未删除为基准条件
+        StringBuilder where = new StringBuilder(" WHERE co.deleted = 0 ");
         // 第二步：追加数据权限范围条件（个人/部门/全部）
         PerformanceAccessScope.appendScopeCondition(where, args, context, "pr");
         // 第三步：追加业务筛选条件（渠道、招募官、活动等）
@@ -216,11 +217,11 @@ public class PerformanceSummaryService {
             args.add(query.getRecruiterId());
         }
         if (StringUtils.hasText(query.getActivityId())) {
-            where.append(" AND pr.activity_id = ?");
+            where.append(" AND co.colonel_activity_id = ?");
             args.add(query.getActivityId().trim());
         }
         if (StringUtils.hasText(query.getProductId())) {
-            where.append(" AND pr.product_id = ?");
+            where.append(" AND co.product_id = ?");
             args.add(query.getProductId().trim());
         }
         if (query.getPartnerId() != null) {
@@ -228,11 +229,11 @@ public class PerformanceSummaryService {
             args.add(query.getPartnerId());
         }
         if (query.getTalentId() != null) {
-            where.append(" AND pr.talent_id = ?");
+            where.append(" AND co.talent_id = ?");
             args.add(query.getTalentId());
         }
         if (StringUtils.hasText(query.getOrderStatus())) {
-            where.append(" AND pr.order_status = ?");
+            where.append(" AND co.order_status = ?");
             args.add(toOrderStatusCode(query.getOrderStatus()));
         }
     }
@@ -242,7 +243,7 @@ public class PerformanceSummaryService {
      * <p>
      * 处理流程：
      * <ol>
-     *   <li>根据 timeFilterType 解析 cohort 时间列（settle → pr.settle_time，其他 → COALESCE(order_create_time, create_time)）</li>
+     *   <li>根据 timeFilterType 解析 cohort 时间列（settle → co.settle_time，其他 → COALESCE(order_create_time, create_time)）</li>
      *   <li>追加时间起止范围条件</li>
      *   <li>当使用 settle cohort 且指定了时间范围时，额外要求 settle_time IS NOT NULL</li>
      * </ol>
@@ -266,7 +267,7 @@ public class PerformanceSummaryService {
         // 第三步：当使用结算时间 cohort 且有时间范围时，排除未结算记录
         if ("settle".equalsIgnoreCase(query.getTimeFilterType())
                 && (query.getTimeStart() != null || query.getTimeEnd() != null)) {
-            where.append(" AND pr.settle_time IS NOT NULL");
+            where.append(" AND co.settle_time IS NOT NULL");
         }
     }
 
@@ -278,9 +279,9 @@ public class PerformanceSummaryService {
      */
     private String resolveCohortColumn(String timeFilterType) {
         if ("settle".equalsIgnoreCase(timeFilterType)) {
-            return "pr.settle_time";
+            return "co.settle_time";
         }
-        return "COALESCE(pr.order_create_time, co.create_time)";
+        return "COALESCE(co.order_create_time, co.create_time)";
     }
 
     /**

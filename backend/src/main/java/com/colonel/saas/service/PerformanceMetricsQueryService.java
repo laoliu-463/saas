@@ -17,7 +17,7 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * 从 performance_records 聚合看板双轨指标（业绩域 V1.1）。
+ * 从订单事实表聚合看板双轨指标，并左关联 performance_records 补充业绩字段。
  */
 @Service
 public class PerformanceMetricsQueryService {
@@ -98,19 +98,15 @@ public class PerformanceMetricsQueryService {
         boolean estimateTrack = isEstimateTrack(timeField);
         String timeColumn = resolveTimeColumn(timeField);
         List<Object> args = new ArrayList<>();
-        StringBuilder where = new StringBuilder("""
-                FROM performance_records pr
-                JOIN colonelsettlement_order co ON co.order_id = pr.order_id AND co.deleted = 0
-                WHERE pr.is_valid = TRUE
-                """);
+        StringBuilder where = orderFactsPerformanceJoin();
         appendScope(where, args, userId, deptId, dataScope);
         appendBusinessLineFilter(where, args, businessLine, channelId, recruiterId);
         appendRangeFilter(where, args, timeColumn, startInclusive, endExclusive);
 
-        String amountColumn = estimateTrack ? "pr.pay_amount" : "pr.settle_amount";
-        String serviceFeeColumn = estimateTrack ? "pr.estimate_service_fee" : "pr.effective_service_fee";
-        String techFeeColumn = estimateTrack ? "pr.estimate_tech_service_fee" : "pr.effective_tech_service_fee";
-        String expenseColumn = estimateTrack ? "pr.estimate_service_fee_expense" : "pr.effective_service_fee_expense";
+        String amountColumn = estimateTrack ? "co.order_amount" : "co.settle_amount";
+        String serviceFeeColumn = estimateTrack ? "co.estimate_service_fee" : "co.effective_service_fee";
+        String techFeeColumn = estimateTrack ? "co.estimate_tech_service_fee" : "co.effective_tech_service_fee";
+        String expenseColumn = estimateTrack ? "co.estimate_service_fee_expense" : "co.effective_service_fee_expense";
         String profitColumn = estimateTrack ? "pr.estimate_service_profit" : "pr.effective_service_profit";
         String recruiterColumn = estimateTrack ? "pr.estimate_recruiter_commission" : "pr.effective_recruiter_commission";
         String channelColumn = estimateTrack ? "pr.estimate_channel_commission" : "pr.effective_channel_commission";
@@ -176,16 +172,12 @@ public class PerformanceMetricsQueryService {
         boolean estimateTrack = isEstimateTrack(timeField);
         String timeColumn = resolveTimeColumn(timeField);
         List<Object> args = new ArrayList<>();
-        StringBuilder where = new StringBuilder("""
-                FROM performance_records pr
-                JOIN colonelsettlement_order co ON co.order_id = pr.order_id AND co.deleted = 0
-                WHERE pr.is_valid = TRUE
-                """);
+        StringBuilder where = orderFactsPerformanceJoin();
         appendScope(where, args, userId, deptId, dataScope);
         appendBusinessLineFilter(where, args, businessLine, channelId, recruiterId);
         appendRangeFilter(where, args, timeColumn, startInclusive, endExclusive);
 
-        String amountColumn = estimateTrack ? "pr.pay_amount" : "pr.settle_amount";
+        String amountColumn = estimateTrack ? "co.order_amount" : "co.settle_amount";
         String sql = """
                 SELECT DATE(co.%s) AS stat_date,
                        COUNT(*) AS order_count,
@@ -224,19 +216,15 @@ public class PerformanceMetricsQueryService {
             UUID deptId,
             DataScope dataScope) {
         List<Object> args = new ArrayList<>();
-        StringBuilder where = new StringBuilder("""
-                FROM performance_records pr
-                JOIN colonelsettlement_order co ON co.order_id = pr.order_id AND co.deleted = 0
-                WHERE pr.is_valid = TRUE
-                """);
+        StringBuilder where = orderFactsPerformanceJoin();
         appendScope(where, args, userId, deptId, dataScope);
         appendSettleTimeRangeInclusive(where, args, startInclusive, endInclusive);
 
         String totalsSql = """
                 SELECT
                     COUNT(*) AS order_count,
-                    COALESCE(SUM(pr.settle_amount), 0) AS order_amount_cent,
-                    COALESCE(SUM(pr.effective_service_fee), 0) AS service_fee_cent
+                    COALESCE(SUM(co.settle_amount), 0) AS order_amount_cent,
+                    COALESCE(SUM(co.effective_service_fee), 0) AS service_fee_cent
                 """ + where;
         Map<String, Object> totals = jdbcTemplate.queryForMap(totalsSql, args.toArray());
 
@@ -312,6 +300,14 @@ public class PerformanceMetricsQueryService {
             where.append(" AND co.dept_id = ?");
             args.add(deptId);
         }
+    }
+
+    private StringBuilder orderFactsPerformanceJoin() {
+        return new StringBuilder("""
+                FROM colonelsettlement_order co
+                LEFT JOIN performance_records pr ON pr.order_id = co.order_id
+                WHERE co.deleted = 0
+                """);
     }
 
     private void appendScopeWithPolicy(
@@ -428,8 +424,8 @@ public class PerformanceMetricsQueryService {
                 SELECT %s::text AS user_id,
                        MAX(%s) AS user_name,
                        COUNT(*) AS order_count,
-                       COALESCE(SUM(pr.settle_amount), 0) AS order_amount_cent,
-                       COALESCE(SUM(pr.effective_service_fee), 0) AS service_fee_cent
+                       COALESCE(SUM(co.settle_amount), 0) AS order_amount_cent,
+                       COALESCE(SUM(co.effective_service_fee), 0) AS service_fee_cent
                 """.formatted(userIdColumn, userNameColumn) + baseWhere
                 + " AND " + extraFilter
                 + " GROUP BY " + userIdColumn
