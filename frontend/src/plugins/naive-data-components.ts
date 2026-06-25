@@ -1,6 +1,7 @@
 import type { App, Component } from 'vue'
 import {
   NAlert,
+  NButtonGroup,
   NCard,
   NCheckbox,
   NCheckboxGroup,
@@ -9,42 +10,28 @@ import {
   NDescriptions,
   NDescriptionsItem,
   NDivider,
-  NDrawer,
-  NDrawerContent,
   NEmpty,
-  NFormItemGi,
   NGi,
   NGrid,
-  NInputNumber,
   NList,
   NListItem,
   NModal,
-  NPopconfirm,
   NPopover,
   NRadioButton,
   NRadioGroup,
-  NScrollbar,
   NSelect,
   NSkeleton,
   NSpace,
   NSpin,
   NStatistic,
-  NSwitch,
-  NTabPane,
-  NTabs,
   NTag,
-  NText,
   NThing,
-  NTimeline,
-  NTimelineItem,
-  NTooltip,
-  NTree,
-  NTreeSelect,
-  NUpload
+  NTooltip
 } from 'naive-ui'
 
-const adminNaiveComponents: Record<string, Component> = {
+const dataNaiveComponents: Record<string, Component> = {
   NAlert,
+  NButtonGroup,
   NCard,
   NCheckbox,
   NCheckboxGroup,
@@ -53,43 +40,28 @@ const adminNaiveComponents: Record<string, Component> = {
   NDescriptions,
   NDescriptionsItem,
   NDivider,
-  NDrawer,
-  NDrawerContent,
   NEmpty,
-  NFormItemGi,
   NGi,
   NGrid,
-  NInputNumber,
   NList,
   NListItem,
   NModal,
-  NPopconfirm,
   NPopover,
   NRadioButton,
   NRadioGroup,
-  NScrollbar,
   NSelect,
   NSkeleton,
   NSpace,
   NSpin,
   NStatistic,
-  NSwitch,
-  NTabPane,
-  NTabs,
   NTag,
-  NText,
   NThing,
-  NTimeline,
-  NTimelineItem,
-  NTooltip,
-  NTree,
-  NTreeSelect,
-  NUpload
+  NTooltip
 }
 
-export const installAdminNaiveComponents = {
+export const installDataNaiveComponents = {
   install(app: App) {
-    Object.entries(adminNaiveComponents).forEach(([name, component]) => {
+    Object.entries(dataNaiveComponents).forEach(([name, component]) => {
       app.component(name, component)
     })
   }

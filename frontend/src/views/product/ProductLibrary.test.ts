@@ -1,5 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { reactive } from 'vue'
 
 import ProductLibrary from './ProductLibrary.vue'
@@ -71,8 +71,9 @@ function buildRows(start: number, count: number) {
   })
 }
 
-function mountLibrary() {
+function mountLibrary(options: { attachTo?: HTMLElement } = {}) {
   return mount(ProductLibrary, {
+    attachTo: options.attachTo,
     global: {
       stubs: {
         PageHeader: {
@@ -126,6 +127,8 @@ function mountLibrary() {
 }
 
 describe('ProductLibrary infinite scroll', () => {
+  let attachedRoots: HTMLElement[] = []
+
   beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(getProducts).mockReset()
@@ -150,6 +153,48 @@ describe('ProductLibrary infinite scroll', () => {
       value: intersectionObserverMock
     })
   })
+
+  afterEach(() => {
+    attachedRoots.forEach((root) => root.remove())
+    attachedRoots = []
+    vi.unstubAllGlobals()
+  })
+
+  function createLayoutScrollHarness() {
+    const scrollRoot = document.createElement('div')
+    scrollRoot.className = 'n-layout-scroll-container'
+    Object.defineProperty(scrollRoot, 'clientHeight', {
+      configurable: true,
+      value: 900
+    })
+    Object.defineProperty(scrollRoot, 'scrollTop', {
+      configurable: true,
+      writable: true,
+      value: 0
+    })
+    scrollRoot.getBoundingClientRect = () => ({
+      top: 0,
+      left: 0,
+      bottom: 900,
+      right: 1280,
+      width: 1280,
+      height: 900,
+      x: 0,
+      y: 0,
+      toJSON: () => ({})
+    } as DOMRect)
+
+    const mountPoint = document.createElement('div')
+    scrollRoot.appendChild(mountPoint)
+    document.body.appendChild(scrollRoot)
+    attachedRoots.push(scrollRoot)
+    return { scrollRoot, mountPoint }
+  }
+
+  async function waitForScheduledViewportUpdate() {
+    await new Promise((resolve) => window.setTimeout(resolve, 20))
+    await flushPromises()
+  }
 
   it('loads product batches, appends more products, and resets when filters change', async () => {
     vi.mocked(getProducts)
@@ -349,5 +394,46 @@ describe('ProductLibrary infinite scroll', () => {
     expect(wrapper.text()).toContain('已加载 200 件')
     expect(wrapper.findAll('[data-testid="product-card"]').length).toBeLessThan(200)
     expect(wrapper.text()).toContain('已全部加载')
+  })
+
+  it('updates the virtual window when the layout scroll container scrolls', async () => {
+    vi.mocked(getProducts).mockResolvedValueOnce({
+      data: {
+        records: buildRows(1, 200),
+        total: 200,
+        page: 1,
+        size: 200,
+        hasMore: false,
+        nextCursor: null
+      }
+    } as any)
+
+    const { scrollRoot, mountPoint } = createLayoutScrollHarness()
+    const wrapper = mountLibrary({ attachTo: mountPoint })
+    await flushPromises()
+
+    const grid = wrapper.get('[data-testid="product-grid"]').element as HTMLElement
+    grid.getBoundingClientRect = () => ({
+      top: -scrollRoot.scrollTop,
+      left: 0,
+      bottom: 20000 - scrollRoot.scrollTop,
+      right: 1280,
+      width: 1280,
+      height: 20000,
+      x: 0,
+      y: -scrollRoot.scrollTop,
+      toJSON: () => ({})
+    } as DOMRect)
+
+    await waitForScheduledViewportUpdate()
+    expect(wrapper.findAll('[data-testid="product-card"]').map((card) => card.text())).toContain('product-1')
+
+    scrollRoot.scrollTop = 25 * 431
+    scrollRoot.dispatchEvent(new Event('scroll'))
+    await waitForScheduledViewportUpdate()
+
+    const visibleProductIds = wrapper.findAll('[data-testid="product-card"]').map((card) => card.text())
+    expect(visibleProductIds).not.toContain('product-1')
+    expect(visibleProductIds.some((id) => Number(id.replace('product-', '')) > 80)).toBe(true)
   })
 })
