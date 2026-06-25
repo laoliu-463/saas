@@ -18,7 +18,7 @@ export function isActivityProductSyncSuccess(syncStatus?: string): boolean {
 }
 
 export function isActivityProductSyncTerminal(syncStatus?: string): boolean {
-  return ['SUCCESS', 'PARTIAL', 'FAILED', 'FAILED_LOCKED', 'ABANDONED', 'CANCELED', 'TIMEOUT'].includes(String(syncStatus || ''))
+  return ['SUCCESS', 'PARTIAL', 'FAILED', 'FAILED_LOCKED', 'ABANDONED', 'CANCELED', 'TIMEOUT', 'QUEUE_FULL'].includes(String(syncStatus || ''))
 }
 
 export type ActivityProductSyncItemResult = {
@@ -122,7 +122,7 @@ export function summarizeActivityProductSyncResults(
   let totalSyncedProducts = 0
   let totalLibraryEntries = 0
   results.forEach((item) => {
-    if (item.ok) {
+    if (item.ok && item.syncStatus !== 'QUEUE_FULL') {
       succeeded += 1
       if (item.syncStatus === 'QUEUED') {
         queued += 1

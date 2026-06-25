@@ -178,6 +178,10 @@ public class ColonelActivityController extends BaseController {
         String message;
         if ("QUEUED".equals(triggerResult.syncStatus())) {
             message = "商品同步已排队，系统将在当前同步资源可用后自动执行";
+        } else if ("QUEUE_FULL".equals(triggerResult.syncStatus())) {
+            message = StringUtils.hasText(triggerResult.message())
+                    ? triggerResult.message()
+                    : "活动商品同步队列已满，请稍后重试";
         } else if ("RUNNING".equals(triggerResult.syncStatus())) {
             message = "商品同步已在后台执行，请稍后刷新列表";
         } else if ("LOCKED".equals(triggerResult.syncStatus())) {

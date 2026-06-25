@@ -96,7 +96,19 @@ describe('activity-sync', () => {
     expect(isActivityProductSyncTerminal('ABANDONED')).toBe(true)
     expect(isActivityProductSyncTerminal('CANCELED')).toBe(true)
     expect(isActivityProductSyncTerminal('TIMEOUT')).toBe(true)
+    expect(isActivityProductSyncTerminal('QUEUE_FULL')).toBe(true)
     expect(isActivityProductSyncTerminal('RUNNING')).toBe(false)
     expect(isActivityProductSyncTerminal('QUEUED')).toBe(false)
+  })
+
+  it('treats queue full as a failed batch item instead of submitted work', () => {
+    const summary = summarizeActivityProductSyncResults([
+      { activityId: '1', ok: true, syncStatus: 'QUEUE_FULL' },
+      { activityId: '2', ok: true, syncStatus: 'QUEUED' }
+    ])
+    expect(summary.succeeded).toBe(1)
+    expect(summary.failed).toBe(1)
+    expect(summary.queued).toBe(1)
+    expect(formatActivityProductSyncMessage(summary)).toContain('1 个活动同步失败')
   })
 })

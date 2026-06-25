@@ -72,6 +72,17 @@ public interface ProductSyncJobLogMapper extends BaseMapper<ProductSyncJobLog> {
                                                            @Param("scope") String scope);
 
     /**
+     * 统计待执行队列长度，用于提交入口限流，避免无限入队。
+     */
+    @Select("""
+            SELECT COUNT(*) FROM product_sync_job_log
+            WHERE deleted = 0
+              AND job_type = #{jobType}
+              AND status = 'QUEUED'
+            """)
+    int countQueuedJobs(@Param("jobType") String jobType);
+
+    /**
      * 拉取待执行的手动同步队列任务。
      */
     @Select("""

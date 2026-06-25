@@ -12,6 +12,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -77,6 +78,8 @@ public class ProductActivityManualSyncService {
     private boolean manualQueueDrainEnabled = true;
     @Value("${product.sync.activityProduct.manual-queue-drain-batch-size:5}")
     private int manualQueueDrainBatchSize = 5;
+    @Value("${product.sync.activityProduct.manual-queue-max-size:100}")
+    private int manualQueueMaxSize = 100;
 
     ProductActivityManualSyncService(
             ProductService productService,
@@ -125,13 +128,33 @@ public class ProductActivityManualSyncService {
             }
             if (activeJob != null && isActiveStatus(activeJob.getStatus())) {
                 activeJobsByActivity.put(normalizedActivityId, activeJob);
+                String triggerStatus = activeJob.getStatus();
                 scheduleQueuedJob(activeJob, appId);
                 return new SyncTriggerResult(
                         normalizedActivityId,
                         activeJob.getJobId(),
-                        activeJob.getStatus());
+                        triggerStatus);
+            }
+            if (jobLogMapper.countQueuedJobs(JOB_TYPE) >= normalizedManualQueueMaxSize()) {
+                return new SyncTriggerResult(
+                        normalizedActivityId,
+                        null,
+                        "QUEUE_FULL",
+                        "活动商品同步队列已满，请稍后重试",
+                        null,
+                        null,
+                        0L);
             }
             jobLog = createQueuedJob(jobId, normalizedActivityId, appId, requestedBy);
+            if (!jobId.equals(jobLog.getJobId())) {
+                activeJobsByActivity.put(normalizedActivityId, jobLog);
+                String triggerStatus = jobLog.getStatus();
+                scheduleQueuedJob(jobLog, appId);
+                return new SyncTriggerResult(
+                        normalizedActivityId,
+                        jobLog.getJobId(),
+                        triggerStatus);
+            }
             activeJobsByActivity.put(normalizedActivityId, jobLog);
         }
         scheduleQueuedJob(jobLog, appId);
@@ -200,10 +223,21 @@ public class ProductActivityManualSyncService {
             requestParams.put("appId", appId);
         }
         log.setRequestParamsJson(toJson(requestParams));
+        log.setStartedAt(now);
         log.setCreateTime(now);
         log.setUpdateTime(now);
-        jobLogMapper.insert(log);
-        return log;
+        try {
+            jobLogMapper.insert(log);
+            return log;
+        } catch (DuplicateKeyException ex) {
+            ProductSyncJobLog activeJob = jobLogMapper.selectLatestActiveByJobTypeAndScope(
+                    JOB_TYPE,
+                    SCOPE_PREFIX + activityId);
+            if (activeJob != null && isActiveStatus(activeJob.getStatus())) {
+                return activeJob;
+            }
+            throw ex;
+        }
     }
 
     private void scheduleQueuedJob(ProductSyncJobLog jobLog, String appId) {
@@ -546,6 +580,10 @@ public class ProductActivityManualSyncService {
 
     private int normalizedManualQueueDrainBatchSize() {
         return Math.min(Math.max(manualQueueDrainBatchSize, 1), 20);
+    }
+
+    private int normalizedManualQueueMaxSize() {
+        return Math.min(Math.max(manualQueueMaxSize, 1), 1000);
     }
 
     private static TransactionTemplate createRequiresNewTemplate(PlatformTransactionManager transactionManager) {

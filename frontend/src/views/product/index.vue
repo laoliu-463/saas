@@ -1122,6 +1122,10 @@ const syncActivityProductsFromRemote = async (activityId: string) => {
       message.warning(normalizeText(data.message) || '后台商品同步正在执行，请稍后重试')
       return
     }
+    if (syncStatus === 'QUEUE_FULL') {
+      message.warning(normalizeText(data.message) || '活动商品同步队列已满，请稍后重试')
+      return
+    }
     if (isActivityProductSyncSuccess(syncStatus)) {
       message.success('商品同步完成，已更新商品列表')
       await refreshProductsAfterActivitySync(selectedActivityId)
