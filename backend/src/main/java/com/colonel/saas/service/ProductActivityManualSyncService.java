@@ -236,7 +236,7 @@ public class ProductActivityManualSyncService {
         requestParams.put("pageSize", normalizedPageSize());
         requestParams.put("maxPagesPerActivity", normalizedManualMaxPagesPerActivity());
         requestParams.put("maxRowsPerActivity", options.maxRowsPerActivity());
-        requestParams.put("statusPartitionParallelism", normalizedManualStatusPartitionParallelism());
+        requestParams.put("statusPartitionParallelism", normalizedStatusPartitionParallelism(options));
         requestParams.put("syncMode", options.syncMode());
         if (!options.priorityStatuses().isEmpty()) {
             requestParams.put("priorityStatuses", options.priorityStatuses());
@@ -449,65 +449,29 @@ public class ProductActivityManualSyncService {
             DouyinProductGateway.ActivityProductQueryRequest baseRequest,
             ResolvedSyncOptions syncOptions,
             java.util.function.Consumer<ProductService.ActivityProductRefreshProgress> progressConsumer) {
-        int syncedProductCount = 0;
-        int libraryEntryCount = 0;
-        int createdCount = 0;
-        int updatedCount = 0;
-        int skippedCount = 0;
-        int pagesFetched = 0;
-        int fetchedRows = 0;
-        int distinctProductIds = 0;
-        int duplicateProductIds = 0;
-        String stoppedReason = "PRIORITY_SCOPE_COMPLETED";
-        boolean stillHasNextWhenStopped = false;
-        boolean complete = true;
-        int remainingRows = syncOptions.maxRowsPerActivity();
-
-        for (Integer status : syncOptions.priorityStatuses()) {
-            if (remainingRows <= 0) {
-                stoppedReason = "REQUESTED_MAX_ROWS_REACHED";
-                stillHasNextWhenStopped = true;
-                complete = true;
-                break;
-            }
-            ProductService.ActivityProductRefreshResult result = productService.refreshActivitySnapshots(
-                    buildQueryRequest(baseRequest.activityId(), baseRequest.appId(), status),
-                    normalizedManualMaxPagesPerActivity(),
-                    remainingRows,
-                    normalizedManualPageIntervalMs(),
-                    progressConsumer);
-            syncedProductCount += result.syncedProductCount();
-            libraryEntryCount += result.libraryEntryCount();
-            createdCount += result.createdCount();
-            updatedCount += result.updatedCount();
-            skippedCount += result.skippedCount();
-            pagesFetched += result.pagesFetched();
-            fetchedRows += result.fetchedRows();
-            distinctProductIds += result.distinctProductIds();
-            duplicateProductIds += result.duplicateProductIds();
-            remainingRows -= Math.max(result.fetchedRows(), 0);
-            if (!result.complete()) {
-                boolean requestedLimitReached = "MAX_ROWS_REACHED".equals(result.stoppedReason()) || remainingRows <= 0;
-                stoppedReason = requestedLimitReached ? "REQUESTED_MAX_ROWS_REACHED" : result.stoppedReason();
-                stillHasNextWhenStopped = result.stillHasNextWhenStopped();
-                complete = requestedLimitReached;
-                break;
-            }
-        }
-
+        ProductService.ActivityProductRefreshResult result = productService.refreshActivitySnapshotsByStatusPartitions(
+                baseRequest,
+                syncOptions.priorityStatuses(),
+                normalizedManualMaxPagesPerActivity(),
+                syncOptions.maxRowsPerActivity(),
+                normalizedManualPageIntervalMs(),
+                normalizedStatusPartitionParallelism(syncOptions),
+                progressConsumer);
         return new ProductService.ActivityProductRefreshResult(
-                syncedProductCount,
-                libraryEntryCount,
-                createdCount,
-                updatedCount,
-                skippedCount,
-                pagesFetched,
-                fetchedRows,
-                distinctProductIds,
-                duplicateProductIds,
-                stoppedReason,
-                stillHasNextWhenStopped,
-                complete);
+                result.syncedProductCount(),
+                result.libraryEntryCount(),
+                result.createdCount(),
+                result.updatedCount(),
+                result.skippedCount(),
+                result.pagesFetched(),
+                result.fetchedRows(),
+                result.distinctProductIds(),
+                result.duplicateProductIds(),
+                result.complete() && "DONE_NO_MORE".equals(result.stoppedReason())
+                        ? "PRIORITY_SCOPE_COMPLETED"
+                        : result.stoppedReason(),
+                result.stillHasNextWhenStopped(),
+                result.complete());
     }
 
     private ManualSyncLockState tryAcquireManualSyncLocks(String activityId, String activityLockKey, String lockOwner) {
@@ -735,6 +699,15 @@ public class ProductActivityManualSyncService {
 
     private int normalizedManualStatusPartitionParallelism() {
         return Math.min(Math.max(manualStatusPartitionParallelism, 1), 6);
+    }
+
+    private int normalizedStatusPartitionParallelism(ResolvedSyncOptions options) {
+        if (options != null
+                && SYNC_MODE_PRIORITY_1000.equals(options.syncMode())
+                && options.priorityStatuses().size() > 1) {
+            return Math.min(2, options.priorityStatuses().size());
+        }
+        return normalizedManualStatusPartitionParallelism();
     }
 
     private int normalizedManualQueueDrainBatchSize() {

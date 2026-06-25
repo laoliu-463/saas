@@ -2137,14 +2137,45 @@ public class ProductService {
             long pageIntervalMs,
             int parallelism,
             java.util.function.Consumer<ActivityProductRefreshProgress> progressConsumer) {
+        return refreshActivitySnapshotsByStatusPartitions(
+                request,
+                null,
+                maxPagesPerActivity,
+                maxRowsPerActivity,
+                pageIntervalMs,
+                parallelism,
+                progressConsumer);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public ActivityProductRefreshResult refreshActivitySnapshotsByStatusPartitions(
+            DouyinProductGateway.ActivityProductQueryRequest request,
+            List<Integer> requestedStatuses,
+            int maxPagesPerActivity,
+            int maxRowsPerActivity,
+            long pageIntervalMs,
+            int parallelism,
+            java.util.function.Consumer<ActivityProductRefreshProgress> progressConsumer) {
         if (request == null || !StringUtils.hasText(request.activityId())) {
             return new ActivityProductRefreshResult(0, 0, 0, 0, 0);
         }
         int normalizedParallelism = Math.min(Math.max(parallelism, 1), 6);
+        boolean constrainedStatuses = requestedStatuses != null && !requestedStatuses.isEmpty();
         if (request.status() != null || normalizedParallelism <= 1) {
+            if (constrainedStatuses && request.status() == null) {
+                return refreshActivitySnapshotsByStatusesSerial(
+                        request,
+                        normalizeActivityProductStatusPartitions(requestedStatuses),
+                        maxPagesPerActivity,
+                        maxRowsPerActivity,
+                        pageIntervalMs,
+                        progressConsumer);
+            }
             return refreshActivitySnapshots(request, maxPagesPerActivity, maxRowsPerActivity, pageIntervalMs, progressConsumer);
         }
-        List<Integer> statuses = productDisplayPolicy.activityProductFilterStatuses(null);
+        List<Integer> statuses = constrainedStatuses
+                ? normalizeActivityProductStatusPartitions(requestedStatuses)
+                : productDisplayPolicy.activityProductFilterStatuses(null);
         if (statuses.isEmpty()) {
             return refreshActivitySnapshots(request, maxPagesPerActivity, maxRowsPerActivity, pageIntervalMs, progressConsumer);
         }
@@ -2155,6 +2186,15 @@ public class ProductService {
         if (!statusPartitionPreflightSafe(request, statuses, pageSize, normalizedMaxPages, normalizedMaxRows)) {
             log.info("Activity product status-partition sync fallback to serial, activityId={}, statuses={}, pageSize={}, maxPages={}, maxRows={}",
                     request.activityId(), statuses, pageSize, normalizedMaxPages, normalizedMaxRows);
+            if (constrainedStatuses) {
+                return refreshActivitySnapshotsByStatusesSerial(
+                        request,
+                        statuses,
+                        normalizedMaxPages,
+                        normalizedMaxRows,
+                        normalizedPageIntervalMs,
+                        progressConsumer);
+            }
             return refreshActivitySnapshots(request, normalizedMaxPages, normalizedMaxRows, normalizedPageIntervalMs, progressConsumer);
         }
 
@@ -2218,6 +2258,88 @@ public class ProductService {
                 pageResult.fetchedRows(),
                 pageResult.complete());
         return finishActivityProductRefresh(request, pageResult, normalizedPageIntervalMs);
+    }
+
+    private ActivityProductRefreshResult refreshActivitySnapshotsByStatusesSerial(
+            DouyinProductGateway.ActivityProductQueryRequest request,
+            List<Integer> statuses,
+            int maxPagesPerActivity,
+            int maxRowsPerActivity,
+            long pageIntervalMs,
+            java.util.function.Consumer<ActivityProductRefreshProgress> progressConsumer) {
+        int syncedProductCount = 0;
+        int libraryEntryCount = 0;
+        int createdCount = 0;
+        int updatedCount = 0;
+        int skippedCount = 0;
+        int pagesFetched = 0;
+        int fetchedRows = 0;
+        int distinctProductIds = 0;
+        int duplicateProductIds = 0;
+        String stoppedReason = "STATUS_SCOPE_COMPLETED";
+        boolean stillHasNextWhenStopped = false;
+        boolean complete = true;
+        int remainingRows = Math.max(maxRowsPerActivity <= 0 ? productSyncActivityProductMaxRowsPerActivity : maxRowsPerActivity, 1);
+        int pageSize = Math.min(Math.max(request.count() == null ? productSyncActivityProductPageSize : request.count(), 1), 20);
+
+        for (Integer status : statuses) {
+            if (remainingRows <= 0) {
+                stoppedReason = "REQUESTED_MAX_ROWS_REACHED";
+                stillHasNextWhenStopped = true;
+                complete = true;
+                break;
+            }
+            ActivityProductRefreshResult result = refreshActivitySnapshots(
+                    activityProductRequestWithStatus(request, status, pageSize, null),
+                    maxPagesPerActivity,
+                    remainingRows,
+                    pageIntervalMs,
+                    progressConsumer);
+            syncedProductCount += result.syncedProductCount();
+            libraryEntryCount += result.libraryEntryCount();
+            createdCount += result.createdCount();
+            updatedCount += result.updatedCount();
+            skippedCount += result.skippedCount();
+            pagesFetched += result.pagesFetched();
+            fetchedRows += result.fetchedRows();
+            distinctProductIds += result.distinctProductIds();
+            duplicateProductIds += result.duplicateProductIds();
+            remainingRows -= Math.max(result.fetchedRows(), 0);
+            if (!result.complete()) {
+                boolean requestedLimitReached = "MAX_ROWS_REACHED".equals(result.stoppedReason()) || remainingRows <= 0;
+                stoppedReason = requestedLimitReached ? "REQUESTED_MAX_ROWS_REACHED" : result.stoppedReason();
+                stillHasNextWhenStopped = result.stillHasNextWhenStopped();
+                complete = requestedLimitReached;
+                break;
+            }
+        }
+
+        return new ActivityProductRefreshResult(
+                syncedProductCount,
+                libraryEntryCount,
+                createdCount,
+                updatedCount,
+                skippedCount,
+                pagesFetched,
+                fetchedRows,
+                distinctProductIds,
+                duplicateProductIds,
+                stoppedReason,
+                stillHasNextWhenStopped,
+                complete);
+    }
+
+    private List<Integer> normalizeActivityProductStatusPartitions(List<Integer> requestedStatuses) {
+        if (requestedStatuses == null || requestedStatuses.isEmpty()) {
+            return List.of();
+        }
+        List<Integer> statuses = new ArrayList<>();
+        for (Integer status : requestedStatuses) {
+            if (status != null && !statuses.contains(status)) {
+                statuses.add(status);
+            }
+        }
+        return List.copyOf(statuses);
     }
 
     private ActivityProductRefreshResult finishActivityProductRefresh(

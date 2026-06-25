@@ -22,6 +22,7 @@ import java.util.concurrent.Executor;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
@@ -54,6 +55,15 @@ class ProductActivityManualSyncServiceTest {
                         anyInt(),
                         any()))
                 .thenReturn(new ProductService.ActivityProductRefreshResult(3, 1, 1, 2, 0));
+        lenient().when(productService.refreshActivitySnapshotsByStatusPartitions(
+                        any(DouyinProductGateway.ActivityProductQueryRequest.class),
+                        anyList(),
+                        anyInt(),
+                        anyInt(),
+                        eq(300L),
+                        anyInt(),
+                        any()))
+                .thenReturn(new ProductService.ActivityProductRefreshResult(50, 1, 20, 30, 0));
         lenient().when(jobLogMapper.markQueuedJobRunning(any(), any(LocalDateTime.class), any()))
                 .thenReturn(1);
         lenient().when(jobLogMapper.countQueuedJobs(any())).thenReturn(0);
@@ -178,15 +188,15 @@ class ProductActivityManualSyncServiceTest {
 
     @Test
     void trigger_shouldRunPrioritySyncWithRequestedRowsAndStatuses() {
-        when(productService.refreshActivitySnapshots(
+        when(productService.refreshActivitySnapshotsByStatusPartitions(
                         any(DouyinProductGateway.ActivityProductQueryRequest.class),
+                        anyList(),
                         anyInt(),
                         anyInt(),
                         eq(300L),
+                        anyInt(),
                         any()))
-                .thenReturn(
-                        new ProductService.ActivityProductRefreshResult(20, 0, 10, 10, 0),
-                        new ProductService.ActivityProductRefreshResult(30, 0, 10, 20, 0));
+                .thenReturn(new ProductService.ActivityProductRefreshResult(50, 1, 20, 30, 0));
         ProductActivityManualSyncService service = new ProductActivityManualSyncService(
                 productService,
                 colonelActivityService,
@@ -203,22 +213,20 @@ class ProductActivityManualSyncServiceTest {
         assertThat(result.syncStatus()).isEqualTo("QUEUED");
         ArgumentCaptor<DouyinProductGateway.ActivityProductQueryRequest> requestCaptor =
                 ArgumentCaptor.forClass(DouyinProductGateway.ActivityProductQueryRequest.class);
-        ArgumentCaptor<Integer> maxRowsCaptor = ArgumentCaptor.forClass(Integer.class);
-        verify(productService, times(2)).refreshActivitySnapshots(
+        verify(productService).refreshActivitySnapshotsByStatusPartitions(
                 requestCaptor.capture(),
+                eq(List.of(0, 1)),
                 eq(3000),
-                maxRowsCaptor.capture(),
+                eq(1000),
                 eq(300L),
+                eq(2),
                 any());
-        assertThat(requestCaptor.getAllValues()).extracting(DouyinProductGateway.ActivityProductQueryRequest::status)
-                .containsExactly(0, 1);
-        assertThat(maxRowsCaptor.getAllValues()).containsExactly(1000, 980);
-        verify(productService, never()).refreshActivitySnapshotsByStatusPartitions(
+        assertThat(requestCaptor.getValue().status()).isNull();
+        verify(productService, never()).refreshActivitySnapshots(
                 any(DouyinProductGateway.ActivityProductQueryRequest.class),
                 anyInt(),
                 anyInt(),
                 anyLong(),
-                anyInt(),
                 any());
     }
 
