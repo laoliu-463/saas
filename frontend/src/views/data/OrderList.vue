@@ -516,7 +516,7 @@ const summaryItems = computed(() => {
     {
       key: 'refundServiceFee',
       title: '订单退款服务费',
-      tooltip: '<b>计算公式</b><br>订单退款服务费 = 退款订单 effective_service_fee，缺失时回退 estimate_service_fee<br><b>数据来源</b>：colonelsettlement_order',
+      tooltip: '<b>计算公式</b><br>预估轨：退款订单 estimate_service_fee − estimate_tech_service_fee − estimate_service_fee_expense<br>结算轨：退款订单 effective_service_fee − effective_service_fee_expense<br><b>数据来源</b>：colonelsettlement_order',
       lines: [{ label: '', value: formatMoney(total.refundServiceFee) }]
     },
     {

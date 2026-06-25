@@ -131,11 +131,13 @@ public class DataApplicationService extends BaseController {
     /** 退款订单识别条件：抖店退款状态或退款流转节点。 */
     private static final String REFUND_ORDER_PREDICATE = "(order_status = 5 OR UPPER(COALESCE(flow_point, '')) = 'REFUND')";
 
-    /** 预估轨退款服务费口径：按预估服务费字段统计。 */
-    private static final String REFUND_ESTIMATE_SERVICE_FEE_EXPRESSION = "COALESCE(estimate_service_fee, 0)";
+    /** 预估轨退款服务费口径：按预估服务费收益统计，扣除预估技术服务费与服务费支出。 */
+    private static final String REFUND_ESTIMATE_SERVICE_FEE_EXPRESSION =
+            "GREATEST(COALESCE(estimate_service_fee, 0) - COALESCE(estimate_tech_service_fee, 0) - COALESCE(estimate_service_fee_expense, 0), 0)";
 
-    /** 结算轨退款服务费口径：结算服务费为 0/null 时回退预估服务费。 */
-    private static final String REFUND_EFFECTIVE_SERVICE_FEE_EXPRESSION = "COALESCE(NULLIF(effective_service_fee, 0), estimate_service_fee, 0)";
+    /** 结算轨退款服务费口径：按结算服务费收益统计，结算技术服务费仅展示不扣减。 */
+    private static final String REFUND_EFFECTIVE_SERVICE_FEE_EXPRESSION =
+            "GREATEST(COALESCE(NULLIF(effective_service_fee, 0), estimate_service_fee, 0) - COALESCE(effective_service_fee_expense, 0), 0)";
 
     /** 上游订单时间字符串常见格式。 */
     private static final DateTimeFormatter UPSTREAM_DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");

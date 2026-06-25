@@ -605,7 +605,7 @@ const refundMetricCards = computed(() => {
       key: 'refundServiceFee',
       label: '订单退款服务费',
       value: formatMoney(toNumber(metrics.value?.refundServiceFee)),
-      hint: '按退款订单服务费字段汇总'
+      hint: '按退款订单服务费收益口径汇总'
     },
     {
       key: 'refundOrderAmount',

@@ -321,7 +321,7 @@ class DataControllerTest {
         assertThat(wrapperCaptor.getAllValues().get(1).getSqlSelect())
                 .contains("refund_order_count")
                 .contains("THEN settle_amount ELSE 0")
-                .contains("NULLIF(effective_service_fee, 0)");
+                .contains("GREATEST(COALESCE(NULLIF(effective_service_fee, 0), estimate_service_fee, 0) - COALESCE(effective_service_fee_expense, 0), 0)");
         assertThat(wrapperCaptor.getAllValues().get(2).getSqlSelect()).contains("settle_amount");
         assertThat(wrapperCaptor.getAllValues().get(3).getSqlSelect())
                 .contains("effective_service_fee")
@@ -331,7 +331,7 @@ class DataControllerTest {
         assertThat(wrapperCaptor.getAllValues().get(6).getSqlSelect())
                 .contains("refund_order_count")
                 .contains("THEN order_amount ELSE 0")
-                .contains("estimate_service_fee")
+                .contains("GREATEST(COALESCE(estimate_service_fee, 0) - COALESCE(estimate_tech_service_fee, 0) - COALESCE(estimate_service_fee_expense, 0), 0)")
                 .doesNotContain("NULLIF(effective_service_fee, 0)");
         assertThat(wrapperCaptor.getAllValues().get(7).getSqlSelect()).contains("order_amount");
         assertThat(wrapperCaptor.getAllValues().get(8).getSqlSelect())
@@ -856,6 +856,8 @@ class DataControllerTest {
         assertThat(wrapperCaptor.getAllValues().get(0).getSqlSelect())
                 .contains("refund_service_fee_cent")
                 .contains("estimate_service_fee")
+                .contains("estimate_tech_service_fee")
+                .contains("estimate_service_fee_expense")
                 .doesNotContain("NULLIF(effective_service_fee, 0)");
         String segment = wrapperCaptor.getAllValues().get(0).getSqlSegment();
         assertThat(segment).contains("product_id");
