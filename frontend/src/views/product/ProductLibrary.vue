@@ -903,16 +903,6 @@ watch(
 )
 
 watch(
-  () => route.query.sortBy,
-  (next) => {
-    const nextSortBy = normalizeSortBy(readSingleQueryValue(next as string | (string | null)[] | null | undefined))
-    if (selectedSortBy.value === nextSortBy) return
-    selectedSortBy.value = nextSortBy
-    void refreshProducts()
-  }
-)
-
-watch(
   () => [hasMore.value, products.value.length, autoLoadSuspended.value],
   () => {
     scheduleProductGridViewportUpdate()
