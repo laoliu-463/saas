@@ -231,11 +231,10 @@
 
 <script setup lang="ts">
 import { notifyApiFailure } from '../../utils/requestError'
-import { computed, h, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, h, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { NButton, useMessage } from 'naive-ui'
 import { useRoute, useRouter } from 'vue-router'
 import PageHeader from '../../components/PageHeader.vue'
-import ManualCopyDialog from '../../components/common/ManualCopyDialog.vue'
 import { useAuthStore } from '../../stores/auth'
 import { hasAccess } from '../../constants/rbac'
 import {
@@ -256,7 +255,6 @@ import { loadAssignedActivityOptions } from './assigned-activity-options'
 import ProductManageFilters from './components/ProductManageFilters.vue'
 import ProductManageTable from './components/ProductManageTable.vue'
 import ProductManageToolbar from './components/ProductManageToolbar.vue'
-import ProductSyncActivityDialog from './components/ProductSyncActivityDialog.vue'
 import ProductStatusTabs from './components/ProductStatusTabs.vue'
 import ProductActionColumn from './components/ProductActionColumn.vue'
 import {
@@ -276,16 +274,6 @@ import {
   resolveActivityContextForManageProductsPath,
   shouldLoadActivityProducts
 } from './product-page-data-source'
-import ProductDetail from './ProductDetail.vue'
-import ProductAuditDialog from './components/ProductAuditDialog.vue'
-import ProductAssignDialog from './components/ProductAssignDialog.vue'
-import ProductBatchAssignDialog from './components/ProductBatchAssignDialog.vue'
-import ProductOperationLogDrawer from './components/ProductOperationLogDrawer.vue'
-import ProductEditModal from './components/ProductEditModal.vue'
-import CooperationSettingModal from './components/CooperationSettingModal.vue'
-import SampleSettingModal from './components/SampleSettingModal.vue'
-import BatchSupplementModal from './components/BatchSupplementModal.vue'
-import ExtendPromotionModal from './components/ExtendPromotionModal.vue'
 import CurrentActivityBanner from './components/CurrentActivityBanner.vue'
 import {
   formatLibraryEntrySuccessMessage,
@@ -343,6 +331,19 @@ interface ProductSyncActivityConfirmPayload {
   maxRowsPerActivity?: number
   priorityStatuses?: number[]
 }
+
+const ManualCopyDialog = defineAsyncComponent(() => import('../../components/common/ManualCopyDialog.vue'))
+const ProductSyncActivityDialog = defineAsyncComponent(() => import('./components/ProductSyncActivityDialog.vue'))
+const ProductDetail = defineAsyncComponent(() => import('./ProductDetail.vue'))
+const ProductAuditDialog = defineAsyncComponent(() => import('./components/ProductAuditDialog.vue'))
+const ProductAssignDialog = defineAsyncComponent(() => import('./components/ProductAssignDialog.vue'))
+const ProductBatchAssignDialog = defineAsyncComponent(() => import('./components/ProductBatchAssignDialog.vue'))
+const ProductOperationLogDrawer = defineAsyncComponent(() => import('./components/ProductOperationLogDrawer.vue'))
+const ProductEditModal = defineAsyncComponent(() => import('./components/ProductEditModal.vue'))
+const CooperationSettingModal = defineAsyncComponent(() => import('./components/CooperationSettingModal.vue'))
+const SampleSettingModal = defineAsyncComponent(() => import('./components/SampleSettingModal.vue'))
+const BatchSupplementModal = defineAsyncComponent(() => import('./components/BatchSupplementModal.vue'))
+const ExtendPromotionModal = defineAsyncComponent(() => import('./components/ExtendPromotionModal.vue'))
 
 const PRODUCT_LIST_PAGE_SIZE = 5
 const PRODUCT_TABLE_SCROLL_X = 1968
