@@ -168,7 +168,7 @@ import {
 } from './product-library-route-sync'
 import { tryCopyText } from '../../utils/clipboard'
 
-const PAGE_SIZE = 100
+const PAGE_SIZE = 500
 
 const message = useMessage()
 const route = useRoute()

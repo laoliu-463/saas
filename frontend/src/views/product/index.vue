@@ -1111,7 +1111,10 @@ const syncActivityProductsFromRemote = async (activityId: string) => {
     const syncStatus = normalizeText(data.syncStatus)
     dialogs.value.syncActivityProducts = false
     if (jobId && shouldPollActivityProductSyncJob(syncStatus)) {
-      message.info('商品同步已提交，完成后自动刷新列表')
+      const pendingMessage = syncStatus === 'QUEUED'
+        ? '商品同步已排队，开始执行后会自动刷新列表'
+        : '商品同步已提交，完成后自动刷新列表'
+      message.info(pendingMessage)
       scheduleActivityProductSyncJobPolling(selectedActivityId, jobId)
       return
     }

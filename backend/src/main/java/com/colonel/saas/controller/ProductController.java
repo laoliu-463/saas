@@ -118,7 +118,7 @@ public class ProductController extends BaseController {
      * 联盟推广状态、标签、合作方、价格区间、招商活动等多维度组合筛选。
      *
      * @param page              页码，从 1 开始
-     * @param size              每页条数，上限 100
+     * @param size              每页条数。商品库主列表支持滚动批量加载，不再限制为 100
      * @param status            商品状态（可选），具体取值含义请联系产品
      * @param keyword           商品关键字，可匹配商品名称、商品 ID、店铺（可选）
      * @param shopKeyword       店铺/合作方名称关键字（可选）
@@ -169,7 +169,7 @@ public class ProductController extends BaseController {
     @GetMapping
     public ApiResult<PageResult<Product>> page(
             @Parameter(description = "页码，从 1 开始。") @RequestParam(defaultValue = "1") @Min(1) long page,
-            @Parameter(description = "每页条数。") @RequestParam(defaultValue = "20") @Min(1) @Max(100) long size,
+            @Parameter(description = "每页条数。商品库主列表支持滚动批量加载，允许超过 100。") @RequestParam(defaultValue = "20") @Min(1) long size,
             @Parameter(description = "商品状态。待确认：取值含义请联系产品。") @RequestParam(required = false) Integer status,
             @Parameter(description = "商品关键字，可匹配商品名称、商品 ID、店铺。") @RequestParam(required = false) String keyword,
             @Parameter(description = "店铺 / 合作方名称关键字。") @RequestParam(required = false) String shopKeyword,

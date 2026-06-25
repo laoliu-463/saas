@@ -12,6 +12,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
@@ -21,7 +22,9 @@ import org.springframework.util.StringUtils;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -44,6 +47,11 @@ public class ProductActivityManualSyncService {
     private static final Duration MANUAL_SYNC_LOCK_TTL = Duration.ofMinutes(120);
     private static final String JOB_TYPE = "activity_product_manual_sync";
     private static final String SCOPE_PREFIX = "ACTIVITY:";
+    private static final String STATUS_QUEUED = "QUEUED";
+    private static final String STATUS_RUNNING = "RUNNING";
+    private static final String STATUS_SUCCESS = "SUCCESS";
+    private static final String STATUS_PARTIAL = "PARTIAL";
+    private static final String STATUS_FAILED = "FAILED";
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private final ProductService productService;
@@ -53,7 +61,8 @@ public class ProductActivityManualSyncService {
     private final DistributedJobLockService jobLockService;
     private final TransactionTemplate progressTransactionTemplate;
     private final Executor syncExecutor;
-    private final Map<String, String> runningJobIdsByActivity = new ConcurrentHashMap<>();
+    private final Map<String, ProductSyncJobLog> activeJobsByActivity = new ConcurrentHashMap<>();
+    private final Set<String> scheduledJobIds = ConcurrentHashMap.newKeySet();
     @Value("${product.sync.activityProduct.pageSize:20}")
     private int pageSize;
     @Value("${product.sync.activityProduct.manual-page-interval-ms:300}")
@@ -64,6 +73,10 @@ public class ProductActivityManualSyncService {
     private int manualMaxRowsPerActivity = DEFAULT_MANUAL_MAX_ROWS_PER_ACTIVITY;
     @Value("${product.sync.activityProduct.manual-status-partition-parallelism:1}")
     private int manualStatusPartitionParallelism = 1;
+    @Value("${product.sync.activityProduct.manual-queue-drain-enabled:true}")
+    private boolean manualQueueDrainEnabled = true;
+    @Value("${product.sync.activityProduct.manual-queue-drain-batch-size:5}")
+    private int manualQueueDrainBatchSize = 5;
 
     ProductActivityManualSyncService(
             ProductService productService,
@@ -102,54 +115,44 @@ public class ProductActivityManualSyncService {
             return new SyncTriggerResult("", null, "INVALID");
         }
         String jobId = "activity-product-sync-" + UUID.randomUUID();
-        String lockOwner = manualSyncLockOwner(jobId, normalizedActivityId);
-        String activityLockKey = JobLockKeys.productBackfillActivityLock(normalizedActivityId);
         ProductSyncJobLog jobLog;
-        ManualSyncLockState lockState;
-        synchronized (runningJobIdsByActivity) {
-            String existingJobId = runningJobIdsByActivity.get(normalizedActivityId);
-            if (existingJobId != null) {
-                return new SyncTriggerResult(normalizedActivityId, existingJobId, "RUNNING");
+        synchronized (activeJobsByActivity) {
+            ProductSyncJobLog activeJob = activeJobsByActivity.get(normalizedActivityId);
+            if (activeJob == null || !isActiveStatus(activeJob.getStatus())) {
+                activeJob = jobLogMapper.selectLatestActiveByJobTypeAndScope(
+                        JOB_TYPE,
+                        SCOPE_PREFIX + normalizedActivityId);
             }
-            lockState = tryAcquireManualSyncLocks(normalizedActivityId, activityLockKey, lockOwner);
-            if (!lockState.acquired()) {
+            if (activeJob != null && isActiveStatus(activeJob.getStatus())) {
+                activeJobsByActivity.put(normalizedActivityId, activeJob);
+                scheduleQueuedJob(activeJob, appId);
                 return new SyncTriggerResult(
                         normalizedActivityId,
-                        null,
-                        "LOCKED",
-                        lockState.message(),
-                        lockState.lockKey(),
-                        lockState.lockOwner(),
-                        lockState.lockTtlSeconds());
+                        activeJob.getJobId(),
+                        activeJob.getStatus());
             }
-            jobLog = startJob(jobId, normalizedActivityId, requestedBy);
-            runningJobIdsByActivity.put(normalizedActivityId, jobId);
+            jobLog = createQueuedJob(jobId, normalizedActivityId, appId, requestedBy);
+            activeJobsByActivity.put(normalizedActivityId, jobLog);
         }
-        try {
-            ProductSyncJobLog asyncJobLog = jobLog;
-            ManualSyncLockState asyncLockState = lockState;
-            CompletableFuture.runAsync(
-                    () -> runSync(
-                            normalizedActivityId,
-                            appId,
-                            asyncJobLog,
-                            activityLockKey,
-                            lockOwner,
-                            asyncLockState.acquiredActivityLock(),
-                            asyncLockState.acquiredGlobalLock()),
-                    syncExecutor);
-        } catch (RuntimeException ex) {
-            finishFailedJob(jobLog, ex);
-            releaseManualSyncLocks(
-                    normalizedActivityId,
-                    activityLockKey,
-                    lockState.acquiredActivityLock(),
-                    lockState.acquiredGlobalLock(),
-                    lockOwner);
-            runningJobIdsByActivity.remove(normalizedActivityId, jobId);
-            throw ex;
+        scheduleQueuedJob(jobLog, appId);
+        return new SyncTriggerResult(normalizedActivityId, jobId, STATUS_QUEUED);
+    }
+
+    @Scheduled(fixedDelayString = "${product.sync.activityProduct.manual-queue-drain-delay-ms:5000}")
+    public void drainQueuedManualSyncJobs() {
+        if (!manualQueueDrainEnabled) {
+            return;
         }
-        return new SyncTriggerResult(normalizedActivityId, jobId, "ACCEPTED");
+        List<ProductSyncJobLog> queuedJobs = jobLogMapper.selectQueuedJobs(
+                JOB_TYPE,
+                normalizedManualQueueDrainBatchSize());
+        for (ProductSyncJobLog queuedJob : queuedJobs) {
+            String activityId = activityIdFromScope(queuedJob.getScope());
+            if (StringUtils.hasText(activityId)) {
+                activeJobsByActivity.put(activityId, queuedJob);
+                scheduleQueuedJob(queuedJob, appIdFromRequestParams(queuedJob.getRequestParamsJson()));
+            }
+        }
     }
 
     public SyncJobStatus getJobStatus(String jobId) {
@@ -175,7 +178,7 @@ public class ProductActivityManualSyncService {
                 jobLog.getErrorMessage());
     }
 
-    private ProductSyncJobLog startJob(String jobId, String activityId, UUID requestedBy) {
+    private ProductSyncJobLog createQueuedJob(String jobId, String activityId, String appId, UUID requestedBy) {
         ProductSyncJobLog log = new ProductSyncJobLog();
         LocalDateTime now = LocalDateTime.now();
         log.setId(UUID.randomUUID());
@@ -183,20 +186,116 @@ public class ProductActivityManualSyncService {
         log.setJobType(JOB_TYPE);
         log.setScope(SCOPE_PREFIX + activityId);
         log.setDryRun(false);
-        log.setStatus("RUNNING");
+        log.setStatus(STATUS_QUEUED);
         log.setRequestedBy(requestedBy);
-        log.setRequestParamsJson(toJson(Map.of(
-                "activityId", activityId,
-                "pageSize", normalizedPageSize(),
-                "maxPagesPerActivity", normalizedManualMaxPagesPerActivity(),
-                "maxRowsPerActivity", normalizedManualMaxRowsPerActivity(),
-                "statusPartitionParallelism", normalizedManualStatusPartitionParallelism(),
-                "lastProgressAt", now.toString())));
-        log.setStartedAt(now);
+        Map<String, Object> requestParams = new LinkedHashMap<>();
+        requestParams.put("activityId", activityId);
+        requestParams.put("pageSize", normalizedPageSize());
+        requestParams.put("maxPagesPerActivity", normalizedManualMaxPagesPerActivity());
+        requestParams.put("maxRowsPerActivity", normalizedManualMaxRowsPerActivity());
+        requestParams.put("statusPartitionParallelism", normalizedManualStatusPartitionParallelism());
+        requestParams.put("queuedAt", now.toString());
+        requestParams.put("lastQueueAttemptAt", now.toString());
+        if (StringUtils.hasText(appId)) {
+            requestParams.put("appId", appId);
+        }
+        log.setRequestParamsJson(toJson(requestParams));
         log.setCreateTime(now);
         log.setUpdateTime(now);
         jobLogMapper.insert(log);
         return log;
+    }
+
+    private void scheduleQueuedJob(ProductSyncJobLog jobLog, String appId) {
+        if (jobLog == null || !STATUS_QUEUED.equals(jobLog.getStatus()) || !StringUtils.hasText(jobLog.getJobId())) {
+            return;
+        }
+        if (!scheduledJobIds.add(jobLog.getJobId())) {
+            return;
+        }
+        try {
+            CompletableFuture.runAsync(() -> {
+                try {
+                    runQueuedSync(jobLog, appId);
+                } catch (Exception ex) {
+                    finishFailedJob(jobLog, ex);
+                    activeJobsByActivity.remove(activityIdFromScope(jobLog.getScope()), jobLog);
+                    log.warn("ProductActivityManualSync queued worker failed, jobId={}", jobLog.getJobId(), ex);
+                } finally {
+                    scheduledJobIds.remove(jobLog.getJobId());
+                }
+            }, syncExecutor);
+        } catch (RuntimeException ex) {
+            scheduledJobIds.remove(jobLog.getJobId());
+            finishFailedJob(jobLog, ex);
+            activeJobsByActivity.remove(activityIdFromScope(jobLog.getScope()), jobLog);
+            throw ex;
+        }
+    }
+
+    private void runQueuedSync(ProductSyncJobLog jobLog, String appId) {
+        String activityId = activityIdFromScope(jobLog.getScope());
+        String activityLockKey = JobLockKeys.productBackfillActivityLock(activityId);
+        String lockOwner = manualSyncLockOwner(jobLog.getJobId(), activityId);
+        ManualSyncLockState lockState = tryAcquireManualSyncLocks(activityId, activityLockKey, lockOwner);
+        if (!lockState.acquired()) {
+            updateQueuedLockState(jobLog, lockState);
+            log.info(
+                    "ProductActivityManualSync queued, activityId={}, jobId={}, lockKey={}, lockOwner={}, lockTtlSeconds={}",
+                    activityId,
+                    jobLog.getJobId(),
+                    lockState.lockKey(),
+                    lockState.lockOwner(),
+                    lockState.lockTtlSeconds());
+            return;
+        }
+        if (!markJobRunning(jobLog)) {
+            releaseManualSyncLocks(
+                    activityId,
+                    activityLockKey,
+                    lockState.acquiredActivityLock(),
+                    lockState.acquiredGlobalLock(),
+                    lockOwner);
+            activeJobsByActivity.remove(activityId, jobLog);
+            return;
+        }
+        runSync(
+                activityId,
+                appId,
+                jobLog,
+                activityLockKey,
+                lockOwner,
+                lockState.acquiredActivityLock(),
+                lockState.acquiredGlobalLock());
+    }
+
+    private boolean markJobRunning(ProductSyncJobLog jobLog) {
+        LocalDateTime now = LocalDateTime.now();
+        jobLog.setStatus(STATUS_RUNNING);
+        jobLog.setStartedAt(now);
+        jobLog.setErrorMessage(null);
+        jobLog.setRequestParamsJson(appendMeta(jobLog.getRequestParamsJson(), Map.of(
+                "startedAt", now.toString(),
+                "lastProgressAt", now.toString())));
+        jobLog.setUpdateTime(now);
+        return jobLogMapper.markQueuedJobRunning(jobLog.getId(), now, jobLog.getRequestParamsJson()) > 0;
+    }
+
+    private void updateQueuedLockState(ProductSyncJobLog jobLog, ManualSyncLockState lockState) {
+        LocalDateTime now = LocalDateTime.now();
+        Map<String, Object> meta = new LinkedHashMap<>();
+        meta.put("lastQueueAttemptAt", now.toString());
+        meta.put("queuedReason", lockState.message());
+        meta.put("lockKey", lockState.lockKey());
+        if (StringUtils.hasText(lockState.lockOwner())) {
+            meta.put("lockOwner", lockState.lockOwner());
+        }
+        meta.put("lockTtlSeconds", lockState.lockTtlSeconds());
+        jobLog.setStatus(STATUS_QUEUED);
+        jobLog.setErrorMessage(lockState.message());
+        jobLog.setRequestParamsJson(appendMeta(jobLog.getRequestParamsJson(), meta));
+        jobLog.setUpdateTime(now);
+        jobLogMapper.updateById(jobLog);
     }
 
     private void runSync(
@@ -220,7 +319,7 @@ public class ProductActivityManualSyncService {
             if (result.complete()) {
                 activityMapper.touchLastSyncAt(activityId, LocalDateTime.now());
             }
-            finishJob(jobLog, result, result.complete() ? "SUCCESS" : "PARTIAL", null);
+            finishJob(jobLog, result, result.complete() ? STATUS_SUCCESS : STATUS_PARTIAL, null);
             log.info(
                     "ProductActivityManualSync completed, activityId={}, syncedProductCount={}, libraryEntryCount={}, createdCount={}, updatedCount={}, skippedCount={}, pagesFetched={}, fetchedRows={}, stoppedReason={}, stillHasNextWhenStopped={}, complete={}",
                     activityId,
@@ -239,7 +338,7 @@ public class ProductActivityManualSyncService {
             log.warn("ProductActivityManualSync failed, activityId={}", activityId, ex);
         } finally {
             releaseManualSyncLocks(activityId, activityLockKey, acquiredActivityLock, acquiredGlobalLock, lockOwner);
-            runningJobIdsByActivity.remove(activityId, jobLog.getJobId());
+            activeJobsByActivity.remove(activityId, jobLog);
         }
     }
 
@@ -372,15 +471,15 @@ public class ProductActivityManualSyncService {
         log.setStatus(status);
         log.setFinishedAt(now);
         log.setActivitiesScanned(1);
-        log.setActivitiesSuccess("SUCCESS".equals(status) ? 1 : 0);
-        log.setActivitiesIncomplete("PARTIAL".equals(status) ? 1 : 0);
-        log.setActivitiesFailed("FAILED".equals(status) ? 1 : 0);
+        log.setActivitiesSuccess(STATUS_SUCCESS.equals(status) ? 1 : 0);
+        log.setActivitiesIncomplete(STATUS_PARTIAL.equals(status) ? 1 : 0);
+        log.setActivitiesFailed(STATUS_FAILED.equals(status) ? 1 : 0);
         log.setApiFetchedRows((long) result.fetchedRows());
         log.setApiDistinctProductIds((long) result.distinctProductIds());
         log.setInserted(result.createdCount());
         log.setUpdated(result.updatedCount());
         log.setSkipped(result.skippedCount());
-        log.setFailed("FAILED".equals(status) ? 1 : 0);
+        log.setFailed(STATUS_FAILED.equals(status) ? 1 : 0);
         String stopReason = StringUtils.hasText(result.stoppedReason()) ? result.stoppedReason() : "UNKNOWN";
         log.setStopReasonStatsJson(toJson(Map.of(stopReason, 1L)));
         log.setErrorMessage(errorMessage);
@@ -397,7 +496,7 @@ public class ProductActivityManualSyncService {
 
     private void finishFailedJob(ProductSyncJobLog log, Exception ex) {
         LocalDateTime now = LocalDateTime.now();
-        log.setStatus("FAILED");
+        log.setStatus(STATUS_FAILED);
         log.setFinishedAt(now);
         log.setActivitiesScanned(1);
         log.setActivitiesSuccess(0);
@@ -443,6 +542,10 @@ public class ProductActivityManualSyncService {
 
     private int normalizedManualStatusPartitionParallelism() {
         return Math.min(Math.max(manualStatusPartitionParallelism, 1), 6);
+    }
+
+    private int normalizedManualQueueDrainBatchSize() {
+        return Math.min(Math.max(manualQueueDrainBatchSize, 1), 20);
     }
 
     private static TransactionTemplate createRequiresNewTemplate(PlatformTransactionManager transactionManager) {
@@ -495,6 +598,24 @@ public class ProductActivityManualSyncService {
         } catch (JsonProcessingException ex) {
             return original;
         }
+    }
+
+    private String appIdFromRequestParams(String requestParamsJson) {
+        if (!StringUtils.hasText(requestParamsJson)) {
+            return null;
+        }
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> map = OBJECT_MAPPER.readValue(requestParamsJson, LinkedHashMap.class);
+            Object appId = map.get("appId");
+            return appId == null ? null : String.valueOf(appId);
+        } catch (JsonProcessingException ex) {
+            return null;
+        }
+    }
+
+    private boolean isActiveStatus(String status) {
+        return STATUS_QUEUED.equals(status) || STATUS_RUNNING.equals(status);
     }
 
     private String toJson(Map<String, ?> value) {

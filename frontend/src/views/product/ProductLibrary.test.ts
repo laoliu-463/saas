@@ -166,22 +166,22 @@ describe('ProductLibrary pagination weakening', () => {
     })
   })
 
-  it('loads 100 products by default, appends more products, and resets when filters change', async () => {
+  it('loads product batches above the old 100 row limit, appends more products, and resets when filters change', async () => {
     vi.mocked(getProducts)
       .mockResolvedValueOnce({
         data: {
-          records: buildRows(1, 100),
-          total: 150,
+          records: buildRows(1, 500),
+          total: 750,
           page: 1,
-          size: 100
+          size: 500
         }
       } as any)
       .mockResolvedValueOnce({
         data: {
-          records: buildRows(101, 50),
-          total: 150,
+          records: buildRows(501, 250),
+          total: 750,
           page: 2,
-          size: 100
+          size: 500
         }
       } as any)
       .mockResolvedValueOnce({
@@ -189,7 +189,7 @@ describe('ProductLibrary pagination weakening', () => {
           records: buildRows(200, 1),
           total: 1,
           page: 1,
-          size: 100
+          size: 500
         }
       } as any)
       .mockResolvedValueOnce({
@@ -197,7 +197,7 @@ describe('ProductLibrary pagination weakening', () => {
           records: buildRows(300, 1),
           total: 1,
           page: 1,
-          size: 100
+          size: 500
         }
       } as any)
 
@@ -206,26 +206,26 @@ describe('ProductLibrary pagination weakening', () => {
 
     expect(vi.mocked(getProducts).mock.calls[0][0]).toMatchObject({
       page: 1,
-      size: 100,
+      size: 500,
       sortBy: 'default'
     })
-    expect(wrapper.findAll('[data-testid="product-card"]')).toHaveLength(100)
+    expect(wrapper.findAll('[data-testid="product-card"]')).toHaveLength(500)
 
     await wrapper.get('[data-testid="product-library-load-more"]').trigger('click')
     await flushPromises()
 
     expect(vi.mocked(getProducts).mock.calls[1][0]).toMatchObject({
       page: 2,
-      size: 100
+      size: 500
     })
-    expect(wrapper.findAll('[data-testid="product-card"]')).toHaveLength(150)
+    expect(wrapper.findAll('[data-testid="product-card"]')).toHaveLength(750)
 
     await wrapper.get('[data-testid="emit-filter"]').trigger('click')
     await flushPromises()
 
     expect(vi.mocked(getProducts).mock.calls[2][0]).toMatchObject({
       page: 1,
-      size: 100,
+      size: 500,
       productTags: '主推'
     })
 
@@ -248,26 +248,26 @@ describe('ProductLibrary pagination weakening', () => {
     vi.mocked(getProducts)
       .mockResolvedValueOnce({
         data: {
-          records: buildRows(1, 100),
-          total: 250,
+          records: buildRows(1, 500),
+          total: 1250,
           page: 1,
-          size: 100
+          size: 500
         }
       } as any)
       .mockResolvedValueOnce({
         data: {
-          records: buildRows(101, 100),
-          total: 250,
+          records: buildRows(501, 500),
+          total: 1250,
           page: 2,
-          size: 100
+          size: 500
         }
       } as any)
       .mockResolvedValueOnce({
         data: {
-          records: buildRows(201, 50),
-          total: 250,
+          records: buildRows(1001, 250),
+          total: 1250,
           page: 3,
-          size: 100
+          size: 500
         }
       } as any)
 
@@ -276,7 +276,7 @@ describe('ProductLibrary pagination weakening', () => {
 
     expect(wrapper.find('[data-testid="product-library-scroll-sentinel"]').exists()).toBe(true)
     expect(observeMock).toHaveBeenCalled()
-    expect(wrapper.findAll('[data-testid="product-card"]')).toHaveLength(100)
+    expect(wrapper.findAll('[data-testid="product-card"]')).toHaveLength(500)
 
     lastIntersectionCallback?.(
       [{ isIntersecting: true } as IntersectionObserverEntry],
@@ -286,9 +286,9 @@ describe('ProductLibrary pagination weakening', () => {
 
     expect(vi.mocked(getProducts).mock.calls[1][0]).toMatchObject({
       page: 2,
-      size: 100
+      size: 500
     })
-    expect(wrapper.findAll('[data-testid="product-card"]')).toHaveLength(200)
+    expect(wrapper.findAll('[data-testid="product-card"]')).toHaveLength(1000)
 
     lastIntersectionCallback?.(
       [{ isIntersecting: true } as IntersectionObserverEntry],
@@ -298,9 +298,9 @@ describe('ProductLibrary pagination weakening', () => {
 
     expect(vi.mocked(getProducts).mock.calls[2][0]).toMatchObject({
       page: 3,
-      size: 100
+      size: 500
     })
-    expect(wrapper.findAll('[data-testid="product-card"]')).toHaveLength(250)
+    expect(wrapper.findAll('[data-testid="product-card"]')).toHaveLength(1250)
     expect(wrapper.text()).toContain('已全部加载')
   })
 
@@ -308,19 +308,19 @@ describe('ProductLibrary pagination weakening', () => {
     vi.mocked(getProducts)
       .mockResolvedValueOnce({
         data: {
-          records: buildRows(1, 100),
-          total: 200,
+          records: buildRows(1, 500),
+          total: 1000,
           page: 1,
-          size: 100
+          size: 500
         }
       } as any)
       .mockRejectedValueOnce(new Error('network down'))
       .mockResolvedValueOnce({
         data: {
-          records: buildRows(101, 100),
-          total: 200,
+          records: buildRows(501, 500),
+          total: 1000,
           page: 2,
-          size: 100
+          size: 500
         }
       } as any)
 
@@ -348,9 +348,9 @@ describe('ProductLibrary pagination weakening', () => {
 
     expect(vi.mocked(getProducts).mock.calls[2][0]).toMatchObject({
       page: 2,
-      size: 100
+      size: 500
     })
-    expect(wrapper.findAll('[data-testid="product-card"]')).toHaveLength(200)
+    expect(wrapper.findAll('[data-testid="product-card"]')).toHaveLength(1000)
     expect(wrapper.text()).toContain('已全部加载')
   })
 })

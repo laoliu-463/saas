@@ -20,6 +20,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.web.bind.annotation.RequestParam;
 
+import jakarta.validation.constraints.Max;
 import java.time.LocalDateTime;
 import java.lang.reflect.Method;
 import java.util.Arrays;
@@ -423,6 +424,27 @@ class ProductControllerTest {
                 .filter(java.util.Objects::nonNull)
                 .map(ProductControllerTest::requestParamName))
                 .contains("productId");
+    }
+
+    @Test
+    void selectedLibraryPageSize_shouldNotUseHundredRowValidationLimit() throws NoSuchMethodException {
+        Method pageMethod = selectedLibraryPageMethod();
+        Method pickPageMethod = ProductController.class.getMethod(
+                "pickPage",
+                long.class,
+                long.class,
+                Integer.class,
+                UUID.class,
+                List.class);
+        Method historyMethod = ProductController.class.getMethod(
+                "promotionLinkHistory",
+                String.class,
+                long.class,
+                long.class);
+
+        assertThat(pageMethod.getParameters()[1].getAnnotation(Max.class)).isNull();
+        assertThat(pickPageMethod.getParameters()[1].getAnnotation(Max.class).value()).isEqualTo(100);
+        assertThat(historyMethod.getParameters()[2].getAnnotation(Max.class).value()).isEqualTo(100);
     }
 
     @Test

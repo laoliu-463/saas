@@ -47,6 +47,7 @@ describe('activity-sync', () => {
     expect(summary).toMatchObject({
       succeeded: 2,
       failed: 1,
+      queued: 0,
       running: 0,
       totalSyncedProducts: 17,
       totalLibraryEntries: 12
@@ -61,16 +62,20 @@ describe('activity-sync', () => {
 
   it('mentions activities that are already syncing', () => {
     const summary = summarizeActivityProductSyncResults([
-      { activityId: '1', ok: true, syncStatus: 'RUNNING' },
+      { activityId: '1', ok: true, syncStatus: 'QUEUED' },
+      { activityId: '2', ok: true, syncStatus: 'RUNNING' },
       { activityId: '2', ok: true, syncStatus: 'ACCEPTED' }
     ])
+    expect(summary.queued).toBe(1)
     expect(summary.running).toBe(1)
     expect(formatActivityProductSyncMessage(summary)).toContain('1 个活动已在同步中')
+    expect(formatActivityProductSyncMessage(summary)).toContain('1 个活动已排队')
   })
 
   it('schedules short polling refreshes only while background sync can still update data', () => {
     expect(POST_SYNC_REFRESH_DELAYS_MS).toEqual([1500, 4000, 8000, 15000])
     expect(shouldSchedulePostSyncRefresh('ACCEPTED')).toBe(true)
+    expect(shouldSchedulePostSyncRefresh('QUEUED')).toBe(true)
     expect(shouldSchedulePostSyncRefresh('RUNNING')).toBe(true)
     expect(shouldSchedulePostSyncRefresh('SUCCESS')).toBe(false)
     expect(shouldSchedulePostSyncRefresh('FAILED')).toBe(false)
@@ -81,6 +86,7 @@ describe('activity-sync', () => {
     expect(ACTIVITY_PRODUCT_SYNC_POLL_INTERVAL_MS).toBe(500)
     expect(ACTIVITY_PRODUCT_SYNC_MAX_POLLS).toBe(600)
     expect(shouldPollActivityProductSyncJob('ACCEPTED')).toBe(true)
+    expect(shouldPollActivityProductSyncJob('QUEUED')).toBe(true)
     expect(shouldPollActivityProductSyncJob('RUNNING')).toBe(true)
     expect(shouldPollActivityProductSyncJob('SUCCESS')).toBe(false)
     expect(isActivityProductSyncSuccess('SUCCESS')).toBe(true)
@@ -88,6 +94,9 @@ describe('activity-sync', () => {
     expect(isActivityProductSyncTerminal('PARTIAL')).toBe(true)
     expect(isActivityProductSyncTerminal('FAILED')).toBe(true)
     expect(isActivityProductSyncTerminal('ABANDONED')).toBe(true)
+    expect(isActivityProductSyncTerminal('CANCELED')).toBe(true)
+    expect(isActivityProductSyncTerminal('TIMEOUT')).toBe(true)
     expect(isActivityProductSyncTerminal('RUNNING')).toBe(false)
+    expect(isActivityProductSyncTerminal('QUEUED')).toBe(false)
   })
 })
