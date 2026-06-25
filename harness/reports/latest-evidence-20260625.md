@@ -3,7 +3,9 @@
 ## Scope
 - Env: local `real-pre`
 - Branch: `feature/product-manage-fallback-fix-20260623`
-- Commit at validation: `69c445ed`
+- Base commit at validation: `69c445ed`
+- Validated changes: current product-library working tree changes on top of `69c445ed`
+- Validated changes were later committed in `926c4df7`
 - Remote deploy: not executed
 
 ## Problem
