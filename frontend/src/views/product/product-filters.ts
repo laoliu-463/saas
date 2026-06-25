@@ -428,7 +428,6 @@ export type ProductLibraryQueryExtra = {
   status?: number | null
   partnerId?: string | null
   partnerType?: string | null
-  sortBy?: string | null
   productIdMode?: 'exact' | 'keyword'
 }
 
@@ -468,7 +467,6 @@ export function buildProductLibraryQueryParams(
     decision: filters.decision || undefined,
     partnerId: partnerId || undefined,
     partnerType: partnerType || undefined,
-    sortBy: extra.sortBy || undefined,
     goodsTags: filters.goodsTags?.length ? filters.goodsTags.join(',') : undefined,
     productTags: filters.productTags?.length ? filters.productTags.join(',') : undefined,
     colonelName: filters.colonelName || undefined,

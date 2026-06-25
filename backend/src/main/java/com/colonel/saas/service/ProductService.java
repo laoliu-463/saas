@@ -394,53 +394,58 @@ public class ProductService {
         if (products == null || products.size() <= 1) {
             return;
         }
-        if ("latest".equals(sortBy)) {
-            products.sort(Comparator.comparing(
-                    (Product p) -> p == null ? null : resolveLibraryCooperationStartTime(p),
-                    Comparator.nullsLast(Comparator.reverseOrder()))
-                    .thenComparing(
-                            Product::getSyncTime,
-                            Comparator.nullsLast(Comparator.reverseOrder()))
-                    .thenComparing(
-                            Product::getSelectedAt,
-                            Comparator.nullsLast(Comparator.reverseOrder())));
-            return;
-        }
         products.sort(this::compareLibraryProducts);
     }
 
     /**
-     * P-09 fix: 商品库展示优先级规则（优先级递减）：
+     * 商品库默认展示优先级规则（优先级递减）：
      * 1. 置顶商品优先（24h内）
-     * 2. 有推广链接（投流）优先
-     * 3. 高佣金（activityCosRatio 数值大的优先）
-     * 4. 晚上架优先（selectedAt 更晚的优先）
-     * 置顶商品内部再按上述 2-4 规则二次排序。
+     * 2. 上游合作开始时间（promotionStartTime）更晚优先
+     * 3. 同步时间更晚优先
+     * 4. 入库时间更晚优先
      */
     private int compareLibraryProducts(Product left, Product right) {
+        if (left == right) {
+            return 0;
+        }
+        if (left == null) {
+            return 1;
+        }
+        if (right == null) {
+            return -1;
+        }
         boolean leftPinned = isPinnedAndNotExpired(left);
         boolean rightPinned = isPinnedAndNotExpired(right);
         if (leftPinned != rightPinned) {
             return leftPinned ? -1 : 1;
         }
 
-        // 同为置顶或同为非置顶，按 2-4 规则二次排序
-        int sub = compareByPromotionCommissionTime(left, right);
-        if (sub != 0) {
-            return sub;
+        int cooperationTime = compareDateTimeDesc(
+                resolveLibraryCooperationStartTime(left),
+                resolveLibraryCooperationStartTime(right));
+        if (cooperationTime != 0) {
+            return cooperationTime;
         }
 
-        // 最后按 selectedAt 倒序（晚上架优先）
-        if (left.getSelectedAt() == null && right.getSelectedAt() == null) {
+        int syncTime = compareDateTimeDesc(left.getSyncTime(), right.getSyncTime());
+        if (syncTime != 0) {
+            return syncTime;
+        }
+
+        return compareDateTimeDesc(left.getSelectedAt(), right.getSelectedAt());
+    }
+
+    private int compareDateTimeDesc(LocalDateTime left, LocalDateTime right) {
+        if (left == null && right == null) {
             return 0;
         }
-        if (left.getSelectedAt() == null) {
+        if (left == null) {
             return 1;
         }
-        if (right.getSelectedAt() == null) {
+        if (right == null) {
             return -1;
         }
-        return right.getSelectedAt().compareTo(left.getSelectedAt());
+        return right.compareTo(left);
     }
 
     private LocalDateTime resolveLibraryCooperationStartTime(Product product) {
@@ -455,21 +460,6 @@ public class ProductService {
                 Boolean.TRUE.equals(p.getPinned()),
                 p.getPinnedUntil(),
                 LocalDateTime.now());
-    }
-
-    /**
-     * 投流优先 > 高佣金优先 > 晚上架优先。
-     */
-    private int compareByPromotionCommissionTime(Product left, Product right) {
-        return productDisplayPolicy.compareLibraryPresentation(
-                new ProductDisplayPolicy.LibraryPresentationKey(
-                        productDisplayPolicy.hasPromotionLink(left.getPromoteLink(), left.getShortLink()),
-                        left.getCosRatio(),
-                        left.getSelectedAt()),
-                new ProductDisplayPolicy.LibraryPresentationKey(
-                        productDisplayPolicy.hasPromotionLink(right.getPromoteLink(), right.getShortLink()),
-                        right.getCosRatio(),
-                        right.getSelectedAt()));
     }
 
     public PageResult<Map<String, Object>> getPromotionLinkHistory(String productId, long page, long size) {

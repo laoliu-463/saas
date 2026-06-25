@@ -49,14 +49,6 @@
         件
       </span>
       <n-space align="center" :size="8">
-        <n-select
-          :value="selectedSortBy"
-          :options="librarySortOptions"
-          placeholder="排序方式"
-          style="width: 190px"
-          data-testid="product-library-sort"
-          @update:value="updateSortBy"
-        />
         <n-button
           v-if="hasMore"
           :loading="loadingMore"
@@ -209,62 +201,6 @@ const convertLinkForBriefCopy = (
 /** 渠道与管理员可发起快速寄样（后端 quick-sample 同限） */
 const canQuickSample = computed(() => canCopyPromotionLink.value || authStore.isAdmin)
 
-const librarySortOptions = [
-  { label: '置顶优先', value: 'default' },
-  { label: '上游合作时间', value: 'latest' }
-]
-
-const normalizeSortBy = (value?: string | null) => {
-  return String(value || '').trim() === 'latest' ? 'latest' : 'default'
-}
-
-const readSingleQueryValue = (value: string | (string | null)[] | null | undefined) => {
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      if (item == null) continue
-      const text = String(item).trim()
-      if (text) return text
-    }
-    return ''
-  }
-  if (value == null) return ''
-  return String(value).trim()
-}
-
-const selectedSortBy = ref<'default' | 'latest'>(
-  normalizeSortBy(readSingleQueryValue(route.query?.sortBy as string | (string | null)[] | null | undefined))
-)
-
-const buildQuery = (nextSortBy: string) => {
-  const nextQuery: Record<string, string> = {}
-  const normalizedSortBy = normalizeSortBy(nextSortBy)
-  for (const [key, value] of Object.entries(route.query ?? {})) {
-    if (key === 'sortBy') continue
-    if (value == null) continue
-    if (Array.isArray(value)) {
-      const first = value.find((item) => item != null && String(item).trim() !== '')
-      if (first == null) continue
-      const text = String(first).trim()
-      if (text) nextQuery[key] = text
-      continue
-    }
-    const text = String(value).trim()
-    if (text) nextQuery[key] = text
-  }
-  if (normalizedSortBy !== 'default') {
-    nextQuery.sortBy = normalizedSortBy
-  }
-  return nextQuery
-}
-
-const updateSortBy = (sortBy: string | null) => {
-  const normalized = normalizeSortBy(sortBy)
-  if (selectedSortBy.value === normalized) return
-  selectedSortBy.value = normalized
-  void router.replace({ path: route.path, query: buildQuery(normalized) })
-  void fetchProducts(true)
-}
-
 const normalizeText = (value?: string | number | null) => {
   if (value === null || value === undefined) return ''
   const text = String(value).trim()
@@ -339,8 +275,7 @@ const fetchProducts = async (reset: boolean) => {
       size: PAGE_SIZE,
       keyword: filters.value.productId || filters.value.productName || undefined,
       productIdMode: 'keyword',
-      status: libraryStatus.value ?? undefined,
-      sortBy: selectedSortBy.value
+      status: libraryStatus.value ?? undefined
     }))
     const data = res?.data || {}
     const records = Array.isArray(data.records) ? data.records : []
@@ -647,16 +582,6 @@ watch(
     const normalized = next || null
     if (isSameActivityId(filters.value.activityId, normalized)) return
     filters.value = { ...filters.value, activityId: normalized }
-    void refreshProducts()
-  }
-)
-
-watch(
-  () => route.query.sortBy,
-  (next) => {
-    const nextSortBy = normalizeSortBy(readSingleQueryValue(next as string | (string | null)[] | null | undefined))
-    if (selectedSortBy.value === nextSortBy) return
-    selectedSortBy.value = nextSortBy
     void refreshProducts()
   }
 )

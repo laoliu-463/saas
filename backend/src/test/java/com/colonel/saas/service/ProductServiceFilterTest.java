@@ -212,34 +212,37 @@ class ProductServiceFilterTest {
     }
 
     @Test
-    void getSelectedLibraryPage_shouldNormalizeLatestSortByBeforeSorting() {
+    void getSelectedLibraryPage_shouldUsePinnedThenCooperationTimeAsDefaultSort() {
         LocalDateTime now = LocalDateTime.now();
-        ProductOperationState newerByCooperationTime = state("10001", "9001");
+        ProductOperationState pinnedOlder = state("10001", "9001");
+        pinnedOlder.setPinnedUntil(now.plusHours(1));
+        pinnedOlder.setSelectedAt(now.minusDays(3));
+        ProductOperationState newerByCooperationTime = state("10002", "9002");
         newerByCooperationTime.setSelectedAt(now.minusHours(1));
-        ProductOperationState olderByCooperationTime = state("10002", "9002");
+        ProductOperationState olderByCooperationTime = state("10003", "9003");
         olderByCooperationTime.setSelectedAt(now.minusDays(2));
-        Page<ProductOperationState> statePage = new Page<>(1, 200, 2);
-        statePage.setRecords(List.of(newerByCooperationTime, olderByCooperationTime));
+        Page<ProductOperationState> statePage = new Page<>(1, 200, 3);
+        statePage.setRecords(List.of(newerByCooperationTime, pinnedOlder, olderByCooperationTime));
 
-        ProductSnapshot older = snapshot("10001", "9001", "玩具乐器", 9900L);
-        older.setActivityCosRatio(5000L);
-        older.setPromotionStartTime(now.minusDays(2).toString());
+        ProductSnapshot pinned = snapshot("10001", "9001", "玩具乐器", 9900L);
+        pinned.setPromotionStartTime(now.minusDays(2).toString());
         ProductSnapshot newer = snapshot("10002", "9002", "美妆", 8800L);
-        newer.setActivityCosRatio(100L);
         newer.setPromotionStartTime(now.minusHours(1).toString());
+        ProductSnapshot older = snapshot("10003", "9003", "食品饮料", 6600L);
+        older.setPromotionStartTime(now.minusDays(1).toString());
 
         when(operationStateMapper.selectPage(any(Page.class), any())).thenReturn(statePage);
-        when(snapshotMapper.selectBatchIds(any())).thenReturn(List.of(older, newer));
+        when(snapshotMapper.selectBatchIds(any())).thenReturn(List.of(pinned, newer, older));
 
         var result = service.getSelectedLibraryPage(1, 10, filter().sortBy(" latest ").build());
 
         assertThat(result.getRecords())
                 .extracting("productId")
-                .containsExactly("9002", "9001");
+                .containsExactly("9001", "9002", "9003");
     }
 
     @Test
-    void getSelectedLibraryPage_shouldFallbackToSyncTimeWhenCooperationTimeIsMissing() {
+    void getSelectedLibraryPage_shouldFallbackToSyncTimeWhenCooperationTimeIsMissingInDefaultSort() {
         LocalDateTime now = LocalDateTime.now();
         ProductOperationState newerBySyncTime = state("20001", "9010");
         ProductOperationState olderBySyncTime = state("20002", "9011");
@@ -535,7 +538,21 @@ class ProductServiceFilterTest {
     }
 
     @Test
-    void buildActivityProductListViewFromDb_shouldReturnEmptyForUnsupportedPromotionStatusFour() {
+    void buildActivityProductListViewFromDb_shouldSupportCanceledPromotionStatusFour() {
+        when(snapshotMapper.selectCount(any())).thenReturn(0L);
+        when(snapshotMapper.selectPageSorted(
+                anyString(),
+                eq(4),
+                any(),
+                anyString(),
+                any(),
+                any(),
+                any(),
+                anyLong(),
+                anyLong(),
+                any(LocalDateTime.class)))
+                .thenReturn(List.of());
+
         var result = service.buildActivityProductListViewFromDb(
                 "100018", 20, null, null, null, 4, null, null, null);
 
@@ -543,10 +560,10 @@ class ProductServiceFilterTest {
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> items = (List<Map<String, Object>>) result.get("items");
         assertThat(items).isEmpty();
-        verify(snapshotMapper, never()).selectCount(any());
-        verify(snapshotMapper, never()).selectPageSorted(
+        verify(snapshotMapper).selectCount(any());
+        verify(snapshotMapper).selectPageSorted(
                 anyString(),
-                any(),
+                eq(4),
                 any(),
                 anyString(),
                 any(),

@@ -291,17 +291,7 @@ public class ProductDisplayPolicy {
     }
 
     public String normalizeSelectedLibrarySortBy(String sortBy) {
-        if (!StringUtils.hasText(sortBy)) {
-            return "default";
-        }
-        String normalized = sortBy.trim();
-        if ("default".equals(normalized) || "pinned".equals(normalized)) {
-            return "default";
-        }
-        if ("latest".equals(normalized)) {
-            return "latest";
-        }
-        return normalized;
+        return "default";
     }
 
     public boolean hasPromotionLink(String... links) {

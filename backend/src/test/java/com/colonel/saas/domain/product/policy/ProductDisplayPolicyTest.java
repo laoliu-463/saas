@@ -250,14 +250,14 @@ class ProductDisplayPolicyTest {
     }
 
     @Test
-    void selectedLibrarySortBy_shouldKeepLegacyQueryBranchContract() {
+    void selectedLibrarySortBy_shouldCollapseLegacyValuesToDefault() {
         assertThat(policy.normalizeSelectedLibrarySortBy(null)).isEqualTo("default");
         assertThat(policy.normalizeSelectedLibrarySortBy("")).isEqualTo("default");
         assertThat(policy.normalizeSelectedLibrarySortBy(" default ")).isEqualTo("default");
         assertThat(policy.normalizeSelectedLibrarySortBy("pinned")).isEqualTo("default");
-        assertThat(policy.normalizeSelectedLibrarySortBy(" latest ")).isEqualTo("latest");
-        assertThat(policy.normalizeSelectedLibrarySortBy(" LATEST ")).isEqualTo("LATEST");
-        assertThat(policy.normalizeSelectedLibrarySortBy("unknown")).isEqualTo("unknown");
+        assertThat(policy.normalizeSelectedLibrarySortBy(" latest ")).isEqualTo("default");
+        assertThat(policy.normalizeSelectedLibrarySortBy(" LATEST ")).isEqualTo("default");
+        assertThat(policy.normalizeSelectedLibrarySortBy("unknown")).isEqualTo("default");
     }
 
     @Test

@@ -119,24 +119,7 @@ function mountLibrary() {
         NSpace: {
           template: '<div><slot /></div>'
         },
-        NSelect: {
-          props: ['value', 'options'],
-          template: `
-            <select
-              data-testid="product-library-sort"
-              :value="value"
-              @change="$emit('update:value', $event.target.value)"
-            >
-              <option
-                v-for="item in options"
-                :key="item.value"
-                :value="item.value"
-              >
-                {{ item.label }}
-              </option>
-            </select>
-          `
-        }
+        NSelect: true
       }
     }
   })
@@ -145,6 +128,8 @@ function mountLibrary() {
 describe('ProductLibrary pagination weakening', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(getProducts).mockReset()
+    vi.mocked(getProductLibraryCategories).mockReset()
     routeState.path = '/product'
     routeState.query = {}
     vi.mocked(getProductLibraryCategories).mockResolvedValue({ data: [] } as any)
@@ -192,23 +177,16 @@ describe('ProductLibrary pagination weakening', () => {
           size: 500
         }
       } as any)
-      .mockResolvedValueOnce({
-        data: {
-          records: buildRows(300, 1),
-          total: 1,
-          page: 1,
-          size: 500
-        }
-      } as any)
 
     const wrapper = mountLibrary()
     await flushPromises()
 
     expect(vi.mocked(getProducts).mock.calls[0][0]).toMatchObject({
       page: 1,
-      size: 500,
-      sortBy: 'default'
+      size: 500
     })
+    expect(vi.mocked(getProducts).mock.calls[0][0].sortBy).toBeUndefined()
+    expect(wrapper.find('[data-testid="product-library-sort"]').exists()).toBe(false)
     expect(wrapper.findAll('[data-testid="product-card"]')).toHaveLength(500)
 
     await wrapper.get('[data-testid="product-library-load-more"]').trigger('click')
@@ -228,18 +206,7 @@ describe('ProductLibrary pagination weakening', () => {
       size: 500,
       productTags: '主推'
     })
-
-    await wrapper.get('[data-testid="product-library-sort"]').setValue('latest')
-    await flushPromises()
-
-    expect(replaceMock).toHaveBeenCalledWith({
-      path: '/product',
-      query: { sortBy: 'latest' }
-    })
-    expect(vi.mocked(getProducts).mock.calls[3][0]).toMatchObject({
-      page: 1,
-      sortBy: 'latest'
-    })
+    expect(vi.mocked(getProducts).mock.calls[2][0].sortBy).toBeUndefined()
     expect(wrapper.findAll('[data-testid="product-card"]')).toHaveLength(1)
     expect(wrapper.text()).toContain('已全部加载')
   })
