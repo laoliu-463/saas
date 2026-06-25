@@ -124,7 +124,7 @@ public class ProductDisplayRuleService {
     /** 商品推广中状态码（snapshot.status == 1 表示商品正在推广） */
     private static final int PROMOTING_STATUS = 1;
     private static final int DEFAULT_REPAIR_LIMIT = 1000;
-    private static final int MAX_REPAIR_LIMIT = 10000;
+    private static final int MAX_REPAIR_LIMIT = 50000;
     private static final String AUTO_LIBRARY_REPAIR_REMARK = "上游状态为推广中，系统自动入库展示";
 
     /** JSON 序列化/反序列化工具，用于解析审核附加数据 payload */
@@ -207,11 +207,12 @@ public class ProductDisplayRuleService {
         if (!StringUtils.hasText(productId)) {
             return;
         }
-        /* 查询该商品下所有运营状态，按创建时间排序（先创建的优先考虑） */
+        /* 查询该商品下所有运营状态，保留创建时间优先语义，并用主键补稳定排序 */
         List<ProductOperationState> states = operationStateMapper.selectList(
                 new LambdaQueryWrapper<ProductOperationState>()
                         .eq(ProductOperationState::getProductId, productId.trim())
-                        .orderByAsc(ProductOperationState::getCreateTime));
+                        .orderByAsc(ProductOperationState::getCreateTime)
+                        .orderByAsc(ProductOperationState::getId));
         if (states.isEmpty()) {
             return;
         }
@@ -252,7 +253,9 @@ public class ProductDisplayRuleService {
         List<ProductOperationState> states = operationStateMapper.selectList(
                 new LambdaQueryWrapper<ProductOperationState>()
                         .eq(ProductOperationState::getActivityId, normalizedActivityId)
-                        .eq(ProductOperationState::getSelectedToLibrary, true));
+                        .eq(ProductOperationState::getSelectedToLibrary, true)
+                        .orderByAsc(ProductOperationState::getProductId)
+                        .orderByAsc(ProductOperationState::getId));
         long queryCostMs = elapsedMs(queryStartedAt);
         long calcStartedAt = System.nanoTime();
         /* 提取去重后的商品 ID 集合（LinkedHashSet 保持插入顺序） */

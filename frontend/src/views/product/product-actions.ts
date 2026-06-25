@@ -18,6 +18,7 @@ const officialStatusValues = new Set<ProductOfficialStatus>([
   'PROMOTING',
   'REJECTED',
   'TERMINATED',
+  'CANCELED',
   'EXPIRED'
 ])
 
@@ -64,12 +65,13 @@ export function resolveOfficialStatus(row: ProductManageRow): ProductOfficialSta
   if (statusCode === '1') return 'PROMOTING'
   if (statusCode === '2') return 'REJECTED'
   if (statusCode === '3') return 'TERMINATED'
-  if (statusCode === '4') return 'TERMINATED'
+  if (statusCode === '4') return 'CANCELED'
   if (statusCode === '6') return 'EXPIRED'
 
   const statusText = normalizeText(row.statusText || row.allianceStatusText)
   if (statusText.includes('待审核') || statusText.includes('审核中')) return 'PENDING_REVIEW'
   if (statusText.includes('未通过') || statusText.includes('拒绝')) return 'REJECTED'
+  if (statusText.includes('合作前取消') || statusText.includes('取消')) return 'CANCELED'
   if (statusText.includes('终止')) return 'TERMINATED'
   if (statusText.includes('到期') || statusText.includes('过期')) return 'EXPIRED'
   if (statusText.includes('推广')) return 'PROMOTING'
@@ -213,7 +215,7 @@ export function getProductActions(row: ProductManageRow, context: ProductActionC
     ].filter((item) => item.visible)
   }
 
-  if (officialStatus === 'TERMINATED') {
+  if (officialStatus === 'TERMINATED' || officialStatus === 'CANCELED') {
     return [
       action('detail', '查看详情', true, 'main'),
       action('viewOrders', '查看出单', row.hasOrders === true, 'main')

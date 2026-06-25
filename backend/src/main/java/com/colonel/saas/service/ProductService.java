@@ -44,6 +44,7 @@ import com.colonel.saas.domain.user.facade.dto.UserOwnershipReference;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -73,6 +74,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -107,8 +109,15 @@ public class ProductService {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     /** 精选库批量查询每次拉取的上限条数 */
     private static final long SELECTED_LIBRARY_BATCH_SIZE = 200L;
+    /** 商品库无限下拉单批最大返回条数。 */
+    private static final long SELECTED_LIBRARY_CURSOR_MAX_LIMIT = 500L;
+    /** 商品库 cursor 中用于模拟 NULLS LAST 的最小时间。 */
+    private static final LocalDateTime SELECTED_LIBRARY_CURSOR_MIN_TIME = LocalDateTime.of(1, 1, 1, 0, 0);
+    private static final int SELECTED_LIBRARY_CURSOR_VERSION = 1;
     /** 上游商品状态：推广中。 */
     private static final int UPSTREAM_PRODUCT_STATUS_PROMOTING = 1;
+    /** 审核入库去重窗口：近 3 个月内同商品 ID 不允许重复进入商品库。 */
+    private static final int AUDIT_LIBRARY_DUPLICATE_WINDOW_MONTHS = 3;
     /** 上游推广中商品自动进入商品库时写入的审核备注。 */
     private static final String AUTO_APPROVE_PROMOTING_REMARK = "上游状态为推广中，系统自动入库展示";
     /** 抖店团长 buyin 通常为 17–20 位；捕获组上限 30 位，并在数字后截断避免粘连字段。 */
@@ -161,10 +170,16 @@ public class ProductService {
     private final ProductDomainEventPublisher productDomainEventPublisher;
     /** 商品库展示优先级策略（DDD-PRODUCT-002，不含置顶） */
     private final ProductDisplayPolicy productDisplayPolicy;
+    /** 活动商品列表 Redis 短 TTL 缓存；单元测试未注入时自动回退 DB 直查。 */
+    private ActivityProductRedisCacheService activityProductRedisCacheService;
     @Value("${douyin.real.promotion-write-enabled:false}")
     private boolean realPromotionWriteEnabled;
     @Value("${douyin.real.allow-promotion-write:false}")
     private boolean allowRealPromotionWrite;
+    @Value("${ddd.refactor.enabled:false}")
+    private boolean dddRefactorEnabled;
+    @Value("${ddd.refactor.product-display-policy.enabled:false}")
+    private boolean dddProductDisplayPolicyEnabled;
     @Value("${product.activity.sync.page-interval-ms:500}")
     private long productActivitySyncPageIntervalMs;
     @Value("${product.activity.sync.max-retries:3}")
@@ -219,6 +234,11 @@ public class ProductService {
         this.productDomainEventPublisher = productDomainEventPublisher;
         this.productDisplayPolicy = productDisplayPolicy;
         this.copyPromotionApplicationService = copyPromotionApplicationService;
+    }
+
+    @Autowired(required = false)
+    void setActivityProductRedisCacheService(ActivityProductRedisCacheService activityProductRedisCacheService) {
+        this.activityProductRedisCacheService = activityProductRedisCacheService;
     }
 
     public IPage<Product> getPage(long page, long size, Integer status) {
@@ -293,6 +313,11 @@ public class ProductService {
             return emptySelectedLibraryPage(currentPage, pageSize);
         }
 
+        IPage<Product> dbPage = tryGetSelectedLibraryDbPage(currentPage, pageSize, safeFilter);
+        if (dbPage != null) {
+            return dbPage;
+        }
+
         List<Product> allMatched = collectSelectedLibraryProducts(safeFilter);
         sortSelectedLibraryProducts(allMatched, safeFilter.sortBy());
 
@@ -306,6 +331,298 @@ public class ProductService {
         Page<Product> result = new Page<>(currentPage, pageSize, total);
         result.setRecords(pageRecords);
         return result;
+    }
+
+    public SelectedLibraryCursorPage getSelectedLibraryCursorPage(String cursor, long limit, SelectedLibraryFilter filter) {
+        SelectedLibraryFilter rawFilter = filter == null ? SelectedLibraryFilter.empty() : filter;
+        SelectedLibraryFilter safeFilter = rawFilter.normalized(productDisplayPolicy);
+        long pageSize = normalizeSelectedLibraryCursorLimit(limit);
+        if (StringUtils.hasText(safeFilter.assigneeId()) && parseAssigneeFilterId(safeFilter.assigneeId()) == null) {
+            return SelectedLibraryCursorPage.empty(pageSize);
+        }
+        if (!canUseSelectedLibraryDbPage(safeFilter)) {
+            return null;
+        }
+
+        SelectedLibraryCursor decodedCursor = decodeSelectedLibraryCursor(cursor);
+        LocalDateTime snapshotTime = decodedCursor == null ? LocalDateTime.now() : decodedCursor.snapshotTime();
+        UUID assigneeId = parseAssigneeFilterId(safeFilter.assigneeId());
+        List<String> categoryTokens = selectedLibraryCategoryTokens(safeFilter);
+        List<ProductSnapshot> snapshots = snapshotMapper.selectSelectedLibraryCursorPage(
+                safeFilter.keyword(),
+                safeFilter.status(),
+                safeFilter.shopKeyword(),
+                categoryTokens,
+                safeFilter.activityId(),
+                assigneeId,
+                safeFilter.promotionLink(),
+                safeFilter.allianceStatus(),
+                safeFilter.assignee(),
+                safeFilter.partnerId(),
+                safeFilter.partnerType(),
+                safeFilter.published(),
+                safeFilter.cooperationType(),
+                safeFilter.recruitActivityId(),
+                safeFilter.listed(),
+                safeFilter.productId(),
+                decodedCursor == null ? null : decodedCursor.pinnedRank(),
+                decodedCursor == null ? null : decodedCursor.promotionStartTime(),
+                decodedCursor == null ? null : decodedCursor.syncTime(),
+                decodedCursor == null ? null : decodedCursor.selectedAt(),
+                decodedCursor == null ? null : decodedCursor.activityId(),
+                decodedCursor == null ? null : decodedCursor.productId(),
+                pageSize + 1,
+                snapshotTime);
+        if (snapshots == null || snapshots.isEmpty()) {
+            return SelectedLibraryCursorPage.empty(pageSize);
+        }
+
+        boolean hasMore = snapshots.size() > pageSize;
+        List<ProductSnapshot> pageSnapshots = hasMore
+                ? new ArrayList<>(snapshots.subList(0, (int) pageSize))
+                : new ArrayList<>(snapshots);
+        Map<String, ProductOperationState> stateMap = loadOperationStatesForSnapshots(pageSnapshots);
+        Map<UUID, String> assigneeNameMap = loadUserDisplayNames(stateMap.values().stream()
+                .map(ProductOperationState::getAssigneeId)
+                .filter(java.util.Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new)));
+        Map<String, String> activityNameMap = loadActivityNameMap(pageSnapshots.stream()
+                .map(ProductSnapshot::getActivityId)
+                .collect(Collectors.toCollection(LinkedHashSet::new)));
+        List<Product> records = pageSnapshots.stream()
+                .map(snapshot -> {
+                    ProductOperationState state = stateMap.get(stateBatchKey(snapshot.getActivityId(), snapshot.getProductId()));
+                    if (state == null) {
+                        return null;
+                    }
+                    Product product = toLegacyProduct(snapshot, state, assigneeNameMap, activityNameMap);
+                    return matchesSelectedLibraryFilters(product, snapshot, state, safeFilter) ? product : null;
+                })
+                .filter(java.util.Objects::nonNull)
+                .toList();
+
+        String nextCursor = hasMore && !pageSnapshots.isEmpty()
+                ? encodeSelectedLibraryCursor(pageSnapshots.get(pageSnapshots.size() - 1), stateMap, snapshotTime)
+                : null;
+        return new SelectedLibraryCursorPage(records, pageSize, hasMore, nextCursor);
+    }
+
+    private long normalizeSelectedLibraryCursorLimit(long limit) {
+        if (limit <= 0) {
+            return SELECTED_LIBRARY_CURSOR_MAX_LIMIT;
+        }
+        return Math.min(limit, SELECTED_LIBRARY_CURSOR_MAX_LIMIT);
+    }
+
+    private SelectedLibraryCursor decodeSelectedLibraryCursor(String cursor) {
+        if (!StringUtils.hasText(cursor)) {
+            return null;
+        }
+        try {
+            byte[] decoded = Base64.getUrlDecoder().decode(cursor.trim());
+            Map<String, Object> payload = OBJECT_MAPPER.readValue(decoded, new TypeReference<Map<String, Object>>() {});
+            Number version = readCursorNumber(payload, "v");
+            if (version == null || version.intValue() != SELECTED_LIBRARY_CURSOR_VERSION) {
+                throw BusinessException.param("商品库游标版本无效");
+            }
+            return new SelectedLibraryCursor(
+                    readCursorTime(payload, "snapshotTime"),
+                    readCursorNumber(payload, "pinnedRank").intValue(),
+                    readCursorTime(payload, "promotionStartTime"),
+                    readCursorTime(payload, "syncTime"),
+                    readCursorTime(payload, "selectedAt"),
+                    readCursorText(payload, "activityId"),
+                    readCursorText(payload, "productId"));
+        } catch (BusinessException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            throw BusinessException.param("商品库游标无效", ex);
+        }
+    }
+
+    private String encodeSelectedLibraryCursor(
+            ProductSnapshot snapshot,
+            Map<String, ProductOperationState> stateMap,
+            LocalDateTime snapshotTime) {
+        ProductOperationState state = stateMap.get(stateBatchKey(snapshot.getActivityId(), snapshot.getProductId()));
+        if (state == null) {
+            return null;
+        }
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("v", SELECTED_LIBRARY_CURSOR_VERSION);
+        payload.put("snapshotTime", snapshotTime.toString());
+        payload.put("pinnedRank", selectedLibraryPinnedRank(state, snapshotTime));
+        payload.put("promotionStartTime", cursorSortTime(parseDateTime(snapshot.getPromotionStartTime())).toString());
+        payload.put("syncTime", cursorSortTime(snapshot.getSyncTime()).toString());
+        payload.put("selectedAt", cursorSortTime(state.getSelectedAt()).toString());
+        payload.put("activityId", snapshot.getActivityId());
+        payload.put("productId", snapshot.getProductId());
+        try {
+            String json = OBJECT_MAPPER.writeValueAsString(payload);
+            return Base64.getUrlEncoder().withoutPadding().encodeToString(json.getBytes(StandardCharsets.UTF_8));
+        } catch (Exception ex) {
+            throw BusinessException.param("商品库游标生成失败", ex);
+        }
+    }
+
+    private int selectedLibraryPinnedRank(ProductOperationState state, LocalDateTime snapshotTime) {
+        return state != null && state.getPinnedUntil() != null && state.getPinnedUntil().isAfter(snapshotTime) ? 0 : 1;
+    }
+
+    private LocalDateTime cursorSortTime(LocalDateTime value) {
+        return value == null ? SELECTED_LIBRARY_CURSOR_MIN_TIME : value;
+    }
+
+    private Number readCursorNumber(Map<String, Object> payload, String field) {
+        Object value = payload.get(field);
+        if (value instanceof Number number) {
+            return number;
+        }
+        if (value instanceof String text && StringUtils.hasText(text)) {
+            try {
+                return Long.parseLong(text.trim());
+            } catch (NumberFormatException ex) {
+                throw BusinessException.param("商品库游标字段无效：" + field, ex);
+            }
+        }
+        throw BusinessException.param("商品库游标缺少字段：" + field);
+    }
+
+    private LocalDateTime readCursorTime(Map<String, Object> payload, String field) {
+        String value = readCursorText(payload, field);
+        try {
+            return LocalDateTime.parse(value);
+        } catch (DateTimeParseException ex) {
+            throw BusinessException.param("商品库游标时间字段无效：" + field, ex);
+        }
+    }
+
+    private String readCursorText(Map<String, Object> payload, String field) {
+        Object value = payload.get(field);
+        if (value instanceof String text && StringUtils.hasText(text)) {
+            return text.trim();
+        }
+        throw BusinessException.param("商品库游标缺少字段：" + field);
+    }
+
+    private IPage<Product> tryGetSelectedLibraryDbPage(long currentPage, long pageSize, SelectedLibraryFilter safeFilter) {
+        if (!canUseSelectedLibraryDbPage(safeFilter)) {
+            return null;
+        }
+        long offset = Math.max(0L, (currentPage - 1L) * pageSize);
+        UUID assigneeId = parseAssigneeFilterId(safeFilter.assigneeId());
+        List<String> categoryTokens = selectedLibraryCategoryTokens(safeFilter);
+        LocalDateTime now = LocalDateTime.now();
+        List<ProductSnapshot> snapshots = snapshotMapper.selectSelectedLibraryPage(
+                safeFilter.keyword(),
+                safeFilter.status(),
+                safeFilter.shopKeyword(),
+                categoryTokens,
+                safeFilter.activityId(),
+                assigneeId,
+                safeFilter.promotionLink(),
+                safeFilter.allianceStatus(),
+                safeFilter.assignee(),
+                safeFilter.partnerId(),
+                safeFilter.partnerType(),
+                safeFilter.published(),
+                safeFilter.cooperationType(),
+                safeFilter.recruitActivityId(),
+                safeFilter.listed(),
+                safeFilter.productId(),
+                pageSize,
+                offset,
+                now);
+        if (snapshots == null) {
+            return null;
+        }
+
+        long total = snapshotMapper.countSelectedLibraryPage(
+                safeFilter.keyword(),
+                safeFilter.status(),
+                safeFilter.shopKeyword(),
+                categoryTokens,
+                safeFilter.activityId(),
+                assigneeId,
+                safeFilter.promotionLink(),
+                safeFilter.allianceStatus(),
+                safeFilter.assignee(),
+                safeFilter.partnerId(),
+                safeFilter.partnerType(),
+                safeFilter.published(),
+                safeFilter.cooperationType(),
+                safeFilter.recruitActivityId(),
+                safeFilter.listed(),
+                safeFilter.productId());
+        if (snapshots.isEmpty() && total == 0L) {
+            return emptySelectedLibraryPage(currentPage, pageSize);
+        }
+
+        Map<String, ProductOperationState> stateMap = loadOperationStatesForSnapshots(snapshots);
+        Map<UUID, String> assigneeNameMap = loadUserDisplayNames(stateMap.values().stream()
+                .map(ProductOperationState::getAssigneeId)
+                .filter(java.util.Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new)));
+        Map<String, String> activityNameMap = loadActivityNameMap(snapshots.stream()
+                .map(ProductSnapshot::getActivityId)
+                .collect(Collectors.toCollection(LinkedHashSet::new)));
+        List<Product> records = snapshots.stream()
+                .map(snapshot -> {
+                    ProductOperationState state = stateMap.get(stateBatchKey(snapshot.getActivityId(), snapshot.getProductId()));
+                    if (state == null) {
+                        return null;
+                    }
+                    Product product = toLegacyProduct(snapshot, state, assigneeNameMap, activityNameMap);
+                    return matchesSelectedLibraryFilters(product, snapshot, state, safeFilter) ? product : null;
+                })
+                .filter(java.util.Objects::nonNull)
+                .toList();
+
+        Page<Product> result = new Page<>(currentPage, pageSize, total);
+        result.setRecords(records);
+        return result;
+    }
+
+    private boolean canUseSelectedLibraryDbPage(SelectedLibraryFilter filter) {
+        if (filter == null) {
+            return true;
+        }
+        if ("COLONEL".equals(filter.partnerType())) {
+            return false;
+        }
+        return !StringUtils.hasText(filter.serviceFee())
+                && !StringUtils.hasText(filter.supportsAds())
+                && !StringUtils.hasText(filter.salesRange())
+                && !StringUtils.hasText(filter.commission())
+                && !StringUtils.hasText(filter.hasSample())
+                && !StringUtils.hasText(filter.systemTag())
+                && !StringUtils.hasText(filter.decision())
+                && !StringUtils.hasText(filter.goodsTags())
+                && !StringUtils.hasText(filter.productTags())
+                && !StringUtils.hasText(filter.colonelName())
+                && !StringUtils.hasText(filter.livePriceMin())
+                && !StringUtils.hasText(filter.livePriceMax())
+                && !StringUtils.hasText(filter.commissionMin())
+                && !StringUtils.hasText(filter.commissionMax())
+                && !StringUtils.hasText(filter.sampleSalesMin())
+                && !StringUtils.hasText(filter.sampleSalesMax())
+                && !StringUtils.hasText(filter.materialDownload())
+                && !StringUtils.hasText(filter.exclusivePrice())
+                && !StringUtils.hasText(filter.productChain())
+                && !StringUtils.hasText(filter.handCard())
+                && !StringUtils.hasText(filter.doubleCommission())
+                && !StringUtils.hasText(filter.notInLibrary())
+                && !StringUtils.hasText(filter.dedup())
+                && !StringUtils.hasText(filter.recruitActivityName())
+                && !StringUtils.hasText(filter.freeSample());
+    }
+
+    private List<String> selectedLibraryCategoryTokens(SelectedLibraryFilter filter) {
+        List<String> tokens = parseCsvTokens(filter.categories());
+        if (tokens.isEmpty() && StringUtils.hasText(filter.categoryName())) {
+            return List.of(filter.categoryName().trim());
+        }
+        return tokens;
     }
 
     private List<Product> collectSelectedLibraryProducts(SelectedLibraryFilter safeFilter) {
@@ -379,47 +696,65 @@ public class ProductService {
         if (products == null || products.size() <= 1) {
             return;
         }
-        if ("latest".equals(sortBy)) {
-            products.sort(Comparator.comparing(
-                    Product::getSelectedAt,
-                    Comparator.nullsLast(Comparator.reverseOrder())));
-            return;
-        }
         products.sort(this::compareLibraryProducts);
     }
 
     /**
-     * P-09 fix: 商品库展示优先级规则（优先级递减）：
+     * 商品库默认展示优先级规则（优先级递减）：
      * 1. 置顶商品优先（24h内）
-     * 2. 有推广链接（投流）优先
-     * 3. 高佣金（activityCosRatio 数值大的优先）
-     * 4. 晚上架优先（selectedAt 更晚的优先）
-     * 置顶商品内部再按上述 2-4 规则二次排序。
+     * 2. 上游合作开始时间（promotionStartTime）更晚优先
+     * 3. 同步时间更晚优先
+     * 4. 入库时间更晚优先
      */
     private int compareLibraryProducts(Product left, Product right) {
+        if (left == right) {
+            return 0;
+        }
+        if (left == null) {
+            return 1;
+        }
+        if (right == null) {
+            return -1;
+        }
         boolean leftPinned = isPinnedAndNotExpired(left);
         boolean rightPinned = isPinnedAndNotExpired(right);
         if (leftPinned != rightPinned) {
             return leftPinned ? -1 : 1;
         }
 
-        // 同为置顶或同为非置顶，按 2-4 规则二次排序
-        int sub = compareByPromotionCommissionTime(left, right);
-        if (sub != 0) {
-            return sub;
+        int cooperationTime = compareDateTimeDesc(
+                resolveLibraryCooperationStartTime(left),
+                resolveLibraryCooperationStartTime(right));
+        if (cooperationTime != 0) {
+            return cooperationTime;
         }
 
-        // 最后按 selectedAt 倒序（晚上架优先）
-        if (left.getSelectedAt() == null && right.getSelectedAt() == null) {
+        int syncTime = compareDateTimeDesc(left.getSyncTime(), right.getSyncTime());
+        if (syncTime != 0) {
+            return syncTime;
+        }
+
+        return compareDateTimeDesc(left.getSelectedAt(), right.getSelectedAt());
+    }
+
+    private int compareDateTimeDesc(LocalDateTime left, LocalDateTime right) {
+        if (left == null && right == null) {
             return 0;
         }
-        if (left.getSelectedAt() == null) {
+        if (left == null) {
             return 1;
         }
-        if (right.getSelectedAt() == null) {
+        if (right == null) {
             return -1;
         }
-        return right.getSelectedAt().compareTo(left.getSelectedAt());
+        return right.compareTo(left);
+    }
+
+    private LocalDateTime resolveLibraryCooperationStartTime(Product product) {
+        if (product == null) {
+            return null;
+        }
+        return parseDateTime(product.getPromotionStartTime());
     }
 
     private boolean isPinnedAndNotExpired(Product p) {
@@ -427,21 +762,6 @@ public class ProductService {
                 Boolean.TRUE.equals(p.getPinned()),
                 p.getPinnedUntil(),
                 LocalDateTime.now());
-    }
-
-    /**
-     * 投流优先 > 高佣金优先 > 晚上架优先。
-     */
-    private int compareByPromotionCommissionTime(Product left, Product right) {
-        return productDisplayPolicy.compareLibraryPresentation(
-                new ProductDisplayPolicy.LibraryPresentationKey(
-                        productDisplayPolicy.hasPromotionLink(left.getPromoteLink(), left.getShortLink()),
-                        left.getCosRatio(),
-                        left.getSelectedAt()),
-                new ProductDisplayPolicy.LibraryPresentationKey(
-                        productDisplayPolicy.hasPromotionLink(right.getPromoteLink(), right.getShortLink()),
-                        right.getCosRatio(),
-                        right.getSelectedAt()));
     }
 
     public PageResult<Map<String, Object>> getPromotionLinkHistory(String productId, long page, long size) {
@@ -1040,14 +1360,38 @@ public class ProductService {
             LambdaQueryWrapper<ProductSnapshot> wrapper,
             Integer promotionStatus) {
         Integer normalizedPromotionStatus = productDisplayPolicy.normalizeActivityProductFilterStatus(promotionStatus);
+        if (isDddProductDisplayPolicyEnabled()) {
+            List<Integer> statuses = productDisplayPolicy.activityProductFilterStatuses(normalizedPromotionStatus);
+            if (statuses.isEmpty()) {
+                if (normalizedPromotionStatus != null) {
+                    wrapper.eq(ProductSnapshot::getStatus, Integer.MIN_VALUE);
+                }
+                return;
+            }
+            if (statuses.size() == 1) {
+                wrapper.eq(ProductSnapshot::getStatus, statuses.get(0));
+                return;
+            }
+            wrapper.in(ProductSnapshot::getStatus, statuses);
+            return;
+        }
         if (normalizedPromotionStatus == null) {
+            wrapper.in(ProductSnapshot::getStatus, 0, 1, 2, 3, 4, 6);
+            return;
+        }
+        if (!productDisplayPolicy.isSupportedActivityProductQueryStatus(normalizedPromotionStatus)) {
+            wrapper.eq(ProductSnapshot::getStatus, Integer.MIN_VALUE);
             return;
         }
         if (Integer.valueOf(3).equals(normalizedPromotionStatus)) {
-            wrapper.in(ProductSnapshot::getStatus, 3, 4);
+            wrapper.eq(ProductSnapshot::getStatus, 3);
             return;
         }
         wrapper.eq(ProductSnapshot::getStatus, normalizedPromotionStatus);
+    }
+
+    private boolean isDddProductDisplayPolicyEnabled() {
+        return dddRefactorEnabled && dddProductDisplayPolicyEnabled;
     }
 
     private boolean containsAny(String value, String... keywords) {
@@ -1370,6 +1714,7 @@ public class ProductService {
                 null
         );
         productDisplayRuleService.applyForProductId(snapshot.getProductId());
+        evictActivityProductCache(snapshot.getActivityId());
         return getById(id);
     }
 
@@ -1458,6 +1803,7 @@ public class ProductService {
         int skipped = 0;
         int libraryEntryCount = 0;
         int unchanged = 0;
+        int stateUpdated = 0;
         for (DouyinProductGateway.ActivityProductItem item : sortedItems) {
             String productId = String.valueOf(item.productId());
             if (!StringUtils.hasText(productId)) {
@@ -1500,7 +1846,11 @@ public class ProductService {
             }
             if (stateChanged) {
                 operationStateMapper.updateById(state);
+                stateUpdated++;
             }
+        }
+        if (created > 0 || updated > 0 || libraryEntryCount > 0 || stateUpdated > 0) {
+            evictActivityProductCache(activityId);
         }
         return new ActivitySnapshotUpsertStats(created, updated, skipped, libraryEntryCount, unchanged);
     }
@@ -1699,6 +2049,9 @@ public class ProductService {
         }
     }
 
+    public record ActivityProductRefreshProgress(int pagesFetched) {
+    }
+
     @Transactional(rollbackFor = Exception.class)
     public ActivityProductRefreshResult refreshActivitySnapshots(DouyinProductGateway.ActivityProductQueryRequest request) {
         return refreshActivitySnapshots(
@@ -1710,15 +2063,51 @@ public class ProductService {
     @Transactional(rollbackFor = Exception.class)
     public ActivityProductRefreshResult refreshActivitySnapshots(
             DouyinProductGateway.ActivityProductQueryRequest request,
+            long pageIntervalMs) {
+        return refreshActivitySnapshots(
+                request,
+                productSyncActivityProductMaxPagesPerActivity,
+                productSyncActivityProductMaxRowsPerActivity,
+                pageIntervalMs);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public ActivityProductRefreshResult refreshActivitySnapshots(
+            DouyinProductGateway.ActivityProductQueryRequest request,
             int maxPagesPerActivity,
             int maxRowsPerActivity) {
+        return refreshActivitySnapshots(
+                request,
+                maxPagesPerActivity,
+                maxRowsPerActivity,
+                normalizedProductActivitySyncPageIntervalMs());
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public ActivityProductRefreshResult refreshActivitySnapshots(
+            DouyinProductGateway.ActivityProductQueryRequest request,
+            int maxPagesPerActivity,
+            int maxRowsPerActivity,
+            long pageIntervalMs) {
+        return refreshActivitySnapshots(request, maxPagesPerActivity, maxRowsPerActivity, pageIntervalMs, null);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public ActivityProductRefreshResult refreshActivitySnapshots(
+            DouyinProductGateway.ActivityProductQueryRequest request,
+            int maxPagesPerActivity,
+            int maxRowsPerActivity,
+            long pageIntervalMs,
+            java.util.function.Consumer<ActivityProductRefreshProgress> progressConsumer) {
         if (request == null || !StringUtils.hasText(request.activityId())) {
             return new ActivityProductRefreshResult(0, 0, 0, 0, 0);
         }
         int pageSize = Math.min(Math.max(request.count() == null ? productSyncActivityProductPageSize : request.count(), 1), 20);
         int normalizedMaxPages = Math.max(maxPagesPerActivity <= 0 ? productSyncActivityProductMaxPagesPerActivity : maxPagesPerActivity, 1);
         int normalizedMaxRows = Math.max(maxRowsPerActivity <= 0 ? productSyncActivityProductMaxRowsPerActivity : maxRowsPerActivity, 1);
+        long normalizedPageIntervalMs = normalizedProductActivitySyncPageIntervalMs(pageIntervalMs);
         java.util.concurrent.atomic.AtomicInteger pageCounter = new java.util.concurrent.atomic.AtomicInteger();
+        java.util.concurrent.atomic.AtomicInteger progressPageCounter = new java.util.concurrent.atomic.AtomicInteger();
         ActivityProductPaginationRunner.Result pageResult = ActivityProductPaginationRunner.run(
                 request,
                 new ActivityProductPaginationRunner.Options(
@@ -1729,13 +2118,234 @@ public class ProductService {
                 pageRequest -> queryActivityProductsWithRetry(pageRequest, pageCounter.getAndIncrement()),
                 page -> {
                     ActivitySnapshotUpsertStats stats = upsertSnapshotsWithStats(request.activityId(), page.items());
+                    notifyActivityProductRefreshProgress(progressConsumer, progressPageCounter.incrementAndGet());
                     return new ActivityProductPaginationRunner.PageWriteStats(
                             stats.createdCount(),
                             stats.updatedCount(),
                             stats.skippedCount(),
                             stats.libraryEntryCount());
-                },
-                pageNo -> sleepBeforeNextActivityProductPage(request.activityId(), pageNo - 1));
+                        },
+                pageNo -> sleepBeforeNextActivityProductPage(request.activityId(), pageNo - 1, normalizedPageIntervalMs));
+        return finishActivityProductRefresh(request, pageResult, normalizedPageIntervalMs);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public ActivityProductRefreshResult refreshActivitySnapshotsByStatusPartitions(
+            DouyinProductGateway.ActivityProductQueryRequest request,
+            int maxPagesPerActivity,
+            int maxRowsPerActivity,
+            long pageIntervalMs,
+            int parallelism,
+            java.util.function.Consumer<ActivityProductRefreshProgress> progressConsumer) {
+        return refreshActivitySnapshotsByStatusPartitions(
+                request,
+                null,
+                maxPagesPerActivity,
+                maxRowsPerActivity,
+                pageIntervalMs,
+                parallelism,
+                progressConsumer);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public ActivityProductRefreshResult refreshActivitySnapshotsByStatusPartitions(
+            DouyinProductGateway.ActivityProductQueryRequest request,
+            List<Integer> requestedStatuses,
+            int maxPagesPerActivity,
+            int maxRowsPerActivity,
+            long pageIntervalMs,
+            int parallelism,
+            java.util.function.Consumer<ActivityProductRefreshProgress> progressConsumer) {
+        if (request == null || !StringUtils.hasText(request.activityId())) {
+            return new ActivityProductRefreshResult(0, 0, 0, 0, 0);
+        }
+        int normalizedParallelism = Math.min(Math.max(parallelism, 1), 6);
+        boolean constrainedStatuses = requestedStatuses != null && !requestedStatuses.isEmpty();
+        if (request.status() != null || normalizedParallelism <= 1) {
+            if (constrainedStatuses && request.status() == null) {
+                return refreshActivitySnapshotsByStatusesSerial(
+                        request,
+                        normalizeActivityProductStatusPartitions(requestedStatuses),
+                        maxPagesPerActivity,
+                        maxRowsPerActivity,
+                        pageIntervalMs,
+                        progressConsumer);
+            }
+            return refreshActivitySnapshots(request, maxPagesPerActivity, maxRowsPerActivity, pageIntervalMs, progressConsumer);
+        }
+        List<Integer> statuses = constrainedStatuses
+                ? normalizeActivityProductStatusPartitions(requestedStatuses)
+                : productDisplayPolicy.activityProductFilterStatuses(null);
+        if (statuses.isEmpty()) {
+            return refreshActivitySnapshots(request, maxPagesPerActivity, maxRowsPerActivity, pageIntervalMs, progressConsumer);
+        }
+        int pageSize = Math.min(Math.max(request.count() == null ? productSyncActivityProductPageSize : request.count(), 1), 20);
+        int normalizedMaxPages = Math.max(maxPagesPerActivity <= 0 ? productSyncActivityProductMaxPagesPerActivity : maxPagesPerActivity, 1);
+        int normalizedMaxRows = Math.max(maxRowsPerActivity <= 0 ? productSyncActivityProductMaxRowsPerActivity : maxRowsPerActivity, 1);
+        long normalizedPageIntervalMs = normalizedProductActivitySyncPageIntervalMs(pageIntervalMs);
+        if (!statusPartitionPreflightSafe(request, statuses, pageSize, normalizedMaxPages, normalizedMaxRows)) {
+            log.info("Activity product status-partition sync fallback to serial, activityId={}, statuses={}, pageSize={}, maxPages={}, maxRows={}",
+                    request.activityId(), statuses, pageSize, normalizedMaxPages, normalizedMaxRows);
+            if (constrainedStatuses) {
+                return refreshActivitySnapshotsByStatusesSerial(
+                        request,
+                        statuses,
+                        normalizedMaxPages,
+                        normalizedMaxRows,
+                        normalizedPageIntervalMs,
+                        progressConsumer);
+            }
+            return refreshActivitySnapshots(request, normalizedMaxPages, normalizedMaxRows, normalizedPageIntervalMs, progressConsumer);
+        }
+
+        java.util.concurrent.ExecutorService executor =
+                java.util.concurrent.Executors.newFixedThreadPool(Math.min(normalizedParallelism, statuses.size()));
+        java.util.concurrent.atomic.AtomicInteger pageCounter = new java.util.concurrent.atomic.AtomicInteger();
+        java.util.concurrent.atomic.AtomicInteger progressPageCounter = new java.util.concurrent.atomic.AtomicInteger();
+        List<ActivityProductStatusPartitionFetch> partitions;
+        try {
+            List<java.util.concurrent.CompletableFuture<ActivityProductStatusPartitionFetch>> futures = statuses.stream()
+                    .map(status -> java.util.concurrent.CompletableFuture.supplyAsync(
+                            () -> fetchActivityProductStatusPartition(
+                                    request,
+                                    status,
+                                    pageSize,
+                                    normalizedMaxPages,
+                                    normalizedMaxRows,
+                                    normalizedPageIntervalMs,
+                                    pageCounter,
+                                    progressPageCounter,
+                                    progressConsumer),
+                            executor))
+                    .toList();
+            partitions = futures.stream()
+                    .map(java.util.concurrent.CompletableFuture::join)
+                    .toList();
+        } catch (java.util.concurrent.CompletionException ex) {
+            Throwable cause = ex.getCause() == null ? ex : ex.getCause();
+            if (cause instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
+            throw new IllegalStateException(cause);
+        } finally {
+            executor.shutdownNow();
+        }
+
+        int createdCount = 0;
+        int updatedCount = 0;
+        int skippedCount = 0;
+        int libraryEntryCount = 0;
+        for (ActivityProductStatusPartitionFetch partition : partitions) {
+            for (List<DouyinProductGateway.ActivityProductItem> pageItems : partition.pages()) {
+                ActivitySnapshotUpsertStats stats = upsertSnapshotsWithStats(request.activityId(), pageItems);
+                createdCount += stats.createdCount();
+                updatedCount += stats.updatedCount();
+                skippedCount += stats.skippedCount();
+                libraryEntryCount += stats.libraryEntryCount();
+            }
+        }
+        ActivityProductPaginationRunner.Result pageResult = aggregateStatusPartitionResults(
+                partitions,
+                createdCount,
+                updatedCount,
+                skippedCount,
+                libraryEntryCount);
+        log.info("Activity product status-partition sync merged, activityId={}, statuses={}, parallelism={}, pagesFetched={}, fetchedRows={}, complete={}",
+                request.activityId(),
+                statuses,
+                Math.min(normalizedParallelism, statuses.size()),
+                pageResult.pagesFetched(),
+                pageResult.fetchedRows(),
+                pageResult.complete());
+        return finishActivityProductRefresh(request, pageResult, normalizedPageIntervalMs);
+    }
+
+    private ActivityProductRefreshResult refreshActivitySnapshotsByStatusesSerial(
+            DouyinProductGateway.ActivityProductQueryRequest request,
+            List<Integer> statuses,
+            int maxPagesPerActivity,
+            int maxRowsPerActivity,
+            long pageIntervalMs,
+            java.util.function.Consumer<ActivityProductRefreshProgress> progressConsumer) {
+        int syncedProductCount = 0;
+        int libraryEntryCount = 0;
+        int createdCount = 0;
+        int updatedCount = 0;
+        int skippedCount = 0;
+        int pagesFetched = 0;
+        int fetchedRows = 0;
+        int distinctProductIds = 0;
+        int duplicateProductIds = 0;
+        String stoppedReason = "STATUS_SCOPE_COMPLETED";
+        boolean stillHasNextWhenStopped = false;
+        boolean complete = true;
+        int remainingRows = Math.max(maxRowsPerActivity <= 0 ? productSyncActivityProductMaxRowsPerActivity : maxRowsPerActivity, 1);
+        int pageSize = Math.min(Math.max(request.count() == null ? productSyncActivityProductPageSize : request.count(), 1), 20);
+
+        for (Integer status : statuses) {
+            if (remainingRows <= 0) {
+                stoppedReason = "REQUESTED_MAX_ROWS_REACHED";
+                stillHasNextWhenStopped = true;
+                complete = true;
+                break;
+            }
+            ActivityProductRefreshResult result = refreshActivitySnapshots(
+                    activityProductRequestWithStatus(request, status, pageSize, null),
+                    maxPagesPerActivity,
+                    remainingRows,
+                    pageIntervalMs,
+                    progressConsumer);
+            syncedProductCount += result.syncedProductCount();
+            libraryEntryCount += result.libraryEntryCount();
+            createdCount += result.createdCount();
+            updatedCount += result.updatedCount();
+            skippedCount += result.skippedCount();
+            pagesFetched += result.pagesFetched();
+            fetchedRows += result.fetchedRows();
+            distinctProductIds += result.distinctProductIds();
+            duplicateProductIds += result.duplicateProductIds();
+            remainingRows -= Math.max(result.fetchedRows(), 0);
+            if (!result.complete()) {
+                boolean requestedLimitReached = "MAX_ROWS_REACHED".equals(result.stoppedReason()) || remainingRows <= 0;
+                stoppedReason = requestedLimitReached ? "REQUESTED_MAX_ROWS_REACHED" : result.stoppedReason();
+                stillHasNextWhenStopped = result.stillHasNextWhenStopped();
+                complete = requestedLimitReached;
+                break;
+            }
+        }
+
+        return new ActivityProductRefreshResult(
+                syncedProductCount,
+                libraryEntryCount,
+                createdCount,
+                updatedCount,
+                skippedCount,
+                pagesFetched,
+                fetchedRows,
+                distinctProductIds,
+                duplicateProductIds,
+                stoppedReason,
+                stillHasNextWhenStopped,
+                complete);
+    }
+
+    private List<Integer> normalizeActivityProductStatusPartitions(List<Integer> requestedStatuses) {
+        if (requestedStatuses == null || requestedStatuses.isEmpty()) {
+            return List.of();
+        }
+        List<Integer> statuses = new ArrayList<>();
+        for (Integer status : requestedStatuses) {
+            if (status != null && !statuses.contains(status)) {
+                statuses.add(status);
+            }
+        }
+        return List.copyOf(statuses);
+    }
+
+    private ActivityProductRefreshResult finishActivityProductRefresh(
+            DouyinProductGateway.ActivityProductQueryRequest request,
+            ActivityProductPaginationRunner.Result pageResult,
+            long normalizedPageIntervalMs) {
         int createdCount = pageResult.createdCount();
         int updatedCount = pageResult.updatedCount();
         int skippedCount = pageResult.skippedCount();
@@ -1747,8 +2357,9 @@ public class ProductService {
                     request.activityId(), request.status(), staleDeletedCount);
         }
 
+        int repairLimit = Math.min(Math.max(10000, pageResult.distinctProductIds()), 50000);
         ProductDisplayRuleService.LibraryRepairResult repairResult =
-                productDisplayRuleService.repairLibraryStateForActivity(request.activityId(), false, 10000);
+                productDisplayRuleService.repairLibraryStateForActivity(request.activityId(), false, repairLimit);
         log.info("Activity product library state repair after refresh, activityId={}, scanned={}, promoting={}, willSelectToLibrary={}, willDisplay={}, unchanged={}",
                 request.activityId(),
                 repairResult.scanned(),
@@ -1757,6 +2368,7 @@ public class ProductService {
                 repairResult.willDisplay(),
                 repairResult.unchanged());
         productDisplayRuleService.applyForActivityId(request.activityId());
+        evictActivityProductCache(request.activityId());
         ColonelsettlementActivity activity = colonelActivityMapper.selectByActivityId(request.activityId());
         String syncStatus = pageResult.complete() ? "SUCCESS" : syncStatusForStopReason(pageResult.stopReason());
         productDomainEventPublisher.publishActivitySyncCompleted(
@@ -1768,7 +2380,7 @@ public class ProductService {
                 skippedCount,
                 syncStatus,
                 null);
-        log.info("Activity product sync summary, activityId={}, pagesFetched={}, fetchedRows={}, distinctProductIds={}, duplicateProductIds={}, created={}, updated={}, skipped={}, libraryEntryCount={}, stoppedReason={}, stillHasNextWhenStopped={}, complete={}",
+        log.info("Activity product sync summary, activityId={}, pagesFetched={}, fetchedRows={}, distinctProductIds={}, duplicateProductIds={}, created={}, updated={}, skipped={}, libraryEntryCount={}, pageIntervalMs={}, stoppedReason={}, stillHasNextWhenStopped={}, complete={}",
                 request.activityId(),
                 pageResult.pagesFetched(),
                 pageResult.fetchedRows(),
@@ -1778,6 +2390,7 @@ public class ProductService {
                 updatedCount,
                 skippedCount,
                 libraryEntryCount,
+                normalizedPageIntervalMs,
                 pageResult.stopReason(),
                 pageResult.stillHasNextWhenStopped(),
                 pageResult.complete());
@@ -1794,6 +2407,155 @@ public class ProductService {
                 pageResult.stopReason().name(),
                 pageResult.stillHasNextWhenStopped(),
                 pageResult.complete());
+    }
+
+    private boolean statusPartitionPreflightSafe(
+            DouyinProductGateway.ActivityProductQueryRequest request,
+            List<Integer> statuses,
+            int pageSize,
+            int maxPages,
+            int maxRows) {
+        long estimatedRows = 0L;
+        long estimatedPages = 0L;
+        java.util.concurrent.atomic.AtomicInteger preflightPageCounter = new java.util.concurrent.atomic.AtomicInteger();
+        for (Integer status : statuses) {
+            DouyinProductGateway.ActivityProductListResult firstPage;
+            try {
+                firstPage = queryActivityProductsWithRetry(
+                        activityProductRequestWithStatus(request, status, pageSize, null),
+                        preflightPageCounter.getAndIncrement());
+            } catch (DouyinApiException ex) {
+                if (isDouyinRateLimited(ex)) {
+                    throw ex;
+                }
+                log.warn("Activity product status-partition preflight failed, fallback to serial, activityId={}, status={}, errorCode={}, subCode={}, message={}",
+                        request.activityId(), status, ex.getErrorCode(), ex.getSubCode(), ex.getErrorMsg());
+                return false;
+            } catch (RuntimeException ex) {
+                log.warn("Activity product status-partition preflight failed, fallback to serial, activityId={}, status={}, message={}",
+                        request.activityId(), status, ex.getMessage());
+                return false;
+            }
+            if (firstPage.total() == null) {
+                log.info("Activity product status-partition preflight missing total, activityId={}, status={}",
+                        request.activityId(), status);
+                return false;
+            }
+            long total = Math.max(firstPage.total(), 0L);
+            estimatedRows += total;
+            estimatedPages += Math.max(1L, (total + pageSize - 1L) / pageSize);
+            if (estimatedRows > maxRows || estimatedPages > maxPages) {
+                log.info("Activity product status-partition preflight exceeds safety bound, activityId={}, status={}, estimatedRows={}, estimatedPages={}, maxRows={}, maxPages={}",
+                        request.activityId(), status, estimatedRows, estimatedPages, maxRows, maxPages);
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private ActivityProductStatusPartitionFetch fetchActivityProductStatusPartition(
+            DouyinProductGateway.ActivityProductQueryRequest request,
+            Integer status,
+            int pageSize,
+            int maxPages,
+            int maxRows,
+            long pageIntervalMs,
+            java.util.concurrent.atomic.AtomicInteger pageCounter,
+            java.util.concurrent.atomic.AtomicInteger progressPageCounter,
+            java.util.function.Consumer<ActivityProductRefreshProgress> progressConsumer) {
+        List<List<DouyinProductGateway.ActivityProductItem>> pages = new ArrayList<>();
+        ActivityProductPaginationRunner.Result result = ActivityProductPaginationRunner.run(
+                activityProductRequestWithStatus(request, status, pageSize, null),
+                new ActivityProductPaginationRunner.Options(pageSize, maxPages, maxRows, true),
+                pageRequest -> queryActivityProductsWithRetry(pageRequest, pageCounter.getAndIncrement()),
+                page -> {
+                    pages.add(List.copyOf(page.items()));
+                    notifyActivityProductRefreshProgress(progressConsumer, progressPageCounter.incrementAndGet());
+                    return ActivityProductPaginationRunner.PageWriteStats.ZERO;
+                },
+                pageNo -> sleepBeforeNextActivityProductPage(request.activityId(), pageNo - 1, pageIntervalMs));
+        return new ActivityProductStatusPartitionFetch(status, result, pages);
+    }
+
+    private DouyinProductGateway.ActivityProductQueryRequest activityProductRequestWithStatus(
+            DouyinProductGateway.ActivityProductQueryRequest request,
+            Integer status,
+            int pageSize,
+            String cursor) {
+        return new DouyinProductGateway.ActivityProductQueryRequest(
+                request.appId(),
+                request.activityId(),
+                request.searchType(),
+                request.sortType(),
+                pageSize,
+                request.cooperationInfo(),
+                request.cooperationType(),
+                request.productInfo(),
+                status,
+                request.retrieveMode(),
+                cursor,
+                null);
+    }
+
+    private ActivityProductPaginationRunner.Result aggregateStatusPartitionResults(
+            List<ActivityProductStatusPartitionFetch> partitions,
+            int createdCount,
+            int updatedCount,
+            int skippedCount,
+            int libraryEntryCount) {
+        int pagesFetched = 0;
+        int fetchedRows = 0;
+        int duplicateProductIds = 0;
+        boolean complete = true;
+        boolean stillHasNextWhenStopped = false;
+        ActivityProductPaginationRunner.StopReason stopReason = ActivityProductPaginationRunner.StopReason.DONE_NO_MORE;
+        String lastCursor = null;
+        Set<String> productIds = new LinkedHashSet<>();
+        List<ActivityProductPaginationRunner.PageSummary> pageSamples = new ArrayList<>();
+        List<String> warnings = new ArrayList<>();
+        for (ActivityProductStatusPartitionFetch partition : partitions) {
+            ActivityProductPaginationRunner.Result result = partition.result();
+            pagesFetched += result.pagesFetched();
+            fetchedRows += result.fetchedRows();
+            duplicateProductIds += result.duplicateProductIds();
+            for (String productId : result.productIds()) {
+                if (!productIds.add(productId)) {
+                    duplicateProductIds++;
+                }
+            }
+            pageSamples.addAll(result.pageSamples());
+            result.warnings().forEach(warning -> warnings.add("status=" + partition.status() + ": " + warning));
+            lastCursor = result.lastCursor();
+            if (!result.complete()) {
+                if (complete) {
+                    stopReason = result.stopReason();
+                }
+                complete = false;
+                stillHasNextWhenStopped = stillHasNextWhenStopped || result.stillHasNextWhenStopped();
+            }
+        }
+        return new ActivityProductPaginationRunner.Result(
+                pagesFetched,
+                fetchedRows,
+                productIds.size(),
+                duplicateProductIds,
+                createdCount,
+                updatedCount,
+                skippedCount,
+                libraryEntryCount,
+                stopReason,
+                stillHasNextWhenStopped,
+                complete,
+                lastCursor,
+                List.copyOf(pageSamples),
+                List.copyOf(warnings),
+                Set.copyOf(productIds));
+    }
+
+    private record ActivityProductStatusPartitionFetch(
+            int status,
+            ActivityProductPaginationRunner.Result result,
+            List<List<DouyinProductGateway.ActivityProductItem>> pages) {
     }
 
     private int reconcileActivitySnapshotsAfterCompleteRefresh(
@@ -1846,15 +2608,17 @@ public class ProductService {
             long startedAt = System.nanoTime();
             try {
                 DouyinProductGateway.ActivityProductListResult result = douyinProductGateway.queryActivityProducts(request);
-                log.info("Activity product page sync succeeded, endpoint=queryActivityProducts, activityId={}, page={}, size={}, costMs={}",
+                log.info("Activity product page sync succeeded, endpoint=queryActivityProducts, activityId={}, status={}, page={}, size={}, costMs={}",
                         request.activityId(),
+                        request.status(),
                         pageNo + 1,
                         request.count(),
                         elapsedMs(startedAt));
                 return result;
             } catch (DouyinApiException ex) {
-                log.warn("Activity product page sync failed, endpoint=queryActivityProducts, activityId={}, page={}, size={}, attempt={}, costMs={}, errorCode={}, subCode={}, message={}",
+                log.warn("Activity product page sync failed, endpoint=queryActivityProducts, activityId={}, status={}, page={}, size={}, attempt={}, costMs={}, errorCode={}, subCode={}, message={}",
                         request.activityId(),
+                        request.status(),
                         pageNo + 1,
                         request.count(),
                         attempt + 1,
@@ -1868,8 +2632,9 @@ public class ProductService {
                 sleepBeforeRetry(request.activityId(), pageNo, attempt);
                 attempt++;
             } catch (RuntimeException ex) {
-                log.warn("Activity product page sync failed, endpoint=queryActivityProducts, activityId={}, page={}, size={}, attempt={}, costMs={}, message={}",
+                log.warn("Activity product page sync failed, endpoint=queryActivityProducts, activityId={}, status={}, page={}, size={}, attempt={}, costMs={}, message={}",
                         request.activityId(),
+                        request.status(),
                         pageNo + 1,
                         request.count(),
                         attempt + 1,
@@ -1895,8 +2660,23 @@ public class ProductService {
         return text.contains("429") || text.contains("rate") || text.contains("limit") || text.contains("限流");
     }
 
-    private void sleepBeforeNextActivityProductPage(String activityId, int pageNo) {
-        sleepQuietly(normalizedProductActivitySyncPageIntervalMs(), "page", activityId, pageNo, 0);
+    private void sleepBeforeNextActivityProductPage(String activityId, int pageNo, long pageIntervalMs) {
+        sleepQuietly(pageIntervalMs, "page", activityId, pageNo, 0);
+    }
+
+    private void notifyActivityProductRefreshProgress(
+            java.util.function.Consumer<ActivityProductRefreshProgress> progressConsumer,
+            int pagesFetched) {
+        if (progressConsumer == null) {
+            return;
+        }
+        try {
+            progressConsumer.accept(new ActivityProductRefreshProgress(Math.max(pagesFetched, 0)));
+        } catch (Exception ex) {
+            log.warn("Activity product refresh progress callback failed, pagesFetched={}, message={}",
+                    pagesFetched,
+                    ex.getMessage());
+        }
     }
 
     private void sleepBeforeRetry(String activityId, int pageNo, int attempt) {
@@ -1907,6 +2687,10 @@ public class ProductService {
 
     private long normalizedProductActivitySyncPageIntervalMs() {
         return Math.min(1000L, Math.max(300L, productActivitySyncPageIntervalMs));
+    }
+
+    private long normalizedProductActivitySyncPageIntervalMs(long pageIntervalMs) {
+        return Math.min(1000L, Math.max(300L, pageIntervalMs));
     }
 
     private void sleepQuietly(long millis, String phase, String activityId, int pageNo, int attempt) {
@@ -2033,6 +2817,23 @@ public class ProductService {
             String sortBy,
             String goodsTags,
             String productTags) {
+        return withActivityProductListCache(
+                activityId,
+                activityProductListCacheQuery(count, cursor, productInfo, bizStatus, promotionStatus, sortBy, goodsTags, productTags),
+                () -> buildActivityProductListViewFromDbUncached(
+                        activityId, count, cursor, productInfo, bizStatus, promotionStatus, sortBy, goodsTags, productTags));
+    }
+
+    private Map<String, Object> buildActivityProductListViewFromDbUncached(
+            String activityId,
+            Integer count,
+            String cursor,
+            String productInfo,
+            String bizStatus,
+            Integer promotionStatus,
+            String sortBy,
+            String goodsTags,
+            String productTags) {
         int pageSize = Math.min(Math.max(count == null ? 20 : count, 1), 20);
         int offset = parseCursor(cursor);
         BizStatusFilter bizStatusFilter = resolveBizStatusFilter(activityId, bizStatus);
@@ -2044,6 +2845,10 @@ public class ProductService {
             return emptyActivityProductListView(activityId);
         }
         Integer normalizedPromotionStatus = productDisplayPolicy.normalizeActivityProductFilterStatus(promotionStatus);
+        if (normalizedPromotionStatus != null
+                && !productDisplayPolicy.isSupportedActivityProductQueryStatus(normalizedPromotionStatus)) {
+            return emptyActivityProductListView(activityId);
+        }
 
         LambdaQueryWrapper<ProductSnapshot> countWrapper = new LambdaQueryWrapper<ProductSnapshot>()
                 .eq(ProductSnapshot::getActivityId, activityId)
@@ -2128,23 +2933,57 @@ public class ProductService {
     }
 
     private Map<String, Object> loadActivityProductStatusCounts(String activityId) {
-        Map<String, Object> raw = snapshotMapper.selectActivityStatusCounts(activityId);
-        Map<String, Object> counts = new LinkedHashMap<>();
-        counts.put("total", statusCountValue(raw, "total"));
-        counts.put("pendingReview", statusCountValue(raw, "pendingReview"));
-        counts.put("promoting", statusCountValue(raw, "promoting"));
-        counts.put("rejected", statusCountValue(raw, "rejected"));
-        counts.put("terminated", statusCountValue(raw, "terminated"));
-        counts.put("expired", statusCountValue(raw, "expired"));
-        return counts;
+        if (activityProductRedisCacheService != null) {
+            return activityProductRedisCacheService.getOrLoadActivityProductStatusCounts(
+                    activityId,
+                    () -> loadActivityProductStatusCountsUncached(activityId));
+        }
+        return loadActivityProductStatusCountsUncached(activityId);
     }
 
-    private long statusCountValue(Map<String, Object> counts, String key) {
-        if (counts == null) {
-            return 0L;
+    private Map<String, Object> loadActivityProductStatusCountsUncached(String activityId) {
+        Map<String, Object> raw = snapshotMapper.selectActivityStatusCounts(activityId);
+        return productDisplayPolicy.normalizeActivityProductStatusCounts(raw);
+    }
+
+    private Map<String, Object> withActivityProductListCache(
+            String activityId,
+            String queryKey,
+            Supplier<Map<String, Object>> loader) {
+        if (activityProductRedisCacheService == null) {
+            return loader.get();
         }
-        Object value = counts.get(key);
-        return value instanceof Number number ? Math.max(number.longValue(), 0L) : 0L;
+        return activityProductRedisCacheService.getOrLoadActivityProductList(activityId, queryKey, loader);
+    }
+
+    private String activityProductListCacheQuery(
+            Integer count,
+            String cursor,
+            String productInfo,
+            String bizStatus,
+            Integer promotionStatus,
+            String sortBy,
+            String goodsTags,
+            String productTags) {
+        return String.join("|",
+                "count=" + (count == null ? "" : count),
+                "cursor=" + normalizeCacheToken(cursor),
+                "productInfo=" + normalizeCacheToken(productInfo),
+                "bizStatus=" + normalizeCacheToken(bizStatus),
+                "promotionStatus=" + (promotionStatus == null ? "" : promotionStatus),
+                "sortBy=" + normalizeCacheToken(sortBy),
+                "goodsTags=" + normalizeCacheToken(goodsTags),
+                "productTags=" + normalizeCacheToken(productTags));
+    }
+
+    private String normalizeCacheToken(String value) {
+        return value == null ? "" : value.trim();
+    }
+
+    private void evictActivityProductCache(String activityId) {
+        if (activityProductRedisCacheService != null) {
+            activityProductRedisCacheService.evictActivity(activityId);
+        }
     }
 
     private List<Map<String, Object>> buildActivityProductItems(String activityId, List<ProductSnapshot> snapshots) {
@@ -2326,6 +3165,7 @@ public class ProductService {
         detail.put("selectedToLibrary", true);
         detail.put("libraryVisible", true);
         productDisplayRuleService.applyForProductId(productId);
+        evictActivityProductCache(activityId);
         return detail;
     }
 
@@ -2366,6 +3206,7 @@ public class ProductService {
         log.setOperationPayload(String.valueOf(payload));
         log.setOperationRemark("绑定活动成功");
         operationLogMapper.insert(log);
+        evictActivityProductCache(activityId);
         return getActivityProductDetail(activityId, productId);
     }
 
@@ -2408,6 +3249,7 @@ public class ProductService {
                     assigneeId,
                     operatorId);
         }
+        evictActivityProductCache(activityId);
         return getActivityProductDetail(activityId, productId);
     }
 
@@ -2455,6 +3297,7 @@ public class ProductService {
                 true,
                 null
         );
+        evictActivityProductCache(activityId);
         return getActivityProductDetail(activityId, productId);
     }
 
@@ -2491,6 +3334,7 @@ public class ProductService {
         if (approved) {
             validateAuditSupplement(supplement);
             auditPayload = writeAuditPayload(supplement);
+            assertNoRecentLibraryDuplicateForAudit(activityId, productId);
         }
         final String approvedAuditPayload = auditPayload;
         Map<String, Object> payload = new LinkedHashMap<>();
@@ -2527,6 +3371,7 @@ public class ProductService {
                     }
             );
             productDisplayRuleService.applyForProductId(productId);
+            evictActivityProductCache(activityId);
             Map<String, Object> detail = getActivityProductDetail(activityId, productId);
             detail.put("selectedToLibrary", true);
             detail.put("libraryVisible", true);
@@ -2559,6 +3404,7 @@ public class ProductService {
                     current.setLastOperationAt(LocalDateTime.now());
                 }
         );
+        evictActivityProductCache(activityId);
         return getActivityProductDetail(activityId, productId);
     }
 
@@ -2605,6 +3451,7 @@ public class ProductService {
         log.setOperationRemark(reason.trim());
         operationLogMapper.insert(log);
 
+        evictActivityProductCache(activityId);
         return getActivityProductDetail(activityId, productId);
     }
 
@@ -2928,6 +3775,7 @@ public class ProductService {
                         true,
                         null
                 );
+                evictActivityProductCache(snapshot.getActivityId());
                 return result;
             }
             productBizStatusService.changeStatus(
@@ -2945,6 +3793,7 @@ public class ProductService {
                         current.setExternalUniqueId(finalExternalId);
                     }
             );
+            evictActivityProductCache(snapshot.getActivityId());
             return result;
         } catch (RuntimeException ex) {
             Map<String, Object> payload = new LinkedHashMap<>();
@@ -4641,6 +5490,26 @@ public class ProductService {
         }
     }
 
+    private void assertNoRecentLibraryDuplicateForAudit(String activityId, String productId) {
+        if (!StringUtils.hasText(productId)) {
+            return;
+        }
+        LocalDateTime cutoff = LocalDateTime.now().minusMonths(AUDIT_LIBRARY_DUPLICATE_WINDOW_MONTHS);
+        LambdaQueryWrapper<ProductOperationState> query = new LambdaQueryWrapper<ProductOperationState>()
+                .eq(ProductOperationState::getProductId, productId.trim())
+                .eq(ProductOperationState::getSelectedToLibrary, true)
+                .ge(ProductOperationState::getSelectedAt, cutoff);
+        if (StringUtils.hasText(activityId)) {
+            query.and(w -> w.ne(ProductOperationState::getActivityId, activityId).or().isNull(ProductOperationState::getActivityId));
+        }
+        List<ProductOperationState> duplicates = operationStateMapper.selectList(query.last("limit 1"));
+        if (duplicates == null || duplicates.isEmpty()) {
+            return;
+        }
+        throw BusinessException.stateInvalid(
+                "近三个月内商品库已存在同商品ID，禁止重复进入商品库：productId=" + productId.trim());
+    }
+
     private void requireText(Map<String, Object> payload, String key, String label, List<String> missing) {
         if (!StringUtils.hasText(readString(payload, key))) {
             missing.add(label);
@@ -5324,6 +6193,27 @@ public class ProductService {
             LocalDateTime lastLinkTime,
             List<Map<String, Object>> linkRecords) {
     }
+
+    public record SelectedLibraryCursorPage(
+            List<Product> records,
+            long limit,
+            boolean hasMore,
+            String nextCursor
+    ) {
+        public static SelectedLibraryCursorPage empty(long limit) {
+            return new SelectedLibraryCursorPage(List.of(), limit, false, null);
+        }
+    }
+
+    private record SelectedLibraryCursor(
+            LocalDateTime snapshotTime,
+            int pinnedRank,
+            LocalDateTime promotionStartTime,
+            LocalDateTime syncTime,
+            LocalDateTime selectedAt,
+            String activityId,
+            String productId
+    ) {}
 
     public record SelectedLibraryFilter(
             String keyword,

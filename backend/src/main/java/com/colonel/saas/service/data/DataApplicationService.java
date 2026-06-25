@@ -128,6 +128,12 @@ public class DataApplicationService extends BaseController {
     /** 订单汇总缓存键前缀，格式：dashboard:order-summary:{17 维} */
     private static final String ORDER_SUMMARY_CACHE_PREFIX = "dashboard:order-summary:";
 
+    /** 退款订单识别条件：抖店退款状态或退款流转节点。 */
+    private static final String REFUND_ORDER_PREDICATE = "(order_status = 5 OR UPPER(COALESCE(flow_point, '')) = 'REFUND')";
+
+    /** 退款服务费口径：结算服务费为 0/null 时回退预估服务费。 */
+    private static final String REFUND_SERVICE_FEE_EXPRESSION = "COALESCE(NULLIF(effective_service_fee, 0), estimate_service_fee, 0)";
+
     /** 上游订单时间字符串常见格式。 */
     private static final DateTimeFormatter UPSTREAM_DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
@@ -941,6 +947,14 @@ public class DataApplicationService extends BaseController {
         metrics.setAmountTrack(performanceMetricsQueryService.resolveAmountTrackLabel(timeField));
         metrics.setTrack(timeField);
         boolean estimateTrack = isEstimateTrack(timeField);
+        RefundMetricsAggregate refundAggregate = queryRefundMetrics(
+                timeColumn,
+                todayStart,
+                tomorrowStart,
+                userId,
+                deptId,
+                dataScope);
+        applyRefundMetrics(metrics, refundAggregate);
 
         if (performanceMetricsQueryService.hasPerformanceRecords()) {
             PerformanceMetricsQueryService.PerformanceAggregate aggregate =
@@ -1064,6 +1078,34 @@ public class DataApplicationService extends BaseController {
         metrics.setCommission(centToYuan(commissionSummary.bizCommission() + commissionSummary.channelCommission()));
         metrics.setGrossProfit(centToYuan(commissionSummary.grossProfit()));
         return metrics;
+    }
+
+    private RefundMetricsAggregate queryRefundMetrics(
+            String timeColumn,
+            LocalDateTime start,
+            LocalDateTime end,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope) {
+        QueryWrapper<ColonelsettlementOrder> wrapper = buildScopedQuery(userId, deptId, dataScope)
+                .select(
+                        "COUNT(CASE WHEN " + REFUND_ORDER_PREDICATE + " THEN 1 END) AS refund_order_count",
+                        "COALESCE(SUM(CASE WHEN " + REFUND_ORDER_PREDICATE + " THEN order_amount ELSE 0 END), 0) AS refund_order_amount_cent",
+                        "COALESCE(SUM(CASE WHEN " + REFUND_ORDER_PREDICATE + " THEN " + REFUND_SERVICE_FEE_EXPRESSION + " ELSE 0 END), 0) AS refund_service_fee_cent"
+                )
+                .ge(timeColumn, start)
+                .lt(timeColumn, end);
+        Map<String, Object> row = getSingleAggregate(wrapper);
+        return new RefundMetricsAggregate(
+                asLong(row, "refund_order_count"),
+                asLong(row, "refund_order_amount_cent"),
+                asLong(row, "refund_service_fee_cent"));
+    }
+
+    private void applyRefundMetrics(MetricsVO metrics, RefundMetricsAggregate aggregate) {
+        metrics.setRefundOrderCount(aggregate.orderCount());
+        metrics.setRefundOrderAmount(centToYuan(aggregate.orderAmountCent()));
+        metrics.setRefundServiceFee(centToYuan(aggregate.serviceFeeCent()));
     }
 
     @Operation(summary = "导出订单CSV", description = "按筛选条件导出订单数据页 CSV。")
@@ -1701,6 +1743,9 @@ public class DataApplicationService extends BaseController {
         selects.add("COUNT(DISTINCT CASE WHEN extra_data->>'colonel_type' = '2' THEN second_colonel_buyin_id END) AS colonel_promoter_count");
         selects.add("COUNT(DISTINCT product_id) AS product_count");
         selects.add("COALESCE(SUM(" + columns.amountColumn() + "), 0) AS order_amount_cent");
+        selects.add("COUNT(CASE WHEN " + REFUND_ORDER_PREDICATE + " THEN 1 END) AS refund_order_count");
+        selects.add("COALESCE(SUM(CASE WHEN " + REFUND_ORDER_PREDICATE + " THEN order_amount ELSE 0 END), 0) AS refund_order_amount_cent");
+        selects.add("COALESCE(SUM(CASE WHEN " + REFUND_ORDER_PREDICATE + " THEN " + REFUND_SERVICE_FEE_EXPRESSION + " ELSE 0 END), 0) AS refund_service_fee_cent");
         selects.add("COALESCE(SUM(actual_amount), 0) AS actual_amount_cent");
         selects.add("COALESCE(SUM(" + columns.serviceFeeColumn() + "), 0) AS service_fee_income_cent");
         selects.add("COALESCE(SUM(" + columns.techFeeColumn() + "), 0) AS tech_service_fee_cent");
@@ -2112,6 +2157,9 @@ public class DataApplicationService extends BaseController {
         vo.setProductCount(asLong(row, "product_count"));
         vo.setOrderCount(asLong(row, "order_count"));
         vo.setOrderAmount(centToYuan(orderAmount));
+        vo.setRefundOrderCount(asLong(row, "refund_order_count"));
+        vo.setRefundOrderAmount(centToYuan(asLong(row, "refund_order_amount_cent")));
+        vo.setRefundServiceFee(centToYuan(asLong(row, "refund_service_fee_cent")));
 
         long serviceFeeExpenseCent = asLong(row, "service_fee_expense_cent");
         long serviceProfitCent = CommissionService.serviceFeeNetCent(
@@ -2388,6 +2436,12 @@ public class DataApplicationService extends BaseController {
             String serviceFeeColumn,
             String techFeeColumn,
             String expenseColumn) {
+    }
+
+    private record RefundMetricsAggregate(
+            long orderCount,
+            long orderAmountCent,
+            long serviceFeeCent) {
     }
 
 }

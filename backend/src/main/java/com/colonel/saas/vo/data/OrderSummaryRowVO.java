@@ -25,6 +25,12 @@ public class OrderSummaryRowVO {
     private Long orderCount;
     /** 订单总金额，单位：元 */
     private BigDecimal orderAmount;
+    /** 退款订单数量 */
+    private Long refundOrderCount;
+    /** 退款订单额，单位：元 */
+    private BigDecimal refundOrderAmount;
+    /** 订单退款服务费，单位：元 */
+    private BigDecimal refundServiceFee;
     /** 商品维度平均服务费率（按商品加权平均） */
     private BigDecimal productAverageServiceFeeRate;
     /** 订单维度平均服务费率（按订单加权平均） */

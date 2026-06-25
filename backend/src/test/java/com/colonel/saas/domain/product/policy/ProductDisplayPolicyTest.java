@@ -7,10 +7,13 @@ import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.entry;
 
 class ProductDisplayPolicyTest {
 
@@ -170,7 +173,7 @@ class ProductDisplayPolicyTest {
     }
 
     @Test
-    void unsupportedStatusFour_shouldNotFallbackToTerminated() {
+    void statusFourPresentation_shouldMapToCanceledStatus() {
         ProductDisplayPolicy.ActivityProductStatusPresentation presentation =
                 policy.resolveActivityProductStatusPresentation(
                         4,
@@ -184,7 +187,22 @@ class ProductDisplayPolicyTest {
                         null,
                         null);
 
-        assertThat(presentation.officialStatus()).isNotEqualTo("TERMINATED");
+        assertThat(presentation.officialStatus()).isEqualTo("CANCELED");
+
+        ProductDisplayPolicy.ActivityProductStatusPresentation textOnlyPresentation =
+                policy.resolveActivityProductStatusPresentation(
+                        null,
+                        "合作前取消",
+                        null,
+                        null,
+                        false,
+                        false,
+                        false,
+                        false,
+                        null,
+                        null);
+
+        assertThat(textOnlyPresentation.officialStatus()).isEqualTo("CANCELED");
     }
 
     @Test
@@ -202,12 +220,23 @@ class ProductDisplayPolicyTest {
         assertThat(policy.isSupportedActivityProductQueryStatus(1)).isTrue();
         assertThat(policy.isSupportedActivityProductQueryStatus(2)).isTrue();
         assertThat(policy.isSupportedActivityProductQueryStatus(3)).isTrue();
+        assertThat(policy.isSupportedActivityProductQueryStatus(4)).isTrue();
         assertThat(policy.isSupportedActivityProductQueryStatus(6)).isTrue();
 
-        assertThat(policy.isSupportedActivityProductQueryStatus(4)).isFalse();
         assertThat(policy.isSupportedActivityProductQueryStatus(9)).isFalse();
         assertThat(policy.activityProductQueryStatusHint())
-                .isEqualTo("商品状态仅支持 0=待审核、1=推广中、2=申请未通过、3=合作已终止、6=合作已到期");
+                .isEqualTo("商品状态仅支持 0=待审核、1=推广中、2=申请未通过、3=合作已终止、4=合作前取消、6=合作已到期");
+    }
+
+    @Test
+    void activityProductFilterStatuses_shouldUseOnlyPublicActivityProductStatuses() {
+        assertThat(policy.activityProductFilterStatuses(null)).containsExactly(0, 1, 2, 3, 4, 6);
+        assertThat(policy.activityProductFilterStatuses(0)).containsExactly(0);
+        assertThat(policy.activityProductFilterStatuses(1)).containsExactly(1);
+        assertThat(policy.activityProductFilterStatuses(2)).containsExactly(2);
+        assertThat(policy.activityProductFilterStatuses(3)).containsExactly(3);
+        assertThat(policy.activityProductFilterStatuses(4)).containsExactly(4);
+        assertThat(policy.activityProductFilterStatuses(6)).containsExactly(6);
     }
 
     @Test
@@ -221,14 +250,14 @@ class ProductDisplayPolicyTest {
     }
 
     @Test
-    void selectedLibrarySortBy_shouldKeepLegacyQueryBranchContract() {
+    void selectedLibrarySortBy_shouldCollapseLegacyValuesToDefault() {
         assertThat(policy.normalizeSelectedLibrarySortBy(null)).isEqualTo("default");
         assertThat(policy.normalizeSelectedLibrarySortBy("")).isEqualTo("default");
         assertThat(policy.normalizeSelectedLibrarySortBy(" default ")).isEqualTo("default");
         assertThat(policy.normalizeSelectedLibrarySortBy("pinned")).isEqualTo("default");
-        assertThat(policy.normalizeSelectedLibrarySortBy(" latest ")).isEqualTo("latest");
-        assertThat(policy.normalizeSelectedLibrarySortBy(" LATEST ")).isEqualTo("LATEST");
-        assertThat(policy.normalizeSelectedLibrarySortBy("unknown")).isEqualTo("unknown");
+        assertThat(policy.normalizeSelectedLibrarySortBy(" latest ")).isEqualTo("default");
+        assertThat(policy.normalizeSelectedLibrarySortBy(" LATEST ")).isEqualTo("default");
+        assertThat(policy.normalizeSelectedLibrarySortBy("unknown")).isEqualTo("default");
     }
 
     @Test
@@ -278,6 +307,7 @@ class ProductDisplayPolicyTest {
         assertThat(policy.matchesSelectedLibraryAllianceStatusFilter("rejected", 2, null)).isTrue();
         assertThat(policy.matchesSelectedLibraryAllianceStatusFilter("terminated", 3, null)).isTrue();
         assertThat(policy.matchesSelectedLibraryAllianceStatusFilter("terminated", 4, null)).isFalse();
+        assertThat(policy.matchesSelectedLibraryAllianceStatusFilter("canceled", 4, null)).isTrue();
         assertThat(policy.matchesSelectedLibraryAllianceStatusFilter("expired", 6, null)).isTrue();
 
         assertThat(policy.matchesSelectedLibraryAllianceStatusFilter("pending_audit", null, "审核中")).isTrue();
@@ -285,6 +315,7 @@ class ProductDisplayPolicyTest {
         assertThat(policy.matchesSelectedLibraryAllianceStatusFilter("rejected", null, "申请未通过")).isTrue();
         assertThat(policy.matchesSelectedLibraryAllianceStatusFilter("terminated", null, "合作已终止")).isTrue();
         assertThat(policy.matchesSelectedLibraryAllianceStatusFilter("terminated", null, "合作前取消")).isFalse();
+        assertThat(policy.matchesSelectedLibraryAllianceStatusFilter("canceled", null, "合作前取消")).isTrue();
         assertThat(policy.matchesSelectedLibraryAllianceStatusFilter("expired", null, "已到期")).isTrue();
         assertThat(policy.matchesSelectedLibraryAllianceStatusFilter("unknown", null, "已到期")).isTrue();
         assertThat(policy.matchesSelectedLibraryAllianceStatusFilter("expired", 1, "推广中")).isFalse();
@@ -301,6 +332,37 @@ class ProductDisplayPolicyTest {
         assertThat(policy.matchesSelectedLibraryCoreVisibility(1, true, null, "UNKNOWN", false)).isTrue();
         assertThat(policy.isLocalRejectedProductState(3, ProductBizStatus.APPROVED.name())).isTrue();
         assertThat(policy.isLocalRejectedProductState(null, "UNKNOWN")).isFalse();
+    }
+
+    @Test
+    void activityProductStatusCounts_shouldNormalizeRawAggregateContract() {
+        Map<String, Object> raw = new LinkedHashMap<>();
+        raw.put("total", 12);
+        raw.put("pendingReview", 1L);
+        raw.put("promoting", new BigDecimal("2"));
+        raw.put("rejected", -3);
+        raw.put("terminated", null);
+        raw.put("canceled", 4);
+        raw.put("expired", "6");
+
+        Map<String, Object> counts = policy.normalizeActivityProductStatusCounts(raw);
+
+        assertThat(counts).containsExactly(
+                entry("total", 12L),
+                entry("pendingReview", 1L),
+                entry("promoting", 2L),
+                entry("rejected", 0L),
+                entry("terminated", 0L),
+                entry("canceled", 4L),
+                entry("expired", 0L));
+        assertThat(policy.normalizeActivityProductStatusCounts(null)).containsExactly(
+                entry("total", 0L),
+                entry("pendingReview", 0L),
+                entry("promoting", 0L),
+                entry("rejected", 0L),
+                entry("terminated", 0L),
+                entry("canceled", 0L),
+                entry("expired", 0L));
     }
 
     private static ProductDisplayRelationInput eligible(

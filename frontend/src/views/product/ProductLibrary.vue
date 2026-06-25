@@ -1,5 +1,5 @@
 ﻿<template>
-  <div class="product-page app-page" data-testid="product-library-page">
+  <div ref="productPageRef" class="product-page app-page" data-testid="product-library-page">
     <PageHeader
       title="商品库"
       description="沉淀完成的共享商品库，对全员可见，可直接复用历史商品结果。"
@@ -45,7 +45,6 @@
     >
       <span class="product-list-meta">
         已加载 <strong>{{ products.length }}</strong>
-        <template v-if="totalCount > 0"> / {{ totalCount }}</template>
         件
       </span>
       <n-space align="center" :size="8">
@@ -65,20 +64,56 @@
     </div>
 
     <n-spin :show="showInitialLoading">
-      <div v-if="products.length" class="product-grid" data-testid="product-grid">
-        <ProductSelectionCard
-          v-for="item in products"
-          :key="`${item.card.productId}-${item.card.activityId || item.card.id}`"
-          :card="item.card"
-          :can-copy-brief="canCopyPromotionLink"
-          :can-quick-sample="canQuickSample"
-          :copy-brief-loading="promotionLoadingIds.has(item.card.productId)"
-          @detail="openDetail"
-          @copy-brief="copyPromotionLink"
-          @quick-sample="openSampleApply"
-          @refresh="refreshProductRow"
-        />
+      <div
+        v-if="products.length"
+        ref="productGridRef"
+        class="product-grid"
+        :class="{ 'product-grid--virtual': virtualGridEnabled }"
+        :style="virtualGridContainerStyle"
+        data-testid="product-grid"
+      >
+        <div
+          v-if="virtualGridEnabled"
+          class="product-grid__virtual-window"
+          :style="virtualGridWindowStyle"
+          data-testid="product-grid-virtual-window"
+        >
+          <ProductSelectionCard
+            v-for="item in visibleProducts"
+            :key="productCardKey(item)"
+            :card="item.card"
+            :can-copy-brief="canCopyPromotionLink"
+            :can-quick-sample="canQuickSample"
+            :copy-brief-loading="promotionLoadingIds.has(item.card.productId)"
+            @detail="openDetail"
+            @copy-brief="copyPromotionLink"
+            @quick-sample="openSampleApply"
+            @refresh="refreshProductRow"
+          />
+        </div>
+        <template v-else>
+          <ProductSelectionCard
+            v-for="item in visibleProducts"
+            :key="productCardKey(item)"
+            :card="item.card"
+            :can-copy-brief="canCopyPromotionLink"
+            :can-quick-sample="canQuickSample"
+            :copy-brief-loading="promotionLoadingIds.has(item.card.productId)"
+            @detail="openDetail"
+            @copy-brief="copyPromotionLink"
+            @quick-sample="openSampleApply"
+            @refresh="refreshProductRow"
+          />
+        </template>
       </div>
+
+      <div
+        v-if="products.length && hasMore"
+        ref="loadMoreTrigger"
+        class="product-library-scroll-sentinel"
+        data-testid="product-library-scroll-sentinel"
+        aria-hidden="true"
+      />
 
       <PageEmpty
         v-else-if="!loading"
@@ -120,7 +155,7 @@
 
 <script setup lang="ts">
 import { notifyApiFailure } from '../../utils/requestError'
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useMessage } from 'naive-ui'
 import PageEmpty from '../../components/PageEmpty.vue'
@@ -137,6 +172,7 @@ import ProductSelectionCard from '../../components/product/ProductSelectionCard.
 import QuickSampleModal from './components/QuickSampleModal.vue'
 import ProductDetail from './ProductDetail.vue'
 import {
+  canUseProductLibraryCursor,
   buildProductLibraryQueryParams,
   DEFAULT_PRODUCT_FILTERS,
   productDomainCategoryOptions,
@@ -152,7 +188,16 @@ import {
 } from './product-library-route-sync'
 import { tryCopyText } from '../../utils/clipboard'
 
-const PAGE_SIZE = 100
+const PRODUCT_LIBRARY_REQUEST_BATCH_SIZE = 100
+const PRODUCT_LIBRARY_BACKEND_MAX_LIMIT = 500
+const PRODUCT_LIBRARY_CARD_WIDTH = 252
+const PRODUCT_LIBRARY_CARD_HEIGHT = 415
+const PRODUCT_LIBRARY_GRID_GAP = 16
+const PRODUCT_LIBRARY_ROW_HEIGHT = PRODUCT_LIBRARY_CARD_HEIGHT + PRODUCT_LIBRARY_GRID_GAP
+const PRODUCT_LIBRARY_VIRTUAL_OVERSCAN_ROWS = 2
+const PRODUCT_LIBRARY_PREFETCH_ROWS = 2
+const PRODUCT_LIBRARY_VIRTUAL_GRID_ENABLED = import.meta.env.VITE_PRODUCT_LIBRARY_VIRTUAL_GRID !== 'false'
+const PRODUCT_LIBRARY_PERF_DEBUG = import.meta.env.VITE_PRODUCT_LIBRARY_PERF_DEBUG === 'true'
 
 const message = useMessage()
 const route = useRoute()
@@ -165,8 +210,19 @@ const loadingMore = ref(false)
 const promotionLoadingIds = ref<Set<string>>(new Set())
 const products = ref<any[]>([])
 const currentPage = ref(1)
+const nextCursor = ref('')
 const hasMore = ref(false)
 const totalCount = ref(0)
+const productPageRef = ref<HTMLElement | null>(null)
+const loadMoreTrigger = ref<HTMLElement | null>(null)
+const productGridRef = ref<HTMLElement | null>(null)
+const viewportTop = ref(0)
+const viewportHeight = ref(typeof window === 'undefined' ? 900 : window.innerHeight || 900)
+const viewportWidth = ref(typeof window === 'undefined' ? 1280 : window.innerWidth || 1280)
+const productGridTop = ref(0)
+const productGridWidth = ref(0)
+const coarsePointerGrid = ref(false)
+const autoLoadSuspended = ref(false)
 const libraryStatus = ref<number | null>(null)
 const filters = ref<ProductFilterState>(DEFAULT_PRODUCT_FILTERS())
 const libraryCategoryOptions = ref<{ label: string; value: string }[]>([])
@@ -176,6 +232,10 @@ const quickSampleProduct = ref<any | null>(null)
 const showDetail = ref(false)
 const detailRefreshKey = ref(0)
 const manualCopyDialog = ref(createEmptyManualCopyDialogState())
+let loadMoreObserver: IntersectionObserver | null = null
+let loadMoreObserverRoot: Element | null = null
+let productGridViewportRaf: number | null = null
+let productScrollTarget: Window | HTMLElement | null = null
 
 const canCopyPromotionLink = computed(() =>
   hasAccess(authStore.roleCodes, [ROLE_CODES.CHANNEL_LEADER, ROLE_CODES.CHANNEL_STAFF])
@@ -246,54 +306,312 @@ const replaceProductRow = (productId: string, nextRow: any) => {
   }
 }
 
+const productCardKey = (item: any) => `${item.card.productId}-${item.card.activityId || item.card.id}`
+
+const now = () => {
+  if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
+    return performance.now()
+  }
+  return Date.now()
+}
+
+const isPerfDebugEnabled = () => {
+  if (PRODUCT_LIBRARY_PERF_DEBUG) return true
+  if (typeof window === 'undefined') return false
+  try {
+    return window.localStorage?.getItem('product-library-perf-debug') === '1'
+  } catch {
+    return false
+  }
+}
+
+const logProductLibraryPerf = (payload: Record<string, unknown>) => {
+  if (!isPerfDebugEnabled()) return
+  // Dev-only/debug-only performance probe; payload contains timing and counts only.
+  console.debug('[product-library:perf]', payload)
+}
+
+const updateCoarsePointerGrid = () => {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+    coarsePointerGrid.value = false
+    return
+  }
+  coarsePointerGrid.value = window.matchMedia('(hover: none), (pointer: coarse)').matches
+}
+
+const isWindowScrollTarget = (target: Window | HTMLElement | null): target is Window =>
+  typeof window !== 'undefined' && target === window
+
+const isScrollableProductElement = (element: HTMLElement) => {
+  if (typeof window === 'undefined') return false
+  const overflowY = window.getComputedStyle(element).overflowY
+  return /(auto|scroll|overlay)/.test(overflowY) && element.scrollHeight > element.clientHeight + 1
+}
+
+const resolveProductScrollTarget = (): Window | HTMLElement | null => {
+  if (typeof window === 'undefined') return null
+  const root = productGridRef.value || productPageRef.value
+  if (!root) return window
+
+  let current: HTMLElement | null = root
+  while (current && current !== document.body && current !== document.documentElement) {
+    if (isScrollableProductElement(current)) return current
+    current = current.parentElement
+  }
+  return window
+}
+
+const removeProductScrollTargetListener = () => {
+  productScrollTarget?.removeEventListener('scroll', scheduleProductGridViewportUpdate)
+}
+
+const syncProductScrollTarget = () => {
+  const nextTarget = resolveProductScrollTarget()
+  if (!nextTarget || nextTarget === productScrollTarget) return
+  removeProductScrollTargetListener()
+  productScrollTarget = nextTarget
+  productScrollTarget.addEventListener('scroll', scheduleProductGridViewportUpdate, { passive: true })
+  loadMoreObserver?.disconnect()
+  loadMoreObserver = null
+  loadMoreObserverRoot = null
+}
+
+const getProductScrollTop = () => {
+  if (typeof window === 'undefined') return 0
+  if (productScrollTarget && !isWindowScrollTarget(productScrollTarget)) {
+    return productScrollTarget.scrollTop || 0
+  }
+  return window.scrollY || window.pageYOffset || 0
+}
+
+const getProductViewportHeight = () => {
+  if (typeof window === 'undefined') return viewportHeight.value
+  if (productScrollTarget && !isWindowScrollTarget(productScrollTarget)) {
+    return productScrollTarget.clientHeight || window.innerHeight || viewportHeight.value
+  }
+  return window.innerHeight || viewportHeight.value
+}
+
+const updateProductGridViewport = () => {
+  if (typeof window === 'undefined') return
+  syncProductScrollTarget()
+  const scrollTop = getProductScrollTop()
+  viewportTop.value = scrollTop
+  viewportHeight.value = getProductViewportHeight()
+  viewportWidth.value = productScrollTarget && !isWindowScrollTarget(productScrollTarget)
+    ? productScrollTarget.clientWidth || window.innerWidth || viewportWidth.value
+    : window.innerWidth || viewportWidth.value
+  updateCoarsePointerGrid()
+  const grid = productGridRef.value
+  if (!grid) return
+  const rect = grid.getBoundingClientRect()
+  if (productScrollTarget && !isWindowScrollTarget(productScrollTarget)) {
+    const scrollRect = productScrollTarget.getBoundingClientRect()
+    productGridTop.value = rect.top - scrollRect.top + scrollTop
+    productGridWidth.value = rect.width || productScrollTarget.clientWidth || viewportWidth.value
+    return
+  }
+  productGridTop.value = rect.top + scrollTop
+  productGridWidth.value = rect.width || viewportWidth.value
+}
+
+const requestFrame = (callback: FrameRequestCallback) => {
+  if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+    return window.requestAnimationFrame(callback)
+  }
+  return window.setTimeout(() => callback(now()), 16)
+}
+
+const cancelFrame = (frameId: number) => {
+  if (typeof window !== 'undefined' && typeof window.cancelAnimationFrame === 'function') {
+    window.cancelAnimationFrame(frameId)
+    return
+  }
+  window.clearTimeout(frameId)
+}
+
+const scheduleProductGridViewportUpdate = () => {
+  if (productGridViewportRaf !== null) return
+  productGridViewportRaf = requestFrame(() => {
+    productGridViewportRaf = null
+    updateProductGridViewport()
+    maybePrefetchMore()
+  })
+}
+
+const productGridColumnCount = computed(() => {
+  const width = productGridWidth.value || viewportWidth.value
+  if (width >= 1600) return 5
+  if (width >= 1280) return 4
+  if (width <= 720) return 1
+  return Math.max(1, Math.floor((width + PRODUCT_LIBRARY_GRID_GAP) / (PRODUCT_LIBRARY_CARD_WIDTH + PRODUCT_LIBRARY_GRID_GAP)))
+})
+
+const mobileProductGrid = computed(() => viewportWidth.value <= 720 || coarsePointerGrid.value)
+
+const virtualGridEnabled = computed(() =>
+  PRODUCT_LIBRARY_VIRTUAL_GRID_ENABLED &&
+  !mobileProductGrid.value &&
+  products.value.length > PRODUCT_LIBRARY_REQUEST_BATCH_SIZE
+)
+
+const virtualGridTotalRows = computed(() =>
+  Math.ceil(products.value.length / productGridColumnCount.value)
+)
+
+const virtualGridStartRow = computed(() => {
+  if (!virtualGridEnabled.value) return 0
+  const scrolledInsideGrid = Math.max(0, viewportTop.value - productGridTop.value)
+  return Math.max(0, Math.floor(scrolledInsideGrid / PRODUCT_LIBRARY_ROW_HEIGHT) - PRODUCT_LIBRARY_VIRTUAL_OVERSCAN_ROWS)
+})
+
+const virtualGridEndRow = computed(() => {
+  if (!virtualGridEnabled.value) return virtualGridTotalRows.value
+  const scrolledInsideGrid = Math.max(0, viewportTop.value - productGridTop.value)
+  const visibleBottom = scrolledInsideGrid + viewportHeight.value
+  return Math.min(
+    virtualGridTotalRows.value,
+    Math.ceil(visibleBottom / PRODUCT_LIBRARY_ROW_HEIGHT) + PRODUCT_LIBRARY_VIRTUAL_OVERSCAN_ROWS
+  )
+})
+
+const virtualGridStartIndex = computed(() => virtualGridStartRow.value * productGridColumnCount.value)
+
+const virtualGridEndIndex = computed(() =>
+  Math.min(products.value.length, virtualGridEndRow.value * productGridColumnCount.value)
+)
+
+const visibleProducts = computed(() =>
+  virtualGridEnabled.value
+    ? products.value.slice(virtualGridStartIndex.value, virtualGridEndIndex.value)
+    : products.value
+)
+
+const virtualGridContainerStyle = computed(() => {
+  if (!virtualGridEnabled.value) return undefined
+  const rows = virtualGridTotalRows.value
+  const height = rows > 0
+    ? rows * PRODUCT_LIBRARY_CARD_HEIGHT + Math.max(0, rows - 1) * PRODUCT_LIBRARY_GRID_GAP
+    : 0
+  return {
+    height: `${height}px`
+  }
+})
+
+const productGridTemplateColumns = computed(() =>
+  `repeat(${productGridColumnCount.value}, minmax(0, 1fr))`
+)
+
+const virtualGridWindowStyle = computed(() => {
+  if (!virtualGridEnabled.value) return undefined
+  return {
+    transform: `translateY(${virtualGridStartRow.value * PRODUCT_LIBRARY_ROW_HEIGHT}px)`,
+    gridTemplateColumns: productGridTemplateColumns.value
+  }
+})
+
+const maybePrefetchMore = () => {
+  if (!virtualGridEnabled.value || autoLoadSuspended.value || !canLoadNextPage()) return
+  const remainingLoaded = products.value.length - virtualGridEndIndex.value
+  const threshold = productGridColumnCount.value * PRODUCT_LIBRARY_PREFETCH_ROWS
+  if (remainingLoaded <= threshold) {
+    triggerLoadMore('auto')
+  }
+}
+
 const fetchProducts = async (reset: boolean) => {
+  const fetchStartedAt = now()
   if (reset) loading.value = true
   else loadingMore.value = true
   if (reset) {
     currentPage.value = 1
+    nextCursor.value = ''
     products.value = []
     hasMore.value = false
     totalCount.value = 0
+    autoLoadSuspended.value = false
   }
 
   try {
     const page = reset ? 1 : currentPage.value + 1
-    const res: any = await getProducts(buildProductLibraryQueryParams(filters.value, {
-      page,
-      size: PAGE_SIZE,
+    const cursorMode = canUseProductLibraryCursor(filters.value)
+    if (!cursorMode) nextCursor.value = ''
+    const commonQuery = {
       keyword: filters.value.productId || filters.value.productName || undefined,
       productIdMode: 'keyword',
-      status: libraryStatus.value ?? undefined,
-      sortBy: (route.query.sortBy as string | undefined) || 'default'
-    }))
+      status: libraryStatus.value ?? undefined
+    } as const
+    const res: any = await getProducts(buildProductLibraryQueryParams(filters.value, cursorMode
+      ? {
+          ...commonQuery,
+          cursor: reset ? undefined : nextCursor.value || undefined,
+          limit: PRODUCT_LIBRARY_REQUEST_BATCH_SIZE
+        }
+      : {
+          ...commonQuery,
+          page,
+          size: PRODUCT_LIBRARY_REQUEST_BATCH_SIZE
+        }))
+    const responseReceivedAt = now()
     const data = res?.data || {}
     const records = Array.isArray(data.records) ? data.records : []
+    const normalizeStartedAt = now()
     const items = records.map((p: any) =>
       normalizeItem({
         ...p,
         productId: String(p.productId || '')
       })
     )
+    const normalizeFinishedAt = now()
     products.value = reset ? items : products.value.concat(items)
     const responsePage = Number(data.page || page || 1)
-    const pageSize = Number(data.size || PAGE_SIZE)
+    const pageSize = Number(data.size || PRODUCT_LIBRARY_REQUEST_BATCH_SIZE)
     const total = Number(data.total || 0)
     currentPage.value = Number.isFinite(responsePage) && responsePage > 0 ? responsePage : page
     totalCount.value = total
-    hasMore.value = total > 0
-      ? products.value.length < total
-      : items.length >= pageSize
+    if (cursorMode && (Object.prototype.hasOwnProperty.call(data, 'hasMore') || Object.prototype.hasOwnProperty.call(data, 'nextCursor'))) {
+      nextCursor.value = String(data.nextCursor || '')
+      hasMore.value = Boolean(data.hasMore || nextCursor.value)
+    } else {
+      nextCursor.value = ''
+      hasMore.value = total > 0
+        ? products.value.length < total
+        : items.length >= pageSize
+    }
+    autoLoadSuspended.value = false
+    const appendFinishedAt = now()
+    void nextTick(() => {
+      updateProductGridViewport()
+      logProductLibraryPerf({
+        reset,
+        requestMs: Math.round(responseReceivedAt - fetchStartedAt),
+        normalizeMs: Math.round(normalizeFinishedAt - normalizeStartedAt),
+        renderMs: Math.round(now() - appendFinishedAt),
+        batchSize: PRODUCT_LIBRARY_REQUEST_BATCH_SIZE,
+        backendLimit: PRODUCT_LIBRARY_BACKEND_MAX_LIMIT,
+        received: records.length,
+        loaded: products.value.length,
+        rendered: visibleProducts.value.length,
+        virtual: virtualGridEnabled.value
+      })
+      maybePrefetchMore()
+    })
   } catch (error: any) {
     notifyApiFailure(error, message, { fallbackMessage: '商品查询失败' })
     if (reset) {
       products.value = []
       currentPage.value = 1
+      nextCursor.value = ''
       hasMore.value = false
       totalCount.value = 0
+      autoLoadSuspended.value = false
+    } else {
+      autoLoadSuspended.value = true
     }
   } finally {
     loading.value = false
     loadingMore.value = false
+    void scheduleLoadMoreObservation()
   }
 }
 
@@ -312,8 +630,57 @@ const refreshProducts = async () => {
   await fetchProducts(true)
 }
 
+const canLoadNextPage = () => hasMore.value && !loading.value && !loadingMore.value
+
+const triggerLoadMore = (source: 'auto' | 'manual') => {
+  if (source === 'auto' && autoLoadSuspended.value) return
+  if (source === 'manual') autoLoadSuspended.value = false
+  if (canLoadNextPage()) void fetchProducts(false)
+}
+
 const loadMore = () => {
-  if (hasMore.value && !loading.value && !loadingMore.value) fetchProducts(false)
+  triggerLoadMore('manual')
+}
+
+const getLoadMoreObserver = () => {
+  if (typeof window === 'undefined' || typeof window.IntersectionObserver === 'undefined') {
+    return null
+  }
+  const nextRoot = productScrollTarget && !isWindowScrollTarget(productScrollTarget)
+    ? productScrollTarget
+    : null
+  if (loadMoreObserver && loadMoreObserverRoot !== nextRoot) {
+    loadMoreObserver.disconnect()
+    loadMoreObserver = null
+  }
+  if (!loadMoreObserver) {
+    loadMoreObserverRoot = nextRoot
+    loadMoreObserver = new window.IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        triggerLoadMore('auto')
+      }
+    }, {
+      root: nextRoot,
+      rootMargin: '1200px 0px',
+      threshold: 0
+    })
+  }
+  return loadMoreObserver
+}
+
+const refreshLoadMoreObserver = () => {
+  syncProductScrollTarget()
+  const observer = getLoadMoreObserver()
+  if (!observer) return
+  observer.disconnect()
+  if (hasMore.value && !autoLoadSuspended.value && loadMoreTrigger.value) {
+    observer.observe(loadMoreTrigger.value)
+  }
+}
+
+const scheduleLoadMoreObservation = async () => {
+  await nextTick()
+  refreshLoadMoreObserver()
 }
 
 const handleFiltersChange = (nextFilters: ProductFilterState) => {
@@ -503,6 +870,11 @@ const loadFilterOptions = async () => {
 }
 
 onMounted(async () => {
+  if (typeof window !== 'undefined') {
+    syncProductScrollTarget()
+    updateProductGridViewport()
+    window.addEventListener('resize', scheduleProductGridViewportUpdate, { passive: true })
+  }
   // 首次进入：把 query.activityId 同步进 filters 作为"硬筛选"。
   // 后端 GET /products 已支持 activityId 过滤，前端不二次判断"是否应用"。
   if (appliedActivityId.value && !filters.value.activityId) {
@@ -529,6 +901,30 @@ watch(
     void refreshProducts()
   }
 )
+
+watch(
+  () => [hasMore.value, products.value.length, autoLoadSuspended.value],
+  () => {
+    scheduleProductGridViewportUpdate()
+    void scheduleLoadMoreObservation()
+  },
+  { flush: 'post' }
+)
+
+onBeforeUnmount(() => {
+  loadMoreObserver?.disconnect()
+  loadMoreObserver = null
+  loadMoreObserverRoot = null
+  if (typeof window !== 'undefined') {
+    removeProductScrollTargetListener()
+    window.removeEventListener('resize', scheduleProductGridViewportUpdate)
+  }
+  productScrollTarget = null
+  if (productGridViewportRaf !== null) {
+    cancelFrame(productGridViewportRaf)
+    productGridViewportRaf = null
+  }
+})
 </script>
 
 <style scoped>
@@ -602,6 +998,27 @@ watch(
   gap: 16px;
   align-items: start;
   justify-items: center;
+}
+
+.product-grid--virtual {
+  position: relative;
+  display: block;
+  overflow: visible;
+}
+
+.product-grid__virtual-window {
+  position: absolute;
+  inset: 0 0 auto;
+  display: grid;
+  gap: 16px;
+  align-items: start;
+  justify-items: center;
+  will-change: transform;
+}
+
+.product-library-scroll-sentinel {
+  width: 100%;
+  height: 1px;
 }
 
 @media (min-width: 1600px) {

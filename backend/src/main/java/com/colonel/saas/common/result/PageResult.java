@@ -47,6 +47,12 @@ public class PageResult<T> implements Serializable {
     /** 当前页的记录列表 */
     private List<T> records;
 
+    /** 无限下拉场景：是否还有下一批。为空表示该响应不使用游标契约。 */
+    private Boolean hasMore;
+
+    /** 无限下拉场景：下一批查询游标。为空表示该响应不使用游标契约。 */
+    private String nextCursor;
+
     /**
      * 从 MyBatis-Plus 的 {@link IPage} 转换为 {@link PageResult}。
      *

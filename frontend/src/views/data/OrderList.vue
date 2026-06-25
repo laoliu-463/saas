@@ -285,6 +285,9 @@ type SummaryRow = {
   productCount?: number | null
   orderCount?: number | null
   orderAmount?: number | string | null
+  refundOrderCount?: number | null
+  refundOrderAmount?: number | string | null
+  refundServiceFee?: number | string | null
   productAverageServiceFeeRate?: number | string | null
   orderAverageServiceFeeRate?: number | string | null
   serviceFeeIncome?: number | string | null
@@ -360,6 +363,9 @@ const emptySummary: SummaryRow = {
   productCount: 0,
   orderCount: 0,
   orderAmount: '0.00',
+  refundOrderCount: 0,
+  refundOrderAmount: '0.00',
+  refundServiceFee: '0.00',
   productAverageServiceFeeRate: '0.00',
   orderAverageServiceFeeRate: '0.00',
   serviceFeeIncome: '0.00',
@@ -412,6 +418,9 @@ const configurableColumns = [
   { title: '出单商品数', key: 'productCount' },
   { title: '订单数', key: 'orderCount' },
   { title: '订单额', key: 'orderAmount' },
+  { title: '退款订单数', key: 'refundOrderCount' },
+  { title: '退款订单额', key: 'refundOrderAmount' },
+  { title: '订单退款服务费', key: 'refundServiceFee' },
   { title: '平均服务费率', key: 'averageRate' },
   { title: '服务费收入', key: 'serviceFeeIncome' },
   { title: '技术服务费', key: 'techServiceFee' },
@@ -491,6 +500,24 @@ const summaryItems = computed(() => {
         { label: '支付：', value: formatEstimateTrack(total.orderAmount) },
         { label: '结算：', value: formatSettleTrack(total.orderAmount) }
       ]
+    },
+    {
+      key: 'refundOrderCount',
+      title: '退款订单数',
+      tooltip: '<b>计算公式</b><br>退款订单数 = order_status=5 或 flow_point=REFUND 的订单数<br><b>数据来源</b>：colonelsettlement_order',
+      lines: [{ label: '', value: formatNumber(total.refundOrderCount) }]
+    },
+    {
+      key: 'refundOrderAmount',
+      title: '退款订单额',
+      tooltip: '<b>计算公式</b><br>退款订单额 = 退款订单原支付金额汇总<br><b>数据来源</b>：colonelsettlement_order.order_amount',
+      lines: [{ label: '', value: formatMoney(total.refundOrderAmount) }]
+    },
+    {
+      key: 'refundServiceFee',
+      title: '订单退款服务费',
+      tooltip: '<b>计算公式</b><br>订单退款服务费 = 退款订单 effective_service_fee，缺失时回退 estimate_service_fee<br><b>数据来源</b>：colonelsettlement_order',
+      lines: [{ label: '', value: formatMoney(total.refundServiceFee) }]
     },
     {
       key: 'rate',
@@ -589,6 +616,33 @@ const columns = computed(() => {
         h('div', `支付：${formatEstimateTrack(row.orderAmount)}`),
         h(NText, { depth: 3 }, { default: () => `结算：${formatSettleTrack(row.orderAmount)}` })
       ])
+    })
+  }
+  if (hasVisibleColumn('refundOrderCount')) {
+    cols.push({
+      title: '退款订单数',
+      key: 'refundOrderCount',
+      width: 140,
+      sorter: (a: SummaryRow, b: SummaryRow) => Number(a.refundOrderCount || 0) - Number(b.refundOrderCount || 0),
+      render: (row: SummaryRow) => formatNumber(row.refundOrderCount)
+    })
+  }
+  if (hasVisibleColumn('refundOrderAmount')) {
+    cols.push({
+      title: '退款订单额',
+      key: 'refundOrderAmount',
+      width: 150,
+      sorter: (a: SummaryRow, b: SummaryRow) => Number(a.refundOrderAmount || 0) - Number(b.refundOrderAmount || 0),
+      render: (row: SummaryRow) => formatMoney(row.refundOrderAmount)
+    })
+  }
+  if (hasVisibleColumn('refundServiceFee')) {
+    cols.push({
+      title: '订单退款服务费',
+      key: 'refundServiceFee',
+      width: 170,
+      sorter: (a: SummaryRow, b: SummaryRow) => Number(a.refundServiceFee || 0) - Number(b.refundServiceFee || 0),
+      render: (row: SummaryRow) => formatMoney(row.refundServiceFee)
     })
   }
   if (hasVisibleColumn('averageRate')) {

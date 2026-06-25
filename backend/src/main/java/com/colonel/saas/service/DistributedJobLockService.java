@@ -5,10 +5,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -32,6 +34,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @Slf4j
 @Service
 public class DistributedJobLockService {
+
+    private static final DefaultRedisScript<Long> RELEASE_WITH_OWNER_SCRIPT = new DefaultRedisScript<>(
+            "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end",
+            Long.class);
 
     /** Redis 操作模板，用于执行 SET NX 分布式锁命令 */
     private final RedisTemplate<String, Object> redisTemplate;
@@ -122,20 +128,50 @@ public class DistributedJobLockService {
     }
 
     /**
-     * 兼容历史调用：旧实现允许传入任意锁值并在 Redis 中存储。
-     *
-     * <p>当前业务不依赖锁值语义，统一改为只按 key/ttl 判断锁状态。
-     * 该重载保留给单测和历史调用，忽略 value 入参。</p>
+     * 宽松模式获取分布式锁，并把调用方 owner 写入锁值，便于手动任务失败时做可观测诊断。
      *
      * @param lockKey 锁键名，不可为空
      * @param ttl     锁过期时间，必须为正数
-     * @param ignored 锁值占位参数（兼容旧签名，当前忽略）
+     * @param owner   锁持有方标识，空值时退化为历史锁值 {@code 1}
+     * @return {@code true} 表示获取成功
+     */
+    public boolean tryAcquire(String lockKey, Duration ttl, String owner) {
+        if (!StringUtils.hasText(lockKey) || ttl == null || ttl.isNegative() || ttl.isZero()) {
+            return false;
+        }
+        String lockOwner = StringUtils.hasText(owner) ? owner : "1";
+        try {
+            Boolean locked = redisTemplate.opsForValue().setIfAbsent(
+                    Objects.requireNonNull(lockKey),
+                    lockOwner,
+                    Objects.requireNonNull(ttl));
+            return Boolean.TRUE.equals(locked);
+        } catch (RedisConnectionFailureException | RedisCommandExecutionException ex) {
+            if (testEnabled) {
+                log.warn("Redis unavailable in test mode when acquiring job lock {}, fallback to local lock: {}",
+                        lockKey, ex.getMessage());
+                return localLocks
+                        .computeIfAbsent(lockKey, ignored -> new AtomicBoolean(false))
+                        .compareAndSet(false, true);
+            }
+            throw ex;
+        }
+    }
+
+    /**
+     * 兼容历史调用：旧实现允许传入任意锁值并在 Redis 中存储。
+     *
+     * <p>当前重载会把 value 作为 owner 写入锁值，便于释放时做 owner 校验。</p>
+     *
+     * @param lockKey 锁键名，不可为空
+     * @param ttl     锁过期时间，必须为正数
+     * @param ignored 锁值占位参数（兼容旧签名，作为 owner 使用）
      * @return {@code true} 表示获取成功
      * @deprecated 请使用 {@link #tryAcquire(String, Duration)}。
      */
     @Deprecated
     public boolean tryAcquire(String lockKey, Duration ttl, Object ignored) {
-        return tryAcquire(lockKey, ttl);
+        return tryAcquire(lockKey, ttl, ignored == null ? null : String.valueOf(ignored));
     }
 
     /**
@@ -174,29 +210,79 @@ public class DistributedJobLockService {
     /**
      * 兼容历史调用：旧实现会携带锁 owner 标识并按 owner 释放。
      *
-     * <p>当前锁服务使用固定 key 语义，owner 无法参与核验，因此本方法仅做兼容，
-     * 等价于 {@link #release(String)}。</p>
+     * <p>当前实现通过 Redis Lua 原子比对 owner 后释放；owner 为空时退化为 {@link #release(String)}。</p>
      *
      * @param lockKey 锁键名
-     * @param ignored 锁值占位参数（当前忽略）
+     * @param ignored 锁值占位参数（作为 owner 使用）
      * @deprecated 请使用 {@link #release(String)}。
      */
     @Deprecated
     public void releaseWithOwner(String lockKey, Object ignored) {
-        release(lockKey);
+        releaseWithOwner(lockKey, ignored == null ? null : String.valueOf(ignored));
     }
 
     /**
-     * 兼容历史实现：返回锁持有方信息，当前实现不持久化 owner，因此返回 {@code null}。
+     * 仅当 Redis 锁值与 owner 一致时释放锁，避免手动同步误删其他任务持有的全局锁。
+     */
+    public void releaseWithOwner(String lockKey, String owner) {
+        if (!StringUtils.hasText(lockKey)) {
+            return;
+        }
+        if (!StringUtils.hasText(owner)) {
+            release(lockKey);
+            return;
+        }
+        AtomicBoolean local = localLocks.get(lockKey);
+        if (local != null) {
+            local.set(false);
+        }
+        try {
+            redisTemplate.execute(RELEASE_WITH_OWNER_SCRIPT, List.of(lockKey), owner);
+        } catch (RedisConnectionFailureException | RedisCommandExecutionException ex) {
+            if (testEnabled) {
+                log.warn("Redis unavailable in test mode when releasing job lock {} by owner {}, local lock already released: {}",
+                        lockKey, owner, ex.getMessage());
+                return;
+            }
+            throw ex;
+        }
+    }
+
+    /**
+     * 返回锁持有方信息。
      */
     public String currentLockValue(String lockKey) {
-        return null;
+        if (!StringUtils.hasText(lockKey)) {
+            return null;
+        }
+        try {
+            Object value = redisTemplate.opsForValue().get(lockKey);
+            return value == null ? null : String.valueOf(value);
+        } catch (RedisConnectionFailureException | RedisCommandExecutionException ex) {
+            if (testEnabled) {
+                AtomicBoolean local = localLocks.get(lockKey);
+                return local != null && local.get() ? "local" : null;
+            }
+            throw ex;
+        }
     }
 
     /**
-     * 兼容历史实现：返回锁 TTL 秒数，当前实现不在应用侧可观测。
+     * 返回锁 TTL 秒数。
      */
     public long currentLockTtlSeconds(String lockKey) {
-        return 0L;
+        if (!StringUtils.hasText(lockKey)) {
+            return 0L;
+        }
+        try {
+            Long ttl = redisTemplate.getExpire(lockKey);
+            return ttl == null ? 0L : ttl;
+        } catch (RedisConnectionFailureException | RedisCommandExecutionException ex) {
+            if (testEnabled) {
+                AtomicBoolean local = localLocks.get(lockKey);
+                return local != null && local.get() ? -1L : 0L;
+            }
+            throw ex;
+        }
     }
 }

@@ -10,6 +10,13 @@
       </template>
     </PageHeader>
 
+    <CurrentActivityBanner
+      v-if="isProductManageProductsMode"
+      :status="currentActivityContext.status"
+      :activity-id="currentActivityContext.activityId"
+      :activity-name="currentActivityContext.activityName"
+    />
+
     <n-alert v-if="hasExplicitActivityRoute" type="info" class="page-alert app-page-alert">
       当前活动按“组长分配审核人、招商审核、手动入库、分配招商、渠道转链”推进。标签「审核入库后可展示」表示审核通过并入库后可在共享商品库列表看到；「审核后不可展示」表示商品自身联盟状态未达推广中等原因导致列表不可见（详见每行说明）。
       <template #action>
@@ -36,7 +43,7 @@
         <div>
           <div class="activity-workbench-title">活动商品推进</div>
           <div class="activity-workbench-subtitle">
-            {{ activityLoadSummary }}；推广中 {{ activityStats.promoting }} 个，待审核 {{ activityStats.pendingReview }} 个，未通过/终止/到期 {{ blockedUpstreamStatusCount }} 个。
+            {{ activityLoadSummary }}；推广中 {{ activityStats.promoting }} 个，待审核 {{ activityStats.pendingReview }} 个，未通过/终止/取消/到期 {{ blockedUpstreamStatusCount }} 个。
           </div>
         </div>
         <div class="activity-workbench-actions">
@@ -224,17 +231,17 @@
 
 <script setup lang="ts">
 import { notifyApiFailure } from '../../utils/requestError'
-import { computed, h, onMounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, h, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { NButton, useMessage } from 'naive-ui'
 import { useRoute, useRouter } from 'vue-router'
 import PageHeader from '../../components/PageHeader.vue'
-import ManualCopyDialog from '../../components/common/ManualCopyDialog.vue'
 import { useAuthStore } from '../../stores/auth'
 import { hasAccess } from '../../constants/rbac'
 import {
   batchPinActivityProducts,
   batchPutActivityProductsIntoLibrary,
   convertActivityProductLink,
+  getActivityProductSyncJob,
   getActivityProducts,
   pinActivityProduct,
   putActivityProductIntoLibrary,
@@ -248,7 +255,6 @@ import { loadAssignedActivityOptions } from './assigned-activity-options'
 import ProductManageFilters from './components/ProductManageFilters.vue'
 import ProductManageTable from './components/ProductManageTable.vue'
 import ProductManageToolbar from './components/ProductManageToolbar.vue'
-import ProductSyncActivityDialog from './components/ProductSyncActivityDialog.vue'
 import ProductStatusTabs from './components/ProductStatusTabs.vue'
 import ProductActionColumn from './components/ProductActionColumn.vue'
 import {
@@ -256,6 +262,7 @@ import {
   allianceStatusToUpstreamStatus,
   buildActivityProductInfoQuery,
   buildProductLibraryQueryParams,
+  canUseProductLibraryCursor,
   DEFAULT_PRODUCT_FILTERS,
   formatGmv30d,
   formatSales30d,
@@ -264,18 +271,10 @@ import {
 import {
   normalizeActivityQueryId,
   isProductManageProductsPath,
+  resolveActivityContextForManageProductsPath,
   shouldLoadActivityProducts
 } from './product-page-data-source'
-import ProductDetail from './ProductDetail.vue'
-import ProductAuditDialog from './components/ProductAuditDialog.vue'
-import ProductAssignDialog from './components/ProductAssignDialog.vue'
-import ProductBatchAssignDialog from './components/ProductBatchAssignDialog.vue'
-import ProductOperationLogDrawer from './components/ProductOperationLogDrawer.vue'
-import ProductEditModal from './components/ProductEditModal.vue'
-import CooperationSettingModal from './components/CooperationSettingModal.vue'
-import SampleSettingModal from './components/SampleSettingModal.vue'
-import BatchSupplementModal from './components/BatchSupplementModal.vue'
-import ExtendPromotionModal from './components/ExtendPromotionModal.vue'
+import CurrentActivityBanner from './components/CurrentActivityBanner.vue'
 import {
   formatLibraryEntrySuccessMessage,
   getLibraryDisplayTags,
@@ -307,6 +306,15 @@ import { resolveProductRelationId } from './product-relation-id'
 import { createEmptyManualCopyDialogState, resolveManualCopyDialogState } from './manual-copy'
 import { useDelayedFlag } from '../../utils/delayedFlag'
 import { tryCopyText } from '../../utils/clipboard'
+import {
+  ACTIVITY_PRODUCT_SYNC_MAX_POLLS,
+  getActivityProductSyncPollDelayMs,
+  POST_SYNC_REFRESH_DELAYS_MS,
+  isActivityProductSyncSuccess,
+  isActivityProductSyncTerminal,
+  shouldPollActivityProductSyncJob,
+  shouldSchedulePostSyncRefresh
+} from './activity-sync'
 import type {
   ProductActionKey,
   ProductManageRow,
@@ -315,6 +323,27 @@ import type {
 
 type ProductAction = 'audit' | 'assign' | 'auditOwner'
 type AssignDialogMode = 'businessOwner' | 'auditOwner'
+type ProductSyncMode = 'FULL' | 'PRIORITY_1000'
+
+interface ProductSyncActivityConfirmPayload {
+  activityId: string
+  syncMode: ProductSyncMode
+  maxRowsPerActivity?: number
+  priorityStatuses?: number[]
+}
+
+const ManualCopyDialog = defineAsyncComponent(() => import('../../components/common/ManualCopyDialog.vue'))
+const ProductSyncActivityDialog = defineAsyncComponent(() => import('./components/ProductSyncActivityDialog.vue'))
+const ProductDetail = defineAsyncComponent(() => import('./ProductDetail.vue'))
+const ProductAuditDialog = defineAsyncComponent(() => import('./components/ProductAuditDialog.vue'))
+const ProductAssignDialog = defineAsyncComponent(() => import('./components/ProductAssignDialog.vue'))
+const ProductBatchAssignDialog = defineAsyncComponent(() => import('./components/ProductBatchAssignDialog.vue'))
+const ProductOperationLogDrawer = defineAsyncComponent(() => import('./components/ProductOperationLogDrawer.vue'))
+const ProductEditModal = defineAsyncComponent(() => import('./components/ProductEditModal.vue'))
+const CooperationSettingModal = defineAsyncComponent(() => import('./components/CooperationSettingModal.vue'))
+const SampleSettingModal = defineAsyncComponent(() => import('./components/SampleSettingModal.vue'))
+const BatchSupplementModal = defineAsyncComponent(() => import('./components/BatchSupplementModal.vue'))
+const ExtendPromotionModal = defineAsyncComponent(() => import('./components/ExtendPromotionModal.vue'))
 
 const PRODUCT_LIST_PAGE_SIZE = 5
 const PRODUCT_TABLE_SCROLL_X = 1968
@@ -327,6 +356,8 @@ const authStore = useAuthStore()
 
 const loading = ref(false)
 const syncing = ref(false)
+const postSyncRefreshTimers: ReturnType<typeof window.setTimeout>[] = []
+let postSyncPollTimer: ReturnType<typeof window.setTimeout> | null = null
 const loadingMore = ref(false)
 const showSlowLoading = ref(false)
 const showInitialLoading = useDelayedFlag(loading, 300)
@@ -398,6 +429,22 @@ const isSharedLibraryMode = computed(() => route.path === '/product')
 const isActivityProductMode = computed(() => hasExplicitActivityRoute.value)
 const isProductManageProductsMode = computed(() => isProductManageProductsPath(route.path))
 const isPickLibraryMode = computed(() => isProductManageProductsMode.value || (!isSharedLibraryMode.value && !isActivityProductMode.value))
+
+// [PRODUCT-FIX-001] 解析当前活动上下文（替代旧 fallback 逻辑）
+const currentActivityContext = computed(() =>
+  resolveActivityContextForManageProductsPath({
+    routePath: route.path,
+    queryActivityId: routeQueryActivityId.value,
+    assignedOptions: assignedActivityOptions.value,
+    isAdmin: Boolean(authStore.isAdmin),
+    isOptionsLoading: assignedActivityOptionsLoading.value
+  })
+)
+const isActivityContextBlocked = computed(
+  () => isProductManageProductsMode.value
+    && currentActivityContext.value.status !== 'ready'
+    && currentActivityContext.value.status !== 'loading'
+)
 const isBizLeader = computed(() => authStore.roleCodes.includes('biz_leader') || authStore.isAdmin)
 const isBizStaffOnly = computed(() => authStore.roleCodes.includes('biz_staff') && !isBizLeader.value)
 const showBatchSelection = computed(() => !isSharedLibraryMode.value)
@@ -451,23 +498,21 @@ const activityStats = computed(() =>
   activityStatusCounts.value || countActivityProductStatusGroups(products.value)
 )
 
-const officialStatusCounts = computed(() => {
-  if (!activityStatusCounts.value) return undefined
-  return {
-    PENDING_REVIEW: activityStatusCounts.value.pendingReview,
-    PROMOTING: activityStatusCounts.value.promoting,
-    REJECTED: activityStatusCounts.value.rejected,
-    TERMINATED: activityStatusCounts.value.terminated,
-    EXPIRED: activityStatusCounts.value.expired
-  }
-})
+const officialStatusCounts = computed(() => ({
+  PENDING_REVIEW: activityStats.value.pendingReview,
+  PROMOTING: activityStats.value.promoting,
+  REJECTED: activityStats.value.rejected,
+  TERMINATED: activityStats.value.terminated,
+  CANCELED: activityStats.value.canceled,
+  EXPIRED: activityStats.value.expired
+}))
 
 const activityLoadSummary = computed(() =>
   formatActivityProductLoadSummary(products.value.length, activityQueryTotal.value)
 )
 
 const blockedUpstreamStatusCount = computed(() =>
-  activityStats.value.rejected + activityStats.value.terminated + activityStats.value.expired
+  activityStats.value.rejected + activityStats.value.terminated + activityStats.value.canceled + activityStats.value.expired
 )
 
 const activityStages = computed(() => buildActivityProductStatusStages(activityStats.value))
@@ -608,18 +653,10 @@ const ensureActivityId = async () => {
     fallbackActivityId.value = selectedRecruitActivityId
     return selectedRecruitActivityId
   }
-  const firstAssignedActivity = assignedActivityOptions.value[0]?.value
-  if (isProductManageProductsMode.value && firstAssignedActivity) {
-    const firstAssignedName = assignedActivityOptions.value[0]?.label.replace(/\s*\([^)]*\)\s*$/, '').trim()
-    fallbackActivityId.value = firstAssignedActivity
-    filters.value = {
-      ...filters.value,
-      recruitActivityId: firstAssignedActivity,
-      activityId: firstAssignedActivity,
-      recruitActivityName: firstAssignedName || null
-    }
-    return firstAssignedActivity
-  }
+  // [PRODUCT-FIX-001] /product/manage/products 路径不再 fallback 到 assigned[0]。
+  // 移除以下整段:const firstAssignedActivity = assignedActivityOptions.value[0]?.value
+  // + if (isProductManageProductsMode.value && firstAssignedActivity) { ... }
+  // 改由 resolveActivityContextForManageProductsPath + CurrentActivityBanner 显式提示。
   if (route.params.activityId) {
     fallbackActivityId.value = ''
     return String(route.params.activityId)
@@ -754,12 +791,22 @@ const fetchProducts = async (reset: boolean, forceRemote = false, overrideActivi
 
     if (isSharedLibraryMode.value) {
       const page = reset ? 1 : Math.floor(products.value.length / PRODUCT_LIST_PAGE_SIZE) + 1
-      const res: any = await getProducts(buildProductLibraryQueryParams(filters.value, {
-        page,
-        size: PRODUCT_LIST_PAGE_SIZE,
+      const useCursor = canUseProductLibraryCursor(filters.value)
+      const baseQuery = {
         keyword: filters.value.productId || filters.value.productName || undefined,
-        productIdMode: 'keyword'
-      }))
+        productIdMode: 'keyword' as const
+      }
+      const res: any = await getProducts(buildProductLibraryQueryParams(filters.value, useCursor ? {
+        ...baseQuery,
+        cursor: reset ? undefined : nextCursor.value,
+        limit: PRODUCT_LIST_PAGE_SIZE
+      } : {
+        ...baseQuery,
+        page,
+        size: PRODUCT_LIST_PAGE_SIZE
+      }), {
+        suppressErrorNotice: syncing.value
+      })
       const data = res?.data || {}
       const records = Array.isArray(data.records) ? data.records : []
       const items = records.map((p: any) => normalizeItem({
@@ -771,8 +818,13 @@ const fetchProducts = async (reset: boolean, forceRemote = false, overrideActivi
       const currentPage = Number(data.page || page || 1)
       const pageSize = Number(data.size || PRODUCT_LIST_PAGE_SIZE)
       const total = Number(data.total || 0)
-      hasMore.value = currentPage * pageSize < total
-      nextCursor.value = ''
+      if (useCursor) {
+        hasMore.value = Boolean(data.hasMore || data.nextCursor)
+        nextCursor.value = String(data.nextCursor || '')
+      } else {
+        hasMore.value = currentPage * pageSize < total
+        nextCursor.value = ''
+      }
       return true
     }
 
@@ -785,6 +837,15 @@ const fetchProducts = async (reset: boolean, forceRemote = false, overrideActivi
 
     const activityId = selectedActivityId || await ensureActivityId()
     if (shouldLoadActivityProducts(route.path, hasExplicitActivityRoute.value) && activityId) {
+      // [PRODUCT-FIX-001] 显式禁止 /product/manage/products 在 forbidden/empty 状态下发请求
+      if (isProductManageProductsMode.value && isActivityContextBlocked.value) {
+        products.value = reset ? [] : products.value
+        activityQueryTotal.value = 0
+        activityStatusCounts.value = null
+        hasMore.value = false
+        nextCursor.value = ''
+        return true
+      }
       const res: any = await getActivityProducts(activityId, buildActivityProductsQuery(reset, forceRemote))
       applyActivityProductsPage(res?.data || {}, reset)
       return true
@@ -857,6 +918,7 @@ const officialStatusToAllianceStatus: Record<ProductOfficialStatus, string> = {
   PROMOTING: 'promoting',
   REJECTED: 'rejected',
   TERMINATED: 'terminated',
+  CANCELED: 'canceled',
   EXPIRED: 'expired'
 }
 
@@ -865,6 +927,7 @@ const officialStatusToActivityStage: Record<ProductOfficialStatus, ActivityProdu
   PROMOTING: 'promoting',
   REJECTED: 'rejected',
   TERMINATED: 'terminated',
+  CANCELED: 'canceled',
   EXPIRED: 'expired'
 }
 
@@ -966,6 +1029,85 @@ const refreshProducts = async () => {
   await fetchProducts(true)
 }
 
+const clearPostSyncRefreshTimers = () => {
+  postSyncRefreshTimers.splice(0).forEach((timer) => window.clearTimeout(timer))
+  if (postSyncPollTimer) {
+    window.clearTimeout(postSyncPollTimer)
+    postSyncPollTimer = null
+  }
+}
+
+const refreshProductsAfterActivitySync = async (activityId: string) => {
+  const selectedActivityId = normalizeText(activityId)
+  if (!selectedActivityId) return
+  const currentFallbackActivityId = normalizeText(fallbackActivityId.value)
+  if (currentFallbackActivityId && currentFallbackActivityId !== selectedActivityId) return
+  filters.value = {
+    ...filters.value,
+    recruitActivityId: selectedActivityId,
+    activityId: selectedActivityId
+  }
+  fallbackActivityId.value = selectedActivityId
+  await fetchProducts(true, false, selectedActivityId)
+}
+
+const schedulePostSyncRefreshes = (activityId: string, syncStatus?: string) => {
+  clearPostSyncRefreshTimers()
+  if (!shouldSchedulePostSyncRefresh(syncStatus)) return
+  POST_SYNC_REFRESH_DELAYS_MS.forEach((delay) => {
+    const timer = window.setTimeout(() => {
+      void refreshProductsAfterActivitySync(activityId)
+    }, delay)
+    postSyncRefreshTimers.push(timer)
+  })
+}
+
+const pollActivityProductSyncJob = async (
+  activityId: string,
+  jobId: string,
+  attempt = 0
+) => {
+  if (normalizeText(fallbackActivityId.value) !== activityId) return
+  try {
+    const res: any = await getActivityProductSyncJob(activityId, jobId, {
+      suppressErrorNotice: true
+    })
+    const data = res?.data || {}
+    const syncStatus = String(data.syncStatus || '')
+    if (isActivityProductSyncSuccess(syncStatus)) {
+      message.success('商品同步完成，已更新商品列表')
+      await refreshProductsAfterActivitySync(activityId)
+      return
+    }
+    if (isActivityProductSyncTerminal(syncStatus)) {
+      const warning = syncStatus === 'PARTIAL'
+        ? '商品同步部分完成，已刷新当前可用数据'
+        : '商品同步失败，请稍后重试或查看后台日志'
+      message.warning(warning)
+      await refreshProductsAfterActivitySync(activityId)
+      return
+    }
+    if (attempt >= ACTIVITY_PRODUCT_SYNC_MAX_POLLS) {
+      message.warning('商品同步仍在后台执行，可稍后手动刷新列表')
+      return
+    }
+  } catch (_error: any) {
+    if (attempt >= ACTIVITY_PRODUCT_SYNC_MAX_POLLS) {
+      message.warning('暂时无法确认商品同步结果，请稍后手动刷新列表')
+      return
+    }
+  }
+  postSyncPollTimer = window.setTimeout(() => {
+    postSyncPollTimer = null
+    void pollActivityProductSyncJob(activityId, jobId, attempt + 1)
+  }, getActivityProductSyncPollDelayMs(attempt))
+}
+
+const scheduleActivityProductSyncJobPolling = (activityId: string, jobId: string) => {
+  clearPostSyncRefreshTimers()
+  void pollActivityProductSyncJob(activityId, jobId)
+}
+
 const openSyncActivityProductsDialog = () => {
   dialogs.value.syncActivityProducts = true
   if (!assignedActivityOptions.value.length && !assignedActivityOptionsLoading.value) {
@@ -973,8 +1115,15 @@ const openSyncActivityProductsDialog = () => {
   }
 }
 
-const syncActivityProductsFromRemote = async (activityId: string) => {
-  const selectedActivityId = normalizeText(activityId)
+const syncActivityProductsFromRemote = async (payload: ProductSyncActivityConfirmPayload | string) => {
+  const selectedActivityId = normalizeText(typeof payload === 'string' ? payload : payload.activityId)
+  const syncRequest = typeof payload === 'string'
+    ? undefined
+    : {
+        syncMode: payload.syncMode,
+        maxRowsPerActivity: payload.maxRowsPerActivity,
+        priorityStatuses: payload.priorityStatuses
+      }
   if (!selectedActivityId) {
     message.warning('缺少活动 ID，暂时无法同步活动商品')
     return
@@ -997,14 +1146,37 @@ const syncActivityProductsFromRemote = async (activityId: string) => {
   clearBatchSelection()
   syncing.value = true
   try {
-    const res: any = await syncActivityProducts(selectedActivityId)
+    const res: any = await syncActivityProducts(selectedActivityId, syncRequest, {
+      suppressErrorNotice: true
+    })
     const data = res?.data || {}
+    const jobId = normalizeText(data.jobId)
+    const syncStatus = normalizeText(data.syncStatus)
     dialogs.value.syncActivityProducts = false
-    if (data.syncStatus === 'RUNNING') {
-      message.info(data.message || '商品同步已在后台执行，请稍后刷新列表')
-    } else {
-      message.success(data.message || '商品同步已转入后台执行，请稍后刷新列表查看结果')
+    if (jobId && shouldPollActivityProductSyncJob(syncStatus)) {
+      const pendingMessage = syncStatus === 'QUEUED'
+        ? '商品同步已排队，开始执行后会自动刷新列表'
+        : '商品同步已提交，完成后自动刷新列表'
+      message.info(pendingMessage)
+      scheduleActivityProductSyncJobPolling(selectedActivityId, jobId)
+      return
     }
+    if (syncStatus === 'LOCKED') {
+      message.warning(normalizeText(data.message) || '后台商品同步正在执行，请稍后重试')
+      return
+    }
+    if (syncStatus === 'QUEUE_FULL') {
+      message.warning(normalizeText(data.message) || '活动商品同步队列已满，请稍后重试')
+      return
+    }
+    if (isActivityProductSyncSuccess(syncStatus)) {
+      message.success('商品同步完成，已更新商品列表')
+      await refreshProductsAfterActivitySync(selectedActivityId)
+      return
+    }
+    message.success('商品同步已提交，正在自动刷新列表')
+    await refreshProductsAfterActivitySync(selectedActivityId)
+    schedulePostSyncRefreshes(selectedActivityId, syncStatus)
   } catch (error: any) {
     notifyApiFailure(error, message, { fallbackMessage: '发起商品同步失败' })
   } finally {
@@ -1703,6 +1875,10 @@ onMounted(async () => {
   }
 })
 
+onBeforeUnmount(() => {
+  clearPostSyncRefreshTimers()
+})
+
 watch(
   () => [route.path, route.params.activityId, route.query.activityId, route.query.recruitActivityId],
   async () => {
@@ -1767,7 +1943,7 @@ watch(
 
 .activity-stage-row {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 10px;
 }
 

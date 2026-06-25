@@ -227,6 +227,25 @@
         ></div>
       </div>
 
+      <!-- 退款指标：按当前看板时间轨展示退款订单、退款服务费与退款订单额 -->
+      <div class="refund-metrics-section app-section-panel" data-testid="dashboard-refund-metrics">
+        <div class="refund-metrics-header">
+          <h3 class="section-title">退款指标</h3>
+          <span class="refund-metrics-scope">{{ activeTrackBadge }}</span>
+        </div>
+        <div class="refund-metric-grid">
+          <div
+            v-for="item in refundMetricCards"
+            :key="item.key"
+            class="refund-metric-item"
+          >
+            <span class="refund-metric-label">{{ item.label }}</span>
+            <strong class="refund-metric-value">{{ item.value }}</strong>
+            <span class="refund-metric-hint">{{ item.hint }}</span>
+          </div>
+        </div>
+      </div>
+
       <!-- 业绩域双轨汇总：展示 performance_records 表的预估轨和结算轨订单数及订单额 -->
       <div v-if="performanceSummary" class="breakdown-section app-section-panel" data-testid="dashboard-performance-summary">
         <h3 class="section-title">业绩双轨汇总</h3>
@@ -252,16 +271,39 @@
 
       <!-- 经营指标矩阵：按业务要求同时展示成交/预估轨与结算轨 -->
       <div class="business-metrics-section app-section-panel" data-testid="dashboard-business-metrics">
-        <h3 class="section-title">经营指标</h3>
-        <div class="business-metrics-grid">
+        <div class="business-metrics-heading">
+          <h3 class="section-title">经营指标</h3>
+          <span class="business-metrics-caption">成交/预估 · 结算 · 差额</span>
+        </div>
+        <div class="business-metrics-table" role="table" aria-label="经营指标双轨对比">
+          <div class="business-metrics-header" role="row">
+            <span>指标</span>
+            <span>成交/预估</span>
+            <span>结算</span>
+            <span>差额</span>
+          </div>
           <div
             v-for="row in businessMetricRows"
             :key="row.label"
             class="business-metric-row"
+            role="row"
           >
-            <span class="business-metric-label">{{ row.label }}</span>
-            <span class="business-metric-value primary">{{ row.primaryLabel }}：{{ row.primaryValue }}</span>
-            <span class="business-metric-value">结算：{{ row.settleValue }}</span>
+            <span class="business-metric-name" role="cell">
+              <span class="business-metric-group">{{ row.group }}</span>
+              <strong>{{ row.label }}</strong>
+            </span>
+            <span class="business-metric-cell primary" role="cell">
+              <small>{{ row.primaryLabel }}</small>
+              <strong>{{ row.primaryValue }}</strong>
+            </span>
+            <span class="business-metric-cell" role="cell">
+              <small>结算</small>
+              <strong>{{ row.settleValue }}</strong>
+            </span>
+            <span class="business-metric-cell delta" role="cell">
+              <small>结算 - {{ row.primaryLabel }}</small>
+              <strong>{{ row.deltaValue }}</strong>
+            </span>
           </div>
         </div>
       </div>
@@ -474,8 +516,6 @@ const formatAmount = (value: number) => toNumber(value).toFixed(2)
 
 const formatMoney = (value: number) => `¥${formatAmount(value)}`
 
-const metricAmount = (track: Record<string, any>, key: string) => formatMoney(toNumber(track?.[key]))
-
 const firstMetricNumber = (track: Record<string, any>, keys: string[]) => {
   for (const key of keys) {
     const value = track?.[key]
@@ -486,15 +526,49 @@ const firstMetricNumber = (track: Record<string, any>, keys: string[]) => {
   return 0
 }
 
-const metricAmountAny = (track: Record<string, any>, keys: string[]) => formatMoney(firstMetricNumber(track, keys))
+const formatCount = (value: unknown) => `${Math.trunc(toNumber(value))} 单`
 
-const serviceFeeExpense = (track: Record<string, any>) => {
+type BusinessMetricKind = 'count' | 'money'
+
+const serviceFeeExpenseAmount = (track: Record<string, any>) => {
   // 直接展示后端返回的服务费支出字段，不使用前端反推公式
   const explicit = track?.serviceFeeExpense
   if (explicit !== undefined && explicit !== null && explicit !== '') {
-    return formatMoney(toNumber(explicit))
+    return toNumber(explicit)
   }
-  return formatMoney(0)
+  return 0
+}
+
+const formatBusinessMetricValue = (value: number, kind: BusinessMetricKind) => (
+  kind === 'count' ? formatCount(value) : formatMoney(value)
+)
+
+const formatBusinessMetricDelta = (primary: number, settle: number, kind: BusinessMetricKind) => {
+  const delta = settle - primary
+  if (kind === 'count') {
+    if (delta === 0) return '0 单'
+    return `${delta > 0 ? '+' : '-'}${Math.trunc(Math.abs(delta))} 单`
+  }
+  if (delta === 0) return '¥0.00'
+  return `${delta > 0 ? '+' : '-'}¥${formatAmount(Math.abs(delta))}`
+}
+
+const businessMetricRow = (
+  group: string,
+  label: string,
+  primaryLabel: string,
+  primary: number,
+  settle: number,
+  kind: BusinessMetricKind
+) => {
+  return {
+    group,
+    label,
+    primaryLabel,
+    primaryValue: formatBusinessMetricValue(primary, kind),
+    settleValue: formatBusinessMetricValue(settle, kind),
+    deltaValue: formatBusinessMetricDelta(primary, settle, kind)
+  }
 }
 
 const businessMetricRows = computed(() => {
@@ -504,59 +578,40 @@ const businessMetricRows = computed(() => {
   const settleOrders = Math.trunc(toNumber(settleTrack?.totalOrders ?? settleTrack?.todayOrderCount))
 
   return [
+    businessMetricRow('订单', '总订单数', '成交', createOrders, settleOrders, 'count'),
+    businessMetricRow('订单', '订单额', '成交', toNumber(createTrack?.totalAmount ?? createTrack?.todayGmv), toNumber(settleTrack?.totalAmount ?? settleTrack?.todayGmv), 'money'),
+    businessMetricRow('服务费', '服务费收入', '预估', toNumber(createTrack?.serviceFeeIncome), toNumber(settleTrack?.serviceFeeIncome), 'money'),
+    businessMetricRow('服务费', '技术服务费', '预估', toNumber(createTrack?.techServiceFee), toNumber(settleTrack?.techServiceFee), 'money'),
+    businessMetricRow('服务费', '服务费支出', '预估', serviceFeeExpenseAmount(createTrack), serviceFeeExpenseAmount(settleTrack), 'money'),
+    businessMetricRow('服务费', '服务费收益', '预估', firstMetricNumber(createTrack, ['serviceFeeProfit', 'serviceFee']), firstMetricNumber(settleTrack, ['serviceFeeProfit', 'serviceFee']), 'money'),
+    businessMetricRow('提成', '招商提成', '预估', toNumber(createTrack?.bizCommission), toNumber(settleTrack?.bizCommission), 'money'),
+    businessMetricRow('提成', '渠道提成', '预估', toNumber(createTrack?.channelCommission), toNumber(settleTrack?.channelCommission), 'money'),
+    businessMetricRow('利润', '毛利', '预估', toNumber(createTrack?.grossProfit), toNumber(settleTrack?.grossProfit), 'money')
+  ]
+})
+
+const refundMetricCards = computed(() => {
+  const trackHint = timeField.value === 'createTime'
+    ? '按订单创建时间轨统计'
+    : '按订单结算时间轨统计'
+  return [
     {
-      label: '总订单数',
-      primaryLabel: '成交',
-      primaryValue: String(createOrders),
-      settleValue: String(settleOrders)
+      key: 'refundOrderCount',
+      label: '退款订单数',
+      value: formatCount(metrics.value?.refundOrderCount),
+      hint: trackHint
     },
     {
-      label: '订单额',
-      primaryLabel: '成交',
-      primaryValue: formatMoney(toNumber(createTrack?.totalAmount ?? createTrack?.todayGmv)),
-      settleValue: formatMoney(toNumber(settleTrack?.totalAmount ?? settleTrack?.todayGmv))
+      key: 'refundServiceFee',
+      label: '订单退款服务费',
+      value: formatMoney(toNumber(metrics.value?.refundServiceFee)),
+      hint: '按退款订单服务费字段汇总'
     },
     {
-      label: '服务费收入',
-      primaryLabel: '预估',
-      primaryValue: metricAmount(createTrack, 'serviceFeeIncome'),
-      settleValue: metricAmount(settleTrack, 'serviceFeeIncome')
-    },
-    {
-      label: '技术服务费',
-      primaryLabel: '预估',
-      primaryValue: metricAmount(createTrack, 'techServiceFee'),
-      settleValue: metricAmount(settleTrack, 'techServiceFee')
-    },
-    {
-      label: '服务费支出',
-      primaryLabel: '预估',
-      primaryValue: serviceFeeExpense(createTrack),
-      settleValue: serviceFeeExpense(settleTrack)
-    },
-    {
-      label: '服务费收益',
-      primaryLabel: '预估',
-      primaryValue: metricAmountAny(createTrack, ['serviceFeeProfit', 'serviceFee']),
-      settleValue: metricAmountAny(settleTrack, ['serviceFeeProfit', 'serviceFee'])
-    },
-    {
-      label: '招商提成',
-      primaryLabel: '预估',
-      primaryValue: metricAmount(createTrack, 'bizCommission'),
-      settleValue: metricAmount(settleTrack, 'bizCommission')
-    },
-    {
-      label: '渠道提成',
-      primaryLabel: '预估',
-      primaryValue: metricAmount(createTrack, 'channelCommission'),
-      settleValue: metricAmount(settleTrack, 'channelCommission')
-    },
-    {
-      label: '毛利',
-      primaryLabel: '预估',
-      primaryValue: metricAmount(createTrack, 'grossProfit'),
-      settleValue: metricAmount(settleTrack, 'grossProfit')
+      key: 'refundOrderAmount',
+      label: '退款订单额',
+      value: formatMoney(toNumber(metrics.value?.refundOrderAmount)),
+      hint: '按退款订单金额字段汇总'
     }
   ]
 })
@@ -1167,40 +1222,160 @@ watch(timeField, () => {
   margin-bottom: var(--content-gap);
 }
 
-.business-metrics-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 10px;
+.refund-metrics-section {
+  margin-bottom: var(--content-gap);
 }
 
-.business-metric-row {
+.refund-metrics-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.refund-metrics-scope {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.refund-metric-grid {
   display: grid;
-  grid-template-columns: minmax(84px, 1fr) auto auto;
-  gap: 10px;
-  align-items: center;
-  min-height: 44px;
-  padding: 9px 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.refund-metric-item {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
   background: var(--bg-page);
 }
 
-.business-metric-label {
-  min-width: 0;
-  font-size: var(--text-sm);
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.business-metric-value {
-  white-space: nowrap;
+.refund-metric-label {
   font-size: var(--text-sm);
   color: var(--text-secondary);
 }
 
-.business-metric-value.primary {
-  color: var(--color-primary);
+.refund-metric-value {
+  font-size: var(--text-xl);
+  line-height: 1.2;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.refund-metric-hint {
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.business-metrics-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.business-metrics-caption {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.business-metrics-table {
+  display: grid;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-page);
+}
+
+.business-metrics-header,
+.business-metric-row {
+  display: grid;
+  grid-template-columns: minmax(128px, 1.1fr) repeat(3, minmax(104px, 1fr));
+  gap: 12px;
+  align-items: center;
+}
+
+.business-metrics-header {
+  padding: 10px 14px;
+  font-size: var(--text-xs);
   font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.business-metrics-header span:not(:first-child) {
+  text-align: right;
+}
+
+.business-metric-row {
+  min-height: 58px;
+  padding: 11px 14px;
+}
+
+.business-metric-row + .business-metric-row {
+  border-top: 1px solid var(--border-color);
+}
+
+.business-metric-name {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.business-metric-name strong {
+  min-width: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.business-metric-group {
+  width: fit-content;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  line-height: 1.3;
+  color: var(--text-secondary);
+  background: var(--bg-surface);
+}
+
+.business-metric-cell {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  text-align: right;
+}
+
+.business-metric-cell small {
+  font-size: 11px;
+  line-height: 1.3;
+  color: var(--text-muted);
+}
+
+.business-metric-cell strong {
+  min-width: 0;
+  font-size: var(--text-sm);
+  line-height: 1.35;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.business-metric-cell.primary strong {
+  color: var(--color-primary);
+}
+
+.business-metric-cell.delta strong {
+  color: var(--text-secondary);
 }
 
 .section-title {
@@ -1297,9 +1472,36 @@ watch(timeField, () => {
     grid-template-columns: 1fr;
   }
 
+  .refund-metrics-header {
+    display: grid;
+  }
+
+  .refund-metric-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .business-metrics-heading {
+    display: grid;
+  }
+
+  .business-metrics-header {
+    display: none;
+  }
+
   .business-metric-row {
     grid-template-columns: 1fr;
-    align-items: flex-start;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .business-metric-cell {
+    grid-template-columns: minmax(80px, 1fr) auto;
+    align-items: baseline;
+    text-align: left;
+  }
+
+  .business-metric-cell strong {
+    text-align: right;
   }
 
   .trend-chart {

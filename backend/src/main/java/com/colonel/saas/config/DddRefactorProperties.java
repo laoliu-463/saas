@@ -24,6 +24,8 @@ import org.springframework.stereotype.Component;
  *       enabled: false
  *     product-facade:
  *       enabled: false
+ *     product-display-policy:
+ *       enabled: false
  *     talent-facade:
  *       enabled: false
  *     sample-application:
@@ -65,6 +67,9 @@ public class DddRefactorProperties {
     private Switch configFacade = new Switch();
 
     private Switch productFacade = new Switch();
+
+    /** 商品展示 / 活动商品查询规则灰度旁路（默认 OFF，关闭时保留 Legacy service 分支）。 */
+    private Switch productDisplayPolicy = new Switch();
 
     private Switch talentFacade = new Switch();
 

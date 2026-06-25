@@ -13,6 +13,7 @@ describe('ProductStatusTabs', () => {
           PROMOTING: 726,
           REJECTED: 486,
           TERMINATED: 46,
+          CANCELED: 4,
           EXPIRED: 6
         }
       }
@@ -22,6 +23,7 @@ describe('ProductStatusTabs', () => {
     expect(wrapper.get('[data-testid="official-status-PROMOTING"]').text()).toContain('99+')
     expect(wrapper.get('[data-testid="official-status-REJECTED"]').text()).toContain('99+')
     expect(wrapper.get('[data-testid="official-status-TERMINATED"]').text()).toContain('46')
+    expect(wrapper.get('[data-testid="official-status-CANCELED"]').text()).toContain('4')
     expect(wrapper.get('[data-testid="official-status-EXPIRED"]').text()).toContain('6')
   })
 

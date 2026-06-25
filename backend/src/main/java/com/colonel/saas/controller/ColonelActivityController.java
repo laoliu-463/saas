@@ -26,6 +26,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import org.springframework.util.StringUtils;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -160,6 +161,7 @@ public class ColonelActivityController extends BaseController {
     public ApiResult<Map<String, Object>> syncProducts(
             @Parameter(description = "团长活动 ID。") @PathVariable("activityId") String activityId,
             @Parameter(description = "抖音应用 appId。") @RequestParam(name = "appId", required = false) String appId,
+            @RequestBody(required = false) ProductSyncRequest request,
             @RequestAttribute(value = "userId", required = false) UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
@@ -168,14 +170,90 @@ public class ColonelActivityController extends BaseController {
                 userId,
                 deptId,
                 activityAccessService.normalizeRoles(roleCodes));
+        ProductActivityManualSyncService.SyncOptions syncOptions = toSyncOptions(request);
         ProductActivityManualSyncService.SyncTriggerResult triggerResult =
-                productActivityManualSyncService.trigger(activityId, appId);
+                syncOptions == null
+                        ? productActivityManualSyncService.trigger(activityId, appId, userId)
+                        : productActivityManualSyncService.trigger(activityId, appId, userId, syncOptions);
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("activityId", triggerResult.activityId());
+        payload.put("jobId", triggerResult.jobId());
         payload.put("syncStatus", triggerResult.syncStatus());
-        payload.put("message", "RUNNING".equals(triggerResult.syncStatus())
-                ? "商品同步已在后台执行，请稍后刷新列表"
-                : "商品同步已转入后台执行");
+        if (syncOptions != null) {
+            payload.put("syncMode", syncOptions.syncMode());
+            payload.put("maxRowsPerActivity", syncOptions.maxRowsPerActivity());
+            payload.put("priorityStatuses", syncOptions.priorityStatuses());
+        }
+        String message;
+        if ("QUEUED".equals(triggerResult.syncStatus())) {
+            message = "商品同步已排队，系统将在当前同步资源可用后自动执行";
+        } else if ("QUEUE_FULL".equals(triggerResult.syncStatus())) {
+            message = StringUtils.hasText(triggerResult.message())
+                    ? triggerResult.message()
+                    : "活动商品同步队列已满，请稍后重试";
+        } else if ("RUNNING".equals(triggerResult.syncStatus())) {
+            message = "商品同步已在后台执行，请稍后刷新列表";
+        } else if ("LOCKED".equals(triggerResult.syncStatus())) {
+            message = StringUtils.hasText(triggerResult.message())
+                    ? triggerResult.message()
+                    : "后台商品同步正在执行，请稍后重试";
+            payload.put("lockKey", triggerResult.lockKey());
+            payload.put("lockOwner", triggerResult.lockOwner());
+            payload.put("lockTtlSeconds", triggerResult.lockTtlSeconds());
+        } else {
+            message = "商品同步已转入后台执行";
+        }
+        payload.put("message", message);
+        return ok(payload);
+    }
+
+    private ProductActivityManualSyncService.SyncOptions toSyncOptions(ProductSyncRequest request) {
+        if (request == null) {
+            return null;
+        }
+        boolean hasSyncMode = StringUtils.hasText(request.getSyncMode());
+        boolean hasMaxRows = request.getMaxRowsPerActivity() != null;
+        boolean hasPriorityStatuses = request.getPriorityStatuses() != null && !request.getPriorityStatuses().isEmpty();
+        if (!hasSyncMode && !hasMaxRows && !hasPriorityStatuses) {
+            return null;
+        }
+        return new ProductActivityManualSyncService.SyncOptions(
+                request.getSyncMode(),
+                request.getMaxRowsPerActivity(),
+                request.getPriorityStatuses());
+    }
+
+    @Operation(summary = "查询活动商品同步任务状态", description = "查询一键同步商品后台任务状态，前端用于在 SUCCESS/PARTIAL/FAILED 终态后刷新活动商品列表。")
+    @GetMapping("/{activityId}/products/sync-jobs/{jobId}")
+    public ApiResult<Map<String, Object>> getProductSyncJob(
+            @Parameter(description = "团长活动 ID。") @PathVariable("activityId") String activityId,
+            @Parameter(description = "同步任务 ID。") @PathVariable("jobId") String jobId,
+            @RequestAttribute(value = "userId", required = false) UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
+            @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
+        activityAccessService.assertActivityReadable(
+                activityId,
+                userId,
+                deptId,
+                activityAccessService.normalizeRoles(roleCodes));
+        ProductActivityManualSyncService.SyncJobStatus status =
+                productActivityManualSyncService.getJobStatus(jobId);
+        if (!String.valueOf(activityId).trim().equals(status.activityId())) {
+            throw BusinessException.notFound("未找到对应的活动商品同步任务");
+        }
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("activityId", status.activityId());
+        payload.put("jobId", status.jobId());
+        payload.put("syncStatus", status.syncStatus());
+        payload.put("fetchedRows", status.fetchedRows());
+        payload.put("distinctProductIds", status.distinctProductIds());
+        payload.put("createdCount", status.createdCount());
+        payload.put("updatedCount", status.updatedCount());
+        payload.put("skippedCount", status.skippedCount());
+        payload.put("failedCount", status.failedCount());
+        payload.put("startedAt", status.startedAt());
+        payload.put("finishedAt", status.finishedAt());
+        payload.put("errorMessage", status.errorMessage());
         return ok(payload);
     }
 
@@ -402,6 +480,36 @@ public class ColonelActivityController extends BaseController {
 
         public void setAssigneeId(UUID assigneeId) {
             this.assigneeId = assigneeId;
+        }
+    }
+
+    public static class ProductSyncRequest {
+        private String syncMode;
+        private Integer maxRowsPerActivity;
+        private List<Integer> priorityStatuses;
+
+        public String getSyncMode() {
+            return syncMode;
+        }
+
+        public void setSyncMode(String syncMode) {
+            this.syncMode = syncMode;
+        }
+
+        public Integer getMaxRowsPerActivity() {
+            return maxRowsPerActivity;
+        }
+
+        public void setMaxRowsPerActivity(Integer maxRowsPerActivity) {
+            this.maxRowsPerActivity = maxRowsPerActivity;
+        }
+
+        public List<Integer> getPriorityStatuses() {
+            return priorityStatuses;
+        }
+
+        public void setPriorityStatuses(List<Integer> priorityStatuses) {
+            this.priorityStatuses = priorityStatuses;
         }
     }
 }

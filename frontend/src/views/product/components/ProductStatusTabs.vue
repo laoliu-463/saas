@@ -13,7 +13,6 @@
       >
         {{ option.label }}
         <span
-          v-if="statusCounts"
           class="status-count"
           :data-testid="`official-status-count-${option.value}`"
         >
@@ -35,7 +34,8 @@ withDefaults(defineProps<{
   officialStatus: ProductOfficialStatus | null
   statusCounts?: Partial<Record<ProductOfficialStatus, number>>
 }>(), {
-  officialStatus: null
+  officialStatus: null,
+  statusCounts: () => ({})
 })
 
 defineEmits<{

@@ -130,15 +130,13 @@ describe('product filters', () => {
     expect(params.productId).toBe('9001')
   })
 
-  it('buildProductLibraryQueryParams forwards partner scope and sort', () => {
+  it('buildProductLibraryQueryParams forwards partner scope without client sort', () => {
     expect(buildProductLibraryQueryParams(DEFAULT_PRODUCT_FILTERS(), {
       partnerId: '7351155267604218149',
-      partnerType: 'COLONEL',
-      sortBy: 'latest'
+      partnerType: 'COLONEL'
     })).toMatchObject({
       partnerId: '7351155267604218149',
-      partnerType: 'COLONEL',
-      sortBy: 'latest'
+      partnerType: 'COLONEL'
     })
   })
 
@@ -253,9 +251,10 @@ describe('product filters', () => {
     expect(matchAllianceStatus({ statusText: '合作已过期' }, 'expired')).toBe(true)
   })
 
-  it('matchAllianceStatus does not treat unsupported status 4 as terminated', () => {
+  it('matchAllianceStatus treats status 4 as canceled instead of terminated', () => {
     expect(matchAllianceStatus({ status: 4, statusText: '合作前取消' }, 'terminated')).toBe(false)
     expect(matchAllianceStatus({ status: 4, statusText: '合作前取消' }, 'pending_audit')).toBe(false)
+    expect(matchAllianceStatus({ status: 4, statusText: '合作前取消' }, 'canceled')).toBe(true)
   })
 
   it('applyProductFilters filters items correctly', () => {

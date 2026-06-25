@@ -87,6 +87,9 @@ const summaryPayload = {
     productCount: 262,
     orderCount: 4209,
     orderAmount: 81185.26,
+    refundOrderCount: 17,
+    refundOrderAmount: 3200.5,
+    refundServiceFee: 88.6,
     productAverageServiceFeeRate: 1.64,
     orderAverageServiceFeeRate: 1.49,
     serviceFeeIncome: 1330.32,
@@ -103,6 +106,9 @@ const summaryPayload = {
       productCount: 262,
       orderCount: 4209,
       orderAmount: 81185.26,
+      refundOrderCount: 17,
+      refundOrderAmount: 3200.5,
+      refundServiceFee: 88.6,
       productAverageServiceFeeRate: 1.64,
       orderAverageServiceFeeRate: 1.49,
       serviceFeeIncome: 1330.32,
@@ -220,6 +226,12 @@ describe('OrderList 订单汇总页面', () => {
     expect(wrapper.text()).toContain('2026-05-25')
     expect(wrapper.text()).toContain('毛利')
     expect(wrapper.text()).toContain('¥910.65')
+    expect(wrapper.text()).toContain('退款订单数')
+    expect(wrapper.text()).toContain('17')
+    expect(wrapper.text()).toContain('订单退款服务费')
+    expect(wrapper.text()).toContain('¥88.60')
+    expect(wrapper.text()).toContain('退款订单额')
+    expect(wrapper.text()).toContain('¥3200.50')
   })
 
   it('renders create-time settlement track as explicit zero instead of reusing pay amount', async () => {

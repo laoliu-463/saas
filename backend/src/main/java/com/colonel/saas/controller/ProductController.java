@@ -118,7 +118,7 @@ public class ProductController extends BaseController {
      * 联盟推广状态、标签、合作方、价格区间、招商活动等多维度组合筛选。
      *
      * @param page              页码，从 1 开始
-     * @param size              每页条数，上限 100
+     * @param size              每页条数。商品库主列表支持滚动批量加载，不再限制为 100
      * @param status            商品状态（可选），具体取值含义请联系产品
      * @param keyword           商品关键字，可匹配商品名称、商品 ID、店铺（可选）
      * @param shopKeyword       店铺/合作方名称关键字（可选）
@@ -130,7 +130,7 @@ public class ProductController extends BaseController {
      * @param supportsAds       是否支持投流：1/0（可选）
      * @param salesRange        近 30 天销量区间：lt100/100_999/1k_29k/gte30000（可选）
      * @param promotionLink     转链状态：PENDING/LINKED/FAILED（可选）
-     * @param allianceStatus    联盟推广状态：promoting/pending_audit/rejected/terminated/expired（可选）
+     * @param allianceStatus    联盟推广状态：promoting/pending_audit/rejected/terminated/canceled/expired（可选）
      * @param commission        佣金区间：gt20/10_20/lt10（可选）
      * @param hasSample         是否有寄样规则：1/0（可选）
      * @param assignee          负责人过滤：assigned/unassigned（可选）
@@ -138,7 +138,7 @@ public class ProductController extends BaseController {
      * @param decision          推进判断：MAIN/SECONDARY/PAUSE/DROP/NONE（可选）
      * @param partnerId         合作方 ID；商家型为 shop_id，团长型为 colonel_buyin_id（可选）
      * @param partnerType       合作方类型：MERCHANT/COLONEL（可选）
-     * @param sortBy            排序方式：default（置顶优先）/ latest（晚上架优先）（可选）
+     * @param sortBy            兼容旧参数，商品库固定按置顶优先 + 上游合作时间倒序（可选）
      * @param goodsTags         货品标签，多选时用英文逗号分隔（可选）
      * @param productTags       商品标签，多选时用英文逗号分隔（可选）
      * @param colonelName       团长名称关键字（可选）
@@ -169,7 +169,9 @@ public class ProductController extends BaseController {
     @GetMapping
     public ApiResult<PageResult<Product>> page(
             @Parameter(description = "页码，从 1 开始。") @RequestParam(defaultValue = "1") @Min(1) long page,
-            @Parameter(description = "每页条数。") @RequestParam(defaultValue = "20") @Min(1) @Max(100) long size,
+            @Parameter(description = "每页条数。商品库主列表支持滚动批量加载，允许超过 100。") @RequestParam(defaultValue = "20") @Min(1) long size,
+            @Parameter(description = "无限下拉游标。首次查询不传，后续传上次返回的 nextCursor。") @RequestParam(name = "cursor", required = false) String cursor,
+            @Parameter(description = "无限下拉单批条数，后端最大 500。") @RequestParam(name = "limit", required = false) @Min(1) @Max(500) Long limit,
             @Parameter(description = "商品状态。待确认：取值含义请联系产品。") @RequestParam(required = false) Integer status,
             @Parameter(description = "商品关键字，可匹配商品名称、商品 ID、店铺。") @RequestParam(required = false) String keyword,
             @Parameter(description = "店铺 / 合作方名称关键字。") @RequestParam(required = false) String shopKeyword,
@@ -181,7 +183,7 @@ public class ProductController extends BaseController {
             @Parameter(description = "是否支持投流：1/0。") @RequestParam(required = false) String supportsAds,
             @Parameter(description = "近 30 天销量区间：lt100/100_999/1k_29k/gte30000。") @RequestParam(required = false) String salesRange,
             @Parameter(description = "转链状态：PENDING/LINKED/FAILED。") @RequestParam(required = false) String promotionLink,
-            @Parameter(description = "联盟推广状态：promoting/pending_audit/rejected/terminated/expired。") @RequestParam(required = false) String allianceStatus,
+            @Parameter(description = "联盟推广状态：promoting/pending_audit/rejected/terminated/canceled/expired。") @RequestParam(required = false) String allianceStatus,
             @Parameter(description = "佣金区间：gt20/10_20/lt10。") @RequestParam(required = false) String commission,
             @Parameter(description = "是否有寄样规则：1/0。") @RequestParam(required = false) String hasSample,
             @Parameter(description = "负责人过滤：assigned/unassigned。") @RequestParam(required = false) String assignee,
@@ -189,7 +191,7 @@ public class ProductController extends BaseController {
             @Parameter(description = "推进判断：MAIN/SECONDARY/PAUSE/DROP/NONE。") @RequestParam(required = false) String decision,
             @Parameter(description = "合作方 ID；商家型为 shop_id，团长型为 colonel_buyin_id。") @RequestParam(required = false) String partnerId,
             @Parameter(description = "合作方类型：MERCHANT/COLONEL。") @RequestParam(name = "partnerType", required = false) String partnerType,
-            @Parameter(description = "排序：default（置顶优先）/ latest（晚上架优先）。") @RequestParam(name = "sortBy", required = false) String sortBy,
+            @Parameter(description = "兼容旧排序参数；商品库固定按置顶优先 + 上游合作时间倒序。") @RequestParam(name = "sortBy", required = false) String sortBy,
             @Parameter(description = "货品标签，多选时用英文逗号分隔。") @RequestParam(required = false) String goodsTags,
             @Parameter(description = "商品标签，多选时用英文逗号分隔。") @RequestParam(required = false) String productTags,
             @Parameter(description = "团长名称关键字。") @RequestParam(required = false) String colonelName,
@@ -213,55 +215,66 @@ public class ProductController extends BaseController {
             @Parameter(description = "是否已挂车：1/0。") @RequestParam(required = false) String listed,
             @Parameter(description = "是否有免费样：1/0。") @RequestParam(required = false) String freeSample,
             @Parameter(description = "商品 ID，精确匹配。") @RequestParam(name = "productId", required = false) String productId) {
-        IPage<Product> result = productService.getSelectedLibraryPage(
-                page,
-                size,
-                new ProductService.SelectedLibraryFilter(
-                        keyword,
-                        status,
-                        shopKeyword,
-                        categoryName,
-                        categories,
-                        activityId,
-                        assigneeId,
-                        serviceFee,
-                        supportsAds,
-                        salesRange,
-                        promotionLink,
-                        allianceStatus,
-                        commission,
-                        hasSample,
-                        assignee,
-                        systemTag,
-                        decision,
-                        partnerId,
-                        partnerType,
-                        sortBy,
-                        goodsTags,
-                        productTags,
-                        colonelName,
-                        published,
-                        cooperationType,
-                        livePriceMin,
-                        livePriceMax,
-                        commissionMin,
-                        commissionMax,
-                        sampleSalesMin,
-                        sampleSalesMax,
-                        materialDownload,
-                        exclusivePrice,
-                        productChain,
-                        handCard,
-                        doubleCommission,
-                        notInLibrary,
-                        dedup,
-                        recruitActivityId,
-                        recruitActivityName,
-                        listed,
-                        freeSample,
-                        productId
-                )
+        ProductService.SelectedLibraryFilter filter = new ProductService.SelectedLibraryFilter(
+                keyword,
+                status,
+                shopKeyword,
+                categoryName,
+                categories,
+                activityId,
+                assigneeId,
+                serviceFee,
+                supportsAds,
+                salesRange,
+                promotionLink,
+                allianceStatus,
+                commission,
+                hasSample,
+                assignee,
+                systemTag,
+                decision,
+                partnerId,
+                partnerType,
+                sortBy,
+                goodsTags,
+                productTags,
+                colonelName,
+                published,
+                cooperationType,
+                livePriceMin,
+                livePriceMax,
+                commissionMin,
+                commissionMax,
+                sampleSalesMin,
+                sampleSalesMax,
+                materialDownload,
+                exclusivePrice,
+                productChain,
+                handCard,
+                doubleCommission,
+                notInLibrary,
+                dedup,
+                recruitActivityId,
+                recruitActivityName,
+                listed,
+                freeSample,
+                productId
         );
+        if (limit != null || StringUtils.hasText(cursor)) {
+            ProductService.SelectedLibraryCursorPage cursorPage =
+                    productService.getSelectedLibraryCursorPage(cursor, limit == null ? size : limit, filter);
+            if (cursorPage != null) {
+                PageResult<Product> response = new PageResult<>();
+                response.setTotal(0L);
+                response.setPage(1L);
+                response.setSize(cursorPage.limit());
+                response.setRecords(cursorPage.records());
+                response.setHasMore(cursorPage.hasMore());
+                response.setNextCursor(cursorPage.nextCursor());
+                return ok(response);
+            }
+        }
+        IPage<Product> result = productService.getSelectedLibraryPage(page, size, filter);
         return okPage(result);
     }
 

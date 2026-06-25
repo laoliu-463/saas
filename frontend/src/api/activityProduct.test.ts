@@ -12,6 +12,7 @@ import {
   followActivityProduct,
   getActivityProductDetail,
   getActivityProductOperationLogs,
+  getActivityProductSyncJob,
   getActivityProductSkus,
   getActivityProducts,
   getPinnedProducts,
@@ -41,6 +42,7 @@ describe('activityProduct API', () => {
       getActivityProducts('ACT-1', { page: 1, size: 20 })
 
       expect(request.get).toHaveBeenCalledWith('/colonel/activities/ACT-1/products', {
+        timeout: 30000,
         params: { page: 1, size: 20 },
         ...{}
       })
@@ -50,6 +52,7 @@ describe('activityProduct API', () => {
       getActivityProducts('ACT-1', { page: 1, size: 10, decisionLevel: 'MAIN' })
 
       expect(request.get).toHaveBeenCalledWith('/colonel/activities/ACT-1/products', {
+        timeout: 30000,
         params: { page: 1, size: 10, decisionLevel: 'MAIN' },
         ...{}
       })
@@ -60,6 +63,7 @@ describe('activityProduct API', () => {
       getActivityProducts('ACT-1', { page: 1 }, config)
 
       expect(request.get).toHaveBeenCalledWith('/colonel/activities/ACT-1/products', {
+        timeout: 30000,
         params: { page: 1 },
         ...config
       })
@@ -540,7 +544,29 @@ describe('activityProduct API', () => {
     it('calls sync activity products endpoint', () => {
       syncActivityProducts('ACT-1')
 
-      expect(request.post).toHaveBeenCalledWith('/colonel/activities/ACT-1/products/sync')
+      expect(request.post).toHaveBeenCalledWith(
+        '/colonel/activities/ACT-1/products/sync',
+        undefined,
+        { timeout: 30000 }
+      )
+    })
+
+    it('passes priority sync options to sync endpoint', () => {
+      syncActivityProducts('ACT-1', {
+        syncMode: 'PRIORITY_1000',
+        maxRowsPerActivity: 1000,
+        priorityStatuses: [0, 1]
+      })
+
+      expect(request.post).toHaveBeenCalledWith(
+        '/colonel/activities/ACT-1/products/sync',
+        {
+          syncMode: 'PRIORITY_1000',
+          maxRowsPerActivity: 1000,
+          priorityStatuses: [0, 1]
+        },
+        { timeout: 30000 }
+      )
     })
 
     it('handles sync error (500)', async () => {
@@ -562,6 +588,17 @@ describe('activityProduct API', () => {
       requestPost.mockRejectedValueOnce(new Error('Network Error'))
 
       await expect(syncActivityProducts('ACT-1')).rejects.toThrow('Network Error')
+    })
+  })
+
+  describe('getActivityProductSyncJob', () => {
+    it('calls activity product sync job status endpoint', () => {
+      getActivityProductSyncJob('ACT-1', 'JOB-1', { suppressErrorNotice: true })
+
+      expect(request.get).toHaveBeenCalledWith(
+        '/colonel/activities/ACT-1/products/sync-jobs/JOB-1',
+        { timeout: 15000, suppressErrorNotice: true }
+      )
     })
   })
 })

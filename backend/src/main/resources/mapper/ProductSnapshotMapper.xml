@@ -85,9 +85,14 @@
            AND pos.deleted = 0
          WHERE ps.activity_id = #{activityId}
            AND ps.deleted = 0
-           <if test="promotionStatus != null">
+           <choose>
+               <when test="promotionStatus != null">
            AND ps.status = #{promotionStatus}
-           </if>
+               </when>
+               <otherwise>
+           AND ps.status IN (0, 1, 2, 3, 4, 6)
+               </otherwise>
+           </choose>
            <if test="productInfo != null and productInfo != ''">
            AND (
                ps.title LIKE CONCAT('%', #{productInfo}, '%')
@@ -150,5 +155,254 @@
                 ps.activity_cos_ratio DESC NULLS LAST,
                 ps.sync_time DESC NULLS LAST
             LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <sql id="SelectedLibraryWhere">
+         WHERE ps.deleted = 0
+           AND pos.deleted = 0
+           AND ps.status = 1
+           AND pos.selected_to_library = TRUE
+           AND pos.display_status = 'DISPLAYING'
+           AND (pos.audit_status IS NULL OR pos.audit_status &lt;&gt; 3)
+           AND (pos.biz_status IS NULL OR UPPER(pos.biz_status) &lt;&gt; 'REJECTED')
+           AND COALESCE(pos.manual_disabled, FALSE) = FALSE
+           <if test="keyword != null and keyword != ''">
+           AND (
+               ps.title ILIKE CONCAT('%', #{keyword}, '%')
+               OR ps.product_id ILIKE CONCAT('%', #{keyword}, '%')
+               OR ps.shop_name ILIKE CONCAT('%', #{keyword}, '%')
+           )
+           </if>
+           <if test="productId != null and productId != ''">
+           AND ps.product_id = #{productId}
+           </if>
+           <if test="status != null">
+           AND ps.status = #{status}
+           </if>
+           <if test="shopKeyword != null and shopKeyword != ''">
+           AND ps.shop_name ILIKE CONCAT('%', #{shopKeyword}, '%')
+           </if>
+           <if test="categoryTokens != null and categoryTokens.size() > 0">
+           AND (
+               <foreach collection="categoryTokens" item="category" separator=" OR ">
+               ps.category_name ILIKE CONCAT('%', #{category}, '%')
+               </foreach>
+           )
+           </if>
+           <if test="activityId != null and activityId != ''">
+           AND ps.activity_id = #{activityId}
+           </if>
+           <if test="recruitActivityId != null and recruitActivityId != ''">
+           AND ps.activity_id = #{recruitActivityId}
+           </if>
+           <if test="assigneeId != null">
+           AND pos.assignee_id = #{assigneeId}
+           </if>
+           <if test="assignee == 'assigned'">
+           AND pos.assignee_id IS NOT NULL
+           </if>
+           <if test="assignee == 'unassigned'">
+           AND pos.assignee_id IS NULL
+           </if>
+           <if test="promotionLink == 'LINKED'">
+           AND (
+               (pos.promote_link IS NOT NULL AND BTRIM(pos.promote_link) &lt;&gt; '')
+               OR (pos.short_link IS NOT NULL AND BTRIM(pos.short_link) &lt;&gt; '')
+           )
+           </if>
+           <if test="promotionLink == 'PENDING'">
+           AND (pos.promote_link IS NULL OR BTRIM(pos.promote_link) = '')
+           AND (pos.short_link IS NULL OR BTRIM(pos.short_link) = '')
+           AND COALESCE(UPPER(pos.biz_status), '') NOT LIKE '%LINKED%'
+           AND COALESCE(UPPER(pos.biz_status), '') NOT LIKE '%FOLLOWING%'
+           </if>
+           <if test="promotionLink == 'FAILED'">
+           AND (pos.promote_link IS NULL OR BTRIM(pos.promote_link) = '')
+           AND (pos.short_link IS NULL OR BTRIM(pos.short_link) = '')
+           AND (
+               COALESCE(UPPER(pos.biz_status), '') LIKE '%LINKED%'
+               OR COALESCE(UPPER(pos.biz_status), '') LIKE '%FOLLOWING%'
+           )
+           </if>
+           <if test="published == '1'">
+           AND (
+               (pos.promote_link IS NOT NULL AND BTRIM(pos.promote_link) &lt;&gt; '')
+               OR (pos.short_link IS NOT NULL AND BTRIM(pos.short_link) &lt;&gt; '')
+           )
+           </if>
+           <if test="published == '0'">
+           AND (pos.promote_link IS NULL OR BTRIM(pos.promote_link) = '')
+           AND (pos.short_link IS NULL OR BTRIM(pos.short_link) = '')
+           </if>
+           <if test="allianceStatus != null and allianceStatus != ''">
+           AND (
+               <choose>
+                   <when test="allianceStatus == 'pending_audit'">
+                   ps.status = 0 OR ps.status_text ILIKE '%待审核%' OR ps.status_text ILIKE '%审核中%'
+                   </when>
+                   <when test="allianceStatus == 'promoting'">
+                   ps.status = 1 OR ps.status_text ILIKE '%推广中%' OR ps.status_text ILIKE '%推广%'
+                   </when>
+                   <when test="allianceStatus == 'rejected'">
+                   ps.status = 2 OR ps.status_text ILIKE '%未通过%' OR ps.status_text ILIKE '%拒绝%' OR ps.status_text ILIKE '%申请未通过%'
+                   </when>
+                   <when test="allianceStatus == 'terminated'">
+                   ps.status = 3 OR ps.status_text ILIKE '%终止%' OR ps.status_text ILIKE '%已终止%'
+                   </when>
+                   <when test="allianceStatus == 'canceled'">
+                   ps.status = 4 OR ps.status_text ILIKE '%合作前取消%' OR ps.status_text ILIKE '%取消%'
+                   </when>
+                   <when test="allianceStatus == 'expired'">
+                   ps.status = 6 OR ps.status_text ILIKE '%过期%' OR ps.status_text ILIKE '%已过期%' OR ps.status_text ILIKE '%到期%' OR ps.status_text ILIKE '%已到期%'
+                   </when>
+                   <otherwise>
+                   1 = 1
+                   </otherwise>
+               </choose>
+           )
+           </if>
+           <if test="partnerId != null and partnerId != '' and (partnerType == null or partnerType == '' or partnerType == 'MERCHANT')">
+           AND (
+               CAST(ps.shop_id AS TEXT) = #{partnerId}
+               OR LOWER(BTRIM(ps.shop_name)) = LOWER(BTRIM(#{partnerId}))
+           )
+           </if>
+           <if test="cooperationType != null and cooperationType != ''">
+           AND (
+               CAST(ps.cos_type AS TEXT) = #{cooperationType}
+               OR ps.cos_type_text ILIKE CONCAT('%', #{cooperationType}, '%')
+           )
+           </if>
+           <if test="listed == '1'">
+           AND ps.status = 1
+           </if>
+           <if test="listed == '0'">
+           AND ps.status &lt;&gt; 1
+           </if>
+    </sql>
+
+    <sql id="SelectedLibraryPromotionStartOrder">
+        CASE
+          WHEN ps.promotion_start_time IS NULL OR BTRIM(ps.promotion_start_time) = '' THEN NULL
+          WHEN BTRIM(ps.promotion_start_time) ~ '^[0-9]{13}$'
+            THEN to_timestamp((BTRIM(ps.promotion_start_time))::double precision / 1000) AT TIME ZONE 'Asia/Shanghai'
+          WHEN BTRIM(ps.promotion_start_time) ~ '^[0-9]{10}$'
+            THEN to_timestamp((BTRIM(ps.promotion_start_time))::double precision) AT TIME ZONE 'Asia/Shanghai'
+          WHEN BTRIM(ps.promotion_start_time) ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}'
+            THEN REPLACE(SUBSTRING(BTRIM(ps.promotion_start_time), 1, 19), 'T', ' ')::timestamp
+          WHEN BTRIM(ps.promotion_start_time) ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$'
+            THEN BTRIM(ps.promotion_start_time)::timestamp
+          WHEN BTRIM(ps.promotion_start_time) ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}$'
+            THEN BTRIM(ps.promotion_start_time)::timestamp
+          WHEN BTRIM(ps.promotion_start_time) ~ '^[0-9]{4}/[0-9]{2}/[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$'
+            THEN to_timestamp(BTRIM(ps.promotion_start_time), 'YYYY/MM/DD HH24:MI:SS')::timestamp
+          WHEN BTRIM(ps.promotion_start_time) ~ '^[0-9]{4}/[0-9]{2}/[0-9]{2} [0-9]{2}:[0-9]{2}$'
+            THEN to_timestamp(BTRIM(ps.promotion_start_time), 'YYYY/MM/DD HH24:MI')::timestamp
+          WHEN BTRIM(ps.promotion_start_time) ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+            THEN BTRIM(ps.promotion_start_time)::date::timestamp
+          ELSE NULL
+        END
+    </sql>
+
+    <select id="selectSelectedLibraryPage" resultType="com.colonel.saas.entity.ProductSnapshot">
+        SELECT ps.*
+          FROM product_snapshot ps
+          JOIN product_operation_state pos
+            ON ps.activity_id = pos.activity_id
+           AND ps.product_id = pos.product_id
+        <include refid="SelectedLibraryWhere"/>
+         ORDER BY
+                CASE
+                  WHEN pos.pinned_until IS NOT NULL AND pos.pinned_until &gt; #{now}
+                  THEN 0 ELSE 1
+                END ASC,
+                <include refid="SelectedLibraryPromotionStartOrder"/> DESC NULLS LAST,
+                ps.sync_time DESC NULLS LAST,
+                pos.selected_at DESC NULLS LAST,
+                ps.activity_id ASC,
+                ps.product_id ASC
+         LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="selectSelectedLibraryCursorPage" resultType="com.colonel.saas.entity.ProductSnapshot">
+        SELECT ps.*
+          FROM product_snapshot ps
+          JOIN product_operation_state pos
+            ON ps.activity_id = pos.activity_id
+           AND ps.product_id = pos.product_id
+        <include refid="SelectedLibraryWhere"/>
+        <if test="cursorActivityId != null and cursorActivityId != '' and cursorProductId != null and cursorProductId != ''">
+           AND (
+                CASE
+                  WHEN pos.pinned_until IS NOT NULL AND pos.pinned_until &gt; #{snapshotTime}
+                  THEN 0 ELSE 1
+                END &gt; #{cursorPinnedRank}
+                OR (
+                    CASE
+                      WHEN pos.pinned_until IS NOT NULL AND pos.pinned_until &gt; #{snapshotTime}
+                      THEN 0 ELSE 1
+                    END = #{cursorPinnedRank}
+                    AND COALESCE(<include refid="SelectedLibraryPromotionStartOrder"/>, TIMESTAMP '0001-01-01 00:00:00') &lt; #{cursorPromotionStartTime}
+                )
+                OR (
+                    CASE
+                      WHEN pos.pinned_until IS NOT NULL AND pos.pinned_until &gt; #{snapshotTime}
+                      THEN 0 ELSE 1
+                    END = #{cursorPinnedRank}
+                    AND COALESCE(<include refid="SelectedLibraryPromotionStartOrder"/>, TIMESTAMP '0001-01-01 00:00:00') = #{cursorPromotionStartTime}
+                    AND COALESCE(ps.sync_time, TIMESTAMP '0001-01-01 00:00:00') &lt; #{cursorSyncTime}
+                )
+                OR (
+                    CASE
+                      WHEN pos.pinned_until IS NOT NULL AND pos.pinned_until &gt; #{snapshotTime}
+                      THEN 0 ELSE 1
+                    END = #{cursorPinnedRank}
+                    AND COALESCE(<include refid="SelectedLibraryPromotionStartOrder"/>, TIMESTAMP '0001-01-01 00:00:00') = #{cursorPromotionStartTime}
+                    AND COALESCE(ps.sync_time, TIMESTAMP '0001-01-01 00:00:00') = #{cursorSyncTime}
+                    AND COALESCE(pos.selected_at, TIMESTAMP '0001-01-01 00:00:00') &lt; #{cursorSelectedAt}
+                )
+                OR (
+                    CASE
+                      WHEN pos.pinned_until IS NOT NULL AND pos.pinned_until &gt; #{snapshotTime}
+                      THEN 0 ELSE 1
+                    END = #{cursorPinnedRank}
+                    AND COALESCE(<include refid="SelectedLibraryPromotionStartOrder"/>, TIMESTAMP '0001-01-01 00:00:00') = #{cursorPromotionStartTime}
+                    AND COALESCE(ps.sync_time, TIMESTAMP '0001-01-01 00:00:00') = #{cursorSyncTime}
+                    AND COALESCE(pos.selected_at, TIMESTAMP '0001-01-01 00:00:00') = #{cursorSelectedAt}
+                    AND ps.activity_id &gt; #{cursorActivityId}
+                )
+                OR (
+                    CASE
+                      WHEN pos.pinned_until IS NOT NULL AND pos.pinned_until &gt; #{snapshotTime}
+                      THEN 0 ELSE 1
+                    END = #{cursorPinnedRank}
+                    AND COALESCE(<include refid="SelectedLibraryPromotionStartOrder"/>, TIMESTAMP '0001-01-01 00:00:00') = #{cursorPromotionStartTime}
+                    AND COALESCE(ps.sync_time, TIMESTAMP '0001-01-01 00:00:00') = #{cursorSyncTime}
+                    AND COALESCE(pos.selected_at, TIMESTAMP '0001-01-01 00:00:00') = #{cursorSelectedAt}
+                    AND ps.activity_id = #{cursorActivityId}
+                    AND ps.product_id &gt; #{cursorProductId}
+                )
+           )
+        </if>
+         ORDER BY
+                CASE
+                  WHEN pos.pinned_until IS NOT NULL AND pos.pinned_until &gt; #{snapshotTime}
+                  THEN 0 ELSE 1
+                END ASC,
+                COALESCE(<include refid="SelectedLibraryPromotionStartOrder"/>, TIMESTAMP '0001-01-01 00:00:00') DESC,
+                COALESCE(ps.sync_time, TIMESTAMP '0001-01-01 00:00:00') DESC,
+                COALESCE(pos.selected_at, TIMESTAMP '0001-01-01 00:00:00') DESC,
+                ps.activity_id ASC,
+                ps.product_id ASC
+         LIMIT #{limit}
+    </select>
+
+    <select id="countSelectedLibraryPage" resultType="long">
+        SELECT COUNT(1)
+          FROM product_snapshot ps
+          JOIN product_operation_state pos
+            ON ps.activity_id = pos.activity_id
+           AND ps.product_id = pos.product_id
+        <include refid="SelectedLibraryWhere"/>
     </select>
 </mapper>

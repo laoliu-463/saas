@@ -12,6 +12,18 @@
           placeholder="请选择活动"
         />
       </n-form-item>
+      <n-form-item label="同步范围">
+        <n-radio-group v-model:value="selectedSyncMode" data-testid="sync-mode-radio-group">
+          <n-space vertical>
+            <n-radio value="FULL" data-testid="sync-mode-full">
+              同步全部商品
+            </n-radio>
+            <n-radio value="PRIORITY_1000" data-testid="sync-mode-priority-1000">
+              先同步 1000 个优先商品（待审核、推广中）
+            </n-radio>
+          </n-space>
+        </n-radio-group>
+      </n-form-item>
     </n-form>
     <template #action>
       <n-space justify="end">
@@ -27,6 +39,15 @@
 import { computed, ref, watch } from 'vue'
 import type { AssignedActivityOption } from '../assigned-activity-options'
 
+type ProductSyncMode = 'FULL' | 'PRIORITY_1000'
+
+interface ProductSyncActivityConfirmPayload {
+  activityId: string
+  syncMode: ProductSyncMode
+  maxRowsPerActivity?: number
+  priorityStatuses?: number[]
+}
+
 const props = withDefaults(defineProps<{
   show: boolean
   activityOptions: AssignedActivityOption[]
@@ -41,11 +62,12 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   'update:show': [value: boolean]
-  confirm: [activityId: string]
+  confirm: [payload: ProductSyncActivityConfirmPayload]
   refreshOptions: []
 }>()
 
 const selectedActivityId = ref('')
+const selectedSyncMode = ref<ProductSyncMode>('FULL')
 
 const canSubmit = computed(() =>
   Boolean(selectedActivityId.value) && !props.loading && !props.syncing
@@ -60,17 +82,29 @@ const resetSelection = () => {
   selectedActivityId.value = props.activityOptions.length === 1 ? props.activityOptions[0].value : ''
 }
 
+const resetSyncMode = () => {
+  selectedSyncMode.value = 'FULL'
+}
+
 const updateShow = (value: boolean) => {
   emit('update:show', value)
 }
 
 const submit = () => {
   if (!canSubmit.value) return
-  emit('confirm', selectedActivityId.value)
+  emit('confirm', {
+    activityId: selectedActivityId.value,
+    syncMode: selectedSyncMode.value,
+    maxRowsPerActivity: selectedSyncMode.value === 'PRIORITY_1000' ? 1000 : undefined,
+    priorityStatuses: selectedSyncMode.value === 'PRIORITY_1000' ? [0, 1] : undefined
+  })
 }
 
 watch(() => props.show, (show) => {
-  if (show) resetSelection()
+  if (show) {
+    resetSelection()
+    resetSyncMode()
+  }
 }, { immediate: true })
 
 watch(() => props.activityOptions, () => {

@@ -1,7 +1,14 @@
 package com.colonel.saas.service;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.MybatisConfiguration;
+import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.colonel.saas.common.enums.ProductBizStatus;
+import com.colonel.saas.common.exception.BusinessException;
+import com.colonel.saas.common.handler.UUIDTypeHandler;
 import com.colonel.saas.constant.ProductDisplayStatus;
+import com.colonel.saas.domain.product.policy.ProductDisplayPolicy;
+import com.colonel.saas.douyin.DouyinApiException;
 import com.colonel.saas.entity.ColonelsettlementActivity;
 import com.colonel.saas.entity.ProductOperationState;
 import com.colonel.saas.entity.ProductSnapshot;
@@ -9,6 +16,7 @@ import com.colonel.saas.gateway.douyin.DouyinProductGateway;
 import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
 import com.colonel.saas.mapper.ProductOperationStateMapper;
 import com.colonel.saas.mapper.ProductSnapshotMapper;
+import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -18,14 +26,17 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.argThat;
@@ -33,6 +44,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -66,10 +78,13 @@ class ProductServiceActivityStatusIndependenceTest {
     @Mock private com.colonel.saas.domain.product.event.ProductDomainEventPublisher productDomainEventPublisher;
     @Mock private com.colonel.saas.domain.product.application.CopyPromotionApplicationService copyPromotionApplicationService;
 
+    private ProductDisplayPolicy productDisplayPolicy;
     private ProductService productService;
 
     @BeforeEach
     void setUp() {
+        initTableInfo(ProductSnapshot.class);
+        productDisplayPolicy = spy(new ProductDisplayPolicy());
         productService = new ProductService(
                 douyinConvertPort,
                 douyinProductGateway,
@@ -90,12 +105,66 @@ class ProductServiceActivityStatusIndependenceTest {
                 productDisplayRuleService,
                 colonelPartnerSyncService,
                 productDomainEventPublisher,
-                new com.colonel.saas.domain.product.policy.ProductDisplayPolicy(),
+                productDisplayPolicy,
                 copyPromotionApplicationService);
         when(snapshotMapper.upsert(any(ProductSnapshot.class))).thenReturn(1);
         when(operationStateMapper.updateById(any(ProductOperationState.class))).thenReturn(1);
         when(productDisplayRuleService.repairLibraryStateForActivity(any(), eq(false), anyInt()))
                 .thenReturn(ProductDisplayRuleService.LibraryRepairResult.empty(null, false));
+    }
+
+    private void initTableInfo(Class<?> entityClass) {
+        if (TableInfoHelper.getTableInfo(entityClass) == null) {
+            MybatisConfiguration configuration = new MybatisConfiguration();
+            configuration.getTypeHandlerRegistry().register(java.util.UUID.class, UUIDTypeHandler.class);
+            MapperBuilderAssistant assistant = new MapperBuilderAssistant(configuration, "");
+            TableInfoHelper.initTableInfo(assistant, entityClass);
+        }
+    }
+
+    @Test
+    void applyActivityProductPromotionStatusFilter_defaultOffShouldKeepPublicTerminatedOnly() {
+        LambdaQueryWrapper<ProductSnapshot> wrapper = new LambdaQueryWrapper<>();
+
+        ReflectionTestUtils.invokeMethod(
+                productService,
+                "applyActivityProductPromotionStatusFilter",
+                wrapper,
+                3);
+
+        verify(productDisplayPolicy, never()).activityProductFilterStatuses(any());
+        assertTerminatedStatusFilter(wrapper);
+    }
+
+    @Test
+    void applyActivityProductPromotionStatusFilter_defaultOffShouldIncludeCanceledWhenNoStatusSelected() {
+        LambdaQueryWrapper<ProductSnapshot> wrapper = new LambdaQueryWrapper<>();
+
+        ReflectionTestUtils.invokeMethod(
+                productService,
+                "applyActivityProductPromotionStatusFilter",
+                wrapper,
+                null);
+
+        verify(productDisplayPolicy, never()).activityProductFilterStatuses(any());
+        assertThat(wrapper.getSqlSegment()).contains("status", "IN");
+        assertThat(wrapper.getParamNameValuePairs().values()).containsExactlyInAnyOrder(0, 1, 2, 3, 4, 6);
+    }
+
+    @Test
+    void applyActivityProductPromotionStatusFilter_dddSwitchOnShouldDelegateToDisplayPolicy() {
+        ReflectionTestUtils.setField(productService, "dddRefactorEnabled", true);
+        ReflectionTestUtils.setField(productService, "dddProductDisplayPolicyEnabled", true);
+        LambdaQueryWrapper<ProductSnapshot> wrapper = new LambdaQueryWrapper<>();
+
+        ReflectionTestUtils.invokeMethod(
+                productService,
+                "applyActivityProductPromotionStatusFilter",
+                wrapper,
+                3);
+
+        verify(productDisplayPolicy).activityProductFilterStatuses(3);
+        assertTerminatedStatusFilter(wrapper);
     }
 
     @Test
@@ -338,6 +407,7 @@ class ProductServiceActivityStatusIndependenceTest {
                 "promoting", 726L,
                 "rejected", 486L,
                 "terminated", 46L,
+                "canceled", 4L,
                 "expired", 6L));
 
         Map<String, Object> view = productService.buildActivityProductListViewFromDb(
@@ -350,6 +420,7 @@ class ProductServiceActivityStatusIndependenceTest {
                 "promoting", 726L,
                 "rejected", 486L,
                 "terminated", 46L,
+                "canceled", 4L,
                 "expired", 6L));
     }
 
@@ -412,6 +483,38 @@ class ProductServiceActivityStatusIndependenceTest {
         assertThat(state.getAuditRemark()).isEqualTo("不符合商品库要求");
         assertThat(detail.get("selectedToLibrary")).isEqualTo(false);
         assertThat(detail.get("displayStatus")).isEqualTo(ProductDisplayStatus.HIDDEN.name());
+        verify(productDisplayRuleService, never()).applyForProductId(productId);
+    }
+
+    @Test
+    void auditProduct_approveShouldRejectRecentSameProductAlreadyInLibrary() {
+        String activityId = "ACT005";
+        String productId = "5";
+        ProductSnapshot snapshot = snapshot(activityId, productId);
+        ProductOperationState current = state(activityId, productId);
+        ProductOperationState existing = state("ACT_EXISTING", productId);
+        existing.setAuditStatus(2);
+        existing.setSelectedToLibrary(true);
+        existing.setSelectedAt(LocalDateTime.now().minusMonths(2));
+        existing.setDisplayStatus(ProductDisplayStatus.DISPLAYING.name());
+
+        when(snapshotMapper.selectOne(any())).thenReturn(snapshot);
+        when(operationStateMapper.selectOne(any())).thenReturn(current);
+        when(operationStateMapper.selectList(any())).thenReturn(List.of(existing));
+        when(productBizStatusService.readBizStatus(current)).thenReturn(ProductBizStatus.PENDING_AUDIT);
+
+        assertThatThrownBy(() -> productService.auditProduct(
+                activityId,
+                productId,
+                true,
+                "素材完整",
+                validAuditSupplement(),
+                null,
+                null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("近三个月")
+                .hasMessageContaining(productId);
+        assertThat(current.getSelectedToLibrary()).isNull();
         verify(productDisplayRuleService, never()).applyForProductId(productId);
     }
 
@@ -533,8 +636,119 @@ class ProductServiceActivityStatusIndependenceTest {
         }));
     }
 
+    @Test
+    void refreshActivitySnapshotsByStatusPartitions_shouldQueryEverySupportedStatusAndReconcileWholeActivity() {
+        String activityId = "ACT011";
+        List<DouyinProductGateway.ActivityProductQueryRequest> requests = new ArrayList<>();
+        when(douyinProductGateway.queryActivityProducts(any())).thenAnswer(invocation -> {
+            DouyinProductGateway.ActivityProductQueryRequest request = invocation.getArgument(0);
+            requests.add(request);
+            int status = request.status() == null ? -1 : request.status();
+            long productId = 10_000L + status;
+            return new DouyinProductGateway.ActivityProductListResult(
+                    false,
+                    11L,
+                    30001L,
+                    1L,
+                    null,
+                    List.of(item(productId, "状态" + status + "商品", status, statusText(status))));
+        });
+        when(operationStateMapper.selectOne(any())).thenReturn(null);
+        when(productBizStatusService.initStateIfAbsent(any(), eq(activityId), any(), any(), any(), any()))
+                .thenAnswer(invocation -> state(activityId, invocation.getArgument(2)));
+        when(snapshotMapper.update(isNull(), any())).thenReturn(0);
+
+        ProductService.ActivityProductRefreshResult result = productService.refreshActivitySnapshotsByStatusPartitions(
+                new DouyinProductGateway.ActivityProductQueryRequest(
+                        null, activityId, 4L, 1L, 20, null, null, null, null, 1L, null, null),
+                100,
+                100,
+                300L,
+                3,
+                null);
+
+        assertThat(result.complete()).isTrue();
+        assertThat(result.distinctProductIds()).isEqualTo(6);
+        assertThat(requests)
+                .extracting(DouyinProductGateway.ActivityProductQueryRequest::status)
+                .contains(0, 1, 2, 3, 4, 6);
+        verify(snapshotMapper).update(isNull(), argThat(wrapper -> {
+            String sql = wrapper.getSqlSegment();
+            return sql.contains("activity_id")
+                    && sql.contains("deleted")
+                    && sql.contains("product_id NOT IN")
+                    && !sql.contains("status =");
+        }));
+        verify(productDisplayRuleService).repairLibraryStateForActivity(activityId, false, 10000);
+        verify(productDisplayRuleService).applyForActivityId(activityId);
+    }
+
+    @Test
+    void refreshActivitySnapshotsByStatusPartitions_shouldFallbackToSerialWhenUpstreamRejectsStatusFilter() {
+        String activityId = "ACT012";
+        List<DouyinProductGateway.ActivityProductQueryRequest> requests = new ArrayList<>();
+        when(douyinProductGateway.queryActivityProducts(any())).thenAnswer(invocation -> {
+            DouyinProductGateway.ActivityProductQueryRequest request = invocation.getArgument(0);
+            requests.add(request);
+            if (Integer.valueOf(4).equals(request.status())) {
+                throw new DouyinApiException(
+                        50002,
+                        "参数校验失败",
+                        "isv.business-failed:257",
+                        "log-test",
+                        "alliance.colonelActivityProduct");
+            }
+            int status = request.status() == null ? 1 : request.status();
+            return new DouyinProductGateway.ActivityProductListResult(
+                    false,
+                    12L,
+                    30001L,
+                    1L,
+                    null,
+                    List.of(item(20_000L + status, "回退商品", status, statusText(status))));
+        });
+        when(operationStateMapper.selectOne(any())).thenReturn(null);
+        when(productBizStatusService.initStateIfAbsent(any(), eq(activityId), any(), any(), any(), any()))
+                .thenAnswer(invocation -> state(activityId, invocation.getArgument(2)));
+        when(snapshotMapper.update(isNull(), any())).thenReturn(0);
+
+        ProductService.ActivityProductRefreshResult result = productService.refreshActivitySnapshotsByStatusPartitions(
+                new DouyinProductGateway.ActivityProductQueryRequest(
+                        null, activityId, 4L, 1L, 20, null, null, null, null, 1L, null, null),
+                100,
+                100,
+                300L,
+                3,
+                null);
+
+        assertThat(result.complete()).isTrue();
+        assertThat(result.distinctProductIds()).isEqualTo(1);
+        assertThat(requests)
+                .extracting(DouyinProductGateway.ActivityProductQueryRequest::status)
+                .contains(0, 1, 2, 3, 4, null);
+        verify(snapshotMapper).update(isNull(), argThat(wrapper -> !wrapper.getSqlSegment().contains("status =")));
+    }
+
     private DouyinProductGateway.ActivityProductItem item(long productId, String title) {
         return item(productId, title, 1, "推广中");
+    }
+
+    private String statusText(int status) {
+        return switch (status) {
+            case 0 -> "待审核";
+            case 1 -> "推广中";
+            case 2 -> "申请未通过";
+            case 3 -> "合作已终止";
+            case 4 -> "合作前取消";
+            case 6 -> "合作已到期";
+            default -> "未知";
+        };
+    }
+
+    private void assertTerminatedStatusFilter(LambdaQueryWrapper<ProductSnapshot> wrapper) {
+        assertThat(wrapper.getSqlSegment())
+                .contains("status")
+                .doesNotContain("IN");
     }
 
     private DouyinProductGateway.ActivityProductItem item(long productId, String title, int status, String statusText) {
@@ -597,6 +811,20 @@ class ProductServiceActivityStatusIndependenceTest {
         snapshot.setDetailUrl("https://detail.test/products/" + productId);
         snapshot.setPromotionEndTime("2099-12-31 23:59:59");
         return snapshot;
+    }
+
+    private Map<String, Object> validAuditSupplement() {
+        return Map.of(
+                "exclusivePriceRemark", "直播间专属价 129 元",
+                "shippingInfo", "48 小时内发货",
+                "sellingPoints", List.of("高转化卖点"),
+                "promotionScript", "达人可直接口播",
+                "supportsAds", true,
+                "rewardRemark", "达标后额外奖励",
+                "participationRequirements", "粉丝画像匹配",
+                "campaignTimeRemark", "活动期内有效",
+                "materialFiles", List.of("https://material.test/card.png")
+        );
     }
 
     private ColonelsettlementActivity activity(String activityId, int statusCode, String statusText, UUID recruiterId) {

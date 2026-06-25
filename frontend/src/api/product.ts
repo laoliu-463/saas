@@ -8,7 +8,12 @@
  * 另外包含合作伙伴（partner）相关查询接口，用于商品合作管理：
  * - 合作伙伴列表 / 详情 / 商品查询
  */
+import type { AxiosRequestConfig } from 'axios'
 import request from '../utils/request';
+
+type RequestConfig = AxiosRequestConfig & { suppressErrorNotice?: boolean }
+
+const PRODUCT_LIBRARY_QUERY_TIMEOUT_MS = 30000
 
 /**
  * 分页查询共享商品库列表
@@ -16,7 +21,12 @@ import request from '../utils/request';
  * @param params - 查询参数（分页、分类、关键词、筛选条件）
  * @returns 商品分页列表
  */
-export const getProducts = (params: any) => request.get('/products', { params });
+export const getProducts = (params: any, config: RequestConfig = {}) =>
+  request.get('/products', {
+    timeout: PRODUCT_LIBRARY_QUERY_TIMEOUT_MS,
+    params,
+    ...config
+  });
 /**
  * 获取商品筛选器选项
  * @returns 动态筛选选项（品牌、类目等）
