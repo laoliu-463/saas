@@ -1820,8 +1820,106 @@ public class ProductService {
                             stats.updatedCount(),
                             stats.skippedCount(),
                             stats.libraryEntryCount());
-                },
+                        },
                 pageNo -> sleepBeforeNextActivityProductPage(request.activityId(), pageNo - 1, normalizedPageIntervalMs));
+        return finishActivityProductRefresh(request, pageResult, normalizedPageIntervalMs);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public ActivityProductRefreshResult refreshActivitySnapshotsByStatusPartitions(
+            DouyinProductGateway.ActivityProductQueryRequest request,
+            int maxPagesPerActivity,
+            int maxRowsPerActivity,
+            long pageIntervalMs,
+            int parallelism,
+            java.util.function.Consumer<ActivityProductRefreshProgress> progressConsumer) {
+        if (request == null || !StringUtils.hasText(request.activityId())) {
+            return new ActivityProductRefreshResult(0, 0, 0, 0, 0);
+        }
+        int normalizedParallelism = Math.min(Math.max(parallelism, 1), 6);
+        if (request.status() != null || normalizedParallelism <= 1) {
+            return refreshActivitySnapshots(request, maxPagesPerActivity, maxRowsPerActivity, pageIntervalMs, progressConsumer);
+        }
+        List<Integer> statuses = productDisplayPolicy.activityProductFilterStatuses(null);
+        if (statuses.isEmpty()) {
+            return refreshActivitySnapshots(request, maxPagesPerActivity, maxRowsPerActivity, pageIntervalMs, progressConsumer);
+        }
+        int pageSize = Math.min(Math.max(request.count() == null ? productSyncActivityProductPageSize : request.count(), 1), 20);
+        int normalizedMaxPages = Math.max(maxPagesPerActivity <= 0 ? productSyncActivityProductMaxPagesPerActivity : maxPagesPerActivity, 1);
+        int normalizedMaxRows = Math.max(maxRowsPerActivity <= 0 ? productSyncActivityProductMaxRowsPerActivity : maxRowsPerActivity, 1);
+        long normalizedPageIntervalMs = normalizedProductActivitySyncPageIntervalMs(pageIntervalMs);
+        if (!statusPartitionPreflightSafe(request, statuses, pageSize, normalizedMaxPages, normalizedMaxRows)) {
+            log.info("Activity product status-partition sync fallback to serial, activityId={}, statuses={}, pageSize={}, maxPages={}, maxRows={}",
+                    request.activityId(), statuses, pageSize, normalizedMaxPages, normalizedMaxRows);
+            return refreshActivitySnapshots(request, normalizedMaxPages, normalizedMaxRows, normalizedPageIntervalMs, progressConsumer);
+        }
+
+        java.util.concurrent.ExecutorService executor =
+                java.util.concurrent.Executors.newFixedThreadPool(Math.min(normalizedParallelism, statuses.size()));
+        java.util.concurrent.atomic.AtomicInteger pageCounter = new java.util.concurrent.atomic.AtomicInteger();
+        java.util.concurrent.atomic.AtomicInteger progressPageCounter = new java.util.concurrent.atomic.AtomicInteger();
+        List<ActivityProductStatusPartitionFetch> partitions;
+        try {
+            List<java.util.concurrent.CompletableFuture<ActivityProductStatusPartitionFetch>> futures = statuses.stream()
+                    .map(status -> java.util.concurrent.CompletableFuture.supplyAsync(
+                            () -> fetchActivityProductStatusPartition(
+                                    request,
+                                    status,
+                                    pageSize,
+                                    normalizedMaxPages,
+                                    normalizedMaxRows,
+                                    normalizedPageIntervalMs,
+                                    pageCounter,
+                                    progressPageCounter,
+                                    progressConsumer),
+                            executor))
+                    .toList();
+            partitions = futures.stream()
+                    .map(java.util.concurrent.CompletableFuture::join)
+                    .toList();
+        } catch (java.util.concurrent.CompletionException ex) {
+            Throwable cause = ex.getCause() == null ? ex : ex.getCause();
+            if (cause instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
+            throw new IllegalStateException(cause);
+        } finally {
+            executor.shutdownNow();
+        }
+
+        int createdCount = 0;
+        int updatedCount = 0;
+        int skippedCount = 0;
+        int libraryEntryCount = 0;
+        for (ActivityProductStatusPartitionFetch partition : partitions) {
+            for (List<DouyinProductGateway.ActivityProductItem> pageItems : partition.pages()) {
+                ActivitySnapshotUpsertStats stats = upsertSnapshotsWithStats(request.activityId(), pageItems);
+                createdCount += stats.createdCount();
+                updatedCount += stats.updatedCount();
+                skippedCount += stats.skippedCount();
+                libraryEntryCount += stats.libraryEntryCount();
+            }
+        }
+        ActivityProductPaginationRunner.Result pageResult = aggregateStatusPartitionResults(
+                partitions,
+                createdCount,
+                updatedCount,
+                skippedCount,
+                libraryEntryCount);
+        log.info("Activity product status-partition sync merged, activityId={}, statuses={}, parallelism={}, pagesFetched={}, fetchedRows={}, complete={}",
+                request.activityId(),
+                statuses,
+                Math.min(normalizedParallelism, statuses.size()),
+                pageResult.pagesFetched(),
+                pageResult.fetchedRows(),
+                pageResult.complete());
+        return finishActivityProductRefresh(request, pageResult, normalizedPageIntervalMs);
+    }
+
+    private ActivityProductRefreshResult finishActivityProductRefresh(
+            DouyinProductGateway.ActivityProductQueryRequest request,
+            ActivityProductPaginationRunner.Result pageResult,
+            long normalizedPageIntervalMs) {
         int createdCount = pageResult.createdCount();
         int updatedCount = pageResult.updatedCount();
         int skippedCount = pageResult.skippedCount();
@@ -1885,6 +1983,141 @@ public class ProductService {
                 pageResult.complete());
     }
 
+    private boolean statusPartitionPreflightSafe(
+            DouyinProductGateway.ActivityProductQueryRequest request,
+            List<Integer> statuses,
+            int pageSize,
+            int maxPages,
+            int maxRows) {
+        long estimatedRows = 0L;
+        long estimatedPages = 0L;
+        java.util.concurrent.atomic.AtomicInteger preflightPageCounter = new java.util.concurrent.atomic.AtomicInteger();
+        for (Integer status : statuses) {
+            DouyinProductGateway.ActivityProductListResult firstPage = queryActivityProductsWithRetry(
+                    activityProductRequestWithStatus(request, status, pageSize, null),
+                    preflightPageCounter.getAndIncrement());
+            if (firstPage.total() == null) {
+                log.info("Activity product status-partition preflight missing total, activityId={}, status={}",
+                        request.activityId(), status);
+                return false;
+            }
+            long total = Math.max(firstPage.total(), 0L);
+            estimatedRows += total;
+            estimatedPages += Math.max(1L, (total + pageSize - 1L) / pageSize);
+            if (estimatedRows > maxRows || estimatedPages > maxPages) {
+                log.info("Activity product status-partition preflight exceeds safety bound, activityId={}, status={}, estimatedRows={}, estimatedPages={}, maxRows={}, maxPages={}",
+                        request.activityId(), status, estimatedRows, estimatedPages, maxRows, maxPages);
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private ActivityProductStatusPartitionFetch fetchActivityProductStatusPartition(
+            DouyinProductGateway.ActivityProductQueryRequest request,
+            Integer status,
+            int pageSize,
+            int maxPages,
+            int maxRows,
+            long pageIntervalMs,
+            java.util.concurrent.atomic.AtomicInteger pageCounter,
+            java.util.concurrent.atomic.AtomicInteger progressPageCounter,
+            java.util.function.Consumer<ActivityProductRefreshProgress> progressConsumer) {
+        List<List<DouyinProductGateway.ActivityProductItem>> pages = new ArrayList<>();
+        ActivityProductPaginationRunner.Result result = ActivityProductPaginationRunner.run(
+                activityProductRequestWithStatus(request, status, pageSize, null),
+                new ActivityProductPaginationRunner.Options(pageSize, maxPages, maxRows, true),
+                pageRequest -> queryActivityProductsWithRetry(pageRequest, pageCounter.getAndIncrement()),
+                page -> {
+                    pages.add(List.copyOf(page.items()));
+                    notifyActivityProductRefreshProgress(progressConsumer, progressPageCounter.incrementAndGet());
+                    return ActivityProductPaginationRunner.PageWriteStats.ZERO;
+                },
+                pageNo -> sleepBeforeNextActivityProductPage(request.activityId(), pageNo - 1, pageIntervalMs));
+        return new ActivityProductStatusPartitionFetch(status, result, pages);
+    }
+
+    private DouyinProductGateway.ActivityProductQueryRequest activityProductRequestWithStatus(
+            DouyinProductGateway.ActivityProductQueryRequest request,
+            Integer status,
+            int pageSize,
+            String cursor) {
+        return new DouyinProductGateway.ActivityProductQueryRequest(
+                request.appId(),
+                request.activityId(),
+                request.searchType(),
+                request.sortType(),
+                pageSize,
+                request.cooperationInfo(),
+                request.cooperationType(),
+                request.productInfo(),
+                status,
+                request.retrieveMode(),
+                cursor,
+                null);
+    }
+
+    private ActivityProductPaginationRunner.Result aggregateStatusPartitionResults(
+            List<ActivityProductStatusPartitionFetch> partitions,
+            int createdCount,
+            int updatedCount,
+            int skippedCount,
+            int libraryEntryCount) {
+        int pagesFetched = 0;
+        int fetchedRows = 0;
+        int duplicateProductIds = 0;
+        boolean complete = true;
+        boolean stillHasNextWhenStopped = false;
+        ActivityProductPaginationRunner.StopReason stopReason = ActivityProductPaginationRunner.StopReason.DONE_NO_MORE;
+        String lastCursor = null;
+        Set<String> productIds = new LinkedHashSet<>();
+        List<ActivityProductPaginationRunner.PageSummary> pageSamples = new ArrayList<>();
+        List<String> warnings = new ArrayList<>();
+        for (ActivityProductStatusPartitionFetch partition : partitions) {
+            ActivityProductPaginationRunner.Result result = partition.result();
+            pagesFetched += result.pagesFetched();
+            fetchedRows += result.fetchedRows();
+            duplicateProductIds += result.duplicateProductIds();
+            for (String productId : result.productIds()) {
+                if (!productIds.add(productId)) {
+                    duplicateProductIds++;
+                }
+            }
+            pageSamples.addAll(result.pageSamples());
+            result.warnings().forEach(warning -> warnings.add("status=" + partition.status() + ": " + warning));
+            lastCursor = result.lastCursor();
+            if (!result.complete()) {
+                if (complete) {
+                    stopReason = result.stopReason();
+                }
+                complete = false;
+                stillHasNextWhenStopped = stillHasNextWhenStopped || result.stillHasNextWhenStopped();
+            }
+        }
+        return new ActivityProductPaginationRunner.Result(
+                pagesFetched,
+                fetchedRows,
+                productIds.size(),
+                duplicateProductIds,
+                createdCount,
+                updatedCount,
+                skippedCount,
+                libraryEntryCount,
+                stopReason,
+                stillHasNextWhenStopped,
+                complete,
+                lastCursor,
+                List.copyOf(pageSamples),
+                List.copyOf(warnings),
+                Set.copyOf(productIds));
+    }
+
+    private record ActivityProductStatusPartitionFetch(
+            int status,
+            ActivityProductPaginationRunner.Result result,
+            List<List<DouyinProductGateway.ActivityProductItem>> pages) {
+    }
+
     private int reconcileActivitySnapshotsAfterCompleteRefresh(
             DouyinProductGateway.ActivityProductQueryRequest request,
             ActivityProductPaginationRunner.Result pageResult) {
@@ -1935,15 +2168,17 @@ public class ProductService {
             long startedAt = System.nanoTime();
             try {
                 DouyinProductGateway.ActivityProductListResult result = douyinProductGateway.queryActivityProducts(request);
-                log.info("Activity product page sync succeeded, endpoint=queryActivityProducts, activityId={}, page={}, size={}, costMs={}",
+                log.info("Activity product page sync succeeded, endpoint=queryActivityProducts, activityId={}, status={}, page={}, size={}, costMs={}",
                         request.activityId(),
+                        request.status(),
                         pageNo + 1,
                         request.count(),
                         elapsedMs(startedAt));
                 return result;
             } catch (DouyinApiException ex) {
-                log.warn("Activity product page sync failed, endpoint=queryActivityProducts, activityId={}, page={}, size={}, attempt={}, costMs={}, errorCode={}, subCode={}, message={}",
+                log.warn("Activity product page sync failed, endpoint=queryActivityProducts, activityId={}, status={}, page={}, size={}, attempt={}, costMs={}, errorCode={}, subCode={}, message={}",
                         request.activityId(),
+                        request.status(),
                         pageNo + 1,
                         request.count(),
                         attempt + 1,
@@ -1957,8 +2192,9 @@ public class ProductService {
                 sleepBeforeRetry(request.activityId(), pageNo, attempt);
                 attempt++;
             } catch (RuntimeException ex) {
-                log.warn("Activity product page sync failed, endpoint=queryActivityProducts, activityId={}, page={}, size={}, attempt={}, costMs={}, message={}",
+                log.warn("Activity product page sync failed, endpoint=queryActivityProducts, activityId={}, status={}, page={}, size={}, attempt={}, costMs={}, message={}",
                         request.activityId(),
+                        request.status(),
                         pageNo + 1,
                         request.count(),
                         attempt + 1,

@@ -11,6 +11,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -43,11 +44,12 @@ class ProductActivityManualSyncServiceTest {
 
     @BeforeEach
     void setUp() {
-        lenient().when(productService.refreshActivitySnapshots(
+        lenient().when(productService.refreshActivitySnapshotsByStatusPartitions(
                         any(DouyinProductGateway.ActivityProductQueryRequest.class),
                         anyInt(),
                         anyInt(),
                         eq(300L),
+                        anyInt(),
                         any()))
                 .thenReturn(new ProductService.ActivityProductRefreshResult(3, 1, 1, 2, 0));
     }
@@ -69,7 +71,8 @@ class ProductActivityManualSyncServiceTest {
         verify(colonelActivityService).syncActivitySummaryFromUpstream("ACT-1", null);
         ArgumentCaptor<DouyinProductGateway.ActivityProductQueryRequest> captor =
                 ArgumentCaptor.forClass(DouyinProductGateway.ActivityProductQueryRequest.class);
-        verify(productService).refreshActivitySnapshots(captor.capture(), eq(3000), eq(50000), eq(300L), any());
+        verify(productService).refreshActivitySnapshotsByStatusPartitions(
+                captor.capture(), eq(3000), eq(50000), eq(300L), eq(1), any());
         assertThat(captor.getValue().activityId()).isEqualTo("ACT-1");
         assertThat(captor.getValue().count()).isEqualTo(20);
         verify(activityMapper).touchLastSyncAt(eq("ACT-1"), any(LocalDateTime.class));
@@ -110,11 +113,12 @@ class ProductActivityManualSyncServiceTest {
 
     @Test
     void trigger_shouldNotTouchLastSyncAtWhenRefreshIsIncomplete() {
-        when(productService.refreshActivitySnapshots(
+        when(productService.refreshActivitySnapshotsByStatusPartitions(
                         any(DouyinProductGateway.ActivityProductQueryRequest.class),
                         anyInt(),
                         anyInt(),
                         eq(300L),
+                        anyInt(),
                         any()))
                 .thenReturn(new ProductService.ActivityProductRefreshResult(
                         2_000,
@@ -146,6 +150,27 @@ class ProductActivityManualSyncServiceTest {
     }
 
     @Test
+    void trigger_shouldPassConfiguredStatusPartitionParallelismToRefresh() {
+        ProductActivityManualSyncService service = new ProductActivityManualSyncService(
+                productService,
+                colonelActivityService,
+                activityMapper,
+                jobLogMapper,
+                Runnable::run);
+        ReflectionTestUtils.setField(service, "manualStatusPartitionParallelism", 3);
+
+        service.trigger("ACT-1", null);
+
+        verify(productService).refreshActivitySnapshotsByStatusPartitions(
+                any(DouyinProductGateway.ActivityProductQueryRequest.class),
+                eq(3000),
+                eq(50000),
+                eq(300L),
+                eq(3),
+                any());
+    }
+
+    @Test
     void trigger_shouldReturnLockedWithoutCreatingJobWhenGlobalLockIsHeld() {
         when(jobLockService.tryAcquire(eq(JobLockKeys.PRODUCT_BACKFILL_GLOBAL), any(), any(String.class)))
                 .thenReturn(false);
@@ -170,11 +195,12 @@ class ProductActivityManualSyncServiceTest {
         assertThat(result.lockOwner()).isEqualTo("scheduler");
         assertThat(result.lockTtlSeconds()).isEqualTo(120L);
         verify(jobLogMapper, never()).insert(any(ProductSyncJobLog.class));
-        verify(productService, never()).refreshActivitySnapshots(
+        verify(productService, never()).refreshActivitySnapshotsByStatusPartitions(
                 any(DouyinProductGateway.ActivityProductQueryRequest.class),
                 anyInt(),
                 anyInt(),
                 anyLong(),
+                anyInt(),
                 any());
         verify(colonelActivityService, never()).syncActivitySummaryFromUpstream(any(), any());
     }

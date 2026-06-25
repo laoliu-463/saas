@@ -30,6 +30,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -600,8 +601,67 @@ class ProductServiceActivityStatusIndependenceTest {
         }));
     }
 
+    @Test
+    void refreshActivitySnapshotsByStatusPartitions_shouldQueryEverySupportedStatusAndReconcileWholeActivity() {
+        String activityId = "ACT011";
+        List<DouyinProductGateway.ActivityProductQueryRequest> requests = new ArrayList<>();
+        when(douyinProductGateway.queryActivityProducts(any())).thenAnswer(invocation -> {
+            DouyinProductGateway.ActivityProductQueryRequest request = invocation.getArgument(0);
+            requests.add(request);
+            int status = request.status() == null ? -1 : request.status();
+            long productId = 10_000L + status;
+            return new DouyinProductGateway.ActivityProductListResult(
+                    false,
+                    11L,
+                    30001L,
+                    1L,
+                    null,
+                    List.of(item(productId, "状态" + status + "商品", status, statusText(status))));
+        });
+        when(operationStateMapper.selectOne(any())).thenReturn(null);
+        when(productBizStatusService.initStateIfAbsent(any(), eq(activityId), any(), any(), any(), any()))
+                .thenAnswer(invocation -> state(activityId, invocation.getArgument(2)));
+        when(snapshotMapper.update(isNull(), any())).thenReturn(0);
+
+        ProductService.ActivityProductRefreshResult result = productService.refreshActivitySnapshotsByStatusPartitions(
+                new DouyinProductGateway.ActivityProductQueryRequest(
+                        null, activityId, 4L, 1L, 20, null, null, null, null, 1L, null, null),
+                100,
+                100,
+                300L,
+                3,
+                null);
+
+        assertThat(result.complete()).isTrue();
+        assertThat(result.distinctProductIds()).isEqualTo(6);
+        assertThat(requests)
+                .extracting(DouyinProductGateway.ActivityProductQueryRequest::status)
+                .contains(0, 1, 2, 3, 4, 6);
+        verify(snapshotMapper).update(isNull(), argThat(wrapper -> {
+            String sql = wrapper.getSqlSegment();
+            return sql.contains("activity_id")
+                    && sql.contains("deleted")
+                    && sql.contains("product_id NOT IN")
+                    && !sql.contains("status =");
+        }));
+        verify(productDisplayRuleService).repairLibraryStateForActivity(activityId, false, 10000);
+        verify(productDisplayRuleService).applyForActivityId(activityId);
+    }
+
     private DouyinProductGateway.ActivityProductItem item(long productId, String title) {
         return item(productId, title, 1, "推广中");
+    }
+
+    private String statusText(int status) {
+        return switch (status) {
+            case 0 -> "待审核";
+            case 1 -> "推广中";
+            case 2 -> "申请未通过";
+            case 3 -> "合作已终止";
+            case 4 -> "合作前取消";
+            case 6 -> "合作已到期";
+            default -> "未知";
+        };
     }
 
     private void assertTerminatedStatusFilter(LambdaQueryWrapper<ProductSnapshot> wrapper) {

@@ -62,6 +62,8 @@ public class ProductActivityManualSyncService {
     private int manualMaxPagesPerActivity = DEFAULT_MANUAL_MAX_PAGES_PER_ACTIVITY;
     @Value("${product.sync.activityProduct.manual-maxRowsPerActivity:50000}")
     private int manualMaxRowsPerActivity = DEFAULT_MANUAL_MAX_ROWS_PER_ACTIVITY;
+    @Value("${product.sync.activityProduct.manual-status-partition-parallelism:3}")
+    private int manualStatusPartitionParallelism = 1;
 
     ProductActivityManualSyncService(
             ProductService productService,
@@ -188,6 +190,7 @@ public class ProductActivityManualSyncService {
                 "pageSize", normalizedPageSize(),
                 "maxPagesPerActivity", normalizedManualMaxPagesPerActivity(),
                 "maxRowsPerActivity", normalizedManualMaxRowsPerActivity(),
+                "statusPartitionParallelism", normalizedManualStatusPartitionParallelism(),
                 "lastProgressAt", now.toString())));
         log.setStartedAt(now);
         log.setCreateTime(now);
@@ -207,11 +210,12 @@ public class ProductActivityManualSyncService {
         try {
             colonelActivityService.syncActivitySummaryFromUpstream(activityId, appId);
             ProductService.ActivityProductRefreshResult result =
-                    productService.refreshActivitySnapshots(
+                    productService.refreshActivitySnapshotsByStatusPartitions(
                             buildQueryRequest(activityId, appId),
                             normalizedManualMaxPagesPerActivity(),
                             normalizedManualMaxRowsPerActivity(),
                             normalizedManualPageIntervalMs(),
+                            normalizedManualStatusPartitionParallelism(),
                             progress -> updateRunningProgress(jobLog, progress));
             if (result.complete()) {
                 activityMapper.touchLastSyncAt(activityId, LocalDateTime.now());
@@ -331,21 +335,23 @@ public class ProductActivityManualSyncService {
         if (pagesFetched <= 0 || pagesFetched % PROGRESS_UPDATE_PAGE_INTERVAL != 0) {
             return;
         }
-        LocalDateTime now = LocalDateTime.now();
-        jobLog.setApiFetchedRows((long) pagesFetched * normalizedPageSize());
-        jobLog.setActivitiesScanned(1);
-        jobLog.setRequestParamsJson(appendMeta(jobLog.getRequestParamsJson(), Map.of(
-                "lastProgressAt", now.toString(),
-                "pagesFetched", pagesFetched,
-                "progressApproximate", true)));
-        jobLog.setUpdateTime(now);
-        try {
-            updateJobLogProgress(jobLog);
-        } catch (Exception ex) {
-            log.warn("ProductActivityManualSync progress update failed, jobId={}, pagesFetched={}, message={}",
-                    jobLog.getJobId(),
-                    pagesFetched,
-                    ex.getMessage());
+        synchronized (jobLog) {
+            LocalDateTime now = LocalDateTime.now();
+            jobLog.setApiFetchedRows((long) pagesFetched * normalizedPageSize());
+            jobLog.setActivitiesScanned(1);
+            jobLog.setRequestParamsJson(appendMeta(jobLog.getRequestParamsJson(), Map.of(
+                    "lastProgressAt", now.toString(),
+                    "pagesFetched", pagesFetched,
+                    "progressApproximate", true)));
+            jobLog.setUpdateTime(now);
+            try {
+                updateJobLogProgress(jobLog);
+            } catch (Exception ex) {
+                log.warn("ProductActivityManualSync progress update failed, jobId={}, pagesFetched={}, message={}",
+                        jobLog.getJobId(),
+                        pagesFetched,
+                        ex.getMessage());
+            }
         }
     }
 
@@ -433,6 +439,10 @@ public class ProductActivityManualSyncService {
 
     private long normalizedManualPageIntervalMs() {
         return Math.min(1000L, Math.max(300L, manualPageIntervalMs));
+    }
+
+    private int normalizedManualStatusPartitionParallelism() {
+        return Math.min(Math.max(manualStatusPartitionParallelism, 1), 6);
     }
 
     private static TransactionTemplate createRequiresNewTemplate(PlatformTransactionManager transactionManager) {
