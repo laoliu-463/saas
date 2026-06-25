@@ -303,4 +303,54 @@ describe('ProductLibrary pagination weakening', () => {
     expect(wrapper.findAll('[data-testid="product-card"]')).toHaveLength(250)
     expect(wrapper.text()).toContain('已全部加载')
   })
+
+  it('pauses automatic paging after a load-more failure while keeping manual retry available', async () => {
+    vi.mocked(getProducts)
+      .mockResolvedValueOnce({
+        data: {
+          records: buildRows(1, 100),
+          total: 200,
+          page: 1,
+          size: 100
+        }
+      } as any)
+      .mockRejectedValueOnce(new Error('network down'))
+      .mockResolvedValueOnce({
+        data: {
+          records: buildRows(101, 100),
+          total: 200,
+          page: 2,
+          size: 100
+        }
+      } as any)
+
+    const wrapper = mountLibrary()
+    await flushPromises()
+
+    lastIntersectionCallback?.(
+      [{ isIntersecting: true } as IntersectionObserverEntry],
+      {} as IntersectionObserver
+    )
+    await flushPromises()
+
+    expect(vi.mocked(getProducts)).toHaveBeenCalledTimes(2)
+
+    lastIntersectionCallback?.(
+      [{ isIntersecting: true } as IntersectionObserverEntry],
+      {} as IntersectionObserver
+    )
+    await flushPromises()
+
+    expect(vi.mocked(getProducts)).toHaveBeenCalledTimes(2)
+
+    await wrapper.get('[data-testid="product-library-load-more"]').trigger('click')
+    await flushPromises()
+
+    expect(vi.mocked(getProducts).mock.calls[2][0]).toMatchObject({
+      page: 2,
+      size: 100
+    })
+    expect(wrapper.findAll('[data-testid="product-card"]')).toHaveLength(200)
+    expect(wrapper.text()).toContain('已全部加载')
+  })
 })

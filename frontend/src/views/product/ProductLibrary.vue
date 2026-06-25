@@ -184,6 +184,7 @@ const currentPage = ref(1)
 const hasMore = ref(false)
 const totalCount = ref(0)
 const loadMoreTrigger = ref<HTMLElement | null>(null)
+const autoLoadSuspended = ref(false)
 const libraryStatus = ref<number | null>(null)
 const filters = ref<ProductFilterState>(DEFAULT_PRODUCT_FILTERS())
 const libraryCategoryOptions = ref<{ label: string; value: string }[]>([])
@@ -328,6 +329,7 @@ const fetchProducts = async (reset: boolean) => {
     products.value = []
     hasMore.value = false
     totalCount.value = 0
+    autoLoadSuspended.value = false
   }
 
   try {
@@ -357,6 +359,7 @@ const fetchProducts = async (reset: boolean) => {
     hasMore.value = total > 0
       ? products.value.length < total
       : items.length >= pageSize
+    autoLoadSuspended.value = false
   } catch (error: any) {
     notifyApiFailure(error, message, { fallbackMessage: '商品查询失败' })
     if (reset) {
@@ -364,6 +367,9 @@ const fetchProducts = async (reset: boolean) => {
       currentPage.value = 1
       hasMore.value = false
       totalCount.value = 0
+      autoLoadSuspended.value = false
+    } else {
+      autoLoadSuspended.value = true
     }
   } finally {
     loading.value = false
@@ -389,12 +395,14 @@ const refreshProducts = async () => {
 
 const canLoadNextPage = () => hasMore.value && !loading.value && !loadingMore.value
 
-const triggerLoadMore = () => {
+const triggerLoadMore = (source: 'auto' | 'manual') => {
+  if (source === 'auto' && autoLoadSuspended.value) return
+  if (source === 'manual') autoLoadSuspended.value = false
   if (canLoadNextPage()) void fetchProducts(false)
 }
 
 const loadMore = () => {
-  triggerLoadMore()
+  triggerLoadMore('manual')
 }
 
 const getLoadMoreObserver = () => {
@@ -404,7 +412,7 @@ const getLoadMoreObserver = () => {
   if (!loadMoreObserver) {
     loadMoreObserver = new window.IntersectionObserver((entries) => {
       if (entries.some((entry) => entry.isIntersecting)) {
-        triggerLoadMore()
+        triggerLoadMore('auto')
       }
     }, {
       root: null,
@@ -419,7 +427,7 @@ const refreshLoadMoreObserver = () => {
   const observer = getLoadMoreObserver()
   if (!observer) return
   observer.disconnect()
-  if (hasMore.value && loadMoreTrigger.value) {
+  if (hasMore.value && !autoLoadSuspended.value && loadMoreTrigger.value) {
     observer.observe(loadMoreTrigger.value)
   }
 }
@@ -654,7 +662,7 @@ watch(
 )
 
 watch(
-  () => [hasMore.value, products.value.length],
+  () => [hasMore.value, products.value.length, autoLoadSuspended.value],
   () => {
     void scheduleLoadMoreObservation()
   },
