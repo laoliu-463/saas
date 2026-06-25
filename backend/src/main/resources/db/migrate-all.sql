@@ -1561,4 +1561,5 @@ CREATE INDEX IF NOT EXISTS idx_order_sync_dedup_claim_row_id
 \i alter-talent-claim-shipping-address.sql
 \i create-colonel-order-settlement.sql
 \i alter-product-activity-backfill-state-20260615.sql
+\i alter-product-library-query-performance-20260625.sql
 \i migrate-sys-dept-dept-type.sql

@@ -212,6 +212,113 @@ class ProductServiceFilterTest {
     }
 
     @Test
+    void getSelectedLibraryPage_shouldUseDatabasePagedQueryForInfiniteScrollBatches() {
+        ProductOperationState state1 = state("10001", "9001");
+        ProductOperationState state2 = state("10002", "9002");
+        ProductSnapshot snap1 = snapshot("10001", "9001", "玩具乐器", 9900L);
+        ProductSnapshot snap2 = snapshot("10002", "9002", "美妆", 8800L);
+
+        when(snapshotMapper.selectSelectedLibraryPage(
+                isNull(),
+                isNull(),
+                isNull(),
+                any(),
+                isNull(),
+                isNull(),
+                isNull(),
+                isNull(),
+                isNull(),
+                isNull(),
+                isNull(),
+                isNull(),
+                isNull(),
+                isNull(),
+                isNull(),
+                isNull(),
+                eq(500L),
+                eq(500L),
+                any(LocalDateTime.class)))
+                .thenReturn(List.of(snap1, snap2));
+        when(snapshotMapper.countSelectedLibraryPage(
+                isNull(),
+                isNull(),
+                isNull(),
+                any(),
+                isNull(),
+                isNull(),
+                isNull(),
+                isNull(),
+                isNull(),
+                isNull(),
+                isNull(),
+                isNull(),
+                isNull(),
+                isNull(),
+                isNull(),
+                isNull()))
+                .thenReturn(15_013L);
+        when(operationStateMapper.selectList(any())).thenReturn(List.of(state1, state2));
+
+        var result = service.getSelectedLibraryPage(2, 500, filter().build());
+
+        assertThat(result.getTotal()).isEqualTo(15_013L);
+        assertThat(result.getRecords())
+                .extracting("productId")
+                .containsExactly("9001", "9002");
+        verify(operationStateMapper, never()).selectPage(any(Page.class), any());
+        verify(snapshotMapper, never()).selectBatchIds(any());
+    }
+
+    @Test
+    void getSelectedLibraryCursorPage_shouldQueryLimitPlusOneAndReturnOpaqueNextCursor() {
+        ProductOperationState state1 = state("10001", "9001");
+        ProductOperationState state2 = state("10002", "9002");
+        ProductSnapshot snap1 = snapshot("10001", "9001", "玩具乐器", 9900L);
+        ProductSnapshot snap2 = snapshot("10002", "9002", "美妆", 8800L);
+
+        when(snapshotMapper.selectSelectedLibraryCursorPage(
+                isNull(),
+                isNull(),
+                isNull(),
+                any(),
+                isNull(),
+                isNull(),
+                isNull(),
+                isNull(),
+                isNull(),
+                isNull(),
+                isNull(),
+                isNull(),
+                isNull(),
+                isNull(),
+                isNull(),
+                isNull(),
+                isNull(),
+                isNull(),
+                isNull(),
+                isNull(),
+                isNull(),
+                isNull(),
+                eq(2L),
+                any(LocalDateTime.class)))
+                .thenReturn(List.of(snap1, snap2));
+        when(operationStateMapper.selectList(any())).thenReturn(List.of(state1));
+
+        var result = service.getSelectedLibraryCursorPage(null, 1, filter().build());
+
+        assertThat(result.records())
+                .extracting("productId")
+                .containsExactly("9001");
+        assertThat(result.limit()).isEqualTo(1L);
+        assertThat(result.hasMore()).isTrue();
+        assertThat(result.nextCursor()).isNotBlank();
+        verify(operationStateMapper, never()).selectPage(any(Page.class), any());
+        verify(snapshotMapper, never()).countSelectedLibraryPage(
+                any(), any(), any(), any(), any(), any(), any(), any(),
+                any(), any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
     void getSelectedLibraryPage_shouldUsePinnedThenCooperationTimeAsDefaultSort() {
         LocalDateTime now = LocalDateTime.now();
         ProductOperationState pinnedOlder = state("10001", "9001");

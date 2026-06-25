@@ -8,6 +8,7 @@ import org.apache.ibatis.annotations.Select;
 
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * 商品快照数据访问层
@@ -178,4 +179,76 @@ public interface ProductSnapshotMapper extends BaseMapper<ProductSnapshot> {
             @Param("limit")                 long            limit,
             @Param("offset")                long            offset,
             @Param("now")                  java.time.LocalDateTime now);
+
+    /**
+     * SQL 级别查询商品库主列表，供无限下拉按当前筛选实时读取下一批。
+     * <p>
+     * 商品库固定排序契约：置顶优先、上游合作开始时间倒序、同步时间倒序、入库时间倒序。
+     * 复杂 audit payload / 跨域筛选仍由 service 兜底到 legacy 路径。
+     * </p>
+     */
+    List<ProductSnapshot> selectSelectedLibraryPage(
+            @Param("keyword") String keyword,
+            @Param("status") Integer status,
+            @Param("shopKeyword") String shopKeyword,
+            @Param("categoryTokens") List<String> categoryTokens,
+            @Param("activityId") String activityId,
+            @Param("assigneeId") UUID assigneeId,
+            @Param("promotionLink") String promotionLink,
+            @Param("allianceStatus") String allianceStatus,
+            @Param("assignee") String assignee,
+            @Param("partnerId") String partnerId,
+            @Param("partnerType") String partnerType,
+            @Param("published") String published,
+            @Param("cooperationType") String cooperationType,
+            @Param("recruitActivityId") String recruitActivityId,
+            @Param("listed") String listed,
+            @Param("productId") String productId,
+            @Param("limit") long limit,
+            @Param("offset") long offset,
+            @Param("now") java.time.LocalDateTime now);
+
+    List<ProductSnapshot> selectSelectedLibraryCursorPage(
+            @Param("keyword") String keyword,
+            @Param("status") Integer status,
+            @Param("shopKeyword") String shopKeyword,
+            @Param("categoryTokens") List<String> categoryTokens,
+            @Param("activityId") String activityId,
+            @Param("assigneeId") UUID assigneeId,
+            @Param("promotionLink") String promotionLink,
+            @Param("allianceStatus") String allianceStatus,
+            @Param("assignee") String assignee,
+            @Param("partnerId") String partnerId,
+            @Param("partnerType") String partnerType,
+            @Param("published") String published,
+            @Param("cooperationType") String cooperationType,
+            @Param("recruitActivityId") String recruitActivityId,
+            @Param("listed") String listed,
+            @Param("productId") String productId,
+            @Param("cursorPinnedRank") Integer cursorPinnedRank,
+            @Param("cursorPromotionStartTime") java.time.LocalDateTime cursorPromotionStartTime,
+            @Param("cursorSyncTime") java.time.LocalDateTime cursorSyncTime,
+            @Param("cursorSelectedAt") java.time.LocalDateTime cursorSelectedAt,
+            @Param("cursorActivityId") String cursorActivityId,
+            @Param("cursorProductId") String cursorProductId,
+            @Param("limit") long limit,
+            @Param("snapshotTime") java.time.LocalDateTime snapshotTime);
+
+    long countSelectedLibraryPage(
+            @Param("keyword") String keyword,
+            @Param("status") Integer status,
+            @Param("shopKeyword") String shopKeyword,
+            @Param("categoryTokens") List<String> categoryTokens,
+            @Param("activityId") String activityId,
+            @Param("assigneeId") UUID assigneeId,
+            @Param("promotionLink") String promotionLink,
+            @Param("allianceStatus") String allianceStatus,
+            @Param("assignee") String assignee,
+            @Param("partnerId") String partnerId,
+            @Param("partnerType") String partnerType,
+            @Param("published") String published,
+            @Param("cooperationType") String cooperationType,
+            @Param("recruitActivityId") String recruitActivityId,
+            @Param("listed") String listed,
+            @Param("productId") String productId);
 }

@@ -45,7 +45,6 @@
     >
       <span class="product-list-meta">
         已加载 <strong>{{ products.length }}</strong>
-        <template v-if="totalCount > 0"> / {{ totalCount }}</template>
         件
       </span>
       <n-space align="center" :size="8">
@@ -145,6 +144,7 @@ import ProductSelectionCard from '../../components/product/ProductSelectionCard.
 import QuickSampleModal from './components/QuickSampleModal.vue'
 import ProductDetail from './ProductDetail.vue'
 import {
+  canUseProductLibraryCursor,
   buildProductLibraryQueryParams,
   DEFAULT_PRODUCT_FILTERS,
   productDomainCategoryOptions,
@@ -160,7 +160,7 @@ import {
 } from './product-library-route-sync'
 import { tryCopyText } from '../../utils/clipboard'
 
-const PAGE_SIZE = 500
+const INFINITE_SCROLL_BATCH_SIZE = 500
 
 const message = useMessage()
 const route = useRoute()
@@ -173,6 +173,7 @@ const loadingMore = ref(false)
 const promotionLoadingIds = ref<Set<string>>(new Set())
 const products = ref<any[]>([])
 const currentPage = ref(1)
+const nextCursor = ref('')
 const hasMore = ref(false)
 const totalCount = ref(0)
 const loadMoreTrigger = ref<HTMLElement | null>(null)
@@ -262,6 +263,7 @@ const fetchProducts = async (reset: boolean) => {
   else loadingMore.value = true
   if (reset) {
     currentPage.value = 1
+    nextCursor.value = ''
     products.value = []
     hasMore.value = false
     totalCount.value = 0
@@ -270,13 +272,24 @@ const fetchProducts = async (reset: boolean) => {
 
   try {
     const page = reset ? 1 : currentPage.value + 1
-    const res: any = await getProducts(buildProductLibraryQueryParams(filters.value, {
-      page,
-      size: PAGE_SIZE,
+    const cursorMode = canUseProductLibraryCursor(filters.value)
+    if (!cursorMode) nextCursor.value = ''
+    const commonQuery = {
       keyword: filters.value.productId || filters.value.productName || undefined,
       productIdMode: 'keyword',
       status: libraryStatus.value ?? undefined
-    }))
+    } as const
+    const res: any = await getProducts(buildProductLibraryQueryParams(filters.value, cursorMode
+      ? {
+          ...commonQuery,
+          cursor: reset ? undefined : nextCursor.value || undefined,
+          limit: INFINITE_SCROLL_BATCH_SIZE
+        }
+      : {
+          ...commonQuery,
+          page,
+          size: INFINITE_SCROLL_BATCH_SIZE
+        }))
     const data = res?.data || {}
     const records = Array.isArray(data.records) ? data.records : []
     const items = records.map((p: any) =>
@@ -287,19 +300,26 @@ const fetchProducts = async (reset: boolean) => {
     )
     products.value = reset ? items : products.value.concat(items)
     const responsePage = Number(data.page || page || 1)
-    const pageSize = Number(data.size || PAGE_SIZE)
+    const pageSize = Number(data.size || INFINITE_SCROLL_BATCH_SIZE)
     const total = Number(data.total || 0)
     currentPage.value = Number.isFinite(responsePage) && responsePage > 0 ? responsePage : page
     totalCount.value = total
-    hasMore.value = total > 0
-      ? products.value.length < total
-      : items.length >= pageSize
+    if (cursorMode && (Object.prototype.hasOwnProperty.call(data, 'hasMore') || Object.prototype.hasOwnProperty.call(data, 'nextCursor'))) {
+      nextCursor.value = String(data.nextCursor || '')
+      hasMore.value = Boolean(data.hasMore || nextCursor.value)
+    } else {
+      nextCursor.value = ''
+      hasMore.value = total > 0
+        ? products.value.length < total
+        : items.length >= pageSize
+    }
     autoLoadSuspended.value = false
   } catch (error: any) {
     notifyApiFailure(error, message, { fallbackMessage: '商品查询失败' })
     if (reset) {
       products.value = []
       currentPage.value = 1
+      nextCursor.value = ''
       hasMore.value = false
       totalCount.value = 0
       autoLoadSuspended.value = false

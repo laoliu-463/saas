@@ -170,6 +170,8 @@ public class ProductController extends BaseController {
     public ApiResult<PageResult<Product>> page(
             @Parameter(description = "页码，从 1 开始。") @RequestParam(defaultValue = "1") @Min(1) long page,
             @Parameter(description = "每页条数。商品库主列表支持滚动批量加载，允许超过 100。") @RequestParam(defaultValue = "20") @Min(1) long size,
+            @Parameter(description = "无限下拉游标。首次查询不传，后续传上次返回的 nextCursor。") @RequestParam(name = "cursor", required = false) String cursor,
+            @Parameter(description = "无限下拉单批条数，后端最大 500。") @RequestParam(name = "limit", required = false) @Min(1) @Max(500) Long limit,
             @Parameter(description = "商品状态。待确认：取值含义请联系产品。") @RequestParam(required = false) Integer status,
             @Parameter(description = "商品关键字，可匹配商品名称、商品 ID、店铺。") @RequestParam(required = false) String keyword,
             @Parameter(description = "店铺 / 合作方名称关键字。") @RequestParam(required = false) String shopKeyword,
@@ -213,55 +215,66 @@ public class ProductController extends BaseController {
             @Parameter(description = "是否已挂车：1/0。") @RequestParam(required = false) String listed,
             @Parameter(description = "是否有免费样：1/0。") @RequestParam(required = false) String freeSample,
             @Parameter(description = "商品 ID，精确匹配。") @RequestParam(name = "productId", required = false) String productId) {
-        IPage<Product> result = productService.getSelectedLibraryPage(
-                page,
-                size,
-                new ProductService.SelectedLibraryFilter(
-                        keyword,
-                        status,
-                        shopKeyword,
-                        categoryName,
-                        categories,
-                        activityId,
-                        assigneeId,
-                        serviceFee,
-                        supportsAds,
-                        salesRange,
-                        promotionLink,
-                        allianceStatus,
-                        commission,
-                        hasSample,
-                        assignee,
-                        systemTag,
-                        decision,
-                        partnerId,
-                        partnerType,
-                        sortBy,
-                        goodsTags,
-                        productTags,
-                        colonelName,
-                        published,
-                        cooperationType,
-                        livePriceMin,
-                        livePriceMax,
-                        commissionMin,
-                        commissionMax,
-                        sampleSalesMin,
-                        sampleSalesMax,
-                        materialDownload,
-                        exclusivePrice,
-                        productChain,
-                        handCard,
-                        doubleCommission,
-                        notInLibrary,
-                        dedup,
-                        recruitActivityId,
-                        recruitActivityName,
-                        listed,
-                        freeSample,
-                        productId
-                )
+        ProductService.SelectedLibraryFilter filter = new ProductService.SelectedLibraryFilter(
+                keyword,
+                status,
+                shopKeyword,
+                categoryName,
+                categories,
+                activityId,
+                assigneeId,
+                serviceFee,
+                supportsAds,
+                salesRange,
+                promotionLink,
+                allianceStatus,
+                commission,
+                hasSample,
+                assignee,
+                systemTag,
+                decision,
+                partnerId,
+                partnerType,
+                sortBy,
+                goodsTags,
+                productTags,
+                colonelName,
+                published,
+                cooperationType,
+                livePriceMin,
+                livePriceMax,
+                commissionMin,
+                commissionMax,
+                sampleSalesMin,
+                sampleSalesMax,
+                materialDownload,
+                exclusivePrice,
+                productChain,
+                handCard,
+                doubleCommission,
+                notInLibrary,
+                dedup,
+                recruitActivityId,
+                recruitActivityName,
+                listed,
+                freeSample,
+                productId
         );
+        if (limit != null || StringUtils.hasText(cursor)) {
+            ProductService.SelectedLibraryCursorPage cursorPage =
+                    productService.getSelectedLibraryCursorPage(cursor, limit == null ? size : limit, filter);
+            if (cursorPage != null) {
+                PageResult<Product> response = new PageResult<>();
+                response.setTotal(0L);
+                response.setPage(1L);
+                response.setSize(cursorPage.limit());
+                response.setRecords(cursorPage.records());
+                response.setHasMore(cursorPage.hasMore());
+                response.setNextCursor(cursorPage.nextCursor());
+                return ok(response);
+            }
+        }
+        IPage<Product> result = productService.getSelectedLibraryPage(page, size, filter);
         return okPage(result);
     }
 

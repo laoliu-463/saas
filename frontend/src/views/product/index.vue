@@ -786,7 +786,9 @@ const fetchProducts = async (reset: boolean, forceRemote = false, overrideActivi
         size: PRODUCT_LIST_PAGE_SIZE,
         keyword: filters.value.productId || filters.value.productName || undefined,
         productIdMode: 'keyword'
-      }))
+      }), {
+        suppressErrorNotice: syncing.value
+      })
       const data = res?.data || {}
       const records = Array.isArray(data.records) ? data.records : []
       const items = records.map((p: any) => normalizeItem({
@@ -1013,8 +1015,17 @@ const clearPostSyncRefreshTimers = () => {
 }
 
 const refreshProductsAfterActivitySync = async (activityId: string) => {
-  if (normalizeText(fallbackActivityId.value) !== activityId) return
-  await refreshProducts()
+  const selectedActivityId = normalizeText(activityId)
+  if (!selectedActivityId) return
+  const currentFallbackActivityId = normalizeText(fallbackActivityId.value)
+  if (currentFallbackActivityId && currentFallbackActivityId !== selectedActivityId) return
+  filters.value = {
+    ...filters.value,
+    recruitActivityId: selectedActivityId,
+    activityId: selectedActivityId
+  }
+  fallbackActivityId.value = selectedActivityId
+  await fetchProducts(true, false, selectedActivityId)
 }
 
 const schedulePostSyncRefreshes = (activityId: string, syncStatus?: string) => {
@@ -1105,7 +1116,9 @@ const syncActivityProductsFromRemote = async (activityId: string) => {
   clearBatchSelection()
   syncing.value = true
   try {
-    const res: any = await syncActivityProducts(selectedActivityId)
+    const res: any = await syncActivityProducts(selectedActivityId, {
+      suppressErrorNotice: true
+    })
     const data = res?.data || {}
     const jobId = normalizeText(data.jobId)
     const syncStatus = normalizeText(data.syncStatus)

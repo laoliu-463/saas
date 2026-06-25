@@ -386,7 +386,7 @@ class ProductControllerTest {
         when(productService.getSelectedLibraryPage(eq(1L), eq(10L), any(ProductService.SelectedLibraryFilter.class))).thenReturn(page);
 
         var response = productController.page(
-                1, 10,
+                1, 10, null, null,
                 null, null, null, null, null, null, null, null, null, null, null, null,
                 null, null, null, null, null, null, null, null, null, null, null, null,
                 null, null, null, null, null, null, null, null, null, null, null, null,
@@ -403,7 +403,7 @@ class ProductControllerTest {
         when(productService.getSelectedLibraryPage(eq(1L), eq(10L), any(ProductService.SelectedLibraryFilter.class))).thenReturn(page);
 
         productController.page(
-                1, 10,
+                1, 10, null, null,
                 null, null, null, null, null, null, null, null, null, null, null, null,
                 null, null, null, null, null, null, null, null, null, null, null, null,
                 null, null, null, null, null, null, null, null, null, null, null, null,
@@ -416,6 +416,27 @@ class ProductControllerTest {
     }
 
     @Test
+    void page_shouldReturnCursorFieldsWhenCursorQueryIsSupported() {
+        Product product = new Product();
+        product.setProductId("9001");
+        when(productService.getSelectedLibraryCursorPage(eq("cursor-1"), eq(500L), any(ProductService.SelectedLibraryFilter.class)))
+                .thenReturn(new ProductService.SelectedLibraryCursorPage(List.of(product), 500L, true, "cursor-2"));
+
+        var response = productController.page(
+                1, 20, "cursor-1", 500L,
+                null, null, null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null);
+
+        assertThat(response.getData().getRecords()).singleElement().extracting("productId").isEqualTo("9001");
+        assertThat(response.getData().getHasMore()).isTrue();
+        assertThat(response.getData().getNextCursor()).isEqualTo("cursor-2");
+        assertThat(response.getData().getSize()).isEqualTo(500L);
+        verify(productService).getSelectedLibraryCursorPage(eq("cursor-1"), eq(500L), any(ProductService.SelectedLibraryFilter.class));
+    }
+
+    @Test
     void page_shouldExposeProductIdRequestParam() throws NoSuchMethodException {
         Method pageMethod = selectedLibraryPageMethod();
 
@@ -423,7 +444,7 @@ class ProductControllerTest {
                 .map(parameter -> parameter.getAnnotation(RequestParam.class))
                 .filter(java.util.Objects::nonNull)
                 .map(ProductControllerTest::requestParamName))
-                .contains("productId");
+                .contains("productId", "cursor", "limit");
     }
 
     @Test

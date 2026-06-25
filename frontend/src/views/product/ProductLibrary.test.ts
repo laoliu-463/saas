@@ -125,7 +125,7 @@ function mountLibrary() {
   })
 }
 
-describe('ProductLibrary pagination weakening', () => {
+describe('ProductLibrary infinite scroll', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(getProducts).mockReset()
@@ -151,30 +151,36 @@ describe('ProductLibrary pagination weakening', () => {
     })
   })
 
-  it('loads product batches above the old 100 row limit, appends more products, and resets when filters change', async () => {
+  it('loads product batches, appends more products, and resets when filters change', async () => {
     vi.mocked(getProducts)
       .mockResolvedValueOnce({
         data: {
           records: buildRows(1, 500),
-          total: 750,
+          total: 0,
           page: 1,
-          size: 500
+          size: 500,
+          hasMore: true,
+          nextCursor: 'cursor-1'
         }
       } as any)
       .mockResolvedValueOnce({
         data: {
           records: buildRows(501, 250),
-          total: 750,
+          total: 0,
           page: 2,
-          size: 500
+          size: 500,
+          hasMore: false,
+          nextCursor: null
         }
       } as any)
       .mockResolvedValueOnce({
         data: {
           records: buildRows(200, 1),
-          total: 1,
+          total: 0,
           page: 1,
-          size: 500
+          size: 500,
+          hasMore: false,
+          nextCursor: null
         }
       } as any)
 
@@ -182,20 +188,26 @@ describe('ProductLibrary pagination weakening', () => {
     await flushPromises()
 
     expect(vi.mocked(getProducts).mock.calls[0][0]).toMatchObject({
-      page: 1,
-      size: 500
+      limit: 500
     })
+    expect(vi.mocked(getProducts).mock.calls[0][0].page).toBeUndefined()
+    expect(vi.mocked(getProducts).mock.calls[0][0].size).toBeUndefined()
+    expect(vi.mocked(getProducts).mock.calls[0][0].cursor).toBeUndefined()
     expect(vi.mocked(getProducts).mock.calls[0][0].sortBy).toBeUndefined()
     expect(wrapper.find('[data-testid="product-library-sort"]').exists()).toBe(false)
     expect(wrapper.findAll('[data-testid="product-card"]')).toHaveLength(500)
+    expect(wrapper.text()).toContain('已加载 500 件')
+    expect(wrapper.text()).not.toContain('/ 500')
 
     await wrapper.get('[data-testid="product-library-load-more"]').trigger('click')
     await flushPromises()
 
     expect(vi.mocked(getProducts).mock.calls[1][0]).toMatchObject({
-      page: 2,
-      size: 500
+      limit: 500,
+      cursor: 'cursor-1'
     })
+    expect(vi.mocked(getProducts).mock.calls[1][0].page).toBeUndefined()
+    expect(vi.mocked(getProducts).mock.calls[1][0].size).toBeUndefined()
     expect(wrapper.findAll('[data-testid="product-card"]')).toHaveLength(750)
 
     await wrapper.get('[data-testid="emit-filter"]').trigger('click')
@@ -206,6 +218,8 @@ describe('ProductLibrary pagination weakening', () => {
       size: 500,
       productTags: '主推'
     })
+    expect(vi.mocked(getProducts).mock.calls[2][0].limit).toBeUndefined()
+    expect(vi.mocked(getProducts).mock.calls[2][0].cursor).toBeUndefined()
     expect(vi.mocked(getProducts).mock.calls[2][0].sortBy).toBeUndefined()
     expect(wrapper.findAll('[data-testid="product-card"]')).toHaveLength(1)
     expect(wrapper.text()).toContain('已全部加载')
@@ -216,25 +230,31 @@ describe('ProductLibrary pagination weakening', () => {
       .mockResolvedValueOnce({
         data: {
           records: buildRows(1, 500),
-          total: 1250,
+          total: 0,
           page: 1,
-          size: 500
+          size: 500,
+          hasMore: true,
+          nextCursor: 'cursor-1'
         }
       } as any)
       .mockResolvedValueOnce({
         data: {
           records: buildRows(501, 500),
-          total: 1250,
+          total: 0,
           page: 2,
-          size: 500
+          size: 500,
+          hasMore: true,
+          nextCursor: 'cursor-2'
         }
       } as any)
       .mockResolvedValueOnce({
         data: {
           records: buildRows(1001, 250),
-          total: 1250,
+          total: 0,
           page: 3,
-          size: 500
+          size: 500,
+          hasMore: false,
+          nextCursor: null
         }
       } as any)
 
@@ -252,8 +272,8 @@ describe('ProductLibrary pagination weakening', () => {
     await flushPromises()
 
     expect(vi.mocked(getProducts).mock.calls[1][0]).toMatchObject({
-      page: 2,
-      size: 500
+      limit: 500,
+      cursor: 'cursor-1'
     })
     expect(wrapper.findAll('[data-testid="product-card"]')).toHaveLength(1000)
 
@@ -264,8 +284,8 @@ describe('ProductLibrary pagination weakening', () => {
     await flushPromises()
 
     expect(vi.mocked(getProducts).mock.calls[2][0]).toMatchObject({
-      page: 3,
-      size: 500
+      limit: 500,
+      cursor: 'cursor-2'
     })
     expect(wrapper.findAll('[data-testid="product-card"]')).toHaveLength(1250)
     expect(wrapper.text()).toContain('已全部加载')
@@ -276,18 +296,22 @@ describe('ProductLibrary pagination weakening', () => {
       .mockResolvedValueOnce({
         data: {
           records: buildRows(1, 500),
-          total: 1000,
+          total: 0,
           page: 1,
-          size: 500
+          size: 500,
+          hasMore: true,
+          nextCursor: 'retry-cursor'
         }
       } as any)
       .mockRejectedValueOnce(new Error('network down'))
       .mockResolvedValueOnce({
         data: {
           records: buildRows(501, 500),
-          total: 1000,
+          total: 0,
           page: 2,
-          size: 500
+          size: 500,
+          hasMore: false,
+          nextCursor: null
         }
       } as any)
 
@@ -314,8 +338,8 @@ describe('ProductLibrary pagination weakening', () => {
     await flushPromises()
 
     expect(vi.mocked(getProducts).mock.calls[2][0]).toMatchObject({
-      page: 2,
-      size: 500
+      limit: 500,
+      cursor: 'retry-cursor'
     })
     expect(wrapper.findAll('[data-testid="product-card"]')).toHaveLength(1000)
     expect(wrapper.text()).toContain('已全部加载')

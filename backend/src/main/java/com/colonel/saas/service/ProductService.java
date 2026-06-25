@@ -109,6 +109,11 @@ public class ProductService {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     /** 精选库批量查询每次拉取的上限条数 */
     private static final long SELECTED_LIBRARY_BATCH_SIZE = 200L;
+    /** 商品库无限下拉单批最大返回条数。 */
+    private static final long SELECTED_LIBRARY_CURSOR_MAX_LIMIT = 500L;
+    /** 商品库 cursor 中用于模拟 NULLS LAST 的最小时间。 */
+    private static final LocalDateTime SELECTED_LIBRARY_CURSOR_MIN_TIME = LocalDateTime.of(1, 1, 1, 0, 0);
+    private static final int SELECTED_LIBRARY_CURSOR_VERSION = 1;
     /** 上游商品状态：推广中。 */
     private static final int UPSTREAM_PRODUCT_STATUS_PROMOTING = 1;
     /** 审核入库去重窗口：近 3 个月内同商品 ID 不允许重复进入商品库。 */
@@ -308,6 +313,11 @@ public class ProductService {
             return emptySelectedLibraryPage(currentPage, pageSize);
         }
 
+        IPage<Product> dbPage = tryGetSelectedLibraryDbPage(currentPage, pageSize, safeFilter);
+        if (dbPage != null) {
+            return dbPage;
+        }
+
         List<Product> allMatched = collectSelectedLibraryProducts(safeFilter);
         sortSelectedLibraryProducts(allMatched, safeFilter.sortBy());
 
@@ -321,6 +331,298 @@ public class ProductService {
         Page<Product> result = new Page<>(currentPage, pageSize, total);
         result.setRecords(pageRecords);
         return result;
+    }
+
+    public SelectedLibraryCursorPage getSelectedLibraryCursorPage(String cursor, long limit, SelectedLibraryFilter filter) {
+        SelectedLibraryFilter rawFilter = filter == null ? SelectedLibraryFilter.empty() : filter;
+        SelectedLibraryFilter safeFilter = rawFilter.normalized(productDisplayPolicy);
+        long pageSize = normalizeSelectedLibraryCursorLimit(limit);
+        if (StringUtils.hasText(safeFilter.assigneeId()) && parseAssigneeFilterId(safeFilter.assigneeId()) == null) {
+            return SelectedLibraryCursorPage.empty(pageSize);
+        }
+        if (!canUseSelectedLibraryDbPage(safeFilter)) {
+            return null;
+        }
+
+        SelectedLibraryCursor decodedCursor = decodeSelectedLibraryCursor(cursor);
+        LocalDateTime snapshotTime = decodedCursor == null ? LocalDateTime.now() : decodedCursor.snapshotTime();
+        UUID assigneeId = parseAssigneeFilterId(safeFilter.assigneeId());
+        List<String> categoryTokens = selectedLibraryCategoryTokens(safeFilter);
+        List<ProductSnapshot> snapshots = snapshotMapper.selectSelectedLibraryCursorPage(
+                safeFilter.keyword(),
+                safeFilter.status(),
+                safeFilter.shopKeyword(),
+                categoryTokens,
+                safeFilter.activityId(),
+                assigneeId,
+                safeFilter.promotionLink(),
+                safeFilter.allianceStatus(),
+                safeFilter.assignee(),
+                safeFilter.partnerId(),
+                safeFilter.partnerType(),
+                safeFilter.published(),
+                safeFilter.cooperationType(),
+                safeFilter.recruitActivityId(),
+                safeFilter.listed(),
+                safeFilter.productId(),
+                decodedCursor == null ? null : decodedCursor.pinnedRank(),
+                decodedCursor == null ? null : decodedCursor.promotionStartTime(),
+                decodedCursor == null ? null : decodedCursor.syncTime(),
+                decodedCursor == null ? null : decodedCursor.selectedAt(),
+                decodedCursor == null ? null : decodedCursor.activityId(),
+                decodedCursor == null ? null : decodedCursor.productId(),
+                pageSize + 1,
+                snapshotTime);
+        if (snapshots == null || snapshots.isEmpty()) {
+            return SelectedLibraryCursorPage.empty(pageSize);
+        }
+
+        boolean hasMore = snapshots.size() > pageSize;
+        List<ProductSnapshot> pageSnapshots = hasMore
+                ? new ArrayList<>(snapshots.subList(0, (int) pageSize))
+                : new ArrayList<>(snapshots);
+        Map<String, ProductOperationState> stateMap = loadOperationStatesForSnapshots(pageSnapshots);
+        Map<UUID, String> assigneeNameMap = loadUserDisplayNames(stateMap.values().stream()
+                .map(ProductOperationState::getAssigneeId)
+                .filter(java.util.Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new)));
+        Map<String, String> activityNameMap = loadActivityNameMap(pageSnapshots.stream()
+                .map(ProductSnapshot::getActivityId)
+                .collect(Collectors.toCollection(LinkedHashSet::new)));
+        List<Product> records = pageSnapshots.stream()
+                .map(snapshot -> {
+                    ProductOperationState state = stateMap.get(stateBatchKey(snapshot.getActivityId(), snapshot.getProductId()));
+                    if (state == null) {
+                        return null;
+                    }
+                    Product product = toLegacyProduct(snapshot, state, assigneeNameMap, activityNameMap);
+                    return matchesSelectedLibraryFilters(product, snapshot, state, safeFilter) ? product : null;
+                })
+                .filter(java.util.Objects::nonNull)
+                .toList();
+
+        String nextCursor = hasMore && !pageSnapshots.isEmpty()
+                ? encodeSelectedLibraryCursor(pageSnapshots.get(pageSnapshots.size() - 1), stateMap, snapshotTime)
+                : null;
+        return new SelectedLibraryCursorPage(records, pageSize, hasMore, nextCursor);
+    }
+
+    private long normalizeSelectedLibraryCursorLimit(long limit) {
+        if (limit <= 0) {
+            return SELECTED_LIBRARY_CURSOR_MAX_LIMIT;
+        }
+        return Math.min(limit, SELECTED_LIBRARY_CURSOR_MAX_LIMIT);
+    }
+
+    private SelectedLibraryCursor decodeSelectedLibraryCursor(String cursor) {
+        if (!StringUtils.hasText(cursor)) {
+            return null;
+        }
+        try {
+            byte[] decoded = Base64.getUrlDecoder().decode(cursor.trim());
+            Map<String, Object> payload = OBJECT_MAPPER.readValue(decoded, new TypeReference<Map<String, Object>>() {});
+            Number version = readCursorNumber(payload, "v");
+            if (version == null || version.intValue() != SELECTED_LIBRARY_CURSOR_VERSION) {
+                throw BusinessException.param("商品库游标版本无效");
+            }
+            return new SelectedLibraryCursor(
+                    readCursorTime(payload, "snapshotTime"),
+                    readCursorNumber(payload, "pinnedRank").intValue(),
+                    readCursorTime(payload, "promotionStartTime"),
+                    readCursorTime(payload, "syncTime"),
+                    readCursorTime(payload, "selectedAt"),
+                    readCursorText(payload, "activityId"),
+                    readCursorText(payload, "productId"));
+        } catch (BusinessException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            throw BusinessException.param("商品库游标无效", ex);
+        }
+    }
+
+    private String encodeSelectedLibraryCursor(
+            ProductSnapshot snapshot,
+            Map<String, ProductOperationState> stateMap,
+            LocalDateTime snapshotTime) {
+        ProductOperationState state = stateMap.get(stateBatchKey(snapshot.getActivityId(), snapshot.getProductId()));
+        if (state == null) {
+            return null;
+        }
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("v", SELECTED_LIBRARY_CURSOR_VERSION);
+        payload.put("snapshotTime", snapshotTime.toString());
+        payload.put("pinnedRank", selectedLibraryPinnedRank(state, snapshotTime));
+        payload.put("promotionStartTime", cursorSortTime(parseDateTime(snapshot.getPromotionStartTime())).toString());
+        payload.put("syncTime", cursorSortTime(snapshot.getSyncTime()).toString());
+        payload.put("selectedAt", cursorSortTime(state.getSelectedAt()).toString());
+        payload.put("activityId", snapshot.getActivityId());
+        payload.put("productId", snapshot.getProductId());
+        try {
+            String json = OBJECT_MAPPER.writeValueAsString(payload);
+            return Base64.getUrlEncoder().withoutPadding().encodeToString(json.getBytes(StandardCharsets.UTF_8));
+        } catch (Exception ex) {
+            throw BusinessException.param("商品库游标生成失败", ex);
+        }
+    }
+
+    private int selectedLibraryPinnedRank(ProductOperationState state, LocalDateTime snapshotTime) {
+        return state != null && state.getPinnedUntil() != null && state.getPinnedUntil().isAfter(snapshotTime) ? 0 : 1;
+    }
+
+    private LocalDateTime cursorSortTime(LocalDateTime value) {
+        return value == null ? SELECTED_LIBRARY_CURSOR_MIN_TIME : value;
+    }
+
+    private Number readCursorNumber(Map<String, Object> payload, String field) {
+        Object value = payload.get(field);
+        if (value instanceof Number number) {
+            return number;
+        }
+        if (value instanceof String text && StringUtils.hasText(text)) {
+            try {
+                return Long.parseLong(text.trim());
+            } catch (NumberFormatException ex) {
+                throw BusinessException.param("商品库游标字段无效：" + field, ex);
+            }
+        }
+        throw BusinessException.param("商品库游标缺少字段：" + field);
+    }
+
+    private LocalDateTime readCursorTime(Map<String, Object> payload, String field) {
+        String value = readCursorText(payload, field);
+        try {
+            return LocalDateTime.parse(value);
+        } catch (DateTimeParseException ex) {
+            throw BusinessException.param("商品库游标时间字段无效：" + field, ex);
+        }
+    }
+
+    private String readCursorText(Map<String, Object> payload, String field) {
+        Object value = payload.get(field);
+        if (value instanceof String text && StringUtils.hasText(text)) {
+            return text.trim();
+        }
+        throw BusinessException.param("商品库游标缺少字段：" + field);
+    }
+
+    private IPage<Product> tryGetSelectedLibraryDbPage(long currentPage, long pageSize, SelectedLibraryFilter safeFilter) {
+        if (!canUseSelectedLibraryDbPage(safeFilter)) {
+            return null;
+        }
+        long offset = Math.max(0L, (currentPage - 1L) * pageSize);
+        UUID assigneeId = parseAssigneeFilterId(safeFilter.assigneeId());
+        List<String> categoryTokens = selectedLibraryCategoryTokens(safeFilter);
+        LocalDateTime now = LocalDateTime.now();
+        List<ProductSnapshot> snapshots = snapshotMapper.selectSelectedLibraryPage(
+                safeFilter.keyword(),
+                safeFilter.status(),
+                safeFilter.shopKeyword(),
+                categoryTokens,
+                safeFilter.activityId(),
+                assigneeId,
+                safeFilter.promotionLink(),
+                safeFilter.allianceStatus(),
+                safeFilter.assignee(),
+                safeFilter.partnerId(),
+                safeFilter.partnerType(),
+                safeFilter.published(),
+                safeFilter.cooperationType(),
+                safeFilter.recruitActivityId(),
+                safeFilter.listed(),
+                safeFilter.productId(),
+                pageSize,
+                offset,
+                now);
+        if (snapshots == null) {
+            return null;
+        }
+
+        long total = snapshotMapper.countSelectedLibraryPage(
+                safeFilter.keyword(),
+                safeFilter.status(),
+                safeFilter.shopKeyword(),
+                categoryTokens,
+                safeFilter.activityId(),
+                assigneeId,
+                safeFilter.promotionLink(),
+                safeFilter.allianceStatus(),
+                safeFilter.assignee(),
+                safeFilter.partnerId(),
+                safeFilter.partnerType(),
+                safeFilter.published(),
+                safeFilter.cooperationType(),
+                safeFilter.recruitActivityId(),
+                safeFilter.listed(),
+                safeFilter.productId());
+        if (snapshots.isEmpty() && total == 0L) {
+            return null;
+        }
+
+        Map<String, ProductOperationState> stateMap = loadOperationStatesForSnapshots(snapshots);
+        Map<UUID, String> assigneeNameMap = loadUserDisplayNames(stateMap.values().stream()
+                .map(ProductOperationState::getAssigneeId)
+                .filter(java.util.Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new)));
+        Map<String, String> activityNameMap = loadActivityNameMap(snapshots.stream()
+                .map(ProductSnapshot::getActivityId)
+                .collect(Collectors.toCollection(LinkedHashSet::new)));
+        List<Product> records = snapshots.stream()
+                .map(snapshot -> {
+                    ProductOperationState state = stateMap.get(stateBatchKey(snapshot.getActivityId(), snapshot.getProductId()));
+                    if (state == null) {
+                        return null;
+                    }
+                    Product product = toLegacyProduct(snapshot, state, assigneeNameMap, activityNameMap);
+                    return matchesSelectedLibraryFilters(product, snapshot, state, safeFilter) ? product : null;
+                })
+                .filter(java.util.Objects::nonNull)
+                .toList();
+
+        Page<Product> result = new Page<>(currentPage, pageSize, total);
+        result.setRecords(records);
+        return result;
+    }
+
+    private boolean canUseSelectedLibraryDbPage(SelectedLibraryFilter filter) {
+        if (filter == null) {
+            return true;
+        }
+        if ("COLONEL".equals(filter.partnerType())) {
+            return false;
+        }
+        return !StringUtils.hasText(filter.serviceFee())
+                && !StringUtils.hasText(filter.supportsAds())
+                && !StringUtils.hasText(filter.salesRange())
+                && !StringUtils.hasText(filter.commission())
+                && !StringUtils.hasText(filter.hasSample())
+                && !StringUtils.hasText(filter.systemTag())
+                && !StringUtils.hasText(filter.decision())
+                && !StringUtils.hasText(filter.goodsTags())
+                && !StringUtils.hasText(filter.productTags())
+                && !StringUtils.hasText(filter.colonelName())
+                && !StringUtils.hasText(filter.livePriceMin())
+                && !StringUtils.hasText(filter.livePriceMax())
+                && !StringUtils.hasText(filter.commissionMin())
+                && !StringUtils.hasText(filter.commissionMax())
+                && !StringUtils.hasText(filter.sampleSalesMin())
+                && !StringUtils.hasText(filter.sampleSalesMax())
+                && !StringUtils.hasText(filter.materialDownload())
+                && !StringUtils.hasText(filter.exclusivePrice())
+                && !StringUtils.hasText(filter.productChain())
+                && !StringUtils.hasText(filter.handCard())
+                && !StringUtils.hasText(filter.doubleCommission())
+                && !StringUtils.hasText(filter.notInLibrary())
+                && !StringUtils.hasText(filter.dedup())
+                && !StringUtils.hasText(filter.recruitActivityName())
+                && !StringUtils.hasText(filter.freeSample());
+    }
+
+    private List<String> selectedLibraryCategoryTokens(SelectedLibraryFilter filter) {
+        List<String> tokens = parseCsvTokens(filter.categories());
+        if (tokens.isEmpty() && StringUtils.hasText(filter.categoryName())) {
+            return List.of(filter.categoryName().trim());
+        }
+        return tokens;
     }
 
     private List<Product> collectSelectedLibraryProducts(SelectedLibraryFilter safeFilter) {
@@ -5769,6 +6071,27 @@ public class ProductService {
             LocalDateTime lastLinkTime,
             List<Map<String, Object>> linkRecords) {
     }
+
+    public record SelectedLibraryCursorPage(
+            List<Product> records,
+            long limit,
+            boolean hasMore,
+            String nextCursor
+    ) {
+        public static SelectedLibraryCursorPage empty(long limit) {
+            return new SelectedLibraryCursorPage(List.of(), limit, false, null);
+        }
+    }
+
+    private record SelectedLibraryCursor(
+            LocalDateTime snapshotTime,
+            int pinnedRank,
+            LocalDateTime promotionStartTime,
+            LocalDateTime syncTime,
+            LocalDateTime selectedAt,
+            String activityId,
+            String productId
+    ) {}
 
     public record SelectedLibraryFilter(
             String keyword,

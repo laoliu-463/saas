@@ -424,6 +424,8 @@ export function matchAuditTags(item: any, goodsTags: string[] = [], productTags:
 export type ProductLibraryQueryExtra = {
   page?: number
   size?: number
+  cursor?: string
+  limit?: number
   keyword?: string
   status?: number | null
   partnerId?: string | null
@@ -444,6 +446,8 @@ export function buildProductLibraryQueryParams(
   return {
     page: extra.page,
     size: extra.size,
+    cursor: extra.cursor || undefined,
+    limit: extra.limit,
     keyword: keywordSearch || undefined,
     productId: productId && extra.productIdMode !== 'keyword' ? productId : undefined,
     productName: filters.productName || undefined,
@@ -498,6 +502,38 @@ export function buildProductLibraryQueryParams(
     recruitActivityId: filters.recruitActivityId || undefined,
     recruitActivityName: filters.recruitActivityName || undefined
   }
+}
+
+export function canUseProductLibraryCursor(
+  filters: ProductFilterState,
+  extra: Pick<ProductLibraryQueryExtra, 'partnerType'> = {}
+) {
+  if (normalizeText(extra.partnerType) === 'COLONEL') return false
+  return !normalizeText(filters.serviceFee) &&
+    !normalizeText(filters.supportsAds) &&
+    !normalizeText(filters.salesRange) &&
+    !normalizeText(filters.commission) &&
+    !normalizeText(filters.hasSample) &&
+    !normalizeText(filters.systemTag) &&
+    !normalizeText(filters.decision) &&
+    !filters.goodsTags?.length &&
+    !filters.productTags?.length &&
+    !normalizeText(filters.colonelName) &&
+    !normalizeText(filters.livePriceMin) &&
+    !normalizeText(filters.livePriceMax) &&
+    !normalizeText(filters.commissionMin) &&
+    !normalizeText(filters.commissionMax) &&
+    !normalizeText(filters.sampleSalesMin) &&
+    !normalizeText(filters.sampleSalesMax) &&
+    !filters.materialDownload &&
+    !filters.exclusivePrice &&
+    !filters.productChain &&
+    !filters.handCard &&
+    !filters.doubleCommission &&
+    !filters.notInLibrary &&
+    !filters.dedup &&
+    !normalizeText(filters.recruitActivityName) &&
+    !normalizeText(filters.freeSample)
 }
 
 export function applyProductFilters(
