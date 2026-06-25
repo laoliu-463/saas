@@ -72,7 +72,7 @@ public class DouyinApiClient {
         this.douyinTokenService = douyinTokenService;
         this.douyinRestTemplate = douyinRestTemplate;
         this.douyinConfig = douyinConfig;
-        this.douyinRateLimiter = douyinRateLimiter;
+        this.douyinRateLimiter = douyinRateLimiter == null ? DouyinRateLimiter.noop() : douyinRateLimiter;
     }
 
     DouyinApiClient(

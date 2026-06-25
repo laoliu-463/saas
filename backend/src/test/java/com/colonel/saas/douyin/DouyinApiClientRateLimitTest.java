@@ -9,6 +9,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpEntity;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.Map;
@@ -41,7 +42,6 @@ class DouyinApiClientRateLimitTest {
     @BeforeEach
     void setUp() {
         when(douyinConfig.getAppId()).thenReturn("app123");
-        when(douyinConfig.getBaseUrl()).thenReturn("https://openapi-fxg.jinritemai.com");
         douyinApiClient = new DouyinApiClient(
                 douyinTokenService,
                 douyinRestTemplate,
@@ -51,7 +51,9 @@ class DouyinApiClientRateLimitTest {
 
     @Test
     void postShouldAcquireRateLimitBeforeTransportCall() {
-        when(douyinTokenService.getValidAccessToken()).thenReturn("token123");
+        when(douyinTokenService.getValidToken("app123")).thenReturn("token123");
+        when(douyinConfig.getClientSecret()).thenReturn("secret123");
+        when(douyinConfig.getBaseUrl()).thenReturn("https://openapi-fxg.jinritemai.com");
         when(douyinRestTemplate.postForObject(any(String.class), any(HttpEntity.class), eq(Map.class)))
                 .thenReturn(Map.of("code", 0, "data", Map.of()));
 
@@ -63,7 +65,7 @@ class DouyinApiClientRateLimitTest {
 
     @Test
     void postShouldNotCallTransportWhenRateLimiterRejects() {
-        when(douyinTokenService.getValidAccessToken()).thenReturn("token123");
+        when(douyinTokenService.getValidToken("app123")).thenReturn("token123");
         doThrow(BusinessException.upstream(
                 UpstreamErrorCode.UPSTREAM_RATE_LIMIT,
                 "抖音接口调用触发本地限流，请稍后重试"))
@@ -79,7 +81,7 @@ class DouyinApiClientRateLimitTest {
 
     @Test
     void postShouldSkipRateLimitWhenTestModeEnabled() {
-        when(douyinConfig.isTestEnabled()).thenReturn(true);
+        ReflectionTestUtils.setField(douyinApiClient, "testEnabled", true);
 
         douyinApiClient.post("alliance.colonelActivityProduct", Map.of("page", 0));
 
