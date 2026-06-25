@@ -155,20 +155,20 @@ describe('ProductLibrary infinite scroll', () => {
     vi.mocked(getProducts)
       .mockResolvedValueOnce({
         data: {
-          records: buildRows(1, 500),
+          records: buildRows(1, 100),
           total: 0,
           page: 1,
-          size: 500,
+          size: 100,
           hasMore: true,
           nextCursor: 'cursor-1'
         }
       } as any)
       .mockResolvedValueOnce({
         data: {
-          records: buildRows(501, 250),
+          records: buildRows(101, 50),
           total: 0,
           page: 2,
-          size: 500,
+          size: 100,
           hasMore: false,
           nextCursor: null
         }
@@ -178,7 +178,7 @@ describe('ProductLibrary infinite scroll', () => {
           records: buildRows(200, 1),
           total: 0,
           page: 1,
-          size: 500,
+          size: 100,
           hasMore: false,
           nextCursor: null
         }
@@ -188,34 +188,36 @@ describe('ProductLibrary infinite scroll', () => {
     await flushPromises()
 
     expect(vi.mocked(getProducts).mock.calls[0][0]).toMatchObject({
-      limit: 500
+      limit: 100
     })
     expect(vi.mocked(getProducts).mock.calls[0][0].page).toBeUndefined()
     expect(vi.mocked(getProducts).mock.calls[0][0].size).toBeUndefined()
     expect(vi.mocked(getProducts).mock.calls[0][0].cursor).toBeUndefined()
     expect(vi.mocked(getProducts).mock.calls[0][0].sortBy).toBeUndefined()
     expect(wrapper.find('[data-testid="product-library-sort"]').exists()).toBe(false)
-    expect(wrapper.findAll('[data-testid="product-card"]')).toHaveLength(500)
-    expect(wrapper.text()).toContain('已加载 500 件')
-    expect(wrapper.text()).not.toContain('/ 500')
+    expect(wrapper.findAll('[data-testid="product-card"]')).toHaveLength(100)
+    expect(wrapper.text()).toContain('已加载 100 件')
+    expect(wrapper.text()).not.toContain('/ 100')
 
     await wrapper.get('[data-testid="product-library-load-more"]').trigger('click')
     await flushPromises()
 
     expect(vi.mocked(getProducts).mock.calls[1][0]).toMatchObject({
-      limit: 500,
+      limit: 100,
       cursor: 'cursor-1'
     })
     expect(vi.mocked(getProducts).mock.calls[1][0].page).toBeUndefined()
     expect(vi.mocked(getProducts).mock.calls[1][0].size).toBeUndefined()
-    expect(wrapper.findAll('[data-testid="product-card"]')).toHaveLength(750)
+    expect(wrapper.text()).toContain('已加载 150 件')
+    expect(wrapper.find('[data-testid="product-grid-virtual-window"]').exists()).toBe(true)
+    expect(wrapper.findAll('[data-testid="product-card"]').length).toBeLessThan(150)
 
     await wrapper.get('[data-testid="emit-filter"]').trigger('click')
     await flushPromises()
 
     expect(vi.mocked(getProducts).mock.calls[2][0]).toMatchObject({
       page: 1,
-      size: 500,
+      size: 100,
       productTags: '主推'
     })
     expect(vi.mocked(getProducts).mock.calls[2][0].limit).toBeUndefined()
@@ -229,30 +231,30 @@ describe('ProductLibrary infinite scroll', () => {
     vi.mocked(getProducts)
       .mockResolvedValueOnce({
         data: {
-          records: buildRows(1, 500),
+          records: buildRows(1, 100),
           total: 0,
           page: 1,
-          size: 500,
+          size: 100,
           hasMore: true,
           nextCursor: 'cursor-1'
         }
       } as any)
       .mockResolvedValueOnce({
         data: {
-          records: buildRows(501, 500),
+          records: buildRows(101, 100),
           total: 0,
           page: 2,
-          size: 500,
+          size: 100,
           hasMore: true,
           nextCursor: 'cursor-2'
         }
       } as any)
       .mockResolvedValueOnce({
         data: {
-          records: buildRows(1001, 250),
+          records: buildRows(201, 50),
           total: 0,
           page: 3,
-          size: 500,
+          size: 100,
           hasMore: false,
           nextCursor: null
         }
@@ -263,7 +265,7 @@ describe('ProductLibrary infinite scroll', () => {
 
     expect(wrapper.find('[data-testid="product-library-scroll-sentinel"]').exists()).toBe(true)
     expect(observeMock).toHaveBeenCalled()
-    expect(wrapper.findAll('[data-testid="product-card"]')).toHaveLength(500)
+    expect(wrapper.findAll('[data-testid="product-card"]')).toHaveLength(100)
 
     lastIntersectionCallback?.(
       [{ isIntersecting: true } as IntersectionObserverEntry],
@@ -272,10 +274,12 @@ describe('ProductLibrary infinite scroll', () => {
     await flushPromises()
 
     expect(vi.mocked(getProducts).mock.calls[1][0]).toMatchObject({
-      limit: 500,
+      limit: 100,
       cursor: 'cursor-1'
     })
-    expect(wrapper.findAll('[data-testid="product-card"]')).toHaveLength(1000)
+    expect(wrapper.text()).toContain('已加载 200 件')
+    expect(wrapper.find('[data-testid="product-grid-virtual-window"]').exists()).toBe(true)
+    expect(wrapper.findAll('[data-testid="product-card"]').length).toBeLessThan(200)
 
     lastIntersectionCallback?.(
       [{ isIntersecting: true } as IntersectionObserverEntry],
@@ -284,10 +288,11 @@ describe('ProductLibrary infinite scroll', () => {
     await flushPromises()
 
     expect(vi.mocked(getProducts).mock.calls[2][0]).toMatchObject({
-      limit: 500,
+      limit: 100,
       cursor: 'cursor-2'
     })
-    expect(wrapper.findAll('[data-testid="product-card"]')).toHaveLength(1250)
+    expect(wrapper.text()).toContain('已加载 250 件')
+    expect(wrapper.findAll('[data-testid="product-card"]').length).toBeLessThan(250)
     expect(wrapper.text()).toContain('已全部加载')
   })
 
@@ -295,10 +300,10 @@ describe('ProductLibrary infinite scroll', () => {
     vi.mocked(getProducts)
       .mockResolvedValueOnce({
         data: {
-          records: buildRows(1, 500),
+          records: buildRows(1, 100),
           total: 0,
           page: 1,
-          size: 500,
+          size: 100,
           hasMore: true,
           nextCursor: 'retry-cursor'
         }
@@ -306,10 +311,10 @@ describe('ProductLibrary infinite scroll', () => {
       .mockRejectedValueOnce(new Error('network down'))
       .mockResolvedValueOnce({
         data: {
-          records: buildRows(501, 500),
+          records: buildRows(101, 100),
           total: 0,
           page: 2,
-          size: 500,
+          size: 100,
           hasMore: false,
           nextCursor: null
         }
@@ -338,10 +343,11 @@ describe('ProductLibrary infinite scroll', () => {
     await flushPromises()
 
     expect(vi.mocked(getProducts).mock.calls[2][0]).toMatchObject({
-      limit: 500,
+      limit: 100,
       cursor: 'retry-cursor'
     })
-    expect(wrapper.findAll('[data-testid="product-card"]')).toHaveLength(1000)
+    expect(wrapper.text()).toContain('已加载 200 件')
+    expect(wrapper.findAll('[data-testid="product-card"]').length).toBeLessThan(200)
     expect(wrapper.text()).toContain('已全部加载')
   })
 })

@@ -264,6 +264,7 @@ import {
   allianceStatusToUpstreamStatus,
   buildActivityProductInfoQuery,
   buildProductLibraryQueryParams,
+  canUseProductLibraryCursor,
   DEFAULT_PRODUCT_FILTERS,
   formatGmv30d,
   formatSales30d,
@@ -789,11 +790,19 @@ const fetchProducts = async (reset: boolean, forceRemote = false, overrideActivi
 
     if (isSharedLibraryMode.value) {
       const page = reset ? 1 : Math.floor(products.value.length / PRODUCT_LIST_PAGE_SIZE) + 1
-      const res: any = await getProducts(buildProductLibraryQueryParams(filters.value, {
-        page,
-        size: PRODUCT_LIST_PAGE_SIZE,
+      const useCursor = canUseProductLibraryCursor(filters.value)
+      const baseQuery = {
         keyword: filters.value.productId || filters.value.productName || undefined,
-        productIdMode: 'keyword'
+        productIdMode: 'keyword' as const
+      }
+      const res: any = await getProducts(buildProductLibraryQueryParams(filters.value, useCursor ? {
+        ...baseQuery,
+        cursor: reset ? undefined : nextCursor.value,
+        limit: PRODUCT_LIST_PAGE_SIZE
+      } : {
+        ...baseQuery,
+        page,
+        size: PRODUCT_LIST_PAGE_SIZE
       }), {
         suppressErrorNotice: syncing.value
       })
@@ -808,8 +817,13 @@ const fetchProducts = async (reset: boolean, forceRemote = false, overrideActivi
       const currentPage = Number(data.page || page || 1)
       const pageSize = Number(data.size || PRODUCT_LIST_PAGE_SIZE)
       const total = Number(data.total || 0)
-      hasMore.value = currentPage * pageSize < total
-      nextCursor.value = ''
+      if (useCursor) {
+        hasMore.value = Boolean(data.hasMore || data.nextCursor)
+        nextCursor.value = String(data.nextCursor || '')
+      } else {
+        hasMore.value = currentPage * pageSize < total
+        nextCursor.value = ''
+      }
       return true
     }
 

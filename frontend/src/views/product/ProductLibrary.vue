@@ -64,19 +64,47 @@
     </div>
 
     <n-spin :show="showInitialLoading">
-      <div v-if="products.length" class="product-grid" data-testid="product-grid">
-        <ProductSelectionCard
-          v-for="item in products"
-          :key="`${item.card.productId}-${item.card.activityId || item.card.id}`"
-          :card="item.card"
-          :can-copy-brief="canCopyPromotionLink"
-          :can-quick-sample="canQuickSample"
-          :copy-brief-loading="promotionLoadingIds.has(item.card.productId)"
-          @detail="openDetail"
-          @copy-brief="copyPromotionLink"
-          @quick-sample="openSampleApply"
-          @refresh="refreshProductRow"
-        />
+      <div
+        v-if="products.length"
+        ref="productGridRef"
+        class="product-grid"
+        :class="{ 'product-grid--virtual': virtualGridEnabled }"
+        :style="virtualGridContainerStyle"
+        data-testid="product-grid"
+      >
+        <div
+          v-if="virtualGridEnabled"
+          class="product-grid__virtual-window"
+          :style="virtualGridWindowStyle"
+          data-testid="product-grid-virtual-window"
+        >
+          <ProductSelectionCard
+            v-for="item in visibleProducts"
+            :key="productCardKey(item)"
+            :card="item.card"
+            :can-copy-brief="canCopyPromotionLink"
+            :can-quick-sample="canQuickSample"
+            :copy-brief-loading="promotionLoadingIds.has(item.card.productId)"
+            @detail="openDetail"
+            @copy-brief="copyPromotionLink"
+            @quick-sample="openSampleApply"
+            @refresh="refreshProductRow"
+          />
+        </div>
+        <template v-else>
+          <ProductSelectionCard
+            v-for="item in visibleProducts"
+            :key="productCardKey(item)"
+            :card="item.card"
+            :can-copy-brief="canCopyPromotionLink"
+            :can-quick-sample="canQuickSample"
+            :copy-brief-loading="promotionLoadingIds.has(item.card.productId)"
+            @detail="openDetail"
+            @copy-brief="copyPromotionLink"
+            @quick-sample="openSampleApply"
+            @refresh="refreshProductRow"
+          />
+        </template>
       </div>
 
       <div
@@ -160,7 +188,16 @@ import {
 } from './product-library-route-sync'
 import { tryCopyText } from '../../utils/clipboard'
 
-const INFINITE_SCROLL_BATCH_SIZE = 500
+const PRODUCT_LIBRARY_REQUEST_BATCH_SIZE = 100
+const PRODUCT_LIBRARY_BACKEND_MAX_LIMIT = 500
+const PRODUCT_LIBRARY_CARD_WIDTH = 252
+const PRODUCT_LIBRARY_CARD_HEIGHT = 415
+const PRODUCT_LIBRARY_GRID_GAP = 16
+const PRODUCT_LIBRARY_ROW_HEIGHT = PRODUCT_LIBRARY_CARD_HEIGHT + PRODUCT_LIBRARY_GRID_GAP
+const PRODUCT_LIBRARY_VIRTUAL_OVERSCAN_ROWS = 2
+const PRODUCT_LIBRARY_PREFETCH_ROWS = 2
+const PRODUCT_LIBRARY_VIRTUAL_GRID_ENABLED = import.meta.env.VITE_PRODUCT_LIBRARY_VIRTUAL_GRID !== 'false'
+const PRODUCT_LIBRARY_PERF_DEBUG = import.meta.env.VITE_PRODUCT_LIBRARY_PERF_DEBUG === 'true'
 
 const message = useMessage()
 const route = useRoute()
@@ -177,6 +214,13 @@ const nextCursor = ref('')
 const hasMore = ref(false)
 const totalCount = ref(0)
 const loadMoreTrigger = ref<HTMLElement | null>(null)
+const productGridRef = ref<HTMLElement | null>(null)
+const viewportTop = ref(0)
+const viewportHeight = ref(typeof window === 'undefined' ? 900 : window.innerHeight || 900)
+const viewportWidth = ref(typeof window === 'undefined' ? 1280 : window.innerWidth || 1280)
+const productGridTop = ref(0)
+const productGridWidth = ref(0)
+const coarsePointerGrid = ref(false)
 const autoLoadSuspended = ref(false)
 const libraryStatus = ref<number | null>(null)
 const filters = ref<ProductFilterState>(DEFAULT_PRODUCT_FILTERS())
@@ -188,6 +232,7 @@ const showDetail = ref(false)
 const detailRefreshKey = ref(0)
 const manualCopyDialog = ref(createEmptyManualCopyDialogState())
 let loadMoreObserver: IntersectionObserver | null = null
+let productGridViewportRaf: number | null = null
 
 const canCopyPromotionLink = computed(() =>
   hasAccess(authStore.roleCodes, [ROLE_CODES.CHANNEL_LEADER, ROLE_CODES.CHANNEL_STAFF])
@@ -258,7 +303,158 @@ const replaceProductRow = (productId: string, nextRow: any) => {
   }
 }
 
+const productCardKey = (item: any) => `${item.card.productId}-${item.card.activityId || item.card.id}`
+
+const now = () => {
+  if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
+    return performance.now()
+  }
+  return Date.now()
+}
+
+const isPerfDebugEnabled = () => {
+  if (PRODUCT_LIBRARY_PERF_DEBUG) return true
+  if (typeof window === 'undefined') return false
+  try {
+    return window.localStorage?.getItem('product-library-perf-debug') === '1'
+  } catch {
+    return false
+  }
+}
+
+const logProductLibraryPerf = (payload: Record<string, unknown>) => {
+  if (!isPerfDebugEnabled()) return
+  // Dev-only/debug-only performance probe; payload contains timing and counts only.
+  console.debug('[product-library:perf]', payload)
+}
+
+const updateCoarsePointerGrid = () => {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+    coarsePointerGrid.value = false
+    return
+  }
+  coarsePointerGrid.value = window.matchMedia('(hover: none), (pointer: coarse)').matches
+}
+
+const updateProductGridViewport = () => {
+  if (typeof window === 'undefined') return
+  viewportTop.value = window.scrollY || window.pageYOffset || 0
+  viewportHeight.value = window.innerHeight || viewportHeight.value
+  viewportWidth.value = window.innerWidth || viewportWidth.value
+  updateCoarsePointerGrid()
+  const grid = productGridRef.value
+  if (!grid) return
+  const rect = grid.getBoundingClientRect()
+  productGridTop.value = rect.top + viewportTop.value
+  productGridWidth.value = rect.width || viewportWidth.value
+}
+
+const requestFrame = (callback: FrameRequestCallback) => {
+  if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+    return window.requestAnimationFrame(callback)
+  }
+  return window.setTimeout(() => callback(now()), 16)
+}
+
+const cancelFrame = (frameId: number) => {
+  if (typeof window !== 'undefined' && typeof window.cancelAnimationFrame === 'function') {
+    window.cancelAnimationFrame(frameId)
+    return
+  }
+  window.clearTimeout(frameId)
+}
+
+const scheduleProductGridViewportUpdate = () => {
+  if (productGridViewportRaf !== null) return
+  productGridViewportRaf = requestFrame(() => {
+    productGridViewportRaf = null
+    updateProductGridViewport()
+    maybePrefetchMore()
+  })
+}
+
+const productGridColumnCount = computed(() => {
+  const width = productGridWidth.value || viewportWidth.value
+  if (width >= 1600) return 5
+  if (width >= 1280) return 4
+  if (width <= 720) return 1
+  return Math.max(1, Math.floor((width + PRODUCT_LIBRARY_GRID_GAP) / (PRODUCT_LIBRARY_CARD_WIDTH + PRODUCT_LIBRARY_GRID_GAP)))
+})
+
+const mobileProductGrid = computed(() => viewportWidth.value <= 720 || coarsePointerGrid.value)
+
+const virtualGridEnabled = computed(() =>
+  PRODUCT_LIBRARY_VIRTUAL_GRID_ENABLED &&
+  !mobileProductGrid.value &&
+  products.value.length > PRODUCT_LIBRARY_REQUEST_BATCH_SIZE
+)
+
+const virtualGridTotalRows = computed(() =>
+  Math.ceil(products.value.length / productGridColumnCount.value)
+)
+
+const virtualGridStartRow = computed(() => {
+  if (!virtualGridEnabled.value) return 0
+  const scrolledInsideGrid = Math.max(0, viewportTop.value - productGridTop.value)
+  return Math.max(0, Math.floor(scrolledInsideGrid / PRODUCT_LIBRARY_ROW_HEIGHT) - PRODUCT_LIBRARY_VIRTUAL_OVERSCAN_ROWS)
+})
+
+const virtualGridEndRow = computed(() => {
+  if (!virtualGridEnabled.value) return virtualGridTotalRows.value
+  const scrolledInsideGrid = Math.max(0, viewportTop.value - productGridTop.value)
+  const visibleBottom = scrolledInsideGrid + viewportHeight.value
+  return Math.min(
+    virtualGridTotalRows.value,
+    Math.ceil(visibleBottom / PRODUCT_LIBRARY_ROW_HEIGHT) + PRODUCT_LIBRARY_VIRTUAL_OVERSCAN_ROWS
+  )
+})
+
+const virtualGridStartIndex = computed(() => virtualGridStartRow.value * productGridColumnCount.value)
+
+const virtualGridEndIndex = computed(() =>
+  Math.min(products.value.length, virtualGridEndRow.value * productGridColumnCount.value)
+)
+
+const visibleProducts = computed(() =>
+  virtualGridEnabled.value
+    ? products.value.slice(virtualGridStartIndex.value, virtualGridEndIndex.value)
+    : products.value
+)
+
+const virtualGridContainerStyle = computed(() => {
+  if (!virtualGridEnabled.value) return undefined
+  const rows = virtualGridTotalRows.value
+  const height = rows > 0
+    ? rows * PRODUCT_LIBRARY_CARD_HEIGHT + Math.max(0, rows - 1) * PRODUCT_LIBRARY_GRID_GAP
+    : 0
+  return {
+    height: `${height}px`
+  }
+})
+
+const productGridTemplateColumns = computed(() =>
+  `repeat(${productGridColumnCount.value}, minmax(0, 1fr))`
+)
+
+const virtualGridWindowStyle = computed(() => {
+  if (!virtualGridEnabled.value) return undefined
+  return {
+    transform: `translateY(${virtualGridStartRow.value * PRODUCT_LIBRARY_ROW_HEIGHT}px)`,
+    gridTemplateColumns: productGridTemplateColumns.value
+  }
+})
+
+const maybePrefetchMore = () => {
+  if (!virtualGridEnabled.value || autoLoadSuspended.value || !canLoadNextPage()) return
+  const remainingLoaded = products.value.length - virtualGridEndIndex.value
+  const threshold = productGridColumnCount.value * PRODUCT_LIBRARY_PREFETCH_ROWS
+  if (remainingLoaded <= threshold) {
+    triggerLoadMore('auto')
+  }
+}
+
 const fetchProducts = async (reset: boolean) => {
+  const fetchStartedAt = now()
   if (reset) loading.value = true
   else loadingMore.value = true
   if (reset) {
@@ -283,24 +479,27 @@ const fetchProducts = async (reset: boolean) => {
       ? {
           ...commonQuery,
           cursor: reset ? undefined : nextCursor.value || undefined,
-          limit: INFINITE_SCROLL_BATCH_SIZE
+          limit: PRODUCT_LIBRARY_REQUEST_BATCH_SIZE
         }
       : {
           ...commonQuery,
           page,
-          size: INFINITE_SCROLL_BATCH_SIZE
+          size: PRODUCT_LIBRARY_REQUEST_BATCH_SIZE
         }))
+    const responseReceivedAt = now()
     const data = res?.data || {}
     const records = Array.isArray(data.records) ? data.records : []
+    const normalizeStartedAt = now()
     const items = records.map((p: any) =>
       normalizeItem({
         ...p,
         productId: String(p.productId || '')
       })
     )
+    const normalizeFinishedAt = now()
     products.value = reset ? items : products.value.concat(items)
     const responsePage = Number(data.page || page || 1)
-    const pageSize = Number(data.size || INFINITE_SCROLL_BATCH_SIZE)
+    const pageSize = Number(data.size || PRODUCT_LIBRARY_REQUEST_BATCH_SIZE)
     const total = Number(data.total || 0)
     currentPage.value = Number.isFinite(responsePage) && responsePage > 0 ? responsePage : page
     totalCount.value = total
@@ -314,6 +513,23 @@ const fetchProducts = async (reset: boolean) => {
         : items.length >= pageSize
     }
     autoLoadSuspended.value = false
+    const appendFinishedAt = now()
+    void nextTick(() => {
+      updateProductGridViewport()
+      logProductLibraryPerf({
+        reset,
+        requestMs: Math.round(responseReceivedAt - fetchStartedAt),
+        normalizeMs: Math.round(normalizeFinishedAt - normalizeStartedAt),
+        renderMs: Math.round(now() - appendFinishedAt),
+        batchSize: PRODUCT_LIBRARY_REQUEST_BATCH_SIZE,
+        backendLimit: PRODUCT_LIBRARY_BACKEND_MAX_LIMIT,
+        received: records.length,
+        loaded: products.value.length,
+        rendered: visibleProducts.value.length,
+        virtual: virtualGridEnabled.value
+      })
+      maybePrefetchMore()
+    })
   } catch (error: any) {
     notifyApiFailure(error, message, { fallbackMessage: '商品查询失败' })
     if (reset) {
@@ -371,7 +587,7 @@ const getLoadMoreObserver = () => {
       }
     }, {
       root: null,
-      rootMargin: '480px 0px',
+      rootMargin: '1200px 0px',
       threshold: 0
     })
   }
@@ -579,6 +795,11 @@ const loadFilterOptions = async () => {
 }
 
 onMounted(async () => {
+  if (typeof window !== 'undefined') {
+    updateProductGridViewport()
+    window.addEventListener('scroll', scheduleProductGridViewportUpdate, { passive: true })
+    window.addEventListener('resize', scheduleProductGridViewportUpdate, { passive: true })
+  }
   // 首次进入：把 query.activityId 同步进 filters 作为"硬筛选"。
   // 后端 GET /products 已支持 activityId 过滤，前端不二次判断"是否应用"。
   if (appliedActivityId.value && !filters.value.activityId) {
@@ -609,6 +830,7 @@ watch(
 watch(
   () => [hasMore.value, products.value.length, autoLoadSuspended.value],
   () => {
+    scheduleProductGridViewportUpdate()
     void scheduleLoadMoreObservation()
   },
   { flush: 'post' }
@@ -617,6 +839,14 @@ watch(
 onBeforeUnmount(() => {
   loadMoreObserver?.disconnect()
   loadMoreObserver = null
+  if (typeof window !== 'undefined') {
+    window.removeEventListener('scroll', scheduleProductGridViewportUpdate)
+    window.removeEventListener('resize', scheduleProductGridViewportUpdate)
+  }
+  if (productGridViewportRaf !== null) {
+    cancelFrame(productGridViewportRaf)
+    productGridViewportRaf = null
+  }
 })
 </script>
 
@@ -691,6 +921,22 @@ onBeforeUnmount(() => {
   gap: 16px;
   align-items: start;
   justify-items: center;
+}
+
+.product-grid--virtual {
+  position: relative;
+  display: block;
+  overflow: visible;
+}
+
+.product-grid__virtual-window {
+  position: absolute;
+  inset: 0 0 auto;
+  display: grid;
+  gap: 16px;
+  align-items: start;
+  justify-items: center;
+  will-change: transform;
 }
 
 .product-library-scroll-sentinel {
