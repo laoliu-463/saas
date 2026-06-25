@@ -3,23 +3,33 @@ package com.colonel.saas.controller;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.annotation.RequireRoles;
 import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.result.ApiResult;
+import com.colonel.saas.config.OrderDerivedCacheKeys;
 import com.colonel.saas.constant.DeptType;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.dto.order.OrderDetailResponse;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.SysDept;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
-import com.colonel.saas.mapper.SysDeptMapper;
+import com.colonel.saas.domain.user.facade.UserDomainFacade;
+import com.colonel.saas.domain.user.facade.dto.DepartmentOption;
+import com.colonel.saas.domain.user.policy.DataScopePolicy;
+import com.colonel.saas.config.DddRefactorProperties;
+import com.colonel.saas.domain.order.facade.OrderDomainFacade;
+import com.colonel.saas.domain.order.query.OrderDetailView;
+import com.colonel.saas.domain.order.query.OrderQueryView;
+import com.colonel.saas.domain.order.query.OrderListAssembler;
+import com.colonel.saas.domain.order.query.OrderDetailAssembler;
 import com.colonel.saas.service.AttributionService;
 import com.colonel.saas.service.CommissionService;
 import com.colonel.saas.service.DashboardService;
 import com.colonel.saas.service.OperationLogService;
 import com.colonel.saas.service.OrderAttributionReplayService;
+import com.colonel.saas.service.Order1603SettlementDryRunService;
+import com.colonel.saas.service.Order2704SettlementDryRunService;
 import com.colonel.saas.service.Order6468PaginationDryRunService;
 import com.colonel.saas.service.OrderQueryService;
 import com.colonel.saas.service.OrderService;
@@ -35,6 +45,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import lombok.Data;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.util.StringUtils;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -51,7 +62,6 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -110,13 +120,16 @@ public class OrderController extends BaseController {
     private static final Duration FILTER_OPTIONS_CACHE_TTL = Duration.ofSeconds(60);
 
     /** 筛选项缓存键前缀 */
-    private static final String FILTER_OPTIONS_CACHE_PREFIX = "orders:filter-options:";
+    private static final String FILTER_OPTIONS_CACHE_PREFIX = OrderDerivedCacheKeys.FILTER_OPTIONS_PREFIX;
 
     /** Dashboard 汇总缓存键前缀 */
-    private static final String DASHBOARD_SUMMARY_CACHE_PREFIX = "dashboard:summary:";
+    private static final String DASHBOARD_SUMMARY_CACHE_PREFIX = OrderDerivedCacheKeys.DASHBOARD_SUMMARY_PREFIX;
 
     /** Dashboard 指标缓存键前缀 */
-    private static final String DASHBOARD_METRICS_CACHE_PREFIX = "dashboard:metrics:";
+    private static final String DASHBOARD_METRICS_CACHE_PREFIX = OrderDerivedCacheKeys.DASHBOARD_METRICS_PREFIX;
+
+    /** 订单统计缓存键前缀 */
+    private static final String ORDER_STATS_CACHE_PREFIX = OrderDerivedCacheKeys.ORDER_STATS_PREFIX;
 
     /** 订单同步服务：从抖店上游拉取订单数据并落库 */
     private final OrderSyncService orderSyncService;
@@ -142,11 +155,17 @@ public class OrderController extends BaseController {
     /** 业绩回填服务：批量写入缺失的 performance_records */
     private final PerformanceBackfillService performanceBackfillService;
 
-    /** 部门 Mapper：用于加载部门下拉选项 */
-    private final SysDeptMapper sysDeptMapper;
+    /** 用户域 Facade：用于加载部门下拉选项 */
+    private final UserDomainFacade userDomainFacade;
 
     /** 6468 历史订单分页 dry-run 服务：只读拉取上游并聚合候选口径 */
     private final Order6468PaginationDryRunService order6468PaginationDryRunService;
+
+    /** 1603 结算口径 dry-run 服务：只读拉取上游并模拟双轨字段映射 */
+    private final Order1603SettlementDryRunService order1603SettlementDryRunService;
+
+    /** 2704 多结算订单 dry-run 服务：只读拉取上游并输出官方口径对照证据 */
+    private final Order2704SettlementDryRunService order2704SettlementDryRunService;
 
     /**
      * 订单域查询服务：封装筛选条件构造与分页 / 统计聚合（t2-orders 抽 service）。
@@ -159,6 +178,16 @@ public class OrderController extends BaseController {
      */
     private final OrderService orderService;
 
+    private final DddRefactorProperties dddRefactorProperties;
+    private final OrderDomainFacade orderDomainFacade;
+    private final DataScopePolicy dataScopePolicy;
+
+    @Value("${app.order-query.stats-cache-enabled:false}")
+    private boolean statsCacheEnabled = false;
+
+    @Value("${app.order-query.stats-cache-ttl-seconds:60}")
+    private long statsCacheTtlSeconds = 60L;
+
     public OrderController(
             OrderSyncService orderSyncService,
             ColonelsettlementOrderMapper orderMapper,
@@ -168,9 +197,14 @@ public class OrderController extends BaseController {
             ShortTtlCacheService shortTtlCacheService,
             CommissionService commissionService,
             PerformanceBackfillService performanceBackfillService,
-            SysDeptMapper sysDeptMapper,
+            UserDomainFacade userDomainFacade,
             Order6468PaginationDryRunService order6468PaginationDryRunService,
-            OrderService orderService) {
+            Order1603SettlementDryRunService order1603SettlementDryRunService,
+            Order2704SettlementDryRunService order2704SettlementDryRunService,
+            OrderService orderService,
+            DddRefactorProperties dddRefactorProperties,
+            OrderDomainFacade orderDomainFacade,
+            DataScopePolicy dataScopePolicy) {
         this.orderSyncService = orderSyncService;
         this.orderMapper = orderMapper;
         this.orderQueryService = orderQueryService;
@@ -179,30 +213,34 @@ public class OrderController extends BaseController {
         this.shortTtlCacheService = shortTtlCacheService;
         this.commissionService = commissionService;
         this.performanceBackfillService = performanceBackfillService;
-        this.sysDeptMapper = sysDeptMapper;
+        this.userDomainFacade = userDomainFacade;
         this.order6468PaginationDryRunService = order6468PaginationDryRunService;
+        this.order1603SettlementDryRunService = order1603SettlementDryRunService;
+        this.order2704SettlementDryRunService = order2704SettlementDryRunService;
         this.orderService = orderService;
+        this.dddRefactorProperties = dddRefactorProperties;
+        this.orderDomainFacade = orderDomainFacade;
+        this.dataScopePolicy = dataScopePolicy;
     }
 
     /**
      * 手动同步订单。
      * <p>
-     * 按时间范围触发订单同步，用于补拉历史订单或联调真实网关回流数据。仅管理员可执行。
+     * 触发近实时订单同步，用于联调真实网关回流数据。仅管理员可执行。
      * </p>
      *
      * <ol>
-     *   <li>第一步：校验并补全请求参数，未传入时默认最近 30 天</li>
-     *   <li>第二步：将时间字符串解析为秒级时间戳</li>
-     *   <li>第三步：委托 {@link OrderSyncService#syncByTimeRange} 执行同步</li>
+     *   <li>第一步：补全请求参数，未传入时默认最近 30 天，仅用于审计记录</li>
+     *   <li>第二步：委托 {@link OrderSyncService#syncInstituteOrdersHotRecent()} 执行 6468 近实时同步</li>
      *   <li>第四步：记录操作审计日志</li>
      *   <li>第五步：清除所有订单衍生缓存（筛选项、Dashboard 汇总与指标）</li>
      * </ol>
      *
-     * @param request 同步时间范围请求体，可选；为空时默认最近 30 天
+     * @param request 同步时间范围请求体，可选；为空时默认最近 30 天，当前仅用于审计记录
      * @param userId  当前登录用户 ID（由拦截器注入）
      * @return 同步结果，包含 created/updated/attributed/unattributed/failed 计数
      */
-    @Operation(summary = "手动同步订单", description = "按时间范围触发订单同步，用于补拉订单或联调真实网关回流数据。")
+    @Operation(summary = "手动同步订单", description = "触发 6468 近实时订单同步，用于联调真实网关回流数据。")
     @RequireRoles({RoleCodes.ADMIN})
     @PostMapping("/sync")
     public ApiResult<OrderSyncService.SyncResult> syncOrders(
@@ -214,9 +252,7 @@ public class OrderController extends BaseController {
             @RequestBody(required = false) SyncRequest request,
             @RequestAttribute("userId") UUID userId) {
         SyncRequest safeRequest = request == null ? defaultSyncRequest() : request;
-        long start = parseDateTime(safeRequest.getStartTime());
-        long end = parseDateTime(safeRequest.getEndTime());
-        OrderSyncService.SyncResult result = orderSyncService.syncByTimeRange(start, end);
+        OrderSyncService.SyncResult result = orderSyncService.syncInstituteOrdersHotRecent();
         operationLogService.recordSystemAction(
                 userId,
                 "订单归因",
@@ -225,6 +261,52 @@ public class OrderController extends BaseController {
                 "order_sync",
                 null,
                 safeRequest.getStartTime() + " ~ " + safeRequest.getEndTime(),
+                String.format(
+                        "created=%d, updated=%d, attributed=%d, unattributed=%d, failed=%d",
+                        result.created(),
+                        result.updated(),
+                        result.attributed(),
+                        result.unattributed(),
+                        result.failed()));
+        evictOrderDerivedCaches();
+        return ok(result);
+    }
+
+    /**
+     * 按明确时间范围同步订单。
+     * <p>
+     * 用于历史窗口补偿和真实上游差异回灌。与 {@link #syncOrders(SyncRequest, UUID)} 不同，
+     * 本入口会实际使用请求中的 startTime / endTime 调用同步服务。
+     * </p>
+     */
+    @Operation(summary = "按时间范围同步订单", description = "按明确 startTime/endTime 调用真实上游同步，用于历史窗口补偿。")
+    @RequireRoles({RoleCodes.ADMIN})
+    @PostMapping("/sync-range")
+    public ApiResult<OrderSyncService.SyncResult> syncOrdersByRange(
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "订单同步时间范围，格式 yyyy-MM-dd HH:mm:ss。",
+                    required = true,
+                    content = @Content(examples = @ExampleObject(value = "{\"startTime\":\"2026-06-12 00:00:00\",\"endTime\":\"2026-06-13 00:00:00\"}"))
+            )
+            @RequestBody SyncRequest request,
+            @RequestAttribute("userId") UUID userId) {
+        if (request == null || !StringUtils.hasText(request.getStartTime()) || !StringUtils.hasText(request.getEndTime())) {
+            throw new IllegalArgumentException("startTime and endTime are required");
+        }
+        long start = parseDateTime(request.getStartTime());
+        long end = parseDateTime(request.getEndTime());
+        if (start <= 0L || end <= 0L || start >= end) {
+            throw new IllegalArgumentException("Invalid sync time range");
+        }
+        OrderSyncService.SyncResult result = orderSyncService.syncByTimeRange(start, end);
+        operationLogService.recordSystemAction(
+                userId,
+                "订单归因",
+                "按时间范围同步订单",
+                "POST",
+                "order_sync_range",
+                null,
+                request.getStartTime() + " ~ " + request.getEndTime(),
                 String.format(
                         "created=%d, updated=%d, attributed=%d, unattributed=%d, failed=%d",
                         result.created(),
@@ -274,6 +356,73 @@ public class OrderController extends BaseController {
                         filterEnd
                 );
         return ok(order6468PaginationDryRunService.dryRun(command));
+    }
+
+    /**
+     * 1603 结算口径 dry-run。
+     * <p>
+     * 只读调用 buyin.instituteOrderColonel，模拟结算字段映射并输出 warnings / confidence。
+     * 该接口不落库、不触发归因、不发布订单事件、不清缓存、不写操作日志。
+     * </p>
+     */
+    @Operation(summary = "1603 查询团长订单（结算口径）dry-run", description = "只读调用 1603 结算口径并模拟双轨字段映射，不写订单表。")
+    @RequireRoles({RoleCodes.ADMIN})
+    @PostMapping("/1603-settlement-dry-run")
+    public ApiResult<Order1603SettlementDryRunService.DryRunResult> dryRun1603Settlement(
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "1603 结算口径 dry-run 请求。startTime/endTime 格式 yyyy-MM-dd HH:mm:ss。",
+                    required = true,
+                    content = @Content(examples = @ExampleObject(value = "{\"startTime\":\"2026-06-03 00:00:00\",\"endTime\":\"2026-06-06 13:30:00\",\"timeType\":\"update\",\"pageSize\":20,\"maxPages\":3,\"maxOrders\":100}"))
+            )
+            @RequestBody Order1603SettlementDryRunRequest request) {
+        Order1603SettlementDryRunRequest safeRequest =
+                request == null ? new Order1603SettlementDryRunRequest() : request;
+        Order1603SettlementDryRunService.DryRunRequest command =
+                new Order1603SettlementDryRunService.DryRunRequest(
+                        safeRequest.getStartTime(),
+                        safeRequest.getEndTime(),
+                        safeRequest.getTimeType(),
+                        safeRequest.getPageSize(),
+                        safeRequest.getCursor(),
+                        safeRequest.getMaxPages(),
+                        safeRequest.getMaxOrders(),
+                        safeRequest.getOrderIds()
+                );
+        return ok(order1603SettlementDryRunService.dryRun(command));
+    }
+
+    /**
+     * 2704 多结算订单 dry-run。
+     * <p>
+     * 只读调用 buyin.colonelMultiSettlementOrders，聚合字段求和并与本地结算日订单做差异对照。
+     * 该接口不落库、不触发归因、不发布订单事件、不清缓存、不写操作日志。
+     * </p>
+     */
+    @Operation(summary = "2704 多结算订单 dry-run", description = "只读调用 2704 多结算订单接口，输出聚合、字段求和和 upstream/local 差异清单。")
+    @RequireRoles({RoleCodes.ADMIN})
+    @PostMapping("/2704-settlement-dry-run")
+    public ApiResult<Order2704SettlementDryRunService.DryRunResult> dryRun2704Settlement(
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "2704 结算口径 dry-run 请求。startTime/endTime 格式 yyyy-MM-dd HH:mm:ss。",
+                    required = true,
+                    content = @Content(examples = @ExampleObject(value = "{\"startTime\":\"2026-06-12 00:00:00\",\"endTime\":\"2026-06-13 00:00:00\",\"timeType\":\"settle\",\"pageSize\":100,\"maxPages\":500,\"maxOrders\":50000,\"maxDiffOrderIds\":500}"))
+            )
+            @RequestBody Order2704SettlementDryRunRequest request) {
+        Order2704SettlementDryRunRequest safeRequest =
+                request == null ? new Order2704SettlementDryRunRequest() : request;
+        Order2704SettlementDryRunService.DryRunRequest command =
+                new Order2704SettlementDryRunService.DryRunRequest(
+                        safeRequest.getStartTime(),
+                        safeRequest.getEndTime(),
+                        safeRequest.getTimeType(),
+                        safeRequest.getPageSize(),
+                        safeRequest.getCursor(),
+                        safeRequest.getMaxPages(),
+                        safeRequest.getMaxOrders(),
+                        safeRequest.getMaxDiffOrderIds(),
+                        safeRequest.getOrderIds()
+                );
+        return ok(order2704SettlementDryRunService.dryRun(command));
     }
 
     /**
@@ -524,7 +673,7 @@ public class OrderController extends BaseController {
      */
     @Operation(summary = "获取订单列表", description = "分页查询订单归因列表，用于订单主页面。")
     @GetMapping
-    public ApiResult<IPage<ColonelsettlementOrder>> getOrders(
+    public ApiResult<IPage<OrderQueryView>> getOrders(
             @Parameter(description = "页码，从 1 开始，最大 1000。") @RequestParam(name = "page", defaultValue = "1") @Min(1) @Max(1000) long page,
             @Parameter(description = "每页条数，最大 200。") @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(200) long size,
             @Parameter(description = "订单 ID。") @RequestParam(name = "orderId", required = false) String orderId,
@@ -544,8 +693,17 @@ public class OrderController extends BaseController {
             @RequestAttribute(name = "userId", required = false) UUID userId,
             @RequestAttribute(name = "deptId", required = false) UUID deptId,
             @RequestAttribute(name = "dataScope", required = false) DataScope dataScope) {
-        Page<ColonelsettlementOrder> query = new Page<>(page, size);
-        LambdaQueryWrapper<ColonelsettlementOrder> wrapper = buildWrapper(
+        if (dddRefactorProperties.isEnabled() && dddRefactorProperties.getOrderApplication().isEnabled()) {
+            IPage<OrderQueryView> dddResult = orderDomainFacade.getOrders(
+                    page, size, orderId, attributionStatus, unattributedReason, activityId, productId,
+                    channelKeyword, colonelKeyword, orderStatus, startTime, endTime, timeField,
+                    dashboardDiagnosis, recruiterDeptIds, channelDeptIds, userId, deptId, dataScope
+            );
+            return ok(dddResult);
+        }
+        IPage<ColonelsettlementOrder> result = orderService.findPage(
+                page,
+                size,
                 orderId,
                 attributionStatus,
                 unattributedReason,
@@ -559,16 +717,12 @@ public class OrderController extends BaseController {
                 timeField,
                 dashboardDiagnosis,
                 parseUuidCsv(recruiterDeptIds),
-                parseUuidCsv(channelDeptIds)
+                parseUuidCsv(channelDeptIds),
+                userId,
+                deptId,
+                dataScope
         );
-        selectOrderListColumns(wrapper);
-        applyDataScope(wrapper, userId, deptId, dataScope);
-        wrapper.orderByDesc(ColonelsettlementOrder::getUpdateTime)
-                .orderByDesc(ColonelsettlementOrder::getCreateTime);
-        IPage<ColonelsettlementOrder> result = orderMapper.selectPage(query, wrapper);
-        result.getRecords().forEach(orderService::normalizeOrderRow);
-        orderService.enrichOrderList(result.getRecords());
-        return ok(result);
+        return ok(result.convert(OrderListAssembler::toView));
     }
 
     /**
@@ -605,7 +759,7 @@ public class OrderController extends BaseController {
      */
     @Operation(summary = "获取未归因订单", description = "分页查询未归因订单列表，用于未归因排查。其余筛选条件与订单列表保持一致。")
     @GetMapping("/unattributed")
-    public ApiResult<IPage<ColonelsettlementOrder>> getUnattributedOrders(
+    public ApiResult<IPage<OrderQueryView>> getUnattributedOrders(
             @Parameter(description = "页码，从 1 开始，最大 1000。") @RequestParam(name = "page", defaultValue = "1") @Min(1) @Max(1000) long page,
             @Parameter(description = "每页条数，最大 200。") @RequestParam(name = "size", defaultValue = "20") @Min(1) @Max(200) long size,
             @Parameter(description = "订单 ID。") @RequestParam(name = "orderId", required = false) String orderId,
@@ -624,6 +778,14 @@ public class OrderController extends BaseController {
             @RequestAttribute(name = "userId", required = false) UUID userId,
             @RequestAttribute(name = "deptId", required = false) UUID deptId,
             @RequestAttribute(name = "dataScope", required = false) DataScope dataScope) {
+        if (dddRefactorProperties.isEnabled() && dddRefactorProperties.getOrderApplication().isEnabled()) {
+            IPage<OrderQueryView> dddResult = orderDomainFacade.getOrders(
+                    page, size, orderId, AttributionService.STATUS_UNATTRIBUTED, unattributedReason, activityId, productId,
+                    channelKeyword, colonelKeyword, orderStatus, startTime, endTime, timeField,
+                    dashboardDiagnosis, recruiterDeptIds, channelDeptIds, userId, deptId, dataScope
+            );
+            return ok(dddResult);
+        }
         return getOrders(page, size, orderId, AttributionService.STATUS_UNATTRIBUTED, unattributedReason, activityId, productId, channelKeyword, colonelKeyword, orderStatus, startTime, endTime, timeField, dashboardDiagnosis, recruiterDeptIds, channelDeptIds, userId, deptId, dataScope);
     }
 
@@ -647,12 +809,16 @@ public class OrderController extends BaseController {
      */
     @Operation(summary = "获取订单详情", description = "查询单个订单详情，返回订单基础信息、归因结果、推广映射、达人与寄样关联信息。")
     @GetMapping("/{orderId}")
-    public ApiResult<OrderDetailResponse> getOrderDetail(
+    public ApiResult<OrderDetailView> getOrderDetail(
             @Parameter(description = "订单 ID。") @PathVariable("orderId") String orderId,
             @RequestAttribute(name = "userId", required = false) UUID userId,
             @RequestAttribute(name = "deptId", required = false) UUID deptId,
             @RequestAttribute(name = "dataScope", required = false) DataScope dataScope) {
-        return ok(orderQueryService.getOrderDetail(orderId, userId, deptId, dataScope));
+        if (dddRefactorProperties.isEnabled() && dddRefactorProperties.getOrderApplication().isEnabled()) {
+            return ok(orderDomainFacade.getOrderDetail(orderId, userId, deptId, dataScope));
+        }
+        OrderDetailResponse response = orderQueryService.getOrderDetail(orderId, userId, deptId, dataScope);
+        return ok(OrderDetailAssembler.toView(response));
     }
 
     @Operation(summary = "获取订单统计", description = "按当前筛选条件统计订单总量、已归因数、未归因数与未归因原因分布。")
@@ -675,9 +841,14 @@ public class OrderController extends BaseController {
             @RequestAttribute(name = "userId", required = false) UUID userId,
             @RequestAttribute(name = "deptId", required = false) UUID deptId,
             @RequestAttribute(name = "dataScope", required = false) DataScope dataScope) {
-        List<UUID> parsedRecruiterDeptIds = parseUuidCsv(recruiterDeptIds);
-        List<UUID> parsedChannelDeptIds = parseUuidCsv(channelDeptIds);
-        QueryWrapper<ColonelsettlementOrder> statusWrapper = buildStatsWrapper(
+        if (dddRefactorProperties.isEnabled() && dddRefactorProperties.getOrderApplication().isEnabled()) {
+            return ok(orderDomainFacade.getStats(
+                    orderId, attributionStatus, unattributedReason, activityId, productId,
+                    channelKeyword, colonelKeyword, orderStatus, startTime, endTime, timeField,
+                    dashboardDiagnosis, recruiterDeptIds, channelDeptIds, userId, deptId, dataScope
+            ));
+        }
+        return ok(resolveStats(
                 orderId,
                 attributionStatus,
                 unattributedReason,
@@ -690,79 +861,12 @@ public class OrderController extends BaseController {
                 endTime,
                 timeField,
                 dashboardDiagnosis,
-                parsedRecruiterDeptIds,
-                parsedChannelDeptIds
-        );
-        applyQueryDataScope(statusWrapper, userId, deptId, dataScope);
-        OrderStats stats = new OrderStats();
-        stats.setLastSyncTime(orderSyncService.getLastSyncTime());
-        statusWrapper.select("attribution_status AS attributionStatus", "COUNT(*) AS total")
-                .groupBy("attribution_status");
-
-        long totalOrders = 0L;
-        long attributedOrders = 0L;
-        long unattributedOrders = 0L;
-        long partialOrders = 0L;
-        for (Map<String, Object> row : orderMapper.selectMaps(statusWrapper)) {
-            String status = asText(readValue(row, "attributionStatus"));
-            long count = asLong(readValue(row, "total"));
-            totalOrders += count;
-            if (AttributionService.STATUS_ATTRIBUTED.equals(status)) {
-                attributedOrders += count;
-            }
-            if (AttributionService.STATUS_UNATTRIBUTED.equals(status)) {
-                unattributedOrders += count;
-            }
-            if ("PARTIAL".equals(status)) {
-                partialOrders += count;
-            }
-        }
-
-        QueryWrapper<ColonelsettlementOrder> reasonWrapper = buildStatsWrapper(
-                orderId,
-                attributionStatus,
-                unattributedReason,
-                activityId,
-                productId,
-                channelKeyword,
-                colonelKeyword,
-                orderStatus,
-                startTime,
-                endTime,
-                timeField,
-                dashboardDiagnosis,
-                parsedRecruiterDeptIds,
-                parsedChannelDeptIds
-        );
-        applyQueryDataScope(reasonWrapper, userId, deptId, dataScope);
-        reasonWrapper.eq("attribution_status", AttributionService.STATUS_UNATTRIBUTED)
-                .isNotNull("attribution_remark")
-                .select("attribution_remark AS reason", "COUNT(*) AS total")
-                .groupBy("attribution_remark");
-
-        List<ReasonCount> reasonCounts = new ArrayList<>();
-        long syncFailedOrders = 0L;
-        for (Map<String, Object> row : orderMapper.selectMaps(reasonWrapper)) {
-            String reason = asText(readValue(row, "reason"));
-            long count = asLong(readValue(row, "total"));
-            if (!StringUtils.hasText(reason)) {
-                continue;
-            }
-            reasonCounts.add(new ReasonCount(reason, count));
-            if (AttributionService.REASON_SYNC_FAILED.equals(reason)) {
-                syncFailedOrders += count;
-            }
-        }
-
-        stats.setTotalOrders(totalOrders);
-        stats.setAttributedOrders(attributedOrders);
-        stats.setUnattributedOrders(unattributedOrders);
-        stats.setPartialOrders(partialOrders);
-        stats.setSyncFailedOrders(syncFailedOrders);
-        stats.setUnattributedReasons(reasonCounts.stream()
-                .sorted(Comparator.comparingLong(ReasonCount::count).reversed())
-                .toList());
-        return ok(stats);
+                recruiterDeptIds,
+                channelDeptIds,
+                userId,
+                deptId,
+                dataScope
+        ));
     }
 
     @Operation(summary = "获取订单筛选选项", description = "返回订单页所需的筛选项候选值，包括状态、未归因原因、商品、渠道与团长。")
@@ -864,17 +968,10 @@ public class OrderController extends BaseController {
     }
 
     private List<OptionItem> loadDeptOptions(String... deptTypes) {
-        com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<SysDept> wrapper =
-                new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<SysDept>()
-                        .eq("deleted", 0)
-                        .eq("status", 1)
-                        .in("dept_type", (Object[]) deptTypes)
-                        .orderByAsc("sort_order")
-                        .orderByAsc("dept_name");
-        return sysDeptMapper.selectList(wrapper).stream()
+        return userDomainFacade.listDepartments(java.util.Arrays.asList(deptTypes)).stream()
                 .map(dept -> new OptionItem(
-                        dept.getId() == null ? "" : dept.getId().toString(),
-                        StringUtils.hasText(dept.getDeptName()) ? dept.getDeptName() : dept.getDeptCode()))
+                        dept.id() == null ? "" : dept.id().toString(),
+                        StringUtils.hasText(dept.deptName()) ? dept.deptName() : dept.deptCode()))
                 .filter(item -> StringUtils.hasText(item.value()))
                 .toList();
     }
@@ -968,7 +1065,117 @@ public class OrderController extends BaseController {
     private void evictOrderDerivedCaches() {
         shortTtlCacheService.evictByPrefix(DASHBOARD_SUMMARY_CACHE_PREFIX);
         shortTtlCacheService.evictByPrefix(DASHBOARD_METRICS_CACHE_PREFIX);
+        shortTtlCacheService.evictByPrefix(ORDER_STATS_CACHE_PREFIX);
         shortTtlCacheService.evictByPrefix(FILTER_OPTIONS_CACHE_PREFIX);
+    }
+
+    private OrderStats resolveStats(
+            String orderId,
+            String attributionStatus,
+            String unattributedReason,
+            String activityId,
+            String productId,
+            String channelKeyword,
+            String colonelKeyword,
+            Integer orderStatus,
+            String startTime,
+            String endTime,
+            String timeField,
+            String dashboardDiagnosis,
+            String recruiterDeptIds,
+            String channelDeptIds,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope) {
+        if (!statsCacheEnabled) {
+            return loadStats(
+                    orderId, attributionStatus, unattributedReason, activityId, productId,
+                    channelKeyword, colonelKeyword, orderStatus, startTime, endTime, timeField,
+                    dashboardDiagnosis, recruiterDeptIds, channelDeptIds, userId, deptId, dataScope
+            );
+        }
+        String cacheKey = ORDER_STATS_CACHE_PREFIX + statsCacheKey(
+                orderId, attributionStatus, unattributedReason, activityId, productId,
+                channelKeyword, colonelKeyword, orderStatus, startTime, endTime, timeField,
+                dashboardDiagnosis, recruiterDeptIds, channelDeptIds, userId, deptId, dataScope
+        );
+        Duration ttl = Duration.ofSeconds(Math.max(statsCacheTtlSeconds, 1L));
+        return shortTtlCacheService.get(cacheKey, ttl, () -> loadStats(
+                orderId, attributionStatus, unattributedReason, activityId, productId,
+                channelKeyword, colonelKeyword, orderStatus, startTime, endTime, timeField,
+                dashboardDiagnosis, recruiterDeptIds, channelDeptIds, userId, deptId, dataScope
+        ));
+    }
+
+    private OrderStats loadStats(
+            String orderId,
+            String attributionStatus,
+            String unattributedReason,
+            String activityId,
+            String productId,
+            String channelKeyword,
+            String colonelKeyword,
+            Integer orderStatus,
+            String startTime,
+            String endTime,
+            String timeField,
+            String dashboardDiagnosis,
+            String recruiterDeptIds,
+            String channelDeptIds,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope) {
+        OrderService.OrderStatsResult result = orderService.findStats(
+                orderId,
+                attributionStatus,
+                unattributedReason,
+                activityId,
+                productId,
+                channelKeyword,
+                colonelKeyword,
+                orderStatus,
+                startTime,
+                endTime,
+                timeField,
+                dashboardDiagnosis,
+                parseUuidCsv(recruiterDeptIds),
+                parseUuidCsv(channelDeptIds),
+                userId,
+                deptId,
+                dataScope,
+                orderSyncService.getLastSyncTime()
+        );
+        return toOrderStats(result);
+    }
+
+    private String statsCacheKey(Object... values) {
+        int queryHash = Objects.hash(values);
+        Object userId = values.length > 14 ? values[14] : null;
+        Object deptId = values.length > 15 ? values[15] : null;
+        Object dataScope = values.length > 16 ? values[16] : null;
+        return cacheKey(
+                "scope", userId, deptId, dataScope,
+                "query", Integer.toHexString(queryHash)
+        );
+    }
+
+    private OrderStats toOrderStats(OrderService.OrderStatsResult result) {
+        OrderStats stats = new OrderStats();
+        if (result == null) {
+            return stats;
+        }
+        stats.setTotalOrders(result.totalOrders());
+        stats.setAttributedOrders(result.attributedOrders());
+        stats.setUnattributedOrders(result.unattributedOrders());
+        stats.setPartialOrders(result.partialOrders());
+        stats.setSyncFailedOrders(result.syncFailedOrders());
+        stats.setLastSyncTime(result.lastSyncTime());
+        stats.setUnattributedReasons(result.unattributedReasons() == null
+                ? List.of()
+                : result.unattributedReasons().stream()
+                .map(reason -> new ReasonCount(reason.reason(), reason.count()))
+                .toList());
+        return stats;
     }
 
     private QueryWrapper<ColonelsettlementOrder> buildStatsWrapper(
@@ -1148,21 +1355,29 @@ public class OrderController extends BaseController {
         if (wrapper == null || dataScope == null) {
             return;
         }
-        switch (dataScope) {
-            case PERSONAL -> {
-                if (userId != null) {
-                    wrapper.eq(ColonelsettlementOrder::getUserId, userId);
+        // DDD-DATASCOPE-001: Feature Flag 灰度（默认 OFF，旧 switch 路径）
+        if (!dddRefactorProperties.getDataScopePolicy().isEnabled()) {
+            // 旧路径（保留作兜底，行为 1:1 等价于 git:0ca1fc44）
+            switch (dataScope) {
+                case PERSONAL -> {
+                    if (userId != null) {
+                        wrapper.eq(ColonelsettlementOrder::getUserId, userId);
+                    }
+                }
+                case DEPT -> {
+                    if (deptId != null) {
+                        wrapper.eq(ColonelsettlementOrder::getDeptId, deptId);
+                    }
+                }
+                case ALL -> {
+                    // no filter
                 }
             }
-            case DEPT -> {
-                if (deptId != null) {
-                    wrapper.eq(ColonelsettlementOrder::getDeptId, deptId);
-                }
-            }
-            case ALL -> {
-                // no filter
-            }
+            return;
         }
+        // 新路径（DDD Policy，行为 1:1 等价于旧 switch）
+        dataScopePolicy.applyTo(wrapper, userId, deptId, dataScope,
+                ColonelsettlementOrder::getUserId, ColonelsettlementOrder::getDeptId);
     }
 
     private void applyQueryDataScope(
@@ -1173,21 +1388,28 @@ public class OrderController extends BaseController {
         if (wrapper == null || dataScope == null) {
             return;
         }
-        switch (dataScope) {
-            case PERSONAL -> {
-                if (userId != null) {
-                    wrapper.eq("user_id", userId);
+        // DDD-DATASCOPE-001: Feature Flag 灰度（默认 OFF，旧 switch 路径）
+        if (!dddRefactorProperties.getDataScopePolicy().isEnabled()) {
+            // 旧路径（保留作兜底，行为 1:1 等价于 git:0ca1fc44）
+            switch (dataScope) {
+                case PERSONAL -> {
+                    if (userId != null) {
+                        wrapper.eq("user_id", userId);
+                    }
+                }
+                case DEPT -> {
+                    if (deptId != null) {
+                        wrapper.eq("dept_id", deptId);
+                    }
+                }
+                case ALL -> {
+                    // no filter
                 }
             }
-            case DEPT -> {
-                if (deptId != null) {
-                    wrapper.eq("dept_id", deptId);
-                }
-            }
-            case ALL -> {
-                // no filter
-            }
+            return;
         }
+        // 新路径（DDD Policy，行为 1:1 等价于旧 switch）
+        dataScopePolicy.applyTo(wrapper, userId, deptId, dataScope, "user_id", "dept_id");
     }
 
     private void normalizeOrderRow(ColonelsettlementOrder order) {
@@ -1369,6 +1591,77 @@ public class OrderController extends BaseController {
         @Max(50000)
         @Schema(description = "最大订单行数，默认 50000，最大 50000。")
         private Integer maxOrders;
+    }
+
+    @Data
+    public static class Order1603SettlementDryRunRequest {
+        @Schema(description = "1603 查询开始时间，格式 yyyy-MM-dd HH:mm:ss。", example = "2026-06-03 00:00:00")
+        private String startTime;
+
+        @Schema(description = "1603 查询结束时间，格式 yyyy-MM-dd HH:mm:ss。", example = "2026-06-06 13:30:00")
+        private String endTime;
+
+        @Schema(description = "时间类型，默认 update。")
+        private String timeType;
+
+        @Min(1)
+        @Max(100)
+        @Schema(description = "每页条数，默认 20，最大 100。")
+        private Integer pageSize;
+
+        @Schema(description = "游标，默认 0。")
+        private String cursor;
+
+        @Min(1)
+        @Max(10)
+        @Schema(description = "最大页数，默认 3，最大 10。")
+        private Integer maxPages;
+
+        @Min(1)
+        @Max(500)
+        @Schema(description = "最大订单行数，默认 100，最大 500。")
+        private Integer maxOrders;
+
+        @Schema(description = "订单号列表；1603 默认不强传给上游，仅用于 dry-run 请求回显为 warning。")
+        private List<String> orderIds;
+    }
+
+    @Data
+    public static class Order2704SettlementDryRunRequest {
+        @Schema(description = "2704 查询开始时间，格式 yyyy-MM-dd HH:mm:ss。", example = "2026-06-12 00:00:00")
+        private String startTime;
+
+        @Schema(description = "2704 查询结束时间，格式 yyyy-MM-dd HH:mm:ss。", example = "2026-06-13 00:00:00")
+        private String endTime;
+
+        @Schema(description = "时间类型，默认 settle。")
+        private String timeType;
+
+        @Min(1)
+        @Max(100)
+        @Schema(description = "每页条数，默认 100，最大 100。")
+        private Integer pageSize;
+
+        @Schema(description = "游标，默认 0。")
+        private String cursor;
+
+        @Min(1)
+        @Max(500)
+        @Schema(description = "最大页数，默认 500，最大 500。")
+        private Integer maxPages;
+
+        @Min(1)
+        @Max(50000)
+        @Schema(description = "最大订单行数，默认 50000，最大 50000。")
+        private Integer maxOrders;
+
+        @Min(0)
+        @Max(5000)
+        @Schema(description = "返回差异订单号清单的最大数量，默认 500，最大 5000。")
+        private Integer maxDiffOrderIds;
+
+        @Schema(description = "订单号列表；为空时按时间范围查询。")
+        private List<String> orderIds;
     }
 
     @Data

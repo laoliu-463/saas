@@ -3,10 +3,12 @@ package com.colonel.saas.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.exception.OptimisticLockSupport;
 import com.colonel.saas.common.exception.ForbiddenException;
+import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.dto.talent.TalentBatchImportResult;
 import com.colonel.saas.entity.CrawlerTalentInfo;
 import com.colonel.saas.entity.Talent;
@@ -17,7 +19,13 @@ import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.mapper.SampleRequestMapper;
 import com.colonel.saas.mapper.TalentClaimMapper;
 import com.colonel.saas.mapper.TalentEnrichTaskMapper;
-import com.colonel.saas.mapper.SysUserMapper;
+import com.colonel.saas.domain.talent.policy.TalentAddressPolicy;
+import com.colonel.saas.domain.talent.policy.TalentClaimPolicy;
+import com.colonel.saas.domain.talent.policy.TalentTagPolicy;
+import com.colonel.saas.domain.user.facade.UserDomainFacade;
+import com.colonel.saas.domain.user.facade.dto.UserOwnershipReference;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
+import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.mapper.TalentMapper;
 import com.colonel.saas.service.talent.TalentEnrichOrchestrator;
 import com.colonel.saas.service.talent.TalentInputParseResult;
@@ -35,7 +43,6 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -137,7 +144,13 @@ public class TalentService {
     /** 操作日志服务（用于认领/释放/归属覆盖等操作审计） */
     private final OperationLogService operationLogService;
     /** 系统用户 Mapper（用于归属覆盖时校验目标负责人） */
-    private final SysUserMapper sysUserMapper;
+    private final UserDomainFacade userDomainFacade;
+    /** 当前用户权限策略（用于统一解释角色编码集合） */
+    private final CurrentUserPermissionPolicy currentUserPermissionPolicy;
+    /** 用户域数据范围策略（灰度开启时消费，默认关闭保留 Legacy 路径） */
+    private final DataScopePolicy dataScopePolicy;
+    /** DDD 重构灰度开关配置 */
+    private final DddRefactorProperties dddRefactorProperties;
 
     /**
      * 构造函数，通过依赖注入初始化所有必需的服务和仓储。
@@ -154,7 +167,10 @@ public class TalentService {
      * @param configDomainFacade         配置域门面（DDD-CONFIG-002）
      * @param businessRuleConfigService 业务规则配置服务（预设标签等非门面项）
      * @param operationLogService      操作日志服务
-     * @param sysUserMapper            系统用户 Mapper
+     * @param userDomainFacade         用户域门面
+     * @param currentUserPermissionPolicy 当前用户权限策略
+     * @param dataScopePolicy             用户域数据范围策略
+     * @param dddRefactorProperties       DDD 重构灰度开关配置
      */
     public TalentService(
             TalentMapper talentMapper,
@@ -169,7 +185,10 @@ public class TalentService {
             com.colonel.saas.domain.config.facade.ConfigDomainFacade configDomainFacade,
             BusinessRuleConfigService businessRuleConfigService,
             OperationLogService operationLogService,
-            SysUserMapper sysUserMapper) {
+            UserDomainFacade userDomainFacade,
+            CurrentUserPermissionPolicy currentUserPermissionPolicy,
+            DataScopePolicy dataScopePolicy,
+            DddRefactorProperties dddRefactorProperties) {
         this.talentMapper = talentMapper;
         this.talentClaimMapper = talentClaimMapper;
         this.talentEnrichTaskMapper = talentEnrichTaskMapper;
@@ -182,7 +201,10 @@ public class TalentService {
         this.configDomainFacade = configDomainFacade;
         this.businessRuleConfigService = businessRuleConfigService;
         this.operationLogService = operationLogService;
-        this.sysUserMapper = sysUserMapper;
+        this.userDomainFacade = userDomainFacade;
+        this.currentUserPermissionPolicy = currentUserPermissionPolicy;
+        this.dataScopePolicy = dataScopePolicy;
+        this.dddRefactorProperties = dddRefactorProperties;
     }
 
     /**
@@ -293,22 +315,77 @@ public class TalentService {
             wrapper.le(Talent::getFans, maxFans);
         }
 
-        if (dataScope == DataScope.PERSONAL && userId != null) {
-            List<TalentClaim> claims = talentClaimMapper.findActiveByUserId(userId);
-            Set<UUID> ids = claims.stream().map(TalentClaim::getTalentId).collect(Collectors.toSet());
-            if (ids.isEmpty()) {
-                return new Page<>(page, size, 0L);
-            }
-            wrapper.in(Talent::getId, ids);
-        } else if (dataScope == DataScope.DEPT && deptId != null) {
-            List<TalentClaim> claims = talentClaimMapper.findActiveByDeptId(deptId);
-            Set<UUID> ids = claims.stream().map(TalentClaim::getTalentId).collect(Collectors.toSet());
-            if (ids.isEmpty()) {
-                return new Page<>(page, size, 0L);
-            }
-            wrapper.in(Talent::getId, ids);
+        boolean hasScopedClaims = applyPageDataScope(wrapper, dataScope, userId, deptId);
+        if (!hasScopedClaims) {
+            return new Page<>(page, size, 0L);
         }
         return talentMapper.selectPage(new Page<>(page, size), wrapper);
+    }
+
+    private boolean applyPageDataScope(
+            LambdaQueryWrapper<Talent> wrapper,
+            DataScope dataScope,
+            UUID userId,
+            UUID deptId) {
+        if (!dddRefactorProperties.getDataScopePolicy().isEnabled()) {
+            return applyPageDataScopeLegacy(wrapper, dataScope, userId, deptId);
+        }
+        return applyPageDataScopeWithPolicy(wrapper, dataScope, userId, deptId);
+    }
+
+    private boolean applyPageDataScopeLegacy(
+            LambdaQueryWrapper<Talent> wrapper,
+            DataScope dataScope,
+            UUID userId,
+            UUID deptId) {
+        if (dataScope == DataScope.PERSONAL && userId != null) {
+            return applyClaimedTalentFilter(
+                    wrapper,
+                    talentClaimMapper.findActiveByUserId(userId));
+        }
+        if (dataScope == DataScope.DEPT && deptId != null) {
+            return applyClaimedTalentFilter(
+                    wrapper,
+                    talentClaimMapper.findActiveByDeptId(deptId));
+        }
+        return true;
+    }
+
+    private boolean applyPageDataScopeWithPolicy(
+            LambdaQueryWrapper<Talent> wrapper,
+            DataScope dataScope,
+            UUID userId,
+            UUID deptId) {
+        DataScopePolicy.ContextRequirement requirement =
+                dataScopePolicy.contextRequirement(userId, deptId, dataScope);
+        if (requirement != DataScopePolicy.ContextRequirement.SATISFIED) {
+            return true;
+        }
+        DataScopePolicy.Decision decision = dataScopePolicy.decide(userId, deptId, dataScope);
+        if (decision == DataScopePolicy.Decision.FILTER_USER) {
+            return applyClaimedTalentFilter(
+                    wrapper,
+                    talentClaimMapper.findActiveByUserId(userId));
+        }
+        if (decision == DataScopePolicy.Decision.FILTER_DEPT) {
+            return applyClaimedTalentFilter(
+                    wrapper,
+                    talentClaimMapper.findActiveByDeptId(deptId));
+        }
+        return true;
+    }
+
+    private boolean applyClaimedTalentFilter(
+            LambdaQueryWrapper<Talent> wrapper,
+            List<TalentClaim> claims) {
+        Set<UUID> ids = claims.stream()
+                .map(TalentClaim::getTalentId)
+                .collect(Collectors.toSet());
+        if (ids.isEmpty()) {
+            return false;
+        }
+        wrapper.in(Talent::getId, ids);
+        return true;
     }
 
     /**
@@ -508,7 +585,7 @@ public class TalentService {
     @Transactional(rollbackFor = Exception.class)
     public List<String> updateTags(UUID id, List<String> tags, UUID operatorId) {
         Talent talent = getById(id);
-        List<String> normalized = normalizeTalentTags(tags);
+        List<String> normalized = TalentTagPolicy.normalize(tags, businessRuleConfigService.getPresetTalentTags());
         talent.setTags(normalized);
         talent.setTagUpdatedBy(operatorId);
         persistTalent(talent);
@@ -535,9 +612,11 @@ public class TalentService {
             String recipientPhone,
             String recipientAddress) {
         Talent talent = getById(id);
-        talent.setShippingRecipientName(trimToNull(recipientName));
-        talent.setShippingRecipientPhone(trimToNull(recipientPhone));
-        talent.setShippingRecipientAddress(trimToNull(recipientAddress));
+        TalentAddressPolicy.NormalizedAddress addr = TalentAddressPolicy.normalize(
+                recipientName, recipientPhone, recipientAddress);
+        talent.setShippingRecipientName(addr.recipientName());
+        talent.setShippingRecipientPhone(addr.recipientPhone());
+        talent.setShippingRecipientAddress(addr.recipientAddress());
         persistTalent(talent);
         return talent;
     }
@@ -574,16 +653,15 @@ public class TalentService {
             throw new ForbiddenException("仅当前认领人可以维护达人收货地址");
         }
         // T-04 fix: 地址仅存于 claim 层，不写入 talent 主表，避免非认领人通过达人详情查见
-        String normalizedName = trimToNull(recipientName);
-        String normalizedPhone = trimToNull(recipientPhone);
-        String normalizedAddress = trimToNull(recipientAddress);
-        claim.setRecipientName(normalizedName);
-        claim.setRecipientPhone(normalizedPhone);
-        claim.setRecipientAddress(normalizedAddress);
+        TalentAddressPolicy.NormalizedAddress addr = TalentAddressPolicy.normalize(
+                recipientName, recipientPhone, recipientAddress);
+        claim.setRecipientName(addr.recipientName());
+        claim.setRecipientPhone(addr.recipientPhone());
+        claim.setRecipientAddress(addr.recipientAddress());
         persistTalentClaim(claim);
-        talent.setShippingRecipientName(normalizedName);
-        talent.setShippingRecipientPhone(normalizedPhone);
-        talent.setShippingRecipientAddress(normalizedAddress);
+        talent.setShippingRecipientName(addr.recipientName());
+        talent.setShippingRecipientPhone(addr.recipientPhone());
+        talent.setShippingRecipientAddress(addr.recipientAddress());
         return talent;
     }
 
@@ -796,9 +874,7 @@ public class TalentService {
      */
     @Transactional(rollbackFor = Exception.class)
     public Talent claim(UUID talentId, UUID userId, UUID deptId) {
-        if (userId == null) {
-            throw BusinessException.param("缺少登录用户");
-        }
+        TalentClaimPolicy.requireClaimUser(userId);
         String lockKey = "talent:claim:lock:" + talentId;
         String lockValue = userId.toString();
         Boolean locked = redisTemplate.opsForValue().setIfAbsent(
@@ -813,10 +889,8 @@ public class TalentService {
             Talent talent = getById(talentId);
             int protectDays = getProtectDays();
 
-            TalentClaim selfActiveClaim = talentClaimMapper.findActiveByTalentAndUser(talentId, userId);
-            if (selfActiveClaim != null) {
-                throw BusinessException.duplicate("你已认领该达人，无需重复认领");
-            }
+            TalentClaimPolicy.assertNotDuplicateActiveClaim(
+                    talentClaimMapper.findActiveByTalentAndUser(talentId, userId));
 
             LocalDateTime now = LocalDateTime.now();
             TalentClaim claim = findLatestClaimByTalentAndUser(talentId, userId);
@@ -831,7 +905,7 @@ public class TalentService {
             claim.setDeptId(deptId);
             claim.setClaimType(CLAIM_TYPE_MANUAL);
             claim.setClaimedAt(now);
-            claim.setProtectedUntil(now.plusDays(protectDays));
+            claim.setProtectedUntil(TalentClaimPolicy.protectedUntil(now, protectDays));
             claim.setStatus(CLAIM_STATUS_ACTIVE);
             if (newClaim) {
                 talentClaimMapper.insert(claim);
@@ -880,23 +954,12 @@ public class TalentService {
      */
     @Transactional(rollbackFor = Exception.class)
     public Talent release(UUID talentId, UUID userId, UUID deptId, Collection<?> roleCodes) {
-        if (userId == null) {
-            throw BusinessException.param("缺少登录用户");
-        }
+        TalentClaimPolicy.requireClaimUser(userId);
         getById(talentId);
 
         List<TalentClaim> activeClaims = talentClaimMapper.findActiveByTalentId(talentId);
-        if (activeClaims.isEmpty()) {
-            throw BusinessException.stateInvalid("达人当前无有效认领记录");
-        }
-
-        boolean isAdmin = hasRole(roleCodes, "admin");
-        TalentClaim releaseTarget = activeClaims.stream()
-                .sorted(Comparator.comparing((TalentClaim claim) -> !userId.equals(claim.getUserId()))
-                        .thenComparing(TalentClaim::getClaimedAt, Comparator.nullsLast(Comparator.reverseOrder())))
-                .filter(claim -> canRelease(claim, userId, deptId, isAdmin))
-                .findFirst()
-                .orElseThrow(() -> new ForbiddenException("仅认领人或管理员可以释放达人"));
+        boolean isAdmin = currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.ADMIN);
+        TalentClaim releaseTarget = TalentClaimPolicy.selectReleaseTarget(activeClaims, userId, isAdmin);
 
         releaseTarget.setStatus(CLAIM_STATUS_RELEASED);
         releaseTarget.setProtectedUntil(LocalDateTime.now());
@@ -943,8 +1006,9 @@ public class TalentService {
         if (newUserId == null) {
             throw BusinessException.param("新负责人ID不能为空");
         }
-        SysUser targetUser = sysUserMapper.selectById(newUserId);
-        if (targetUser == null || targetUser.getDeleted() == 1) {
+        UserOwnershipReference targetUser =
+                userDomainFacade.loadUserOwnershipReferencesByIds(List.of(newUserId)).get(newUserId);
+        if (targetUser == null) {
             throw BusinessException.notFound("目标负责人不存在");
         }
         Talent talent = getById(talentId);
@@ -1270,11 +1334,7 @@ public class TalentService {
         LambdaQueryWrapper<com.colonel.saas.entity.ColonelsettlementOrder> wrapper =
                 new LambdaQueryWrapper<com.colonel.saas.entity.ColonelsettlementOrder>()
                         .ge(com.colonel.saas.entity.ColonelsettlementOrder::getSettleTime, start);
-        if (dataScope == DataScope.PERSONAL && userId != null) {
-            wrapper.eq(com.colonel.saas.entity.ColonelsettlementOrder::getUserId, userId);
-        } else if (dataScope == DataScope.DEPT && deptId != null) {
-            wrapper.eq(com.colonel.saas.entity.ColonelsettlementOrder::getDeptId, deptId);
-        }
+        applyExclusiveDataScope(wrapper, dataScope, userId, deptId);
         List<com.colonel.saas.entity.ColonelsettlementOrder> monthOrders = loadOrdersInBatches(wrapper);
 
         long totalServiceFee = 0L;
@@ -1295,6 +1355,50 @@ public class TalentService {
         boolean eligible = serviceRatio >= configDomainFacade.getExclusiveTalentFeeRatio().longValue()
                 && monthlySamples >= configDomainFacade.getExclusiveTalentMonthlySamples();
         return new ExclusiveCheckResult(eligible, serviceRatio, monthlySamples);
+    }
+
+    private void applyExclusiveDataScope(
+            LambdaQueryWrapper<com.colonel.saas.entity.ColonelsettlementOrder> wrapper,
+            DataScope dataScope,
+            UUID userId,
+            UUID deptId) {
+        if (!dddRefactorProperties.getDataScopePolicy().isEnabled()) {
+            applyExclusiveDataScopeLegacy(wrapper, dataScope, userId, deptId);
+            return;
+        }
+        applyExclusiveDataScopeWithPolicy(wrapper, dataScope, userId, deptId);
+    }
+
+    private void applyExclusiveDataScopeLegacy(
+            LambdaQueryWrapper<com.colonel.saas.entity.ColonelsettlementOrder> wrapper,
+            DataScope dataScope,
+            UUID userId,
+            UUID deptId) {
+        if (dataScope == DataScope.PERSONAL && userId != null) {
+            wrapper.eq(com.colonel.saas.entity.ColonelsettlementOrder::getUserId, userId);
+        } else if (dataScope == DataScope.DEPT && deptId != null) {
+            wrapper.eq(com.colonel.saas.entity.ColonelsettlementOrder::getDeptId, deptId);
+        }
+    }
+
+    private void applyExclusiveDataScopeWithPolicy(
+            LambdaQueryWrapper<com.colonel.saas.entity.ColonelsettlementOrder> wrapper,
+            DataScope dataScope,
+            UUID userId,
+            UUID deptId) {
+        DataScopePolicy.ContextRequirement requirement =
+                dataScopePolicy.contextRequirement(userId, deptId, dataScope);
+        if (requirement != DataScopePolicy.ContextRequirement.SATISFIED) {
+            return;
+        }
+        DataScopePolicy.Decision decision = dataScopePolicy.decide(userId, deptId, dataScope);
+        if (decision == DataScopePolicy.Decision.FILTER_USER) {
+            wrapper.eq(com.colonel.saas.entity.ColonelsettlementOrder::getUserId, userId);
+            return;
+        }
+        if (decision == DataScopePolicy.Decision.FILTER_DEPT) {
+            wrapper.eq(com.colonel.saas.entity.ColonelsettlementOrder::getDeptId, deptId);
+        }
     }
 
     /**
@@ -1452,16 +1556,6 @@ public class TalentService {
      * @param isAdmin  是否管理员
      * @return 有权返回 true
      */
-    private boolean canRelease(TalentClaim claim, UUID userId, UUID deptId, boolean isAdmin) {
-        if (isAdmin) {
-            return true;
-        }
-        if (userId.equals(claim.getUserId())) {
-            return true;
-        }
-        return false;
-    }
-
     /**
      * 释放认领后重新计算达人所属人快照。
      * <p>
@@ -1524,41 +1618,59 @@ public class TalentService {
         if (activeClaims.isEmpty()) {
             return;
         }
-        if (dataScope == DataScope.PERSONAL) {
-            boolean ownedByCurrentUser = userId != null && activeClaims.stream()
-                    .anyMatch(claim -> userId.equals(claim.getUserId()));
-            if (!ownedByCurrentUser) {
-                throw new ForbiddenException("无权操作该达人");
-            }
+        if (!dddRefactorProperties.getDataScopePolicy().isEnabled()) {
+            assertCanOperateBlacklistLegacy(activeClaims, userId, deptId, dataScope);
             return;
         }
-        boolean ownedByCurrentDept = deptId != null && activeClaims.stream()
-                .anyMatch(claim -> deptId.equals(claim.getDeptId()));
-        if (!ownedByCurrentDept) {
+        assertCanOperateBlacklistWithPolicy(activeClaims, userId, deptId, dataScope);
+    }
+
+    private void assertCanOperateBlacklistLegacy(
+            List<TalentClaim> activeClaims,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope) {
+        if (dataScope == DataScope.PERSONAL) {
+            assertCanOperateBlacklistAllowed(hasActiveClaimForUser(activeClaims, userId));
+            return;
+        }
+        assertCanOperateBlacklistAllowed(hasActiveClaimForDept(activeClaims, deptId));
+    }
+
+    private void assertCanOperateBlacklistWithPolicy(
+            List<TalentClaim> activeClaims,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope) {
+        DataScopePolicy.ContextRequirement requirement =
+                dataScopePolicy.contextRequirement(userId, deptId, dataScope);
+        if (requirement != DataScopePolicy.ContextRequirement.SATISFIED) {
             throw new ForbiddenException("无权操作该达人");
+        }
+        DataScopePolicy.Decision decision = dataScopePolicy.decide(userId, deptId, dataScope);
+        if (decision == DataScopePolicy.Decision.FILTER_USER) {
+            assertCanOperateBlacklistAllowed(hasActiveClaimForUser(activeClaims, userId));
+            return;
+        }
+        if (decision == DataScopePolicy.Decision.FILTER_DEPT) {
+            assertCanOperateBlacklistAllowed(hasActiveClaimForDept(activeClaims, deptId));
         }
     }
 
-    /**
-     * 判断角色编码集合中是否包含指定角色。
-     * <p>
-     * 比较时忽略大小写。
-     * </p>
-     *
-     * @param roleCodes 角色编码集合（可为 null）
-     * @param role      目标角色编码
-     * @return 包含返回 true
-     */
-    private boolean hasRole(Collection<?> roleCodes, String role) {
-        if (roleCodes == null || roleCodes.isEmpty()) {
-            return false;
+    private boolean hasActiveClaimForUser(List<TalentClaim> activeClaims, UUID userId) {
+        return userId != null && activeClaims.stream()
+                .anyMatch(claim -> userId.equals(claim.getUserId()));
+    }
+
+    private boolean hasActiveClaimForDept(List<TalentClaim> activeClaims, UUID deptId) {
+        return deptId != null && activeClaims.stream()
+                .anyMatch(claim -> deptId.equals(claim.getDeptId()));
+    }
+
+    private void assertCanOperateBlacklistAllowed(boolean allowed) {
+        if (!allowed) {
+            throw new ForbiddenException("无权操作该达人");
         }
-        String target = role.toLowerCase(Locale.ROOT);
-        return roleCodes.stream()
-                .filter(Objects::nonNull)
-                .map(String::valueOf)
-                .map(code -> code.toLowerCase(Locale.ROOT))
-                .anyMatch(target::equals);
     }
 
     /**

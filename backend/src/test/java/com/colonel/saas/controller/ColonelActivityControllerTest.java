@@ -9,7 +9,9 @@ import com.colonel.saas.gateway.douyin.DouyinActivityGateway;
 import com.colonel.saas.gateway.douyin.DouyinProductGateway;
 import com.colonel.saas.auth.service.SysUserService;
 import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
-import com.colonel.saas.mapper.SysUserMapper;
+import com.colonel.saas.domain.product.policy.ProductDisplayPolicy;
+import com.colonel.saas.domain.user.facade.UserDomainFacade;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.service.activity.ActivityAccessService;
 import com.colonel.saas.service.ColonelsettlementActivityService;
 import com.colonel.saas.service.ProductActivityManualSyncService;
@@ -19,6 +21,7 @@ import org.springframework.http.MediaType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
@@ -38,6 +41,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -65,7 +69,7 @@ class ColonelActivityControllerTest {
     @Mock
     private ProductActivityManualSyncService productActivityManualSyncService;
     @Mock
-    private SysUserMapper sysUserMapper;
+    private UserDomainFacade userDomainFacade;
     @Mock
     private ColonelsettlementActivityMapper colonelActivityMapper;
 
@@ -75,7 +79,7 @@ class ColonelActivityControllerTest {
 
     @BeforeEach
     void setUp() {
-        activityAccessService = new ActivityAccessService(colonelActivityMapper);
+        activityAccessService = new ActivityAccessService(colonelActivityMapper, new CurrentUserPermissionPolicy());
         controller = new ColonelActivityController(
                 douyinActivityGateway,
                 douyinProductGateway,
@@ -84,8 +88,9 @@ class ColonelActivityControllerTest {
                 sysUserService,
                 colonelActivityService,
                 productActivityManualSyncService,
-                sysUserMapper,
-                activityAccessService
+                userDomainFacade,
+                activityAccessService,
+                new ProductDisplayPolicy()
         );
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
@@ -130,8 +135,9 @@ class ColonelActivityControllerTest {
                 sysUserService,
                 colonelActivityService,
                 productActivityManualSyncService,
-                sysUserMapper,
-                activityAccessService);
+                userDomainFacade,
+                activityAccessService,
+                new ProductDisplayPolicy());
         MockMvc localMvc = MockMvcBuilders.standaloneSetup(localController)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
@@ -244,6 +250,45 @@ class ColonelActivityControllerTest {
                 .andExpect(jsonPath("$.data.activityList[0].activityId").value(3916506));
 
         verify(douyinActivityGateway, never()).listActivities(any());
+    }
+
+    @Test
+    void list_shouldPassDisplayNameResolverWithoutFullUserDto() throws Exception {
+        UUID recruiterId = UUID.fromString("22222222-2222-2222-2222-222222222222");
+        when(userDomainFacade.loadUserDisplayNamesByIds(any()))
+                .thenReturn(Map.of(recruiterId, "招商负责人"));
+        when(colonelActivityService.buildAssignmentListPage(
+                eq(1L),
+                eq(20L),
+                eq(0),
+                eq("assigned"),
+                eq(null),
+                eq(null),
+                any()))
+                .thenAnswer(invocation -> {
+                    @SuppressWarnings("unchecked")
+                    java.util.function.Function<UUID, String> resolver =
+                            invocation.getArgument(6, java.util.function.Function.class);
+                    String assigneeName = resolver.apply(recruiterId);
+                    return Map.of(
+                            "total", 1L,
+                            "activityList", List.of(Map.of(
+                                    "activityId", 3916506L,
+                                    "assigneeName", assigneeName
+                            ))
+                    );
+                });
+
+        mockMvc.perform(get("/colonel/activities")
+                        .param("page", "1")
+                        .param("pageSize", "20")
+                        .param("assignmentFilter", "assigned")
+                        .requestAttr("roleCodes", List.of(RoleCodes.ADMIN)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.activityList[0].assigneeName").value("招商负责人"));
+
+        verify(userDomainFacade).loadUserDisplayNamesByIds(any());
+        verify(userDomainFacade, never()).getUserById(any());
     }
 
     @Test
@@ -402,6 +447,48 @@ class ColonelActivityControllerTest {
     }
 
     @Test
+    void listProducts_shouldRejectUnsupportedActivityProductStatus() throws Exception {
+        mockMvc.perform(get("/colonel/activities/{activityId}/products", "100018")
+                        .param("status", "9")
+                        .requestAttr("roleCodes", List.of(RoleCodes.ADMIN)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.msg").value("商品状态仅支持 0=待审核、1=推广中、2=申请未通过、3=合作已终止、4=合作前取消、6=合作已到期"));
+
+        verify(productService, never()).hasActivitySnapshots("100018");
+        verify(productService, never()).buildActivityProductListViewFromDb(
+                any(), any(), any(), any(), any(), any(), any(), any(), any());
+        verify(douyinProductGateway, never()).queryActivityProducts(any());
+    }
+
+    @Test
+    void listProducts_shouldAllowCanceledActivityProductStatus() throws Exception {
+        Map<String, Object> listView = new LinkedHashMap<>();
+        listView.put("activityId", "100018");
+        listView.put("total", 1);
+        listView.put("items", List.of(Map.of(
+                "productId", 9004L,
+                "status", 4,
+                "statusText", "合作前取消"
+        )));
+        when(productService.hasActivitySnapshots("100018")).thenReturn(true);
+        when(productService.buildActivityProductListViewFromDb("100018", 20, null, null, null, 4, null, null, null))
+                .thenReturn(listView);
+
+        mockMvc.perform(get("/colonel/activities/{activityId}/products", "100018")
+                        .param("count", "20")
+                        .param("status", "4")
+                        .requestAttr("roleCodes", List.of(RoleCodes.ADMIN)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.items[0].status").value(4))
+                .andExpect(jsonPath("$.data.items[0].statusText").value("合作前取消"));
+
+        verify(productService).buildActivityProductListViewFromDb("100018", 20, null, null, null, 4, null, null, null);
+        verify(douyinProductGateway, never()).queryActivityProducts(any());
+    }
+
+    @Test
     void listProducts_refreshTrueShouldBypassExistingSnapshotsAndRefreshFromGateway() throws Exception {
         DouyinProductGateway.ActivityProductItem item = new DouyinProductGateway.ActivityProductItem(
                 9002L,
@@ -470,23 +557,89 @@ class ColonelActivityControllerTest {
         verify(douyinProductGateway, never()).queryActivityProducts(any());
         verify(productService, never()).upsertSnapshots(eq("100018"), any());
         verify(productService).buildActivityProductListViewFromDb("100018", 20, null, null, null, null, null, null, null);
+        InOrder inOrder = inOrder(productService);
+        inOrder.verify(productService).refreshActivitySnapshots(any());
+        inOrder.verify(productService).buildActivityProductListViewFromDb("100018", 20, null, null, null, null, null, null, null);
     }
 
     @Test
     void syncProducts_shouldTriggerBackgroundSyncAndReturnAcceptedImmediately() throws Exception {
-        when(productActivityManualSyncService.trigger("100018", null)).thenReturn(
-                new ProductActivityManualSyncService.SyncTriggerResult("100018", "ACCEPTED"));
+        when(productActivityManualSyncService.trigger("100018", null, null)).thenReturn(
+                new ProductActivityManualSyncService.SyncTriggerResult(
+                        "100018",
+                        "activity-product-sync-1",
+                        "ACCEPTED"));
 
         mockMvc.perform(post("/colonel/activities/{activityId}/products/sync", "100018")
                         .requestAttr("roleCodes", List.of(RoleCodes.ADMIN)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.activityId").value("100018"))
+                .andExpect(jsonPath("$.data.jobId").value("activity-product-sync-1"))
                 .andExpect(jsonPath("$.data.syncStatus").value("ACCEPTED"))
                 .andExpect(jsonPath("$.data.message").value("商品同步已转入后台执行"));
 
-        verify(productActivityManualSyncService).trigger("100018", null);
+        verify(productActivityManualSyncService).trigger("100018", null, null);
         verify(productService, never()).refreshActivitySnapshots(any());
+    }
+
+    @Test
+    void syncProducts_shouldReturnLockedWhenManualSyncLockIsHeld() throws Exception {
+        when(productActivityManualSyncService.trigger("100018", null, null)).thenReturn(
+                new ProductActivityManualSyncService.SyncTriggerResult(
+                        "100018",
+                        null,
+                        "LOCKED",
+                        "商品同步全局锁被占用，请等待当前商品同步或回补任务完成后重试",
+                        "product:backfill:global:job:lock",
+                        "scheduler",
+                        120L));
+
+        mockMvc.perform(post("/colonel/activities/{activityId}/products/sync", "100018")
+                        .requestAttr("roleCodes", List.of(RoleCodes.ADMIN)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.activityId").value("100018"))
+                .andExpect(jsonPath("$.data.jobId").value(org.hamcrest.Matchers.nullValue()))
+                .andExpect(jsonPath("$.data.syncStatus").value("LOCKED"))
+                .andExpect(jsonPath("$.data.message").value("商品同步全局锁被占用，请等待当前商品同步或回补任务完成后重试"))
+                .andExpect(jsonPath("$.data.lockKey").value("product:backfill:global:job:lock"))
+                .andExpect(jsonPath("$.data.lockOwner").value("scheduler"))
+                .andExpect(jsonPath("$.data.lockTtlSeconds").value(120));
+
+        verify(productActivityManualSyncService).trigger("100018", null, null);
+        verify(productService, never()).refreshActivitySnapshots(any());
+    }
+
+    @Test
+    void getProductSyncJob_shouldReturnManualSyncJobStatus() throws Exception {
+        when(productActivityManualSyncService.getJobStatus("activity-product-sync-1")).thenReturn(
+                new ProductActivityManualSyncService.SyncJobStatus(
+                        "activity-product-sync-1",
+                        "100018",
+                        "SUCCESS",
+                        3L,
+                        3L,
+                        1,
+                        2,
+                        0,
+                        0,
+                        "2026-06-24T10:00:00",
+                        "2026-06-24T10:00:01",
+                        null));
+
+        mockMvc.perform(get("/colonel/activities/{activityId}/products/sync-jobs/{jobId}",
+                        "100018",
+                        "activity-product-sync-1")
+                        .requestAttr("roleCodes", List.of(RoleCodes.ADMIN)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.activityId").value("100018"))
+                .andExpect(jsonPath("$.data.jobId").value("activity-product-sync-1"))
+                .andExpect(jsonPath("$.data.syncStatus").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.fetchedRows").value(3))
+                .andExpect(jsonPath("$.data.createdCount").value(1))
+                .andExpect(jsonPath("$.data.finishedAt").value("2026-06-24T10:00:01"));
     }
 
     @Test
@@ -522,8 +675,9 @@ class ColonelActivityControllerTest {
                     sysUserService,
                     colonelActivityService,
                     productActivityManualSyncService,
-                    sysUserMapper,
-                    activityAccessService);
+                    userDomainFacade,
+                    activityAccessService,
+                    new ProductDisplayPolicy());
 
             // refresh=true：触发 syncActivitySummaryFromUpstream + refreshActivitySnapshots
             assertThatThrownBy(() -> errorController.listProducts(

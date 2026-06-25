@@ -1,5 +1,6 @@
 package com.colonel.saas.service;
 
+import com.colonel.saas.domain.order.policy.OrderAmountMapperPolicy;
 import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
@@ -68,7 +69,7 @@ public final class OrderDualTrackAmountResolver {
      *       若均无则使用 fallbackPayAmount 兜底</li>
      *   <li>第二步：匹配结算金额字段（settledGoodsAmount > settleAmount > actualAmount），
      *       若均无则回退到 payAmount</li>
-     *   <li>第三步：匹配预估/结算技术服务费，供结算收入口径扣减</li>
+ *   <li>第三步：匹配预估/结算技术服务费，供展示和预估服务费收益扣减</li>
      *   <li>第四步：匹配或按服务费率补算预估服务费收入与结算服务费收入</li>
      *   <li>第五步：执行服务费 fallback 链 —— 预估缺失时用结算值填充，结算缺失时用 fallbackServiceFee</li>
      *   <li>第六步：组装 DualTrackAmounts 结果并返回</li>
@@ -94,6 +95,84 @@ public final class OrderDualTrackAmountResolver {
         return resolve(rawPayload, fallbackPayAmount, fallbackServiceFee, ResolveTrack.SETTLEMENT_STRICT);
     }
 
+    /**
+     * 1603 结算口径解析：只读取上游明确返回的结算字段，不做实付/预估硬兜底。
+     */
+    public static DualTrackAmounts resolveInstituteSettlement(Map<String, Object> rawPayload) {
+        long payAmount = firstNonNegative(asLong(pick(rawPayload,
+                "pay_goods_amount", "payGoodsAmount", "order_amount", "orderAmount",
+                "total_pay_amount", "totalPayAmount", "pay_amount", "payAmount")));
+        long settleAmount = firstNonNegative(asLong(pick(rawPayload,
+                "settled_goods_amount", "settledGoodsAmount", "settle_goods_amount", "settleGoodsAmount",
+                "settle_amount", "settleAmount", "real_goods_amount", "realGoodsAmount",
+                "actual_amount", "actualAmount")));
+        long estimateServiceFee = firstFromInstitutions(rawPayload,
+                "estimated_commission", "estimatedCommission", "estimated_service_fee", "estimatedServiceFee",
+                "estimate_institution_commission", "estimateInstitutionCommission",
+                "estimate_commission", "estimateCommission");
+        long effectiveServiceFee = firstFromInstitutions(rawPayload,
+                "real_commission", "realCommission", "settled_commission", "settledCommission",
+                "commission", "institution_commission", "institutionCommission",
+                "colonel_commission", "colonelCommission", "service_fee", "serviceFee");
+        long estimateServiceFeeExpense = computeEstimateServiceFeeExpense(rawPayload);
+        long effectiveServiceFeeExpense = computeEffectiveServiceFeeExpense(rawPayload);
+        long estimateTechServiceFee = firstNonNegative(asLong(pickNested(rawPayload,
+                "estimated_tech_service_fee", "estimatedTechServiceFee",
+                "estimate_platform_service_fee", "estimatePlatformServiceFee")));
+        long effectiveTechServiceFee = firstNonNegative(asLong(pickNested(rawPayload,
+                "settled_tech_service_fee", "settledTechServiceFee",
+                "real_tech_service_fee", "realTechServiceFee")));
+        return new DualTrackAmounts(
+                payAmount,
+                settleAmount,
+                estimateServiceFee,
+                effectiveServiceFee,
+                estimateTechServiceFee,
+                effectiveTechServiceFee,
+                estimateServiceFeeExpense,
+                effectiveServiceFeeExpense);
+    }
+
+    /**
+     * 计算预估服务费支出：
+     * 当且仅当一级机构与二级机构同时存在预估服务费时，二级机构的预估服务费计入支出。
+     */
+    static long computeEstimateServiceFeeExpense(Map<String, Object> rawPayload) {
+        if (rawPayload == null || rawPayload.isEmpty()) {
+            return 0L;
+        }
+        String[] estKeys = {
+                "estimated_commission", "estimatedCommission", "estimated_service_fee", "estimatedServiceFee",
+                "estimate_institution_commission", "estimateInstitutionCommission",
+                "estimate_commission", "estimateCommission"
+        };
+        long primaryFee = firstFromPrimaryInstitution(rawPayload, estKeys);
+        long secondFee = fromSecondInstitution(rawPayload, estKeys);
+        return primaryFee > 0L && secondFee > 0L ? secondFee : 0L;
+    }
+
+    /**
+     * 计算结算服务费支出：
+     * 当且仅当一级机构与二级机构同时存在结算服务费时，二级机构的结算服务费计入支出。
+     */
+    static long computeEffectiveServiceFeeExpense(Map<String, Object> rawPayload) {
+        if (rawPayload == null || rawPayload.isEmpty()) {
+            return 0L;
+        }
+        String[] effKeys = {
+                "real_commission", "realCommission", "settled_commission", "settledCommission",
+                "commission", "institution_commission", "institutionCommission",
+                "colonel_commission", "colonelCommission", "service_fee", "serviceFee"
+        };
+        long primaryFee = firstFromPrimaryInstitution(rawPayload, effKeys);
+        long secondFee = fromSecondInstitution(rawPayload, effKeys);
+        return primaryFee > 0L && secondFee > 0L ? secondFee : 0L;
+    }
+
+    static long computeServiceFeeExpense(Map<String, Object> rawPayload) {
+        return computeEffectiveServiceFeeExpense(rawPayload);
+    }
+
     public static DualTrackAmounts resolve(
             Map<String, Object> rawPayload,
             Long fallbackPayAmount,
@@ -112,14 +191,25 @@ public final class OrderDualTrackAmountResolver {
                 ? firstNonNegative(settledRaw)
                 : firstPositive(settledRaw, payAmount);
 
-        // 第三步：解析预估/结算技术服务费。
-        long estimateTechServiceFee = firstNonNegative(asLong(pickNested(rawPayload,
+        // 第三步：解析预估/结算技术服务费。tech_service_fee 在待结算样本中可能是预估字段，
+        // 非 strict 轨道不写入 effective；结算轨只使用明确结算别名。
+        Long estimateTechRaw = asLong(pickNested(rawPayload,
                 "estimated_tech_service_fee", "estimatedTechServiceFee", "estimate_platform_service_fee",
-                "estimatePlatformServiceFee", "settle_colonel_tech_service_fee", "settleColonelTechServiceFee")));
-        long effectiveTechServiceFee = firstNonNegative(asLong(pickNested(rawPayload,
-                "tech_service_fee", "techServiceFee", "settled_tech_service_fee", "settledTechServiceFee",
-                "platform_service_fee", "platformServiceFee", "settle_colonel_tech_service_fee",
-                "settleColonelTechServiceFee")));
+                "estimatePlatformServiceFee"));
+        Long effectiveTechRaw = asLong(pickNested(rawPayload,
+                "effective_tech_service_fee", "effectiveTechServiceFee", "settled_tech_service_fee",
+                "settledTechServiceFee", "real_tech_service_fee", "realTechServiceFee",
+                "settle_colonel_tech_service_fee", "settleColonelTechServiceFee"));
+        Long ambiguousTechRaw = asLong(pickNested(rawPayload,
+                "tech_service_fee", "techServiceFee", "platform_service_fee", "platformServiceFee"));
+        long estimateTechServiceFee = firstNonNegative(estimateTechRaw);
+        long effectiveTechServiceFee = firstNonNegative(effectiveTechRaw);
+        if (effectiveTechServiceFee <= 0 && settlementStrict) {
+            effectiveTechServiceFee = firstNonNegative(ambiguousTechRaw);
+        }
+        if (estimateTechServiceFee <= 0 && !settlementStrict) {
+            estimateTechServiceFee = firstNonNegative(ambiguousTechRaw);
+        }
         if (estimateTechServiceFee <= 0) {
             estimateTechServiceFee = effectiveTechServiceFee;
         }
@@ -130,20 +220,12 @@ public final class OrderDualTrackAmountResolver {
                 "estimated_commission", "estimatedCommission", "estimated_service_fee", "estimatedServiceFee",
                 "estimate_institution_commission", "estimateInstitutionCommission");
         long effectiveServiceFee = firstFromInstitutions(rawPayload,
-                "settle_colonel_commission", "settleColonelCommission", "commission", "real_commission",
-                "realCommission", "settled_commission", "settledCommission", "institution_commission",
-                "institutionCommission", "colonel_commission", "colonelCommission", "service_fee", "serviceFee");
+                "effective_service_fee", "effectiveServiceFee", "settle_colonel_commission",
+                "settleColonelCommission", "real_commission", "realCommission",
+                "settled_commission", "settledCommission");
         BigDecimal serviceFeeRate = resolveServiceFeeRate(rawPayload);
         if (estimateServiceFee <= 0 && serviceFeeRate != null) {
             estimateServiceFee = calculateServiceFeeIncome(payAmount, serviceFeeRate, 0L);
-        }
-        boolean effectiveServiceFeeCalculatedFromRate = false;
-        if (!settlementStrict && effectiveServiceFee <= 0 && serviceFeeRate != null) {
-            effectiveServiceFee = calculateServiceFeeIncome(settleAmount, serviceFeeRate, effectiveTechServiceFee);
-            effectiveServiceFeeCalculatedFromRate = effectiveServiceFee > 0;
-        } else if (settlementStrict && effectiveServiceFee <= 0 && settleAmount > 0 && serviceFeeRate != null) {
-            effectiveServiceFee = calculateServiceFeeIncome(settleAmount, serviceFeeRate, effectiveTechServiceFee);
-            effectiveServiceFeeCalculatedFromRate = effectiveServiceFee > 0;
         }
 
         // 第五步：服务费 fallback 链 —— 预估缺失时用结算值填充；结算轨禁止 effective 回退 estimate。
@@ -161,11 +243,9 @@ public final class OrderDualTrackAmountResolver {
                 effectiveServiceFee = fallbackServiceFee;
             }
         }
-        if (effectiveServiceFee > 0 && effectiveTechServiceFee > 0 && !effectiveServiceFeeCalculatedFromRate) {
-            effectiveServiceFee = Math.max(effectiveServiceFee - effectiveTechServiceFee, 0L);
-        }
-
-        // 第六步：组装结果（服务费支出当前无 raw payload 字段，默认为 0）
+        // 第六步：组装结果。
+        long estimateServiceFeeExpense = computeEstimateServiceFeeExpense(rawPayload);
+        long effectiveServiceFeeExpense = computeEffectiveServiceFeeExpense(rawPayload);
         return new DualTrackAmounts(
                 payAmount,
                 settleAmount,
@@ -173,8 +253,8 @@ public final class OrderDualTrackAmountResolver {
                 effectiveServiceFee,
                 estimateTechServiceFee,
                 effectiveTechServiceFee,
-                0L,
-                0L);
+                estimateServiceFeeExpense,
+                effectiveServiceFeeExpense);
     }
 
     /**
@@ -200,8 +280,8 @@ public final class OrderDualTrackAmountResolver {
     /**
      * 事实源再次同步时保留已有结算轨快照。
      * <p>
-     * 6468 只负责事实/预估轨；当该来源更新已存在订单时，不能清空 2704 已补充的
-     * settle/effective 字段。
+     * 6468 在已结算场景可写入普通订单结算轨；当该来源再次同步且未返回有效结算字段时，
+     * 不能清空 2704 或历史 6468 已补充的 settle/effective 字段。
      * </p>
      */
     public static void mergeSettlementSnapshot(
@@ -235,14 +315,24 @@ public final class OrderDualTrackAmountResolver {
 
     /**
      * 将 6468 事实源金额写入订单实体。
-     * <p>
-     * 6468 只负责事实/预估轨：写入实付金额、actualAmount 兼容字段和预估费用；
-     * 不写 settle/effective/settleColonel* 字段，避免污染 2704 结算轨。
-     * </p>
      */
     public static void applyInstituteFactToOrder(
             com.colonel.saas.entity.ColonelsettlementOrder order,
             DualTrackAmounts amounts) {
+        applyInstituteFactToOrder(order, amounts, null);
+    }
+
+    /**
+     * 将 6468 事实源金额写入订单实体。
+     * <p>
+     * 6468 是主订单事实源：写入实付与预估轨；当 raw 明确表示已结算时，
+     * 委托 {@link OrderAmountMapperPolicy} 保守写入普通订单结算轨。
+     * </p>
+     */
+    public static void applyInstituteFactToOrder(
+            com.colonel.saas.entity.ColonelsettlementOrder order,
+            DualTrackAmounts amounts,
+            Map<String, Object> rawPayload) {
         if (order == null || amounts == null) {
             return;
         }
@@ -251,10 +341,14 @@ public final class OrderDualTrackAmountResolver {
         order.setEstimateServiceFee(amounts.estimateServiceFee());
         order.setEstimateTechServiceFee(amounts.estimateTechServiceFee());
         order.setEstimateServiceFeeExpense(amounts.estimateServiceFeeExpense());
+        if (rawPayload != null && OrderAmountMapperPolicy.hasInstituteSettlementSignal(rawPayload)) {
+            OrderAmountMapperPolicy.applyInstituteSettlementFromRaw(order, rawPayload);
+        }
     }
 
     /**
      * 将解析后的双轨金额写入订单实体，同时兼容旧字段映射。
+     * <p>2704 为分次结算补充源，补全结算轨与分次结算明细，非普通订单主入库源。</p>
      *
      * <ol>
      *   <li>第一步：写入基础金额字段（订单实付、结算金额）</li>
@@ -285,12 +379,30 @@ public final class OrderDualTrackAmountResolver {
         order.setEstimateServiceFeeExpense(amounts.estimateServiceFeeExpense());
         order.setEffectiveServiceFeeExpense(amounts.effectiveServiceFeeExpense());
         // 第三步：兼容旧字段 —— 结算轨优先，为 0 时回退预估轨
-        order.setSettleColonelCommission(amounts.effectiveServiceFee() > 0
-                ? amounts.effectiveServiceFee()
-                : amounts.estimateServiceFee());
-        order.setSettleColonelTechServiceFee(amounts.effectiveTechServiceFee() > 0
-                ? amounts.effectiveTechServiceFee()
-                : amounts.estimateTechServiceFee());
+        order.setSettleColonelCommission(amounts.effectiveServiceFee() > 0 ? amounts.effectiveServiceFee() : null);
+        order.setSettleColonelTechServiceFee(amounts.effectiveTechServiceFee() > 0 ? amounts.effectiveTechServiceFee() : null);
+    }
+
+    /**
+     * 将 1603 结算口径金额写入订单实体；结算轨字段没有值时保持 0/null，不使用预估轨兜底。
+     */
+    public static void applyInstituteSettlementToOrder(
+            com.colonel.saas.entity.ColonelsettlementOrder order,
+            DualTrackAmounts amounts) {
+        if (order == null || amounts == null) {
+            return;
+        }
+        order.setOrderAmount(amounts.payAmount());
+        order.setActualAmount(amounts.payAmount());
+        order.setSettleAmount(amounts.settleAmount());
+        order.setEstimateServiceFee(amounts.estimateServiceFee());
+        order.setEffectiveServiceFee(amounts.effectiveServiceFee());
+        order.setEstimateTechServiceFee(amounts.estimateTechServiceFee());
+        order.setEffectiveTechServiceFee(amounts.effectiveTechServiceFee());
+        order.setEstimateServiceFeeExpense(amounts.estimateServiceFeeExpense());
+        order.setEffectiveServiceFeeExpense(amounts.effectiveServiceFeeExpense());
+        order.setSettleColonelCommission(amounts.effectiveServiceFee() > 0 ? amounts.effectiveServiceFee() : null);
+        order.setSettleColonelTechServiceFee(amounts.effectiveTechServiceFee() > 0 ? amounts.effectiveTechServiceFee() : null);
     }
 
     /**
@@ -428,6 +540,40 @@ public final class OrderDualTrackAmountResolver {
                 if (value > 0L) {
                     return value;
                 }
+            }
+        }
+        return 0L;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static long firstFromPrimaryInstitution(Map<String, Object> rawPayload, String... keys) {
+        Object direct = pick(rawPayload, keys);
+        if (direct != null) {
+            long value = firstNonNegative(asLong(direct));
+            if (value > 0L) {
+                return value;
+            }
+        }
+        Object nested1 = pick(rawPayload, "colonel_order_info", "colonelOrderInfo");
+        if (nested1 instanceof Map<?, ?> map1) {
+            Object val = pick((Map<String, Object>) map1, keys);
+            if (val != null) {
+                long value = firstNonNegative(asLong(val));
+                if (value > 0L) {
+                    return value;
+                }
+            }
+        }
+        return 0L;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static long fromSecondInstitution(Map<String, Object> rawPayload, String... keys) {
+        Object nested2 = pick(rawPayload, "colonel_order_info_second", "colonelOrderInfoSecond");
+        if (nested2 instanceof Map<?, ?> map2) {
+            Object val = pick((Map<String, Object>) map2, keys);
+            if (val != null) {
+                return firstNonNegative(asLong(val));
             }
         }
         return 0L;

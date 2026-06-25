@@ -9,7 +9,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
-import java.util.UUID;
 
 /**
  * {@link ConfigDomainFacade} 遗留实现：委派 {@link BusinessRuleConfigService} 和 {@link SysConfigService}。
@@ -169,7 +168,7 @@ public class LegacyConfigDomainFacade implements ConfigDomainFacade {
 
     @Override
     public ExclusiveRulesDTO getExclusiveRules() {
-        BigDecimal merchantServiceFeeRatio = getDecimal(SystemConfigKeys.MERCHANT_EXCLUSIVE_SERVICE_FEE_RATIO, new BigDecimal("0.20"));
+        BigDecimal merchantServiceFeeRatio = getDecimal(SystemConfigKeys.MERCHANT_EXCLUSIVE_SERVICE_FEE_RATIO, new BigDecimal("70"));
         return new ExclusiveRulesDTO(merchantServiceFeeRatio);
     }
 }

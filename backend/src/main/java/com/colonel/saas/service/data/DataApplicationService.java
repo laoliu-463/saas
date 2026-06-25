@@ -3,6 +3,7 @@ package com.colonel.saas.service.data;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.annotation.RequireRoles;
 import com.colonel.saas.common.base.BaseController;
@@ -11,23 +12,27 @@ import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.common.result.PageResult;
 import com.colonel.saas.common.time.AppZone;
+import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.constant.RoleCodes;
+import com.colonel.saas.domain.performance.facade.OrderPerformanceQueryFacade;
+import com.colonel.saas.dto.performance.OrderPerformanceBatchResponse;
+import com.colonel.saas.dto.performance.OrderPerformanceDTO;
 import com.colonel.saas.entity.ColonelsettlementActivity;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.ExclusiveMerchant;
 import com.colonel.saas.entity.ExclusiveTalent;
-import com.colonel.saas.entity.PerformanceRecord;
 import com.colonel.saas.entity.SysUser;
 import com.colonel.saas.vo.data.OrderDetailVO;
 import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.mapper.ExclusiveMerchantMapper;
 import com.colonel.saas.mapper.ExclusiveTalentMapper;
-import com.colonel.saas.mapper.PerformanceRecordMapper;
-import com.colonel.saas.mapper.SysUserMapper;
+import com.colonel.saas.domain.user.facade.UserDomainFacade;
+import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.service.CommissionService;
 import com.colonel.saas.service.PerformanceMetricsQueryService;
 import com.colonel.saas.service.ShortTtlCacheService;
+import com.colonel.saas.domain.performance.policy.PerformanceAccessContext;
 import com.colonel.saas.vo.ExclusiveMerchantStatusVO;
 import com.colonel.saas.vo.ExclusiveTalentStatusVO;
 import com.colonel.saas.vo.data.DualTrackMetricsVO;
@@ -123,6 +128,12 @@ public class DataApplicationService extends BaseController {
     /** 订单汇总缓存键前缀，格式：dashboard:order-summary:{17 维} */
     private static final String ORDER_SUMMARY_CACHE_PREFIX = "dashboard:order-summary:";
 
+    /** 退款订单识别条件：抖店退款状态或退款流转节点。 */
+    private static final String REFUND_ORDER_PREDICATE = "(order_status = 5 OR UPPER(COALESCE(flow_point, '')) = 'REFUND')";
+
+    /** 退款服务费口径：结算服务费为 0/null 时回退预估服务费。 */
+    private static final String REFUND_SERVICE_FEE_EXPRESSION = "COALESCE(NULLIF(effective_service_fee, 0), estimate_service_fee, 0)";
+
     /** 上游订单时间字符串常见格式。 */
     private static final DateTimeFormatter UPSTREAM_DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
@@ -147,14 +158,20 @@ public class DataApplicationService extends BaseController {
     /** 业绩指标聚合查询服务，负责从 performance_records 表聚合核心指标与趋势数据 */
     private final PerformanceMetricsQueryService performanceMetricsQueryService;
 
-    /** 业绩记录 Mapper，负责按订单号批量查询业绩提成数据 */
-    private final PerformanceRecordMapper performanceRecordMapper;
+    /** 订单业绩查询门面，负责订单列表/详情的业绩补全 */
+    private final OrderPerformanceQueryFacade orderPerformanceQueryFacade;
 
     /** JDBC 模板，用于复杂聚合查询（如 service profit 联合查询） */
     private final JdbcTemplate jdbcTemplate;
 
-    /** 用户 Mapper，负责查询渠道/招商负责人姓名 */
-    private final SysUserMapper sysUserMapper;
+    /** 用户门面，负责查询渠道/招商负责人展示名称 */
+    private final UserDomainFacade userDomainFacade;
+
+    /** 用户域数据范围策略，负责解释 PERSONAL / DEPT / ALL 的过滤决策 */
+    private final DataScopePolicy dataScopePolicy;
+
+    /** DDD 重构灰度开关，默认关闭以保持 Legacy 行为。 */
+    private final DddRefactorProperties dddRefactorProperties;
 
     /**
      * 构造注入所有依赖服务与 Mapper。
@@ -175,8 +192,10 @@ public class DataApplicationService extends BaseController {
             ColonelsettlementActivityMapper activityMapper,
             ShortTtlCacheService shortTtlCacheService,
             PerformanceMetricsQueryService performanceMetricsQueryService,
-            PerformanceRecordMapper performanceRecordMapper,
-            SysUserMapper sysUserMapper,
+            OrderPerformanceQueryFacade orderPerformanceQueryFacade,
+            UserDomainFacade userDomainFacade,
+            DataScopePolicy dataScopePolicy,
+            DddRefactorProperties dddRefactorProperties,
             JdbcTemplate jdbcTemplate) {
         this.orderMapper = orderMapper;
         this.commissionService = commissionService;
@@ -185,8 +204,10 @@ public class DataApplicationService extends BaseController {
         this.activityMapper = activityMapper;
         this.shortTtlCacheService = shortTtlCacheService;
         this.performanceMetricsQueryService = performanceMetricsQueryService;
-        this.performanceRecordMapper = performanceRecordMapper;
-        this.sysUserMapper = sysUserMapper;
+        this.orderPerformanceQueryFacade = orderPerformanceQueryFacade;
+        this.userDomainFacade = userDomainFacade;
+        this.dataScopePolicy = dataScopePolicy;
+        this.dddRefactorProperties = dddRefactorProperties;
         this.jdbcTemplate = jdbcTemplate;
     }
 
@@ -418,34 +439,41 @@ public class DataApplicationService extends BaseController {
                 .map(ColonelsettlementOrder::getOrderId)
                 .filter(StringUtils::hasText)
                 .toList();
-        Map<String, PerformanceRecord> perfMap = loadPerformanceMap(orderIds);
+        Map<String, OrderPerformanceDTO> perfMap = loadPerformanceMap(
+                orderIds,
+                PerformanceAccessContext.of(userId, deptId, dataScope, List.of()));
 
         // 批量查询活动名称
         Map<String, String> activityNameMap = loadActivityNameMap(orders);
 
-        // 批量查询用户姓名（渠道 + 招商）
+        // 批量查询用户展示名称（渠道 + 招商）
         Map<UUID, String> userNameMap = loadUserNameMap(perfMap.values());
 
         // 组装 VO
         Page<OrderDetailVO> voPage = new Page<>(orderPage.getCurrent(), orderPage.getSize(), orderPage.getTotal());
         voPage.setRecords(orders.stream().map(order -> {
-            PerformanceRecord perf = perfMap.get(order.getOrderId());
+            OrderPerformanceDTO perf = perfMap.get(order.getOrderId());
             return toOrderDetailVO(order, perf, activityNameMap, userNameMap);
         }).toList());
         return okPage(voPage);
     }
 
     /**
-     * 批量加载业绩记录，构建 orderId → PerformanceRecord 映射。
+     * 批量加载订单业绩，构建 orderId → OrderPerformanceDTO 映射。
      */
-    private Map<String, PerformanceRecord> loadPerformanceMap(List<String> orderIds) {
+    private Map<String, OrderPerformanceDTO> loadPerformanceMap(
+            List<String> orderIds,
+            PerformanceAccessContext context) {
         if (orderIds == null || orderIds.isEmpty()) {
             return Map.of();
         }
-        List<PerformanceRecord> records = performanceRecordMapper.findByOrderIds(orderIds);
-        Map<String, PerformanceRecord> map = new LinkedHashMap<>();
-        for (PerformanceRecord r : records) {
-            if (r.getOrderId() != null) {
+        OrderPerformanceBatchResponse response = orderPerformanceQueryFacade.batchGetOrderPerformance(orderIds, context);
+        List<OrderPerformanceDTO> records = response == null || response.getItems() == null
+                ? List.of()
+                : response.getItems();
+        Map<String, OrderPerformanceDTO> map = new LinkedHashMap<>();
+        for (OrderPerformanceDTO r : records) {
+            if (r.getOrderId() != null && Boolean.TRUE.equals(r.getIsValid())) {
                 map.put(r.getOrderId(), r);
             }
         }
@@ -475,27 +503,31 @@ public class DataApplicationService extends BaseController {
     }
 
     /**
-     * 批量加载用户姓名映射 userId → realName。
+     * 批量加载用户展示名称映射 userId → displayName。
      */
-    private Map<UUID, String> loadUserNameMap(Collection<PerformanceRecord> records) {
+    private Map<UUID, String> loadUserNameMap(Collection<OrderPerformanceDTO> records) {
         Set<UUID> userIds = new HashSet<>();
-        for (PerformanceRecord r : records) {
-            if (r.getFinalChannelUserId() != null) userIds.add(r.getFinalChannelUserId());
-            if (r.getFinalRecruiterUserId() != null) userIds.add(r.getFinalRecruiterUserId());
+        for (OrderPerformanceDTO r : records) {
+            UUID finalChannelId = parseUuid(r.getFinalChannelId());
+            UUID finalRecruiterId = parseUuid(r.getFinalRecruiterId());
+            if (finalChannelId != null) userIds.add(finalChannelId);
+            if (finalRecruiterId != null) userIds.add(finalRecruiterId);
         }
         if (userIds.isEmpty()) {
             return Map.of();
         }
-        LambdaQueryWrapper<SysUser> uw = new LambdaQueryWrapper<>();
-        uw.in(SysUser::getId, userIds);
-        List<SysUser> users = sysUserMapper.selectList(uw);
-        Map<UUID, String> map = new LinkedHashMap<>();
-        for (SysUser u : users) {
-            if (u.getId() != null) {
-                map.put(u.getId(), StringUtils.hasText(u.getRealName()) ? u.getRealName() : u.getUsername());
-            }
+        return userDomainFacade.loadUserDisplayNamesByIds(userIds);
+    }
+
+    private UUID parseUuid(String value) {
+        if (!StringUtils.hasText(value)) {
+            return null;
         }
-        return map;
+        try {
+            return UUID.fromString(value);
+        } catch (IllegalArgumentException ignored) {
+            return null;
+        }
     }
 
     /**
@@ -503,7 +535,7 @@ public class DataApplicationService extends BaseController {
      */
     private OrderDetailVO toOrderDetailVO(
             ColonelsettlementOrder order,
-            PerformanceRecord perf,
+            OrderPerformanceDTO perf,
             Map<String, String> activityNameMap,
             Map<UUID, String> userNameMap) {
         OrderDetailVO vo = new OrderDetailVO();
@@ -543,10 +575,16 @@ public class DataApplicationService extends BaseController {
 
         // 渠道/招商：优先从业绩记录获取最终归属
         if (perf != null) {
-            vo.setChannelId(perf.getFinalChannelUserId() != null ? perf.getFinalChannelUserId().toString() : null);
-            vo.setChannelName(perf.getFinalChannelUserId() != null ? userNameMap.getOrDefault(perf.getFinalChannelUserId(), null) : null);
-            vo.setRecruiterId(perf.getFinalRecruiterUserId() != null ? perf.getFinalRecruiterUserId().toString() : null);
-            vo.setRecruiterName(perf.getFinalRecruiterUserId() != null ? userNameMap.getOrDefault(perf.getFinalRecruiterUserId(), null) : null);
+            UUID finalChannelId = parseUuid(perf.getFinalChannelId());
+            UUID finalRecruiterId = parseUuid(perf.getFinalRecruiterId());
+            vo.setChannelId(perf.getFinalChannelId());
+            vo.setChannelName(finalChannelId != null
+                    ? userNameMap.getOrDefault(finalChannelId, perf.getFinalChannelName())
+                    : perf.getFinalChannelName());
+            vo.setRecruiterId(perf.getFinalRecruiterId());
+            vo.setRecruiterName(finalRecruiterId != null
+                    ? userNameMap.getOrDefault(finalRecruiterId, perf.getFinalRecruiterName())
+                    : perf.getFinalRecruiterName());
         } else {
             // 无业绩记录时回退到订单事实字段
             vo.setChannelId(order.getChannelUserId() != null ? order.getChannelUserId().toString() : null);
@@ -908,6 +946,15 @@ public class DataApplicationService extends BaseController {
         metrics.setPendingShipCount(pendingShipCount);
         metrics.setAmountTrack(performanceMetricsQueryService.resolveAmountTrackLabel(timeField));
         metrics.setTrack(timeField);
+        boolean estimateTrack = isEstimateTrack(timeField);
+        RefundMetricsAggregate refundAggregate = queryRefundMetrics(
+                timeColumn,
+                todayStart,
+                tomorrowStart,
+                userId,
+                deptId,
+                dataScope);
+        applyRefundMetrics(metrics, refundAggregate);
 
         if (performanceMetricsQueryService.hasPerformanceRecords()) {
             PerformanceMetricsQueryService.PerformanceAggregate aggregate =
@@ -936,14 +983,17 @@ public class DataApplicationService extends BaseController {
             long profitCent = CommissionService.serviceFeeNetCent(
                     aggregate.serviceFeeIncomeCent(),
                     aggregate.techServiceFeeCent(),
-                    expenseCent);
+                    expenseCent,
+                    estimateTrack);
             metrics.setServiceFeeExpense(centToYuan(expenseCent));
             metrics.setServiceFee(centToYuan(profitCent));
             metrics.setServiceFeeProfit(centToYuan(profitCent));
             metrics.setBizCommission(centToYuan(aggregate.recruiterCommissionCent()));
             metrics.setChannelCommission(centToYuan(aggregate.channelCommissionCent()));
             metrics.setCommission(centToYuan(aggregate.recruiterCommissionCent() + aggregate.channelCommissionCent()));
-            metrics.setGrossProfit(centToYuan(aggregate.grossProfitCent()));
+            metrics.setGrossProfit(centToYuan(Math.max(
+                    profitCent - aggregate.recruiterCommissionCent() - aggregate.channelCommissionCent(),
+                    0L)));
             return metrics;
         }
 
@@ -964,6 +1014,7 @@ public class DataApplicationService extends BaseController {
                         "COALESCE(colonel_activity_id, '') AS activity_id",
                         "COALESCE(SUM(" + columns.serviceFeeColumn() + "), 0) AS service_fee_income",
                         "COALESCE(SUM(" + columns.techFeeColumn() + "), 0) AS tech_service_fee",
+                        "COALESCE(SUM(" + columns.expenseColumn() + "), 0) AS service_fee_expense",
                         "COALESCE(SUM(settle_second_colonel_commission), 0) AS talent_commission"
                 )
                 .ge(timeColumn, todayStart)
@@ -973,7 +1024,6 @@ public class DataApplicationService extends BaseController {
         long displayTechServiceFeeCent = commissionRows.stream()
                 .mapToLong(row -> asLong(row, "tech_service_fee"))
                 .sum();
-        boolean estimateTrack = isEstimateTrack(timeField);
         CommissionService.CommissionSummary commissionSummary = commissionService.calculateByActivityBuckets(
                 commissionRows.stream()
                         .map(row -> new CommissionService.ActivityCommissionBucket(
@@ -982,6 +1032,7 @@ public class DataApplicationService extends BaseController {
                                 null,
                                 asLong(row, "service_fee_income"),
                                 estimateTrack ? asLong(row, "tech_service_fee") : 0L,
+                                asLong(row, "service_fee_expense"),
                                 asLong(row, "talent_commission")
                         ))
                         .toList()
@@ -1019,6 +1070,7 @@ public class DataApplicationService extends BaseController {
         metrics.setServiceFeeIncome(centToYuan(commissionSummary.serviceFeeIncome()));
         metrics.setTechServiceFee(centToYuan(displayTechServiceFeeCent));
         metrics.setTalentCommission(centToYuan(commissionSummary.talentCommission()));
+        metrics.setServiceFeeExpense(centToYuan(commissionSummary.serviceFeeExpense()));
         metrics.setServiceFee(centToYuan(commissionSummary.serviceFeeNet()));
         metrics.setServiceFeeProfit(centToYuan(commissionSummary.serviceFeeNet()));
         metrics.setBizCommission(centToYuan(commissionSummary.bizCommission()));
@@ -1026,6 +1078,34 @@ public class DataApplicationService extends BaseController {
         metrics.setCommission(centToYuan(commissionSummary.bizCommission() + commissionSummary.channelCommission()));
         metrics.setGrossProfit(centToYuan(commissionSummary.grossProfit()));
         return metrics;
+    }
+
+    private RefundMetricsAggregate queryRefundMetrics(
+            String timeColumn,
+            LocalDateTime start,
+            LocalDateTime end,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope) {
+        QueryWrapper<ColonelsettlementOrder> wrapper = buildScopedQuery(userId, deptId, dataScope)
+                .select(
+                        "COUNT(CASE WHEN " + REFUND_ORDER_PREDICATE + " THEN 1 END) AS refund_order_count",
+                        "COALESCE(SUM(CASE WHEN " + REFUND_ORDER_PREDICATE + " THEN order_amount ELSE 0 END), 0) AS refund_order_amount_cent",
+                        "COALESCE(SUM(CASE WHEN " + REFUND_ORDER_PREDICATE + " THEN " + REFUND_SERVICE_FEE_EXPRESSION + " ELSE 0 END), 0) AS refund_service_fee_cent"
+                )
+                .ge(timeColumn, start)
+                .lt(timeColumn, end);
+        Map<String, Object> row = getSingleAggregate(wrapper);
+        return new RefundMetricsAggregate(
+                asLong(row, "refund_order_count"),
+                asLong(row, "refund_order_amount_cent"),
+                asLong(row, "refund_service_fee_cent"));
+    }
+
+    private void applyRefundMetrics(MetricsVO metrics, RefundMetricsAggregate aggregate) {
+        metrics.setRefundOrderCount(aggregate.orderCount());
+        metrics.setRefundOrderAmount(centToYuan(aggregate.orderAmountCent()));
+        metrics.setRefundServiceFee(centToYuan(aggregate.serviceFeeCent()));
     }
 
     @Operation(summary = "导出订单CSV", description = "按筛选条件导出订单数据页 CSV。")
@@ -1194,12 +1274,14 @@ public class DataApplicationService extends BaseController {
                     .map(ColonelsettlementOrder::getOrderId)
                     .filter(StringUtils::hasText)
                     .toList();
-            Map<String, PerformanceRecord> perfMap = loadPerformanceMap(orderIds);
+            Map<String, OrderPerformanceDTO> perfMap = loadPerformanceMap(
+                    orderIds,
+                    PerformanceAccessContext.of(userId, deptId, dataScope, List.of()));
             Map<String, String> activityNameMap = loadActivityNameMap(orders);
             Map<UUID, String> userNameMap = loadUserNameMap(perfMap.values());
 
             for (ColonelsettlementOrder order : orders) {
-                PerformanceRecord perf = perfMap.get(order.getOrderId());
+                OrderPerformanceDTO perf = perfMap.get(order.getOrderId());
                 OrderDetailVO vo = toOrderDetailVO(order, perf, activityNameMap, userNameMap);
                 writer.printf("%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s%n",
                         csvEscape(vo.getOrderId()),
@@ -1657,10 +1739,13 @@ public class DataApplicationService extends BaseController {
             selects.add(dayExpr + " AS stat_date");
         }
         selects.add("COUNT(1) AS order_count");
-        selects.add("COUNT(DISTINCT talent_id) AS talent_promoter_count");
-        selects.add("COUNT(DISTINCT COALESCE(colonel_buyin_id, second_colonel_buyin_id)) AS colonel_promoter_count");
+        selects.add("COUNT(DISTINCT COALESCE(extra_data->>'author_short_id', talent_name)) AS talent_promoter_count");
+        selects.add("COUNT(DISTINCT CASE WHEN extra_data->>'colonel_type' = '2' THEN second_colonel_buyin_id END) AS colonel_promoter_count");
         selects.add("COUNT(DISTINCT product_id) AS product_count");
         selects.add("COALESCE(SUM(" + columns.amountColumn() + "), 0) AS order_amount_cent");
+        selects.add("COUNT(CASE WHEN " + REFUND_ORDER_PREDICATE + " THEN 1 END) AS refund_order_count");
+        selects.add("COALESCE(SUM(CASE WHEN " + REFUND_ORDER_PREDICATE + " THEN order_amount ELSE 0 END), 0) AS refund_order_amount_cent");
+        selects.add("COALESCE(SUM(CASE WHEN " + REFUND_ORDER_PREDICATE + " THEN " + REFUND_SERVICE_FEE_EXPRESSION + " ELSE 0 END), 0) AS refund_service_fee_cent");
         selects.add("COALESCE(SUM(actual_amount), 0) AS actual_amount_cent");
         selects.add("COALESCE(SUM(" + columns.serviceFeeColumn() + "), 0) AS service_fee_income_cent");
         selects.add("COALESCE(SUM(" + columns.techFeeColumn() + "), 0) AS tech_service_fee_cent");
@@ -1828,6 +1913,7 @@ public class DataApplicationService extends BaseController {
         selects.add(recruiterExpr + " AS recruiter_user_id");
         selects.add("COALESCE(SUM(" + columns.serviceFeeColumn() + "), 0) AS service_fee_income");
         selects.add("COALESCE(SUM(" + columns.techFeeColumn() + "), 0) AS tech_service_fee");
+        selects.add("COALESCE(SUM(" + columns.expenseColumn() + "), 0) AS service_fee_expense");
         selects.add("COALESCE(SUM(settle_second_colonel_commission), 0) AS talent_commission");
         wrapper.select(selects.toArray(String[]::new));
         if (daily) {
@@ -2021,16 +2107,13 @@ public class DataApplicationService extends BaseController {
             UUID userId,
             UUID deptId,
             DataScope dataScope) {
-        if (wrapper == null || dataScope == null) {
-            return;
-        }
-        switch (dataScope) {
-            case PERSONAL -> wrapper.eq(column(aliased, "user_id"), requireScopeUser(userId));
-            case DEPT -> wrapper.eq(column(aliased, "dept_id"), requireScopeDept(deptId));
-            case ALL -> {
-                // no filter
-            }
-        }
+        applyQueryDataScope(
+                wrapper,
+                userId,
+                deptId,
+                dataScope,
+                column(aliased, "user_id"),
+                column(aliased, "dept_id"));
     }
 
     private String column(boolean aliased, String column) {
@@ -2074,15 +2157,21 @@ public class DataApplicationService extends BaseController {
         vo.setProductCount(asLong(row, "product_count"));
         vo.setOrderCount(asLong(row, "order_count"));
         vo.setOrderAmount(centToYuan(orderAmount));
-        vo.setProductAverageServiceFeeRate(percent(serviceFeeIncome, actualAmount));
-        vo.setOrderAverageServiceFeeRate(percent(serviceFeeIncome, orderAmount));
-        vo.setServiceFeeIncome(centToYuan(serviceFeeIncome));
-        vo.setTechServiceFee(centToYuan(techServiceFee));
+        vo.setRefundOrderCount(asLong(row, "refund_order_count"));
+        vo.setRefundOrderAmount(centToYuan(asLong(row, "refund_order_amount_cent")));
+        vo.setRefundServiceFee(centToYuan(asLong(row, "refund_service_fee_cent")));
+
         long serviceFeeExpenseCent = asLong(row, "service_fee_expense_cent");
         long serviceProfitCent = CommissionService.serviceFeeNetCent(
                 serviceFeeIncome,
                 techServiceFee,
-                serviceFeeExpenseCent);
+                serviceFeeExpenseCent,
+                estimateTrack);
+
+        vo.setProductAverageServiceFeeRate(percent(serviceFeeIncome, actualAmount));
+        vo.setOrderAverageServiceFeeRate(percent(serviceProfitCent, orderAmount));
+        vo.setServiceFeeIncome(centToYuan(serviceFeeIncome));
+        vo.setTechServiceFee(centToYuan(techServiceFee));
         vo.setServiceFeeExpense(centToYuan(serviceFeeExpenseCent));
         vo.setServiceFeeProfit(centToYuan(serviceProfitCent));
         vo.setGrossProfit(centToYuan(Math.max(serviceProfitCent - summary.bizCommission() - summary.channelCommission(), 0L)));
@@ -2097,6 +2186,7 @@ public class DataApplicationService extends BaseController {
                 asUuid(row, "recruiter_user_id"),
                 asLong(row, "service_fee_income"),
                 estimateTrack ? asLong(row, "tech_service_fee") : 0L,
+                asLong(row, "service_fee_expense"),
                 asLong(row, "talent_commission"));
     }
 
@@ -2191,16 +2281,7 @@ public class DataApplicationService extends BaseController {
             UUID userId,
             UUID deptId,
             DataScope dataScope) {
-        if (wrapper == null || dataScope == null) {
-            return;
-        }
-        switch (dataScope) {
-            case PERSONAL -> wrapper.eq("co.user_id", requireScopeUser(userId));
-            case DEPT -> wrapper.eq("co.dept_id", requireScopeDept(deptId));
-            case ALL -> {
-                // no filter
-            }
-        }
+        applyQueryDataScope(wrapper, userId, deptId, dataScope, "co.user_id", "co.dept_id");
     }
 
     private void applyScopedQueryDataScope(
@@ -2208,16 +2289,7 @@ public class DataApplicationService extends BaseController {
             UUID userId,
             UUID deptId,
             DataScope dataScope) {
-        if (wrapper == null || dataScope == null) {
-            return;
-        }
-        switch (dataScope) {
-            case PERSONAL -> wrapper.eq("user_id", requireScopeUser(userId));
-            case DEPT -> wrapper.eq("dept_id", requireScopeDept(deptId));
-            case ALL -> {
-                // no filter
-            }
-        }
+        applyQueryDataScope(wrapper, userId, deptId, dataScope, "user_id", "dept_id");
     }
 
     private void applyTalentDataScope(
@@ -2225,16 +2297,13 @@ public class DataApplicationService extends BaseController {
             UUID userId,
             UUID deptId,
             DataScope dataScope) {
-        if (wrapper == null || dataScope == null) {
-            return;
-        }
-        switch (dataScope) {
-            case PERSONAL -> wrapper.eq(ExclusiveTalent::getUserId, requireScopeUser(userId));
-            case DEPT -> wrapper.eq(ExclusiveTalent::getDeptId, requireScopeDept(deptId));
-            case ALL -> {
-                // no filter
-            }
-        }
+        applyLambdaDataScope(
+                wrapper,
+                userId,
+                deptId,
+                dataScope,
+                ExclusiveTalent::getUserId,
+                ExclusiveTalent::getDeptId);
     }
 
     private void applyMerchantDataScope(
@@ -2242,30 +2311,123 @@ public class DataApplicationService extends BaseController {
             UUID userId,
             UUID deptId,
             DataScope dataScope) {
+        applyLambdaDataScope(
+                wrapper,
+                userId,
+                deptId,
+                dataScope,
+                ExclusiveMerchant::getUserId,
+                ExclusiveMerchant::getDeptId);
+    }
+
+    private <T> void applyQueryDataScope(
+            QueryWrapper<T> wrapper,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            String userIdColumn,
+            String deptIdColumn) {
         if (wrapper == null || dataScope == null) {
             return;
         }
-        switch (dataScope) {
-            case PERSONAL -> wrapper.eq(ExclusiveMerchant::getUserId, requireScopeUser(userId));
-            case DEPT -> wrapper.eq(ExclusiveMerchant::getDeptId, requireScopeDept(deptId));
-            case ALL -> {
-                // no filter
-            }
+        if (!dddRefactorProperties.getDataScopePolicy().isEnabled()) {
+            applyQueryDataScopeLegacy(wrapper, userId, deptId, dataScope, userIdColumn, deptIdColumn);
+            return;
+        }
+        applyQueryDataScopeWithPolicy(wrapper, userId, deptId, dataScope, userIdColumn, deptIdColumn);
+    }
+
+    private <T> void applyQueryDataScopeLegacy(
+            QueryWrapper<T> wrapper,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            String userIdColumn,
+            String deptIdColumn) {
+        requireDataScopeContextLegacy(userId, deptId, dataScope);
+        if (dataScope == DataScope.PERSONAL && userId != null && StringUtils.hasText(userIdColumn)) {
+            wrapper.eq(userIdColumn, userId);
+            return;
+        }
+        if (dataScope == DataScope.DEPT && deptId != null && StringUtils.hasText(deptIdColumn)) {
+            wrapper.eq(deptIdColumn, deptId);
         }
     }
 
-    private UUID requireScopeUser(UUID userId) {
-        if (userId == null) {
+    private <T> void applyQueryDataScopeWithPolicy(
+            QueryWrapper<T> wrapper,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            String userIdColumn,
+            String deptIdColumn) {
+        requireDataScopeContextWithPolicy(userId, deptId, dataScope);
+        dataScopePolicy.applyTo(wrapper, userId, deptId, dataScope, userIdColumn, deptIdColumn);
+    }
+
+    private <T> void applyLambdaDataScope(
+            LambdaQueryWrapper<T> wrapper,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            SFunction<T, ?> userIdColumn,
+            SFunction<T, ?> deptIdColumn) {
+        if (wrapper == null || dataScope == null) {
+            return;
+        }
+        if (!dddRefactorProperties.getDataScopePolicy().isEnabled()) {
+            applyLambdaDataScopeLegacy(wrapper, userId, deptId, dataScope, userIdColumn, deptIdColumn);
+            return;
+        }
+        applyLambdaDataScopeWithPolicy(wrapper, userId, deptId, dataScope, userIdColumn, deptIdColumn);
+    }
+
+    private <T> void applyLambdaDataScopeLegacy(
+            LambdaQueryWrapper<T> wrapper,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            SFunction<T, ?> userIdColumn,
+            SFunction<T, ?> deptIdColumn) {
+        requireDataScopeContextLegacy(userId, deptId, dataScope);
+        if (dataScope == DataScope.PERSONAL && userId != null && userIdColumn != null) {
+            wrapper.eq(userIdColumn, userId);
+            return;
+        }
+        if (dataScope == DataScope.DEPT && deptId != null && deptIdColumn != null) {
+            wrapper.eq(deptIdColumn, deptId);
+        }
+    }
+
+    private <T> void applyLambdaDataScopeWithPolicy(
+            LambdaQueryWrapper<T> wrapper,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            SFunction<T, ?> userIdColumn,
+            SFunction<T, ?> deptIdColumn) {
+        requireDataScopeContextWithPolicy(userId, deptId, dataScope);
+        dataScopePolicy.applyTo(wrapper, userId, deptId, dataScope, userIdColumn, deptIdColumn);
+    }
+
+    private void requireDataScopeContextLegacy(UUID userId, UUID deptId, DataScope dataScope) {
+        if (dataScope == DataScope.PERSONAL && userId == null) {
             throw BusinessException.forbidden("数据权限异常：缺少用户上下文");
         }
-        return userId;
-    }
-
-    private UUID requireScopeDept(UUID deptId) {
-        if (deptId == null) {
+        if (dataScope == DataScope.DEPT && deptId == null) {
             throw BusinessException.forbidden("数据权限异常：缺少部门上下文");
         }
-        return deptId;
+    }
+
+    private void requireDataScopeContextWithPolicy(UUID userId, UUID deptId, DataScope dataScope) {
+        DataScopePolicy.ContextRequirement requirement =
+                dataScopePolicy.contextRequirement(userId, deptId, dataScope);
+        if (requirement == DataScopePolicy.ContextRequirement.MISSING_USER) {
+            throw BusinessException.forbidden("数据权限异常：缺少用户上下文");
+        }
+        if (requirement == DataScopePolicy.ContextRequirement.MISSING_DEPT) {
+            throw BusinessException.forbidden("数据权限异常：缺少部门上下文");
+        }
     }
 
     private record OrderTrackColumns(
@@ -2274,6 +2436,12 @@ public class DataApplicationService extends BaseController {
             String serviceFeeColumn,
             String techFeeColumn,
             String expenseColumn) {
+    }
+
+    private record RefundMetricsAggregate(
+            long orderCount,
+            long orderAmountCent,
+            long serviceFeeCent) {
     }
 
 }

@@ -32,6 +32,8 @@ class DddRefactorPropertiesIntegrationTest {
         assertThat(properties.getConfigFacade().isEnabled()).isFalse();
         assertThat(properties.getProductFacade()).isNotNull();
         assertThat(properties.getProductFacade().isEnabled()).isFalse();
+        assertThat(properties.getProductDisplayPolicy()).isNotNull();
+        assertThat(properties.getProductDisplayPolicy().isEnabled()).isFalse();
         assertThat(properties.getTalentFacade()).isNotNull();
         assertThat(properties.getTalentFacade().isEnabled()).isFalse();
         assertThat(properties.getSampleApplication()).isNotNull();
@@ -50,6 +52,12 @@ class DddRefactorPropertiesIntegrationTest {
         assertThat(properties.getAnalyticsShadow().isEnabled()).isFalse();
         assertThat(properties.getOutbox()).isNotNull();
         assertThat(properties.getOutbox().isEnabled()).isFalse();
+        assertThat(properties.getDataScopePolicy()).isNotNull();
+        assertThat(properties.getDataScopePolicy().isEnabled()).isFalse();
+        assertThat(properties.getSampleHomeworkEvent()).isNotNull();
+        assertThat(properties.getSampleHomeworkEvent().isEnabled()).isFalse();
+        assertThat(properties.getColonelPartnerContact()).isNotNull();
+        assertThat(properties.getColonelPartnerContact().isEnabled()).isFalse();
     }
 
     @Configuration(proxyBeanMethods = false)

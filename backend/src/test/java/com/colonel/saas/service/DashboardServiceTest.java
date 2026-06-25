@@ -2,6 +2,8 @@ package com.colonel.saas.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.colonel.saas.common.enums.DataScope;
+import com.colonel.saas.config.DddRefactorProperties;
+import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -23,6 +25,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -38,10 +42,19 @@ class DashboardServiceTest {
     private PerformanceMetricsQueryService performanceMetricsQueryService;
 
     private DashboardService service;
+    private DataScopePolicy dataScopePolicy;
+    private DddRefactorProperties dddRefactorProperties;
 
     @BeforeEach
     void setUp() {
-        service = new DashboardService(orderMapper, jdbcTemplate, performanceMetricsQueryService);
+        dataScopePolicy = spy(new DataScopePolicy());
+        dddRefactorProperties = new DddRefactorProperties();
+        service = new DashboardService(
+                orderMapper,
+                jdbcTemplate,
+                performanceMetricsQueryService,
+                dataScopePolicy,
+                dddRefactorProperties);
         lenient().when(performanceMetricsQueryService.hasPerformanceRecords()).thenReturn(false);
     }
 
@@ -191,6 +204,30 @@ class DashboardServiceTest {
         assertThat(sqlCaptor.getAllValues().get(0)).contains("co.user_id = ?");
         assertThat(argsCaptor.getAllValues().get(0)).containsExactly(userId);
         assertThat(argsCaptor.getAllValues().get(1)).containsExactly(userId, 1L, 0L);
+        verify(dataScopePolicy, never()).decide(any(), any(), any());
+    }
+
+    @Test
+    void getActivityProductBreakdown_dataScopePolicyEnabledPathShouldDelegatePersonalScopeToUserPolicy() {
+        dddRefactorProperties.getDataScopePolicy().setEnabled(true);
+        UUID userId = UUID.fromString("11111111-1111-1111-1111-111111111111");
+        UUID deptId = UUID.fromString("22222222-2222-2222-2222-222222222222");
+        when(jdbcTemplate.queryForList(anyString(), any(Object[].class)))
+                .thenReturn(List.of(Map.of("total_count", 1L)))
+                .thenReturn(List.of(productRow("activity-1", "product-1", "个人范围商品")));
+
+        DashboardService.ActivityProductPage page =
+                service.getActivityProductBreakdown(null, null, userId, deptId, DataScope.PERSONAL, 1, 1);
+
+        assertThat(page.total()).isEqualTo(1L);
+        ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<Object[]> argsCaptor = ArgumentCaptor.forClass(Object[].class);
+        verify(jdbcTemplate, times(2)).queryForList(sqlCaptor.capture(), argsCaptor.capture());
+        assertThat(sqlCaptor.getAllValues().get(0))
+                .contains("co.user_id = ?")
+                .doesNotContain("co.dept_id = ?");
+        assertThat(argsCaptor.getAllValues().get(0)).containsExactly(userId);
+        verify(dataScopePolicy).decide(userId, deptId, DataScope.PERSONAL);
     }
 
     @Test
@@ -218,6 +255,29 @@ class DashboardServiceTest {
                 .contains("co.dept_id = ?");
         assertThat(argsCaptor.getAllValues().get(0)).containsExactly(start, end, deptId);
         assertThat(argsCaptor.getAllValues().get(1)).containsExactly(start, end, deptId, 3L, 3L);
+    }
+
+    @Test
+    void applyScope_shouldKeepFailClosedBehaviorWhenRestrictedContextIsMissing() {
+        QueryWrapper<ColonelsettlementOrder> wrapper = new QueryWrapper<>();
+        invokeApplyScope(wrapper, null, UUID.randomUUID(), DataScope.PERSONAL);
+
+        assertThat(wrapper.getSqlSegment()).contains("1 = 0");
+        verify(dataScopePolicy, never()).decide(any(), any(), any());
+        verify(dataScopePolicy, never()).requiresFilter(any());
+    }
+
+    @Test
+    void applyScope_dataScopePolicyEnabledPathShouldDelegatePersonalScopeToUserPolicy() {
+        dddRefactorProperties.getDataScopePolicy().setEnabled(true);
+        QueryWrapper<ColonelsettlementOrder> wrapper = new QueryWrapper<>();
+        UUID userId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+
+        invokeApplyScope(wrapper, userId, deptId, DataScope.PERSONAL);
+
+        assertThat(wrapper.getSqlSegment()).contains("user_id");
+        verify(dataScopePolicy).decide(userId, deptId, DataScope.PERSONAL);
     }
 
     @Test
@@ -377,6 +437,21 @@ class DashboardServiceTest {
             return (String) m.invoke(service, start, end);
         } catch (ReflectiveOperationException ex) {
             throw new AssertionError("Failed to invoke formatRange", ex);
+        }
+    }
+
+    private void invokeApplyScope(
+            QueryWrapper<ColonelsettlementOrder> wrapper,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope) {
+        try {
+            Method m = DashboardService.class.getDeclaredMethod(
+                    "applyScope", QueryWrapper.class, UUID.class, UUID.class, DataScope.class);
+            m.setAccessible(true);
+            m.invoke(service, wrapper, userId, deptId, dataScope);
+        } catch (ReflectiveOperationException ex) {
+            throw new AssertionError("Failed to invoke applyScope", ex);
         }
     }
 

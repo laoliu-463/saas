@@ -186,6 +186,13 @@ public class ColonelsettlementOrder implements Serializable {
     private Long settleSecondColonelCommission;
 
     /**
+     * 官方流程节点。
+     * <p>对应数据库列：{@code flow_point}，用于追踪待结算、已结算、退款、失效等上游状态。</p>
+     */
+    @TableField("flow_point")
+    private String flowPoint;
+
+    /**
      * 结算阶段 ID
      * <p>对应数据库列：{@code phase_id}，标识订单所属的结算周期/批次</p>
      */

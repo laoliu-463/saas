@@ -194,7 +194,10 @@ describe('Orders page - 商品信息列布局', () => {
         stubs: {
           ...globalStubs,
           PageHeader: { template: '<div data-testid="page-header"><slot name="actions"/></div>' },
-          OrderDetailModal: { template: '<div/>' }
+          OrderDetailModal: {
+            props: ['show', 'orderId'],
+            template: '<div v-if="show" data-testid="order-detail-modal">{{ orderId }}</div>'
+          }
         }
       }
     })
@@ -530,6 +533,17 @@ describe('Orders page - 商品信息列布局', () => {
 
     expect(html).toContain('ORDER-001')
     expect(html).toContain('张三')
+  })
+
+  it('操作列：点击详情按钮打开订单详情弹窗', async () => {
+    const wrapper = await mountPage()
+
+    await wrapper.find('[data-testid="order-detail-button"]').trigger('click')
+    await flushPromises()
+
+    const modal = wrapper.find('[data-testid="order-detail-modal"]')
+    expect(modal.exists()).toBe(true)
+    expect(modal.text()).toContain('ORDER-001')
   })
 
   it('订单ID列：显示订单号、订单类型和内容类型标签', async () => {

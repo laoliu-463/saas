@@ -53,6 +53,22 @@ get_env() {
   printf '%s' "${value:-${default_value}}"
 }
 
+check_required_env() {
+  local key="$1"
+  local description="$2"
+  local value
+  value="$(get_env "${key}" "")"
+  if [ -z "${value}" ] \
+    || [ "${value#MUST_CHANGE}" != "${value}" ] \
+    || [ "${value#*YOUR_}" != "${value}" ] \
+    || [ "${value#*PLACEHOLDER}" != "${value}" ]; then
+    echo "[FAIL] ${key} 未配置或仍是占位值 — ${description}" >&2
+    BASELINE_FAILURES=$((BASELINE_FAILURES + 1))
+  else
+    echo "[PASS] ${key} 已配置 — ${description}"
+  fi
+}
+
 # ---------------------------------------------------------------------------
 # 基线开关检查（必须满足才能进入真实联调）
 # ---------------------------------------------------------------------------
@@ -110,6 +126,14 @@ else
 fi
 
 echo ""
+
+if [ "$(get_env "LOGISTICS_KD100_SUBSCRIBE_ENABLED" "false")" = "true" ]; then
+  echo "-------------------------------------------"
+  echo "快递100订阅回调配置:"
+  check_required_env "LOGISTICS_KD100_CALLBACK_URL" "快递100订阅公网回调地址"
+  check_required_env "LOGISTICS_KD100_CALLBACK_SALT" "快递100回调验签盐"
+  echo ""
+fi
 
 # ---------------------------------------------------------------------------
 # 汇总

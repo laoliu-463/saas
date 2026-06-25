@@ -10,7 +10,14 @@
       </template>
     </PageHeader>
 
-    <div v-if="summaryReady" class="attribution-summary app-summary-bar">
+    <div v-if="statsError" class="attribution-summary app-summary-bar attribution-summary--error">
+      <n-space :size="16" align="center">
+        <span class="summary-label">归因概览</span>
+        <n-tag type="warning" size="small" round>{{ statsError }}</n-tag>
+        <n-button size="tiny" quaternary @click="retryStats">重试</n-button>
+      </n-space>
+    </div>
+    <div v-else-if="summaryReady" class="attribution-summary app-summary-bar">
       <n-space :size="16" align="center">
         <span class="summary-label">归因概览</span>
         <n-tag type="success" size="small" round>已归因: {{ attributionSummary.attributed }} 单 ({{ attributionSummary.attributedPercent }}%)</n-tag>
@@ -91,7 +98,7 @@
         :data="data"
         :loading="tableLoading"
         :pagination="pagination"
-        :scroll-x="2200"
+        :scroll-x="2320"
         :row-key="(row: any) => row.orderId"
         :row-selection="{ type: 'selection' }"
         @update:page="handlePageChange"
@@ -123,6 +130,7 @@ const tableLoading = useDelayedFlag(loading, 200)
 const syncLoading = ref(false)
 const data = ref([])
 const stats = ref<{ totalOrders?: number; attributedOrders?: number; unattributedOrders?: number; partialOrders?: number; lastSyncTime?: string | null } | null>(null)
+const statsError = ref<string | null>(null)
 const showDetail = ref(false)
 const activeOrderId = ref('')
 const channelOptions = ref<{ label: string; value: string }[]>([])
@@ -390,6 +398,16 @@ function renderOrderId(row: any) {
   return h('div', { class: 'order-id-cell' }, nodes)
 }
 
+function openDetail(row: any) {
+  const orderId = firstDisplayValue(row, ['orderId', 'order_id'])
+  if (!orderId) {
+    message.warning('订单 ID 缺失，无法打开详情')
+    return
+  }
+  activeOrderId.value = String(orderId)
+  showDetail.value = true
+}
+
 const columns = [
   {
     title: '订单ID',
@@ -440,6 +458,22 @@ const columns = [
     key: 'orderTime',
     width: 260,
     render: (row: any) => renderOrderTime(row)
+  },
+  {
+    title: '操作',
+    key: 'actions',
+    width: 120,
+    fixed: 'right' as const,
+    render: (row: any) => h(
+      NButton,
+      {
+        size: 'small',
+        secondary: true,
+        'data-testid': 'order-detail-button',
+        onClick: () => openDetail(row)
+      },
+      { default: () => '详情' }
+    )
   }
 ]
 
@@ -485,6 +519,16 @@ function buildQueryParams() {
   }
 }
 
+/**
+ * 判断错误是否为查询超时（后端 QUERY_TIMEOUT 或前端 ECONNABORTED）。
+ */
+function isQueryTimeout(err: any): boolean {
+  if (err?.errorCode === 'QUERY_TIMEOUT' || err?.response?.data?.errorCode === 'QUERY_TIMEOUT') return true
+  const code = String(err?.code || '').toUpperCase()
+  const msg = String(err?.message || '').toLowerCase()
+  return code === 'ECONNABORTED' || msg.includes('timeout')
+}
+
 const fetchData = async () => {
   const currentFetch = ++fetchVersion
   loading.value = true
@@ -506,11 +550,15 @@ const fetchData = async () => {
     .then((statsRes: any) => {
       if (currentFetch === fetchVersion) {
         stats.value = statsRes.data || null
+        statsError.value = null
       }
     })
     .catch((err: any) => {
       if (currentFetch === fetchVersion) {
         stats.value = null
+        statsError.value = isQueryTimeout(err)
+          ? '统计数据加载超时，请缩小时间范围后重试'
+          : '统计数据加载失败'
       }
       console.warn('[orders] stats load failed', err)
     })
@@ -525,13 +573,47 @@ const fetchData = async () => {
   } catch (err: any) {
     if (currentFetch === fetchVersion) {
       stats.value = null
-      notifyApiFailure(err, message, { fallbackMessage: '加载订单列表失败' })
+      if (isQueryTimeout(err)) {
+        notifyApiFailure(err, message, { fallbackMessage: '订单列表加载超时，请缩小时间范围或增加筛选条件后重试' })
+      } else {
+        notifyApiFailure(err, message, { fallbackMessage: '加载订单列表失败' })
+      }
     }
   } finally {
     if (currentFetch === fetchVersion) {
       loading.value = false
     }
   }
+}
+
+/** 单独重试 stats 加载（stats 失败不阻塞列表，用户可手动重试） */
+const retryStats = () => {
+  statsError.value = null
+  const params = buildQueryParams()
+  void getOrderStats({
+    orderId: params.orderId,
+    attributionStatus: params.attributionStatus,
+    activityId: params.activityId,
+    productId: params.productId,
+    channelKeyword: params.channelKeyword,
+    colonelKeyword: params.colonelKeyword,
+    recruiterDeptIds: params.recruiterDeptIds,
+    channelDeptIds: params.channelDeptIds,
+    timeField: params.timeField,
+    dashboardDiagnosis: params.dashboardDiagnosis,
+    startTime: params.startTime,
+    endTime: params.endTime
+  })
+    .then((statsRes: any) => {
+      stats.value = statsRes.data || null
+      statsError.value = null
+    })
+    .catch((err: any) => {
+      stats.value = null
+      statsError.value = isQueryTimeout(err)
+        ? '统计数据加载超时，请缩小时间范围后重试'
+        : '统计数据加载失败'
+    })
 }
 
 const handlePageChange = (page: number) => {
@@ -850,6 +932,14 @@ onMounted(() => {
   font-size: var(--text-xs);
   line-height: 1.5;
   word-break: break-all;
+}
+
+/* ---- 归因概览降级提示 ---- */
+.attribution-summary--error {
+  background: rgba(250, 173, 20, 0.08);
+  border: 1px solid rgba(250, 173, 20, 0.3);
+  border-radius: 6px;
+  padding: 8px 16px;
 }
 
 /* ---- 行高控制 ---- */

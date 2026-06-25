@@ -42,6 +42,8 @@ class SysConfigServiceTest {
     private ApplicationEventPublisher applicationEventPublisher;
     @Mock
     private DomainEventOutboxService domainEventOutboxService;
+    @Mock
+    private com.colonel.saas.domain.config.event.ConfigDomainEventPublisher configDomainEventPublisher;
 
     private SysConfigService sysConfigService;
     private OperationLogService operationLogService;
@@ -60,7 +62,8 @@ class SysConfigServiceTest {
                 configDefinitionRegistry,
                 configChangedEventFactory,
                 domainEventOutboxService,
-                applicationEventPublisher
+                applicationEventPublisher,
+                configDomainEventPublisher
         );
     }
 

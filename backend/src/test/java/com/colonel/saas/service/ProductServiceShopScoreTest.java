@@ -11,7 +11,7 @@ import com.colonel.saas.mapper.ProductOperationLogMapper;
 import com.colonel.saas.mapper.ProductSnapshotMapper;
 import com.colonel.saas.mapper.PromotionLinkMapper;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
-import com.colonel.saas.mapper.SysUserMapper;
+import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.domain.product.event.ProductDomainEventPublisher;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -41,7 +41,7 @@ import static org.mockito.Mockito.when;
 @MockitoSettings(strictness = Strictness.LENIENT)
 class ProductServiceShopScoreTest {
 
-    @Mock private com.colonel.saas.gateway.douyin.DouyinPromotionGateway douyinPromotionGateway;
+    @Mock private com.colonel.saas.domain.product.application.port.DouyinConvertPort douyinConvertPort;
     @Mock private DouyinProductGateway douyinProductGateway;
     @Mock private ProductSnapshotMapper snapshotMapper;
     @Mock private ProductOperationStateMapper operationStateMapper;
@@ -49,24 +49,25 @@ class ProductServiceShopScoreTest {
     @Mock private PromotionLinkMapper promotionLinkMapper;
     @Mock private ColonelsettlementOrderMapper orderMapper;
     @Mock private MerchantMapper merchantMapper;
-    @Mock private SysUserMapper sysUserMapper;
+    @Mock private UserDomainFacade userDomainFacade;
     @Mock private PickSourceMappingService pickSourceMappingService;
     @Mock private ProductBizStatusService productBizStatusService;
     @Mock private ColonelsettlementActivityMapper colonelActivityMapper;
     @Mock private TalentFollowService talentFollowService;
     @Mock private com.colonel.saas.gateway.douyin.DouyinActivityGateway douyinActivityGateway;
     @Mock private PromotionLinkIdempotencyService promotionLinkIdempotencyService;
-    @Mock private BusinessRuleConfigService businessRuleConfigService;
+    @Mock private com.colonel.saas.domain.config.facade.ConfigDomainFacade configDomainFacade;
     @Mock private ProductDisplayRuleService productDisplayRuleService;
     @Mock private ColonelPartnerSyncService colonelPartnerSyncService;
     @Mock private ProductDomainEventPublisher productDomainEventPublisher;
+    @Mock private com.colonel.saas.domain.product.application.CopyPromotionApplicationService copyPromotionApplicationService;
 
     private ProductService productService;
 
     @BeforeEach
     void setUp() {
         productService = new ProductService(
-                douyinPromotionGateway,
+                douyinConvertPort,
                 douyinProductGateway,
                 snapshotMapper,
                 operationStateMapper,
@@ -74,17 +75,19 @@ class ProductServiceShopScoreTest {
                 promotionLinkMapper,
                 orderMapper,
                 merchantMapper,
-                sysUserMapper,
+                userDomainFacade,
                 pickSourceMappingService,
                 productBizStatusService,
                 colonelActivityMapper,
                 talentFollowService,
                 douyinActivityGateway,
                 promotionLinkIdempotencyService,
-                businessRuleConfigService,
+                configDomainFacade,
                 productDisplayRuleService,
                 colonelPartnerSyncService,
-                productDomainEventPublisher);
+                productDomainEventPublisher,
+                new com.colonel.saas.domain.product.policy.ProductDisplayPolicy(),
+                copyPromotionApplicationService);
         when(productBizStatusService.readBizStatus(any())).thenReturn(null);
         when(talentFollowService.listByProduct(any(), any())).thenReturn(List.of());
     }

@@ -3,6 +3,7 @@ package com.colonel.saas.aspect;
 import com.colonel.saas.annotation.RequireRoles;
 import com.colonel.saas.common.exception.ForbiddenException;
 import com.colonel.saas.constant.RoleCodes;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.reflect.MethodSignature;
 import org.junit.jupiter.api.AfterEach;
@@ -22,7 +23,7 @@ import static org.mockito.Mockito.when;
 
 class RoleGuardAspectTest {
 
-    private final RoleGuardAspect aspect = new RoleGuardAspect();
+    private final RoleGuardAspect aspect = new RoleGuardAspect(new CurrentUserPermissionPolicy());
 
     @AfterEach
     void tearDown() {
@@ -51,6 +52,16 @@ class RoleGuardAspectTest {
     @Test
     void shouldProceedWhenCurrentRoleIsAdmin() throws Throwable {
         bindRoleCodes("admin");
+        ProceedingJoinPoint point = mockJoinPoint(ProtectedController.class, "bizEndpoint");
+
+        aspect.guard(point);
+
+        verify(point, times(1)).proceed();
+    }
+
+    @Test
+    void shouldProceedWhenRoleCodesNeedUserPolicyNormalization() throws Throwable {
+        bindRoleCodes("[ BIZ_STAFF ]");
         ProceedingJoinPoint point = mockJoinPoint(ProtectedController.class, "bizEndpoint");
 
         aspect.guard(point);

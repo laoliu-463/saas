@@ -27,7 +27,9 @@ class ProductDisplayRuleJobTest {
 
     @BeforeEach
     void grantLock() {
-        lenient().when(jobLockService.tryAcquire(eq(JobLockKeys.PRODUCT_DISPLAY_RULE), any(Duration.class)))
+        lenient().when(jobLockService.tryAcquire(eq(JobLockKeys.PRODUCT_BACKFILL_GLOBAL), any(Duration.class)))
+                .thenReturn(true);
+        lenient().when(jobLockService.tryAcquire(eq(JobLockKeys.PRODUCT_DISPLAY_REFRESH), any(Duration.class)))
                 .thenReturn(true);
     }
 
@@ -39,17 +41,19 @@ class ProductDisplayRuleJobTest {
         job.reconcileDisplayStatus();
 
         verify(displayRuleService).reconcileAll();
-        verify(jobLockService).release(JobLockKeys.PRODUCT_DISPLAY_RULE);
+        verify(jobLockService).release(JobLockKeys.PRODUCT_DISPLAY_REFRESH);
+        verify(jobLockService).release(JobLockKeys.PRODUCT_BACKFILL_GLOBAL);
     }
 
     @Test
     void reconcileDisplayStatus_shouldSkipWhenLockNotAcquired() {
         ProductDisplayRuleJob job = new ProductDisplayRuleJob(displayRuleService, jobLockService);
-        when(jobLockService.tryAcquire(eq(JobLockKeys.PRODUCT_DISPLAY_RULE), any(Duration.class))).thenReturn(false);
+        when(jobLockService.tryAcquire(eq(JobLockKeys.PRODUCT_DISPLAY_REFRESH), any(Duration.class))).thenReturn(false);
 
         job.reconcileDisplayStatus();
 
         verify(displayRuleService, never()).reconcileAll();
-        verify(jobLockService, never()).release(JobLockKeys.PRODUCT_DISPLAY_RULE);
+        verify(jobLockService, never()).release(JobLockKeys.PRODUCT_DISPLAY_REFRESH);
+        verify(jobLockService).release(JobLockKeys.PRODUCT_BACKFILL_GLOBAL);
     }
 }

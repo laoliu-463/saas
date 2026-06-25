@@ -15,16 +15,16 @@ class OrderDualTrackAmountResolverTest {
         raw.put("pay_goods_amount", 5000L);
         raw.put("settled_goods_amount", 4800L);
         raw.put("estimated_commission", 600L);
-        raw.put("commission", 550L);
+        raw.put("real_commission", 550L);
         raw.put("estimated_tech_service_fee", 60L);
-        raw.put("tech_service_fee", 55L);
+        raw.put("settled_tech_service_fee", 55L);
 
         OrderDualTrackAmountResolver.DualTrackAmounts amounts = OrderDualTrackAmountResolver.resolve(raw, null, null);
 
         assertThat(amounts.payAmount()).isEqualTo(5000L);
         assertThat(amounts.settleAmount()).isEqualTo(4800L);
         assertThat(amounts.estimateServiceFee()).isEqualTo(600L);
-        assertThat(amounts.effectiveServiceFee()).isEqualTo(495L);
+        assertThat(amounts.effectiveServiceFee()).isEqualTo(550L);
         assertThat(amounts.estimateTechServiceFee()).isEqualTo(60L);
         assertThat(amounts.effectiveTechServiceFee()).isEqualTo(55L);
         assertThat(amounts.estimateServiceFeeExpense()).isEqualTo(0L);
@@ -76,8 +76,8 @@ class OrderDualTrackAmountResolverTest {
     }
 
     @Test
-    void resolve_serviceFeeExpenseShouldDefaultToZero() {
-        // 服务费支出当前无 raw payload 字段，应默认为 0
+    void resolve_serviceFeeExpenseShouldDefaultToZeroWhenNoSecondInstitution() {
+        // 单机构或无 colonel_order_info_second 嵌套对象时，服务费支出应为 0
         Map<String, Object> raw = new LinkedHashMap<>();
         raw.put("pay_goods_amount", 5000L);
         raw.put("estimated_commission", 100L);
@@ -89,7 +89,64 @@ class OrderDualTrackAmountResolverTest {
     }
 
     @Test
-    void resolve_shouldCalculateServiceFeeIncomeFromAmountAndRateWhenFeeFieldsMissing() {
+    void resolve_shouldTreatSecondColonelOverlapAsServiceFeeExpense() {
+        // 双机构同时正向：二级 real_commission 计入支出（一级 = 收入，二级 = 支出）
+        Map<String, Object> raw = new LinkedHashMap<>();
+        raw.put("pay_goods_amount", 5000L);
+        raw.put("settled_goods_amount", 4800L);
+        raw.put("colonel_order_info", Map.of(
+                "real_commission", 120L,
+                "estimated_commission", 130L
+        ));
+        raw.put("colonel_order_info_second", Map.of(
+                "real_commission", 8L,
+                "estimated_commission", 8L
+        ));
+
+        OrderDualTrackAmountResolver.DualTrackAmounts amounts = OrderDualTrackAmountResolver.resolve(raw, null, null);
+
+        assertThat(amounts.effectiveServiceFee()).isEqualTo(120L);
+        assertThat(amounts.estimateServiceFeeExpense()).isEqualTo(8L);
+        assertThat(amounts.effectiveServiceFeeExpense()).isEqualTo(8L);
+    }
+
+    @Test
+    void resolve_shouldNotTreatSecondColonelFallbackAsExpense() {
+        // 一级机构为 0（缺失或被清零），二级机构有值 → 不算支出，二级作为有效收入补充
+        Map<String, Object> raw = new LinkedHashMap<>();
+        raw.put("pay_goods_amount", 5000L);
+        raw.put("settled_goods_amount", 4800L);
+        raw.put("colonel_order_info", Map.of("real_commission", 0L));
+        raw.put("colonel_order_info_second", Map.of("real_commission", 80L));
+
+        OrderDualTrackAmountResolver.DualTrackAmounts amounts = OrderDualTrackAmountResolver.resolve(raw, null, null);
+
+        assertThat(amounts.effectiveServiceFee()).isEqualTo(80L);
+        assertThat(amounts.estimateServiceFeeExpense()).isZero();
+        assertThat(amounts.effectiveServiceFeeExpense()).isZero();
+    }
+
+    @Test
+    void resolve_shouldNotTreatPrimaryNullSecondPositiveAsExpense() {
+        // 一级机构 real_commission 为 null（很多真实订单的 SETTLE 样本），
+        // 二级机构有值 → 不算支出（避免把独立结算轨误算为支出）。
+        Map<String, Object> raw = new LinkedHashMap<>();
+        raw.put("pay_goods_amount", 5000L);
+        raw.put("settled_goods_amount", 4800L);
+        Map<String, Object> coi = new LinkedHashMap<>();
+        coi.put("real_commission", null);
+        coi.put("estimated_commission", 100L);
+        raw.put("colonel_order_info", coi);
+        raw.put("colonel_order_info_second", Map.of("real_commission", 21L));
+
+        OrderDualTrackAmountResolver.DualTrackAmounts amounts = OrderDualTrackAmountResolver.resolve(raw, null, null);
+
+        assertThat(amounts.estimateServiceFeeExpense()).isZero();
+        assertThat(amounts.effectiveServiceFeeExpense()).isZero();
+    }
+
+    @Test
+    void resolve_shouldCalculateOnlyEstimateServiceFeeIncomeFromAmountAndRateWhenFeeFieldsMissing() {
         Map<String, Object> raw = new LinkedHashMap<>();
         raw.put("pay_goods_amount", 10000L);
         raw.put("settled_goods_amount", 8000L);
@@ -100,9 +157,24 @@ class OrderDualTrackAmountResolverTest {
         OrderDualTrackAmountResolver.DualTrackAmounts amounts = OrderDualTrackAmountResolver.resolve(raw, null, null);
 
         assertThat(amounts.estimateServiceFee()).isEqualTo(1000L);
-        assertThat(amounts.effectiveServiceFee()).isEqualTo(720L);
+        assertThat(amounts.effectiveServiceFee()).isZero();
         assertThat(amounts.estimateTechServiceFee()).isEqualTo(100L);
-        assertThat(amounts.effectiveTechServiceFee()).isEqualTo(80L);
+        assertThat(amounts.effectiveTechServiceFee()).isZero();
+    }
+
+    @Test
+    void resolve_shouldNotFallbackEffectiveFeeToEstimateInInstituteMode() {
+        Map<String, Object> raw = new LinkedHashMap<>();
+        raw.put("pay_goods_amount", 5000L);
+        raw.put("estimated_commission", 600L);
+        raw.put("estimated_tech_service_fee", 60L);
+
+        OrderDualTrackAmountResolver.DualTrackAmounts amounts = OrderDualTrackAmountResolver.resolve(raw, null, null);
+
+        assertThat(amounts.estimateServiceFee()).isEqualTo(600L);
+        assertThat(amounts.effectiveServiceFee()).isZero();
+        assertThat(amounts.estimateTechServiceFee()).isEqualTo(60L);
+        assertThat(amounts.effectiveTechServiceFee()).isZero();
     }
 
     @Test
@@ -190,6 +262,41 @@ class OrderDualTrackAmountResolverTest {
     }
 
     @Test
+    void applyInstituteFactToOrder_shouldWriteSettlementWhen6468Settled() {
+        Map<String, Object> raw = new LinkedHashMap<>();
+        raw.put("flow_point", "SETTLE");
+        raw.put("settled_goods_amount", 1680L);
+        raw.put("colonel_order_info", Map.of("real_commission", 30L, "settled_tech_service_fee", 2L));
+
+        com.colonel.saas.entity.ColonelsettlementOrder order = new com.colonel.saas.entity.ColonelsettlementOrder();
+        OrderDualTrackAmountResolver.DualTrackAmounts amounts = new OrderDualTrackAmountResolver.DualTrackAmounts(
+                1680L, 1680L, 34L, 30L, 3L, 2L, 0L, 0L);
+
+        OrderDualTrackAmountResolver.applyInstituteFactToOrder(order, amounts, raw);
+
+        assertThat(order.getSettleAmount()).isEqualTo(1680L);
+        assertThat(order.getEffectiveServiceFee()).isEqualTo(30L);
+        assertThat(order.getEffectiveTechServiceFee()).isEqualTo(2L);
+    }
+
+    @Test
+    void applyInstituteFactToOrder_shouldNotWriteSettlementForPaySucc() {
+        Map<String, Object> raw = new LinkedHashMap<>();
+        raw.put("flow_point", "PAY_SUCC");
+        raw.put("settled_goods_amount", 0L);
+        raw.put("colonel_order_info", Map.of("real_commission", 0L, "tech_service_fee", 3L));
+
+        com.colonel.saas.entity.ColonelsettlementOrder order = new com.colonel.saas.entity.ColonelsettlementOrder();
+        OrderDualTrackAmountResolver.DualTrackAmounts amounts = new OrderDualTrackAmountResolver.DualTrackAmounts(
+                1680L, 1680L, 34L, 0L, 3L, 0L, 0L, 0L);
+
+        OrderDualTrackAmountResolver.applyInstituteFactToOrder(order, amounts, raw);
+
+        assertThat(order.getSettleAmount()).isNull();
+        assertThat(order.getEffectiveServiceFee()).isNull();
+    }
+
+    @Test
     void mergeSettlementSnapshot_shouldNotOverwriteWhenIncomingHasValue() {
         com.colonel.saas.entity.ColonelsettlementOrder existing = new com.colonel.saas.entity.ColonelsettlementOrder();
         existing.setSettleAmount(2480L);
@@ -207,5 +314,19 @@ class OrderDualTrackAmountResolverTest {
         assertThat(incoming.getSettleAmount()).isEqualTo(2500L);
         assertThat(incoming.getEffectiveServiceFee()).isEqualTo(55L);
         assertThat(incoming.getEffectiveTechServiceFee()).isEqualTo(7L);
+    }
+
+    @Test
+    void applyToOrder_shouldNotFallbackLegacySettlementFieldsToEstimate() {
+        com.colonel.saas.entity.ColonelsettlementOrder order = new com.colonel.saas.entity.ColonelsettlementOrder();
+        OrderDualTrackAmountResolver.DualTrackAmounts amounts = new OrderDualTrackAmountResolver.DualTrackAmounts(
+                10_000L, 0L, 1_000L, 0L, 50L, 0L, 0L, 0L);
+
+        OrderDualTrackAmountResolver.applyToOrder(order, amounts);
+
+        assertThat(order.getEffectiveServiceFee()).isZero();
+        assertThat(order.getEffectiveTechServiceFee()).isZero();
+        assertThat(order.getSettleColonelCommission()).isNull();
+        assertThat(order.getSettleColonelTechServiceFee()).isNull();
     }
 }

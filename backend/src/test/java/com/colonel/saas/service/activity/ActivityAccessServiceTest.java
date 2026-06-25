@@ -2,6 +2,7 @@ package com.colonel.saas.service.activity;
 
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.constant.RoleCodes;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.entity.ColonelsettlementActivity;
 import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -10,6 +11,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.UUID;
 
@@ -27,7 +30,7 @@ class ActivityAccessServiceTest {
 
     @BeforeEach
     void setUp() {
-        activityAccessService = new ActivityAccessService(activityMapper);
+        activityAccessService = new ActivityAccessService(activityMapper, new CurrentUserPermissionPolicy());
     }
 
     @Test
@@ -40,6 +43,26 @@ class ActivityAccessServiceTest {
     void resolveEffectiveAssignmentFilter_shouldRespectAdminChoice() {
         assertThat(activityAccessService.resolveEffectiveAssignmentFilter("assigned", List.of(RoleCodes.ADMIN)))
                 .isEqualTo("assigned");
+    }
+
+    @Test
+    void normalizeRoleCodes_shouldUseUserDomainPolicy() {
+        assertThat(activityAccessService.normalizeRoles("[ADMIN, biz_staff, ADMIN]"))
+                .containsExactly(RoleCodes.ADMIN, RoleCodes.BIZ_STAFF);
+    }
+
+    @Test
+    void activityAccessService_shouldNotCreateUserPermissionPolicyDirectly() throws Exception {
+        Path sourcePath = Path.of("src/main/java/com/colonel/saas/service/activity/ActivityAccessService.java");
+        if (!Files.exists(sourcePath)) {
+            sourcePath = Path.of("backend/src/main/java/com/colonel/saas/service/activity/ActivityAccessService.java");
+        }
+        String source = Files.readString(sourcePath);
+
+        assertThat(source)
+                .doesNotContain("new CurrentUserPermissionPolicy()")
+                .doesNotContain("public static Collection<String> normalizeRoleCodes")
+                .contains("CurrentUserPermissionPolicy currentUserPermissionPolicy");
     }
 
     @Test

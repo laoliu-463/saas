@@ -1,9 +1,19 @@
 package com.colonel.saas.service;
 
+import com.colonel.saas.common.time.AppZone;
 import com.colonel.saas.config.AppProperties;
+import com.colonel.saas.config.DddRefactorProperties;
+import com.colonel.saas.domain.order.application.OrderAmountMappingRouter;
+import com.colonel.saas.domain.order.application.OrderAttributionRouter;
+import com.colonel.saas.domain.order.application.OrderDefaultAttributionResolver;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.gateway.douyin.DouyinOrderGateway;
 import com.colonel.saas.job.JobLockKeys;
+import com.colonel.saas.service.settlement.SettlementOrderGateway;
+import com.colonel.saas.service.settlement.SettlementOrderPage;
+import com.colonel.saas.service.settlement.SettlementOrderQuery;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -16,6 +26,8 @@ import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Duration;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -45,12 +57,21 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class OrderSyncServiceTest {
 
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
     @Mock
     private DouyinOrderGateway douyinOrderGateway;
+    @Mock
+    private SettlementOrderGateway instituteSettlementGateway;
+    @Mock
+    private SettlementOrderGateway multiSettlementFallbackGateway;
     @Mock
     private OrderSyncPersistenceService persistenceService;
     @Mock
     private AttributionService attributionService;
+    @Mock
+    private OrderDefaultAttributionResolver defaultAttributionResolver;
     @Mock
     private RedisTemplate<String, Object> redisTemplate;
     @Mock
@@ -61,12 +82,18 @@ class OrderSyncServiceTest {
     private ApplicationEventPublisher eventPublisher;
 
     private AppProperties appProperties;
+    private OrderAmountMappingRouter orderAmountMappingRouter;
+    private OrderAttributionRouter orderAttributionRouter;
     private OrderSyncService service;
 
     @BeforeEach
     void setUp() {
         appProperties = new AppProperties();
         appProperties.getTest().setEnabled(false);
+        DddRefactorProperties dddRefactorProperties = new DddRefactorProperties();
+        orderAmountMappingRouter = new OrderAmountMappingRouter(dddRefactorProperties);
+        orderAttributionRouter = new OrderAttributionRouter(
+                dddRefactorProperties, attributionService, defaultAttributionResolver);
 
         lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         // Default: empty gateway response so syncItems exits immediately.
@@ -74,15 +101,26 @@ class OrderSyncServiceTest {
                 .thenReturn(new DouyinOrderGateway.OrderListResult(List.of(), false, "0", Map.of()));
         lenient().when(douyinOrderGateway.listInstituteOrders(any(DouyinOrderGateway.DouyinOrderQueryRequest.class)))
                 .thenReturn(new DouyinOrderGateway.OrderListResult(List.of(), false, "0", Map.of()));
+        lenient().when(instituteSettlementGateway.fetch(any()))
+                .thenReturn(new SettlementOrderPage(List.of(), "0", false,
+                        com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode(),
+                        "buyin.instituteOrderColonel", OrderSyncPersistenceService.SYNC_SOURCE_INSTITUTE_SETTLEMENT));
+        lenient().when(multiSettlementFallbackGateway.fetch(any()))
+                .thenReturn(new SettlementOrderPage(List.of(), "0", false,
+                        com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode(),
+                        "buyin.colonelMultiSettlementOrders", OrderSyncPersistenceService.SYNC_SOURCE_SETTLEMENT));
         lenient().when(persistenceService.loadUserNamesByIds(any())).thenReturn(Map.<java.util.UUID, String>of());
 
         service = new OrderSyncService(
                 douyinOrderGateway,
+                instituteSettlementGateway,
+                multiSettlementFallbackGateway,
                 persistenceService,
-                attributionService,
+                orderAttributionRouter,
                 redisTemplate,
                 jobLockService,
-                appProperties
+                appProperties,
+                orderAmountMappingRouter
         );
     }
 
@@ -133,11 +171,11 @@ class OrderSyncServiceTest {
 
         service.syncPayRecentWindow();
 
-        ArgumentCaptor<DouyinOrderGateway.DouyinOrderQueryRequest> captor =
-                ArgumentCaptor.forClass(DouyinOrderGateway.DouyinOrderQueryRequest.class);
-        verify(douyinOrderGateway).listSettlement(captor.capture());
-        DouyinOrderGateway.DouyinOrderQueryRequest request = captor.getValue();
-        long windowSeconds = request.endTime() - request.startTime();
+        ArgumentCaptor<SettlementOrderQuery> captor = ArgumentCaptor.forClass(SettlementOrderQuery.class);
+        verify(instituteSettlementGateway).fetch(captor.capture());
+        verify(douyinOrderGateway, never()).listSettlement(any(DouyinOrderGateway.DouyinOrderQueryRequest.class));
+        SettlementOrderQuery request = captor.getValue();
+        long windowSeconds = toEpochSecond(request.endTime()) - toEpochSecond(request.startTime());
         // PAY_RECENT window = 6 hours = 21600 seconds; allow ±60s drift for clock jitter
         assertThat(windowSeconds).isBetween(6L * 60L * 60L - 60L, 6L * 60L * 60L + 60L);
     }
@@ -156,6 +194,34 @@ class OrderSyncServiceTest {
         // Default incremental writes to order:sync:last_time, never pay_recent key
         verify(valueOperations).set(eq("order:sync:last_time"), any());
         verify(valueOperations, never()).set(eq("order:sync:pay_recent_last_time"), any());
+    }
+
+    @Test
+    void syncByTimeRange_shouldAllowOfficialSettlementWindowBeyondTwoHundredPagesByDefault() {
+        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC), any(Duration.class)))
+                .thenReturn(true);
+        AtomicInteger pageCounter = new AtomicInteger();
+        when(instituteSettlementGateway.fetch(any(SettlementOrderQuery.class)))
+                .thenAnswer(invocation -> {
+                    int pageNo = pageCounter.incrementAndGet();
+                    String nextCursor = pageNo < 275 ? "cursor-" + (pageNo + 1) : "0";
+                    return settlementPage(
+                            List.of(settlementOrderItemWithPhase("SETTLE_PAGE_" + pageNo, "phase-" + pageNo)),
+                            nextCursor,
+                            Map.of("log_id", "log-page-" + pageNo)
+                    );
+                });
+        when(attributionService.resolveAttribution(any(ColonelsettlementOrder.class), any()))
+                .thenReturn(AttributionService.AttributionResult.unattributed(
+                        null, null, "3859423", null, AttributionService.REASON_NO_PICK_SOURCE));
+        when(persistenceService.persistOrder(any())).thenReturn(true);
+
+        OrderSyncService.SyncResult result = service.syncByTimeRange(1781193600L, 1781280000L);
+
+        assertThat(result.pages()).isEqualTo(275);
+        assertThat(result.totalFetched()).isEqualTo(275);
+        assertThat(result.stopReason()).isEqualTo("NO_NEXT_CURSOR");
+        verify(instituteSettlementGateway, times(275)).fetch(any(SettlementOrderQuery.class));
     }
 
     @Test
@@ -320,7 +386,7 @@ class OrderSyncServiceTest {
         assertThat(order.getActualAmount()).isEqualTo(2550L);
         assertThat(order.getEstimateServiceFee()).isEqualTo(55L);
         assertThat(order.getEstimateTechServiceFee()).isEqualTo(7L);
-        // INSTITUTE writes fact/estimate only; settlement/effective track is left for 2704.
+        // PAY_SUCC 待结算样本：6468 只写事实/预估轨，结算轨保持 null（见 SETTLE 样本测试）。
         assertThat(order.getSettleAmount()).isNull();
         assertThat(order.getEffectiveServiceFee()).isNull();
         assertThat(order.getEffectiveTechServiceFee()).isNull();
@@ -611,17 +677,51 @@ class OrderSyncServiceTest {
         return new DouyinOrderGateway.OrderListResult(orders, hasMore, nextCursor, rawResponse);
     }
 
+    private SettlementOrderPage settlementPage(
+            List<DouyinOrderGateway.DouyinOrderItem> orders,
+            String nextCursor,
+            Map<String, Object> rawResponse) {
+        List<JsonNode> nodes = orders.stream()
+                .map(DouyinOrderGateway.DouyinOrderItem::rawPayload)
+                .map(payload -> (JsonNode) OBJECT_MAPPER.valueToTree(payload))
+                .toList();
+        return new SettlementOrderPage(
+                nodes,
+                nextCursor,
+                false,
+                OBJECT_MAPPER.valueToTree(rawResponse),
+                "buyin.instituteOrderColonel",
+                OrderSyncPersistenceService.SYNC_SOURCE_INSTITUTE_SETTLEMENT);
+    }
+
+    private long toEpochSecond(String dateTime) {
+        return AppZone.toEpochSecond(LocalDateTime.parse(dateTime, DATE_TIME_FORMATTER));
+    }
+
     @Test
-    void syncPayRecentWindow_shouldPassUpdateTimeType() {
+    void syncPayRecentWindow_shouldKeepUpdateTimeTypeForInstituteSettlementSource() {
         when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_PAY_RECENT), any(Duration.class)))
                 .thenReturn(true);
 
         service.syncPayRecentWindow();
 
-        ArgumentCaptor<DouyinOrderGateway.DouyinOrderQueryRequest> captor =
-                ArgumentCaptor.forClass(DouyinOrderGateway.DouyinOrderQueryRequest.class);
-        verify(douyinOrderGateway).listSettlement(captor.capture());
-        assertThat(captor.getValue().resolvedTimeType()).isEqualTo("update");
+        ArgumentCaptor<SettlementOrderQuery> captor = ArgumentCaptor.forClass(SettlementOrderQuery.class);
+        verify(instituteSettlementGateway).fetch(captor.capture());
+        verify(douyinOrderGateway, never()).listSettlement(any(DouyinOrderGateway.DouyinOrderQueryRequest.class));
+        assertThat(captor.getValue().timeType()).isEqualTo("update");
+    }
+
+    @Test
+    void syncByTimeRange_shouldKeepUpdateTimeTypeForInstituteSettlementSource() {
+        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC), any(Duration.class)))
+                .thenReturn(true);
+
+        long now = java.time.Instant.now().getEpochSecond();
+        service.syncByTimeRange(now - 600, now);
+
+        ArgumentCaptor<SettlementOrderQuery> captor = ArgumentCaptor.forClass(SettlementOrderQuery.class);
+        verify(instituteSettlementGateway).fetch(captor.capture());
+        assertThat(captor.getValue().timeType()).isEqualTo("update");
     }
 
     @Test
@@ -637,16 +737,89 @@ class OrderSyncServiceTest {
     }
 
     @Test
-    void syncSettlementSettleWindow_shouldPassSettleTimeType() {
+    void syncSettlementSettleWindow_shouldUseConfiguredInstituteSettlementTimeType() {
         when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_SETTLE), any(Duration.class)))
                 .thenReturn(true);
 
         service.syncSettlementSettleWindow();
 
-        ArgumentCaptor<DouyinOrderGateway.DouyinOrderQueryRequest> captor =
-                ArgumentCaptor.forClass(DouyinOrderGateway.DouyinOrderQueryRequest.class);
-        verify(douyinOrderGateway).listSettlement(captor.capture());
-        assertThat(captor.getValue().resolvedTimeType()).isEqualTo("settle");
+        ArgumentCaptor<SettlementOrderQuery> captor = ArgumentCaptor.forClass(SettlementOrderQuery.class);
+        verify(instituteSettlementGateway).fetch(captor.capture());
+        verify(multiSettlementFallbackGateway, never()).fetch(any());
+        verify(douyinOrderGateway, never()).listSettlement(any(DouyinOrderGateway.DouyinOrderQueryRequest.class));
+        assertThat(captor.getValue().timeType()).isEqualTo("update");
+    }
+
+    @Test
+    void syncSettlementSettleWindow_shouldUse2704OnlyWhenConfiguredAsFallbackSource() {
+        ReflectionTestUtils.setField(service, "settlementSource", "colonelMultiSettlementOrders");
+        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_SETTLE), any(Duration.class)))
+                .thenReturn(true);
+
+        service.syncSettlementSettleWindow();
+
+        verify(multiSettlementFallbackGateway).fetch(any(SettlementOrderQuery.class));
+        verify(instituteSettlementGateway, never()).fetch(any());
+    }
+
+    @Test
+    void syncInstituteOrdersRecentWindow_shouldWriteSettlementWhen6468Settled() {
+        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_INSTITUTE), any(Duration.class)))
+                .thenReturn(true);
+        when(douyinOrderGateway.listInstituteOrders(any(DouyinOrderGateway.DouyinOrderQueryRequest.class)))
+                .thenReturn(new DouyinOrderGateway.OrderListResult(
+                        List.of(instituteSettledOrderItem()), false, "0", Map.of()));
+        when(attributionService.resolveAttribution(any(ColonelsettlementOrder.class), any()))
+                .thenReturn(AttributionService.AttributionResult.unattributed(
+                        null, null, "3859423", null, AttributionService.REASON_NO_PICK_SOURCE));
+        when(persistenceService.persistOrder(any(ColonelsettlementOrder.class))).thenReturn(true);
+
+        OrderSyncService.SyncResult result = service.syncInstituteOrdersRecentWindow();
+
+        assertThat(result.created()).isEqualTo(1);
+        ArgumentCaptor<ColonelsettlementOrder> orderCaptor = ArgumentCaptor.forClass(ColonelsettlementOrder.class);
+        verify(persistenceService).persistOrder(orderCaptor.capture());
+        ColonelsettlementOrder order = orderCaptor.getValue();
+        assertThat(order.getOrderAmount()).isEqualTo(1680L);
+        assertThat(order.getSettleAmount()).isEqualTo(1680L);
+        assertThat(order.getEffectiveServiceFee()).isEqualTo(30L);
+        assertThat(order.getSettleTime()).isNotNull();
+        assertThat(order.getSyncSource()).isEqualTo(OrderSyncPersistenceService.SYNC_SOURCE_INSTITUTE);
+    }
+
+    @Test
+    void syncSettlementSettleWindow_shouldNotPersistOrdersWhenUpstreamEmpty() {
+        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_SETTLE), any(Duration.class)))
+                .thenReturn(true);
+
+        service.syncSettlementSettleWindow();
+
+        verify(persistenceService, never()).persistOrder(any());
+    }
+
+    @Test
+    void syncSettlementSettleWindow_shouldPersistInstituteSettlementFields() {
+        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_SETTLE), any(Duration.class)))
+                .thenReturn(true);
+        DouyinOrderGateway.DouyinOrderItem item = settlementOrderItemWithPhase("SETTLE_PHASE_1", "phase-99");
+        when(instituteSettlementGateway.fetch(any(SettlementOrderQuery.class)))
+                .thenReturn(settlementPage(List.of(item), "0", Map.of("log_id", "log-settle-1603")));
+        when(attributionService.resolveAttribution(any(ColonelsettlementOrder.class), any()))
+                .thenReturn(AttributionService.AttributionResult.unattributed(
+                        null, null, "3859423", null, AttributionService.REASON_NO_PICK_SOURCE));
+        when(persistenceService.persistOrder(any())).thenReturn(true);
+
+        service.syncSettlementSettleWindow();
+
+        ArgumentCaptor<ColonelsettlementOrder> captor = ArgumentCaptor.forClass(ColonelsettlementOrder.class);
+        verify(persistenceService).persistOrder(captor.capture());
+        ColonelsettlementOrder order = captor.getValue();
+        assertThat(order.getPhaseId()).isEqualTo("phase-99");
+        assertThat(order.getSettleAmount()).isEqualTo(2480L);
+        assertThat(order.getEffectiveServiceFee()).isEqualTo(50L);
+        assertThat(order.getEffectiveTechServiceFee()).isEqualTo(6L);
+        assertThat(order.getFlowPoint()).isEqualTo("SETTLE");
+        assertThat(order.getSyncSource()).isEqualTo(OrderSyncPersistenceService.SYNC_SOURCE_INSTITUTE_SETTLEMENT);
     }
 
     @Test
@@ -664,9 +837,8 @@ class OrderSyncServiceTest {
         when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_SETTLE), any(Duration.class)))
                 .thenReturn(true);
         DouyinOrderGateway.DouyinOrderItem item = instituteOrderItem("SETTLE_ORDER_1");
-        when(douyinOrderGateway.listSettlement(any(DouyinOrderGateway.DouyinOrderQueryRequest.class)))
-                .thenReturn(new DouyinOrderGateway.OrderListResult(
-                        List.of(item), false, "0", Map.of("log_id", "log-settle-1")));
+        when(instituteSettlementGateway.fetch(any(SettlementOrderQuery.class)))
+                .thenReturn(settlementPage(List.of(item), "0", Map.of("log_id", "log-settle-1")));
         when(attributionService.resolveAttribution(any(ColonelsettlementOrder.class), any()))
                 .thenReturn(AttributionService.AttributionResult.unattributed(
                         null, null, "3859423", null, AttributionService.REASON_NO_PICK_SOURCE));
@@ -681,13 +853,28 @@ class OrderSyncServiceTest {
     void syncSettlementSettleWindow_shouldNotAdvanceCheckpointWhenGatewayFails() {
         when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_SETTLE), any(Duration.class)))
                 .thenReturn(true);
-        when(douyinOrderGateway.listSettlement(any(DouyinOrderGateway.DouyinOrderQueryRequest.class)))
+        when(instituteSettlementGateway.fetch(any(SettlementOrderQuery.class)))
                 .thenThrow(new RuntimeException("upstream down"));
 
         assertThatThrownBy(() -> service.syncSettlementSettleWindow())
                 .isInstanceOf(RuntimeException.class);
 
         verify(valueOperations, never()).set(eq("order:sync:settle_last_time"), any());
+    }
+
+    @Test
+    void syncByOrderIds_shouldUseInstituteSettlementGatewayAndNotFallbackTo2704ByDefault() {
+        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC), any(Duration.class)))
+                .thenReturn(true);
+
+        service.syncByOrderIds(List.of("ORDER-1603-1"));
+
+        ArgumentCaptor<SettlementOrderQuery> captor = ArgumentCaptor.forClass(SettlementOrderQuery.class);
+        verify(instituteSettlementGateway).fetch(captor.capture());
+        verify(multiSettlementFallbackGateway, never()).fetch(any());
+        verify(douyinOrderGateway, never()).listSettlementByOrderIds(any());
+        assertThat(captor.getValue().orderIds()).containsExactly("ORDER-1603-1");
+        assertThat(captor.getValue().timeType()).isEqualTo("update");
     }
 
     @Test
@@ -699,6 +886,70 @@ class OrderSyncServiceTest {
 
         assertThat(service.shouldAdvanceSettleCheckpoint(empty)).isFalse();
         assertThat(service.shouldAdvanceSettleCheckpoint(withData)).isTrue();
+    }
+
+    private DouyinOrderGateway.DouyinOrderItem instituteSettledOrderItem() {
+        Map<String, Object> rawPayload = new LinkedHashMap<>();
+        rawPayload.put("order_id", "SETTLE_ORDER_6468");
+        rawPayload.put("product_id", "3810562766247428542");
+        rawPayload.put("pay_goods_amount", 1680L);
+        rawPayload.put("settled_goods_amount", 1680L);
+        rawPayload.put("pay_success_time", "2026-06-10 11:00:00");
+        rawPayload.put("settle_time", "2026-06-10 12:00:00");
+        rawPayload.put("flow_point", "SETTLE");
+        rawPayload.put("colonel_order_info", Map.of(
+                "estimated_commission", 34L,
+                "real_commission", 30L,
+                "tech_service_fee", 3L,
+                "settled_tech_service_fee", 2L
+        ));
+        return new DouyinOrderGateway.DouyinOrderItem(
+                "SETTLE_ORDER_6468",
+                "3810562766247428542",
+                "3810562766247428542",
+                "56591058",
+                "冰戈的冷饮店",
+                null,
+                null,
+                null,
+                1680L,
+                34L,
+                2,
+                1780480000L,
+                1780483600L,
+                rawPayload
+        );
+    }
+
+    private DouyinOrderGateway.DouyinOrderItem settlementOrderItemWithPhase(String orderId, String phaseId) {
+        Map<String, Object> rawPayload = new LinkedHashMap<>();
+        rawPayload.put("order_id", orderId);
+        rawPayload.put("phase_id", phaseId);
+        rawPayload.put("pay_goods_amount", 2550L);
+        rawPayload.put("settled_goods_amount", 2480L);
+        rawPayload.put("settle_time", "2026-06-05 10:00:00");
+        rawPayload.put("flow_point", "SETTLE");
+        rawPayload.put("colonel_order_info", Map.of(
+                "estimated_commission", 55L,
+                "real_commission", 50L,
+                "settled_tech_service_fee", 6L
+        ));
+        return new DouyinOrderGateway.DouyinOrderItem(
+                orderId,
+                "3810562766247428542",
+                "3810562766247428542",
+                "56591058",
+                "冰戈的冷饮店",
+                null,
+                null,
+                null,
+                2550L,
+                55L,
+                2,
+                1780480000L,
+                1780483600L,
+                rawPayload
+        );
     }
 
     private DouyinOrderGateway.DouyinOrderItem instituteOrderItem(String orderId) {

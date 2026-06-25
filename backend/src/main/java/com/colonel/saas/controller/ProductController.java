@@ -14,7 +14,8 @@ import com.colonel.saas.dto.product.QuickSampleApplyRequest;
 import com.colonel.saas.dto.product.QuickSampleApplyResponse;
 import com.colonel.saas.entity.ColonelPartner;
 import com.colonel.saas.service.ColonelPartnerSyncService;
-import com.colonel.saas.service.ProductQuickSampleService;
+import com.colonel.saas.domain.product.application.ProductQuickSampleApplicationService;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.service.ProductService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -64,7 +65,7 @@ import java.util.UUID;
  * </ul>
  *
  * <p><b>架构角色：</b>REST 控制器层，接收前端商品库页面请求，委托 {@link ProductService}、
- * {@link ProductQuickSampleService}、{@link ColonelPartnerSyncService} 完成业务逻辑。
+ * {@link ProductQuickSampleApplicationService}、{@link ColonelPartnerSyncService} 完成业务逻辑。
  *
  * <p><b>访问控制：</b>需要 {@link RequireRoles} 注解限定业务角色（BIZ_LEADER / BIZ_STAFF /
  * CHANNEL_LEADER / CHANNEL_STAFF），部分操作进一步限制为特定角色。
@@ -74,7 +75,7 @@ import java.util.UUID;
  * 各废弃接口均标注了对应的迁移目标路径。
  *
  * @see ProductService 商品核心业务服务
- * @see ProductQuickSampleService 快速寄样业务服务
+ * @see ProductQuickSampleApplicationService 快速寄样应用层
  * @see ColonelPartnerSyncService 团长合作方同步服务
  * @see BaseController 控制器基类，提供 ok()、okPage() 等统一响应封装
  */
@@ -89,19 +90,24 @@ public class ProductController extends BaseController {
     /** 商品核心业务服务，提供分页查询、筛选、详情、审核、转链、跟进等全部商品操作。 */
     private final ProductService productService;
 
-    /** 快速寄样业务服务，处理商品库弹窗式快速寄样申请的创建与校验。 */
-    private final ProductQuickSampleService productQuickSampleService;
+    /** 快速寄样应用层，处理商品库弹窗式快速寄样申请的创建与校验。 */
+    private final ProductQuickSampleApplicationService productQuickSampleApplicationService;
 
     /** 团长合作方同步服务，提供团长合作方列表查询（已废弃的筛选项接口使用）。 */
     private final ColonelPartnerSyncService colonelPartnerSyncService;
 
+    /** 当前用户权限策略，统一处理角色编码解析与匹配。 */
+    private final CurrentUserPermissionPolicy currentUserPermissionPolicy;
+
     public ProductController(
             ProductService productService,
-            ProductQuickSampleService productQuickSampleService,
-            ColonelPartnerSyncService colonelPartnerSyncService) {
+            ProductQuickSampleApplicationService productQuickSampleApplicationService,
+            ColonelPartnerSyncService colonelPartnerSyncService,
+            CurrentUserPermissionPolicy currentUserPermissionPolicy) {
         this.productService = productService;
-        this.productQuickSampleService = productQuickSampleService;
+        this.productQuickSampleApplicationService = productQuickSampleApplicationService;
         this.colonelPartnerSyncService = colonelPartnerSyncService;
+        this.currentUserPermissionPolicy = currentUserPermissionPolicy;
     }
 
     /**
@@ -124,7 +130,7 @@ public class ProductController extends BaseController {
      * @param supportsAds       是否支持投流：1/0（可选）
      * @param salesRange        近 30 天销量区间：lt100/100_999/1k_29k/gte30000（可选）
      * @param promotionLink     转链状态：PENDING/LINKED/FAILED（可选）
-     * @param allianceStatus    联盟推广状态：promoting/pending_audit/rejected/terminated/expired（可选）
+     * @param allianceStatus    联盟推广状态：promoting/pending_audit/rejected/terminated/canceled/expired（可选）
      * @param commission        佣金区间：gt20/10_20/lt10（可选）
      * @param hasSample         是否有寄样规则：1/0（可选）
      * @param assignee          负责人过滤：assigned/unassigned（可选）
@@ -132,7 +138,7 @@ public class ProductController extends BaseController {
      * @param decision          推进判断：MAIN/SECONDARY/PAUSE/DROP/NONE（可选）
      * @param partnerId         合作方 ID；商家型为 shop_id，团长型为 colonel_buyin_id（可选）
      * @param partnerType       合作方类型：MERCHANT/COLONEL（可选）
-     * @param sortBy            排序方式：default（置顶优先）/ latest（晚上架优先）（可选）
+     * @param sortBy            排序方式：default（置顶优先）/ latest（上游合作时间倒序）（可选）
      * @param goodsTags         货品标签，多选时用英文逗号分隔（可选）
      * @param productTags       商品标签，多选时用英文逗号分隔（可选）
      * @param colonelName       团长名称关键字（可选）
@@ -175,7 +181,7 @@ public class ProductController extends BaseController {
             @Parameter(description = "是否支持投流：1/0。") @RequestParam(required = false) String supportsAds,
             @Parameter(description = "近 30 天销量区间：lt100/100_999/1k_29k/gte30000。") @RequestParam(required = false) String salesRange,
             @Parameter(description = "转链状态：PENDING/LINKED/FAILED。") @RequestParam(required = false) String promotionLink,
-            @Parameter(description = "联盟推广状态：promoting/pending_audit/rejected/terminated/expired。") @RequestParam(required = false) String allianceStatus,
+            @Parameter(description = "联盟推广状态：promoting/pending_audit/rejected/terminated/canceled/expired。") @RequestParam(required = false) String allianceStatus,
             @Parameter(description = "佣金区间：gt20/10_20/lt10。") @RequestParam(required = false) String commission,
             @Parameter(description = "是否有寄样规则：1/0。") @RequestParam(required = false) String hasSample,
             @Parameter(description = "负责人过滤：assigned/unassigned。") @RequestParam(required = false) String assignee,
@@ -183,7 +189,7 @@ public class ProductController extends BaseController {
             @Parameter(description = "推进判断：MAIN/SECONDARY/PAUSE/DROP/NONE。") @RequestParam(required = false) String decision,
             @Parameter(description = "合作方 ID；商家型为 shop_id，团长型为 colonel_buyin_id。") @RequestParam(required = false) String partnerId,
             @Parameter(description = "合作方类型：MERCHANT/COLONEL。") @RequestParam(name = "partnerType", required = false) String partnerType,
-            @Parameter(description = "排序：default（置顶优先）/ latest（晚上架优先）。") @RequestParam(name = "sortBy", required = false) String sortBy,
+            @Parameter(description = "排序：default（置顶优先）/ latest（上游合作时间倒序）。") @RequestParam(name = "sortBy", required = false) String sortBy,
             @Parameter(description = "货品标签，多选时用英文逗号分隔。") @RequestParam(required = false) String goodsTags,
             @Parameter(description = "商品标签，多选时用英文逗号分隔。") @RequestParam(required = false) String productTags,
             @Parameter(description = "团长名称关键字。") @RequestParam(required = false) String colonelName,
@@ -267,7 +273,7 @@ public class ProductController extends BaseController {
      *
      * <ol>
      *   <li>校验商品关联主键是否存在</li>
-     *   <li>委托 {@link ProductQuickSampleService#applyQuickSample} 创建寄样申请</li>
+     *   <li>委托 {@link ProductQuickSampleApplicationService#applyQuickSample} 创建寄样申请</li>
      *   <li>返回创建结果，包含各达人对应的寄样单 ID</li>
      * </ol>
      *
@@ -287,7 +293,7 @@ public class ProductController extends BaseController {
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "roleCodes", required = false) List<String> roleCodes) {
-        return ok(productQuickSampleService.applyQuickSample(relationId, request, userId, deptId, roleCodes));
+        return ok(productQuickSampleApplicationService.applyQuickSample(relationId, request, userId, deptId, roleCodes));
     }
 
     /**
@@ -302,6 +308,13 @@ public class ProductController extends BaseController {
     @GetMapping("/categories")
     public ApiResult<List<String>> libraryCategories() {
         return ok(productService.listLibraryCategories());
+    }
+
+    @Operation(summary = "商品库管理统计", description = "按 snapshot / relation / DISPLAYING 等口径返回只读统计，不改变商品库分页展示语义。")
+    @RequireRoles({RoleCodes.ADMIN})
+    @GetMapping("/admin/counts")
+    public ApiResult<ProductService.AdminProductCounts> adminCounts() {
+        return ok(productService.getAdminCounts());
     }
 
     /**
@@ -1104,15 +1117,9 @@ public class ProductController extends BaseController {
      * @return {@code true} 表示需要限制为仅查看自己的商品，{@code false} 表示不限制
      */
     private boolean shouldLimitPickPageToSelf(List<String> roleCodes) {
-        if (roleCodes == null || roleCodes.isEmpty()) {
+        if (currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.BIZ_LEADER)) {
             return false;
         }
-        List<String> normalized = roleCodes.stream()
-                .map(String::toLowerCase)
-                .toList();
-        if (normalized.contains(RoleCodes.ADMIN) || normalized.contains(RoleCodes.BIZ_LEADER)) {
-            return false;
-        }
-        return normalized.contains(RoleCodes.BIZ_STAFF);
+        return currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.BIZ_STAFF);
     }
 }

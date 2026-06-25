@@ -35,6 +35,7 @@
 
         <section class="detail-section">
           <h3 class="section-title">订单基础信息</h3>
+          <p class="section-source">数据来源：{{ getOrderDetailSectionSource('basic') }}</p>
           <n-descriptions bordered :column="2">
             <n-descriptions-item label="订单号">{{ detail.orderId || '-' }}</n-descriptions-item>
             <n-descriptions-item label="订单状态">{{ detail.orderStatusText || '-' }}</n-descriptions-item>
@@ -46,6 +47,7 @@
 
         <section class="detail-section">
           <h3 class="section-title">费用信息</h3>
+          <p class="section-source">数据来源：{{ getOrderDetailSectionSource('amount') }}</p>
           <n-descriptions bordered :column="2">
             <n-descriptions-item label="订单金额">{{ formatMoney(detail.amount?.orderAmount) }}</n-descriptions-item>
             <n-descriptions-item label="结算金额">{{ formatMoney(detail.amount?.settleAmount) }}</n-descriptions-item>
@@ -56,6 +58,7 @@
 
         <section class="detail-section">
           <h3 class="section-title">归因结果</h3>
+          <p class="section-source">数据来源：{{ getOrderDetailSectionSource('attribution') }}</p>
           <n-descriptions bordered :column="2">
             <n-descriptions-item label="归因状态">
               <StatusTag scene="attribution" :status="detail.attributionStatus" />
@@ -77,6 +80,7 @@
 
         <section class="detail-section">
           <h3 class="section-title">推广链路</h3>
+          <p class="section-source">数据来源：{{ getOrderDetailSectionSource('promotion') }}</p>
           <n-descriptions bordered :column="2">
             <n-descriptions-item label="pick_source">{{ detail.promotion?.pickSource || '-' }}</n-descriptions-item>
             <n-descriptions-item label="匹配结果">
@@ -94,6 +98,7 @@
 
         <section class="detail-section">
           <h3 class="section-title">商品 / 活动 / 招商</h3>
+          <p class="section-source">数据来源：{{ getOrderDetailSectionSource('product') }}</p>
           <n-descriptions bordered :column="2">
             <n-descriptions-item label="商品 ID">{{ detail.product?.productId || '-' }}</n-descriptions-item>
             <n-descriptions-item label="商品名称">{{ detail.product?.productName || '-' }}</n-descriptions-item>
@@ -106,6 +111,7 @@
 
         <section class="detail-section">
           <h3 class="section-title">达人信息</h3>
+          <p class="section-source">数据来源：{{ getOrderDetailSectionSource('talent') }}</p>
           <n-descriptions bordered :column="2">
             <n-descriptions-item label="达人 UID">{{ detail.talent?.talentUid || '-' }}</n-descriptions-item>
             <n-descriptions-item label="达人昵称">{{ detail.talent?.talentName || '-' }}</n-descriptions-item>
@@ -117,6 +123,7 @@
 
         <section class="detail-section">
           <h3 class="section-title">寄样关联</h3>
+          <p class="section-source">数据来源：{{ getOrderDetailSectionSource('sample') }}</p>
           <n-descriptions bordered :column="2">
             <n-descriptions-item label="是否关联寄样单">
               {{ detail.sample?.matched ? '是' : '否' }}
@@ -160,6 +167,7 @@ import {
   getAttributionReasonSuggestion,
   getAttributionReasonText
 } from '../../../constants/orderAttribution'
+import { getOrderDetailSectionSource } from '../../../constants/orderDetailFieldSources'
 
 const props = defineProps<{
   show: boolean
@@ -324,14 +332,17 @@ async function loadDetail() {
 }
 
 watch(
-  () => props.show,
-  (show) => {
-    if (show) {
-      loadDetail()
+  () => [props.show, props.orderId] as const,
+  ([show, orderId]) => {
+    if (show && orderId) {
+      void loadDetail()
       return
     }
-    detail.value = null
-  }
+    if (!show) {
+      detail.value = null
+    }
+  },
+  { immediate: true }
 )
 </script>
 
@@ -426,6 +437,13 @@ watch(
   margin: 0;
   font-size: var(--text-base);
   font-weight: 600;
+}
+
+.section-source {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  line-height: 1.5;
 }
 
 .break-all {

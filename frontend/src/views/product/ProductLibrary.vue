@@ -49,6 +49,14 @@
         件
       </span>
       <n-space align="center" :size="8">
+        <n-select
+          :value="selectedSortBy"
+          :options="librarySortOptions"
+          placeholder="排序方式"
+          style="width: 190px"
+          data-testid="product-library-sort"
+          @update:value="updateSortBy"
+        />
         <n-button
           v-if="hasMore"
           :loading="loadingMore"
@@ -79,6 +87,14 @@
           @refresh="refreshProductRow"
         />
       </div>
+
+      <div
+        v-if="products.length && hasMore"
+        ref="loadMoreTrigger"
+        class="product-library-scroll-sentinel"
+        data-testid="product-library-scroll-sentinel"
+        aria-hidden="true"
+      />
 
       <PageEmpty
         v-else-if="!loading"
@@ -120,7 +136,7 @@
 
 <script setup lang="ts">
 import { notifyApiFailure } from '../../utils/requestError'
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useMessage } from 'naive-ui'
 import PageEmpty from '../../components/PageEmpty.vue'
@@ -167,6 +183,7 @@ const products = ref<any[]>([])
 const currentPage = ref(1)
 const hasMore = ref(false)
 const totalCount = ref(0)
+const loadMoreTrigger = ref<HTMLElement | null>(null)
 const libraryStatus = ref<number | null>(null)
 const filters = ref<ProductFilterState>(DEFAULT_PRODUCT_FILTERS())
 const libraryCategoryOptions = ref<{ label: string; value: string }[]>([])
@@ -176,6 +193,7 @@ const quickSampleProduct = ref<any | null>(null)
 const showDetail = ref(false)
 const detailRefreshKey = ref(0)
 const manualCopyDialog = ref(createEmptyManualCopyDialogState())
+let loadMoreObserver: IntersectionObserver | null = null
 
 const canCopyPromotionLink = computed(() =>
   hasAccess(authStore.roleCodes, [ROLE_CODES.CHANNEL_LEADER, ROLE_CODES.CHANNEL_STAFF])
@@ -189,6 +207,62 @@ const convertLinkForBriefCopy = (
 
 /** 渠道与管理员可发起快速寄样（后端 quick-sample 同限） */
 const canQuickSample = computed(() => canCopyPromotionLink.value || authStore.isAdmin)
+
+const librarySortOptions = [
+  { label: '置顶优先', value: 'default' },
+  { label: '上游合作时间', value: 'latest' }
+]
+
+const normalizeSortBy = (value?: string | null) => {
+  return String(value || '').trim() === 'latest' ? 'latest' : 'default'
+}
+
+const readSingleQueryValue = (value: string | (string | null)[] | null | undefined) => {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      if (item == null) continue
+      const text = String(item).trim()
+      if (text) return text
+    }
+    return ''
+  }
+  if (value == null) return ''
+  return String(value).trim()
+}
+
+const selectedSortBy = ref<'default' | 'latest'>(
+  normalizeSortBy(readSingleQueryValue(route.query?.sortBy as string | (string | null)[] | null | undefined))
+)
+
+const buildQuery = (nextSortBy: string) => {
+  const nextQuery: Record<string, string> = {}
+  const normalizedSortBy = normalizeSortBy(nextSortBy)
+  for (const [key, value] of Object.entries(route.query ?? {})) {
+    if (key === 'sortBy') continue
+    if (value == null) continue
+    if (Array.isArray(value)) {
+      const first = value.find((item) => item != null && String(item).trim() !== '')
+      if (first == null) continue
+      const text = String(first).trim()
+      if (text) nextQuery[key] = text
+      continue
+    }
+    const text = String(value).trim()
+    if (text) nextQuery[key] = text
+  }
+  if (normalizedSortBy !== 'default') {
+    nextQuery.sortBy = normalizedSortBy
+  }
+  return nextQuery
+}
+
+const updateSortBy = (sortBy: string | null) => {
+  const normalized = normalizeSortBy(sortBy)
+  if (selectedSortBy.value === normalized) return
+  selectedSortBy.value = normalized
+  void router.replace({ path: route.path, query: buildQuery(normalized) })
+  void fetchProducts(true)
+}
 
 const normalizeText = (value?: string | number | null) => {
   if (value === null || value === undefined) return ''
@@ -264,7 +338,7 @@ const fetchProducts = async (reset: boolean) => {
       keyword: filters.value.productId || filters.value.productName || undefined,
       productIdMode: 'keyword',
       status: libraryStatus.value ?? undefined,
-      sortBy: (route.query.sortBy as string | undefined) || 'default'
+      sortBy: selectedSortBy.value
     }))
     const data = res?.data || {}
     const records = Array.isArray(data.records) ? data.records : []
@@ -294,6 +368,7 @@ const fetchProducts = async (reset: boolean) => {
   } finally {
     loading.value = false
     loadingMore.value = false
+    void scheduleLoadMoreObservation()
   }
 }
 
@@ -312,8 +387,46 @@ const refreshProducts = async () => {
   await fetchProducts(true)
 }
 
+const canLoadNextPage = () => hasMore.value && !loading.value && !loadingMore.value
+
+const triggerLoadMore = () => {
+  if (canLoadNextPage()) void fetchProducts(false)
+}
+
 const loadMore = () => {
-  if (hasMore.value && !loading.value && !loadingMore.value) fetchProducts(false)
+  triggerLoadMore()
+}
+
+const getLoadMoreObserver = () => {
+  if (typeof window === 'undefined' || typeof window.IntersectionObserver === 'undefined') {
+    return null
+  }
+  if (!loadMoreObserver) {
+    loadMoreObserver = new window.IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        triggerLoadMore()
+      }
+    }, {
+      root: null,
+      rootMargin: '480px 0px',
+      threshold: 0
+    })
+  }
+  return loadMoreObserver
+}
+
+const refreshLoadMoreObserver = () => {
+  const observer = getLoadMoreObserver()
+  if (!observer) return
+  observer.disconnect()
+  if (hasMore.value && loadMoreTrigger.value) {
+    observer.observe(loadMoreTrigger.value)
+  }
+}
+
+const scheduleLoadMoreObservation = async () => {
+  await nextTick()
+  refreshLoadMoreObserver()
 }
 
 const handleFiltersChange = (nextFilters: ProductFilterState) => {
@@ -529,6 +642,29 @@ watch(
     void refreshProducts()
   }
 )
+
+watch(
+  () => route.query.sortBy,
+  (next) => {
+    const nextSortBy = normalizeSortBy(readSingleQueryValue(next as string | (string | null)[] | null | undefined))
+    if (selectedSortBy.value === nextSortBy) return
+    selectedSortBy.value = nextSortBy
+    void refreshProducts()
+  }
+)
+
+watch(
+  () => [hasMore.value, products.value.length],
+  () => {
+    void scheduleLoadMoreObservation()
+  },
+  { flush: 'post' }
+)
+
+onBeforeUnmount(() => {
+  loadMoreObserver?.disconnect()
+  loadMoreObserver = null
+})
 </script>
 
 <style scoped>
@@ -602,6 +738,11 @@ watch(
   gap: 16px;
   align-items: start;
   justify-items: center;
+}
+
+.product-library-scroll-sentinel {
+  width: 100%;
+  height: 1px;
 }
 
 @media (min-width: 1600px) {

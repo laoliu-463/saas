@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.colonel.saas.common.exception.OptimisticLockSupport;
 import com.colonel.saas.common.exception.BusinessException;
+import com.colonel.saas.domain.product.policy.ProductPinPolicy;
 import com.colonel.saas.entity.ProductOperationState;
 import com.colonel.saas.entity.ProductSnapshot;
 import com.colonel.saas.mapper.ProductOperationStateMapper;
@@ -27,8 +28,8 @@ import java.util.UUID;
  * 允许招商人员将已入商品库的规格置顶，在商品列表中获得更高的展示排序。
  * 置顶规则：
  * <ul>
- *   <li>每位用户最多同时置顶 {@value MAX_PINNED_PER_USER} 个规格</li>
- *   <li>每个置顶有效期 {@value PIN_HOURS} 小时，过期自动失效</li>
+ *   <li>每位用户最多同时置顶 {@value ProductPinPolicy#MAX_PINNED_PER_USER} 个规格</li>
+ *   <li>每个置顶有效期 {@value ProductPinPolicy#PIN_HOURS} 小时，过期自动失效</li>
  *   <li>置顶人可以取消自己的置顶；管理员可以取消任何人的置顶</li>
  *   <li>同一规格重复置顶会刷新有效期（不占用额外配额）</li>
  * </ul>
@@ -44,10 +45,12 @@ import java.util.UUID;
 @Service
 public class ProductPinService {
 
-    /** 每位用户最多同时置顶的规格数量 */
-    public static final int MAX_PINNED_PER_USER = 10;
-    /** 置顶有效期（小时） */
-    public static final int PIN_HOURS = 24;
+    /** @deprecated 使用 {@link ProductPinPolicy#MAX_PINNED_PER_USER} */
+    @Deprecated
+    public static final int MAX_PINNED_PER_USER = ProductPinPolicy.MAX_PINNED_PER_USER;
+    /** @deprecated 使用 {@link ProductPinPolicy#PIN_HOURS} */
+    @Deprecated
+    public static final int PIN_HOURS = ProductPinPolicy.PIN_HOURS;
 
     /** 商品运营状态 Mapper */
     private final ProductOperationStateMapper operationStateMapper;
@@ -98,12 +101,12 @@ public class ProductPinService {
                 .gt(ProductOperationState::getPinnedUntil, now)
                 .eq(ProductOperationState::getDeleted, 0));
         // 判断该规格是否已处于置顶状态（已置顶的刷新有效期不占配额）
-        boolean alreadyPinned = state.getPinnedUntil() != null && state.getPinnedUntil().isAfter(now);
-        if (!alreadyPinned && activePins >= MAX_PINNED_PER_USER) {
-            throw BusinessException.stateInvalid("置顶数量已达上限（最多 " + MAX_PINNED_PER_USER + " 个）");
+        boolean alreadyPinned = ProductPinPolicy.isPinned(state, now);
+        if (ProductPinPolicy.exceedsQuota(activePins, alreadyPinned)) {
+            throw BusinessException.stateInvalid("置顶数量已达上限（最多 " + ProductPinPolicy.MAX_PINNED_PER_USER + " 个）");
         }
         state.setPinnedAt(now);
-        state.setPinnedUntil(now.plusHours(PIN_HOURS));
+        state.setPinnedUntil(ProductPinPolicy.pinExpiresAt(now));
         state.setPinnedBy(userId);
         OptimisticLockSupport.requireUpdated(operationStateMapper.updateById(state));
         return state;
@@ -124,7 +127,7 @@ public class ProductPinService {
     @Transactional(rollbackFor = Exception.class)
     public ProductOperationState unpin(String activityId, String productId, UUID userId) {
         ProductOperationState state = requireState(activityId, productId);
-        if (userId != null && state.getPinnedBy() != null && !userId.equals(state.getPinnedBy())) {
+        if (!ProductPinPolicy.canUnpin(state.getPinnedBy(), userId)) {
             throw BusinessException.forbidden("仅置顶人或管理员可取消置顶");
         }
         state.setPinnedAt(null);
@@ -239,9 +242,7 @@ public class ProductPinService {
      * @return true 表示仍在置顶有效期内
      */
     public static boolean isPinned(ProductOperationState state, LocalDateTime now) {
-        return state != null
-                && state.getPinnedUntil() != null
-                && state.getPinnedUntil().isAfter(now == null ? LocalDateTime.now() : now);
+        return ProductPinPolicy.isPinned(state, now);
     }
 
     /**

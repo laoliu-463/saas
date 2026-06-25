@@ -8,6 +8,8 @@ import com.colonel.saas.dto.user.CheckPermissionRequest;
 import com.colonel.saas.dto.user.CheckPermissionResponse;
 import com.colonel.saas.dto.user.CurrentUserResponse;
 import com.colonel.saas.dto.user.UserDataScopeResponse;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
+import com.colonel.saas.domain.user.policy.UserCredentialPolicy;
 import com.colonel.saas.entity.SysRole;
 import com.colonel.saas.entity.SysUser;
 import com.colonel.saas.mapper.SysRoleMapper;
@@ -50,7 +52,13 @@ class UserDomainServiceTest {
 
     @BeforeEach
     void setUp() {
-        userDomainService = new UserDomainService(sysUserMapper, sysRoleMapper, passwordEncoder, operationLogService);
+        userDomainService = new UserDomainService(
+                sysUserMapper,
+                sysRoleMapper,
+                passwordEncoder,
+                operationLogService,
+                new CurrentUserPermissionPolicy(),
+                new UserCredentialPolicy());
     }
 
     @Test

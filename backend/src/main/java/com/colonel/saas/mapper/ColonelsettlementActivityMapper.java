@@ -214,6 +214,15 @@ public interface ColonelsettlementActivityMapper {
             @Param("lastSyncedBefore") LocalDateTime lastSyncedBefore);
 
     /**
+     * 商品同步 dry-run 探针使用的活动范围查询。
+     */
+    List<String> selectActivityIdsForProductSyncProbe(
+            @Param("scope") String scope,
+            @Param("limit") int limit,
+            @Param("recentSince") LocalDateTime recentSince,
+            @Param("activityIds") List<String> activityIds);
+
+    /**
      * 更新活动商品快照同步时间。
      */
     int touchLastSyncAt(

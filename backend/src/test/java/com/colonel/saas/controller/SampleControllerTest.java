@@ -22,20 +22,23 @@ import com.colonel.saas.entity.ProductSnapshot;
 import com.colonel.saas.entity.SampleLogisticsTrace;
 import com.colonel.saas.entity.SampleRequest;
 import com.colonel.saas.entity.SampleStatusLog;
-import com.colonel.saas.entity.SysUser;
 import com.colonel.saas.entity.Talent;
 import com.colonel.saas.entity.TalentClaim;
 import com.colonel.saas.gateway.logistics.query.LogisticsQueryResult;
 import com.colonel.saas.gateway.logistics.query.LogisticsStatusCode;
-import com.colonel.saas.mapper.ProductMapper;
-import com.colonel.saas.mapper.ProductOperationStateMapper;
-import com.colonel.saas.mapper.ProductSnapshotMapper;
 import com.colonel.saas.mapper.SampleRequestMapper;
 import com.colonel.saas.mapper.SampleStatusLogMapper;
-import com.colonel.saas.mapper.SysUserMapper;
-import com.colonel.saas.mapper.TalentClaimMapper;
-import com.colonel.saas.mapper.TalentMapper;
+import com.colonel.saas.domain.product.facade.ProductDomainFacade;
+import com.colonel.saas.domain.product.facade.dto.ProductReadDTO;
+import com.colonel.saas.domain.product.facade.dto.ProductSnapshotReadDTO;
+import com.colonel.saas.domain.talent.facade.TalentDomainFacade;
+import com.colonel.saas.domain.talent.facade.dto.TalentReadDTO;
+import com.colonel.saas.domain.user.facade.UserDomainFacade;
+import com.colonel.saas.domain.user.facade.dto.UserOwnershipReference;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
+import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.domain.sample.event.SampleDomainEventPublisher;
+import com.colonel.saas.domain.sample.policy.SampleActionPermissionPolicy;
 import com.colonel.saas.service.CrawlerTalentInfoService;
 import com.colonel.saas.service.BusinessRuleConfigService;
 import com.colonel.saas.constant.RoleCodes;
@@ -48,6 +51,13 @@ import com.colonel.saas.service.ProductService;
 import com.colonel.saas.service.SampleEligibilityService;
 import com.colonel.saas.service.SampleStatusLogService;
 import com.colonel.saas.service.SampleWriteTransactionService;
+import com.colonel.saas.config.DddRefactorProperties;
+import com.colonel.saas.domain.sample.application.SampleCommandApplicationService;
+import com.colonel.saas.domain.sample.application.SampleQueryApplicationService;
+import com.colonel.saas.domain.sample.facade.LegacySampleDomainFacade;
+import com.colonel.saas.domain.sample.policy.SampleStateMachine;
+import com.colonel.saas.service.sample.LegacySampleCommandService;
+import com.colonel.saas.service.sample.LegacySampleQueryService;
 import com.colonel.saas.service.sample.SampleApplicationService;
 import com.colonel.saas.vo.SampleTalentVO;
 import com.colonel.saas.vo.sample.SampleBoardCard;
@@ -64,6 +74,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 
@@ -79,31 +91,30 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 class SampleControllerTest {
 
     @Mock
     private SampleRequestMapper sampleRequestMapper;
     @Mock
-    private ProductMapper productMapper;
+    private ProductDomainFacade productDomainFacade;
     @Mock
-    private ProductOperationStateMapper productOperationStateMapper;
+    private UserDomainFacade userDomainFacade;
     @Mock
-    private ProductSnapshotMapper productSnapshotMapper;
-    @Mock
-    private SysUserMapper sysUserMapper;
-    @Mock
-    private TalentMapper talentMapper;
-    @Mock
-    private TalentClaimMapper talentClaimMapper;
+    private TalentDomainFacade talentDomainFacade;
     @Mock
     private SampleStatusLogService sampleStatusLogService;
     @Mock
@@ -126,17 +137,20 @@ class SampleControllerTest {
     private SampleDomainEventPublisher sampleDomainEventPublisher;
 
     private SampleController sampleController;
+    private SampleApplicationService applicationDelegate;
+    private DataScopePolicy dataScopePolicy;
+    private DddRefactorProperties dddRefactorProperties;
 
     @BeforeEach
     void setUp() {
-        sampleController = new SampleController(
+        dataScopePolicy = spy(new DataScopePolicy());
+        dddRefactorProperties = new DddRefactorProperties();
+        applicationDelegate = new SampleApplicationService(
                 sampleRequestMapper,
-                productMapper,
-                productOperationStateMapper,
-                productSnapshotMapper,
-                sysUserMapper,
-                talentMapper,
-                talentClaimMapper,
+                productDomainFacade,
+                userDomainFacade,
+                new SampleActionPermissionPolicy(new CurrentUserPermissionPolicy()),
+                talentDomainFacade,
                 sampleStatusLogService,
                 sampleStatusLogMapper,
                 crawlerTalentInfoService,
@@ -147,8 +161,20 @@ class SampleControllerTest {
                 sampleLogisticsImportService,
                 sampleLogisticsSubscriptionService,
                 sampleDomainEventPublisher,
-                new SampleWriteTransactionService()
-        );
+                new SampleWriteTransactionService(),
+                dataScopePolicy,
+                dddRefactorProperties);
+        LegacySampleQueryService legacyQuery = new LegacySampleQueryService(applicationDelegate);
+        LegacySampleCommandService legacyCommand = new LegacySampleCommandService(applicationDelegate);
+        LegacySampleDomainFacade sampleDomainFacade = new LegacySampleDomainFacade(sampleRequestMapper);
+        com.colonel.saas.domain.sample.application.SampleQueryApplicationService queryApplicationService =
+                new SampleQueryApplicationService(legacyQuery, sampleDomainFacade, dddRefactorProperties);
+        com.colonel.saas.domain.sample.application.SampleCommandApplicationService commandApplicationService =
+                new SampleCommandApplicationService(legacyCommand, sampleDomainFacade, dddRefactorProperties);
+        sampleController = new SampleController(
+                new com.colonel.saas.domain.sample.application.SampleApplicationService(
+                        queryApplicationService,
+                        commandApplicationService));
         lenient().when(configDomainFacade.isSampleLimitEnabled()).thenReturn(true);
         lenient().when(configDomainFacade.getSampleLimitDays()).thenReturn(7);
         lenient().when(sampleEligibilityService.evaluate(any(), any()))
@@ -158,8 +184,11 @@ class SampleControllerTest {
                         new SampleEligibilityService.SampleDefaultStandard(30000L, "LV1", java.util.Map.of()),
                         new SampleEligibilityService.TalentSnapshot(50000L, "LV2")
                 ));
-        lenient().when(talentClaimMapper.findActiveByTalentAndUser(any(), any()))
-                .thenReturn(mock(TalentClaim.class));
+        lenient().when(sampleEligibilityService.classifyFailureRules(any()))
+                .thenAnswer(invocation -> new com.colonel.saas.domain.sample.policy.SampleEligibilityPolicy()
+                        .classifyFailureRules(invocation.getArgument(0)));
+        lenient().when(talentDomainFacade.hasActiveClaim(any(), any())).thenReturn(true);
+        lenient().when(productDomainFacade.isSelectedToLibraryForSample(any())).thenReturn(true);
         lenient().when(sampleRequestMapper.updateById(any(SampleRequest.class))).thenReturn(1);
     }
 
@@ -186,9 +215,10 @@ class SampleControllerTest {
         request.setProductId(productId);
         request.setQuantity(1);
 
-        when(productMapper.selectById(productId)).thenReturn(product);
+        when(productDomainFacade.findProductById(productId)).thenReturn(toProductRead(product));
+        when(productDomainFacade.findOrMaterializeSampleProduct(productId)).thenReturn(toProductRead(product));
         when(crawlerTalentInfoService.findByTalentId("talent_001")).thenReturn(crawlerTalentInfo);
-        when(talentMapper.selectOne(any())).thenReturn(talent);
+        when(talentDomainFacade.findOrCreateSampleTalent(any(), any(), any())).thenReturn(toTalentRead(talent));
         when(sampleRequestMapper.selectCount(any())).thenReturn(1L);
 
         assertThatThrownBy(() -> sampleController.createSample(
@@ -228,10 +258,11 @@ class SampleControllerTest {
         request.setProductId(productId);
         request.setQuantity(2);
 
-        when(productMapper.selectById(productId)).thenReturn(product);
+        when(productDomainFacade.findProductById(productId)).thenReturn(toProductRead(product));
+        when(productDomainFacade.findOrMaterializeSampleProduct(productId)).thenReturn(toProductRead(product));
         when(crawlerTalentInfoService.findByTalentId("talent_002")).thenReturn(crawlerTalentInfo);
-        when(talentMapper.selectOne(any())).thenReturn(talent);
-        when(talentClaimMapper.findActiveByTalentAndUser(talentUuid, userId)).thenReturn(mock(com.colonel.saas.entity.TalentClaim.class));
+        when(talentDomainFacade.findOrCreateSampleTalent(any(), any(), any())).thenReturn(toTalentRead(talent));
+        when(talentDomainFacade.hasActiveClaim(talentUuid, userId)).thenReturn(true);
         when(sampleRequestMapper.selectCount(any())).thenReturn(0L);
 
         sampleController.createSample(request, userId, List.of(RoleCodes.CHANNEL_STAFF));
@@ -278,10 +309,11 @@ class SampleControllerTest {
         request.setRecipientPhone("13800138000");
         request.setRecipientAddress("上海市浦东新区测试路 1 号");
 
-        when(productMapper.selectById(productId)).thenReturn(product);
+        when(productDomainFacade.findProductById(productId)).thenReturn(toProductRead(product));
+        when(productDomainFacade.findOrMaterializeSampleProduct(productId)).thenReturn(toProductRead(product));
         when(crawlerTalentInfoService.findByTalentId("talent_recipient_001")).thenReturn(crawlerTalentInfo);
-        when(talentMapper.selectOne(any())).thenReturn(talent);
-        when(talentClaimMapper.findActiveByTalentAndUser(talentUuid, userId)).thenReturn(mock(com.colonel.saas.entity.TalentClaim.class));
+        when(talentDomainFacade.findOrCreateSampleTalent(any(), any(), any())).thenReturn(toTalentRead(talent));
+        when(talentDomainFacade.hasActiveClaim(talentUuid, userId)).thenReturn(true);
         when(sampleRequestMapper.selectCount(any())).thenReturn(0L);
 
         var response = sampleController.createSample(request, userId, List.of(RoleCodes.CHANNEL_STAFF));
@@ -322,10 +354,11 @@ class SampleControllerTest {
         request.setQuantity(1);
         request.setApplySource("INTERNAL_QUICK_SAMPLE");
 
-        when(productMapper.selectById(productId)).thenReturn(product);
+        when(productDomainFacade.findProductById(productId)).thenReturn(toProductRead(product));
+        when(productDomainFacade.findOrMaterializeSampleProduct(productId)).thenReturn(toProductRead(product));
         when(crawlerTalentInfoService.findByTalentId("talent_internal_sample_001")).thenReturn(crawlerTalentInfo);
-        when(talentMapper.selectOne(any())).thenReturn(talent);
-        when(talentClaimMapper.findActiveByTalentAndUser(talentUuid, userId)).thenReturn(mock(com.colonel.saas.entity.TalentClaim.class));
+        when(talentDomainFacade.findOrCreateSampleTalent(any(), any(), any())).thenReturn(toTalentRead(talent));
+        when(talentDomainFacade.hasActiveClaim(talentUuid, userId)).thenReturn(true);
         when(sampleRequestMapper.selectCount(any())).thenReturn(0L);
 
         var response = sampleController.createSample(request, userId, List.of(RoleCodes.CHANNEL_STAFF));
@@ -353,9 +386,10 @@ class SampleControllerTest {
         request.setTalentId("talent_001");
         request.setQuantity(1);
 
-        when(productMapper.selectById(productId)).thenReturn(product);
-        when(productSnapshotMapper.selectById(productId)).thenReturn(snapshot);
-        when(productOperationStateMapper.selectOne(any())).thenReturn(null);
+        when(productDomainFacade.findProductById(productId)).thenReturn(toProductRead(product));
+        when(productDomainFacade.findOrMaterializeSampleProduct(productId)).thenReturn(toProductRead(product));
+        when(productDomainFacade.findSnapshotById(productId)).thenReturn(toSnapshotRead(snapshot));
+        when(productDomainFacade.isSelectedToLibraryForSample(productId)).thenReturn(false);
 
         assertThatThrownBy(() -> sampleController.createSample(
                 request,
@@ -389,10 +423,12 @@ class SampleControllerTest {
         request.setProductId(productId);
         request.setQuantity(1);
 
-        when(productMapper.selectById(productId)).thenReturn(product);
+        when(productDomainFacade.findProductById(productId)).thenReturn(toProductRead(product));
+        when(productDomainFacade.findOrMaterializeSampleProduct(productId)).thenReturn(toProductRead(product));
         when(crawlerTalentInfoService.findByTalentId("manual_talent_001")).thenReturn(null);
-        when(talentMapper.selectOne(any())).thenReturn(talent);
-        when(talentClaimMapper.findActiveByTalentAndUser(talentUuid, userId)).thenReturn(mock(com.colonel.saas.entity.TalentClaim.class));
+        when(talentDomainFacade.findByDouyinUid("manual_talent_001")).thenReturn(toTalentRead(talent));
+        when(talentDomainFacade.findOrCreateSampleTalent(any(), any(), any())).thenReturn(toTalentRead(talent));
+        when(talentDomainFacade.hasActiveClaim(talentUuid, userId)).thenReturn(true);
         when(sampleRequestMapper.selectCount(any())).thenReturn(0L);
 
         sampleController.createSample(request, userId, List.of(RoleCodes.CHANNEL_STAFF));
@@ -436,12 +472,11 @@ class SampleControllerTest {
         request.setProductId(snapshotId);
         request.setQuantity(1);
 
-        when(productMapper.selectById(snapshotId)).thenReturn(null);
-        when(productSnapshotMapper.selectById(snapshotId)).thenReturn(snapshot);
-        when(productMapper.selectOne(any())).thenReturn(product);
+        when(productDomainFacade.findProductById(snapshotId)).thenReturn(null);
+        when(productDomainFacade.findOrMaterializeSampleProduct(snapshotId)).thenReturn(toProductRead(product));
         when(crawlerTalentInfoService.findByTalentId("talent_snapshot_001")).thenReturn(crawlerTalentInfo);
-        when(talentMapper.selectOne(any())).thenReturn(talent);
-        when(talentClaimMapper.findActiveByTalentAndUser(talentUuid, userId)).thenReturn(mock(com.colonel.saas.entity.TalentClaim.class));
+        when(talentDomainFacade.findOrCreateSampleTalent(any(), any(), any())).thenReturn(toTalentRead(talent));
+        when(talentDomainFacade.hasActiveClaim(talentUuid, userId)).thenReturn(true);
         when(sampleRequestMapper.selectCount(any())).thenReturn(0L);
 
         sampleController.createSample(request, userId, List.of(RoleCodes.CHANNEL_STAFF));
@@ -474,10 +509,11 @@ class SampleControllerTest {
         request.setProductId(productId);
         request.setQuantity(1);
 
-        when(productMapper.selectById(productId)).thenReturn(product);
+        when(productDomainFacade.findProductById(productId)).thenReturn(toProductRead(product));
+        when(productDomainFacade.findOrMaterializeSampleProduct(productId)).thenReturn(toProductRead(product));
         when(crawlerTalentInfoService.findByTalentId("talent_leader_001")).thenReturn(crawlerTalentInfo);
-        when(talentMapper.selectOne(any())).thenReturn(talent);
-        when(talentClaimMapper.findActiveByTalentAndUser(talentUuid, userId)).thenReturn(mock(com.colonel.saas.entity.TalentClaim.class));
+        when(talentDomainFacade.findOrCreateSampleTalent(any(), any(), any())).thenReturn(toTalentRead(talent));
+        when(talentDomainFacade.hasActiveClaim(talentUuid, userId)).thenReturn(true);
 
         sampleController.createSample(request, userId, List.of(RoleCodes.CHANNEL_LEADER));
 
@@ -508,14 +544,15 @@ class SampleControllerTest {
         request.setProductId(productId);
         request.setQuantity(1);
 
-        when(productMapper.selectById(productId)).thenReturn(product);
+        when(productDomainFacade.findProductById(productId)).thenReturn(toProductRead(product));
+        when(productDomainFacade.findOrMaterializeSampleProduct(productId)).thenReturn(toProductRead(product));
         when(crawlerTalentInfoService.findByTalentId("talent_unclaimed_001")).thenReturn(crawlerTalentInfo);
-        when(talentMapper.selectOne(any())).thenReturn(talent);
-        when(talentClaimMapper.findActiveByTalentAndUser(talentUuid, userId)).thenReturn(null);
+        when(talentDomainFacade.findOrCreateSampleTalent(any(), any(), any())).thenReturn(toTalentRead(talent));
+        doReturn(false).when(talentDomainFacade).hasActiveClaim(talentUuid, userId);
 
         assertThatThrownBy(() -> sampleController.createSample(request, userId, List.of(RoleCodes.CHANNEL_STAFF)))
                 .isInstanceOf(ForbiddenException.class)
-                .hasMessageContaining("请先认领");
+                .hasMessageContaining("私海");
 
         verify(sampleRequestMapper, never()).insert(any(SampleRequest.class));
     }
@@ -544,9 +581,11 @@ class SampleControllerTest {
 
         when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
 
-        assertThatThrownBy(() -> sampleController.getSampleById(sampleId, viewerId, null, DataScope.PERSONAL))
+        assertThatThrownBy(() -> sampleController.getSampleById(sampleId, viewerId, null, DataScope.PERSONAL, null))
                 .isInstanceOf(ForbiddenException.class)
                 .hasMessageContaining("无权访问");
+        verify(dataScopePolicy, never()).contextRequirement(any(), any(), any());
+        verify(dataScopePolicy, never()).decide(any(), any(), any());
     }
 
     @Test
@@ -563,17 +602,61 @@ class SampleControllerTest {
         sample.setDeptId(storedDeptId);
         sample.setStatus(1);
 
-        SysUser owner = new SysUser();
-        owner.setId(ownerId);
-        owner.setDeptId(movedDeptId);
-
         when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
-        when(productMapper.selectById(null)).thenReturn(null);
-        when(sysUserMapper.selectById(ownerId)).thenReturn(owner);
+        when(productDomainFacade.findProductById(null)).thenReturn(null);
+        when(productDomainFacade.findOrMaterializeSampleProduct(null)).thenReturn(null);
 
-        var response = sampleController.getSampleById(sampleId, viewerId, storedDeptId, DataScope.DEPT);
+        var response = sampleController.getSampleById(sampleId, viewerId, storedDeptId, DataScope.DEPT, null);
 
         assertThat(response.getData().getId()).isEqualTo(sampleId);
+        verify(userDomainFacade, never()).loadUserOwnershipReferencesByIds(any());
+    }
+
+    @Test
+    void getSampleById_dataScopePolicyEnabledPath_shouldDelegatePersonalAccessDecisionToUserPolicy() {
+        UUID sampleId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+
+        dddRefactorProperties.getDataScopePolicy().setEnabled(true);
+        SampleRequest sample = new SampleRequest();
+        sample.setId(sampleId);
+        sample.setChannelUserId(ownerId);
+        sample.setStatus(1);
+
+        when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
+        when(productDomainFacade.findProductById(null)).thenReturn(null);
+
+        var response = sampleController.getSampleById(sampleId, ownerId, deptId, DataScope.PERSONAL, null);
+
+        assertThat(response.getData().getId()).isEqualTo(sampleId);
+        verify(dataScopePolicy).contextRequirement(ownerId, deptId, DataScope.PERSONAL);
+        verify(dataScopePolicy).decide(ownerId, deptId, DataScope.PERSONAL);
+    }
+
+    @Test
+    void getSampleById_dataScopePolicyEnabledPath_shouldDelegateDeptAccessDecisionToUserPolicy() {
+        UUID sampleId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        UUID viewerId = UUID.randomUUID();
+        UUID storedDeptId = UUID.randomUUID();
+
+        dddRefactorProperties.getDataScopePolicy().setEnabled(true);
+        SampleRequest sample = new SampleRequest();
+        sample.setId(sampleId);
+        sample.setChannelUserId(ownerId);
+        sample.setDeptId(storedDeptId);
+        sample.setStatus(1);
+
+        when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
+        when(productDomainFacade.findProductById(null)).thenReturn(null);
+
+        var response = sampleController.getSampleById(sampleId, viewerId, storedDeptId, DataScope.DEPT, null);
+
+        assertThat(response.getData().getId()).isEqualTo(sampleId);
+        verify(dataScopePolicy).contextRequirement(viewerId, storedDeptId, DataScope.DEPT);
+        verify(dataScopePolicy).decide(viewerId, storedDeptId, DataScope.DEPT);
+        verify(userDomainFacade, never()).loadUserOwnershipReferencesByIds(any());
     }
 
     @Test
@@ -595,10 +678,10 @@ class SampleControllerTest {
         ));
 
         when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
-        when(productMapper.selectById(null)).thenReturn(null);
-        when(sysUserMapper.selectById(ownerId)).thenReturn(new SysUser());
+        when(productDomainFacade.findProductById(null)).thenReturn(null);
+        when(productDomainFacade.findOrMaterializeSampleProduct(null)).thenReturn(null);
 
-        var response = sampleController.getSampleById(sampleId, ownerId, deptId, DataScope.PERSONAL);
+        var response = sampleController.getSampleById(sampleId, ownerId, deptId, DataScope.PERSONAL, null);
 
         assertThat(response.getData().getApplyReason()).isEqualTo("潜力达人，申请破格寄样");
         assertThat(response.getData().getEligibilityCheck()).containsEntry("passed", false);
@@ -623,8 +706,9 @@ class SampleControllerTest {
         product.setName("负责商品");
 
         when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
-        when(productMapper.selectById(productId)).thenReturn(product, product);
-        when(productOperationStateMapper.selectCount(any())).thenReturn(1L);
+        when(productDomainFacade.findProductById(productId)).thenReturn(toProductRead(product), toProductRead(product));
+        when(productDomainFacade.findOrMaterializeSampleProduct(productId)).thenReturn(toProductRead(product));
+        when(productDomainFacade.isSampleProductAssignedToUser(any(), any())).thenReturn(true);
 
         var response = sampleController.getSampleById(
                 sampleId,
@@ -634,7 +718,7 @@ class SampleControllerTest {
                 List.of(RoleCodes.BIZ_STAFF));
 
         assertThat(response.getData().getProductName()).isEqualTo("负责商品");
-        verify(productOperationStateMapper).selectCount(any());
+        verify(productDomainFacade).isSampleProductAssignedToUser(eq(productId), eq(viewerId));
     }
 
     @Test
@@ -656,9 +740,9 @@ class SampleControllerTest {
         product.setName("快照负责商品");
 
         when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
-        when(productMapper.selectById(productId)).thenReturn(null, product);
-        when(productSnapshotMapper.selectById(productId)).thenReturn(snapshot);
-        when(productOperationStateMapper.selectCount(any())).thenReturn(1L);
+        when(productDomainFacade.findProductById(productId)).thenReturn(toProductRead(product));
+        when(productDomainFacade.findSnapshotById(productId)).thenReturn(toSnapshotRead(snapshot));
+        when(productDomainFacade.isSampleProductAssignedToUser(productId, viewerId)).thenReturn(true);
 
         var response = sampleController.getSampleById(
                 sampleId,
@@ -668,7 +752,7 @@ class SampleControllerTest {
                 List.of(RoleCodes.BIZ_STAFF));
 
         assertThat(response.getData().getProductName()).isEqualTo("快照负责商品");
-        verify(productSnapshotMapper, times(2)).selectById(productId);
+        verify(productDomainFacade).findSnapshotById(productId);
     }
 
     @Test
@@ -688,8 +772,9 @@ class SampleControllerTest {
         snapshot.setId(productId);
 
         when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
-        when(productMapper.selectById(productId)).thenReturn(product);
-        when(productSnapshotMapper.selectById(productId)).thenReturn(snapshot);
+        when(productDomainFacade.findProductById(productId)).thenReturn(toProductRead(product));
+        when(productDomainFacade.findOrMaterializeSampleProduct(productId)).thenReturn(toProductRead(product));
+        when(productDomainFacade.findSnapshotById(productId)).thenReturn(toSnapshotRead(snapshot));
 
         assertThatThrownBy(() -> sampleController.getSampleById(
                 sampleId,
@@ -700,7 +785,7 @@ class SampleControllerTest {
                 .isInstanceOf(ForbiddenException.class)
                 .hasMessageContaining("无权访问该寄样单");
 
-        verify(productOperationStateMapper, never()).selectCount(any());
+        verify(productDomainFacade).isSampleProductAssignedToUser(productId, viewerId);
     }
 
     @Test
@@ -723,20 +808,18 @@ class SampleControllerTest {
         talent.setDouyinUid("talent_001");
         talent.setNickname("test talent");
 
-        SysUser operator = new SysUser();
-        operator.setId(userId);
-        operator.setDeptId(deptId);
-
         SampleApplyRequest request = new SampleApplyRequest();
         request.setProductId(productId);
         request.setTalentId("talent_001");
         request.setQuantity(1);
 
-        when(productMapper.selectById(productId)).thenReturn(product);
+        when(productDomainFacade.findProductById(productId)).thenReturn(toProductRead(product));
+        when(productDomainFacade.findOrMaterializeSampleProduct(productId)).thenReturn(toProductRead(product));
         when(crawlerTalentInfoService.findByTalentId("talent_001")).thenReturn(crawlerTalentInfo);
-        when(talentMapper.selectOne(any())).thenReturn(talent);
+        when(talentDomainFacade.findOrCreateSampleTalent(any(), any(), any())).thenReturn(toTalentRead(talent));
         when(sampleRequestMapper.selectCount(any())).thenReturn(0L);
-        when(sysUserMapper.selectById(userId)).thenReturn(operator);
+        when(userDomainFacade.loadUserOwnershipReferencesByIds(any()))
+                .thenReturn(Map.of(userId, new UserOwnershipReference(userId, deptId)));
 
         sampleController.createSample(request, userId, List.of(RoleCodes.CHANNEL_STAFF));
 
@@ -796,7 +879,7 @@ class SampleControllerTest {
 
     @Test
     void getSamplePage_shouldRejectOpsStaffPendingAuditStatus() {
-        assertThatThrownBy(() -> sampleController.getSamplePage(
+        assertThatThrownBy(() -> getSamplePageBasic(
                 1,
                 10,
                 null,
@@ -830,7 +913,7 @@ class SampleControllerTest {
 
     @Test
     void exportSamples_shouldRejectChannelStaff() {
-        assertThatThrownBy(() -> sampleController.exportSamples(
+        assertThatThrownBy(() -> exportSamplesBasic(
                 null,
                 null,
                 UUID.randomUUID(),
@@ -839,27 +922,21 @@ class SampleControllerTest {
                 List.of(RoleCodes.CHANNEL_STAFF),
                 new MockHttpServletResponse()))
                 .isInstanceOf(ForbiddenException.class)
-                .hasMessageContaining("仅管理员、招商、运营或渠道组长");
+                .hasMessageContaining("仅管理员、招商或运营");
     }
 
     @Test
-    void exportSamples_shouldAllowChannelLeader() throws Exception {
-        Page<SampleRequest> emptyPage = new Page<>(1, 500, 0);
-        emptyPage.setRecords(List.of());
-        when(sampleRequestMapper.findPageWithScope(any(Page.class), any())).thenReturn(emptyPage);
-
-        MockHttpServletResponse response = new MockHttpServletResponse();
-
-        sampleController.exportSamples(
+    void exportSamples_shouldRejectChannelLeader() {
+        assertThatThrownBy(() -> exportSamplesBasic(
                 null,
                 null,
                 UUID.randomUUID(),
                 null,
                 DataScope.ALL,
                 List.of(RoleCodes.CHANNEL_LEADER),
-                response);
-
-        assertThat(response.getContentType()).isEqualTo("text/csv; charset=UTF-8");
+                new MockHttpServletResponse()))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessageContaining("仅管理员、招商或运营");
     }
 
     @Test
@@ -870,7 +947,7 @@ class SampleControllerTest {
 
         MockHttpServletResponse response = new MockHttpServletResponse();
 
-        sampleController.exportSamples(
+        exportSamplesBasic(
                 null,
                 null,
                 UUID.randomUUID(),
@@ -881,6 +958,63 @@ class SampleControllerTest {
 
         assertThat(response.getContentType()).isEqualTo("text/csv; charset=UTF-8");
         assertThat(response.getContentAsString(java.nio.charset.StandardCharsets.UTF_8)).startsWith("\ufeff寄样单号");
+    }
+
+    @Test
+    void exportSamples_shouldKeepLegacyScopedQueryWhenDataScopePolicyDisabledForBizStaff() throws Exception {
+        UUID userId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+        Page<SampleRequest> emptyPage = new Page<>(1, 500, 0);
+        emptyPage.setRecords(List.of());
+        when(sampleRequestMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class)))
+                .thenReturn(emptyPage);
+
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        exportSamplesBasic(
+                null,
+                null,
+                userId,
+                deptId,
+                DataScope.PERSONAL,
+                List.of(RoleCodes.BIZ_STAFF),
+                response);
+
+        assertThat(response.getContentType()).isEqualTo("text/csv; charset=UTF-8");
+        assertThat(response.getContentAsString(java.nio.charset.StandardCharsets.UTF_8)).startsWith("\ufeff寄样单号");
+        verify(dataScopePolicy, never()).contextRequirement(any(), any(), any());
+        verify(dataScopePolicy, never()).decide(any(), any(), any());
+        verify(sampleRequestMapper).findPageWithScope(any(Page.class), any(QueryWrapper.class));
+        verify(sampleRequestMapper, never()).findPageForAuditor(any(Page.class), any(), any(QueryWrapper.class));
+    }
+
+    @Test
+    void exportSamples_dataScopePolicyEnabledPath_shouldDelegateAuditorScopeDecisionToUserPolicy() throws Exception {
+        UUID userId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+        dddRefactorProperties.getDataScopePolicy().setEnabled(true);
+        Page<SampleRequest> emptyPage = new Page<>(1, 500, 0);
+        emptyPage.setRecords(List.of());
+        when(sampleRequestMapper.findPageForAuditor(any(Page.class), eq(userId), any(QueryWrapper.class)))
+                .thenReturn(emptyPage);
+
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        exportSamplesBasic(
+                null,
+                null,
+                userId,
+                deptId,
+                DataScope.PERSONAL,
+                List.of(RoleCodes.BIZ_STAFF),
+                response);
+
+        assertThat(response.getContentType()).isEqualTo("text/csv; charset=UTF-8");
+        assertThat(response.getContentAsString(java.nio.charset.StandardCharsets.UTF_8)).startsWith("\ufeff寄样单号");
+        verify(dataScopePolicy).contextRequirement(userId, deptId, DataScope.PERSONAL);
+        verify(dataScopePolicy).decide(userId, deptId, DataScope.PERSONAL);
+        verify(sampleRequestMapper).findPageForAuditor(any(Page.class), eq(userId), any(QueryWrapper.class));
+        verify(sampleRequestMapper, never()).findPageWithScope(any(Page.class), any(QueryWrapper.class));
     }
 
     @Test
@@ -959,7 +1093,7 @@ class SampleControllerTest {
         assertThat(refreshLogistics).isNotNull();
         assertThat(refreshLogistics.value()).containsExactly(RoleCodes.ADMIN, RoleCodes.OPS_STAFF);
         assertThat(exportSamples).isNotNull();
-        assertThat(exportSamples.value()).containsExactly(RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.OPS_STAFF, RoleCodes.CHANNEL_LEADER);
+        assertThat(exportSamples.value()).containsExactly(RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.OPS_STAFF);
     }
 
     @Test
@@ -1071,9 +1205,10 @@ class SampleControllerTest {
         request.setProductId(productId);
         request.setQuantity(1);
 
-        when(productMapper.selectById(productId)).thenReturn(product);
+        when(productDomainFacade.findProductById(productId)).thenReturn(toProductRead(product));
+        when(productDomainFacade.findOrMaterializeSampleProduct(productId)).thenReturn(toProductRead(product));
         when(crawlerTalentInfoService.findByTalentId("talent_disabled_001")).thenReturn(crawlerTalentInfo);
-        when(talentMapper.selectOne(any())).thenReturn(talent);
+        when(talentDomainFacade.findOrCreateSampleTalent(any(), any(), any())).thenReturn(toTalentRead(talent));
         when(configDomainFacade.isSampleLimitEnabled()).thenReturn(false);
 
         sampleController.createSample(request, userId, List.of(RoleCodes.CHANNEL_STAFF));
@@ -1105,9 +1240,10 @@ class SampleControllerTest {
         request.setQuantity(1);
         request.setRemark("");
 
-        when(productMapper.selectById(productId)).thenReturn(product);
+        when(productDomainFacade.findProductById(productId)).thenReturn(toProductRead(product));
+        when(productDomainFacade.findOrMaterializeSampleProduct(productId)).thenReturn(toProductRead(product));
         when(crawlerTalentInfoService.findByTalentId("talent_not_fit")).thenReturn(crawlerTalentInfo);
-        when(talentMapper.selectOne(any())).thenReturn(talent);
+        when(talentDomainFacade.findOrCreateSampleTalent(any(), any(), any())).thenReturn(toTalentRead(talent));
         when(sampleRequestMapper.selectCount(any())).thenReturn(0L);
         when(sampleEligibilityService.evaluate(any(), any()))
                 .thenReturn(new SampleEligibilityService.EligibilityResult(
@@ -1146,9 +1282,10 @@ class SampleControllerTest {
         request.setQuantity(1);
         request.setRemark("潜力达人，申请破格寄样");
 
-        when(productMapper.selectById(productId)).thenReturn(product);
+        when(productDomainFacade.findProductById(productId)).thenReturn(toProductRead(product));
+        when(productDomainFacade.findOrMaterializeSampleProduct(productId)).thenReturn(toProductRead(product));
         when(crawlerTalentInfoService.findByTalentId("talent_reason_ok")).thenReturn(crawlerTalentInfo);
-        when(talentMapper.selectOne(any())).thenReturn(talent);
+        when(talentDomainFacade.findOrCreateSampleTalent(any(), any(), any())).thenReturn(toTalentRead(talent));
         when(sampleRequestMapper.selectCount(any())).thenReturn(0L);
         when(sampleEligibilityService.evaluate(any(), any()))
                 .thenReturn(new SampleEligibilityService.EligibilityResult(
@@ -1280,12 +1417,12 @@ class SampleControllerTest {
         page.setRecords(List.of(sample));
         page.setTotal(1);
 
-        when(productMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of(product));
-        when(productMapper.selectBatchIds(any())).thenReturn(List.of(product));
-        when(productSnapshotMapper.selectById(productId)).thenReturn(snapshot);
+        when(productDomainFacade.findProductIdsByKeyword(any(), anyLong())).thenReturn(java.util.Set.of(productId));
+        when(productDomainFacade.loadProductsByIds(any())).thenReturn(java.util.Map.of(productId, toProductRead(product)));
+        when(productDomainFacade.findSnapshotById(productId)).thenReturn(toSnapshotRead(snapshot));
         when(sampleRequestMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(page);
 
-        var response = sampleController.getSamplePage(
+        var response = getSamplePageBasic(
                 1,
                 10,
                 "映射缺失",
@@ -1318,7 +1455,7 @@ class SampleControllerTest {
         assertThat(record.getHomeworkTypeLabel()).isEqualTo("有订单");
         assertThat(record.getShipTime()).isEqualTo(LocalDateTime.of(2026, 5, 1, 10, 0));
         assertThat(record.getDeliverTime()).isEqualTo(LocalDateTime.of(2026, 5, 2, 10, 0));
-        verify(productMapper).selectList(any(QueryWrapper.class));
+        verify(productDomainFacade).findProductIdsByKeyword(any(), anyLong());
         verify(sampleRequestMapper).findPageWithScope(any(Page.class), any(QueryWrapper.class));
     }
 
@@ -1337,8 +1474,9 @@ class SampleControllerTest {
                 10,
                 null,
                 "PENDING_SHIP",
-                channelUserId,
+                List.of(channelUserId),
                 recruiterUserId,
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
                 UUID.randomUUID(),
                 null,
                 DataScope.ALL,
@@ -1361,7 +1499,7 @@ class SampleControllerTest {
         when(sampleRequestMapper.findPageForAuditor(any(Page.class), eq(userId), any(QueryWrapper.class)))
                 .thenReturn(emptyPage);
 
-        var response = sampleController.getSamplePage(
+        var response = getSamplePageBasic(
                 1,
                 10,
                 null,
@@ -1375,6 +1513,60 @@ class SampleControllerTest {
         ArgumentCaptor<QueryWrapper<SampleRequest>> wrapperCaptor = ArgumentCaptor.forClass(QueryWrapper.class);
         verify(sampleRequestMapper).findPageForAuditor(any(Page.class), eq(userId), wrapperCaptor.capture());
         assertThat(wrapperCaptor.getValue().getSqlSegment()).contains("sr.status");
+        verify(dataScopePolicy, never()).contextRequirement(any(), any(), any());
+        verify(dataScopePolicy, never()).decide(any(), any(), any());
+    }
+
+    @Test
+    void getSamplePage_dataScopePolicyEnabledPath_shouldDelegateAuditorScopeDecisionToUserPolicy() {
+        UUID userId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+        dddRefactorProperties.getDataScopePolicy().setEnabled(true);
+        Page<SampleRequest> emptyPage = new Page<>(1, 10, 0);
+        emptyPage.setRecords(List.of());
+        when(sampleRequestMapper.findPageForAuditor(any(Page.class), eq(userId), any(QueryWrapper.class)))
+                .thenReturn(emptyPage);
+
+        var response = getSamplePageBasic(
+                1,
+                10,
+                null,
+                null,
+                userId,
+                deptId,
+                DataScope.PERSONAL,
+                List.of(RoleCodes.BIZ_STAFF));
+
+        assertThat(response.getData().getTotal()).isZero();
+        verify(dataScopePolicy).contextRequirement(userId, deptId, DataScope.PERSONAL);
+        verify(dataScopePolicy).decide(userId, deptId, DataScope.PERSONAL);
+        verify(sampleRequestMapper).findPageForAuditor(any(Page.class), eq(userId), any(QueryWrapper.class));
+    }
+
+    @Test
+    void getSamplePage_dataScopePolicyEnabledPath_shouldKeepLegacyAuditorQueryWhenPersonalScopeMissesUserContext() {
+        UUID deptId = UUID.randomUUID();
+        dddRefactorProperties.getDataScopePolicy().setEnabled(true);
+        Page<SampleRequest> emptyPage = new Page<>(1, 10, 0);
+        emptyPage.setRecords(List.of());
+        when(sampleRequestMapper.findPageForAuditor(any(Page.class), eq(null), any(QueryWrapper.class)))
+                .thenReturn(emptyPage);
+
+        var response = getSamplePageBasic(
+                1,
+                10,
+                null,
+                null,
+                null,
+                deptId,
+                DataScope.PERSONAL,
+                List.of(RoleCodes.BIZ_STAFF));
+
+        assertThat(response.getData().getTotal()).isZero();
+        verify(dataScopePolicy).contextRequirement(null, deptId, DataScope.PERSONAL);
+        verify(dataScopePolicy, never()).decide(null, deptId, DataScope.PERSONAL);
+        verify(sampleRequestMapper).findPageForAuditor(any(Page.class), eq(null), any(QueryWrapper.class));
+        verify(sampleRequestMapper, never()).findPageWithScope(any(Page.class), any(QueryWrapper.class));
     }
 
     @Test
@@ -1393,6 +1585,7 @@ class SampleControllerTest {
                 "PENDING_AUDIT",
                 null,
                 recruiterUserId,
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
                 userId,
                 null,
                 DataScope.PERSONAL,
@@ -1417,8 +1610,8 @@ class SampleControllerTest {
         Page<SampleRequest> emptyPage = new Page<>(1, 10, 0);
         emptyPage.setRecords(List.of());
 
-        when(productMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of(product));
-        when(productSnapshotMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of(snapshot));
+        when(productDomainFacade.findProductIdsByKeyword(any(), anyLong())).thenReturn(java.util.Set.of(productId));
+        when(productDomainFacade.findProductSnapshotIdsByShopKeyword(any(), anyLong())).thenReturn(java.util.Set.of(productId));
         when(sampleRequestMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class), eq(recruiterUserId)))
                 .thenReturn(emptyPage);
 
@@ -1618,6 +1811,51 @@ class SampleControllerTest {
     }
 
     @Test
+    void getSampleBoard_shouldKeepLegacyScopedQueryWhenDataScopePolicyDisabled() {
+        UUID userId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+        IPage<SampleRequest> emptyPage = new Page<>(1, 2000, 0);
+        emptyPage.setRecords(List.of());
+        when(sampleRequestMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class)))
+                .thenReturn(emptyPage);
+
+        var response = sampleController.getSampleBoard(
+                userId,
+                deptId,
+                DataScope.PERSONAL,
+                List.of(RoleCodes.BIZ_STAFF));
+
+        assertThat(response.getData().get("PENDING_AUDIT")).isEmpty();
+        verify(dataScopePolicy, never()).contextRequirement(any(), any(), any());
+        verify(dataScopePolicy, never()).decide(any(), any(), any());
+        verify(sampleRequestMapper).findPageWithScope(any(Page.class), any(QueryWrapper.class));
+        verify(sampleRequestMapper, never()).findPageForAuditor(any(Page.class), any(), any(QueryWrapper.class));
+    }
+
+    @Test
+    void getSampleBoard_dataScopePolicyEnabledPath_shouldDelegateAuditorScopeDecisionToUserPolicy() {
+        UUID userId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+        dddRefactorProperties.getDataScopePolicy().setEnabled(true);
+        IPage<SampleRequest> emptyPage = new Page<>(1, 2000, 0);
+        emptyPage.setRecords(List.of());
+        when(sampleRequestMapper.findPageForAuditor(any(Page.class), eq(userId), any(QueryWrapper.class)))
+                .thenReturn(emptyPage);
+
+        var response = sampleController.getSampleBoard(
+                userId,
+                deptId,
+                DataScope.PERSONAL,
+                List.of(RoleCodes.BIZ_STAFF));
+
+        assertThat(response.getData().get("PENDING_AUDIT")).isEmpty();
+        verify(dataScopePolicy).contextRequirement(userId, deptId, DataScope.PERSONAL);
+        verify(dataScopePolicy).decide(userId, deptId, DataScope.PERSONAL);
+        verify(sampleRequestMapper).findPageForAuditor(any(Page.class), eq(userId), any(QueryWrapper.class));
+        verify(sampleRequestMapper, never()).findPageWithScope(any(Page.class), any(QueryWrapper.class));
+    }
+
+    @Test
     void getSampleBoard_shouldTraverseMultiplePages() {
         UUID productId = UUID.randomUUID();
 
@@ -1645,9 +1883,9 @@ class SampleControllerTest {
         when(sampleRequestMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class)))
                 .thenReturn(firstPage)
                 .thenReturn(secondPage);
-        when(productMapper.selectBatchIds(any())).thenReturn(List.of(product));
+        when(productDomainFacade.loadProductsByIds(any())).thenReturn(java.util.Map.of(productId, toProductRead(product)));
 
-        var response = sampleController.getSampleBoard(UUID.randomUUID(), null, DataScope.ALL);
+        var response = sampleController.getSampleBoard(UUID.randomUUID(), null, DataScope.ALL, null);
 
         assertThat(response.getData().get("PENDING_AUDIT")).hasSize(1);
         assertThat(response.getData().get("PENDING_SHIP")).hasSize(1);
@@ -1677,7 +1915,8 @@ class SampleControllerTest {
         request.setAction("APPROVED");
 
         when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
-        when(productMapper.selectById(productId)).thenReturn(product);
+        when(productDomainFacade.findProductById(productId)).thenReturn(toProductRead(product));
+        when(productDomainFacade.findOrMaterializeSampleProduct(productId)).thenReturn(toProductRead(product));
 
         var response = sampleController.actionSample(
                 sampleId,
@@ -1717,7 +1956,8 @@ class SampleControllerTest {
         request.setTrackingNo("YT123456");
 
         when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
-        when(productMapper.selectById(productId)).thenReturn(product);
+        when(productDomainFacade.findProductById(productId)).thenReturn(toProductRead(product));
+        when(productDomainFacade.findOrMaterializeSampleProduct(productId)).thenReturn(toProductRead(product));
 
         var response = sampleController.actionSample(
                 sampleId,
@@ -1756,7 +1996,8 @@ class SampleControllerTest {
         request.setAction("SIGNED");
 
         when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
-        when(productMapper.selectById(productId)).thenReturn(product);
+        when(productDomainFacade.findProductById(productId)).thenReturn(toProductRead(product));
+        when(productDomainFacade.findOrMaterializeSampleProduct(productId)).thenReturn(toProductRead(product));
 
         var response = sampleController.actionSample(
                 sampleId,
@@ -1819,14 +2060,10 @@ class SampleControllerTest {
         log.setToStatus(5);
         log.setOperatorId(operatorId);
 
-        SysUser operator = new SysUser();
-        operator.setId(operatorId);
-        operator.setRealName("运营测试");
-        operator.setUsername("ops_staff");
-
         when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
         when(sampleStatusLogMapper.selectList(any())).thenReturn(List.of(log));
-        when(sysUserMapper.selectById(operatorId)).thenReturn(operator);
+        when(userDomainFacade.loadUserDisplayLabelsByIds(any()))
+                .thenReturn(Map.of(operatorId, "运营测试 (ops_staff)"));
 
         var response = sampleController.getStatusLogs(
                 sampleId,
@@ -1906,7 +2143,8 @@ class SampleControllerTest {
         request.setReason("not matched");
 
         when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
-        when(productMapper.selectById(productId)).thenReturn(product);
+        when(productDomainFacade.findProductById(productId)).thenReturn(toProductRead(product));
+        when(productDomainFacade.findOrMaterializeSampleProduct(productId)).thenReturn(toProductRead(product));
 
         var response = sampleController.actionSample(
                 sampleId,
@@ -2068,11 +2306,6 @@ class SampleControllerTest {
         product.setId(productId);
         product.setName("商品\n一");
 
-        SysUser channelUser = new SysUser();
-        channelUser.setId(channelUserId);
-        channelUser.setRealName("张三");
-        channelUser.setUsername("zhangsan");
-
         SampleRequest first = new SampleRequest();
         first.setId(UUID.randomUUID());
         first.setRequestNo("SR-\"1");
@@ -2099,16 +2332,17 @@ class SampleControllerTest {
         firstPage.setRecords(List.of(first));
         Page<SampleRequest> secondPage = new Page<>(2, 500, 501);
         secondPage.setRecords(List.of(second));
-        when(productMapper.selectList(any())).thenReturn(List.of(product));
-        when(productMapper.selectBatchIds(any())).thenReturn(List.of(product));
-        when(sysUserMapper.selectById(channelUserId)).thenReturn(channelUser);
+        when(productDomainFacade.findProductIdsByKeyword(any(), anyLong())).thenReturn(java.util.Set.of(productId));
+        when(productDomainFacade.loadProductsByIds(any())).thenReturn(java.util.Map.of(productId, toProductRead(product)));
+        when(userDomainFacade.loadUserDisplayLabelsByIds(any()))
+                .thenReturn(Map.of(channelUserId, "张三 (zhangsan)"));
         when(sampleRequestMapper.findPageWithScope(any(Page.class), any()))
                 .thenReturn(firstPage)
                 .thenReturn(secondPage);
 
         MockHttpServletResponse response = new MockHttpServletResponse();
 
-        sampleController.exportSamples(
+        exportSamplesBasic(
                 "SHIPPED",
                 "商品",
                 UUID.randomUUID(),
@@ -2153,7 +2387,8 @@ class SampleControllerTest {
         product.setName("测试商品");
 
         when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample, progressed);
-        when(productMapper.selectById(productId)).thenReturn(product);
+        when(productDomainFacade.findProductById(productId)).thenReturn(toProductRead(product));
+        when(productDomainFacade.findOrMaterializeSampleProduct(productId)).thenReturn(toProductRead(product));
 
         var response = sampleController.refreshLogistics(
                 sampleId,
@@ -2444,38 +2679,32 @@ class SampleControllerTest {
 
     @Test
     void privateRoleAndStatusHelpers_shouldNormalizeAliasesAndPermissions() {
-        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(sampleController, "isExemptFromSevenDaysLimit", (Object) null))
+        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(applicationDelegate, "isExemptFromSevenDaysLimit", (Object) null))
                 .isFalse();
-        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(sampleController, "isExemptFromSevenDaysLimit", List.of(RoleCodes.ADMIN)))
+        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(applicationDelegate, "isExemptFromSevenDaysLimit", List.of(RoleCodes.ADMIN)))
                 .isTrue();
-        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(sampleController, "isExemptFromSevenDaysLimit", "[" + RoleCodes.CHANNEL_LEADER + "]"))
+        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(applicationDelegate, "isExemptFromSevenDaysLimit", "[" + RoleCodes.CHANNEL_LEADER + "]"))
                 .isTrue();
-        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(sampleController, "isExemptFromSevenDaysLimit", " "))
-                .isFalse();
-
-        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(sampleController, "hasAnyRole", null, (Object) new String[]{RoleCodes.ADMIN}))
-                .isFalse();
-        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(sampleController, "hasAnyRole", List.of(RoleCodes.OPS_STAFF), (Object) new String[]{RoleCodes.OPS_STAFF}))
-                .isTrue();
-        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(sampleController, "hasAnyRole", "[" + RoleCodes.BIZ_STAFF + "]", (Object) new String[]{RoleCodes.BIZ_STAFF}))
-                .isTrue();
-        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(sampleController, "isOpsStaffOnly", List.of(RoleCodes.OPS_STAFF)))
-                .isTrue();
-        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(sampleController, "isOpsStaffOnly", List.of(RoleCodes.OPS_STAFF, RoleCodes.ADMIN)))
+        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(applicationDelegate, "isExemptFromSevenDaysLimit", " "))
                 .isFalse();
 
-        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "normalizeAction", "APPROVED")).isEqualTo("PENDING_SHIP");
-        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "normalizeAction", "SHIPPED")).isEqualTo("SHIPPING");
-        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "normalizeAction", "SIGNED")).isEqualTo("PENDING_HOMEWORK");
-        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "normalizeAction", "PENDING_TASK")).isEqualTo("PENDING_HOMEWORK");
-        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "normalizeAction", "FINISHED")).isEqualTo("COMPLETED");
-        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "normalizeAction", " closed ")).isEqualTo("CLOSED");
-        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(sampleController, "isOpsVisibleStatusCode", (Integer) null)).isFalse();
-        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(sampleController, "isOpsVisibleStatusCode", 2)).isTrue();
-        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(sampleController, "isOpsVisibleStatusCode", 1)).isFalse();
-        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(sampleController, "ensureOpsVisibleStatus", "PENDING_AUDIT"))
+        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(applicationDelegate, "isOpsStaffOnly", List.of(RoleCodes.OPS_STAFF)))
+                .isTrue();
+        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(applicationDelegate, "isOpsStaffOnly", List.of(RoleCodes.OPS_STAFF, RoleCodes.ADMIN)))
+                .isFalse();
+
+        assertThat(SampleStateMachine.normalizeAction("APPROVED")).isEqualTo("PENDING_SHIP");
+        assertThat(SampleStateMachine.normalizeAction("SHIPPED")).isEqualTo("SHIPPING");
+        assertThat(SampleStateMachine.normalizeAction("SIGNED")).isEqualTo("PENDING_HOMEWORK");
+        assertThat(SampleStateMachine.normalizeAction("PENDING_TASK")).isEqualTo("PENDING_HOMEWORK");
+        assertThat(SampleStateMachine.normalizeAction("FINISHED")).isEqualTo("COMPLETED");
+        assertThat(SampleStateMachine.normalizeAction(" closed ")).isEqualTo("CLOSED");
+        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(applicationDelegate, "isOpsVisibleStatusCode", (Integer) null)).isFalse();
+        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(applicationDelegate, "isOpsVisibleStatusCode", 2)).isTrue();
+        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(applicationDelegate, "isOpsVisibleStatusCode", 1)).isFalse();
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(applicationDelegate, "ensureOpsVisibleStatus", "PENDING_AUDIT"))
                 .isInstanceOf(ForbiddenException.class);
-        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(sampleController, "parseStatus", "missing"))
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(applicationDelegate, "parseStatus", "missing"))
                 .hasMessageContaining("Invalid status");
     }
 
@@ -2521,7 +2750,7 @@ class SampleControllerTest {
         SampleApplyRequest request = new SampleApplyRequest();
         request.setRemark(" 破格申请 ");
 
-        Map<String, Object> extra = ReflectionTestUtils.invokeMethod(sampleController, "buildSampleExtraData", request, ineligible);
+        Map<String, Object> extra = ReflectionTestUtils.invokeMethod(applicationDelegate, "buildSampleExtraData", request, ineligible);
         assertThat(extra).containsEntry("applyReason", "破格申请").containsEntry("addressSource", "manual");
         assertThat((Map<String, Object>) extra.get("requirementSnapshot"))
                 .containsEntry("min30DaySales", 30000L)
@@ -2533,7 +2762,7 @@ class SampleControllerTest {
                 .asList()
                 .containsExactly("min30DaySales", "minLevel", "custom");
 
-        SampleEligibilityCheckVO vo = ReflectionTestUtils.invokeMethod(sampleController, "toEligibilityVO", ineligible);
+        SampleEligibilityCheckVO vo = ReflectionTestUtils.invokeMethod(applicationDelegate, "toEligibilityVO", ineligible);
         assertThat(vo.isEligible()).isFalse();
         assertThat(vo.isNeedReason()).isTrue();
         assertThat(vo.getReasons()).hasSize(3);
@@ -2541,7 +2770,7 @@ class SampleControllerTest {
         when(sampleEligibilityService.evaluate(any(), any())).thenReturn(ineligible);
         SampleApplyRequest noReason = new SampleApplyRequest();
         assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(
-                sampleController,
+                applicationDelegate,
                 "ensureEligibilityReasonIfNeeded",
                 noReason,
                 new Talent(),
@@ -2549,7 +2778,7 @@ class SampleControllerTest {
                 .hasMessageContaining("请先填写申请原因");
 
         assertThat(ReflectionTestUtils.<Object>invokeMethod(
-                sampleController,
+                applicationDelegate,
                 "ensureEligibilityReasonIfNeeded",
                 request,
                 new Talent(),
@@ -2566,7 +2795,7 @@ class SampleControllerTest {
         manualTalent.setIpLocation("杭州");
 
         CrawlerTalentInfo snapshot = ReflectionTestUtils.invokeMethod(
-                sampleController,
+                applicationDelegate,
                 "buildCrawlerSnapshotFromTalent",
                 manualTalent,
                 "selected-id");
@@ -2580,16 +2809,19 @@ class SampleControllerTest {
         Talent existing = new Talent();
         existing.setId(UUID.randomUUID());
         existing.setDouyinUid("talent-new");
-        when(talentMapper.selectOne(any())).thenReturn(existing).thenReturn(null);
+        when(talentDomainFacade.findOrCreateSampleTalent(any(), any(), any()))
+                .thenReturn(toTalentRead(existing))
+                .thenReturn(new TalentReadDTO(
+                        UUID.randomUUID(), "talent-new", null, "新达人", 66L, 1, null, null, null, null));
 
-        assertThat(ReflectionTestUtils.<Talent>invokeMethod(sampleController, "findOrCreateTalentFromCrawler", info))
-                .isSameAs(existing);
-        Talent created = ReflectionTestUtils.invokeMethod(sampleController, "findOrCreateTalentFromCrawler", info);
+        assertThat(ReflectionTestUtils.<Talent>invokeMethod(applicationDelegate, "findOrCreateTalentFromCrawler", info).getId())
+                .isEqualTo(existing.getId());
+        Talent created = ReflectionTestUtils.invokeMethod(applicationDelegate, "findOrCreateTalentFromCrawler", info);
         assertThat(created.getDouyinUid()).isEqualTo("talent-new");
-        verify(talentMapper).insert(created);
+        verify(talentDomainFacade, times(2)).findOrCreateSampleTalent(eq("talent-new"), eq("新达人"), eq(66L));
 
         assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(
-                sampleController,
+                applicationDelegate,
                 "ensureChannelTalentClaim",
                 null,
                 UUID.randomUUID(),
@@ -2598,9 +2830,9 @@ class SampleControllerTest {
 
         UUID userId = UUID.randomUUID();
         UUID talentId = UUID.randomUUID();
-        when(talentClaimMapper.findActiveByTalentAndUser(talentId, userId)).thenReturn(null);
+        when(talentDomainFacade.hasActiveClaim(talentId, userId)).thenReturn(false);
         assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(
-                sampleController,
+                applicationDelegate,
                 "ensureChannelTalentClaim",
                 userId,
                 talentId,
@@ -2608,29 +2840,26 @@ class SampleControllerTest {
                 .isInstanceOf(ForbiddenException.class);
 
         when(configDomainFacade.isSampleLimitEnabled()).thenReturn(false);
-        ReflectionTestUtils.invokeMethod(sampleController, "checkSevenDaysLimit", userId, talentId, UUID.randomUUID(), List.of(RoleCodes.CHANNEL_STAFF));
-        ReflectionTestUtils.invokeMethod(sampleController, "checkSevenDaysLimit", userId, talentId, UUID.randomUUID(), List.of(RoleCodes.CHANNEL_LEADER));
+        ReflectionTestUtils.invokeMethod(applicationDelegate, "checkSevenDaysLimit", userId, talentId, UUID.randomUUID(), List.of(RoleCodes.CHANNEL_STAFF));
+        ReflectionTestUtils.invokeMethod(applicationDelegate, "checkSevenDaysLimit", userId, talentId, UUID.randomUUID(), List.of(RoleCodes.CHANNEL_LEADER));
     }
 
     @Test
     void privateLoadAndBoardHelpers_shouldHandleEmptyAndMappedValues() {
-        assertThat(ReflectionTestUtils.<Map<UUID, Product>>invokeMethod(sampleController, "loadProducts", (Object) null)).isEmpty();
-        assertThat(ReflectionTestUtils.<Set<UUID>>invokeMethod(sampleController, "loadMatchedProductIds", " ")).isEmpty();
-        assertThat(ReflectionTestUtils.<Long>invokeMethod(sampleController, "parseLongOrNull", " 12345 ")).isEqualTo(12345L);
-        assertThat(ReflectionTestUtils.<Long>invokeMethod(sampleController, "parseLongOrNull", "not-number")).isNull();
-        assertThat(ReflectionTestUtils.<Long>invokeMethod(sampleController, "parseLongOrNull", " ")).isNull();
+        assertThat(ReflectionTestUtils.<Map<UUID, Product>>invokeMethod(applicationDelegate, "loadProducts", (Object) null)).isEmpty();
+        assertThat(ReflectionTestUtils.<Set<UUID>>invokeMethod(applicationDelegate, "loadMatchedProductIds", " ")).isEmpty();
 
         UUID productId = UUID.randomUUID();
         Product product = new Product();
         product.setId(productId);
         product.setProductId("P-1");
         product.setName("商品");
-        when(productMapper.selectBatchIds(any())).thenReturn(List.of(product));
-        when(productMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of(product));
+        when(productDomainFacade.loadProductsByIds(any())).thenReturn(java.util.Map.of(productId, toProductRead(product)));
+        when(productDomainFacade.findProductIdsByKeyword(any(), anyLong())).thenReturn(java.util.Set.of(productId));
 
-        assertThat(ReflectionTestUtils.<Map<UUID, Product>>invokeMethod(sampleController, "loadProducts", Set.of(productId)))
+        assertThat(ReflectionTestUtils.<Map<UUID, Product>>invokeMethod(applicationDelegate, "loadProducts", Set.of(productId)))
                 .containsEntry(productId, product);
-        assertThat(ReflectionTestUtils.<Set<UUID>>invokeMethod(sampleController, "loadMatchedProductIds", "商品"))
+        assertThat(ReflectionTestUtils.<Set<UUID>>invokeMethod(applicationDelegate, "loadMatchedProductIds", "商品"))
                 .containsExactly(productId);
 
         UUID snapshotId = UUID.randomUUID();
@@ -2639,21 +2868,23 @@ class SampleControllerTest {
         snapshot.setProductId("SNAP-1");
         snapshot.setTitle(" ");
         snapshot.setStatus(null);
-        when(productMapper.selectById(snapshotId)).thenReturn(null);
-        when(productSnapshotMapper.selectById(snapshotId)).thenReturn(snapshot);
-        when(productMapper.selectOne(any())).thenReturn(null);
+        Product materializedEntity = new Product();
+        materializedEntity.setId(snapshotId);
+        materializedEntity.setName("SNAP-1");
+        materializedEntity.setStatus(1);
+        when(productDomainFacade.findOrMaterializeSampleProduct(snapshotId)).thenReturn(toProductRead(materializedEntity));
 
-        Product materialized = ReflectionTestUtils.invokeMethod(sampleController, "requireProduct", snapshotId);
+        Product materialized = ReflectionTestUtils.invokeMethod(applicationDelegate, "requireProduct", snapshotId);
 
         assertThat(materialized.getName()).isEqualTo("SNAP-1");
         assertThat(materialized.getStatus()).isEqualTo(1);
-        verify(productMapper).insert(materialized);
+        verify(productDomainFacade).findOrMaterializeSampleProduct(snapshotId);
 
         Product noAssigneeProduct = new Product();
         noAssigneeProduct.setProductId("P-NO-ASSIGNEE");
         noAssigneeProduct.setActivityId(UUID.randomUUID());
-        when(productOperationStateMapper.selectOne(any())).thenReturn(null);
-        assertThat(ReflectionTestUtils.<UUID>invokeMethod(sampleController, "resolveColonelUserId", noAssigneeProduct)).isNull();
+        when(productDomainFacade.isSelectedToLibraryForSample(any())).thenReturn(true);
+        assertThat(ReflectionTestUtils.<UUID>invokeMethod(applicationDelegate, "resolveColonelUserId", noAssigneeProduct)).isNull();
 
         SampleRequest sample = new SampleRequest();
         sample.setId(UUID.randomUUID());
@@ -2668,56 +2899,56 @@ class SampleControllerTest {
         sample.setDeliverTime(LocalDateTime.of(2026, 5, 1, 13, 0));
         sample.setCompleteTime(LocalDateTime.of(2026, 5, 1, 14, 0));
         sample.setCloseTime(LocalDateTime.of(2026, 5, 1, 15, 0));
-        Object pendingShip = ReflectionTestUtils.invokeMethod(sampleController, "parseStatus", "PENDING_SHIP");
-        SampleBoardCard card = ReflectionTestUtils.invokeMethod(sampleController, "toBoardCard", sample, product, pendingShip);
+        Object pendingShip = ReflectionTestUtils.invokeMethod(applicationDelegate, "parseStatus", "PENDING_SHIP");
+        SampleBoardCard card = ReflectionTestUtils.invokeMethod(applicationDelegate, "toBoardCard", sample, product, pendingShip);
         assertThat(card.getProductName()).isEqualTo("商品");
         assertThat(card.getQuantity()).isEqualTo(1);
         assertThat(card.getStatus()).isEqualTo("PENDING_SHIP");
         assertThat(card.getStateEnterTime()).isEqualTo(sample.getAuditTime());
 
-        Object pendingHomework = ReflectionTestUtils.invokeMethod(sampleController, "parseStatus", "PENDING_HOMEWORK");
-        Object completed = ReflectionTestUtils.invokeMethod(sampleController, "parseStatus", "COMPLETED");
-        Object closed = ReflectionTestUtils.invokeMethod(sampleController, "parseStatus", "CLOSED");
+        Object pendingHomework = ReflectionTestUtils.invokeMethod(applicationDelegate, "parseStatus", "PENDING_HOMEWORK");
+        Object completed = ReflectionTestUtils.invokeMethod(applicationDelegate, "parseStatus", "COMPLETED");
+        Object closed = ReflectionTestUtils.invokeMethod(applicationDelegate, "parseStatus", "CLOSED");
         try {
         java.lang.reflect.Method toLegacyStatus = SampleApplicationService.class.getDeclaredMethod("toLegacyStatus", pendingHomework.getClass());
             toLegacyStatus.setAccessible(true);
-            assertThat((String) toLegacyStatus.invoke(sampleController, pendingHomework)).isEqualTo("PENDING_TASK");
-            assertThat((String) toLegacyStatus.invoke(sampleController, completed)).isEqualTo("FINISHED");
+            assertThat((String) toLegacyStatus.invoke(applicationDelegate, pendingHomework)).isEqualTo("PENDING_TASK");
+            assertThat((String) toLegacyStatus.invoke(applicationDelegate, completed)).isEqualTo("FINISHED");
             java.lang.reflect.Method resolveStateEnterTime =
         SampleApplicationService.class.getDeclaredMethod("resolveStateEnterTime", SampleRequest.class, closed.getClass());
             resolveStateEnterTime.setAccessible(true);
-            assertThat((LocalDateTime) resolveStateEnterTime.invoke(sampleController, sample, closed)).isEqualTo(sample.getCloseTime());
+            assertThat((LocalDateTime) resolveStateEnterTime.invoke(applicationDelegate, sample, closed)).isEqualTo(sample.getCloseTime());
         } catch (ReflectiveOperationException e) {
             throw new AssertionError(e);
         }
-        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "generateRequestNo")).startsWith("SM");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "generateRequestNo")).startsWith("SM");
     }
 
     @Test
     void privatePresentationAndEventHelpers_shouldCoverFallbackBranches() {
         Product priceProduct = new Product();
         priceProduct.setPrice(2190L);
-        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveProductPriceText", priceProduct, null))
+        assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "resolveProductPriceText", priceProduct, null))
                 .isEqualTo("¥21.9");
-        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveProductPriceText", null, null))
+        assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "resolveProductPriceText", null, null))
                 .isNull();
 
-        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveApplySourceLabel", "INTERNAL_QUICK_SAMPLE"))
+        assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "resolveApplySourceLabel", "INTERNAL_QUICK_SAMPLE"))
                 .isEqualTo("内部寄样");
-        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveApplySourceLabel", "MANUAL"))
+        assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "resolveApplySourceLabel", "MANUAL"))
                 .isEqualTo("手动申请");
 
-        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveOptionLabel", null, "默认"))
+        assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "resolveOptionLabel", null, "默认"))
                 .isEqualTo("默认");
-        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveOptionLabel", "PAID_SAMPLE", "默认"))
+        assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "resolveOptionLabel", "PAID_SAMPLE", "默认"))
                 .isEqualTo("付费寄样");
-        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveOptionLabel", "EXCHANGE_SAMPLE", "默认"))
+        assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "resolveOptionLabel", "EXCHANGE_SAMPLE", "默认"))
                 .isEqualTo("置换寄样");
-        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveOptionLabel", "COLONEL", "默认"))
+        assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "resolveOptionLabel", "COLONEL", "默认"))
                 .isEqualTo("团长");
-        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveOptionLabel", "OTHER", "默认"))
+        assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "resolveOptionLabel", "OTHER", "默认"))
                 .isEqualTo("其他");
-        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveOptionLabel", "CUSTOM", "默认"))
+        assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "resolveOptionLabel", "CUSTOM", "默认"))
                 .isEqualTo("CUSTOM");
 
         SampleRequest completed = new SampleRequest();
@@ -2726,65 +2957,60 @@ class SampleControllerTest {
         pendingHomework.setStatus(5);
         SampleRequest pendingShip = new SampleRequest();
         pendingShip.setStatus(2);
-        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveHomeworkTypeLabel", "NO_ORDER", pendingShip))
+        assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "resolveHomeworkTypeLabel", "NO_ORDER", pendingShip))
                 .isEqualTo("无订单");
-        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveHomeworkTypeLabel", "PARTIAL", pendingShip))
+        assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "resolveHomeworkTypeLabel", "PARTIAL", pendingShip))
                 .isEqualTo("部分完成");
-        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveHomeworkTypeLabel", "CUSTOM", pendingShip))
+        assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "resolveHomeworkTypeLabel", "CUSTOM", pendingShip))
                 .isEqualTo("CUSTOM");
-        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveHomeworkTypeLabel", null, completed))
+        assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "resolveHomeworkTypeLabel", null, completed))
                 .isEqualTo("有订单");
-        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveHomeworkTypeLabel", null, pendingHomework))
+        assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "resolveHomeworkTypeLabel", null, pendingHomework))
                 .isEqualTo("待交作业");
-        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveHomeworkTypeLabel", null, pendingShip))
+        assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "resolveHomeworkTypeLabel", null, pendingShip))
                 .isNull();
 
-        assertThat(ReflectionTestUtils.<Map<String, Object>>invokeMethod(sampleController, "readExtraMap", (Map<String, Object>) null, "x"))
+        assertThat(ReflectionTestUtils.<Map<String, Object>>invokeMethod(applicationDelegate, "readExtraMap", (Map<String, Object>) null, "x"))
                 .isEmpty();
-        assertThat(ReflectionTestUtils.<Map<String, Object>>invokeMethod(sampleController, "readExtraMap", Map.of("x", "not-map"), "x"))
+        assertThat(ReflectionTestUtils.<Map<String, Object>>invokeMethod(applicationDelegate, "readExtraMap", Map.of("x", "not-map"), "x"))
                 .isEmpty();
-        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "readExtraText", (Map<String, Object>) null, "x"))
+        assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "readExtraText", (Map<String, Object>) null, "x"))
                 .isNull();
-        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "readExtraText", Map.of("x", 123), "x"))
+        assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "readExtraText", Map.of("x", 123), "x"))
                 .isEqualTo("123");
 
         UUID realNameOnlyId = UUID.randomUUID();
         UUID usernameOnlyId = UUID.randomUUID();
         UUID blankUserId = UUID.randomUUID();
-        SysUser realNameOnly = new SysUser();
-        realNameOnly.setId(realNameOnlyId);
-        realNameOnly.setRealName("张三");
-        SysUser usernameOnly = new SysUser();
-        usernameOnly.setId(usernameOnlyId);
-        usernameOnly.setUsername("zhangsan");
-        SysUser blankUser = new SysUser();
-        blankUser.setId(blankUserId);
-        when(sysUserMapper.selectById(realNameOnlyId)).thenReturn(realNameOnly);
-        when(sysUserMapper.selectById(usernameOnlyId)).thenReturn(usernameOnly);
-        when(sysUserMapper.selectById(blankUserId)).thenReturn(blankUser);
+        when(userDomainFacade.loadUserDisplayLabelsByIds(eq(List.of(realNameOnlyId))))
+                .thenReturn(Map.of(realNameOnlyId, "张三"));
+        when(userDomainFacade.loadUserDisplayLabelsByIds(eq(List.of(usernameOnlyId))))
+                .thenReturn(Map.of(usernameOnlyId, "zhangsan"));
+        when(userDomainFacade.loadUserDisplayLabelsByIds(eq(List.of(blankUserId))))
+                .thenReturn(Map.of());
 
-        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveUserDisplayName", (UUID) null)).isNull();
-        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveUserDisplayName", realNameOnlyId)).isEqualTo("张三");
-        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveUserDisplayName", usernameOnlyId)).isEqualTo("zhangsan");
-        assertThat(ReflectionTestUtils.<String>invokeMethod(sampleController, "resolveUserDisplayName", blankUserId)).isNull();
+        assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "resolveUserDisplayName", (UUID) null)).isNull();
+        assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "resolveUserDisplayName", realNameOnlyId)).isEqualTo("张三");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "resolveUserDisplayName", usernameOnlyId)).isEqualTo("zhangsan");
+        assertThat(ReflectionTestUtils.<String>invokeMethod(applicationDelegate, "resolveUserDisplayName", blankUserId)).isNull();
 
         UUID assigneeId = UUID.randomUUID();
         Product assignedProduct = new Product();
+        assignedProduct.setId(UUID.randomUUID());
         assignedProduct.setProductId("P-ASSIGNED");
         assignedProduct.setActivityId(UUID.randomUUID());
-        ProductOperationState state = new ProductOperationState();
-        state.setAssigneeId(assigneeId);
-        when(productOperationStateMapper.selectOne(any())).thenReturn(state);
-        assertThat(ReflectionTestUtils.<UUID>invokeMethod(sampleController, "resolveColonelUserId", assignedProduct))
+        when(productDomainFacade.findProductAssigneeId(anyString(), eq("P-ASSIGNED"))).thenReturn(assigneeId);
+        when(productDomainFacade.findProductSnapshotAssigneeId(any())).thenReturn(assigneeId);
+        assertThat(ReflectionTestUtils.<UUID>invokeMethod(applicationDelegate, "resolveColonelUserId", assignedProduct))
                 .isEqualTo(assigneeId);
 
         CrawlerTalentInfo crawlerTalentInfo = new CrawlerTalentInfo();
         crawlerTalentInfo.setTalentId("talent-ok");
         when(crawlerTalentInfoService.findByTalentId("talent-ok")).thenReturn(crawlerTalentInfo);
         when(crawlerTalentInfoService.findByTalentId("talent-missing")).thenReturn(null);
-        assertThat(ReflectionTestUtils.<CrawlerTalentInfo>invokeMethod(sampleController, "requireCrawlerTalent", "talent-ok"))
+        assertThat(ReflectionTestUtils.<CrawlerTalentInfo>invokeMethod(applicationDelegate, "requireCrawlerTalent", "talent-ok"))
                 .isSameAs(crawlerTalentInfo);
-        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(sampleController, "requireCrawlerTalent", "talent-missing"))
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(applicationDelegate, "requireCrawlerTalent", "talent-missing"))
                 .hasMessageContaining("Selected talent does not exist");
 
         UUID productId = UUID.randomUUID();
@@ -2793,11 +3019,367 @@ class SampleControllerTest {
         SampleRequest sample = new SampleRequest();
         sample.setId(UUID.randomUUID());
         sample.setProductId(productId);
-        when(productMapper.selectById(productId)).thenReturn(null);
-        ReflectionTestUtils.invokeMethod(sampleController, "publishActionDomainEvent", "COMPLETED", sample, userId, now, null);
-        ReflectionTestUtils.invokeMethod(sampleController, "publishActionDomainEvent", "CLOSED", sample, userId, now, "超时关闭");
-        ReflectionTestUtils.invokeMethod(sampleController, "publishActionDomainEvent", "UNKNOWN", sample, userId, now, null);
+        when(productDomainFacade.findProductById(productId)).thenReturn(null);
+        when(productDomainFacade.findOrMaterializeSampleProduct(productId)).thenReturn(null);
+        ReflectionTestUtils.invokeMethod(applicationDelegate, "publishActionDomainEvent", "COMPLETED", sample, userId, now, null);
+        ReflectionTestUtils.invokeMethod(applicationDelegate, "publishActionDomainEvent", "CLOSED", sample, userId, now, "超时关闭");
+        ReflectionTestUtils.invokeMethod(applicationDelegate, "publishActionDomainEvent", "UNKNOWN", sample, userId, now, null);
         verify(sampleDomainEventPublisher).publishSampleCompleted(sample, null, now);
         verify(sampleDomainEventPublisher).publishSampleClosed(sample, "超时关闭", now);
     }
+
+    @Test
+    void getSamplePage_shouldReturnAllExpectedListFields() {
+        UUID productId = UUID.randomUUID();
+        UUID sampleId = UUID.randomUUID();
+
+        Product product = new Product();
+        product.setId(productId);
+        product.setProductId("10901825");
+        product.setName("列表测试商品");
+        product.setCover("https://example.test/cover.png");
+        product.setPrice(9900L);
+
+        ProductSnapshot snapshot = new ProductSnapshot();
+        snapshot.setId(productId);
+        snapshot.setProductId("3650575210828268564");
+        snapshot.setCover("https://example.test/snapshot-cover.png");
+        snapshot.setPriceText("¥99.0");
+        snapshot.setShopId(123456L);
+        snapshot.setShopName("测试店铺");
+
+        SampleRequest sample = new SampleRequest();
+        sample.setId(sampleId);
+        sample.setProductId(productId);
+        sample.setUserId(UUID.randomUUID());
+        sample.setChannelUserId(UUID.randomUUID());
+        sample.setTalentNickname("列表达人");
+        sample.setTalentUid("talent_list_001");
+        sample.setTalentFansCount(50000L);
+        sample.setTalentCreditScore(new BigDecimal("4.75"));
+        sample.setTalentMainCategory("美妆");
+        sample.setRequestNo("SR-LIST-001");
+        sample.setTrackingNo("SF-LIST-123");
+        sample.setShipperCode("SF");
+        sample.setRecipientName("李四");
+        sample.setRecipientPhone("13900139000");
+        sample.setRecipientAddress("北京市朝阳区测试路 2 号");
+        sample.setStatus(1);
+        sample.setCreateTime(LocalDateTime.of(2026, 6, 1, 10, 0));
+        sample.setUpdateTime(LocalDateTime.of(2026, 6, 1, 11, 0));
+        sample.setExtraData(Map.of(
+                "applySource", "MANUAL",
+                "cooperationType", "FREE_SAMPLE",
+                "sampleOwnerType", "MERCHANT",
+                "homeworkType", "HAS_ORDER",
+                "applyReason", "测试申请理由"
+        ));
+
+        IPage<SampleRequest> page = new Page<>(1, 10);
+        page.setRecords(List.of(sample));
+        page.setTotal(1);
+
+        when(productDomainFacade.loadProductsByIds(any())).thenReturn(java.util.Map.of(productId, toProductRead(product)));
+        when(productDomainFacade.findSnapshotById(productId)).thenReturn(toSnapshotRead(snapshot));
+        when(sampleRequestMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(page);
+
+        var response = sampleController.getSamplePage(
+                1, 10, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+                UUID.randomUUID(), null, DataScope.ALL, List.of(RoleCodes.ADMIN));
+
+        assertThat(response.getData().getRecords()).hasSize(1);
+        var vo = response.getData().getRecords().get(0);
+
+        assertThat(vo.getId()).isEqualTo(sampleId);
+        assertThat(vo.getRequestNo()).isEqualTo("SR-LIST-001");
+        assertThat(vo.getTalentUid()).isEqualTo("talent_list_001");
+        assertThat(vo.getTalentName()).isEqualTo("列表达人");
+        assertThat(vo.getTalentFansCount()).isEqualTo(50000L);
+        assertThat(vo.getTalentCreditScore()).isEqualTo("4.75");
+        assertThat(vo.getTalentMainCategory()).isEqualTo("美妆");
+        assertThat(vo.getProductId()).isEqualTo(productId);
+        assertThat(vo.getProductExternalId()).isEqualTo("10901825");
+        assertThat(vo.getProductName()).isEqualTo("列表测试商品");
+        assertThat(vo.getProductCover()).isEqualTo("https://example.test/cover.png");
+        assertThat(vo.getProductPriceText()).isEqualTo("¥99.0");
+        assertThat(vo.getShopId()).isEqualTo("123456");
+        assertThat(vo.getShopName()).isEqualTo("测试店铺");
+        assertThat(vo.getQuantity()).isEqualTo(1);
+        assertThat(vo.getApplicantUserId()).isNotNull();
+        assertThat(vo.getChannelUserId()).isNotNull();
+        assertThat(vo.getTrackingNo()).isEqualTo("SF-LIST-123");
+        assertThat(vo.getLogisticsCompany()).isEqualTo("SF");
+        assertThat(vo.getRecipientName()).isEqualTo("李四");
+        assertThat(vo.getRecipientPhone()).isEqualTo("13900139000");
+        assertThat(vo.getRecipientAddress()).isEqualTo("北京市朝阳区测试路 2 号");
+        assertThat(vo.getStatus()).isEqualTo("PENDING_AUDIT");
+        assertThat(vo.getCreateTime()).isEqualTo(LocalDateTime.of(2026, 6, 1, 10, 0));
+        assertThat(vo.getUpdateTime()).isEqualTo(LocalDateTime.of(2026, 6, 1, 11, 0));
+        assertThat(vo.getApplyReason()).isEqualTo("测试申请理由");
+        assertThat(vo.getApplySource()).isEqualTo("MANUAL");
+        assertThat(vo.getApplySourceLabel()).isEqualTo("手动申请");
+        assertThat(vo.getCooperationType()).isEqualTo("FREE_SAMPLE");
+        assertThat(vo.getCooperationTypeLabel()).isEqualTo("免费寄样");
+        assertThat(vo.getSampleOwnerType()).isEqualTo("MERCHANT");
+        assertThat(vo.getSampleOwnerTypeLabel()).isEqualTo("商家");
+        assertThat(vo.getHomeworkType()).isEqualTo("HAS_ORDER");
+        assertThat(vo.getHomeworkTypeLabel()).isEqualTo("有订单");
+    }
+
+    @Test
+    void getSampleById_shouldReturnAllExpectedDetailFields() {
+        UUID sampleId = UUID.randomUUID();
+        UUID productId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+
+        Product product = new Product();
+        product.setId(productId);
+        product.setProductId("DETAIL-PRODUCT-001");
+        product.setName("详情测试商品");
+        product.setCover("https://example.test/detail-cover.png");
+        product.setPrice(19900L);
+
+        ProductSnapshot snapshot = new ProductSnapshot();
+        snapshot.setId(productId);
+        snapshot.setProductId("DETAIL-SNAPSHOT-001");
+        snapshot.setCover("https://example.test/detail-snapshot-cover.png");
+        snapshot.setPriceText("¥199.0");
+        snapshot.setShopId(789012L);
+        snapshot.setShopName("详情测试店铺");
+
+        SampleRequest sample = new SampleRequest();
+        sample.setId(sampleId);
+        sample.setProductId(productId);
+        sample.setUserId(ownerId);
+        sample.setChannelUserId(ownerId);
+        sample.setDeptId(deptId);
+        sample.setTalentId(UUID.randomUUID());
+        sample.setTalentUid("talent_detail_001");
+        sample.setTalentNickname("详情达人");
+        sample.setTalentFansCount(150000L);
+        sample.setTalentCreditScore(new BigDecimal("4.92"));
+        sample.setTalentMainCategory("服饰");
+        sample.setRequestNo("SR-DETAIL-001");
+        sample.setTrackingNo("SF-DETAIL-456");
+        sample.setShipperCode("SF");
+        sample.setRecipientName("王五");
+        sample.setRecipientPhone("13700137000");
+        sample.setRecipientAddress("深圳市南山区测试路 3 号");
+        sample.setStatus(3);
+        sample.setCreateTime(LocalDateTime.of(2026, 5, 15, 9, 0));
+        sample.setUpdateTime(LocalDateTime.of(2026, 5, 20, 14, 30));
+        sample.setShipTime(LocalDateTime.of(2026, 5, 16, 10, 0));
+        sample.setDeliverTime(LocalDateTime.of(2026, 5, 18, 15, 0));
+        sample.setRejectReason(null);
+        sample.setCloseReason(null);
+        sample.setRemark("详情测试备注");
+        sample.setExtraData(Map.of(
+                "applySource", "INTERNAL_QUICK_SAMPLE",
+                "cooperationType", "PAID_SAMPLE",
+                "sampleOwnerType", "COLONEL",
+                "homeworkType", "VIDEO",
+                "applyReason", "详情测试申请理由",
+                "eligibilityCheck", Map.of("passed", true, "failedRules", List.of()),
+                "requirementSnapshot", Map.of("minLevel", "LV1", "actualLevel", "LV2")
+        ));
+
+        when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
+        when(productDomainFacade.findProductById(productId)).thenReturn(toProductRead(product));
+        when(productDomainFacade.findOrMaterializeSampleProduct(productId)).thenReturn(toProductRead(product));
+        when(productDomainFacade.findSnapshotById(productId)).thenReturn(toSnapshotRead(snapshot));
+        when(userDomainFacade.loadUserDisplayLabelsByIds(any()))
+                .thenReturn(Map.of(ownerId, "负责人 (owner_user)"));
+
+        var response = sampleController.getSampleById(sampleId, ownerId, deptId, DataScope.PERSONAL, null);
+        var vo = response.getData();
+
+        assertThat(vo.getId()).isEqualTo(sampleId);
+        assertThat(vo.getRequestNo()).isEqualTo("SR-DETAIL-001");
+        assertThat(vo.getTalentId()).isNotNull();
+        assertThat(vo.getTalentUid()).isEqualTo("talent_detail_001");
+        assertThat(vo.getTalentName()).isEqualTo("详情达人");
+        assertThat(vo.getTalentFansCount()).isEqualTo(150000L);
+        assertThat(vo.getTalentCreditScore()).isEqualTo("4.92");
+        assertThat(vo.getTalentMainCategory()).isEqualTo("服饰");
+        assertThat(vo.getProductId()).isEqualTo(productId);
+        assertThat(vo.getProductExternalId()).isEqualTo("DETAIL-PRODUCT-001");
+        assertThat(vo.getProductName()).isEqualTo("详情测试商品");
+        assertThat(vo.getProductCover()).isEqualTo("https://example.test/detail-cover.png");
+        assertThat(vo.getProductPriceText()).isEqualTo("¥199.0");
+        assertThat(vo.getShopId()).isEqualTo("789012");
+        assertThat(vo.getShopName()).isEqualTo("详情测试店铺");
+        assertThat(vo.getQuantity()).isEqualTo(1);
+        assertThat(vo.getApplicantUserId()).isNotNull();
+        assertThat(vo.getChannelUserId()).isEqualTo(ownerId);
+        assertThat(vo.getChannelUserName()).isEqualTo("负责人 (owner_user)");
+        assertThat(vo.getTrackingNo()).isEqualTo("SF-DETAIL-456");
+        assertThat(vo.getLogisticsCompany()).isEqualTo("SF");
+        assertThat(vo.getRecipientName()).isEqualTo("王五");
+        assertThat(vo.getRecipientPhone()).isEqualTo("13700137000");
+        assertThat(vo.getRecipientAddress()).isEqualTo("深圳市南山区测试路 3 号");
+        assertThat(vo.getStatus()).isEqualTo("SHIPPED");
+        assertThat(vo.getCreateTime()).isEqualTo(LocalDateTime.of(2026, 5, 15, 9, 0));
+        assertThat(vo.getUpdateTime()).isEqualTo(LocalDateTime.of(2026, 5, 20, 14, 30));
+        assertThat(vo.getShipTime()).isEqualTo(LocalDateTime.of(2026, 5, 16, 10, 0));
+        assertThat(vo.getDeliverTime()).isEqualTo(LocalDateTime.of(2026, 5, 18, 15, 0));
+        assertThat(vo.getRejectReason()).isNull();
+        assertThat(vo.getCloseReason()).isNull();
+        assertThat(vo.getRemark()).isEqualTo("详情测试备注");
+        assertThat(vo.getApplyReason()).isEqualTo("详情测试申请理由");
+        assertThat(vo.getApplySource()).isEqualTo("INTERNAL_QUICK_SAMPLE");
+        assertThat(vo.getApplySourceLabel()).isEqualTo("内部寄样");
+        assertThat(vo.getCooperationType()).isEqualTo("PAID_SAMPLE");
+        assertThat(vo.getCooperationTypeLabel()).isEqualTo("付费寄样");
+        assertThat(vo.getSampleOwnerType()).isEqualTo("COLONEL");
+        assertThat(vo.getSampleOwnerTypeLabel()).isEqualTo("团长");
+        assertThat(vo.getHomeworkType()).isEqualTo("VIDEO");
+        assertThat(vo.getHomeworkTypeLabel()).isEqualTo("VIDEO");
+        assertThat(vo.getEligibilityCheck()).containsEntry("passed", true);
+        assertThat(vo.getRequirementSnapshot()).containsEntry("actualLevel", "LV2");
+    }
+
+    @Test
+    void exportSamples_shouldMaintainColumnOrder() throws Exception {
+        UUID productId = UUID.randomUUID();
+        UUID channelUserId = UUID.randomUUID();
+
+        Product product = new Product();
+        product.setId(productId);
+        product.setName("导出测试商品");
+
+        SampleRequest sample = new SampleRequest();
+        sample.setId(UUID.randomUUID());
+        sample.setRequestNo("SR-EXPORT-001");
+        sample.setTalentNickname("导出达人");
+        sample.setProductId(productId);
+        sample.setStatus(5);
+        sample.setChannelUserId(channelUserId);
+        sample.setRecipientName("赵六");
+        sample.setRecipientPhone("13600136000");
+        sample.setRecipientAddress("广州市天河区测试路 4 号");
+        sample.setTrackingNo("SF-EXPORT-789");
+        sample.setRejectReason("导出驳回原因");
+        sample.setRemark("导出备注");
+        sample.setCreateTime(LocalDateTime.of(2026, 6, 5, 10, 0));
+
+        Page<SampleRequest> exportPage = new Page<>(1, 500, 1);
+        exportPage.setRecords(List.of(sample));
+
+        when(productDomainFacade.loadProductsByIds(any())).thenReturn(java.util.Map.of(productId, toProductRead(product)));
+        when(userDomainFacade.loadUserDisplayLabelsByIds(any()))
+                .thenReturn(Map.of(channelUserId, "导出负责人 (export_user)"));
+        when(sampleRequestMapper.findPageWithScope(any(Page.class), any())).thenReturn(exportPage);
+
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        sampleController.exportSamples(
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+                UUID.randomUUID(), null, DataScope.ALL, List.of(RoleCodes.ADMIN), response);
+
+        String content = response.getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+        String[] lines = content.split("\n");
+        assertThat(lines.length).isEqualTo(2);
+
+        String header = lines[0].replace("\ufeff", "").trim();
+        assertThat(header).isEqualTo("寄样单号,达人昵称,商品名称,状态,招商负责人,收件人,收件电话,收件地址,物流单号,驳回原因,备注,创建时间");
+
+        String dataLine = lines[1].trim();
+        assertThat(dataLine).contains("SR-EXPORT-001");
+        assertThat(dataLine).contains("导出达人");
+        assertThat(dataLine).contains("导出测试商品");
+        assertThat(dataLine).contains("PENDING_HOMEWORK");
+        assertThat(dataLine).contains("导出负责人 (export_user)");
+        assertThat(dataLine).contains("赵六");
+        assertThat(dataLine).contains("13600136000");
+        assertThat(dataLine).contains("广州市天河区测试路 4 号");
+        assertThat(dataLine).contains("SF-EXPORT-789");
+        assertThat(dataLine).contains("导出驳回原因");
+        assertThat(dataLine).contains("导出备注");
+        assertThat(dataLine).contains("2026-06-05");
+    }
+
+    private com.colonel.saas.common.result.ApiResult<com.colonel.saas.common.result.PageResult<com.colonel.saas.vo.sample.SampleVO>> getSamplePageBasic(
+            long page,
+            long size,
+            String keyword,
+            String status,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            Object roleCodes) {
+        return sampleController.getSamplePage(
+                page, size, keyword, status,
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+                null, null, null,
+                userId, deptId, dataScope, roleCodes);
+    }
+
+    private void exportSamplesBasic(
+            String status,
+            String keyword,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            Object roleCodes,
+            MockHttpServletResponse response) throws Exception {
+        sampleController.exportSamples(
+                status, keyword,
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+                null, null, null,
+                userId, deptId, dataScope, roleCodes, response);
+    }
+
+    private static ProductReadDTO toProductRead(Product product) {
+        if (product == null) {
+            return null;
+        }
+        return new ProductReadDTO(
+                product.getId(),
+                product.getProductId(),
+                product.getOuterProductId(),
+                product.getName(),
+                product.getCover(),
+                product.getPrice(),
+                product.getActivityId(),
+                product.getDetailUrl(),
+                product.getStatus(),
+                product.getCheckStatus());
+    }
+
+    private static ProductSnapshotReadDTO toSnapshotRead(ProductSnapshot snapshot) {
+        if (snapshot == null) {
+            return null;
+        }
+        return new ProductSnapshotReadDTO(
+                snapshot.getId(),
+                snapshot.getActivityId(),
+                snapshot.getProductId(),
+                snapshot.getTitle(),
+                snapshot.getCover(),
+                snapshot.getShopId(),
+                snapshot.getShopName(),
+                snapshot.getPrice(),
+                snapshot.getPriceText(),
+                snapshot.getStatus(),
+                snapshot.getDetailUrl());
+    }
+
+    private static TalentReadDTO toTalentRead(Talent talent) {
+        if (talent == null) {
+            return null;
+        }
+        return new TalentReadDTO(
+                talent.getId(),
+                talent.getDouyinUid(),
+                talent.getDouyinNo(),
+                talent.getNickname(),
+                talent.getFans(),
+                talent.getStatus(),
+                talent.getAvatarUrl(),
+                talent.getMainCategory(),
+                talent.getCategories(),
+                talent.getIpLocation());
+    }
+
 }

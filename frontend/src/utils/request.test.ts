@@ -4,6 +4,7 @@
  * isAuthLoginRequest、isAuthRefreshRequest、shouldTryRefresh、shouldSuppressErrorNotice
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
 import axios from 'axios'
 import {
   isValidToken,
@@ -86,6 +87,7 @@ describe('isAuthRefreshRequest', () => {
 
 describe('shouldTryRefresh', () => {
   beforeEach(() => {
+    setActivePinia(createPinia())
     localStorage.removeItem('refreshToken')
   })
 
@@ -173,9 +175,9 @@ describe('buildFriendlyErrorMessage', () => {
 
   it('ECONNABORTED / timeout 关键字返回超时提示', () => {
     expect(buildFriendlyErrorMessage({ message: 'timeout', code: 'ECONNABORTED' }))
-      .toBe('请求超时，请稍后重试')
+      .toBe('请求超时，数据量可能较大，请缩小查询范围后重试')
     expect(buildFriendlyErrorMessage({ message: 'Request timeout exceeded' }))
-      .toBe('请求超时，请稍后重试')
+      .toBe('请求超时，数据量可能较大，请缩小查询范围后重试')
   })
 
   it('socket hang up / network error 返回网络提示', () => {
@@ -222,6 +224,6 @@ describe('buildFriendlyErrorMessage', () => {
 
   it('无 response 字段时回退到 message/status 判断', () => {
     expect(buildFriendlyErrorMessage({ message: 'timeout' }))
-      .toBe('请求超时，请稍后重试')
+      .toBe('请求超时，数据量可能较大，请缩小查询范围后重试')
   })
 })

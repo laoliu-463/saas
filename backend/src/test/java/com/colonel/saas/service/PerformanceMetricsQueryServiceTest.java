@@ -1,6 +1,8 @@
 package com.colonel.saas.service;
 
 import com.colonel.saas.common.enums.DataScope;
+import com.colonel.saas.config.DddRefactorProperties;
+import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -18,6 +20,8 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.contains;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -28,10 +32,14 @@ class PerformanceMetricsQueryServiceTest {
     private JdbcTemplate jdbcTemplate;
 
     private PerformanceMetricsQueryService service;
+    private DataScopePolicy dataScopePolicy;
+    private DddRefactorProperties dddRefactorProperties;
 
     @BeforeEach
     void setUp() {
-        service = new PerformanceMetricsQueryService(jdbcTemplate);
+        dataScopePolicy = spy(new DataScopePolicy());
+        dddRefactorProperties = new DddRefactorProperties();
+        service = new PerformanceMetricsQueryService(jdbcTemplate, dataScopePolicy, dddRefactorProperties);
     }
 
     @Test
@@ -98,6 +106,79 @@ class PerformanceMetricsQueryServiceTest {
         assertThat(sql).contains("co.create_time >= ?");
         assertThat(sql).contains("co.create_time < ?");
         assertThat(sql).doesNotContain("co.pay_time");
+    }
+
+    @Test
+    void aggregateRange_shouldKeepLegacyPersonalScopeWhenPolicyDisabled() {
+        when(jdbcTemplate.queryForMap(any(String.class), any(Object[].class)))
+                .thenReturn(Map.of(
+                        "order_count", 1L,
+                        "order_amount_cent", 1000L,
+                        "service_fee_income_cent", 100L,
+                        "tech_service_fee_cent", 10L,
+                        "talent_commission_cent", 0L,
+                        "service_profit_cent", 90L,
+                        "recruiter_commission_cent", 9L,
+                        "channel_commission_cent", 18L,
+                        "gross_profit_cent", 63L));
+
+        UUID userId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+        LocalDate today = LocalDate.now();
+        service.aggregateRange(
+                today.atStartOfDay(),
+                today.plusDays(1).atStartOfDay(),
+                "createTime",
+                userId,
+                deptId,
+                DataScope.PERSONAL);
+
+        ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<Object[]> argsCaptor = ArgumentCaptor.forClass(Object[].class);
+        verify(jdbcTemplate).queryForMap(sqlCaptor.capture(), argsCaptor.capture());
+
+        assertThat(sqlCaptor.getValue())
+                .contains("co.user_id = ?")
+                .doesNotContain("co.dept_id = ?");
+        assertThat(argsCaptor.getValue()[0]).isEqualTo(userId);
+        verify(dataScopePolicy, never()).decide(any(), any(), any());
+    }
+
+    @Test
+    void aggregateRange_dataScopePolicyEnabledPathShouldDelegatePersonalScopeToUserPolicy() {
+        dddRefactorProperties.getDataScopePolicy().setEnabled(true);
+        when(jdbcTemplate.queryForMap(any(String.class), any(Object[].class)))
+                .thenReturn(Map.of(
+                        "order_count", 1L,
+                        "order_amount_cent", 1000L,
+                        "service_fee_income_cent", 100L,
+                        "tech_service_fee_cent", 10L,
+                        "talent_commission_cent", 0L,
+                        "service_profit_cent", 90L,
+                        "recruiter_commission_cent", 9L,
+                        "channel_commission_cent", 18L,
+                        "gross_profit_cent", 63L));
+
+        UUID userId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+        LocalDate today = LocalDate.now();
+        service.aggregateRange(
+                today.atStartOfDay(),
+                today.plusDays(1).atStartOfDay(),
+                "createTime",
+                userId,
+                deptId,
+                DataScope.PERSONAL);
+
+        ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<Object[]> argsCaptor = ArgumentCaptor.forClass(Object[].class);
+        verify(jdbcTemplate).queryForMap(sqlCaptor.capture(), argsCaptor.capture());
+
+        assertThat(sqlCaptor.getValue())
+                .contains("co.user_id = ?")
+                .doesNotContain("co.dept_id = ?");
+        assertThat(argsCaptor.getValue()[0]).isEqualTo(userId);
+        verify(dataScopePolicy).decide(userId, deptId, DataScope.PERSONAL);
     }
 
     @Test

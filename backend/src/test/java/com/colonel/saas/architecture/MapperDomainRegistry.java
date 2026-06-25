@@ -47,6 +47,27 @@ final class MapperDomainRegistry {
 
     static Domain ownerDomain(String ownerFqcn) {
         String lower = ownerFqcn.toLowerCase(Locale.ROOT);
+        if (lower.contains(".domain.user.")) {
+            return Domain.USER;
+        }
+        if (lower.contains(".domain.talent.")) {
+            return Domain.TALENT;
+        }
+        if (lower.contains(".domain.product.")) {
+            return Domain.PRODUCT;
+        }
+        if (lower.contains(".domain.order.")) {
+            return Domain.ORDER;
+        }
+        if (lower.contains(".domain.sample.")) {
+            return Domain.SAMPLE;
+        }
+        if (lower.contains(".domain.config.")) {
+            return Domain.CONFIG;
+        }
+        if (lower.contains(".domain.performance.")) {
+            return Domain.PERFORMANCE;
+        }
         if (lower.contains(".auth.") || lower.contains(".domain.user.")
                 || lower.endsWith("userdomainservice")
                 || lower.endsWith("usermasterdataservice")
@@ -95,6 +116,9 @@ final class MapperDomainRegistry {
         if (lower.contains("operationlog") || lower.contains("douyinwebhook")
                 || lower.contains("domainevent")) {
             return Domain.INFRA;
+        }
+        if (lower.contains("performancerecordsynclistener")) {
+            return Domain.PERFORMANCE;
         }
         if (lower.contains("listener") || lower.contains(".job.")) {
             return Domain.EVENT;

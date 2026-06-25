@@ -13,7 +13,8 @@ import com.colonel.saas.entity.ColonelsettlementActivity;
 import com.colonel.saas.entity.SysUser;
 import com.colonel.saas.gateway.douyin.DouyinActivityGateway;
 import com.colonel.saas.gateway.douyin.DouyinProductGateway;
-import com.colonel.saas.mapper.SysUserMapper;
+import com.colonel.saas.domain.product.policy.ProductDisplayPolicy;
+import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.service.activity.ActivityAccessService;
 import com.colonel.saas.service.ColonelsettlementActivityService;
 import com.colonel.saas.service.ProductActivityManualSyncService;
@@ -25,6 +26,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import org.springframework.util.StringUtils;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -65,8 +67,9 @@ public class ColonelActivityController extends BaseController {
     private final SysUserService sysUserService;
     private final ColonelsettlementActivityService colonelActivityService;
     private final ProductActivityManualSyncService productActivityManualSyncService;
-    private final SysUserMapper sysUserMapper;
+    private final UserDomainFacade userDomainFacade;
     private final ActivityAccessService activityAccessService;
+    private final ProductDisplayPolicy productDisplayPolicy;
 
     public ColonelActivityController(
             DouyinActivityGateway douyinActivityGateway,
@@ -76,8 +79,9 @@ public class ColonelActivityController extends BaseController {
             SysUserService sysUserService,
             ColonelsettlementActivityService colonelActivityService,
             ProductActivityManualSyncService productActivityManualSyncService,
-            SysUserMapper sysUserMapper,
-            ActivityAccessService activityAccessService) {
+            UserDomainFacade userDomainFacade,
+            ActivityAccessService activityAccessService,
+            ProductDisplayPolicy productDisplayPolicy) {
         this.douyinActivityGateway = douyinActivityGateway;
         this.douyinProductGateway = douyinProductGateway;
         this.productService = productService;
@@ -85,8 +89,9 @@ public class ColonelActivityController extends BaseController {
         this.sysUserService = sysUserService;
         this.colonelActivityService = colonelActivityService;
         this.productActivityManualSyncService = productActivityManualSyncService;
-        this.sysUserMapper = sysUserMapper;
+        this.userDomainFacade = userDomainFacade;
         this.activityAccessService = activityAccessService;
+        this.productDisplayPolicy = productDisplayPolicy;
     }
 
     @Operation(summary = "团长活动列表", description = "查询机构创建的团长活动列表，并回填本地分配信息。默认仅查本地 DB；DB 为空时返回 needSync=true 提示先同步活动，永不在线调抖音。")
@@ -103,7 +108,7 @@ public class ColonelActivityController extends BaseController {
             @RequestParam(name = "assignmentFilter", defaultValue = "all") String assignmentFilter,
             @RequestAttribute(value = "userId", required = false) UUID userId,
             @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
-        Collection<String> normalizedRoles = ActivityAccessService.normalizeRoleCodes(roleCodes);
+        Collection<String> normalizedRoles = activityAccessService.normalizeRoles(roleCodes);
         String effectiveFilter = activityAccessService.resolveEffectiveAssignmentFilter(assignmentFilter, normalizedRoles);
         // 改造后路径（504 根因修复）：
         // 永远走本地 DB，admin+all filter 也不调抖音，避免上游超时/慢响应导致 504
@@ -163,15 +168,61 @@ public class ColonelActivityController extends BaseController {
                 activityId,
                 userId,
                 deptId,
-                ActivityAccessService.normalizeRoleCodes(roleCodes));
+                activityAccessService.normalizeRoles(roleCodes));
         ProductActivityManualSyncService.SyncTriggerResult triggerResult =
-                productActivityManualSyncService.trigger(activityId, appId);
+                productActivityManualSyncService.trigger(activityId, appId, userId);
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("activityId", triggerResult.activityId());
+        payload.put("jobId", triggerResult.jobId());
         payload.put("syncStatus", triggerResult.syncStatus());
-        payload.put("message", "RUNNING".equals(triggerResult.syncStatus())
-                ? "商品同步已在后台执行，请稍后刷新列表"
-                : "商品同步已转入后台执行");
+        String message;
+        if ("RUNNING".equals(triggerResult.syncStatus())) {
+            message = "商品同步已在后台执行，请稍后刷新列表";
+        } else if ("LOCKED".equals(triggerResult.syncStatus())) {
+            message = StringUtils.hasText(triggerResult.message())
+                    ? triggerResult.message()
+                    : "后台商品同步正在执行，请稍后重试";
+            payload.put("lockKey", triggerResult.lockKey());
+            payload.put("lockOwner", triggerResult.lockOwner());
+            payload.put("lockTtlSeconds", triggerResult.lockTtlSeconds());
+        } else {
+            message = "商品同步已转入后台执行";
+        }
+        payload.put("message", message);
+        return ok(payload);
+    }
+
+    @Operation(summary = "查询活动商品同步任务状态", description = "查询一键同步商品后台任务状态，前端用于在 SUCCESS/PARTIAL/FAILED 终态后刷新活动商品列表。")
+    @GetMapping("/{activityId}/products/sync-jobs/{jobId}")
+    public ApiResult<Map<String, Object>> getProductSyncJob(
+            @Parameter(description = "团长活动 ID。") @PathVariable("activityId") String activityId,
+            @Parameter(description = "同步任务 ID。") @PathVariable("jobId") String jobId,
+            @RequestAttribute(value = "userId", required = false) UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
+            @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
+        activityAccessService.assertActivityReadable(
+                activityId,
+                userId,
+                deptId,
+                activityAccessService.normalizeRoles(roleCodes));
+        ProductActivityManualSyncService.SyncJobStatus status =
+                productActivityManualSyncService.getJobStatus(jobId);
+        if (!String.valueOf(activityId).trim().equals(status.activityId())) {
+            throw BusinessException.notFound("未找到对应的活动商品同步任务");
+        }
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("activityId", status.activityId());
+        payload.put("jobId", status.jobId());
+        payload.put("syncStatus", status.syncStatus());
+        payload.put("fetchedRows", status.fetchedRows());
+        payload.put("distinctProductIds", status.distinctProductIds());
+        payload.put("createdCount", status.createdCount());
+        payload.put("updatedCount", status.updatedCount());
+        payload.put("skippedCount", status.skippedCount());
+        payload.put("failedCount", status.failedCount());
+        payload.put("startedAt", status.startedAt());
+        payload.put("finishedAt", status.finishedAt());
+        payload.put("errorMessage", status.errorMessage());
         return ok(payload);
     }
 
@@ -198,11 +249,14 @@ public class ColonelActivityController extends BaseController {
             @RequestAttribute(value = "userId", required = false) UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
+        if (!productDisplayPolicy.isSupportedActivityProductQueryStatus(status)) {
+            throw BusinessException.param(productDisplayPolicy.activityProductQueryStatusHint());
+        }
         activityAccessService.assertActivityReadable(
                 activityId,
                 userId,
                 deptId,
-                ActivityAccessService.normalizeRoleCodes(roleCodes));
+                activityAccessService.normalizeRoles(roleCodes));
         try {
             // 改造后路径（504 根因修复）：
             // 1) refresh=true 强制走抖音同步（用户主动触发，已知耗时）
@@ -214,11 +268,11 @@ public class ColonelActivityController extends BaseController {
                         new DouyinProductGateway.ActivityProductQueryRequest(
                                 appId, activityId, searchType, sortType, count, cooperationInfo, cooperationType,
                                 productInfo, status, retrieveMode, cursor, page);
-                Map<String, Object> payload = productService.buildActivityProductListViewFromDb(
-                        activityId, count, cursor, productInfo, bizStatus, status, sortBy, goodsTags, productTags);
                 colonelActivityService.syncActivitySummaryFromUpstream(activityId, appId);
                 ProductService.ActivityProductRefreshResult refreshResult =
                         productService.refreshActivitySnapshots(queryRequest);
+                Map<String, Object> payload = productService.buildActivityProductListViewFromDb(
+                        activityId, count, cursor, productInfo, bizStatus, status, sortBy, goodsTags, productTags);
                 Map<String, Object> syncStats = new LinkedHashMap<>();
                 syncStats.put("syncedProductCount", refreshResult.syncedProductCount());
                 syncStats.put("libraryEntryCount", refreshResult.libraryEntryCount());
@@ -311,14 +365,8 @@ public class ColonelActivityController extends BaseController {
         if (userId == null) {
             return "";
         }
-        SysUser user = sysUserMapper.selectById(userId);
-        if (user == null) {
-            return "";
-        }
-        if (user.getRealName() != null && !user.getRealName().isBlank()) {
-            return user.getRealName().trim();
-        }
-        return user.getUsername() == null ? "" : user.getUsername();
+        String name = userDomainFacade.loadUserDisplayNamesByIds(List.of(userId)).get(userId);
+        return name == null ? "" : name;
     }
 
     private BusinessException mapActivityError(DouyinApiException e) {

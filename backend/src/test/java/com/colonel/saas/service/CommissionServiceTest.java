@@ -1,5 +1,7 @@
 package com.colonel.saas.service;
 
+import com.colonel.saas.config.SystemConfigKeys;
+import com.colonel.saas.domain.config.facade.ConfigDomainFacade;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -7,7 +9,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -15,7 +16,6 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -24,7 +24,7 @@ import static org.mockito.Mockito.when;
 class CommissionServiceTest {
 
     @Mock
-    private JdbcTemplate jdbcTemplate;
+    private ConfigDomainFacade configDomainFacade;
     @Mock
     private CommissionRuleService commissionRuleService;
     @Mock
@@ -34,7 +34,7 @@ class CommissionServiceTest {
 
     @BeforeEach
     void setUp() {
-        commissionService = new CommissionService(jdbcTemplate, commissionRuleService, performanceCalculationService);
+        commissionService = new CommissionService(configDomainFacade, commissionRuleService, performanceCalculationService);
         org.mockito.Mockito.lenient()
                 .when(commissionRuleService.resolveRatio(
                         org.mockito.ArgumentMatchers.anyString(),
@@ -45,9 +45,7 @@ class CommissionServiceTest {
 
     @Test
     void calculate_shouldUseConfigRatios() {
-        when(jdbcTemplate.query(anyString(), org.mockito.ArgumentMatchers.<org.springframework.jdbc.core.ResultSetExtractor<String>>any(), any()))
-                .thenReturn("0.10")
-                .thenReturn("0.20");
+        stubDefaultRatios("0.10", "0.20");
 
         ColonelsettlementOrder order = new ColonelsettlementOrder();
         order.setSettleColonelCommission(10000L);
@@ -67,9 +65,7 @@ class CommissionServiceTest {
 
     @Test
     void calculate_shouldFallbackWhenConfigMissing() {
-        when(jdbcTemplate.query(anyString(), org.mockito.ArgumentMatchers.<org.springframework.jdbc.core.ResultSetExtractor<String>>any(), any()))
-                .thenReturn(null)
-                .thenReturn(null);
+        when(configDomainFacade.getDecimal(any(), any())).thenReturn(null);
 
         ColonelsettlementOrder order = new ColonelsettlementOrder();
         order.setSettleColonelCommission(10000L);
@@ -83,11 +79,9 @@ class CommissionServiceTest {
 
     @Test
     void calculate_shouldUseActivitySpecificRatiosWhenConfigured() {
-        when(jdbcTemplate.query(anyString(), org.mockito.ArgumentMatchers.<org.springframework.jdbc.core.ResultSetExtractor<String>>any(), any()))
-                .thenReturn("0.10")
-                .thenReturn("0.20")
-                .thenReturn("0.30")
-                .thenReturn("0.40");
+        stubDefaultRatios("0.10", "0.20");
+        when(configDomainFacade.getConfig("commission.business_activity_ratio.ACTIVITY_001")).thenReturn("0.30");
+        when(configDomainFacade.getConfig("commission.channel_activity_ratio.ACTIVITY_001")).thenReturn("0.40");
 
         ColonelsettlementOrder order = new ColonelsettlementOrder();
         order.setActivityId("ACTIVITY_001");
@@ -105,13 +99,11 @@ class CommissionServiceTest {
 
     @Test
     void calculate_shouldMixDefaultAndActivitySpecificRatiosByActivity() {
-        when(jdbcTemplate.query(anyString(), org.mockito.ArgumentMatchers.<org.springframework.jdbc.core.ResultSetExtractor<String>>any(), any()))
-                .thenReturn("0.10")
-                .thenReturn("0.20")
-                .thenReturn("0.30")
-                .thenReturn("0.40")
-                .thenReturn(null)
-                .thenReturn(null);
+        stubDefaultRatios("0.10", "0.20");
+        when(configDomainFacade.getConfig("commission.business_activity_ratio.ACTIVITY_001")).thenReturn("0.30");
+        when(configDomainFacade.getConfig("commission.channel_activity_ratio.ACTIVITY_001")).thenReturn("0.40");
+        when(configDomainFacade.getConfig("commission.business_activity_ratio.ACTIVITY_002")).thenReturn(null);
+        when(configDomainFacade.getConfig("commission.channel_activity_ratio.ACTIVITY_002")).thenReturn(null);
 
         ColonelsettlementOrder activityOrder = new ColonelsettlementOrder();
         activityOrder.setActivityId("ACTIVITY_001");
@@ -135,11 +127,9 @@ class CommissionServiceTest {
 
     @Test
     void calculateByActivityBuckets_shouldUseAggregatedRows() {
-        when(jdbcTemplate.query(anyString(), org.mockito.ArgumentMatchers.<org.springframework.jdbc.core.ResultSetExtractor<String>>any(), any()))
-                .thenReturn("0.10")
-                .thenReturn("0.20")
-                .thenReturn("0.30")
-                .thenReturn("0.40");
+        stubDefaultRatios("0.10", "0.20");
+        when(configDomainFacade.getConfig("commission.business_activity_ratio.ACTIVITY_001")).thenReturn("0.30");
+        when(configDomainFacade.getConfig("commission.channel_activity_ratio.ACTIVITY_001")).thenReturn("0.40");
 
         CommissionService.CommissionSummary summary = commissionService.calculateByActivityBuckets(List.of(
                 new CommissionService.ActivityCommissionBucket("ACTIVITY_001", null, null, 10000L, 1000L, 2000L)
@@ -153,9 +143,7 @@ class CommissionServiceTest {
 
     @Test
     void calculate_shouldUseCommissionRuleRatiosBeforeLegacyActivityConfig() {
-        when(jdbcTemplate.query(anyString(), org.mockito.ArgumentMatchers.<org.springframework.jdbc.core.ResultSetExtractor<String>>any(), any()))
-                .thenReturn("0.10")
-                .thenReturn("0.20");
+        stubDefaultRatios("0.10", "0.20");
         when(commissionRuleService.resolveRatio(eq(CommissionRuleService.TYPE_RECRUITER), any(), any()))
                 .thenReturn(new BigDecimal("0.25"));
         when(commissionRuleService.resolveRatio(eq(CommissionRuleService.TYPE_CHANNEL), any(), any()))
@@ -185,8 +173,7 @@ class CommissionServiceTest {
 
     @Test
     void calculate_shouldFallbackWhenRatioQueryFails() {
-        when(jdbcTemplate.query(anyString(), org.mockito.ArgumentMatchers.<org.springframework.jdbc.core.ResultSetExtractor<String>>any(), any()))
-                .thenThrow(new RuntimeException("db offline"));
+        when(configDomainFacade.getDecimal(any(), any())).thenThrow(new RuntimeException("config offline"));
 
         ColonelsettlementOrder order = new ColonelsettlementOrder();
         order.setSettleColonelCommission(10000L);
@@ -197,5 +184,12 @@ class CommissionServiceTest {
         assertThat(summary.channelRatio()).isEqualByComparingTo("0.15");
         assertThat(summary.bizCommission()).isEqualTo(1500L);
         assertThat(summary.channelCommission()).isEqualTo(1500L);
+    }
+
+    private void stubDefaultRatios(String businessRatio, String channelRatio) {
+        when(configDomainFacade.getDecimal(SystemConfigKeys.COMMISSION_BUSINESS_DEFAULT_RATIO, new BigDecimal("0.15")))
+                .thenReturn(new BigDecimal(businessRatio));
+        when(configDomainFacade.getDecimal(SystemConfigKeys.COMMISSION_CHANNEL_DEFAULT_RATIO, new BigDecimal("0.15")))
+                .thenReturn(new BigDecimal(channelRatio));
     }
 }

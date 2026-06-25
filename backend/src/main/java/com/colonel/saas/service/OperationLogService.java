@@ -4,9 +4,8 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.entity.OperationLog;
-import com.colonel.saas.entity.SysUser;
 import com.colonel.saas.mapper.OperationLogMapper;
-import com.colonel.saas.mapper.SysUserMapper;
+import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -52,8 +51,8 @@ public class OperationLogService {
 
     /** 操作日志 Mapper（MyBatis-Plus，用于分页查询） */
     private final OperationLogMapper operationLogMapper;
-    /** 系统用户 Mapper（用于根据 userId 反查用户名） */
-    private final SysUserMapper sysUserMapper;
+    /** 系统用户门面（用于根据 userId 反查用户名） */
+    private final UserDomainFacade userDomainFacade;
     /** JDBC 模板（用于原生 SQL 写入和分区 DDL） */
     private final JdbcTemplate jdbcTemplate;
     /** JSON 序列化工具（用于将 Map/Object 字段序列化为 jsonb） */
@@ -61,11 +60,11 @@ public class OperationLogService {
 
     public OperationLogService(
             OperationLogMapper operationLogMapper,
-            SysUserMapper sysUserMapper,
+            @org.springframework.context.annotation.Lazy UserDomainFacade userDomainFacade,
             JdbcTemplate jdbcTemplate,
             ObjectMapper objectMapper) {
         this.operationLogMapper = operationLogMapper;
-        this.sysUserMapper = sysUserMapper;
+        this.userDomainFacade = userDomainFacade;
         this.jdbcTemplate = jdbcTemplate;
         this.objectMapper = objectMapper;
     }
@@ -229,7 +228,7 @@ public class OperationLogService {
      * 根据用户 ID 反查用户名。
      * <p>
      * 用于系统操作日志场景，当操作者 ID 已知但用户名未显式传入时，
-     * 通过 {@link SysUserMapper} 查询用户表获取用户名。
+     * 通过 {@link UserDomainFacade} 查询用户主数据获取用户名。
      * 若用户不存在或 operatorId 为 null，则返回 null。
      * </p>
      *
@@ -240,8 +239,7 @@ public class OperationLogService {
         if (operatorId == null) {
             return null;
         }
-        SysUser user = sysUserMapper.selectById(operatorId);
-        return user == null ? null : user.getUsername();
+        return userDomainFacade.getUsername(operatorId);
     }
 
     /**

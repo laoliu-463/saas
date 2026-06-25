@@ -4,7 +4,7 @@
 
 ## 当前事实
 
-- [V1 必做] 本仓库是抖音团长 SaaS V1 的记录系统，当前可执行事实以代码、测试、运行配置和本目录文档共同确认。
+- [V2 必做] 本仓库是抖音团长 SaaS V2 演进中的记录系统，当前可执行事实以代码、测试、运行配置和本目录文档共同确认。
 - [V1 必做] 当前真实技术栈为 Spring Boot、PostgreSQL、Redis、Docker Compose、Vue / TypeScript、Playwright。
 - [V1 必做] `CLAUDE.md` 只做地图，智能体执行细节放在 `.claude/`。
 - [V1 必做] `docs/` 只存事实、领域合同、流程、接口、验收、部署和决策。
@@ -12,7 +12,7 @@
 
 ## 阅读顺序
 
-1. [V1 必做] 先读 [00-项目总览.md](00-项目总览.md) 和 [01-V1交付范围与边界.md](01-V1交付范围与边界.md)。
+1. [V2 必做] 先读 [00-项目总览.md](00-项目总览.md)、[01-V2交付范围与边界.md](01-V2交付范围与边界.md)、[决策/ADR-010-仓库阶段口径拍板为V2.md](决策/ADR-010-仓库阶段口径拍板为V2.md)。
 2. [V1 必做] 涉及业务主链路时读 [02-业务闭环总览.md](02-业务闭环总览.md) 与 [流程/](流程/)。
 3. [V1 必做] 涉及领域职责时读 [03-领域架构总览.md](03-领域架构总览.md) 与 [领域/](领域/)。
 4. [V1 必做] 涉及事件、接口、数据时读 [04-事件契约总表.md](04-事件契约总表.md)、[05-API契约总表.md](05-API契约总表.md)、[06-数据模型总表.md](06-数据模型总表.md)。
@@ -27,7 +27,7 @@
 | 文档 | 作用 | 范围 |
 | --- | --- | --- |
 | [00-项目总览.md](00-项目总览.md) | 当前项目事实和技术栈 | V1 必做 |
-| [01-V1交付范围与边界.md](01-V1交付范围与边界.md) | V1/V2 边界和冲突处理入口 | V1 必做 |
+| [01-V2交付范围与边界.md](01-V2交付范围与边界.md) | V2 交付范围和冲突处理入口 | V2 必做 |
 | [02-业务闭环总览.md](02-业务闭环总览.md) | 业务闭环总图 | V1 必做 |
 | [03-领域架构总览.md](03-领域架构总览.md) | 领域职责边界 | V1 必做 |
 | [04-事件契约总表.md](04-事件契约总表.md) | 事件生产、消费、证据 | V1 必做 |
@@ -38,6 +38,9 @@
 | [09-测试验收总览.md](09-测试验收总览.md) | 测试脚本、证据、验收 | V1 必做 |
 | [10-部署运行总览.md](10-部署运行总览.md) | test / real-pre 运行口径 | V1 必做 |
 | [11-用户操作手册.md](11-用户操作手册.md) | 面向业务用户的登录、菜单、角色和日常操作说明 | V1 必做 |
+| [12-项目记忆索引.md](12-项目记忆索引.md) | 本地项目记忆迁移索引和短事实入口 | V2 必做 |
+| [13-Claude项目记忆迁移索引.md](13-Claude项目记忆迁移索引.md) | Claude 本地项目记忆与归档快照迁移索引 | V2 必做 |
+| [14-Codex会话记忆迁移索引.md](14-Codex会话记忆迁移索引.md) | Codex 本地 SAAS 相关会话索引与导入边界 | V2 必做 |
 
 ## 兼容入口
 
@@ -45,12 +48,12 @@
 
 | 文档 | 指向主源 |
 | --- | --- |
-| [01-V1交付合同.md](01-V1交付合同.md) | [01-V1交付范围与边界.md](01-V1交付范围与边界.md) |
+| [01-V1交付合同.md](01-V1交付合同.md) | [01-V2交付范围与边界.md](01-V2交付范围与边界.md)、[决策/ADR-010-仓库阶段口径拍板为V2.md](决策/ADR-010-仓库阶段口径拍板为V2.md) |
 | [02-业务闭环地图.md](02-业务闭环地图.md) | [02-业务闭环总览.md](02-业务闭环总览.md) |
 | [03-领域边界总表.md](03-领域边界总表.md) | [03-领域架构总览.md](03-领域架构总览.md) 与 [领域/](领域/) |
 | [04-上线验收清单.md](04-上线验收清单.md) | [09-测试验收总览.md](09-测试验收总览.md)、[10-部署运行总览.md](10-部署运行总览.md) |
 | [05-real-pre证据索引.md](05-real-pre证据索引.md) | [验收/验收证据索引.md](验收/验收证据索引.md) |
-| [06-P0-P1问题台账.md](06-P0-P1问题台账.md) | [../harness/state/p0-p1-register.md](../harness/state/p0-p1-register.md) |
+| [06-P0-P1问题台账.md](06-P0-P1问题台账.md) | [../harness/rules/state/snapshots/03-P0-P1问题台账.md](../harness/rules/state/snapshots/03-P0-P1问题台账.md) |
 
 ## 专项目录
 
@@ -65,15 +68,15 @@
 
 ## Harness Engineering
 
-- [V1 必做] [../harness/README.md](../harness/README.md)：AI Agent 固定执行入口、脚本、skills、evals、runbooks、prompts 和 evidence reports。
-- [V1 必做] [../harness/CURRENT_STATE.md](../harness/CURRENT_STATE.md)：当前技术栈、V1 闭环、real-pre 状态和旧文档冲突处理。
-- [V1 必做] [../harness/TASK_ROUTING.md](../harness/TASK_ROUTING.md)：任务分流到领域、验证和执行 Scope。
-- [V1 必做] [../harness/FORBIDDEN_SCOPE.md](../harness/FORBIDDEN_SCOPE.md)：V1、real-pre、Git 密钥和模块边界禁止项。
-- [V1 必做] [../harness/instructions/](../harness/instructions/)：Instructions 指令系统。
-- [V1 必做] [../harness/tools/README.md](../harness/tools/README.md)：Tools 工具系统。
-- [V1 必做] [../harness/environment/](../harness/environment/)：Environment 环境系统。
-- [V1 必做] [../harness/state/](../harness/state/)：State 状态系统。
-- [V1 必做] [../harness/feedback/](../harness/feedback/)：Feedback 反馈系统。
+- [V1 必做] [../harness/README.md](../harness/README.md)：AI Agent 固定执行入口、脚本、skills、runbooks、任务和 evidence reports。
+- [V1 必做] [../harness/rules/state/snapshots/01-当前项目状态.md](../harness/rules/state/snapshots/01-当前项目状态.md)：当前技术栈、V2 闭环、real-pre 状态和旧文档冲突处理。
+- [V1 必做] [../harness/rules/governance/task-routing.md](../harness/rules/governance/task-routing.md)：任务分流到领域、验证和执行 Scope。
+- [V1 必做] [../harness/rules/governance/forbidden-scope.md](../harness/rules/governance/forbidden-scope.md)：real-pre、Git 密钥和模块边界禁止项。
+- [V1 必做] [../harness/rules/instructions/](../harness/rules/instructions/)：Instructions 指令系统。
+- [V1 必做] [../harness/rules/skills/](../harness/rules/skills/)：Skills 工具化规则系统。
+- [V1 必做] [../harness/rules/environment/](../harness/rules/environment/)：Environment 环境系统。
+- [V1 必做] [../harness/rules/state/](../harness/rules/state/)：State 状态系统。
+- [V1 必做] [../harness/rules/feedback/](../harness/rules/feedback/)：Feedback 反馈系统。
 - [V1 必做] Harness 不替代本目录事实主源；涉及业务规则仍以 `docs/*.md` 和当前代码证据为准。
 
 ## 不变量

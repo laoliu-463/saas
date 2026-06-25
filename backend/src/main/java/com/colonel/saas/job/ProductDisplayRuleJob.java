@@ -31,7 +31,7 @@ import java.time.Duration;
  * </p>
  *
  * @see ProductDisplayRuleService#reconcileAll()
- * @see JobLockKeys#PRODUCT_DISPLAY_RULE
+ * @see JobLockKeys#PRODUCT_DISPLAY_REFRESH
  */
 @Slf4j
 @Component
@@ -60,8 +60,13 @@ public class ProductDisplayRuleJob {
      */
     @Scheduled(cron = "0 15 * * * ?")
     public void reconcileDisplayStatus() {
-        if (!jobLockService.tryAcquire(JobLockKeys.PRODUCT_DISPLAY_RULE, LOCK_TTL)) {
+        if (!jobLockService.tryAcquire(JobLockKeys.PRODUCT_BACKFILL_GLOBAL, LOCK_TTL)) {
+            log.info("ProductDisplayRuleJob skipped, product backfill global lock held");
+            return;
+        }
+        if (!jobLockService.tryAcquire(JobLockKeys.PRODUCT_DISPLAY_REFRESH, LOCK_TTL)) {
             log.info("ProductDisplayRuleJob skipped, another process is running");
+            jobLockService.release(JobLockKeys.PRODUCT_BACKFILL_GLOBAL);
             return;
         }
         try {
@@ -70,7 +75,8 @@ public class ProductDisplayRuleJob {
         } catch (Exception ex) {
             log.error("ProductDisplayRuleJob failed", ex);
         } finally {
-            jobLockService.release(JobLockKeys.PRODUCT_DISPLAY_RULE);
+            jobLockService.release(JobLockKeys.PRODUCT_DISPLAY_REFRESH);
+            jobLockService.release(JobLockKeys.PRODUCT_BACKFILL_GLOBAL);
         }
     }
 }

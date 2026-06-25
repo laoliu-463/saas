@@ -61,7 +61,7 @@ final class TestMockActivityProductSupport {
      * <p>处理流程：</p>
      * <ol>
      *   <li>仅使用商品排名构造稳定分布</li>
-     *   <li>同一活动下可同时出现待审核、推广中、申请未通过、合作已终止、合作前取消、合作已到期</li>
+     *   <li>同一活动下可同时出现待审核、推广中、申请未通过、合作已终止、合作已到期</li>
      * </ol>
      *
      * @param activitySeed 活动 ID 种子值，仅用于保持方法签名兼容
@@ -74,8 +74,8 @@ final class TestMockActivityProductSupport {
             case 1 -> 1;
             case 2 -> 2;
             case 3 -> 3;
-            case 4 -> 6;
-            default -> 4;
+            case 4 -> 4;
+            default -> 6;
         };
     }
 

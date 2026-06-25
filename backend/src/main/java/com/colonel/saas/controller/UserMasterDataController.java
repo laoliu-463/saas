@@ -5,8 +5,8 @@ import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.debug.DebugSessionLog;
+import com.colonel.saas.domain.user.application.UserMasterDataApplicationService;
 import com.colonel.saas.dto.user.UserOptionResponse;
-import com.colonel.saas.service.UserMasterDataService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -16,7 +16,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -35,23 +34,23 @@ import java.util.UUID;
  * <p>API 路径前缀：{@code /users/master-data}
  * <p>访问权限：渠道人员和招商人员下拉对登录用户开放；组成员下拉需组长或管理员角色
  *
- * @see com.colonel.saas.service.UserMasterDataService
+ * @see UserMasterDataApplicationService
  */
 @Tag(name = "用户域主数据", description = "供商品、寄样、订单、达人等业务域复用的人员下拉接口。")
 @RestController
 @RequestMapping("/users/master-data")
 public class UserMasterDataController extends BaseController {
 
-    /** 用户主数据服务，负责查询渠道人员、招商人员和组成员下拉数据 */
-    private final UserMasterDataService userMasterDataService;
+    /** 用户主数据应用服务，负责查询渠道人员、招商人员和组成员下拉数据 */
+    private final UserMasterDataApplicationService userMasterDataApplicationService;
 
     /**
-     * 构造注入用户主数据服务。
+     * 构造注入用户主数据应用服务。
      *
-     * @param userMasterDataService 用户主数据服务实例
+     * @param userMasterDataApplicationService 用户主数据应用服务实例
      */
-    public UserMasterDataController(UserMasterDataService userMasterDataService) {
-        this.userMasterDataService = userMasterDataService;
+    public UserMasterDataController(UserMasterDataApplicationService userMasterDataApplicationService) {
+        this.userMasterDataApplicationService = userMasterDataApplicationService;
     }
 
     /**
@@ -75,7 +74,7 @@ public class UserMasterDataController extends BaseController {
     public ApiResult<List<UserOptionResponse>> channels(
             @Parameter(description = "关键字，匹配用户名或姓名。") @RequestParam(name = "keyword", required = false) String keyword,
             @Parameter(description = "最多返回条数，默认50，最大100。") @RequestParam(name = "limit", defaultValue = "50") Integer limit) {
-        return ok(userMasterDataService.listChannels(keyword, limit));
+        return ok(userMasterDataApplicationService.listChannels(keyword, limit));
     }
 
     /**
@@ -105,7 +104,7 @@ public class UserMasterDataController extends BaseController {
         debugData.put("limit", limit);
         DebugSessionLog.write("H3", "UserMasterDataController.recruiters", "recruiters endpoint entered", debugData);
         // #endregion
-        List<UserOptionResponse> options = userMasterDataService.listRecruiters(keyword, limit);
+        List<UserOptionResponse> options = userMasterDataApplicationService.listRecruiters(keyword, limit);
         // #region agent log
         Map<String, Object> resultData = new LinkedHashMap<>();
         resultData.put("count", options == null ? 0 : options.size());
@@ -143,10 +142,10 @@ public class UserMasterDataController extends BaseController {
             @Parameter(description = "最多返回条数，默认50，最大100。") @RequestParam(name = "limit", defaultValue = "50") Integer limit,
             @RequestAttribute(value = "deptId", required = false) UUID currentDeptId,
             @RequestAttribute(value = "roleCodes", required = false) List<String> roleCodes) {
-        return ok(userMasterDataService.listGroupMembers(
+        return ok(userMasterDataApplicationService.listGroupMembers(
                 deptId,
                 currentDeptId,
-                roleCodes == null ? Collections.emptyList() : roleCodes,
+                roleCodes,
                 keyword,
                 limit
         ));

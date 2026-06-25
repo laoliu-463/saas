@@ -6,6 +6,7 @@ import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.common.result.PageResult;
 import com.colonel.saas.constant.RoleCodes;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.entity.SystemConfig;
 import com.colonel.saas.service.SysConfigService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -50,14 +51,20 @@ public class SysConfigController extends BaseController {
 
     /** 系统配置服务，负责配置项的增删改查和分组查询 */
     private final SysConfigService sysConfigService;
+    /** 用户域权限策略，负责解释请求上下文中的角色编码集合 */
+    private final CurrentUserPermissionPolicy currentUserPermissionPolicy;
 
     /**
      * 构造函数，注入系统配置服务依赖
      *
-     * @param sysConfigService 系统配置服务实例
+     * @param sysConfigService            系统配置服务实例
+     * @param currentUserPermissionPolicy 当前用户权限策略
      */
-    public SysConfigController(SysConfigService sysConfigService) {
+    public SysConfigController(
+            SysConfigService sysConfigService,
+            CurrentUserPermissionPolicy currentUserPermissionPolicy) {
         this.sysConfigService = sysConfigService;
+        this.currentUserPermissionPolicy = currentUserPermissionPolicy;
     }
 
     /**
@@ -115,15 +122,11 @@ public class SysConfigController extends BaseController {
      * 非管理员仅查看授权范围内的配置项。
      * </p>
      *
-     * @param roleCodes 角色代码，可能是 List 或单个字符串
+     * @param roleCodes 角色代码，可能是集合或逗号分隔字符串
      * @return 当前用户包含 ADMIN 角色时返回 true，否则返回 false
      */
     private boolean hasAdminRole(Object roleCodes) {
-        // 判断 roleCodes 是否为 List 类型，使用模式匹配（Java 16+）
-        if (roleCodes instanceof List<?> roles) {
-            return roles.stream().anyMatch(role -> RoleCodes.ADMIN.equals(String.valueOf(role)));
-        }
-        return roleCodes != null && String.valueOf(roleCodes).contains(RoleCodes.ADMIN);
+        return currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.ADMIN);
     }
 
     /**

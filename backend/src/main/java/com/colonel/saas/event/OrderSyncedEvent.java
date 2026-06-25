@@ -24,6 +24,8 @@ import java.util.UUID;
  *   <li>{@code orderAmount / payAmount / settleAmount} — 订单金额、支付金额、结算金额，单位：分</li>
  *   <li>{@code estimate*Fee / effective*Fee} — 预估/实际服务费和技服费，单位：分</li>
  *   <li>{@code settleColonel*} — 结算维度的团长佣金和技服费，单位：分</li>
+ *   <li>{@code productId / activityId / partnerId} — 订单事实的商品、活动和合作方标识</li>
+ *   <li>{@code defaultChannelId / defaultRecruiterId} — 订单域默认归因结果，不代表最终业绩归属</li>
  *   <li>{@code extraData} — 扩展数据，用于传递额外的业务信息（如达人保护期参数）</li>
  * </ul>
  * </p>
@@ -46,6 +48,18 @@ import java.util.UUID;
  * @param orderCreateTime 订单创建时间
  * @param talentUid 达人 UID，用于达人保护期重置等场景
  * @param extraData 扩展数据，用于传递达人保护期参数等额外业务信息
+ * @param productId 商品 ID
+ * @param activityId 活动 ID
+ * @param partnerId 合作方 ID，当前来自订单 shopId
+ * @param talentId 达人本地 ID
+ * @param defaultChannelId 默认渠道用户 ID
+ * @param defaultRecruiterId 默认招商用户 ID
+ * @param recruiterAttribution 默认招商归因类型
+ * @param pickSource 推广来源
+ * @param payTime 支付时间
+ * @param settleTime 结算时间
+ * @param isUpdate 是否为更新已有订单
+ * @param occurredAt 事件发生时间
  *
  * @see com.colonel.saas.job.OrderSyncJob
  * @see com.colonel.saas.listener.OrderSyncedEventListener
@@ -86,5 +100,81 @@ public record OrderSyncedEvent(
         /** 达人 UID，用于达人保护期重置（T-03） */
         String talentUid,
         /** 扩展数据，用于传递达人保护期参数等额外业务信息 */
-        Map<String, Object> extraData) {
+        Map<String, Object> extraData,
+        /** 商品 ID */
+        String productId,
+        /** 活动 ID */
+        String activityId,
+        /** 合作方 ID，当前来自订单 shopId */
+        String partnerId,
+        /** 达人本地 ID */
+        UUID talentId,
+        /** 默认渠道用户 ID */
+        UUID defaultChannelId,
+        /** 默认招商用户 ID */
+        UUID defaultRecruiterId,
+        /** 默认招商归因类型 */
+        String recruiterAttribution,
+        /** 推广来源 */
+        String pickSource,
+        /** 支付时间 */
+        LocalDateTime payTime,
+        /** 结算时间 */
+        LocalDateTime settleTime,
+        /** 是否为更新已有订单 */
+        boolean isUpdate,
+        /** 事件发生时间 */
+        LocalDateTime occurredAt) {
+
+    public OrderSyncedEvent(
+            String orderId,
+            UUID orderRowId,
+            boolean newlyInserted,
+            String attributionStatus,
+            long orderAmount,
+            long payAmount,
+            long settleAmount,
+            long estimateServiceFee,
+            long effectiveServiceFee,
+            long estimateTechServiceFee,
+            long effectiveTechServiceFee,
+            long settleColonelCommission,
+            long settleColonelTechServiceFee,
+            long settleSecondColonelCommission,
+            Integer orderStatus,
+            LocalDateTime orderCreateTime,
+            String talentUid,
+            Map<String, Object> extraData) {
+        this(
+                orderId,
+                orderRowId,
+                newlyInserted,
+                attributionStatus,
+                orderAmount,
+                payAmount,
+                settleAmount,
+                estimateServiceFee,
+                effectiveServiceFee,
+                estimateTechServiceFee,
+                effectiveTechServiceFee,
+                settleColonelCommission,
+                settleColonelTechServiceFee,
+                settleSecondColonelCommission,
+                orderStatus,
+                orderCreateTime,
+                talentUid,
+                extraData,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                !newlyInserted,
+                null);
+    }
 }

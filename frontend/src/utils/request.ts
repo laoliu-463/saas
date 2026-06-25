@@ -94,6 +94,12 @@ export const normalizeServerMessage = (message: string): string => {
 export const shouldSuppressErrorNotice = (config: any): boolean => Boolean(config?.suppressErrorNotice);
 
 export const buildFriendlyErrorMessage = (error: any): string => {
+  // 优先识别后端查询超时业务码
+  const errorCode = error?.response?.data?.errorCode || error?.errorCode;
+  if (errorCode === 'QUERY_TIMEOUT') {
+    return '查询超时，请缩小时间范围或增加筛选条件后重试';
+  }
+
   const serverMsg = error?.response?.data?.msg;
   if (serverMsg && String(serverMsg).trim()) {
     return normalizeServerMessage(String(serverMsg));
@@ -107,7 +113,7 @@ export const buildFriendlyErrorMessage = (error: any): string => {
     return '网络连接异常，请确认服务已启动后重试';
   }
   if (code === 'ECONNABORTED' || rawMsg.includes('timeout')) {
-    return '请求超时，请稍后重试';
+    return '请求超时，数据量可能较大，请缩小查询范围后重试';
   }
   if (status === 401) {
     return '登录已失效，请重新登录';
@@ -192,7 +198,7 @@ const redirectToLogin = () => {
 };
 
 const performTokenRefresh = async (): Promise<string | null> => {
-  const refreshToken = localStorage.getItem('refreshToken');
+  const refreshToken = useAuthStore().refreshToken;
   if (!isValidToken(refreshToken)) {
     return null;
   }
@@ -228,7 +234,7 @@ export const shouldTryRefresh = (configOrError: any): boolean => {
   if (isAuthLoginRequest(configOrError) || isAuthRefreshRequest(configOrError)) {
     return false;
   }
-  return isValidToken(localStorage.getItem('refreshToken'));
+  return isValidToken(useAuthStore().refreshToken);
 };
 
 refreshClient.interceptors.request.use(
@@ -251,7 +257,7 @@ request.interceptors.request.use(
   (config) => {
     markRequestStarted(config);
     loadingBar.start();
-    const token = localStorage.getItem('token');
+    const token = useAuthStore().token;
     const headers = (config.headers || {}) as any;
     config.headers = headers;
     if (isValidToken(token)) {

@@ -7,7 +7,7 @@ import com.colonel.saas.entity.ProductOperationState;
 import com.colonel.saas.entity.ProductSnapshot;
 import com.colonel.saas.gateway.douyin.DouyinActivityGateway;
 import com.colonel.saas.gateway.douyin.DouyinProductGateway;
-import com.colonel.saas.gateway.douyin.DouyinPromotionGateway;
+import com.colonel.saas.domain.product.application.port.DouyinConvertPort;
 import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.mapper.MerchantMapper;
@@ -15,7 +15,7 @@ import com.colonel.saas.mapper.ProductOperationLogMapper;
 import com.colonel.saas.mapper.ProductOperationStateMapper;
 import com.colonel.saas.mapper.ProductSnapshotMapper;
 import com.colonel.saas.mapper.PromotionLinkMapper;
-import com.colonel.saas.mapper.SysUserMapper;
+import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.domain.product.event.ProductDomainEventPublisher;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -27,22 +27,26 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class ProductServiceFilterTest {
 
-    @Mock private DouyinPromotionGateway douyinPromotionGateway;
+    @Mock private DouyinConvertPort douyinConvertPort;
     @Mock private DouyinProductGateway douyinProductGateway;
     @Mock private ProductSnapshotMapper snapshotMapper;
     @Mock private ProductOperationStateMapper operationStateMapper;
@@ -50,23 +54,24 @@ class ProductServiceFilterTest {
     @Mock private PromotionLinkMapper promotionLinkMapper;
     @Mock private ColonelsettlementOrderMapper orderMapper;
     @Mock private MerchantMapper merchantMapper;
-    @Mock private SysUserMapper sysUserMapper;
+    @Mock private UserDomainFacade userDomainFacade;
     @Mock private PickSourceMappingService pickSourceMappingService;
     @Mock private ProductBizStatusService productBizStatusService;
     @Mock private ColonelsettlementActivityMapper colonelActivityMapper;
     @Mock private TalentFollowService talentFollowService;
     @Mock private DouyinActivityGateway douyinActivityGateway;
-    @Mock private BusinessRuleConfigService businessRuleConfigService;
+    @Mock private com.colonel.saas.domain.config.facade.ConfigDomainFacade configDomainFacade;
     @Mock private ProductDisplayRuleService productDisplayRuleService;
     @Mock private ColonelPartnerSyncService colonelPartnerSyncService;
     @Mock private ProductDomainEventPublisher productDomainEventPublisher;
+    @Mock private com.colonel.saas.domain.product.application.CopyPromotionApplicationService copyPromotionApplicationService;
 
     private ProductService service;
 
     @BeforeEach
     void setUp() {
         service = new ProductService(
-                douyinPromotionGateway,
+                douyinConvertPort,
                 douyinProductGateway,
                 snapshotMapper,
                 operationStateMapper,
@@ -74,17 +79,19 @@ class ProductServiceFilterTest {
                 promotionLinkMapper,
                 orderMapper,
                 merchantMapper,
-                sysUserMapper,
+                userDomainFacade,
                 pickSourceMappingService,
                 productBizStatusService,
                 colonelActivityMapper,
                 talentFollowService,
                 douyinActivityGateway,
                 new PromotionLinkIdempotencyService(new com.fasterxml.jackson.databind.ObjectMapper()),
-                businessRuleConfigService,
+                configDomainFacade,
                 productDisplayRuleService,
                 colonelPartnerSyncService,
-                productDomainEventPublisher
+                productDomainEventPublisher,
+                new com.colonel.saas.domain.product.policy.ProductDisplayPolicy(),
+                copyPromotionApplicationService
         );
         lenient().when(productBizStatusService.readBizStatus(any())).thenReturn(ProductBizStatus.APPROVED);
     }
@@ -199,6 +206,124 @@ class ProductServiceFilterTest {
         when(snapshotMapper.selectBatchIds(any())).thenReturn(List.of(snap1, snap2, snap3));
 
         var result = service.getSelectedLibraryPage(1, 10, filter().productId("9001").build());
+
+        assertThat(result.getTotal()).isEqualTo(1);
+        assertThat(result.getRecords()).singleElement().extracting("productId").isEqualTo("9001");
+    }
+
+    @Test
+    void getSelectedLibraryPage_shouldNormalizeLatestSortByBeforeSorting() {
+        LocalDateTime now = LocalDateTime.now();
+        ProductOperationState newerByCooperationTime = state("10001", "9001");
+        newerByCooperationTime.setSelectedAt(now.minusHours(1));
+        ProductOperationState olderByCooperationTime = state("10002", "9002");
+        olderByCooperationTime.setSelectedAt(now.minusDays(2));
+        Page<ProductOperationState> statePage = new Page<>(1, 200, 2);
+        statePage.setRecords(List.of(newerByCooperationTime, olderByCooperationTime));
+
+        ProductSnapshot older = snapshot("10001", "9001", "玩具乐器", 9900L);
+        older.setActivityCosRatio(5000L);
+        older.setPromotionStartTime(now.minusDays(2).toString());
+        ProductSnapshot newer = snapshot("10002", "9002", "美妆", 8800L);
+        newer.setActivityCosRatio(100L);
+        newer.setPromotionStartTime(now.minusHours(1).toString());
+
+        when(operationStateMapper.selectPage(any(Page.class), any())).thenReturn(statePage);
+        when(snapshotMapper.selectBatchIds(any())).thenReturn(List.of(older, newer));
+
+        var result = service.getSelectedLibraryPage(1, 10, filter().sortBy(" latest ").build());
+
+        assertThat(result.getRecords())
+                .extracting("productId")
+                .containsExactly("9002", "9001");
+    }
+
+    @Test
+    void getSelectedLibraryPage_shouldFallbackToSyncTimeWhenCooperationTimeIsMissing() {
+        LocalDateTime now = LocalDateTime.now();
+        ProductOperationState newerBySyncTime = state("20001", "9010");
+        ProductOperationState olderBySyncTime = state("20002", "9011");
+        Page<ProductOperationState> statePage = new Page<>(1, 200, 2);
+        statePage.setRecords(List.of(newerBySyncTime, olderBySyncTime));
+
+        ProductSnapshot newer = snapshot("20001", "9010", "食品饮料", 9900L);
+        newer.setPromotionStartTime("");
+        newer.setSyncTime(now.minusHours(1));
+        ProductSnapshot older = snapshot("20002", "9011", "家清", 8800L);
+        older.setPromotionStartTime(null);
+        older.setSyncTime(now.minusDays(2));
+
+        when(operationStateMapper.selectPage(any(Page.class), any())).thenReturn(statePage);
+        when(snapshotMapper.selectBatchIds(any())).thenReturn(List.of(newer, older));
+
+        var result = service.getSelectedLibraryPage(1, 10, filter().sortBy("latest").build());
+
+        assertThat(result.getRecords())
+                .extracting("productId")
+                .containsExactly("9010", "9011");
+    }
+
+    @Test
+    void getSelectedLibraryPage_shouldFilterByFailedPromotionLinkStatus() {
+        ProductOperationState failed = state("10001", "9001");
+        failed.setBizStatus("FOLLOWING_FAILED");
+        ProductOperationState linked = state("10002", "9002");
+        linked.setPromoteLink("https://promo.example");
+        ProductOperationState pending = state("10003", "9003");
+        Page<ProductOperationState> statePage = new Page<>(1, 200, 3);
+        statePage.setRecords(List.of(failed, linked, pending));
+
+        ProductSnapshot failedSnapshot = snapshot("10001", "9001", "玩具乐器", 9900L);
+        ProductSnapshot linkedSnapshot = snapshot("10002", "9002", "美妆", 8800L);
+        ProductSnapshot pendingSnapshot = snapshot("10003", "9003", "食品饮料", 6600L);
+
+        when(operationStateMapper.selectPage(any(Page.class), any())).thenReturn(statePage);
+        when(snapshotMapper.selectBatchIds(any())).thenReturn(List.of(failedSnapshot, linkedSnapshot, pendingSnapshot));
+
+        var result = service.getSelectedLibraryPage(1, 10, filter().promotionLink("FAILED").build());
+
+        assertThat(result.getTotal()).isEqualTo(1);
+        assertThat(result.getRecords()).singleElement().extracting("productId").isEqualTo("9001");
+    }
+
+    @Test
+    void getSelectedLibraryPage_shouldFilterByPublishedPromotionLinkStatus() {
+        ProductOperationState linked = state("10001", "9001");
+        linked.setShortLink("https://short.example");
+        ProductOperationState pending = state("10002", "9002");
+        Page<ProductOperationState> statePage = new Page<>(1, 200, 2);
+        statePage.setRecords(List.of(linked, pending));
+
+        ProductSnapshot linkedSnapshot = snapshot("10001", "9001", "玩具乐器", 9900L);
+        ProductSnapshot pendingSnapshot = snapshot("10002", "9002", "美妆", 8800L);
+
+        when(operationStateMapper.selectPage(any(Page.class), any())).thenReturn(statePage);
+        when(snapshotMapper.selectBatchIds(any())).thenReturn(List.of(linkedSnapshot, pendingSnapshot));
+
+        var result = service.getSelectedLibraryPage(1, 10, filter().published("1").build());
+
+        assertThat(result.getTotal()).isEqualTo(1);
+        assertThat(result.getRecords()).singleElement().extracting("productId").isEqualTo("9001");
+    }
+
+    @Test
+    void getSelectedLibraryPage_shouldFilterByAllianceStatusTextWhenCoreVisible() {
+        ProductOperationState terminatedState = state("10001", "9001");
+        ProductOperationState promotingState = state("10002", "9002");
+        Page<ProductOperationState> statePage = new Page<>(1, 200, 2);
+        statePage.setRecords(List.of(terminatedState, promotingState));
+
+        ProductSnapshot terminated = snapshot("10001", "9001", "玩具乐器", 9900L);
+        terminated.setStatus(1);
+        terminated.setStatusText("合作已终止");
+        ProductSnapshot promoting = snapshot("10002", "9002", "美妆", 8800L);
+        promoting.setStatus(1);
+        promoting.setStatusText("推广中");
+
+        when(operationStateMapper.selectPage(any(Page.class), any())).thenReturn(statePage);
+        when(snapshotMapper.selectBatchIds(any())).thenReturn(List.of(terminated, promoting));
+
+        var result = service.getSelectedLibraryPage(1, 10, filter().allianceStatus("terminated").build());
 
         assertThat(result.getTotal()).isEqualTo(1);
         assertThat(result.getRecords()).singleElement().extracting("productId").isEqualTo("9001");
@@ -410,6 +535,105 @@ class ProductServiceFilterTest {
     }
 
     @Test
+    void buildActivityProductListViewFromDb_shouldReturnEmptyForUnsupportedPromotionStatusFour() {
+        var result = service.buildActivityProductListViewFromDb(
+                "100018", 20, null, null, null, 4, null, null, null);
+
+        assertThat(result.get("total")).isEqualTo(0L);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> items = (List<Map<String, Object>>) result.get("items");
+        assertThat(items).isEmpty();
+        verify(snapshotMapper, never()).selectCount(any());
+        verify(snapshotMapper, never()).selectPageSorted(
+                anyString(),
+                any(),
+                any(),
+                anyString(),
+                any(),
+                any(),
+                any(),
+                anyLong(),
+                anyLong(),
+                any(LocalDateTime.class));
+    }
+
+    @Test
+    void buildActivityProductListViewFromDb_shouldNormalizeLatestSortByBeforeChoosingQueryBranch() {
+        ProductSnapshot older = snapshot("100018", "9001", "食品饮料", 9900L);
+        older.setSyncTime(LocalDateTime.now().minusDays(1));
+        ProductSnapshot newer = snapshot("100018", "9002", "食品饮料", 9900L);
+        newer.setSyncTime(LocalDateTime.now());
+
+        Page<ProductSnapshot> snapshotPage = new Page<>(1, 20, 2);
+        snapshotPage.setRecords(List.of(older, newer));
+
+        when(snapshotMapper.selectCount(any())).thenReturn(2L);
+        when(snapshotMapper.selectPage(any(Page.class), any())).thenReturn(snapshotPage);
+        when(operationStateMapper.selectList(any())).thenReturn(List.of());
+        when(operationLogMapper.selectList(any())).thenReturn(List.of());
+        when(orderMapper.selectList(any())).thenReturn(List.of());
+        when(promotionLinkMapper.selectList(any())).thenReturn(List.of());
+
+        var result = service.buildActivityProductListViewFromDb(
+                "100018", 20, null, null, null, null, " LATEST ", null, null);
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> items = (List<Map<String, Object>>) result.get("items");
+        assertThat(items).extracting("productId").containsExactly("9002", "9001");
+        verify(snapshotMapper).selectPage(any(Page.class), any());
+        verify(snapshotMapper, never()).selectPageSorted(
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(Long.class),
+                any(Long.class),
+                any(LocalDateTime.class));
+    }
+
+    @Test
+    void buildActivityProductListViewFromDb_shouldPreferPromotionLinkBeforeCommissionInDefaultSort() {
+        ProductSnapshot promoted = snapshot("100018", "9001", "食品饮料", 9900L);
+        promoted.setActivityCosRatioText("1%");
+        promoted.setSyncTime(LocalDateTime.now().minusDays(3));
+        ProductSnapshot highCommission = snapshot("100018", "9002", "食品饮料", 9900L);
+        highCommission.setActivityCosRatioText("90%");
+        highCommission.setSyncTime(LocalDateTime.now());
+
+        ProductOperationState promotedState = state("100018", "9001");
+        promotedState.setPromoteLink("https://promote.example/9001");
+        ProductOperationState highCommissionState = state("100018", "9002");
+
+        when(snapshotMapper.selectCount(any())).thenReturn(2L);
+        when(snapshotMapper.selectPageSorted(
+                eq("100018"),
+                isNull(),
+                isNull(),
+                eq("NONE"),
+                isNull(),
+                isNull(),
+                isNull(),
+                eq(20L),
+                eq(0L),
+                any(LocalDateTime.class)))
+                .thenReturn(List.of(highCommission, promoted));
+        when(operationStateMapper.selectList(any())).thenReturn(List.of(promotedState, highCommissionState));
+        when(operationLogMapper.selectList(any())).thenReturn(List.of());
+        when(orderMapper.selectList(any())).thenReturn(List.of());
+        when(promotionLinkMapper.selectList(any())).thenReturn(List.of());
+
+        var result = service.buildActivityProductListViewFromDb(
+                "100018", 20, null, null, null, null, null, null, null);
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> items = (List<Map<String, Object>>) result.get("items");
+        assertThat(items).extracting("productId").containsExactly("9001", "9002");
+    }
+
+    @Test
     void listLibraryCategories_shouldReturnDistinctSortedNames() {
         when(snapshotMapper.listDisplayingLibraryCategoryNames()).thenReturn(List.of("美妆", "食品饮料", "美妆"));
 
@@ -482,6 +706,9 @@ class ProductServiceFilterTest {
         FilterBuilder notInLibrary(String value) { this.notInLibrary = value; return this; }
         FilterBuilder dedup(String value) { this.dedup = value; return this; }
         FilterBuilder productId(String value) { this.productId = value; return this; }
+        FilterBuilder sortBy(String value) { this.sortBy = value; return this; }
+        FilterBuilder promotionLink(String value) { this.promotionLink = value; return this; }
+        FilterBuilder allianceStatus(String value) { this.allianceStatus = value; return this; }
 
         ProductService.SelectedLibraryFilter build() {
             return new ProductService.SelectedLibraryFilter(

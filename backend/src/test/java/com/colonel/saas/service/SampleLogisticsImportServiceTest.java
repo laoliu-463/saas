@@ -4,6 +4,8 @@ import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.exception.ForbiddenException;
 import com.colonel.saas.domain.sample.event.SampleDomainEventPublisher;
+import com.colonel.saas.domain.sample.policy.SampleActionPermissionPolicy;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.dto.sample.LogisticsImportResult;
 import com.colonel.saas.dto.sample.LogisticsImportRow;
 import com.colonel.saas.entity.SampleRequest;
@@ -48,7 +50,8 @@ class SampleLogisticsImportServiceTest {
         service = new SampleLogisticsImportService(
                 sampleRequestMapper, sampleStatusLogService,
                 sampleDomainEventPublisher,
-                sampleLogisticsSubscriptionService);
+                sampleLogisticsSubscriptionService,
+                new SampleActionPermissionPolicy(new CurrentUserPermissionPolicy()));
     }
 
     @Test
@@ -153,6 +156,27 @@ class SampleLogisticsImportServiceTest {
                 file, UUID.randomUUID(), List.of(RoleCodes.OPS_STAFF), true))
                 .isInstanceOf(ForbiddenException.class)
                 .hasMessageContaining("仅管理员可覆盖已有物流单号");
+    }
+
+    @Test
+    void import_shouldNormalizeRoleCodesViaSamplePermissionPolicy() throws Exception {
+        SampleRequest sample = new SampleRequest();
+        sample.setId(UUID.randomUUID());
+        sample.setRequestNo("SM20260523014");
+        sample.setStatus(2);
+        sample.setVersion(0);
+        when(sampleRequestMapper.selectOne(any())).thenReturn(sample);
+        when(sampleRequestMapper.updateById(any())).thenReturn(1);
+
+        MockMultipartFile file = new MockMultipartFile("file", "import.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                buildWorkbook("SM20260523014", "SF", "SF1234567890"));
+
+        LogisticsImportResult result = service.importTrackingNumbers(
+                file, UUID.randomUUID(), List.of(" OPS_STAFF "), false);
+
+        assertThat(result.getSuccessCount()).isEqualTo(1);
+        assertThat(result.getFailedCount()).isZero();
     }
 
     @Test

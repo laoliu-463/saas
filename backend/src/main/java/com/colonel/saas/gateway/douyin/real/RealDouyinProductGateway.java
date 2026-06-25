@@ -395,7 +395,7 @@ public class RealDouyinProductGateway implements DouyinProductGateway {
      * @return 标准化的 ActivityProductItem 实例
      */
     private ActivityProductItem normalizeProductItem(Map<String, Object> raw) {
-        int status = (int) asLong(pick(raw, "status"), 0L);
+        int status = normalizeProductStatus((int) asLong(pick(raw, "status"), 0L));
         int cosType = (int) asLong(pick(raw, "cos_type", "cosType"), 0L);
         long price = asLong(pick(raw, "price"), 0L);
         long activityCosRatio = asLong(pick(raw, "activity_cos_ratio"), 0L);
@@ -452,6 +452,10 @@ public class RealDouyinProductGateway implements DouyinProductGateway {
             case 6 -> "合作已到期";
             default -> "未知状态";
         };
+    }
+
+    private int normalizeProductStatus(int status) {
+        return status;
     }
 
     /**

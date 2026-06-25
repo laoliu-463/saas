@@ -1,6 +1,7 @@
 package com.colonel.saas.security;
 
 import com.colonel.saas.controller.SysConfigController;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.entity.OperationLog;
 import com.colonel.saas.entity.SystemConfig;
 import com.colonel.saas.service.OperationLogService;
@@ -41,7 +42,8 @@ class OperationLogInterceptorTest {
         interceptor.preHandle(request, response, new Object());
 
         Method method = SysConfigController.class.getMethod("update", UUID.class, SystemConfig.class, UUID.class);
-        HandlerMethod handlerMethod = new HandlerMethod(new SysConfigController(null), method);
+        HandlerMethod handlerMethod = new HandlerMethod(
+                new SysConfigController(null, new CurrentUserPermissionPolicy()), method);
 
         interceptor.afterCompletion(request, response, handlerMethod, null);
 
@@ -64,7 +66,8 @@ class OperationLogInterceptorTest {
         interceptor.preHandle(request, response, new Object());
 
         Method method = SysConfigController.class.getMethod("page", String.class, String.class, int.class, int.class);
-        HandlerMethod handlerMethod = new HandlerMethod(new SysConfigController(null), method);
+        HandlerMethod handlerMethod = new HandlerMethod(
+                new SysConfigController(null, new CurrentUserPermissionPolicy()), method);
 
         interceptor.afterCompletion(request, response, handlerMethod, null);
 

@@ -28,7 +28,8 @@ public class ProductActivitySyncJob {
     private static final Duration LOCK_TTL = Duration.ofMinutes(30);
     private static final int QPS_GUARD_SLEEP_MS = 2000;
     private static final int MIN_BATCH_SIZE = 1;
-    private static final int MAX_BATCH_SIZE = 20;
+    private static final int MAX_PAGE_SIZE = 20;
+    private static final int MAX_ACTIVITIES_PER_RUN = 200;
 
     private final ProductService productService;
     private final DistributedJobLockService jobLockService;
@@ -37,12 +38,18 @@ public class ProductActivitySyncJob {
 
     @Value("${product.activity.sync.enabled:false}")
     private boolean enabled;
+    @Value("${product.sync.activityProduct.incrementalEnabled:${product.activity.sync.enabled:false}}")
+    private boolean incrementalEnabled = true;
     @Value("${product.activity.sync.cron:0 */5 * * * ?}")
     private String cronExpression;
     @Value("${product.activity.sync.batch-size:20}")
     private int batchSize;
     @Value("${product.activity.sync.whitelist-activities:}")
     private String whitelistActivities;
+    @Value("${product.sync.activityProduct.pageSize:20}")
+    private int pageSize;
+    @Value("${product.sync.activityProduct.maxActivitiesPerRun:${product.activity.sync.batch-size:20}}")
+    private int maxActivitiesPerRun;
 
     @Autowired
     public ProductActivitySyncJob(
@@ -74,12 +81,18 @@ public class ProductActivitySyncJob {
 
     @Scheduled(cron = "${product.activity.sync.cron:0 */5 * * * ?}")
     public void syncAll() {
-        if (!enabled) {
+        if (!enabled || !incrementalEnabled) {
             log.debug("ProductActivitySyncJob skipped (disabled by config)");
             return;
         }
+        // Phase 4-1.5 deadlock 修复：定时同步先抢全局 backfill 锁，避免与 backfill 任务并发写入 product_operation_state。
+        if (!jobLockService.tryAcquire(JobLockKeys.PRODUCT_BACKFILL_GLOBAL, LOCK_TTL)) {
+            log.info("ProductActivitySyncJob skipped, backfill global lock held (likely a backfill job in progress)");
+            return;
+        }
         if (!jobLockService.tryAcquire(JobLockKeys.PRODUCT_ACTIVITY_SYNC, LOCK_TTL)) {
-            log.info("ProductActivitySyncJob skipped, lock held by another node");
+            log.info("ProductActivitySyncJob skipped, activity sync lock held by another node");
+            jobLockService.release(JobLockKeys.PRODUCT_BACKFILL_GLOBAL);
             return;
         }
         try {
@@ -88,21 +101,39 @@ public class ProductActivitySyncJob {
             int fail = 0;
             for (int i = 0; i < activityIds.size(); i++) {
                 String activityId = activityIds.get(i);
+                // 单活动级别也抢同一把 backfill activity 锁，与可能的 backfill 写库互斥。
+                String activityLockKey = JobLockKeys.productBackfillActivityLock(activityId);
+                boolean acquiredActivityLock = jobLockService.tryAcquire(activityLockKey, LOCK_TTL);
+                if (!acquiredActivityLock) {
+                    log.info("ProductActivitySyncJob skip activity, backfill activity lock held, activityId={}", activityId);
+                    continue;
+                }
                 try {
                     ProductService.ActivityProductRefreshResult result =
                             productService.refreshActivitySnapshots(buildQueryRequest(activityId));
-                    activityMapper.touchLastSyncAt(activityId, LocalDateTime.now());
-                    ok++;
-                    log.info("ProductActivitySyncJob activity synced, activityId={}, syncedProductCount={}, libraryEntryCount={}, createdCount={}, updatedCount={}, skippedCount={}",
+                    if (result.complete()) {
+                        activityMapper.touchLastSyncAt(activityId, LocalDateTime.now());
+                        ok++;
+                    } else {
+                        fail++;
+                    }
+                    log.info("ProductActivitySyncJob activity synced, activityId={}, syncedProductCount={}, libraryEntryCount={}, createdCount={}, updatedCount={}, skippedCount={}, pagesFetched={}, fetchedRows={}, stoppedReason={}, stillHasNextWhenStopped={}, complete={}",
                             activityId,
                             result.syncedProductCount(),
                             result.libraryEntryCount(),
                             result.createdCount(),
                             result.updatedCount(),
-                            result.skippedCount());
+                            result.skippedCount(),
+                            result.pagesFetched(),
+                            result.fetchedRows(),
+                            result.stoppedReason(),
+                            result.stillHasNextWhenStopped(),
+                            result.complete());
                 } catch (Exception ex) {
                     fail++;
                     log.warn("ProductActivitySyncJob activity sync failed, activityId={}", activityId, ex);
+                } finally {
+                    jobLockService.release(activityLockKey);
                 }
                 if (i < activityIds.size() - 1 && !sleepBeforeNextActivity()) {
                     break;
@@ -111,6 +142,7 @@ public class ProductActivitySyncJob {
             log.info("ProductActivitySyncJob finished, ok={}, fail={}", ok, fail);
         } finally {
             jobLockService.release(JobLockKeys.PRODUCT_ACTIVITY_SYNC);
+            jobLockService.release(JobLockKeys.PRODUCT_BACKFILL_GLOBAL);
         }
     }
 
@@ -123,7 +155,7 @@ public class ProductActivitySyncJob {
                     .toList();
         }
         return activityMapper.selectActiveActivityIds(
-                normalizedBatchSize(),
+                normalizedMaxActivitiesPerRun(),
                 LocalDateTime.now().minusMinutes(30));
     }
 
@@ -133,7 +165,7 @@ public class ProductActivitySyncJob {
                 activityId,
                 4L,
                 1L,
-                normalizedBatchSize(),
+                normalizedPageSize(),
                 null,
                 null,
                 null,
@@ -143,8 +175,18 @@ public class ProductActivitySyncJob {
                 null);
     }
 
+    private int normalizedMaxActivitiesPerRun() {
+        int fallback = batchSize > 0 ? batchSize : 20;
+        int configured = maxActivitiesPerRun > 0 ? maxActivitiesPerRun : fallback;
+        return Math.min(Math.max(configured, MIN_BATCH_SIZE), MAX_ACTIVITIES_PER_RUN);
+    }
+
+    private int normalizedPageSize() {
+        return Math.min(Math.max(pageSize, MIN_BATCH_SIZE), MAX_PAGE_SIZE);
+    }
+
     private int normalizedBatchSize() {
-        return Math.min(Math.max(batchSize, MIN_BATCH_SIZE), MAX_BATCH_SIZE);
+        return Math.min(Math.max(batchSize, MIN_BATCH_SIZE), MAX_ACTIVITIES_PER_RUN);
     }
 
     private boolean sleepBeforeNextActivity() {

@@ -17,13 +17,18 @@ import com.colonel.saas.entity.ProductSnapshot;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.mapper.ProductMapper;
 import com.colonel.saas.mapper.ProductSnapshotMapper;
-import com.colonel.saas.mapper.SysDeptMapper;
+import com.colonel.saas.config.DddRefactorProperties;
+import com.colonel.saas.domain.order.facade.OrderDomainFacade;
+import com.colonel.saas.domain.user.facade.UserDomainFacade;
+import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.service.DashboardService;
 import com.colonel.saas.service.OperationLogService;
 import com.colonel.saas.service.OrderAttributionReplayService;
 import com.colonel.saas.service.OrderQueryService;
 import com.colonel.saas.service.CommissionService;
 import com.colonel.saas.service.OrderSyncService;
+import com.colonel.saas.service.Order1603SettlementDryRunService;
+import com.colonel.saas.service.Order2704SettlementDryRunService;
 import com.colonel.saas.service.Order6468PaginationDryRunService;
 import com.colonel.saas.service.PerformanceBackfillService;
 import com.colonel.saas.service.ShortTtlCacheService;
@@ -36,6 +41,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.springframework.http.MediaType;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
@@ -78,17 +84,26 @@ class OrderControllerTest {
     @Mock
     private PerformanceBackfillService performanceBackfillService;
     @Mock
-    private SysDeptMapper sysDeptMapper;
+    private UserDomainFacade userDomainFacade;
+    @Mock
+    private Order1603SettlementDryRunService order1603SettlementDryRunService;
+    @Mock
+    private Order2704SettlementDryRunService order2704SettlementDryRunService;
     @Mock
     private ProductSnapshotMapper productSnapshotMapper;
     @Mock
     private ProductMapper productMapper;
+    private DddRefactorProperties dddRefactorProperties;
+    @Mock
+    private OrderDomainFacade orderDomainFacade;
     /**
      * t2-orders 抽 service：OrderController 委托 {@link com.colonel.saas.service.OrderService}
      * 做 wrapper 拼装。测试用真实 OrderService 实例 + mock mapper，wrapper 行为与生产一致。
      */
     private com.colonel.saas.service.OrderService orderService;
 
+    private ShortTtlCacheService shortTtlCacheService;
+    private OrderController controller;
     private MockMvc mockMvc;
 
     @BeforeEach
@@ -96,21 +111,31 @@ class OrderControllerTest {
         initTableInfo(ColonelsettlementOrder.class);
         initTableInfo(ProductSnapshot.class);
         initTableInfo(Product.class);
+        dddRefactorProperties = new DddRefactorProperties();
         DashboardService dashboardService = org.mockito.Mockito.mock(DashboardService.class);
-        orderService = new com.colonel.saas.service.OrderService(orderMapper, dashboardService, productSnapshotMapper, productMapper);
+        DataScopePolicy dataScopePolicy = new DataScopePolicy();
+        orderService = new com.colonel.saas.service.OrderService(
+                orderMapper, dashboardService, productSnapshotMapper, productMapper, dataScopePolicy, dddRefactorProperties);
+        shortTtlCacheService = new ShortTtlCacheService();
+        controller = new OrderController(
+                orderSyncService,
+                orderMapper,
+                orderQueryService,
+                orderAttributionReplayService,
+                operationLogService,
+                shortTtlCacheService,
+                commissionService,
+                performanceBackfillService,
+                userDomainFacade,
+                order6468PaginationDryRunService,
+                order1603SettlementDryRunService,
+                order2704SettlementDryRunService,
+                orderService,
+                dddRefactorProperties,
+                orderDomainFacade,
+                dataScopePolicy);
         mockMvc = MockMvcBuilders
-                .standaloneSetup(new OrderController(
-                        orderSyncService,
-                        orderMapper,
-                        orderQueryService,
-                        orderAttributionReplayService,
-                        operationLogService,
-                        new ShortTtlCacheService(),
-                        commissionService,
-                        performanceBackfillService,
-                        sysDeptMapper,
-                        order6468PaginationDryRunService,
-                        orderService))
+                .standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
     }
@@ -148,9 +173,9 @@ class OrderControllerTest {
     }
 
     @Test
-    void syncOrders_shouldUseProvidedTimeRange() throws Exception {
-        OrderSyncService.SyncResult result = new OrderSyncService.SyncResult(0L, 0L, 1, 1, 0, false);
-        when(orderSyncService.syncByTimeRange(anyLong(), anyLong())).thenReturn(result);
+    void syncOrders_shouldUseInstituteHotRecentForManualRealPreProbe() throws Exception {
+        OrderSyncService.SyncResult result = new OrderSyncService.SyncResult(1774972800L, 1777391999L, 1, 1, 0, false);
+        when(orderSyncService.syncInstituteOrdersHotRecent()).thenReturn(result);
 
         java.util.UUID userId = java.util.UUID.randomUUID();
         mockMvc.perform(post("/orders/sync")
@@ -162,7 +187,8 @@ class OrderControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200));
 
-        verify(orderSyncService).syncByTimeRange(1774972800L, 1777391999L);
+        verify(orderSyncService).syncInstituteOrdersHotRecent();
+        verify(orderSyncService, never()).syncByTimeRange(anyLong(), anyLong());
         verify(operationLogService).recordSystemAction(
                 org.mockito.ArgumentMatchers.eq(userId),
                 org.mockito.ArgumentMatchers.eq("订单归因"),
@@ -175,19 +201,17 @@ class OrderControllerTest {
     }
 
     @Test
-    void syncOrders_shouldFallbackToDefaultWindowWhenBodyMissing() throws Exception {
+    void syncOrders_shouldUseInstituteHotRecentWhenBodyMissing() throws Exception {
         OrderSyncService.SyncResult result = new OrderSyncService.SyncResult(0L, 0L, 0, 0, 0, false);
-        when(orderSyncService.syncByTimeRange(anyLong(), anyLong())).thenReturn(result);
+        when(orderSyncService.syncInstituteOrdersHotRecent()).thenReturn(result);
 
         mockMvc.perform(post("/orders/sync")
                         .requestAttr("userId", java.util.UUID.randomUUID()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200));
 
-        ArgumentCaptor<Long> startCaptor = ArgumentCaptor.forClass(Long.class);
-        ArgumentCaptor<Long> endCaptor = ArgumentCaptor.forClass(Long.class);
-        verify(orderSyncService).syncByTimeRange(startCaptor.capture(), endCaptor.capture());
-        Assertions.assertTrue(endCaptor.getValue() >= startCaptor.getValue());
+        verify(orderSyncService).syncInstituteOrdersHotRecent();
+        verify(orderSyncService, never()).syncByTimeRange(anyLong(), anyLong());
     }
 
     @Test
@@ -566,6 +590,99 @@ class OrderControllerTest {
                 .andExpect(jsonPath("$.data.unattributedOrders").value(0))
                 .andExpect(jsonPath("$.data.syncFailedOrders").value(3))
                 .andExpect(jsonPath("$.data.unattributedReasons[0].reason").value("SYNC_FAILED"));
+    }
+
+    @Test
+    void getStats_cacheDisabledShouldQueryEveryRequest() throws Exception {
+        when(orderMapper.selectMaps(any())).thenReturn(
+                List.of(Map.of("attributionStatus", "ATTRIBUTED", "total", 1L)),
+                List.of(),
+                List.of(Map.of("attributionStatus", "ATTRIBUTED", "total", 1L)),
+                List.of()
+        );
+
+        ReflectionTestUtils.setField(controller, "statsCacheEnabled", false);
+
+        mockMvc.perform(get("/orders/stats").requestAttr("dataScope", DataScope.ALL))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/orders/stats").requestAttr("dataScope", DataScope.ALL))
+                .andExpect(status().isOk());
+
+        verify(orderMapper, times(4)).selectMaps(any());
+    }
+
+    @Test
+    void getStats_cacheEnabledShouldHitForSameScopeAndFilters() throws Exception {
+        when(orderMapper.selectMaps(any())).thenReturn(
+                List.of(Map.of("attributionStatus", "ATTRIBUTED", "total", 1L)),
+                List.of()
+        );
+
+        ReflectionTestUtils.setField(controller, "statsCacheEnabled", true);
+        ReflectionTestUtils.setField(controller, "statsCacheTtlSeconds", 60L);
+
+        mockMvc.perform(get("/orders/stats")
+                        .param("orderStatus", "1")
+                        .requestAttr("dataScope", DataScope.ALL))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalOrders").value(1));
+        mockMvc.perform(get("/orders/stats")
+                        .param("orderStatus", "1")
+                        .requestAttr("dataScope", DataScope.ALL))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalOrders").value(1));
+
+        verify(orderMapper, times(2)).selectMaps(any());
+    }
+
+    @Test
+    void getStats_cacheEnabledShouldIsolateDifferentDataScope() throws Exception {
+        when(orderMapper.selectMaps(any())).thenReturn(
+                List.of(Map.of("attributionStatus", "ATTRIBUTED", "total", 1L)),
+                List.of(),
+                List.of(Map.of("attributionStatus", "UNATTRIBUTED", "total", 2L)),
+                List.of()
+        );
+
+        ReflectionTestUtils.setField(controller, "statsCacheEnabled", true);
+        ReflectionTestUtils.setField(controller, "statsCacheTtlSeconds", 60L);
+
+        mockMvc.perform(get("/orders/stats").requestAttr("dataScope", DataScope.ALL))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalOrders").value(1));
+        mockMvc.perform(get("/orders/stats")
+                        .requestAttr("userId", java.util.UUID.randomUUID())
+                        .requestAttr("dataScope", DataScope.PERSONAL))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalOrders").value(2));
+
+        verify(orderMapper, times(4)).selectMaps(any());
+    }
+
+    @Test
+    void getStats_cacheEnabledShouldIsolateDifferentFilters() throws Exception {
+        when(orderMapper.selectMaps(any())).thenReturn(
+                List.of(Map.of("attributionStatus", "ATTRIBUTED", "total", 1L)),
+                List.of(),
+                List.of(Map.of("attributionStatus", "UNATTRIBUTED", "total", 2L)),
+                List.of()
+        );
+
+        ReflectionTestUtils.setField(controller, "statsCacheEnabled", true);
+        ReflectionTestUtils.setField(controller, "statsCacheTtlSeconds", 60L);
+
+        mockMvc.perform(get("/orders/stats")
+                        .param("orderStatus", "1")
+                        .requestAttr("dataScope", DataScope.ALL))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalOrders").value(1));
+        mockMvc.perform(get("/orders/stats")
+                        .param("orderStatus", "2")
+                        .requestAttr("dataScope", DataScope.ALL))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalOrders").value(2));
+
+        verify(orderMapper, times(4)).selectMaps(any());
     }
 
     @Test

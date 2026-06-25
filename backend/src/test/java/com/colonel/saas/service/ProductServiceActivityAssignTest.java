@@ -1,10 +1,10 @@
 package com.colonel.saas.service;
 
 import com.colonel.saas.entity.ColonelsettlementActivity;
-import com.colonel.saas.entity.SysUser;
 import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
 import com.colonel.saas.mapper.ProductOperationStateMapper;
-import com.colonel.saas.mapper.SysUserMapper;
+import com.colonel.saas.domain.user.facade.UserDomainFacade;
+import com.colonel.saas.domain.user.facade.dto.UserOwnershipReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -23,7 +23,7 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class ProductServiceActivityAssignTest {
 
-    @Mock private com.colonel.saas.gateway.douyin.DouyinPromotionGateway douyinPromotionGateway;
+    @Mock private com.colonel.saas.domain.product.application.port.DouyinConvertPort douyinConvertPort;
     @Mock private com.colonel.saas.gateway.douyin.DouyinProductGateway douyinProductGateway;
     @Mock private com.colonel.saas.mapper.ProductSnapshotMapper snapshotMapper;
     @Mock private ProductOperationStateMapper operationStateMapper;
@@ -31,24 +31,25 @@ class ProductServiceActivityAssignTest {
     @Mock private com.colonel.saas.mapper.PromotionLinkMapper promotionLinkMapper;
     @Mock private com.colonel.saas.mapper.ColonelsettlementOrderMapper orderMapper;
     @Mock private com.colonel.saas.mapper.MerchantMapper merchantMapper;
-    @Mock private SysUserMapper sysUserMapper;
+    @Mock private UserDomainFacade userDomainFacade;
     @Mock private PickSourceMappingService pickSourceMappingService;
     @Mock private ProductBizStatusService productBizStatusService;
     @Mock private ColonelsettlementActivityMapper colonelActivityMapper;
     @Mock private TalentFollowService talentFollowService;
     @Mock private com.colonel.saas.gateway.douyin.DouyinActivityGateway douyinActivityGateway;
     @Mock private PromotionLinkIdempotencyService promotionLinkIdempotencyService;
-    @Mock private BusinessRuleConfigService businessRuleConfigService;
+    @Mock private com.colonel.saas.domain.config.facade.ConfigDomainFacade configDomainFacade;
     @Mock private ProductDisplayRuleService productDisplayRuleService;
     @Mock private ColonelPartnerSyncService colonelPartnerSyncService;
     @Mock private com.colonel.saas.domain.product.event.ProductDomainEventPublisher productDomainEventPublisher;
+    @Mock private com.colonel.saas.domain.product.application.CopyPromotionApplicationService copyPromotionApplicationService;
 
     private ProductService productService;
 
     @BeforeEach
     void setUp() {
         productService = new ProductService(
-                douyinPromotionGateway,
+                douyinConvertPort,
                 douyinProductGateway,
                 snapshotMapper,
                 operationStateMapper,
@@ -56,17 +57,19 @@ class ProductServiceActivityAssignTest {
                 promotionLinkMapper,
                 orderMapper,
                 merchantMapper,
-                sysUserMapper,
+                userDomainFacade,
                 pickSourceMappingService,
                 productBizStatusService,
                 colonelActivityMapper,
                 talentFollowService,
                 douyinActivityGateway,
                 promotionLinkIdempotencyService,
-                businessRuleConfigService,
+                configDomainFacade,
                 productDisplayRuleService,
                 colonelPartnerSyncService,
-                productDomainEventPublisher);
+                productDomainEventPublisher,
+                new com.colonel.saas.domain.product.policy.ProductDisplayPolicy(),
+                copyPromotionApplicationService);
     }
 
     @Test
@@ -76,15 +79,13 @@ class ProductServiceActivityAssignTest {
         UUID operatorId = UUID.fromString("11111111-1111-1111-1111-111111111111");
 
         UUID deptId = UUID.fromString("33333333-3333-3333-3333-333333333333");
-        SysUser assignee = new SysUser();
-        assignee.setId(assigneeId);
-        assignee.setRealName("招商组长甲");
-        assignee.setDeptId(deptId);
-
         ColonelsettlementActivity existing = new ColonelsettlementActivity();
         existing.setActivityId(activityId);
         when(colonelActivityMapper.selectByActivityId(activityId)).thenReturn(existing);
-        when(sysUserMapper.selectById(assigneeId)).thenReturn(assignee);
+        when(userDomainFacade.loadUserOwnershipReferencesByIds(any()))
+                .thenReturn(Map.of(assigneeId, new UserOwnershipReference(assigneeId, deptId)));
+        when(userDomainFacade.loadUserDisplayLabelsByIds(any()))
+                .thenReturn(Map.of(assigneeId, "招商组长甲"));
         when(colonelActivityMapper.updateRecruiterAssignment(
                 eq(activityId), eq(assigneeId), eq(deptId), any(), eq(operatorId)))
                 .thenReturn(1);

@@ -5,12 +5,14 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.common.enums.DataScope;
+import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.Product;
 import com.colonel.saas.entity.ProductSnapshot;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.mapper.ProductMapper;
 import com.colonel.saas.mapper.ProductSnapshotMapper;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -62,15 +64,36 @@ public class OrderService {
     private final ProductSnapshotMapper productSnapshotMapper;
     private final ProductMapper productMapper;
 
+    /**
+     * 数据范围策略（DDD-USER-DATASCOPE-004）：委托 {@link DataScopePolicy}
+     * 处理 self/group/all 数据范围过滤。详见 issue #6。
+     */
+    private final DataScopePolicy dataScopePolicy;
+
+    /**
+     * DDD 化灰度开关（DDD-DATASCOPE-001）。
+     */
+    private final com.colonel.saas.config.DddRefactorProperties dddRefactorProperties;
+
+    @Value("${app.order-query.default-window-enabled:false}")
+    private boolean defaultWindowEnabled = false;
+
+    @Value("${app.order-query.default-window-days:30}")
+    private long defaultWindowDays = 30L;
+
     public OrderService(
             ColonelsettlementOrderMapper orderMapper,
             DashboardService dashboardService,
             ProductSnapshotMapper productSnapshotMapper,
-            ProductMapper productMapper) {
+            ProductMapper productMapper,
+            DataScopePolicy dataScopePolicy,
+            com.colonel.saas.config.DddRefactorProperties dddRefactorProperties) {
         this.orderMapper = orderMapper;
         this.dashboardService = dashboardService;
         this.productSnapshotMapper = productSnapshotMapper;
         this.productMapper = productMapper;
+        this.dataScopePolicy = dataScopePolicy;
+        this.dddRefactorProperties = dddRefactorProperties;
     }
 
     // ============================================================
@@ -128,7 +151,7 @@ public class OrderService {
         IPage<ColonelsettlementOrder> result = orderMapper.selectPage(query, wrapper);
         if (result != null && result.getRecords() != null) {
             result.getRecords().forEach(this::normalizeOrderRow);
-            enrichOrderProductInfo(result.getRecords());
+            enrichOrderList(result.getRecords());
         }
         return result;
     }
@@ -270,8 +293,9 @@ public class OrderService {
             String dashboardDiagnosis,
             List<UUID> recruiterDeptIds,
             List<UUID> channelDeptIds) {
-        LocalDateTime start = parseLocalDateTime(startTime);
-        LocalDateTime end = parseLocalDateTime(endTime);
+        TimeRange range = resolveEffectiveTimeRange(orderId, startTime, endTime);
+        LocalDateTime start = range.start();
+        LocalDateTime end = range.end();
         List<UUID> normalizedRecruiterDeptIds = normalizeUuidList(recruiterDeptIds);
         List<UUID> normalizedChannelDeptIds = normalizeUuidList(channelDeptIds);
         LambdaQueryWrapper<ColonelsettlementOrder> wrapper = new LambdaQueryWrapper<ColonelsettlementOrder>()
@@ -282,15 +306,9 @@ public class OrderService {
                 .eq(StringUtils.hasText(productId), ColonelsettlementOrder::getProductId, productId)
                 .eq(orderStatus != null, ColonelsettlementOrder::getOrderStatus, orderStatus)
                 .in(!normalizedRecruiterDeptIds.isEmpty(), ColonelsettlementOrder::getDeptId, normalizedRecruiterDeptIds)
-                .in(!normalizedChannelDeptIds.isEmpty(), ColonelsettlementOrder::getChannelDeptId, normalizedChannelDeptIds)
-                .and(StringUtils.hasText(channelKeyword), nested -> nested
-                        .like(ColonelsettlementOrder::getChannelUserName, channelKeyword)
-                        .or()
-                        .like(ColonelsettlementOrder::getChannelUserId, channelKeyword))
-                .and(StringUtils.hasText(colonelKeyword), nested -> nested
-                        .like(ColonelsettlementOrder::getColonelUserName, colonelKeyword)
-                        .or()
-                        .like(ColonelsettlementOrder::getColonelUserId, colonelKeyword));
+                .in(!normalizedChannelDeptIds.isEmpty(), ColonelsettlementOrder::getChannelDeptId, normalizedChannelDeptIds);
+        applyChannelKeywordFilter(wrapper, channelKeyword);
+        applyColonelKeywordFilter(wrapper, colonelKeyword);
         applyAttributionStatusFilter(wrapper, attributionStatus);
         applyTimeRange(wrapper, resolveTimeField(timeField), start, end);
         applyDashboardDiagnosisFilter(wrapper, null, dashboardDiagnosis);
@@ -315,8 +333,9 @@ public class OrderService {
             String dashboardDiagnosis,
             List<UUID> recruiterDeptIds,
             List<UUID> channelDeptIds) {
-        LocalDateTime start = parseLocalDateTime(startTime);
-        LocalDateTime end = parseLocalDateTime(endTime);
+        TimeRange range = resolveEffectiveTimeRange(orderId, startTime, endTime);
+        LocalDateTime start = range.start();
+        LocalDateTime end = range.end();
         List<UUID> normalizedRecruiterDeptIds = normalizeUuidList(recruiterDeptIds);
         List<UUID> normalizedChannelDeptIds = normalizeUuidList(channelDeptIds);
         QueryWrapper<ColonelsettlementOrder> wrapper = new QueryWrapper<>();
@@ -327,15 +346,9 @@ public class OrderService {
                 .eq(StringUtils.hasText(productId), "product_id", productId)
                 .eq(orderStatus != null, "order_status", orderStatus)
                 .in(!normalizedRecruiterDeptIds.isEmpty(), "dept_id", normalizedRecruiterDeptIds)
-                .in(!normalizedChannelDeptIds.isEmpty(), "channel_dept_id", normalizedChannelDeptIds)
-                .and(StringUtils.hasText(channelKeyword), nested -> nested
-                        .like("channel_user_name", channelKeyword)
-                        .or()
-                        .like("channel_user_id", channelKeyword))
-                .and(StringUtils.hasText(colonelKeyword), nested -> nested
-                        .like("colonel_user_name", colonelKeyword)
-                        .or()
-                        .like("colonel_user_id", colonelKeyword));
+                .in(!normalizedChannelDeptIds.isEmpty(), "channel_dept_id", normalizedChannelDeptIds);
+        applyChannelKeywordFilter(wrapper, channelKeyword);
+        applyColonelKeywordFilter(wrapper, colonelKeyword);
         applyAttributionStatusFilter(wrapper, attributionStatus);
         applyTimeRange(wrapper, resolveTimeField(timeField), start, end);
         applyDashboardDiagnosisFilter(wrapper, null, dashboardDiagnosis);
@@ -525,21 +538,29 @@ public class OrderService {
         if (wrapper == null || dataScope == null) {
             return;
         }
-        switch (dataScope) {
-            case PERSONAL -> {
-                if (userId != null) {
-                    wrapper.eq(ColonelsettlementOrder::getUserId, userId);
+        // DDD-DATASCOPE-001: Feature Flag 灰度（默认 OFF，旧 switch 路径）
+        if (!dddRefactorProperties.getDataScopePolicy().isEnabled()) {
+            // 旧路径（保留作兜底，行为 1:1 等价于 git:0ca1fc44）
+            switch (dataScope) {
+                case PERSONAL -> {
+                    if (userId != null) {
+                        wrapper.eq(ColonelsettlementOrder::getUserId, userId);
+                    }
+                }
+                case DEPT -> {
+                    if (deptId != null) {
+                        wrapper.eq(ColonelsettlementOrder::getDeptId, deptId);
+                    }
+                }
+                case ALL -> {
+                    // no filter
                 }
             }
-            case DEPT -> {
-                if (deptId != null) {
-                    wrapper.eq(ColonelsettlementOrder::getDeptId, deptId);
-                }
-            }
-            case ALL -> {
-                // no filter
-            }
+            return;
         }
+        // 新路径（DDD-USER-DATASCOPE-004：委托 DataScopePolicy，行为 1:1 等价于原 switch 实现）
+        dataScopePolicy.applyTo(wrapper, userId, deptId, dataScope,
+                ColonelsettlementOrder::getUserId, ColonelsettlementOrder::getDeptId);
     }
 
     public void applyQueryDataScope(
@@ -550,21 +571,28 @@ public class OrderService {
         if (wrapper == null || dataScope == null) {
             return;
         }
-        switch (dataScope) {
-            case PERSONAL -> {
-                if (userId != null) {
-                    wrapper.eq("user_id", userId);
+        // DDD-DATASCOPE-001: Feature Flag 灰度（默认 OFF，旧 switch 路径）
+        if (!dddRefactorProperties.getDataScopePolicy().isEnabled()) {
+            // 旧路径（保留作兜底，行为 1:1 等价于 git:0ca1fc44）
+            switch (dataScope) {
+                case PERSONAL -> {
+                    if (userId != null) {
+                        wrapper.eq("user_id", userId);
+                    }
+                }
+                case DEPT -> {
+                    if (deptId != null) {
+                        wrapper.eq("dept_id", deptId);
+                    }
+                }
+                case ALL -> {
+                    // no filter
                 }
             }
-            case DEPT -> {
-                if (deptId != null) {
-                    wrapper.eq("dept_id", deptId);
-                }
-            }
-            case ALL -> {
-                // no filter
-            }
+            return;
         }
+        // 新路径（DDD-USER-DATASCOPE-004：委托 DataScopePolicy，行为 1:1 等价于原 switch 实现）
+        dataScopePolicy.applyTo(wrapper, userId, deptId, dataScope, "user_id", "dept_id");
     }
 
     public void normalizeOrderRow(ColonelsettlementOrder order) {
@@ -594,16 +622,18 @@ public class OrderService {
         if (orders == null || orders.isEmpty()) {
             return;
         }
-        enrichOrderProductInfo(orders);
-        enrichOrderListExtras(orders);
+        Map<String, DisplayProductInfo> orderInfoByOrderId = loadDisplayProductInfo(orders);
+        enrichOrderProductInfo(orders, orderInfoByOrderId);
+        enrichOrderListExtras(orders, orderInfoByOrderId);
     }
 
     /**
      * 将 {@code listDisplayProductInfoByOrderIds} 投影中的出单视频 ID / 内容类型文本
      * 回填到实体上（exist=false 展示字段），并规范化订单类型文本。
      */
-    private void enrichOrderListExtras(List<ColonelsettlementOrder> orders) {
-        Map<String, DisplayProductInfo> orderInfoByOrderId = loadDisplayProductInfo(orders);
+    private void enrichOrderListExtras(
+            List<ColonelsettlementOrder> orders,
+            Map<String, DisplayProductInfo> orderInfoByOrderId) {
         for (ColonelsettlementOrder order : orders) {
             if (order == null || !StringUtils.hasText(order.getOrderId())) {
                 continue;
@@ -654,6 +684,12 @@ public class OrderService {
             return;
         }
         Map<String, DisplayProductInfo> orderInfoByOrderId = loadDisplayProductInfo(orders);
+        enrichOrderProductInfo(orders, orderInfoByOrderId);
+    }
+
+    private void enrichOrderProductInfo(
+            List<ColonelsettlementOrder> orders,
+            Map<String, DisplayProductInfo> orderInfoByOrderId) {
         SnapshotLookups snapshotLookups = loadSnapshotLookups(orders);
         Map<String, Product> productById = loadProductsByOrderProductId(orders);
 
@@ -801,6 +837,108 @@ public class OrderService {
         return result;
     }
 
+    private TimeRange resolveEffectiveTimeRange(String orderId, String startTime, String endTime) {
+        LocalDateTime start = parseLocalDateTime(startTime);
+        LocalDateTime end = parseLocalDateTime(endTime);
+        if (!defaultWindowEnabled || StringUtils.hasText(orderId) || start != null || end != null) {
+            return new TimeRange(start, end);
+        }
+        long days = Math.max(defaultWindowDays, 1L);
+        return new TimeRange(LocalDateTime.now().minusDays(days), null);
+    }
+
+    private void applyChannelKeywordFilter(
+            LambdaQueryWrapper<ColonelsettlementOrder> wrapper,
+            String channelKeyword) {
+        String keyword = trimToNull(channelKeyword);
+        if (keyword == null) {
+            return;
+        }
+        UUID keywordUuid = parseFullUuid(keyword);
+        if (keywordUuid != null) {
+            wrapper.eq(ColonelsettlementOrder::getChannelUserId, keywordUuid);
+            return;
+        }
+        wrapper.and(nested -> nested
+                .like(ColonelsettlementOrder::getChannelUserName, keyword)
+                .or()
+                .like(ColonelsettlementOrder::getChannelUserId, keyword));
+    }
+
+    private void applyColonelKeywordFilter(
+            LambdaQueryWrapper<ColonelsettlementOrder> wrapper,
+            String colonelKeyword) {
+        String keyword = trimToNull(colonelKeyword);
+        if (keyword == null) {
+            return;
+        }
+        UUID keywordUuid = parseFullUuid(keyword);
+        if (keywordUuid != null) {
+            wrapper.eq(ColonelsettlementOrder::getColonelUserId, keywordUuid);
+            return;
+        }
+        wrapper.and(nested -> nested
+                .like(ColonelsettlementOrder::getColonelUserName, keyword)
+                .or()
+                .like(ColonelsettlementOrder::getColonelUserId, keyword));
+    }
+
+    private void applyChannelKeywordFilter(
+            QueryWrapper<ColonelsettlementOrder> wrapper,
+            String channelKeyword) {
+        String keyword = trimToNull(channelKeyword);
+        if (keyword == null) {
+            return;
+        }
+        UUID keywordUuid = parseFullUuid(keyword);
+        if (keywordUuid != null) {
+            wrapper.eq("channel_user_id", keywordUuid);
+            return;
+        }
+        wrapper.and(nested -> nested
+                .like("channel_user_name", keyword)
+                .or()
+                .like("channel_user_id", keyword));
+    }
+
+    private void applyColonelKeywordFilter(
+            QueryWrapper<ColonelsettlementOrder> wrapper,
+            String colonelKeyword) {
+        String keyword = trimToNull(colonelKeyword);
+        if (keyword == null) {
+            return;
+        }
+        UUID keywordUuid = parseFullUuid(keyword);
+        if (keywordUuid != null) {
+            wrapper.eq("colonel_user_id", keywordUuid);
+            return;
+        }
+        wrapper.and(nested -> nested
+                .like("colonel_user_name", keyword)
+                .or()
+                .like("colonel_user_id", keyword));
+    }
+
+    private String trimToNull(String text) {
+        if (!StringUtils.hasText(text)) {
+            return null;
+        }
+        return text.trim();
+    }
+
+    private UUID parseFullUuid(String text) {
+        if (!StringUtils.hasText(text)) {
+            return null;
+        }
+        String trimmed = text.trim();
+        try {
+            UUID uuid = UUID.fromString(trimmed);
+            return uuid.toString().equalsIgnoreCase(trimmed) ? uuid : null;
+        } catch (IllegalArgumentException ignored) {
+            return null;
+        }
+    }
+
     private void applyDisplayProductInfo(ColonelsettlementOrder order, DisplayProductInfo info) {
         if (order == null || info == null) {
             return;
@@ -939,6 +1077,9 @@ public class OrderService {
     }
 
     private record DisplayProductInfo(String productPic, Integer itemNum, BigDecimal commissionRate, BigDecimal serviceFeeRate, String awemeId, String contentTypeText) {
+    }
+
+    private record TimeRange(LocalDateTime start, LocalDateTime end) {
     }
 
     private record ProductSnapshotKey(String activityId, String productId) {

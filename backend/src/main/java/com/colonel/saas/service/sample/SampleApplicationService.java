@@ -14,6 +14,7 @@ import com.colonel.saas.common.exception.OptimisticLockSupport;
 import com.colonel.saas.common.exception.ValidateException;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.common.result.PageResult;
+import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.dto.sample.LogisticsImportResult;
 import com.colonel.saas.dto.sample.SampleActionRequest;
@@ -21,26 +22,28 @@ import com.colonel.saas.dto.sample.SampleBatchActionRequest;
 import com.colonel.saas.dto.sample.SampleBatchShipItem;
 import com.colonel.saas.dto.sample.SampleBatchShipRequest;
 import com.colonel.saas.domain.sample.event.SampleDomainEventPublisher;
+import com.colonel.saas.domain.sample.policy.SampleStateMachine;
 import com.colonel.saas.gateway.logistics.query.LogisticsQueryResult;
 import com.colonel.saas.entity.SampleLogisticsTrace;
 import com.colonel.saas.dto.SampleTalentQueryRequest;
 import com.colonel.saas.entity.CrawlerTalentInfo;
 import com.colonel.saas.entity.Product;
-import com.colonel.saas.entity.ProductOperationState;
 import com.colonel.saas.entity.ProductSnapshot;
 import com.colonel.saas.entity.SampleRequest;
 import com.colonel.saas.entity.SampleStatusLog;
 import com.colonel.saas.entity.SysUser;
 import com.colonel.saas.entity.Talent;
-import com.colonel.saas.entity.TalentClaim;
-import com.colonel.saas.mapper.ProductMapper;
-import com.colonel.saas.mapper.ProductOperationStateMapper;
-import com.colonel.saas.mapper.ProductSnapshotMapper;
 import com.colonel.saas.mapper.SampleRequestMapper;
 import com.colonel.saas.mapper.SampleStatusLogMapper;
-import com.colonel.saas.mapper.SysUserMapper;
-import com.colonel.saas.mapper.TalentClaimMapper;
-import com.colonel.saas.mapper.TalentMapper;
+import com.colonel.saas.domain.product.facade.ProductDomainFacade;
+import com.colonel.saas.domain.product.facade.dto.ProductReadDTO;
+import com.colonel.saas.domain.product.facade.dto.ProductSnapshotReadDTO;
+import com.colonel.saas.domain.sample.policy.SampleActionPermissionPolicy;
+import com.colonel.saas.domain.talent.facade.TalentDomainFacade;
+import com.colonel.saas.domain.talent.facade.dto.TalentReadDTO;
+import com.colonel.saas.domain.user.facade.UserDomainFacade;
+import com.colonel.saas.domain.user.facade.dto.UserOwnershipReference;
+import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.service.CrawlerTalentInfoService;
 import com.colonel.saas.domain.config.facade.ConfigDomainFacade;
 import com.colonel.saas.service.ProductService;
@@ -170,23 +173,14 @@ public class SampleApplicationService extends BaseController {
     /** 寄样申请单数据访问层，负责寄样申请单的 CRUD 操作及分页查询 */
     private final SampleRequestMapper sampleRequestMapper;
 
-    /** 商品数据访问层，用于查询商品信息（寄样申请关联商品、商品搜索等） */
-    private final ProductMapper productMapper;
+    private final ProductDomainFacade productDomainFacade;
 
-    /** 商品运营状态数据访问层，用于查询商品的运营状态（如是否已上架等） */
-    private final ProductOperationStateMapper productOperationStateMapper;
+    /** 系统用户门面，用于查询用户信息（创建人姓名、归属部门等） */
+    private final UserDomainFacade userDomainFacade;
 
-    /** 商品快照数据访问层，用于在创建寄样时保存商品当前信息快照 */
-    private final ProductSnapshotMapper productSnapshotMapper;
+    private final SampleActionPermissionPolicy sampleActionPermissionPolicy;
 
-    /** 系统用户数据访问层，用于查询用户信息（创建人姓名、归属部门等） */
-    private final SysUserMapper sysUserMapper;
-
-    /** 达人数据访问层，用于查询和关联达人信息 */
-    private final TalentMapper talentMapper;
-
-    /** 达人认领关系数据访问层，用于校验渠道人员是否已认领指定达人 */
-    private final TalentClaimMapper talentClaimMapper;
+    private final TalentDomainFacade talentDomainFacade;
 
     /** 寄样状态日志业务服务，负责状态流转日志的记录和查询 */
     private final SampleStatusLogService sampleStatusLogService;
@@ -221,10 +215,16 @@ public class SampleApplicationService extends BaseController {
     /** 寄样写操作事务服务，封装寄样相关的写操作事务边界，确保数据一致性 */
     private final SampleWriteTransactionService sampleWriteTransactionService;
 
+    /** 用户域数据范围策略，灰度开启后用于解释 PERSONAL / DEPT / ALL。 */
+    private final DataScopePolicy dataScopePolicy;
+
+    /** DDD 重构灰度开关，默认关闭以保持 Legacy 行为。 */
+    private final DddRefactorProperties dddRefactorProperties;
+
     /**
      * 构造寄样管理控制器，通过构造器注入所有必需的依赖。
      *
-     * <p>Spring 框架通过此构造器自动装配以下 18 个依赖组件：
+     * <p>Spring 框架通过此构造器自动装配寄样主流程及灰度旁路所需依赖：
      * <ol>
      *   <li>数据访问层（Mapper）：寄样申请单、商品、商品运营状态、商品快照、系统用户、达人、达人认领、状态日志</li>
      *   <li>业务服务层（Service）：状态日志、爬虫达人查询、业务规则配置、商品服务、资格校验</li>
@@ -233,12 +233,10 @@ public class SampleApplicationService extends BaseController {
      * </ol>
      *
      * @param sampleRequestMapper                寄样申请单数据访问层
-     * @param productMapper                      商品数据访问层
-     * @param productOperationStateMapper         商品运营状态数据访问层
-     * @param productSnapshotMapper               商品快照数据访问层
-     * @param sysUserMapper                       系统用户数据访问层
-     * @param talentMapper                        达人数据访问层
-     * @param talentClaimMapper                   达人认领关系数据访问层
+     * @param productDomainFacade                商品域门面
+     * @param userDomainFacade                   用户域门面
+     * @param sampleActionPermissionPolicy        寄样动作权限策略
+     * @param talentDomainFacade                 达人域门面
      * @param sampleStatusLogService              寄样状态日志业务服务
      * @param sampleStatusLogMapper               寄样状态日志数据访问层
      * @param crawlerTalentInfoService            爬虫达人信息查询服务
@@ -250,15 +248,15 @@ public class SampleApplicationService extends BaseController {
      * @param sampleLogisticsSubscriptionService  物流订阅服务
      * @param sampleDomainEventPublisher          寄样领域事件发布器
      * @param sampleWriteTransactionService       寄样写操作事务服务
+     * @param dataScopePolicy                     用户域数据范围策略
+     * @param dddRefactorProperties               DDD 灰度开关配置
      */
     public SampleApplicationService(
             SampleRequestMapper sampleRequestMapper,
-            ProductMapper productMapper,
-            ProductOperationStateMapper productOperationStateMapper,
-            ProductSnapshotMapper productSnapshotMapper,
-            SysUserMapper sysUserMapper,
-            TalentMapper talentMapper,
-            TalentClaimMapper talentClaimMapper,
+            ProductDomainFacade productDomainFacade,
+            UserDomainFacade userDomainFacade,
+            SampleActionPermissionPolicy sampleActionPermissionPolicy,
+            TalentDomainFacade talentDomainFacade,
             SampleStatusLogService sampleStatusLogService,
             SampleStatusLogMapper sampleStatusLogMapper,
             CrawlerTalentInfoService crawlerTalentInfoService,
@@ -269,14 +267,14 @@ public class SampleApplicationService extends BaseController {
             SampleLogisticsImportService sampleLogisticsImportService,
             SampleLogisticsSubscriptionService sampleLogisticsSubscriptionService,
             SampleDomainEventPublisher sampleDomainEventPublisher,
-            SampleWriteTransactionService sampleWriteTransactionService) {
+            SampleWriteTransactionService sampleWriteTransactionService,
+            DataScopePolicy dataScopePolicy,
+            DddRefactorProperties dddRefactorProperties) {
         this.sampleRequestMapper = sampleRequestMapper;
-        this.productMapper = productMapper;
-        this.productOperationStateMapper = productOperationStateMapper;
-        this.productSnapshotMapper = productSnapshotMapper;
-        this.sysUserMapper = sysUserMapper;
-        this.talentMapper = talentMapper;
-        this.talentClaimMapper = talentClaimMapper;
+        this.productDomainFacade = productDomainFacade;
+        this.userDomainFacade = userDomainFacade;
+        this.sampleActionPermissionPolicy = sampleActionPermissionPolicy;
+        this.talentDomainFacade = talentDomainFacade;
         this.sampleStatusLogService = sampleStatusLogService;
         this.sampleStatusLogMapper = sampleStatusLogMapper;
         this.crawlerTalentInfoService = crawlerTalentInfoService;
@@ -288,6 +286,8 @@ public class SampleApplicationService extends BaseController {
         this.sampleLogisticsSubscriptionService = sampleLogisticsSubscriptionService;
         this.sampleDomainEventPublisher = sampleDomainEventPublisher;
         this.sampleWriteTransactionService = sampleWriteTransactionService;
+        this.dataScopePolicy = dataScopePolicy;
+        this.dddRefactorProperties = dddRefactorProperties;
     }
 
     /**
@@ -327,17 +327,8 @@ public class SampleApplicationService extends BaseController {
         return sampleWriteTransactionService.execute(() -> {
         ensureSampleApplyPermission(roleCodes);
         Product product = requireProduct(request.getProductId());
-        // 寄样前必须先加入商品库
-        ProductSnapshot snapshot = productSnapshotMapper.selectById(product.getId());
-        if (snapshot != null) {
-            ProductOperationState state = productOperationStateMapper.selectOne(
-                    new LambdaQueryWrapper<ProductOperationState>()
-                            .eq(ProductOperationState::getActivityId, snapshot.getActivityId())
-                            .eq(ProductOperationState::getProductId, snapshot.getProductId())
-                            .last("LIMIT 1"));
-            if (state == null || !Boolean.TRUE.equals(state.getSelectedToLibrary())) {
-                throw BusinessException.stateInvalid("该商品尚未加入商品库，请先审核并加入商品库后再进行寄样操作");
-            }
+        if (!productDomainFacade.isSelectedToLibraryForSample(product.getId())) {
+            throw BusinessException.stateInvalid("该商品尚未加入商品库，请先审核并加入商品库后再进行寄样操作");
         }
         CrawlerTalentInfo talentInfo = resolveSampleTalentInfo(request.getTalentId());
         Talent talent = findOrCreateTalentFromCrawler(talentInfo);
@@ -491,7 +482,7 @@ public class SampleApplicationService extends BaseController {
         }
 
         // 招商专员在个人范围下，默认展示待审核单据
-        if (hasAnyRole(roleCodes, RoleCodes.BIZ_STAFF) && !hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.BIZ_LEADER) && !StringUtils.hasText(status)) {
+        if (sampleActionPermissionPolicy.isPlainBizStaff(roleCodes) && !StringUtils.hasText(status)) {
             status = "PENDING_AUDIT";
         }
 
@@ -518,7 +509,7 @@ public class SampleApplicationService extends BaseController {
 
         IPage<SampleRequest> samplePage;
         // 招商专员且数据范围为个人：按"我负责的商品"过滤
-        if (dataScope == com.colonel.saas.common.enums.DataScope.PERSONAL && hasAnyRole(roleCodes, RoleCodes.BIZ_STAFF) && !hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.BIZ_LEADER)) {
+        if (shouldUseAuditorQuery(userId, deptId, dataScope, roleCodes)) {
             samplePage = recruiterUserId == null
                     ? sampleRequestMapper.findPageForAuditor(pageReq, userId, wrapper)
                     : sampleRequestMapper.findPageForAuditor(pageReq, userId, wrapper, recruiterUserId);
@@ -543,6 +534,33 @@ public class SampleApplicationService extends BaseController {
         Page<SampleVO> voPage = new Page<>(samplePage.getCurrent(), samplePage.getSize(), samplePage.getTotal());
         voPage.setRecords(records);
         return okPage(voPage);
+    }
+
+    private boolean shouldUseAuditorQuery(UUID userId, UUID deptId, DataScope dataScope, Object roleCodes) {
+        if (!dddRefactorProperties.getDataScopePolicy().isEnabled()) {
+            return shouldUseAuditorQueryLegacy(dataScope, roleCodes);
+        }
+        return shouldUseAuditorQueryWithPolicy(userId, deptId, dataScope, roleCodes);
+    }
+
+    private boolean shouldUseAuditorQueryLegacy(DataScope dataScope, Object roleCodes) {
+        return dataScope == DataScope.PERSONAL
+                && sampleActionPermissionPolicy.isPlainBizStaff(roleCodes);
+    }
+
+    private boolean shouldUseAuditorQueryWithPolicy(UUID userId, UUID deptId, DataScope dataScope, Object roleCodes) {
+        if (!sampleActionPermissionPolicy.isPlainBizStaff(roleCodes)) {
+            return false;
+        }
+        DataScopePolicy.ContextRequirement requirement =
+                dataScopePolicy.contextRequirement(userId, deptId, dataScope);
+        if (requirement == DataScopePolicy.ContextRequirement.MISSING_USER) {
+            return dataScope == DataScope.PERSONAL;
+        }
+        if (requirement != DataScopePolicy.ContextRequirement.SATISFIED) {
+            return false;
+        }
+        return dataScopePolicy.decide(userId, deptId, dataScope) == DataScopePolicy.Decision.FILTER_USER;
     }
 
     /**
@@ -717,7 +735,7 @@ public class SampleApplicationService extends BaseController {
             throw new ForbiddenException("运营角色仅可通过寄样发货台查看待发货及物流数据");
         }
         QueryWrapper<SampleRequest> wrapper = new QueryWrapper<>();
-        List<SampleRequest> allSamples = loadBoardSamples(wrapper);
+        List<SampleRequest> allSamples = loadBoardSamples(wrapper, userId, deptId, dataScope, roleCodes);
 
         Map<UUID, Product> productMap = loadProducts(allSamples.stream()
                 .map(SampleRequest::getProductId)
@@ -785,11 +803,20 @@ public class SampleApplicationService extends BaseController {
      * @param wrapper 查询条件包装器（可附加额外过滤条件）
      * @return 当前用户可见的全部寄样申请单列表
      */
-    private List<SampleRequest> loadBoardSamples(QueryWrapper<SampleRequest> wrapper) {
+    private List<SampleRequest> loadBoardSamples(
+            QueryWrapper<SampleRequest> wrapper,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            Object roleCodes) {
         List<SampleRequest> result = new ArrayList<>();
         long current = 1L;
+        boolean useAuditorQuery = shouldUseBoardAuditorQuery(userId, deptId, dataScope, roleCodes);
         while (true) {
-            IPage<SampleRequest> scopedPage = sampleRequestMapper.findPageWithScope(new Page<>(current, BOARD_BATCH_SIZE), wrapper);
+            Page<SampleRequest> pageReq = new Page<>(current, BOARD_BATCH_SIZE);
+            IPage<SampleRequest> scopedPage = useAuditorQuery
+                    ? sampleRequestMapper.findPageForAuditor(pageReq, userId, wrapper)
+                    : sampleRequestMapper.findPageWithScope(pageReq, wrapper);
             List<SampleRequest> records = scopedPage.getRecords();
             if (records == null || records.isEmpty()) {
                 break;
@@ -801,6 +828,13 @@ public class SampleApplicationService extends BaseController {
             current++;
         }
         return result;
+    }
+
+    private boolean shouldUseBoardAuditorQuery(UUID userId, UUID deptId, DataScope dataScope, Object roleCodes) {
+        if (!dddRefactorProperties.getDataScopePolicy().isEnabled()) {
+            return false;
+        }
+        return shouldUseAuditorQueryWithPolicy(userId, deptId, dataScope, roleCodes);
     }
 
     /**
@@ -834,7 +868,7 @@ public class SampleApplicationService extends BaseController {
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
             @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
         SampleRequest sample = requireSample(id, userId, deptId, dataScope, roleCodes);
-        Product product = productMapper.selectById(sample.getProductId());
+        Product product = toProduct(productDomainFacade.findProductById(sample.getProductId()));
         return ok(toVO(
                 sample,
                 product,
@@ -959,7 +993,7 @@ public class SampleApplicationService extends BaseController {
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
             @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
         return sampleWriteTransactionService.execute(() -> {
-        String action = normalizeAction(request.getAction());
+        String action = SampleStateMachine.normalizeAction(request.getAction());
         ensureActionRolePermission(action, roleCodes);
         SampleRequest sample = requireSample(id, userId, deptId, dataScope, roleCodes);
         LocalDateTime now = LocalDateTime.now();
@@ -967,11 +1001,11 @@ public class SampleApplicationService extends BaseController {
         SampleStatus current = SampleStatus.fromCode(fromStatus);
 
         if ("PENDING_SHIP".equals(action)) {
-            ensureTransition(current, SampleStatus.PENDING_AUDIT);
+            SampleStateMachine.ensureTransition(current, SampleStatus.PENDING_AUDIT);
             sample.setStatus(SampleStatus.PENDING_SHIP.getCode());
             sample.setAuditTime(now);
         } else if ("REJECTED".equals(action)) {
-            ensureTransition(current, SampleStatus.PENDING_AUDIT);
+            SampleStateMachine.ensureTransition(current, SampleStatus.PENDING_AUDIT);
             if (!StringUtils.hasText(request.getReason())) {
                 throw BusinessException.param("reason is required when reject sample request");
             }
@@ -979,7 +1013,7 @@ public class SampleApplicationService extends BaseController {
             sample.setRejectReason(request.getReason());
             sample.setAuditTime(now);
         } else if ("SHIPPING".equals(action)) {
-            ensureTransition(current, SampleStatus.PENDING_SHIP);
+            SampleStateMachine.ensureTransition(current, SampleStatus.PENDING_SHIP);
             if (!StringUtils.hasText(request.getTrackingNo())) {
                 throw BusinessException.param("trackingNo is required when shipping");
             }
@@ -989,23 +1023,23 @@ public class SampleApplicationService extends BaseController {
             putExtraValue(sample, "logisticsSource", "MANUAL");
             sample.setShipTime(now);
         } else if ("DELIVERED".equals(action)) {
-            ensureTransition(current, SampleStatus.SHIPPING);
+            SampleStateMachine.ensureTransition(current, SampleStatus.SHIPPING);
             sample.setStatus(SampleStatus.DELIVERED.getCode());
             sample.setDeliverTime(now);
         } else if ("PENDING_HOMEWORK".equals(action)) {
             if (current == SampleStatus.SHIPPING) {
                 sample.setDeliverTime(now);
             } else {
-                ensureTransition(current, SampleStatus.DELIVERED);
+                SampleStateMachine.ensurePendingHomeworkTransition(current);
             }
             putExtraValueIfMissing(sample, "logisticsSource", "MANUAL");
             sample.setStatus(SampleStatus.PENDING_HOMEWORK.getCode());
         } else if ("COMPLETED".equals(action)) {
-            ensureTransition(current, SampleStatus.PENDING_HOMEWORK);
+            SampleStateMachine.ensureTransition(current, SampleStatus.PENDING_HOMEWORK);
             sample.setStatus(SampleStatus.COMPLETED.getCode());
             sample.setCompleteTime(now);
         } else if ("CLOSED".equals(action)) {
-            ensureTransition(current, SampleStatus.PENDING_HOMEWORK);
+            SampleStateMachine.ensureTransition(current, SampleStatus.PENDING_HOMEWORK);
             sample.setStatus(SampleStatus.CLOSED.getCode());
             sample.setCloseTime(now);
             sample.setCloseReason(request.getReason());
@@ -1019,7 +1053,7 @@ public class SampleApplicationService extends BaseController {
         if ("SHIPPING".equals(action)) {
             sampleLogisticsSubscriptionService.subscribeAfterShipment(sample);
         }
-        Product product = productMapper.selectById(sample.getProductId());
+        Product product = toProduct(productDomainFacade.findProductById(sample.getProductId()));
         return ok(toVO(
                 sample,
                 product,
@@ -1062,9 +1096,7 @@ public class SampleApplicationService extends BaseController {
         ensureSampleDeletePermission(roleCodes);
         SampleRequest sample = requireSample(id, userId, deptId, dataScope, roleCodes);
         SampleStatus status = SampleStatus.fromCode(sample.getStatus());
-        if (status != SampleStatus.PENDING_AUDIT && status != SampleStatus.REJECTED) {
-            throw BusinessException.stateInvalid("Only pending/rejected sample can be deleted");
-        }
+        SampleStateMachine.ensureDeletable(status);
         sampleRequestMapper.deleteById(id);
         return ok();
     }
@@ -1150,7 +1182,7 @@ public class SampleApplicationService extends BaseController {
         SampleRequest sample = requireSample(id, userId, deptId, dataScope, roleCodes);
         sampleLogisticsSyncService.syncOne(sample.getId());
         sample = sampleRequestMapper.selectById(id);
-        Product product = productMapper.selectById(sample.getProductId());
+        Product product = toProduct(productDomainFacade.findProductById(sample.getProductId()));
         return ok(toVO(
                 sample,
                 product,
@@ -1322,14 +1354,14 @@ public class SampleApplicationService extends BaseController {
             try {
                 SampleRequest sample = requireSampleByRequestNo(requestNo, userId, deptId, dataScope, roleCodes);
                 SampleStatus current = SampleStatus.fromCode(sample.getStatus());
-                ensureTransition(current, SampleStatus.PENDING_AUDIT);
+                SampleStateMachine.ensureTransition(current, SampleStatus.PENDING_AUDIT);
                 int fromStatus = sample.getStatus();
                 sample.setStatus(SampleStatus.PENDING_SHIP.getCode());
                 sample.setAuditTime(now);
                 persistSample(sample);
                 sampleStatusLogService.log(sample.getId(), fromStatus, sample.getStatus(), userId, request.getRemark());
                 sampleDomainEventPublisher.publishSampleApproved(
-                        sample, resolveColonelUserId(productMapper.selectById(sample.getProductId())), userId, now);
+                        sample, resolveColonelUserId(toProduct(productDomainFacade.findProductById(sample.getProductId()))), userId, now);
                 success++;
             } catch (BusinessException | ForbiddenException e) {
                 log.warn("Batch approve failed for requestNo={}: {}", requestNo, e.getMessage());
@@ -1389,7 +1421,7 @@ public class SampleApplicationService extends BaseController {
             try {
                 SampleRequest sample = requireSampleByRequestNo(requestNo, userId, deptId, dataScope, roleCodes);
                 SampleStatus current = SampleStatus.fromCode(sample.getStatus());
-                ensureTransition(current, SampleStatus.PENDING_AUDIT);
+                SampleStateMachine.ensureTransition(current, SampleStatus.PENDING_AUDIT);
                 int fromStatus = sample.getStatus();
                 sample.setStatus(SampleStatus.REJECTED.getCode());
                 sample.setRejectReason(request.getRemark());
@@ -1455,7 +1487,7 @@ public class SampleApplicationService extends BaseController {
             try {
                 SampleRequest sample = requireSampleByRequestNo(item.getRequestNo(), userId, deptId, dataScope, roleCodes);
                 SampleStatus current = SampleStatus.fromCode(sample.getStatus());
-                ensureTransition(current, SampleStatus.PENDING_SHIP);
+                SampleStateMachine.ensureTransition(current, SampleStatus.PENDING_SHIP);
                 int fromStatus = sample.getStatus();
                 sample.setStatus(SampleStatus.SHIPPING.getCode());
                 sample.setTrackingNo(item.getTrackingNo());
@@ -1575,6 +1607,7 @@ public class SampleApplicationService extends BaseController {
                 homeworkEndTime,
                 logisticsCompany);
 
+        boolean useAuditorQuery = shouldUseExportAuditorQuery(userId, deptId, dataScope, roleCodes);
         response.setContentType("text/csv; charset=UTF-8");
         response.setHeader("Content-Disposition", "attachment; filename=\"samples.csv\"");
         PrintWriter writer = response.getWriter();
@@ -1586,9 +1619,16 @@ public class SampleApplicationService extends BaseController {
             long current = 1L;
             while (true) {
                 Page<SampleRequest> exportPage = new Page<>(current, EXPORT_BATCH_SIZE);
-                IPage<SampleRequest> pageResult = recruiterUserId == null
-                        ? sampleRequestMapper.findPageWithScope(exportPage, wrapper)
-                        : sampleRequestMapper.findPageWithScope(exportPage, wrapper, recruiterUserId);
+                IPage<SampleRequest> pageResult;
+                if (useAuditorQuery) {
+                    pageResult = recruiterUserId == null
+                            ? sampleRequestMapper.findPageForAuditor(exportPage, userId, wrapper)
+                            : sampleRequestMapper.findPageForAuditor(exportPage, userId, wrapper, recruiterUserId);
+                } else {
+                    pageResult = recruiterUserId == null
+                            ? sampleRequestMapper.findPageWithScope(exportPage, wrapper)
+                            : sampleRequestMapper.findPageWithScope(exportPage, wrapper, recruiterUserId);
+                }
                 List<SampleRequest> records = pageResult.getRecords();
                 if (records == null || records.isEmpty()) {
                     break;
@@ -1629,6 +1669,13 @@ public class SampleApplicationService extends BaseController {
             return;
         }
         writer.flush();
+    }
+
+    private boolean shouldUseExportAuditorQuery(UUID userId, UUID deptId, DataScope dataScope, Object roleCodes) {
+        if (!dddRefactorProperties.getDataScopePolicy().isEnabled()) {
+            return false;
+        }
+        return shouldUseAuditorQueryWithPolicy(userId, deptId, dataScope, roleCodes);
     }
 
     /**
@@ -1753,12 +1800,6 @@ public class SampleApplicationService extends BaseController {
      * @param expected 操作要求的预期状态
      * @throws BusinessException 当前状态与预期不匹配时抛出
      */
-    private void ensureTransition(SampleStatus current, SampleStatus expected) {
-        if (current != expected) {
-            throw BusinessException.stateInvalid("Current status does not allow this action: expected "
-                    + expected.getApiStatus() + " but was " + current.getApiStatus());
-        }
-    }
 
     /**
      * 根据 ID 查询寄样单并校验当前用户的访问权限。
@@ -1811,25 +1852,69 @@ public class SampleApplicationService extends BaseController {
         if (sample == null || dataScope == null || dataScope == DataScope.ALL) {
             return;
         }
-        if (hasAnyRole(roleCodes, RoleCodes.ADMIN)) {
+        if (sampleActionPermissionPolicy.hasGlobalSampleAccess(roleCodes)) {
             return;
         }
-        if (hasAnyRole(roleCodes, RoleCodes.BIZ_STAFF) && isSampleProductAssignedToUser(sample, currentUserId)) {
+        if (sampleActionPermissionPolicy.canAccessAssignedSampleProduct(roleCodes)
+                && isSampleProductAssignedToUser(sample, currentUserId)) {
             return;
         }
+        if (canAccessSampleByDataScope(sample, currentUserId, currentDeptId, dataScope)) {
+            return;
+        }
+        throw new ForbiddenException("无权访问该寄样单");
+    }
+
+    private boolean canAccessSampleByDataScope(
+            SampleRequest sample,
+            UUID currentUserId,
+            UUID currentDeptId,
+            DataScope dataScope) {
+        if (!dddRefactorProperties.getDataScopePolicy().isEnabled()) {
+            return canAccessSampleByDataScopeLegacy(sample, currentUserId, currentDeptId, dataScope);
+        }
+        return canAccessSampleByDataScopeWithPolicy(sample, currentUserId, currentDeptId, dataScope);
+    }
+
+    private boolean canAccessSampleByDataScopeLegacy(
+            SampleRequest sample,
+            UUID currentUserId,
+            UUID currentDeptId,
+            DataScope dataScope) {
         if (dataScope == DataScope.PERSONAL) {
-            if (currentUserId == null || !currentUserId.equals(sample.getChannelUserId())) {
-                throw new ForbiddenException("无权访问该寄样单");
-            }
-            return;
+            return currentUserId != null && currentUserId.equals(sample.getChannelUserId());
         }
+        UUID ownerDeptId = resolveSampleOwnerDeptId(sample);
+        return currentDeptId != null && ownerDeptId != null && currentDeptId.equals(ownerDeptId);
+    }
+
+    private boolean canAccessSampleByDataScopeWithPolicy(
+            SampleRequest sample,
+            UUID currentUserId,
+            UUID currentDeptId,
+            DataScope dataScope) {
+        DataScopePolicy.ContextRequirement requirement =
+                dataScopePolicy.contextRequirement(currentUserId, currentDeptId, dataScope);
+        if (requirement != DataScopePolicy.ContextRequirement.SATISFIED) {
+            return false;
+        }
+        DataScopePolicy.Decision decision = dataScopePolicy.decide(currentUserId, currentDeptId, dataScope);
+        if (decision == DataScopePolicy.Decision.FILTER_USER) {
+            return currentUserId != null && currentUserId.equals(sample.getChannelUserId());
+        }
+        if (decision == DataScopePolicy.Decision.FILTER_DEPT) {
+            UUID ownerDeptId = resolveSampleOwnerDeptId(sample);
+            return currentDeptId != null && ownerDeptId != null && currentDeptId.equals(ownerDeptId);
+        }
+        return true;
+    }
+
+    private UUID resolveSampleOwnerDeptId(SampleRequest sample) {
         UUID ownerDeptId = sample.getDeptId();
         if (ownerDeptId == null) {
             ownerDeptId = resolveUserDeptId(sample.getChannelUserId());
         }
-        if (currentDeptId == null || ownerDeptId == null || !currentDeptId.equals(ownerDeptId)) {
-            throw new ForbiddenException("无权访问该寄样单");
-        }
+        return ownerDeptId;
     }
 
     /**
@@ -1847,13 +1932,7 @@ public class SampleApplicationService extends BaseController {
         if (sample == null || sample.getProductId() == null || userId == null) {
             return false;
         }
-        String sourceProductId = resolveSampleSourceProductId(sample.getProductId());
-        if (!StringUtils.hasText(sourceProductId)) {
-            return false;
-        }
-        return productOperationStateMapper.selectCount(new LambdaQueryWrapper<ProductOperationState>()
-                .eq(ProductOperationState::getProductId, sourceProductId)
-                .eq(ProductOperationState::getAssigneeId, userId)) > 0;
+        return productDomainFacade.isSampleProductAssignedToUser(sample.getProductId(), userId);
     }
 
     /**
@@ -1866,15 +1945,7 @@ public class SampleApplicationService extends BaseController {
      * @return 抖音侧源商品 ID，未找到时返回 null
      */
     private String resolveSampleSourceProductId(UUID productPrimaryId) {
-        Product product = productMapper.selectById(productPrimaryId);
-        if (product != null && StringUtils.hasText(product.getProductId())) {
-            return product.getProductId();
-        }
-        ProductSnapshot snapshot = productSnapshotMapper.selectById(productPrimaryId);
-        if (snapshot != null && StringUtils.hasText(snapshot.getProductId())) {
-            return snapshot.getProductId();
-        }
-        return null;
+        return productDomainFacade.resolveSampleSourceProductId(productPrimaryId);
     }
 
     /**
@@ -1887,8 +1958,13 @@ public class SampleApplicationService extends BaseController {
         if (userId == null) {
             return null;
         }
-        SysUser user = sysUserMapper.selectById(userId);
-        return user == null ? null : user.getDeptId();
+        Map<UUID, UserOwnershipReference> references =
+                userDomainFacade.loadUserOwnershipReferencesByIds(List.of(userId));
+        if (references == null || references.isEmpty()) {
+            return null;
+        }
+        UserOwnershipReference reference = references.get(userId);
+        return reference == null ? null : reference.deptId();
     }
 
     /**
@@ -1901,9 +1977,7 @@ public class SampleApplicationService extends BaseController {
      * @throws ForbiddenException 用户不满足角色要求时抛出
      */
     private void ensureSampleApplyPermission(Object roleCodes) {
-        if (!hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF)) {
-            throw new ForbiddenException("仅渠道角色可以发起寄样申请");
-        }
+        sampleActionPermissionPolicy.ensureCanApply(roleCodes);
     }
 
     /**
@@ -1916,9 +1990,7 @@ public class SampleApplicationService extends BaseController {
      * @throws ForbiddenException 用户不满足角色要求时抛出
      */
     private void ensureSampleDeletePermission(Object roleCodes) {
-        if (!hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF)) {
-            throw new ForbiddenException("仅渠道角色可以删除寄样申请");
-        }
+        sampleActionPermissionPolicy.ensureCanDelete(roleCodes);
     }
 
     /**
@@ -1962,21 +2034,7 @@ public class SampleApplicationService extends BaseController {
      * @throws ForbiddenException 角色不具备执行该操作的权限时抛出
      */
     private void ensureActionRolePermission(String action, Object roleCodes) {
-        switch (action) {
-            case "PENDING_SHIP", "REJECTED" -> {
-                if (!hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.BIZ_STAFF)) {
-                    throw new ForbiddenException("仅招商角色可以审核寄样");
-                }
-            }
-            case "SHIPPING", "DELIVERED", "PENDING_HOMEWORK" -> {
-                if (!hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.OPS_STAFF)) {
-                    throw new ForbiddenException("仅运营角色可以推进物流状态");
-                }
-            }
-            case "COMPLETED", "CLOSED" -> throw new ForbiddenException("完成与关闭状态仅允许系统自动推进");
-            default -> {
-            }
-        }
+        sampleActionPermissionPolicy.ensureCanPerformAction(action, roleCodes);
     }
 
     /**
@@ -2138,9 +2196,7 @@ public class SampleApplicationService extends BaseController {
      * @throws ForbiddenException 角色不在允许列表时抛出
      */
     private void ensureLogisticsSyncPermission(Object roleCodes) {
-        if (!hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.OPS_STAFF)) {
-            throw new ForbiddenException("仅运营或管理员可触发物流同步");
-        }
+        sampleActionPermissionPolicy.ensureCanSyncLogistics(roleCodes);
     }
 
     /**
@@ -2213,17 +2269,14 @@ public class SampleApplicationService extends BaseController {
      *     <li>BIZ_LEADER（招商主管）—— 管理团队寄样数据</li>
      *     <li>BIZ_STAFF（招商专员）—— 导出本人经手的寄样数据</li>
      *     <li>OPS_STAFF（运营专员）—— 导出运营相关寄样物流数据</li>
-     *     <li>CHANNEL_LEADER（渠道组长）—— 导出本组数据范围内寄样数据</li>
      * </ul>
-     * 渠道专员（CHANNEL_STAFF）无导出权限。
+     * 渠道角色（CHANNEL_LEADER、CHANNEL_STAFF）无导出权限，避免渠道侧导出跨域寄样数据。
      *
      * @param roleCodes 当前用户的角色编码集合
      * @throws ForbiddenException 角色不在允许列表时抛出
      */
     private void ensureSampleExportPermission(Object roleCodes) {
-        if (!hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.OPS_STAFF, RoleCodes.CHANNEL_LEADER)) {
-            throw new ForbiddenException("仅管理员、招商、运营或渠道组长可导出寄样数据");
-        }
+        sampleActionPermissionPolicy.ensureCanExport(roleCodes);
     }
 
     /**
@@ -2247,47 +2300,10 @@ public class SampleApplicationService extends BaseController {
      * @see #materializeProductFromSnapshot(ProductSnapshot)
      */
     private Product requireProduct(UUID productId) {
-        Product product = productMapper.selectById(productId);
-        if (product != null) {
-            return product;
-        }
-
-        ProductSnapshot snapshot = productSnapshotMapper.selectById(productId);
-        if (snapshot != null && StringUtils.hasText(snapshot.getProductId())) {
-            product = productMapper.selectOne(new LambdaQueryWrapper<Product>()
-                    .eq(Product::getProductId, snapshot.getProductId())
-                    .last("LIMIT 1"));
-            if (product == null) {
-                product = materializeProductFromSnapshot(snapshot);
-                productMapper.insert(product);
-            }
-        }
+        Product product = toProduct(productDomainFacade.findOrMaterializeSampleProduct(productId));
         if (product == null) {
             throw new ValidateException("Selected product does not exist");
         }
-        return product;
-    }
-
-    /**
-     * 从商品快照物化出一条 Product 记录。
-     * <p>
-     * 将快照中保存的商品基本信息（ID、业务ID、标题、价格、封面、详情链接等）
-     * 映射为正式的 Product 实体。标题优先使用快照的 title 字段，
-     * 若为空则退化为 productId。商品状态默认为 1（上架），审核状态默认为 2（已通过）。
-     *
-     * @param snapshot 商品快照实体，来源于爬虫或上游同步
-     * @return 新创建的 Product 实体（未落库，由调用方决定是否 insert）
-     */
-    private Product materializeProductFromSnapshot(ProductSnapshot snapshot) {
-        Product product = new Product();
-        product.setId(snapshot.getId());
-        product.setProductId(snapshot.getProductId());
-        product.setName(StringUtils.hasText(snapshot.getTitle()) ? snapshot.getTitle() : snapshot.getProductId());
-        product.setPrice(snapshot.getPrice());
-        product.setCover(snapshot.getCover());
-        product.setDetailUrl(snapshot.getDetailUrl());
-        product.setStatus(snapshot.getStatus() == null ? 1 : snapshot.getStatus());
-        product.setCheckStatus(2);
         return product;
     }
 
@@ -2334,9 +2350,8 @@ public class SampleApplicationService extends BaseController {
         if (talentInfo != null) {
             return talentInfo;
         }
-        Talent manualTalent = talentMapper.selectOne(new LambdaQueryWrapper<Talent>()
-                .eq(Talent::getDouyinUid, talentId)
-                .last("limit 1"));
+        TalentReadDTO manualTalentDto = talentDomainFacade.findByDouyinUid(talentId);
+        Talent manualTalent = toTalent(manualTalentDto);
         if (manualTalent == null) {
             throw new ValidateException("Selected talent does not exist");
         }
@@ -2388,19 +2403,8 @@ public class SampleApplicationService extends BaseController {
      * @return Talent 实体（已有记录或新创建的记录）
      */
     private Talent findOrCreateTalentFromCrawler(CrawlerTalentInfo info) {
-        Talent existing = talentMapper.selectOne(new LambdaQueryWrapper<Talent>()
-                .eq(Talent::getDouyinUid, info.getTalentId())
-                .last("limit 1"));
-        if (existing != null) {
-            return existing;
-        }
-        Talent talent = new Talent();
-        talent.setDouyinUid(info.getTalentId());
-        talent.setNickname(info.getNickname());
-        talent.setFans(info.getFansCount());
-        talent.setStatus(1);
-        talentMapper.insert(talent);
-        return talent;
+        return toTalent(talentDomainFacade.findOrCreateSampleTalent(
+                info.getTalentId(), info.getNickname(), info.getFansCount()));
     }
 
     /**
@@ -2423,14 +2427,13 @@ public class SampleApplicationService extends BaseController {
      * @throws ForbiddenException 达人不在当前用户私海中时抛出
      */
     private void ensureChannelTalentClaim(UUID userId, UUID talentId, Object roleCodes) {
-        if (!hasAnyRole(roleCodes, RoleCodes.CHANNEL_STAFF, RoleCodes.CHANNEL_LEADER)
-                || hasAnyRole(roleCodes, RoleCodes.ADMIN)) {
+        if (!sampleActionPermissionPolicy.requiresChannelTalentClaim(roleCodes)) {
             return;
         }
         if (userId == null || talentId == null) {
             throw new ValidateException("该达人信息不完整，请重新选择");
         }
-        if (talentClaimMapper.findActiveByTalentAndUser(talentId, userId) == null) {
+        if (!talentDomainFacade.hasActiveClaim(talentId, userId)) {
             throw new ForbiddenException("该达人未在你的私海中，请先认领后再申请寄样");
         }
     }
@@ -2483,95 +2486,13 @@ public class SampleApplicationService extends BaseController {
      *     <li>CHANNEL_LEADER（渠道主管）—— 管理人员豁免</li>
      * </ul>
      * <p>
-     * 支持多种 roleCodes 参数格式：Collection、逗号分隔字符串、带方括号的字符串。
-     * 内部统一做大小写不敏感比较。
+     * 角色编码集合由用户域权限策略统一解析，本方法只表达寄样域的豁免业务语义。
      *
      * @param roleCodes 当前用户的角色编码集合
      * @return true 表示豁免七天限制，false 表示需要校验
-     * @see #isExemptRoleCode(String)
      */
     private boolean isExemptFromSevenDaysLimit(Object roleCodes) {
-        if (roleCodes == null) {
-            return false;
-        }
-        if (roleCodes instanceof Collection<?> collection) {
-            return collection.stream()
-                    .map(item -> item == null ? "" : item.toString().trim().toLowerCase(Locale.ROOT))
-                    .anyMatch(this::isExemptRoleCode);
-        }
-        String raw = roleCodes.toString();
-        if (!StringUtils.hasText(raw)) {
-            return false;
-        }
-        String normalized = raw.trim().toLowerCase(Locale.ROOT);
-        if (normalized.startsWith("[") && normalized.endsWith("]")) {
-            normalized = normalized.substring(1, normalized.length() - 1);
-        }
-        for (String role : normalized.split(",")) {
-            if (isExemptRoleCode(role.trim())) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /**
-     * 判断指定角色编码是否属于七天重复限制的豁免角色。
-     * <p>
-     * 豁免角色：ADMIN（管理员）、CHANNEL_LEADER（渠道主管）。
-     * 角色编码比较不区分大小写。
-     *
-     * @param roleCode 角色编码（如 "admin"、"channel_leader"）
-     * @return true 表示该角色豁免限制
-     * @see RoleCodes#ADMIN
-     * @see RoleCodes#CHANNEL_LEADER
-     */
-    private boolean isExemptRoleCode(String roleCode) {
-        return RoleCodes.ADMIN.equals(roleCode)
-                || RoleCodes.CHANNEL_LEADER.equals(roleCode);
-    }
-
-    /**
-     * 判断当前用户是否拥有期望角色中的任意一个。
-     * <p>
-     * 该方法是寄样权限校验的核心工具方法，支持多种 roleCodes 参数格式：
-     * <ul>
-     *     <li>{@code Collection} 类型——直接遍历比较</li>
-     *     <li>{@code String} 类型——按逗号拆分，支持带方括号的格式（如 "[admin,ops_staff]"）</li>
-     * </ul>
-     * <p>
-     * 所有角色比较均不区分大小写，忽略首尾空白。
-     *
-     * @param roleCodes     当前用户的角色编码，支持 Collection 或逗号分隔字符串
-     * @param expectedRoles 期望匹配的角色编码数组（至少匹配一个即返回 true）
-     * @return true 表示用户拥有期望角色中的至少一个
-     */
-    private boolean hasAnyRole(Object roleCodes, String... expectedRoles) {
-        if (roleCodes == null || expectedRoles == null || expectedRoles.length == 0) {
-            return false;
-        }
-        Set<String> expected = java.util.Arrays.stream(expectedRoles)
-                .map(role -> role == null ? "" : role.trim().toLowerCase(Locale.ROOT))
-                .collect(Collectors.toSet());
-        if (roleCodes instanceof Collection<?> collection) {
-            return collection.stream()
-                    .map(item -> item == null ? "" : item.toString().trim().toLowerCase(Locale.ROOT))
-                    .anyMatch(expected::contains);
-        }
-        String raw = roleCodes.toString();
-        if (!StringUtils.hasText(raw)) {
-            return false;
-        }
-        String normalized = raw.trim().toLowerCase(Locale.ROOT);
-        if (normalized.startsWith("[") && normalized.endsWith("]")) {
-            normalized = normalized.substring(1, normalized.length() - 1);
-        }
-        for (String role : normalized.split(",")) {
-            if (expected.contains(role.trim())) {
-                return true;
-            }
-        }
-        return false;
+        return sampleActionPermissionPolicy.isSevenDayLimitExempt(roleCodes);
     }
 
     /**
@@ -2628,7 +2549,7 @@ public class SampleApplicationService extends BaseController {
         Map<String, Object> extra = new LinkedHashMap<>();
         Map<String, Object> eligibilityCheck = new LinkedHashMap<>();
         eligibilityCheck.put("passed", eligibility.eligible());
-        eligibilityCheck.put("failedRules", classifyEligibilityFailures(eligibility.reasons()));
+        eligibilityCheck.put("failedRules", sampleEligibilityService.classifyFailureRules(eligibility.reasons()));
         eligibilityCheck.put("reasons", eligibility.reasons());
         String applySource = normalizeApplySource(request.getApplySource());
         extra.put("eligibilityCheck", eligibilityCheck);
@@ -2694,42 +2615,6 @@ public class SampleApplicationService extends BaseController {
     }
 
     /**
-     * 将资质评估的不达标原因文本分类为规则编码。
-     * <p>
-     * 遍历所有不达标原因文本，根据关键词匹配归类为以下规则编码：
-     * <ol>
-     *     <li>包含"销售额"→ {@code min30DaySales}（30 天销售额未达标）</li>
-     *     <li>包含"等级"→ {@code minLevel}（达人等级未达标）</li>
-     *     <li>其他情况→ {@code custom}（自定义规则未达标）</li>
-     * </ol>
-     * 空白原因会被跳过。返回的规则编码列表用于存入 extra.eligibilityCheck.failedRules 字段。
-     *
-     * @param reasons 资质评估返回的不达标原因文本列表
-     * @return 规则编码列表（min30DaySales / minLevel / custom），空列表表示无不达标原因
-     */
-    private List<String> classifyEligibilityFailures(List<String> reasons) {
-        if (reasons == null || reasons.isEmpty()) {
-            return List.of();
-        }
-        List<String> failedRules = new ArrayList<>();
-        for (String reason : reasons) {
-            if (!StringUtils.hasText(reason)) {
-                continue;
-            }
-            if (reason.contains("销售额")) {
-                failedRules.add("min30DaySales");
-                continue;
-            }
-            if (reason.contains("等级")) {
-                failedRules.add("minLevel");
-                continue;
-            }
-            failedRules.add("custom");
-        }
-        return failedRules;
-    }
-
-    /**
      * 将资质评估结果转换为前端展示 VO。
      * <p>
      * 映射关系：
@@ -2783,10 +2668,9 @@ public class SampleApplicationService extends BaseController {
         if (ids == null || ids.isEmpty()) {
             return Map.of();
         }
-        List<Product> products = productMapper.selectBatchIds(ids);
         Map<UUID, Product> map = new HashMap<>();
-        for (Product product : products) {
-            map.put(product.getId(), product);
+        for (var entry : productDomainFacade.loadProductsByIds(ids).entrySet()) {
+            map.put(entry.getKey(), toProduct(entry.getValue()));
         }
         return map;
     }
@@ -2805,14 +2689,7 @@ public class SampleApplicationService extends BaseController {
         if (!StringUtils.hasText(keyword)) {
             return Set.of();
         }
-        QueryWrapper<Product> wrapper = new QueryWrapper<Product>()
-                .select("id")
-                .and(query -> query.like("name", keyword).or().like("product_id", keyword))
-                .last("LIMIT " + PRODUCT_KEYWORD_BATCH_SIZE);
-        return productMapper.selectList(wrapper).stream()
-                .map(Product::getId)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toSet());
+        return productDomainFacade.findProductIdsByKeyword(keyword, PRODUCT_KEYWORD_BATCH_SIZE);
     }
 
     /**
@@ -2990,37 +2867,7 @@ public class SampleApplicationService extends BaseController {
      * @return 匹配到的商品快照 ID 集合
      */
     private Set<UUID> loadMatchedProductIdsByShop(String keyword) {
-        QueryWrapper<ProductSnapshot> wrapper = new QueryWrapper<ProductSnapshot>()
-                .select("id")
-                .and(query -> {
-                    query.like("shop_name", keyword);
-                    Long shopId = parseLongOrNull(keyword);
-                    if (shopId != null) {
-                        query.or().eq("shop_id", shopId);
-                    }
-                })
-                .last("LIMIT " + PRODUCT_KEYWORD_BATCH_SIZE);
-        return productSnapshotMapper.selectList(wrapper).stream()
-                .map(ProductSnapshot::getId)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toSet());
-    }
-
-    /**
-     * 安全地将字符串解析为 Long 类型。
-     * <p>
-     * 输入为空白、null 或无法解析为数字时返回 null，不抛异常。
-     * 用于店铺 ID 等字段的可选数值解析场景。
-     *
-     * @param value 待解析的字符串
-     * @return 解析后的 Long 值，解析失败返回 null
-     */
-    private Long parseLongOrNull(String value) {
-        try {
-            return StringUtils.hasText(value) ? Long.parseLong(value.trim()) : null;
-        } catch (NumberFormatException ignored) {
-            return null;
-        }
+        return productDomainFacade.findProductSnapshotIdsByShopKeyword(keyword, PRODUCT_KEYWORD_BATCH_SIZE);
     }
 
     /**
@@ -3046,11 +2893,11 @@ public class SampleApplicationService extends BaseController {
     private SampleVO toVO(SampleRequest sample, Product product, String productName, String talentName) {
         Product resolvedProduct = product;
         if (resolvedProduct == null && sample.getProductId() != null) {
-            resolvedProduct = productMapper.selectById(sample.getProductId());
+            resolvedProduct = toProduct(productDomainFacade.findProductById(sample.getProductId()));
         }
         ProductSnapshot snapshot = resolvedProduct == null || resolvedProduct.getId() == null
                 ? null
-                : productSnapshotMapper.selectById(resolvedProduct.getId());
+                : toSnapshot(productDomainFacade.findSnapshotById(resolvedProduct.getId()));
         UUID colonelUserId = resolveColonelUserId(resolvedProduct);
         SampleVO vo = new SampleVO();
         vo.setId(sample.getId());
@@ -3063,7 +2910,9 @@ public class SampleApplicationService extends BaseController {
         vo.setTalentName(StringUtils.hasText(talentName) ? talentName : sample.getTalentNickname());
         vo.setProductId(sample.getProductId());
         vo.setProductExternalId(resolveProductExternalId(resolvedProduct, snapshot));
-        vo.setProductName(productName);
+        vo.setProductName(StringUtils.hasText(productName)
+                ? productName
+                : (resolvedProduct == null ? null : resolvedProduct.getName()));
         vo.setProductCover(resolveProductCover(resolvedProduct, snapshot));
         vo.setProductPriceText(resolveProductPriceText(resolvedProduct, snapshot));
         vo.setShopId(snapshot == null || snapshot.getShopId() == null ? null : String.valueOf(snapshot.getShopId()));
@@ -3354,7 +3203,7 @@ public class SampleApplicationService extends BaseController {
             UUID userId,
             LocalDateTime now,
             String reason) {
-        Product product = productMapper.selectById(sample.getProductId());
+        Product product = toProduct(productDomainFacade.findProductById(sample.getProductId()));
         UUID recruiterId = resolveColonelUserId(product);
         switch (action) {
             case "PENDING_SHIP" -> sampleDomainEventPublisher.publishSampleApproved(sample, recruiterId, userId, now);
@@ -3383,14 +3232,21 @@ public class SampleApplicationService extends BaseController {
      * @return 团长用户 ID，无法解析时返回 null
      */
     private UUID resolveColonelUserId(Product product) {
-        if (product == null || !StringUtils.hasText(product.getProductId()) || product.getActivityId() == null) {
+        if (product == null) {
             return null;
         }
-        ProductOperationState state = productOperationStateMapper.selectOne(new LambdaQueryWrapper<ProductOperationState>()
-                .eq(ProductOperationState::getActivityId, String.valueOf(product.getActivityId()))
-                .eq(ProductOperationState::getProductId, product.getProductId())
-                .last("limit 1"));
-        return state == null ? null : state.getAssigneeId();
+        if (StringUtils.hasText(product.getProductId()) && product.getActivityId() != null) {
+            UUID assigneeId = productDomainFacade.findProductAssigneeId(
+                    String.valueOf(product.getActivityId()),
+                    product.getProductId());
+            if (assigneeId != null) {
+                return assigneeId;
+            }
+        }
+        if (product.getId() == null) {
+            return null;
+        }
+        return productDomainFacade.findProductSnapshotAssigneeId(product.getId());
     }
 
     /**
@@ -3412,22 +3268,11 @@ public class SampleApplicationService extends BaseController {
         if (userId == null) {
             return null;
         }
-        SysUser user = sysUserMapper.selectById(userId);
-        if (user == null) {
+        Map<UUID, String> displayLabels = userDomainFacade.loadUserDisplayLabelsByIds(List.of(userId));
+        if (displayLabels == null || displayLabels.isEmpty()) {
             return null;
         }
-        String realName = normalizeDisplayText(user.getRealName());
-        String username = normalizeDisplayText(user.getUsername());
-        if (StringUtils.hasText(realName) && StringUtils.hasText(username)) {
-            return realName + " (" + username + ")";
-        }
-        if (StringUtils.hasText(realName)) {
-            return realName;
-        }
-        if (StringUtils.hasText(username)) {
-            return username;
-        }
-        return null;
+        return normalizeDisplayText(displayLabels.get(userId));
     }
 
     /**
@@ -3497,17 +3342,6 @@ public class SampleApplicationService extends BaseController {
      * @param action 前端操作名（如 "approved"、"SHIPPED"、"APPROVED"）
      * @return 标准化后的内部操作码
      */
-    private String normalizeAction(String action) {
-        String normalized = action == null ? "" : action.trim().toUpperCase(Locale.ROOT);
-        return switch (normalized) {
-            case "APPROVED" -> "PENDING_SHIP";
-            case "SHIPPED" -> "SHIPPING";
-            case "SIGNED" -> "PENDING_HOMEWORK";
-            case "PENDING_TASK" -> "PENDING_HOMEWORK";
-            case "FINISHED" -> "COMPLETED";
-            default -> normalized;
-        };
-    }
 
     /**
      * 校验指定状态是否对运营角色可见。
@@ -3554,11 +3388,11 @@ public class SampleApplicationService extends BaseController {
      * ADMIN 拥有全局权限不受运营限制，因此此方法用于区分"纯运营"和"运营+管理员"的场景。
      * 纯运营角色在查询寄样单时需要应用状态可见性过滤。
      *
-     * @param roleCodes 角色编码集合（通过 {@link #hasAnyRole} 解析）
+     * @param roleCodes 角色编码集合（通过用户域权限策略解析）
      * @return true 表示纯运营角色，false 表示有 ADMIN 权限或无运营角色
      */
     private boolean isOpsStaffOnly(Object roleCodes) {
-        return hasAnyRole(roleCodes, RoleCodes.OPS_STAFF) && !hasAnyRole(roleCodes, RoleCodes.ADMIN);
+        return sampleActionPermissionPolicy.isOpsStaffOnly(roleCodes);
     }
 
     /**
@@ -3674,22 +3508,67 @@ public class SampleApplicationService extends BaseController {
      * @param sample        本次创建的寄样申请
      */
     private void writeBackClaimAddress(UUID channelUserId, UUID talentId, SampleRequest sample) {
-        if (channelUserId == null || talentId == null) {
-            return;
-        }
-        String name = sample.getRecipientName();
-        String phone = sample.getRecipientPhone();
-        String address = sample.getRecipientAddress();
-        if (!StringUtils.hasText(name) && !StringUtils.hasText(phone) && !StringUtils.hasText(address)) {
-            return;
-        }
-        TalentClaim claim = talentClaimMapper.findActiveByTalentAndUser(talentId, channelUserId);
-        if (claim != null) {
-            claim.setRecipientName(name);
-            claim.setRecipientPhone(phone);
-            claim.setRecipientAddress(address);
-            talentClaimMapper.updateById(claim);
-            log.debug("T-ADDR: writeback claim address for talent={}, channel={}", talentId, channelUserId);
-        }
+        talentDomainFacade.writeBackClaimAddress(
+                channelUserId,
+                talentId,
+                sample.getRecipientName(),
+                sample.getRecipientPhone(),
+                sample.getRecipientAddress());
     }
+
+    private static Product toProduct(ProductReadDTO dto) {
+        if (dto == null) {
+            return null;
+        }
+        Product product = new Product();
+        product.setId(dto.id());
+        product.setProductId(dto.productId());
+        product.setOuterProductId(dto.outerProductId());
+        product.setName(dto.name());
+        product.setCover(dto.cover());
+        product.setPrice(dto.price());
+        product.setActivityId(dto.activityId());
+        product.setDetailUrl(dto.detailUrl());
+        product.setStatus(dto.status());
+        product.setCheckStatus(dto.checkStatus());
+        return product;
+    }
+
+    private static ProductSnapshot toSnapshot(ProductSnapshotReadDTO dto) {
+        if (dto == null) {
+            return null;
+        }
+        ProductSnapshot snapshot = new ProductSnapshot();
+        snapshot.setId(dto.id());
+        snapshot.setActivityId(dto.activityId());
+        snapshot.setProductId(dto.productId());
+        snapshot.setTitle(dto.title());
+        snapshot.setCover(dto.cover());
+        snapshot.setShopId(dto.shopId());
+        snapshot.setShopName(dto.shopName());
+        snapshot.setPrice(dto.price());
+        snapshot.setPriceText(dto.priceText());
+        snapshot.setStatus(dto.status());
+        snapshot.setDetailUrl(dto.detailUrl());
+        return snapshot;
+    }
+
+    private static Talent toTalent(TalentReadDTO dto) {
+        if (dto == null) {
+            return null;
+        }
+        Talent talent = new Talent();
+        talent.setId(dto.id());
+        talent.setDouyinUid(dto.douyinUid());
+        talent.setDouyinNo(dto.douyinNo());
+        talent.setNickname(dto.nickname());
+        talent.setFans(dto.fansCount());
+        talent.setStatus(dto.status());
+        talent.setAvatarUrl(dto.avatarUrl());
+        talent.setMainCategory(dto.mainCategory());
+        talent.setCategories(dto.categories());
+        talent.setIpLocation(dto.ipLocation());
+        return talent;
+    }
+
 }

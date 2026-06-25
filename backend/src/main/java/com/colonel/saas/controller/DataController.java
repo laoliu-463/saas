@@ -10,7 +10,9 @@ import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.common.result.PageResult;
+import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.constant.RoleCodes;
+import com.colonel.saas.domain.performance.facade.OrderPerformanceQueryFacade;
 import com.colonel.saas.entity.ColonelsettlementActivity;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.ExclusiveMerchant;
@@ -19,8 +21,8 @@ import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.mapper.ExclusiveMerchantMapper;
 import com.colonel.saas.mapper.ExclusiveTalentMapper;
-import com.colonel.saas.mapper.PerformanceRecordMapper;
-import com.colonel.saas.mapper.SysUserMapper;
+import com.colonel.saas.domain.user.facade.UserDomainFacade;
+import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.service.CommissionService;
 import com.colonel.saas.service.PerformanceMetricsQueryService;
 import com.colonel.saas.service.ShortTtlCacheService;
@@ -86,10 +88,12 @@ public class DataController extends DataApplicationService {
             ColonelsettlementActivityMapper activityMapper,
             ShortTtlCacheService shortTtlCacheService,
             PerformanceMetricsQueryService performanceMetricsQueryService,
-            PerformanceRecordMapper performanceRecordMapper,
-            SysUserMapper sysUserMapper,
+            OrderPerformanceQueryFacade orderPerformanceQueryFacade,
+            UserDomainFacade userDomainFacade,
+            DataScopePolicy dataScopePolicy,
+            DddRefactorProperties dddRefactorProperties,
             org.springframework.jdbc.core.JdbcTemplate jdbcTemplate) {
-        super(orderMapper, commissionService, exclusiveTalentMapper, exclusiveMerchantMapper, activityMapper, shortTtlCacheService, performanceMetricsQueryService, performanceRecordMapper, sysUserMapper, jdbcTemplate);
+        super(orderMapper, commissionService, exclusiveTalentMapper, exclusiveMerchantMapper, activityMapper, shortTtlCacheService, performanceMetricsQueryService, orderPerformanceQueryFacade, userDomainFacade, dataScopePolicy, dddRefactorProperties, jdbcTemplate);
     }
 
     @GetMapping("/data/orders")

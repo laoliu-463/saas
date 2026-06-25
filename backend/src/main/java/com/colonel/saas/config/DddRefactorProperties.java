@@ -24,6 +24,8 @@ import org.springframework.stereotype.Component;
  *       enabled: false
  *     product-facade:
  *       enabled: false
+ *     product-display-policy:
+ *       enabled: false
  *     talent-facade:
  *       enabled: false
  *     sample-application:
@@ -41,6 +43,12 @@ import org.springframework.stereotype.Component;
  *     analytics-shadow:
  *       enabled: false
  *     outbox:
+ *       enabled: false
+ *     data-scope-policy:
+ *       enabled: false
+ *     sample-homework-event:
+ *       enabled: false
+ *     colonel-partner-contact:
  *       enabled: false
  * </pre>
  */
@@ -60,6 +68,9 @@ public class DddRefactorProperties {
 
     private Switch productFacade = new Switch();
 
+    /** 商品展示 / 活动商品查询规则灰度旁路（默认 OFF，关闭时保留 Legacy service 分支）。 */
+    private Switch productDisplayPolicy = new Switch();
+
     private Switch talentFacade = new Switch();
 
     private Switch sampleApplication = new Switch();
@@ -77,6 +88,22 @@ public class DddRefactorProperties {
     private Switch analyticsShadow = new Switch();
 
     private Switch outbox = new Switch();
+
+    /**
+     * 数据范围过滤（DataScopePolicy）灰度开关（DDD-DATASCOPE-001，P1 修复）。
+     *
+     * <p>控制业务域数据范围调用点是否走 DataScopePolicy 路径。
+     * OFF = 旧实现，ON = 新 Policy 路径。</p>
+     *
+     * <p>默认 OFF（生产零变化）。</p>
+     */
+    private Switch dataScopePolicy = new Switch();
+
+    /** 寄样交作业改由 {@link OrderSyncedEvent} 驱动（DDD-SAMPLE-004）。 */
+    private Switch sampleHomeworkEvent = new Switch();
+
+    /** 团长合作伙伴联系方式更新走 DDD Application Service（DDD-COLONEL-001 测试 DDD 化）。 */
+    private Switch colonelPartnerContact = new Switch();
 
     /** A nested switch bound from keys such as {@code ddd.refactor.user-facade.enabled}. */
     @Data

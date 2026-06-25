@@ -4,11 +4,10 @@ import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.exception.OptimisticLockSupport;
 import com.colonel.saas.entity.SampleRequest;
-import com.colonel.saas.entity.TalentClaim;
 import com.colonel.saas.mapper.SampleRequestMapper;
-import com.colonel.saas.mapper.TalentClaimMapper;
 import com.colonel.saas.domain.config.facade.ConfigDomainFacade;
 import com.colonel.saas.domain.sample.event.SampleDomainEventPublisher;
+import com.colonel.saas.domain.talent.facade.TalentDomainFacade;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -18,7 +17,6 @@ import org.springframework.util.StringUtils;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -45,26 +43,23 @@ public class SampleLifecycleService {
     private static final int STATUS_CLOSED = 8;
     private final JdbcTemplate jdbcTemplate;
     private final SampleRequestMapper sampleRequestMapper;
-    private final TalentClaimMapper talentClaimMapper;
+    private final TalentDomainFacade talentDomainFacade;
     private final SampleStatusLogService sampleStatusLogService;
     private final ConfigDomainFacade configDomainFacade;
-    private final BusinessRuleConfigService businessRuleConfigService;
     private final SampleDomainEventPublisher sampleDomainEventPublisher;
 
     public SampleLifecycleService(
             JdbcTemplate jdbcTemplate,
             SampleRequestMapper sampleRequestMapper,
-            TalentClaimMapper talentClaimMapper,
+            TalentDomainFacade talentDomainFacade,
             SampleStatusLogService sampleStatusLogService,
             ConfigDomainFacade configDomainFacade,
-            BusinessRuleConfigService businessRuleConfigService,
             SampleDomainEventPublisher sampleDomainEventPublisher) {
         this.jdbcTemplate = jdbcTemplate;
         this.sampleRequestMapper = sampleRequestMapper;
-        this.talentClaimMapper = talentClaimMapper;
+        this.talentDomainFacade = talentDomainFacade;
         this.sampleStatusLogService = sampleStatusLogService;
         this.configDomainFacade = configDomainFacade;
-        this.businessRuleConfigService = businessRuleConfigService;
         this.sampleDomainEventPublisher = sampleDomainEventPublisher;
     }
 
@@ -156,10 +151,10 @@ public class SampleLifecycleService {
         return autoCloseTimeoutPendingHomework(configDomainFacade.getSampleAutoCloseDays());
     }
 
-    /** 使用业务规则配置的超时天数关闭待发货寄样单。 */
+    /** 使用配置域门面聚合的超时天数关闭待发货寄样单。 */
     @Transactional(rollbackFor = Exception.class)
     public int autoCloseTimeoutPendingShip() {
-        return autoCloseTimeoutPendingShip(businessRuleConfigService.getSampleTimeoutPendingShipDays());
+        return autoCloseTimeoutPendingShip(configDomainFacade.getSampleRules().timeoutPendingShipDays());
     }
 
     /**
@@ -310,22 +305,7 @@ public class SampleLifecycleService {
         if (talentId == null) {
             return attributedOwner;
         }
-        List<TalentClaim> activeClaims = talentClaimMapper.findActiveByTalentId(talentId);
-        if (activeClaims == null || activeClaims.isEmpty()) {
-            return attributedOwner;
-        }
-        boolean matchesClaimOwner = activeClaims.stream()
-                .anyMatch(claim -> attributedOwner.equals(claim.getUserId()));
-        if (matchesClaimOwner) {
-            return attributedOwner;
-        }
-        return activeClaims.stream()
-                .filter(claim -> claim.getUserId() != null)
-                .max(Comparator.comparing(
-                        TalentClaim::getClaimedAt,
-                        Comparator.nullsLast(Comparator.naturalOrder())))
-                .map(TalentClaim::getUserId)
-                .orElse(attributedOwner);
+        return talentDomainFacade.resolveSampleOwnerForOrderCompletion(attributedOwner, talentId);
     }
 
     /** 按负责人 + 达人 UID + 商品 ID 查询待出单寄样单，仅取最早一条。 */

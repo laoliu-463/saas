@@ -12,6 +12,12 @@
         @click="$emit('changeOfficialStatus', officialStatus === option.value ? null : option.value)"
       >
         {{ option.label }}
+        <span
+          class="status-count"
+          :data-testid="`official-status-count-${option.value}`"
+        >
+          {{ formatActivityProductStatusCount(statusCounts[option.value] || 0) }}
+        </span>
       </button>
     </div>
   </div>
@@ -22,11 +28,14 @@ import {
   officialStatusOptions,
   type ProductOfficialStatus
 } from '../../../types/productManage'
+import { formatActivityProductStatusCount } from '../activity-product-status-display'
 
 withDefaults(defineProps<{
   officialStatus: ProductOfficialStatus | null
+  statusCounts?: Partial<Record<ProductOfficialStatus, number>>
 }>(), {
-  officialStatus: null
+  officialStatus: null,
+  statusCounts: () => ({})
 })
 
 defineEmits<{
@@ -76,5 +85,20 @@ defineEmits<{
   background: rgba(230, 57, 70, 0.08);
   color: var(--color-primary);
   font-weight: 600;
+}
+
+.status-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 18px;
+  margin-left: 4px;
+  padding: 0 4px;
+  border-radius: 9px;
+  background: var(--bg-page);
+  color: inherit;
+  font-size: 11px;
+  line-height: 18px;
 }
 </style>

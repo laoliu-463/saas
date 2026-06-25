@@ -43,15 +43,13 @@ const router = createRouter({
           redirect: '/product/manage/products'
         },
         {
-          // V1 入口契约统一：活动列表 → 商品库（?activityId={id}）
-          // 旧的 /product/manage/:activityId 工作台入口合并到商品库，保留为兼容重定向
-          // 参见 docs/决策/ADR-003-活动列表与商品库入口路由统一.md
+          // 历史活动商品入口统一进入商品管理列表，使用 query 参数保留活动上下文。
           path: 'product/manage/:activityId',
           redirect: (to) => ({
-            path: '/product/library',
+            path: '/product/manage/products',
             query: { activityId: String(to.params.activityId ?? '') }
           }),
-          meta: { title: '商品库' }
+          meta: { title: '商品列表' }
         },
         {
           path: 'product/activity',
@@ -62,10 +60,10 @@ const router = createRouter({
           // 同步重定向到统一入口，避免二次跳转
           path: 'product/activity/:activityId',
           redirect: (to) => ({
-            path: '/product/library',
+            path: '/product/manage/products',
             query: { activityId: String(to.params.activityId ?? '') }
           }),
-          meta: { title: '商品库' }
+          meta: { title: '商品列表' }
         },
         {
           path: 'product/:id',

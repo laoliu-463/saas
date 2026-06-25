@@ -2,6 +2,7 @@ package com.colonel.saas.domain.user.facade;
 
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.constant.RoleCodes;
+import com.colonel.saas.domain.user.facade.dto.UserOwnershipReference;
 import com.colonel.saas.dto.user.UserDataScopeResponse;
 import com.colonel.saas.dto.user.UserOptionResponse;
 import com.colonel.saas.testsupport.BaseIntegrationTest;
@@ -13,6 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -126,6 +128,48 @@ class LegacyUserDomainFacadeTest extends BaseIntegrationTest {
 
         assertThat(depts).isNotEmpty();
         assertThat(depts).anyMatch(d -> "channel".equals(d.deptCode()));
+    }
+
+    @Test
+    void getUsernameShouldReturnLoginAccount() {
+        assertThat(userDomainFacade.getUsername(channelLeaderId)).isEqualTo("channel_leader");
+        assertThat(userDomainFacade.getUserName(channelLeaderId)).isEqualTo("渠道组长");
+    }
+
+    @Test
+    void loadUserDisplayLabelsShouldReturnDisplayTextWithoutFullUserDto() {
+        Map<UUID, String> labels = userDomainFacade.loadUserDisplayLabelsByIds(List.of(channelLeaderId));
+
+        assertThat(labels).containsEntry(channelLeaderId, "渠道组长 (channel_leader)");
+    }
+
+    @Test
+    void loadUserDisplayNamesShouldPreferRealNameThenUsername() {
+        UUID usernameOnlyId = UUID.nameUUIDFromBytes("username_only_display_name".getBytes());
+        insertUser(usernameOnlyId, "username_only_display_name", null, "username_only", channelDeptId);
+
+        Map<UUID, String> names = userDomainFacade.loadUserDisplayNamesByIds(List.of(channelLeaderId, usernameOnlyId));
+
+        assertThat(names)
+                .containsEntry(channelLeaderId, "渠道组长")
+                .containsEntry(usernameOnlyId, "username_only_display_name");
+    }
+
+    @Test
+    void loadUserOwnershipReferencesShouldReturnDeptIdWithoutFullUserDto() {
+        Map<UUID, UserOwnershipReference> references =
+                userDomainFacade.loadUserOwnershipReferencesByIds(List.of(channelLeaderId));
+
+        assertThat(references).containsKey(channelLeaderId);
+        assertThat(references.get(channelLeaderId).userId()).isEqualTo(channelLeaderId);
+        assertThat(references.get(channelLeaderId).deptId()).isEqualTo(channelDeptId);
+    }
+
+    @Test
+    void loadUserChannelCodesShouldReturnChannelCodeWithoutFullUserDto() {
+        Map<UUID, String> channelCodes = userDomainFacade.loadUserChannelCodesByIds(List.of(channelLeaderId));
+
+        assertThat(channelCodes).containsEntry(channelLeaderId, "ch_lead");
     }
 
     @Test

@@ -69,7 +69,7 @@ public class PerformanceExportService {
      * @return Excel 文件的字节数组
      * @throws IOException 写入字节流失败时抛出
      */
-    public byte[] exportXlsx(PerformanceListQuery query, com.colonel.saas.service.performance.PerformanceAccessContext context)
+    public byte[] exportXlsx(PerformanceListQuery query, com.colonel.saas.domain.performance.policy.PerformanceAccessContext context)
             throws IOException {
         List<PerformanceDetailDTO> rows = performanceQueryService.listDetailsForExport(query, context);
         try (XSSFWorkbook workbook = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {

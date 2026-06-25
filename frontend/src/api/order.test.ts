@@ -70,7 +70,8 @@ describe('order API', () => {
 
       getOrders(params)
 
-      expect(request.get).toHaveBeenCalledWith('/orders', { params, ...{} })
+      // 订单查询独立超时 30s（默认 config）
+      expect(request.get).toHaveBeenCalledWith('/orders', { params, timeout: 30_000, ...{} })
     })
 
     it('passes filter conditions to order list', () => {
@@ -83,7 +84,7 @@ describe('order API', () => {
 
       getOrders(params)
 
-      expect(request.get).toHaveBeenCalledWith('/orders', { params, ...{} })
+      expect(request.get).toHaveBeenCalledWith('/orders', { params, timeout: 30_000, ...{} })
     })
 
     it('passes config options to get request', () => {
@@ -92,7 +93,7 @@ describe('order API', () => {
 
       getOrders(params, config)
 
-      expect(request.get).toHaveBeenCalledWith('/orders', { params, ...config })
+      expect(request.get).toHaveBeenCalledWith('/orders', { params, timeout: 30_000, ...config })
     })
 
     it('handles 401 Unauthorized error', async () => {
@@ -143,7 +144,7 @@ describe('order API', () => {
     it('calls order stats endpoint without params', () => {
       getOrderStats()
 
-      expect(request.get).toHaveBeenCalledWith('/orders/stats', { params: undefined })
+      expect(request.get).toHaveBeenCalledWith('/orders/stats', { params: undefined, timeout: 30_000 })
     })
 
     it('calls order stats endpoint with params', () => {
@@ -151,7 +152,7 @@ describe('order API', () => {
 
       getOrderStats(params)
 
-      expect(request.get).toHaveBeenCalledWith('/orders/stats', { params })
+      expect(request.get).toHaveBeenCalledWith('/orders/stats', { params, timeout: 30_000 })
     })
 
     it('handles stats error (network failure)', async () => {
@@ -173,7 +174,7 @@ describe('order API', () => {
     it('calls filter options endpoint without params', () => {
       getOrderFilterOptions()
 
-      expect(request.get).toHaveBeenCalledWith('/orders/filter-options', { params: undefined })
+      expect(request.get).toHaveBeenCalledWith('/orders/filter-options', { params: undefined, timeout: 30_000 })
     })
 
     it('calls filter options endpoint with params', () => {
@@ -181,7 +182,7 @@ describe('order API', () => {
 
       getOrderFilterOptions(params)
 
-      expect(request.get).toHaveBeenCalledWith('/orders/filter-options', { params })
+      expect(request.get).toHaveBeenCalledWith('/orders/filter-options', { params, timeout: 30_000 })
     })
 
     it('handles filter options error (500)', async () => {
@@ -204,7 +205,7 @@ describe('order API', () => {
 
       const result = await getOrderDetail('ORDER-123')
 
-      expect(requestGet).toHaveBeenCalledWith('/orders/ORDER-123')
+      expect(requestGet).toHaveBeenCalledWith('/orders/ORDER-123', { timeout: 30_000 })
       expect(result).toEqual(mockDetail)
     })
 

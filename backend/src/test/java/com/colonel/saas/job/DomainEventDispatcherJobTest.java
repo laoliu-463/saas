@@ -5,6 +5,7 @@ import com.colonel.saas.domain.event.ConfigChangedEventRouter;
 import com.colonel.saas.domain.event.DomainEventOutbox;
 import com.colonel.saas.domain.event.DomainEventOutboxService;
 import com.colonel.saas.domain.event.ProductDomainEventOutboxRouter;
+import com.colonel.saas.domain.order.event.OrderDomainEventOutboxRouter;
 import com.colonel.saas.domain.sample.event.SampleDomainEventOutboxRouter;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -39,6 +40,8 @@ class DomainEventDispatcherJobTest {
     private ProductDomainEventOutboxRouter productDomainEventOutboxRouter;
     @Mock
     private SampleDomainEventOutboxRouter sampleDomainEventOutboxRouter;
+    @Mock
+    private OrderDomainEventOutboxRouter orderDomainEventOutboxRouter;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private DomainEventDispatcherJob job;
@@ -50,7 +53,9 @@ class DomainEventDispatcherJobTest {
                 configChangedEventRouter,
                 productDomainEventOutboxRouter,
                 sampleDomainEventOutboxRouter,
-                objectMapper);
+                orderDomainEventOutboxRouter,
+                objectMapper,
+                false);
     }
 
     @Test
@@ -104,6 +109,22 @@ class DomainEventDispatcherJobTest {
         job.dispatchPendingEvents();
 
         verify(sampleDomainEventOutboxRouter).dispatch(event);
+        verify(domainEventOutboxService).markPublished(event.getEventId(), 0);
+    }
+
+    @Test
+    @DisplayName("Order 事件路由到 OrderDomainEventOutboxRouter")
+    void dispatchPendingEvents_orderEvent_routesToOrderRouter() throws Exception {
+        DomainEventOutbox event = buildOutbox("OrderSynced", "{\"orderId\":\"ORD-1\"}");
+
+        when(domainEventOutboxService.lockPendingEvents(anyInt(), anyInt())).thenReturn(List.of(event));
+        when(productDomainEventOutboxRouter.supports("OrderSynced")).thenReturn(false);
+        when(sampleDomainEventOutboxRouter.supports("OrderSynced")).thenReturn(false);
+        when(orderDomainEventOutboxRouter.supports("OrderSynced")).thenReturn(true);
+
+        job.dispatchPendingEvents();
+
+        verify(orderDomainEventOutboxRouter).dispatch(event);
         verify(domainEventOutboxService).markPublished(event.getEventId(), 0);
     }
 
@@ -173,5 +194,31 @@ class DomainEventDispatcherJobTest {
         verify(configChangedEventRouter, never()).dispatch(any());
         verify(productDomainEventOutboxRouter, never()).dispatch(any());
         verify(sampleDomainEventOutboxRouter, never()).dispatch(any());
+        verify(orderDomainEventOutboxRouter, never()).dispatch(any());
+    }
+
+    @Test
+    @DisplayName("启用 dryRun 时不执行路由投递也不修改 Outbox 状态")
+    void dispatchPendingEvents_dryRunEnabled_doesNotDispatchOrUpdateStatus() throws Exception {
+        // 重新构造一个 dryRun=true 的 Job 实例
+        DomainEventDispatcherJob dryRunJob = new DomainEventDispatcherJob(
+                domainEventOutboxService,
+                configChangedEventRouter,
+                productDomainEventOutboxRouter,
+                sampleDomainEventOutboxRouter,
+                orderDomainEventOutboxRouter,
+                objectMapper,
+                true);
+
+        DomainEventOutbox event = buildOutbox("ProductCreated", "{\"productId\":\"xyz\"}");
+        when(domainEventOutboxService.lockPendingEvents(anyInt(), anyInt())).thenReturn(List.of(event));
+
+        dryRunJob.dispatchPendingEvents();
+
+        // Dry Run 模式下：不应调用任何路由器
+        verifyNoInteractionsWithRouters();
+        // 不应修改 Outbox 记录状态
+        verify(domainEventOutboxService, never()).markPublished(any(), anyInt());
+        verify(domainEventOutboxService, never()).markFailed(any(), anyInt(), anyString(), anyInt());
     }
 }

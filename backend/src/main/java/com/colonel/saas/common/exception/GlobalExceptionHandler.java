@@ -6,8 +6,11 @@ import com.colonel.saas.common.result.ResultCode;
 import com.colonel.saas.douyin.DouyinApiException;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.CannotAcquireLockException;
+import org.springframework.dao.QueryTimeoutException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.TransactionTimedOutException;
 import org.springframework.validation.BindException;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
@@ -50,6 +53,31 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
 @Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    /** 查询超时错误码，前端按此值分支处理超时场景 */
+    public static final String ERROR_CODE_QUERY_TIMEOUT = "QUERY_TIMEOUT";
+
+    /**
+     * 处理数据库查询超时异常。
+     *
+     * <p>统一捕获三种超时场景：</p>
+     * <ul>
+     *   <li>{@link QueryTimeoutException} — JDBC 查询超时</li>
+     *   <li>{@link TransactionTimedOutException} — Spring 事务超时</li>
+     *   <li>{@link CannotAcquireLockException} — 锁等待超时</li>
+     * </ul>
+     *
+     * <p>返回 504（业务码）+ {@code QUERY_TIMEOUT} errorCode，
+     * 前端据此展示"查询超时，请缩小筛选范围"等友好提示。</p>
+     *
+     * @param e 超时异常
+     * @return 业务码 504 的统一响应
+     */
+    @ExceptionHandler({QueryTimeoutException.class, TransactionTimedOutException.class, CannotAcquireLockException.class})
+    public ApiResult<Void> handleQueryTimeout(Exception e) {
+        log.warn("查询超时: {}", e.getMessage());
+        return ApiResult.of(504, "查询超时，请缩小时间范围或增加筛选条件后重试", null, ERROR_CODE_QUERY_TIMEOUT);
+    }
 
     /**
      * 处理 MyBatis-Plus 框架异常，含乐观锁冲突检测。

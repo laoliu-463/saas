@@ -12,6 +12,7 @@ import {
   followActivityProduct,
   getActivityProductDetail,
   getActivityProductOperationLogs,
+  getActivityProductSyncJob,
   getActivityProductSkus,
   getActivityProducts,
   getPinnedProducts,
@@ -562,6 +563,17 @@ describe('activityProduct API', () => {
       requestPost.mockRejectedValueOnce(new Error('Network Error'))
 
       await expect(syncActivityProducts('ACT-1')).rejects.toThrow('Network Error')
+    })
+  })
+
+  describe('getActivityProductSyncJob', () => {
+    it('calls activity product sync job status endpoint', () => {
+      getActivityProductSyncJob('ACT-1', 'JOB-1', { suppressErrorNotice: true })
+
+      expect(request.get).toHaveBeenCalledWith(
+        '/colonel/activities/ACT-1/products/sync-jobs/JOB-1',
+        { suppressErrorNotice: true }
+      )
     })
   })
 })

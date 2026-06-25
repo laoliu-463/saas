@@ -20,7 +20,7 @@ export const testIds = {
   productLibraryActivityFilterClear: 'product-library-activity-filter-clear',
   productGrid: 'product-grid',
   productCard: 'product-selection-card',
-  productDetailButton: 'product-detail-button',
+  productDetailButton: 'product-detail-btn',
   productCopyLink: 'product-copy-brief',
   // Activity list
   activityListPage: 'activity-list-page',

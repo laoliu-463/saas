@@ -87,6 +87,9 @@ const summaryPayload = {
     productCount: 262,
     orderCount: 4209,
     orderAmount: 81185.26,
+    refundOrderCount: 17,
+    refundOrderAmount: 3200.5,
+    refundServiceFee: 88.6,
     productAverageServiceFeeRate: 1.64,
     orderAverageServiceFeeRate: 1.49,
     serviceFeeIncome: 1330.32,
@@ -103,6 +106,9 @@ const summaryPayload = {
       productCount: 262,
       orderCount: 4209,
       orderAmount: 81185.26,
+      refundOrderCount: 17,
+      refundOrderAmount: 3200.5,
+      refundServiceFee: 88.6,
       productAverageServiceFeeRate: 1.64,
       orderAverageServiceFeeRate: 1.49,
       serviceFeeIncome: 1330.32,
@@ -218,7 +224,34 @@ describe('OrderList 订单汇总页面', () => {
     expect(wrapper.text()).toContain('4,209')
     expect(wrapper.text()).toContain('¥81185.26')
     expect(wrapper.text()).toContain('2026-05-25')
-    expect(wrapper.text()).not.toContain('毛利')
+    expect(wrapper.text()).toContain('毛利')
+    expect(wrapper.text()).toContain('¥910.65')
+    expect(wrapper.text()).toContain('退款订单数')
+    expect(wrapper.text()).toContain('17')
+    expect(wrapper.text()).toContain('订单退款服务费')
+    expect(wrapper.text()).toContain('¥88.60')
+    expect(wrapper.text()).toContain('退款订单额')
+    expect(wrapper.text()).toContain('¥3200.50')
+  })
+
+  it('renders create-time settlement track as explicit zero instead of reusing pay amount', async () => {
+    routeMock.query = {
+      timeField: 'createTime'
+    }
+    const wrapper = await mountOrderList()
+
+    const orderAmountCell = wrapper.findAll('[data-testid="data-orders-table"] tbody td')[4].text()
+    expect(orderAmountCell).toContain('支付：¥81185.26')
+    expect(orderAmountCell).toContain('结算：¥0.00')
+    expect(orderAmountCell).not.toContain('结算：¥81185.26')
+    expect(orderAmountCell).not.toContain('结算：-')
+  })
+
+  it('documents order average service fee rate as profit divided by order amount', async () => {
+    const wrapper = await mountOrderList()
+
+    expect(wrapper.html()).toContain('订单：服务费收益 ÷ 订单额')
+    expect(wrapper.html()).not.toContain('订单：服务费收入 ÷ 订单额')
   })
 
   /** 验证手动搜索时，所有支持的筛选字段（订单号/状态/达人/商家/活动/店铺/商品/招商人等）正确传递给汇总查询接口 */

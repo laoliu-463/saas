@@ -2,12 +2,15 @@ package com.colonel.saas.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.colonel.saas.common.enums.DataScope;
+import com.colonel.saas.config.DddRefactorProperties;
+import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import lombok.Data;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -86,6 +89,14 @@ public class DashboardService {
     private final JdbcTemplate jdbcTemplate;
     /** 业绩指标查询服务，用于判断是否可用汇总表以及从汇总表读取聚合数据 */
     private final PerformanceMetricsQueryService performanceMetricsQueryService;
+    /** 数据范围策略，由用户域统一解释 PERSONAL / DEPT / ALL 可见性范围 */
+    private final DataScopePolicy dataScopePolicy;
+    /** DDD 重构灰度开关，默认关闭时保持 Legacy 查询路径 */
+    private final DddRefactorProperties dddRefactorProperties;
+
+    /** 影子对账服务（可选），开关开启时在后台执行新路径对比并输出 diff 日志 */
+    @Autowired(required = false)
+    private DashboardShadowCompareService shadowCompareService;
 
     /**
      * 构造函数，通过依赖注入初始化服务。
@@ -97,10 +108,14 @@ public class DashboardService {
     public DashboardService(
             ColonelsettlementOrderMapper orderMapper,
             JdbcTemplate jdbcTemplate,
-            PerformanceMetricsQueryService performanceMetricsQueryService) {
+            PerformanceMetricsQueryService performanceMetricsQueryService,
+            DataScopePolicy dataScopePolicy,
+            DddRefactorProperties dddRefactorProperties) {
         this.orderMapper = orderMapper;
         this.jdbcTemplate = jdbcTemplate;
         this.performanceMetricsQueryService = performanceMetricsQueryService;
+        this.dataScopePolicy = dataScopePolicy;
+        this.dddRefactorProperties = dddRefactorProperties;
     }
 
     /**
@@ -252,6 +267,11 @@ public class DashboardService {
                     orderCount, settledOrderCount, formatRange(startTime, endTime));
         }
 
+        // DDD-ANALYTICS-002: shadow compare (不影响响应)
+        if (shadowCompareService != null && shadowCompareService.isEnabled()) {
+            shadowCompareService.compare(summary, startTime, endTime, userId, deptId, dataScope);
+        }
+
         return summary;
     }
 
@@ -389,25 +409,63 @@ public class DashboardService {
             clauses.add("co.settle_time <= ?");
             args.add(endTime);
         }
-        if (dataScope != null) {
-            switch (dataScope) {
-                case PERSONAL -> {
-                    if (userId != null) {
-                        clauses.add("co.user_id = ?");
-                        args.add(userId);
-                    }
-                }
-                case DEPT -> {
-                    if (deptId != null) {
-                        clauses.add("co.dept_id = ?");
-                        args.add(deptId);
-                    }
-                }
-                case ALL -> {
-                }
+        appendScopeClause(clauses, args, userId, deptId, dataScope);
+        return new SqlContext(String.join(" AND ", clauses), args);
+    }
+
+    private void appendScopeClause(
+            List<String> clauses,
+            List<Object> args,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope) {
+        if (dataScope == null) {
+            return;
+        }
+        if (!dddRefactorProperties.getDataScopePolicy().isEnabled()) {
+            appendScopeClauseLegacy(clauses, args, userId, deptId, dataScope);
+            return;
+        }
+        appendScopeClauseWithPolicy(clauses, args, userId, deptId, dataScope);
+    }
+
+    private void appendScopeClauseLegacy(
+            List<String> clauses,
+            List<Object> args,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope) {
+        if (dataScope == DataScope.PERSONAL && userId != null) {
+            clauses.add("co.user_id = ?");
+            args.add(userId);
+            return;
+        }
+        if (dataScope == DataScope.DEPT && deptId != null) {
+            clauses.add("co.dept_id = ?");
+            args.add(deptId);
+        }
+    }
+
+    private void appendScopeClauseWithPolicy(
+            List<String> clauses,
+            List<Object> args,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope) {
+        DataScopePolicy.Decision decision = dataScopePolicy.decide(userId, deptId, dataScope);
+        switch (decision) {
+            case FILTER_USER -> {
+                clauses.add("co.user_id = ?");
+                args.add(userId);
+            }
+            case FILTER_DEPT -> {
+                clauses.add("co.dept_id = ?");
+                args.add(deptId);
+            }
+            case NO_FILTER -> {
+                // no filter
             }
         }
-        return new SqlContext(String.join(" AND ", clauses), args);
     }
 
     /**
@@ -858,24 +916,50 @@ public class DashboardService {
         if (wrapper == null || dataScope == null) {
             return;
         }
-        switch (dataScope) {
-            case PERSONAL -> {
-                if (userId != null) {
-                    wrapper.eq("user_id", userId);
-                } else {
+        if (!dddRefactorProperties.getDataScopePolicy().isEnabled()) {
+            applyScopeLegacy(wrapper, userId, deptId, dataScope);
+            return;
+        }
+        applyScopeWithPolicy(wrapper, userId, deptId, dataScope);
+    }
+
+    private void applyScopeLegacy(
+            QueryWrapper<ColonelsettlementOrder> wrapper,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope) {
+        if (dataScope == DataScope.PERSONAL && userId != null) {
+            wrapper.eq("user_id", userId);
+            return;
+        }
+        if (dataScope == DataScope.DEPT && deptId != null) {
+            wrapper.eq("dept_id", deptId);
+            return;
+        }
+        if (requiresRestrictedContext(dataScope)) {
+            wrapper.apply("1 = 0");
+        }
+    }
+
+    private void applyScopeWithPolicy(
+            QueryWrapper<ColonelsettlementOrder> wrapper,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope) {
+        DataScopePolicy.Decision decision = dataScopePolicy.decide(userId, deptId, dataScope);
+        switch (decision) {
+            case FILTER_USER -> wrapper.eq("user_id", userId);
+            case FILTER_DEPT -> wrapper.eq("dept_id", deptId);
+            case NO_FILTER -> {
+                if (dataScopePolicy.requiresFilter(dataScope)) {
                     wrapper.apply("1 = 0");
                 }
-            }
-            case DEPT -> {
-                if (deptId != null) {
-                    wrapper.eq("dept_id", deptId);
-                } else {
-                    wrapper.apply("1 = 0");
-                }
-            }
-            case ALL -> {
             }
         }
+    }
+
+    private boolean requiresRestrictedContext(DataScope dataScope) {
+        return dataScope == DataScope.PERSONAL || dataScope == DataScope.DEPT;
     }
 
     /**

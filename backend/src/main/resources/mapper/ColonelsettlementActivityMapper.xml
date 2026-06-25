@@ -347,6 +347,30 @@
         LIMIT #{limit}
     </select>
 
+    <select id="selectActivityIdsForProductSyncProbe" resultType="string">
+        SELECT activity_id
+        FROM colonel_activity
+        WHERE deleted = 0
+          AND activity_id IS NOT NULL
+        <choose>
+            <when test="scope == 'ACTIVE_ONLY'">
+          AND (end_time IS NULL OR end_time &gt;= CURRENT_TIMESTAMP)
+          AND COALESCE(status, '') NOT IN ('已结束', '结束', 'CLOSED', 'ENDED', 'FINISHED', '0')
+            </when>
+            <when test="scope == 'RECENT_30D' or scope == 'RECENT_90D'">
+          AND COALESCE(last_sync_at, update_time, create_time) &gt;= #{recentSince}
+            </when>
+            <when test="scope == 'CUSTOM'">
+          AND activity_id IN
+                <foreach collection="activityIds" item="activityId" open="(" separator="," close=")">
+                    #{activityId}
+                </foreach>
+            </when>
+        </choose>
+        ORDER BY last_sync_at DESC NULLS LAST, update_time DESC NULLS LAST, create_time DESC NULLS LAST
+        LIMIT #{limit}
+    </select>
+
     <update id="touchLastSyncAt">
         UPDATE colonel_activity
         SET last_sync_at = #{syncedAt},

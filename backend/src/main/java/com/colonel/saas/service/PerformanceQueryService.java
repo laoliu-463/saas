@@ -1,19 +1,21 @@
 package com.colonel.saas.service;
 
 import com.colonel.saas.common.exception.BusinessException;
+import com.colonel.saas.config.DddRefactorProperties;
+import com.colonel.saas.domain.order.facade.OrderReadFacade;
+import com.colonel.saas.dto.performance.OrderPerformanceDTO;
 import com.colonel.saas.dto.performance.PerformanceBatchItemDTO;
 import com.colonel.saas.dto.performance.PerformanceBatchResponse;
 import com.colonel.saas.dto.performance.PerformanceDetailDTO;
 import com.colonel.saas.dto.performance.PerformanceListItemDTO;
 import com.colonel.saas.dto.performance.PerformanceListQuery;
 import com.colonel.saas.dto.performance.PerformancePageResponse;
-import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.PerformanceRecord;
-import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.mapper.PerformanceRecordMapper;
-import com.colonel.saas.service.performance.PerformanceAccessContext;
-import com.colonel.saas.service.performance.PerformanceAccessScope;
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.colonel.saas.domain.performance.policy.PerformanceAccessContext;
+import com.colonel.saas.domain.performance.policy.PerformanceAccessScope;
+import com.colonel.saas.domain.user.policy.DataScopePolicy;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -56,16 +58,34 @@ public class PerformanceQueryService {
             """;
 
     private final PerformanceRecordMapper performanceRecordMapper;
-    private final ColonelsettlementOrderMapper orderMapper;
+    private final OrderReadFacade orderReadFacade;
     private final JdbcTemplate jdbcTemplate;
+    private final DataScopePolicy dataScopePolicy;
+    private final DddRefactorProperties dddRefactorProperties;
 
+    @Autowired
     public PerformanceQueryService(
             PerformanceRecordMapper performanceRecordMapper,
-            ColonelsettlementOrderMapper orderMapper,
-            JdbcTemplate jdbcTemplate) {
+            OrderReadFacade orderReadFacade,
+            JdbcTemplate jdbcTemplate,
+            DataScopePolicy dataScopePolicy,
+            DddRefactorProperties dddRefactorProperties) {
         this.performanceRecordMapper = performanceRecordMapper;
-        this.orderMapper = orderMapper;
+        this.orderReadFacade = orderReadFacade;
         this.jdbcTemplate = jdbcTemplate;
+        this.dataScopePolicy = dataScopePolicy;
+        this.dddRefactorProperties = dddRefactorProperties;
+    }
+
+    PerformanceQueryService(
+            PerformanceRecordMapper performanceRecordMapper,
+            OrderReadFacade orderReadFacade,
+            JdbcTemplate jdbcTemplate) {
+        this(performanceRecordMapper,
+                orderReadFacade,
+                jdbcTemplate,
+                new DataScopePolicy(),
+                new DddRefactorProperties());
     }
 
     /**
@@ -170,6 +190,50 @@ public class PerformanceQueryService {
     }
 
     /**
+     * 订单列表/详情 BFF 批量补全业绩数据。
+     * <p>
+     * 该方法使用 {@link PerformanceRecordMapper#findByOrderIds(List)} 一次性读取有效业绩记录，
+     * 避免订单列表/导出按订单逐条查询业绩。
+     *
+     * @param orderIds 订单 ID 列表，空列表返回空列表
+     * @param context  当前用户数据访问上下文
+     * @return 与输入顺序一致的业绩补全 DTO；未命中或无权限时返回 isValid=false 的空 DTO
+     */
+    public List<OrderPerformanceDTO> batchGetOrderPerformance(List<String> orderIds, PerformanceAccessContext context) {
+        if (orderIds == null || orderIds.isEmpty()) {
+            return List.of();
+        }
+        List<String> normalized = orderIds.stream()
+                .filter(StringUtils::hasText)
+                .map(String::trim)
+                .distinct()
+                .toList();
+        if (normalized.size() > BATCH_MAX) {
+            throw BusinessException.param("单次最多查询 " + BATCH_MAX + " 个订单");
+        }
+        if (normalized.isEmpty()) {
+            return List.of();
+        }
+        List<PerformanceRecord> records = performanceRecordMapper.findByOrderIds(normalized);
+        Map<String, PerformanceRecord> recordMap = new LinkedHashMap<>();
+        for (PerformanceRecord record : records) {
+            if (record.getOrderId() != null) {
+                recordMap.put(record.getOrderId(), record);
+            }
+        }
+        List<OrderPerformanceDTO> result = new ArrayList<>();
+        for (String orderId : orderIds.stream().filter(StringUtils::hasText).map(String::trim).toList()) {
+            PerformanceRecord record = recordMap.get(orderId);
+            if (!hasCurrentPerformance(record) || !canAccessBatchRecord(orderId, record, context)) {
+                result.add(emptyOrderPerformance(orderId));
+            } else {
+                result.add(toOrderPerformance(record));
+            }
+        }
+        return result;
+    }
+
+    /**
      * 分页查询业绩列表。
      * <p>
      * 支持按订单/商品/合作方/达人/渠道/招达人/活动等多维筛选，
@@ -269,6 +333,36 @@ public class PerformanceQueryService {
         return orderIds.stream().map(this::loadDetailByOrderId).toList();
     }
 
+    private OrderPerformanceDTO toOrderPerformance(PerformanceRecord record) {
+        OrderPerformanceDTO dto = new OrderPerformanceDTO();
+        dto.setOrderId(record.getOrderId());
+        dto.setFinalChannelId(record.getFinalChannelUserId() == null ? null : record.getFinalChannelUserId().toString());
+        dto.setFinalRecruiterId(record.getFinalRecruiterUserId() == null ? null : record.getFinalRecruiterUserId().toString());
+        dto.setChannelAttributionType(record.getChannelAttribution());
+        dto.setRecruiterAttributionType(record.getRecruiterAttribution());
+        dto.setEstimateServiceProfit(record.getEstimateServiceProfit());
+        dto.setEffectiveServiceProfit(record.getEffectiveServiceProfit());
+        dto.setEstimateServiceFeeExpense(record.getEstimateServiceFeeExpense());
+        dto.setEffectiveServiceFeeExpense(record.getEffectiveServiceFeeExpense());
+        dto.setEstimateRecruiterCommission(record.getEstimateRecruiterCommission());
+        dto.setEffectiveRecruiterCommission(record.getEffectiveRecruiterCommission());
+        dto.setEstimateChannelCommission(record.getEstimateChannelCommission());
+        dto.setEffectiveChannelCommission(record.getEffectiveChannelCommission());
+        dto.setEstimateGrossProfit(record.getEstimateGrossProfit());
+        dto.setEffectiveGrossProfit(record.getEffectiveGrossProfit());
+        dto.setIsValid(record.getValid());
+        dto.setIsReversed(record.getReversed());
+        return dto;
+    }
+
+    private OrderPerformanceDTO emptyOrderPerformance(String orderId) {
+        OrderPerformanceDTO dto = new OrderPerformanceDTO();
+        dto.setOrderId(orderId);
+        dto.setIsValid(Boolean.FALSE);
+        dto.setIsReversed(Boolean.FALSE);
+        return dto;
+    }
+
     private PerformanceBatchResponse emptyBatchResponse(List<PerformanceBatchItemDTO> items) {
         PerformanceBatchResponse response = new PerformanceBatchResponse();
         response.setItems(items);
@@ -301,7 +395,7 @@ public class PerformanceQueryService {
             PerformanceAccessContext context,
             List<Object> args) {
         StringBuilder where = new StringBuilder(" WHERE pr.is_valid = TRUE ");
-        PerformanceAccessScope.appendScopeCondition(where, args, context, "pr");
+        appendScopeCondition(where, args, context, "pr");
 
         if (StringUtils.hasText(query.getOrderId())) {
             where.append(" AND pr.order_id = ?");
@@ -406,6 +500,8 @@ public class PerformanceQueryService {
                        co.channel_user_name AS final_channel_name,
                        pr.final_recruiter_user_id::text AS final_recruiter_id,
                        co.colonel_user_name AS final_recruiter_name,
+                       pr.channel_attribution,
+                       pr.recruiter_attribution,
                        pr.pay_amount,
                        pr.settle_amount,
                        pr.estimate_service_profit,
@@ -419,7 +515,9 @@ public class PerformanceQueryService {
                        pr.order_status,
                        COALESCE(pr.order_create_time, co.create_time) AS pay_time,
                        pr.settle_time,
-                       pr.calculated_at
+                       pr.calculated_at,
+                       pr.is_valid,
+                       pr.is_reversed
                 """;
     }
 
@@ -437,6 +535,8 @@ public class PerformanceQueryService {
         item.setFinalChannelName(rs.getString("final_channel_name"));
         item.setFinalRecruiterId(rs.getString("final_recruiter_id"));
         item.setFinalRecruiterName(rs.getString("final_recruiter_name"));
+        item.setChannelAttributionType(rs.getString("channel_attribution"));
+        item.setRecruiterAttributionType(rs.getString("recruiter_attribution"));
         item.setPayAmount(rs.getLong("pay_amount"));
         item.setSettleAmount(rs.getLong("settle_amount"));
         item.setEstimateServiceProfit(rs.getLong("estimate_service_profit"));
@@ -451,6 +551,8 @@ public class PerformanceQueryService {
         item.setPayTime(readDateTime(rs, "pay_time"));
         item.setSettleTime(readDateTime(rs, "settle_time"));
         item.setCalculatedAt(readDateTime(rs, "calculated_at"));
+        item.setValid(rs.getBoolean("is_valid"));
+        item.setReversed(rs.getBoolean("is_reversed"));
         return item;
     }
 
@@ -485,12 +587,24 @@ public class PerformanceQueryService {
         List<Object> args = new ArrayList<>();
         StringBuilder where = new StringBuilder(" WHERE pr.order_id = ? AND pr.is_valid = TRUE ");
         args.add(orderId);
-        PerformanceAccessScope.appendScopeCondition(where, args, context, "pr");
+        appendScopeCondition(where, args, context, "pr");
         Long count = jdbcTemplate.queryForObject(
                 "SELECT COUNT(1) FROM performance_records pr" + where,
                 Long.class,
                 args.toArray());
         return count != null && count > 0;
+    }
+
+    private void appendScopeCondition(
+            StringBuilder where,
+            List<Object> args,
+            PerformanceAccessContext context,
+            String prAlias) {
+        if (!dddRefactorProperties.getDataScopePolicy().isEnabled()) {
+            PerformanceAccessScope.appendScopeCondition(where, args, context, prAlias);
+            return;
+        }
+        PerformanceAccessScope.appendScopeConditionWithPolicy(where, args, context, prAlias, dataScopePolicy);
     }
 
     /** 批量查询场景的权限校验：先尝试内存级判断，不通过时回退 SQL 级判断。 */
@@ -510,11 +624,7 @@ public class PerformanceQueryService {
      * 先检查订单是否存在：不存在 → NOT_FOUND，存在但业绩未计算 → STATE_INVALID。
      */
     private void throwPerformanceUnavailable(String orderId) {
-        ColonelsettlementOrder order = orderMapper.selectOne(new LambdaQueryWrapper<ColonelsettlementOrder>()
-                .eq(ColonelsettlementOrder::getOrderId, orderId)
-                .eq(ColonelsettlementOrder::getDeleted, 0)
-                .last("LIMIT 1"));
-        if (order == null) {
+        if (!orderReadFacade.existsActiveByOrderId(orderId)) {
             throw BusinessException.notFound("订单不存在: " + orderId);
         }
         throw BusinessException.stateInvalid("PERFORMANCE_NOT_CALCULATED");
@@ -579,6 +689,8 @@ public class PerformanceQueryService {
             dto.setEffectiveTechServiceFee(rs.getLong("effective_tech_service_fee"));
             dto.setEstimateServiceProfit(rs.getLong("estimate_service_profit"));
             dto.setEffectiveServiceProfit(rs.getLong("effective_service_profit"));
+            dto.setEstimateServiceFeeExpense(rs.getLong("estimate_service_fee_expense"));
+            dto.setEffectiveServiceFeeExpense(rs.getLong("effective_service_fee_expense"));
             dto.setEstimateRecruiterCommission(rs.getLong("estimate_recruiter_commission"));
             dto.setEffectiveRecruiterCommission(rs.getLong("effective_recruiter_commission"));
             dto.setEstimateChannelCommission(rs.getLong("estimate_channel_commission"));

@@ -9,7 +9,8 @@ import com.colonel.saas.dto.product.ProductFilterOptionsDTO;
 import com.colonel.saas.entity.Product;
 import com.colonel.saas.gateway.douyin.DouyinPromotionGateway;
 import com.colonel.saas.service.ColonelPartnerSyncService;
-import com.colonel.saas.service.ProductQuickSampleService;
+import com.colonel.saas.domain.product.application.ProductQuickSampleApplicationService;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.service.ProductService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -39,7 +40,8 @@ class ProductControllerTest {
 
     @Mock
     private ProductService productService;
-    private ProductQuickSampleService productQuickSampleService;
+    @Mock
+    private ProductQuickSampleApplicationService productQuickSampleApplicationService;
     @Mock
     private ColonelPartnerSyncService colonelPartnerSyncService;
 
@@ -47,7 +49,11 @@ class ProductControllerTest {
 
     @BeforeEach
     void setUp() {
-        productController = new ProductController(productService, productQuickSampleService, colonelPartnerSyncService);
+        productController = new ProductController(
+                productService,
+                productQuickSampleApplicationService,
+                colonelPartnerSyncService,
+                new CurrentUserPermissionPolicy());
     }
 
     @Test
@@ -417,6 +423,31 @@ class ProductControllerTest {
                 .filter(java.util.Objects::nonNull)
                 .map(ProductControllerTest::requestParamName))
                 .contains("productId");
+    }
+
+    @Test
+    void adminCounts_shouldReturnSeparatedSnapshotRelationAndDisplayingCounts() throws NoSuchMethodException {
+        ProductService.AdminProductCounts counts = new ProductService.AdminProductCounts(
+                7_979,
+                7_979,
+                7_020,
+                2_974,
+                196,
+                4_809,
+                24);
+        when(productService.getAdminCounts()).thenReturn(counts);
+
+        var response = productController.adminCounts();
+
+        assertThat(response.getData().snapshotTotal()).isEqualTo(7_979);
+        assertThat(response.getData().relationTotal()).isEqualTo(7_979);
+        assertThat(response.getData().displayingTotal()).isEqualTo(2_974);
+        verify(productService).getAdminCounts();
+        Method method = ProductController.class.getMethod("adminCounts");
+        assertThat(method.getAnnotation(org.springframework.web.bind.annotation.GetMapping.class).value())
+                .containsExactly("/admin/counts");
+        assertThat(method.getAnnotation(RequireRoles.class).value())
+                .containsExactly(RoleCodes.ADMIN);
     }
 
     @Test

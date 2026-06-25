@@ -6,7 +6,11 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.BusinessException;
+import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.constant.RoleCodes;
+import com.colonel.saas.domain.performance.facade.OrderPerformanceQueryFacade;
+import com.colonel.saas.dto.performance.OrderPerformanceBatchResponse;
+import com.colonel.saas.dto.performance.OrderPerformanceDTO;
 import com.colonel.saas.entity.ColonelsettlementActivity;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.ExclusiveMerchant;
@@ -15,10 +19,8 @@ import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.mapper.ExclusiveMerchantMapper;
 import com.colonel.saas.mapper.ExclusiveTalentMapper;
-import com.colonel.saas.mapper.PerformanceRecordMapper;
-import com.colonel.saas.mapper.SysUserMapper;
-import com.colonel.saas.entity.PerformanceRecord;
-import com.colonel.saas.entity.SysUser;
+import com.colonel.saas.domain.user.facade.UserDomainFacade;
+import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.vo.data.OrderDetailVO;
 import com.colonel.saas.service.CommissionService;
 import com.colonel.saas.service.PerformanceMetricsQueryService;
@@ -44,8 +46,10 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -67,13 +71,15 @@ class DataControllerTest {
     @Mock
     private PerformanceMetricsQueryService performanceMetricsQueryService;
     @Mock
-    private PerformanceRecordMapper performanceRecordMapper;
+    private OrderPerformanceQueryFacade orderPerformanceQueryFacade;
     @Mock
-    private SysUserMapper sysUserMapper;
+    private UserDomainFacade userDomainFacade;
     @Mock
     private JdbcTemplate jdbcTemplate;
 
     private DataController dataController;
+    private DataScopePolicy dataScopePolicy;
+    private DddRefactorProperties dddRefactorProperties;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     private static ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> queryWrapperCaptor() {
@@ -82,6 +88,8 @@ class DataControllerTest {
 
     @BeforeEach
     void setUp() {
+        dataScopePolicy = spy(new DataScopePolicy());
+        dddRefactorProperties = new DddRefactorProperties();
         dataController = new DataController(
                 orderMapper,
                 commissionService,
@@ -90,8 +98,10 @@ class DataControllerTest {
                 activityMapper,
                 new ShortTtlCacheService(),
                 performanceMetricsQueryService,
-                performanceRecordMapper,
-                sysUserMapper,
+                orderPerformanceQueryFacade,
+                userDomainFacade,
+                dataScopePolicy,
+                dddRefactorProperties,
                 jdbcTemplate
         );
         org.mockito.Mockito.lenient().when(performanceMetricsQueryService.hasPerformanceRecords()).thenReturn(false);
@@ -224,10 +234,42 @@ class DataControllerTest {
     }
 
     @Test
+    void getMetrics_withPerformanceRecords_shouldUseTrackSpecificProfitFormula() {
+        when(performanceMetricsQueryService.hasPerformanceRecords()).thenReturn(true);
+        when(performanceMetricsQueryService.aggregateRange(any(), any(), any(), any(), any(), any()))
+                .thenAnswer(invocation -> {
+                    String timeField = invocation.getArgument(2);
+                    if ("settleTime".equals(timeField)) {
+                        return new PerformanceMetricsQueryService.PerformanceAggregate(
+                                1L, 10000L, 1000L, 100L, 10L, 0L, 990L, 100L, 150L, 740L);
+                    }
+                    return new PerformanceMetricsQueryService.PerformanceAggregate(
+                            1L, 10000L, 1000L, 100L, 10L, 0L, 890L, 100L, 150L, 640L);
+                });
+        when(performanceMetricsQueryService.trendByDay(any(), any(), any(), any(), any(), any()))
+                .thenReturn(List.of(new PerformanceMetricsQueryService.TrendPoint(LocalDate.now().toString(), 1L, 10000L)));
+        when(orderMapper.selectMaps(any(QueryWrapper.class)))
+                .thenReturn(List.of(Map.of("order_count", 0L)));
+
+        var response = dataController.getMetrics(UUID.randomUUID(), null, DataScope.ALL);
+
+        assertThat(response.getData().getSettle().getServiceFeeProfit()).isEqualByComparingTo("9.90");
+        assertThat(response.getData().getSettle().getGrossProfit()).isEqualByComparingTo("7.40");
+        assertThat(response.getData().getEstimate().getServiceFeeProfit()).isEqualByComparingTo("8.90");
+        assertThat(response.getData().getEstimate().getGrossProfit()).isEqualByComparingTo("6.40");
+        verify(commissionService, never()).calculateByActivityBuckets(any());
+    }
+
+    @Test
     void getMetrics_returnsMetricsWithTrendData() {
         UUID userId = UUID.randomUUID();
         when(orderMapper.selectMaps(any(QueryWrapper.class)))
                 .thenReturn(List.of(Map.of("order_count", 0L)))
+                .thenReturn(List.of(Map.of(
+                        "refund_order_count", 1L,
+                        "refund_order_amount_cent", 3000L,
+                        "refund_service_fee_cent", 150L
+                )))
                 .thenReturn(List.of(Map.of("order_count", 2L, "order_amount_cent", 3000L)))
                 .thenReturn(List.of(Map.of(
                         "activity_id", "ACT-1",
@@ -241,6 +283,11 @@ class DataControllerTest {
                         "order_amount_cent", 3000L
                 )))
                 .thenReturn(List.of(Map.of("order_count", 0L)))
+                .thenReturn(List.of(Map.of(
+                        "refund_order_count", 2L,
+                        "refund_order_amount_cent", 4500L,
+                        "refund_service_fee_cent", 220L
+                )))
                 .thenReturn(List.of(Map.of("order_count", 2L, "order_amount_cent", 3000L)))
                 .thenReturn(List.of(Map.of(
                         "activity_id", "ACT-1",
@@ -266,19 +313,28 @@ class DataControllerTest {
         assertThat(response.getData().getEstimate().getTrend7d()).hasSize(7);
         assertThat(response.getData().getEstimate().getTodayGmv()).isNotNull();
         assertThat(response.getData().getEstimate().getServiceFee()).isNotNull();
+        assertThat(response.getData().getEstimate().getRefundOrderCount()).isEqualTo(2L);
+        assertThat(response.getData().getEstimate().getRefundOrderAmount()).isEqualByComparingTo("45.00");
+        assertThat(response.getData().getEstimate().getRefundServiceFee()).isEqualByComparingTo("2.20");
         ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
-        verify(orderMapper, times(8)).selectMaps(wrapperCaptor.capture());
-        assertThat(wrapperCaptor.getAllValues().get(1).getSqlSelect()).contains("settle_amount");
-        assertThat(wrapperCaptor.getAllValues().get(2).getSqlSelect())
+        verify(orderMapper, times(10)).selectMaps(wrapperCaptor.capture());
+        assertThat(wrapperCaptor.getAllValues().get(1).getSqlSelect())
+                .contains("refund_order_count")
+                .contains("NULLIF(effective_service_fee, 0)");
+        assertThat(wrapperCaptor.getAllValues().get(2).getSqlSelect()).contains("settle_amount");
+        assertThat(wrapperCaptor.getAllValues().get(3).getSqlSelect())
                 .contains("effective_service_fee")
                 .contains("effective_tech_service_fee");
-        assertThat(wrapperCaptor.getAllValues().get(3).getSqlSelect()).contains("settle_amount");
-        assertThat(wrapperCaptor.getAllValues().get(4).getSqlSegment()).contains("create_time");
-        assertThat(wrapperCaptor.getAllValues().get(5).getSqlSelect()).contains("order_amount");
+        assertThat(wrapperCaptor.getAllValues().get(4).getSqlSelect()).contains("settle_amount");
+        assertThat(wrapperCaptor.getAllValues().get(5).getSqlSegment()).contains("create_time");
         assertThat(wrapperCaptor.getAllValues().get(6).getSqlSelect())
+                .contains("refund_order_count")
+                .contains("NULLIF(effective_service_fee, 0)");
+        assertThat(wrapperCaptor.getAllValues().get(7).getSqlSelect()).contains("order_amount");
+        assertThat(wrapperCaptor.getAllValues().get(8).getSqlSelect())
                 .contains("estimate_service_fee")
                 .contains("estimate_tech_service_fee");
-        assertThat(wrapperCaptor.getAllValues().get(7).getSqlSelect()).contains("order_amount");
+        assertThat(wrapperCaptor.getAllValues().get(9).getSqlSelect()).contains("order_amount");
     }
 
     @Test
@@ -287,12 +343,14 @@ class DataControllerTest {
         UUID secondUser = UUID.randomUUID();
         when(orderMapper.selectMaps(any(QueryWrapper.class)))
                 .thenReturn(List.of(Map.of("order_count", 0L)))
+                .thenReturn(List.of(Map.of("refund_order_count", 0L, "refund_order_amount_cent", 0L, "refund_service_fee_cent", 0L)))
                 .thenReturn(List.of(Map.of("order_count", 0L, "order_amount_cent", 0L)))
-                .thenReturn(List.of(Map.of("order_count", 0L)))
+                .thenReturn(List.of())
                 .thenReturn(List.of())
                 .thenReturn(List.of(Map.of("order_count", 0L)))
+                .thenReturn(List.of(Map.of("refund_order_count", 0L, "refund_order_amount_cent", 0L, "refund_service_fee_cent", 0L)))
                 .thenReturn(List.of(Map.of("order_count", 0L, "order_amount_cent", 0L)))
-                .thenReturn(List.of(Map.of("order_count", 0L)))
+                .thenReturn(List.of())
                 .thenReturn(List.of());
         when(commissionService.calculateByActivityBuckets(any())).thenReturn(
                 new CommissionService.CommissionSummary(0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L,
@@ -303,7 +361,7 @@ class DataControllerTest {
 
         assertThat(first.getCode()).isEqualTo(200);
         assertThat(second.getCode()).isEqualTo(200);
-        verify(orderMapper, times(8)).selectMaps(any(QueryWrapper.class));
+        verify(orderMapper, times(10)).selectMaps(any(QueryWrapper.class));
         verify(commissionService, times(2)).calculateByActivityBuckets(any());
     }
 
@@ -321,6 +379,12 @@ class DataControllerTest {
         var response = dataController.getMetrics(userId, UUID.randomUUID(), DataScope.PERSONAL);
 
         assertThat(response.getCode()).isEqualTo(200);
+        ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
+        verify(orderMapper, times(10)).selectMaps(wrapperCaptor.capture());
+        assertThat(wrapperCaptor.getAllValues())
+                .allSatisfy(wrapper -> assertThat(wrapper.getSqlSegment()).contains("user_id"));
+        verify(dataScopePolicy, never()).contextRequirement(any(), any(), any());
+        verify(dataScopePolicy, never()).applyTo(any(QueryWrapper.class), any(), any(), any(), anyString(), anyString());
     }
 
     @Test
@@ -338,6 +402,33 @@ class DataControllerTest {
         var response = dataController.getMetrics(userId, deptId, DataScope.DEPT);
 
         assertThat(response.getCode()).isEqualTo(200);
+        ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
+        verify(orderMapper, times(10)).selectMaps(wrapperCaptor.capture());
+        assertThat(wrapperCaptor.getAllValues())
+                .allSatisfy(wrapper -> assertThat(wrapper.getSqlSegment()).contains("dept_id"));
+        verify(dataScopePolicy, never()).contextRequirement(any(), any(), any());
+        verify(dataScopePolicy, never()).applyTo(any(QueryWrapper.class), any(), any(), any(), anyString(), anyString());
+    }
+
+    @Test
+    void getMetrics_withDataScopePolicyEnabled_delegatesToUserPolicy() {
+        dddRefactorProperties.getDataScopePolicy().setEnabled(true);
+        UUID userId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+        when(orderMapper.selectMaps(any(QueryWrapper.class)))
+                .thenReturn(List.of(Map.of("order_count", 0L, "order_amount_cent", 0L)))
+                .thenReturn(List.of())
+                .thenReturn(List.of());
+        when(commissionService.calculateByActivityBuckets(any())).thenReturn(
+                new CommissionService.CommissionSummary(0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L,
+                        java.math.BigDecimal.valueOf(0.5), java.math.BigDecimal.valueOf(0.25)));
+
+        var response = dataController.getMetrics(userId, deptId, DataScope.DEPT);
+
+        assertThat(response.getCode()).isEqualTo(200);
+        verify(dataScopePolicy, times(10)).contextRequirement(userId, deptId, DataScope.DEPT);
+        verify(dataScopePolicy, times(10)).applyTo(
+                any(QueryWrapper.class), eq(userId), eq(deptId), eq(DataScope.DEPT), eq("user_id"), eq("dept_id"));
     }
 
     @Test
@@ -347,6 +438,8 @@ class DataControllerTest {
                 .hasMessageContaining("缺少用户上下文");
 
         verify(orderMapper, never()).selectMaps(any(QueryWrapper.class));
+        verify(dataScopePolicy, never()).contextRequirement(any(), any(), any());
+        verify(dataScopePolicy, never()).applyTo(any(QueryWrapper.class), any(), any(), any(), anyString(), anyString());
     }
 
     @Test
@@ -356,6 +449,8 @@ class DataControllerTest {
                 .hasMessageContaining("缺少部门上下文");
 
         verify(orderMapper, never()).selectMaps(any(QueryWrapper.class));
+        verify(dataScopePolicy, never()).contextRequirement(any(), any(), any());
+        verify(dataScopePolicy, never()).applyTo(any(QueryWrapper.class), any(), any(), any(), anyString(), anyString());
     }
 
     @Test
@@ -378,6 +473,11 @@ class DataControllerTest {
     void getMetrics_withNoScopeAndSettleAlias_handlesEmptyAndInvalidAggregates() {
         when(orderMapper.selectMaps(any(QueryWrapper.class)))
                 .thenReturn(null)
+                .thenReturn(List.of(Map.of(
+                        "refund_order_count", "not-a-number",
+                        "refund_order_amount_cent", "bad-number",
+                        "refund_service_fee_cent", 100L
+                )))
                 .thenReturn(List.of(Map.of("order_count", "not-a-number")))
                 .thenReturn(List.of(Map.of(
                         "ACTIVITY_ID", "ACT-1",
@@ -391,6 +491,11 @@ class DataControllerTest {
                         "ORDER_AMOUNT_CENT", 100L
                 )))
                 .thenReturn(null)
+                .thenReturn(List.of(Map.of(
+                        "refund_order_count", "not-a-number",
+                        "refund_order_amount_cent", "bad-number",
+                        "refund_service_fee_cent", 100L
+                )))
                 .thenReturn(List.of(Map.of("order_count", "not-a-number")))
                 .thenReturn(List.of(Map.of(
                         "ACTIVITY_ID", "ACT-1",
@@ -412,9 +517,11 @@ class DataControllerTest {
         assertThat(response.getCode()).isEqualTo(200);
         assertThat(response.getData().getSettle().getTodayOrderCount()).isZero();
         assertThat(response.getData().getSettle().getPendingShipCount()).isZero();
+        assertThat(response.getData().getSettle().getRefundOrderCount()).isZero();
+        assertThat(response.getData().getSettle().getRefundOrderAmount()).isEqualByComparingTo("0.00");
         assertThat(response.getData().getSettle().getTrend7d().get(6).getOrderCount()).isZero();
         ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
-        verify(orderMapper, times(8)).selectMaps(wrapperCaptor.capture());
+        verify(orderMapper, times(10)).selectMaps(wrapperCaptor.capture());
         assertThat(wrapperCaptor.getAllValues().get(0).getSqlSegment()).contains("settle_time");
     }
 
@@ -656,28 +763,34 @@ class DataControllerTest {
     void getOrderSummary_returnsTotalsAndDailyRowsWithSupportedFilters() {
         UUID recruiterId = UUID.randomUUID();
         when(orderMapper.selectMaps(any(QueryWrapper.class)))
-                .thenReturn(List.of(Map.of(
-                        "order_count", 2L,
-                        "talent_promoter_count", 1L,
-                        "colonel_promoter_count", 1L,
-                        "product_count", 1L,
-                        "order_amount_cent", 10000L,
-                        "actual_amount_cent", 8000L,
-                        "service_fee_income_cent", 500L,
-                        "tech_service_fee_cent", 100L,
-                        "talent_commission_cent", 0L
+                .thenReturn(List.of(Map.ofEntries(
+                        Map.entry("order_count", 2L),
+                        Map.entry("talent_promoter_count", 1L),
+                        Map.entry("colonel_promoter_count", 1L),
+                        Map.entry("product_count", 1L),
+                        Map.entry("order_amount_cent", 10000L),
+                        Map.entry("refund_order_count", 1L),
+                        Map.entry("refund_order_amount_cent", 3000L),
+                        Map.entry("refund_service_fee_cent", 150L),
+                        Map.entry("actual_amount_cent", 8000L),
+                        Map.entry("service_fee_income_cent", 500L),
+                        Map.entry("tech_service_fee_cent", 100L),
+                        Map.entry("talent_commission_cent", 0L)
                 )))
-                .thenReturn(List.of(Map.of(
-                        "stat_date", "2026-05-25",
-                        "order_count", 2L,
-                        "talent_promoter_count", 1L,
-                        "colonel_promoter_count", 1L,
-                        "product_count", 1L,
-                        "order_amount_cent", 10000L,
-                        "actual_amount_cent", 8000L,
-                        "service_fee_income_cent", 500L,
-                        "tech_service_fee_cent", 100L,
-                        "talent_commission_cent", 0L
+                .thenReturn(List.of(Map.ofEntries(
+                        Map.entry("stat_date", "2026-05-25"),
+                        Map.entry("order_count", 2L),
+                        Map.entry("talent_promoter_count", 1L),
+                        Map.entry("colonel_promoter_count", 1L),
+                        Map.entry("product_count", 1L),
+                        Map.entry("order_amount_cent", 10000L),
+                        Map.entry("refund_order_count", 1L),
+                        Map.entry("refund_order_amount_cent", 3000L),
+                        Map.entry("refund_service_fee_cent", 150L),
+                        Map.entry("actual_amount_cent", 8000L),
+                        Map.entry("service_fee_income_cent", 500L),
+                        Map.entry("tech_service_fee_cent", 100L),
+                        Map.entry("talent_commission_cent", 0L)
                 )))
                 .thenReturn(List.of(Map.of(
                         "activity_id", "ACT-1",
@@ -724,8 +837,11 @@ class DataControllerTest {
         assertThat(response.getCode()).isEqualTo(200);
         assertThat(response.getData().getTotal().getOrderCount()).isEqualTo(2L);
         assertThat(response.getData().getTotal().getOrderAmount()).isEqualByComparingTo("100.00");
+        assertThat(response.getData().getTotal().getRefundOrderCount()).isEqualTo(1L);
+        assertThat(response.getData().getTotal().getRefundOrderAmount()).isEqualByComparingTo("30.00");
+        assertThat(response.getData().getTotal().getRefundServiceFee()).isEqualByComparingTo("1.50");
         assertThat(response.getData().getTotal().getProductAverageServiceFeeRate()).isEqualByComparingTo("6.25");
-        assertThat(response.getData().getTotal().getOrderAverageServiceFeeRate()).isEqualByComparingTo("5.00");
+        assertThat(response.getData().getTotal().getOrderAverageServiceFeeRate()).isEqualByComparingTo("4.00");
         assertThat(response.getData().getTotal().getServiceFeeExpense()).isEqualByComparingTo("0.00");
         assertThat(response.getData().getTotal().getServiceFeeProfit()).isEqualByComparingTo("4.00");
         assertThat(response.getData().getTotal().getGrossProfit()).isEqualByComparingTo("3.00");
@@ -734,6 +850,9 @@ class DataControllerTest {
 
         ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
         verify(orderMapper, times(4)).selectMaps(wrapperCaptor.capture());
+        assertThat(wrapperCaptor.getAllValues().get(0).getSqlSelect())
+                .contains("refund_service_fee_cent")
+                .contains("NULLIF(effective_service_fee, 0)");
         String segment = wrapperCaptor.getAllValues().get(0).getSqlSegment();
         assertThat(segment).contains("product_id");
         assertThat(segment).contains("product_name");
@@ -776,6 +895,9 @@ class DataControllerTest {
         assertThat(response.getCode()).isEqualTo(200);
         assertThat(response.getData().getTotal().getOrderCount()).isZero();
         assertThat(response.getData().getTotal().getOrderAmount()).isEqualByComparingTo("0.00");
+        assertThat(response.getData().getTotal().getRefundOrderCount()).isZero();
+        assertThat(response.getData().getTotal().getRefundOrderAmount()).isEqualByComparingTo("0.00");
+        assertThat(response.getData().getTotal().getRefundServiceFee()).isEqualByComparingTo("0.00");
         assertThat(response.getData().getTotal().getProductAverageServiceFeeRate()).isEqualByComparingTo("0.00");
         assertThat(response.getData().getTotal().getServiceFeeIncome()).isEqualByComparingTo("0.00");
         assertThat(response.getData().getRecords()).isEmpty();
@@ -829,6 +951,7 @@ class DataControllerTest {
                         "actual_amount_cent", 10000L,
                         "service_fee_income_cent", 450L,
                         "tech_service_fee_cent", 50L,
+                        "service_fee_expense_cent", 20L,
                         "talent_commission_cent", 0L
                 )))
                 .thenReturn(List.of())
@@ -837,11 +960,12 @@ class DataControllerTest {
                         "product_id", "P-1",
                         "service_fee_income", 450L,
                         "tech_service_fee", 50L,
+                        "service_fee_expense", 20L,
                         "talent_commission", 0L
                 )))
                 .thenReturn(List.of());
         when(commissionService.calculateByActivityBuckets(any())).thenReturn(
-                new CommissionService.CommissionSummary(450L, 50L, 0L, 0L, 400L, 40L, 40L, 320L,
+                new CommissionService.CommissionSummary(450L, 0L, 20L, 0L, 430L, 43L, 64L, 323L,
                         java.math.BigDecimal.valueOf(0.1), java.math.BigDecimal.valueOf(0.1)));
 
         var response = dataController.getOrderSummary(
@@ -867,7 +991,10 @@ class DataControllerTest {
 
         assertThat(response.getCode()).isEqualTo(200);
         assertThat(response.getData().getTotal().getOrderAmount()).isEqualByComparingTo("90.00");
-        assertThat(response.getData().getTotal().getOrderAverageServiceFeeRate()).isEqualByComparingTo("5.00");
+        assertThat(response.getData().getTotal().getOrderAverageServiceFeeRate()).isEqualByComparingTo("4.78");
+        assertThat(response.getData().getTotal().getServiceFeeExpense()).isEqualByComparingTo("0.20");
+        assertThat(response.getData().getTotal().getServiceFeeProfit()).isEqualByComparingTo("4.30");
+        assertThat(response.getData().getTotal().getGrossProfit()).isEqualByComparingTo("3.23");
 
         ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
         verify(orderMapper, times(4)).selectMaps(wrapperCaptor.capture());
@@ -876,6 +1003,14 @@ class DataControllerTest {
         assertThat(aggregateWrapper.getSqlSelect()).contains("settle_amount");
         assertThat(aggregateWrapper.getSqlSelect()).contains("effective_service_fee");
         assertThat(aggregateWrapper.getSqlSelect()).contains("effective_tech_service_fee");
+        assertThat(aggregateWrapper.getSqlSelect()).contains("effective_service_fee_expense");
+
+        ArgumentCaptor<List<CommissionService.ActivityCommissionBucket>> bucketCaptor = ArgumentCaptor.forClass(List.class);
+        verify(commissionService).calculateByActivityBuckets(bucketCaptor.capture());
+        assertThat(bucketCaptor.getAllValues().get(0)).singleElement().satisfies(bucket -> {
+            assertThat(bucket.techServiceFee()).isZero();
+            assertThat(bucket.serviceFeeExpense()).isEqualTo(20L);
+        });
     }
 
     @Test
@@ -1266,12 +1401,12 @@ class DataControllerTest {
         orderPage.setTotal(1);
         when(orderMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(orderPage);
 
-        PerformanceRecord perf = new PerformanceRecord();
+        OrderPerformanceDTO perf = new OrderPerformanceDTO();
         perf.setOrderId("ORD001");
         UUID channelUserId = UUID.randomUUID();
         UUID recruiterUserId = UUID.randomUUID();
-        perf.setFinalChannelUserId(channelUserId);
-        perf.setFinalRecruiterUserId(recruiterUserId);
+        perf.setFinalChannelId(channelUserId.toString());
+        perf.setFinalRecruiterId(recruiterUserId.toString());
         perf.setEstimateRecruiterCommission(400L);
         perf.setEffectiveRecruiterCommission(380L);
         perf.setEstimateChannelCommission(300L);
@@ -1280,20 +1415,18 @@ class DataControllerTest {
         perf.setEffectiveServiceProfit(470L);
         perf.setEstimateGrossProfit(520L);
         perf.setEffectiveGrossProfit(493L);
-        when(performanceRecordMapper.findByOrderIds(List.of("ORD001"))).thenReturn(List.of(perf));
+        perf.setIsValid(Boolean.TRUE);
+        OrderPerformanceBatchResponse perfResponse = new OrderPerformanceBatchResponse();
+        perfResponse.setItems(List.of(perf));
+        when(orderPerformanceQueryFacade.batchGetOrderPerformance(eq(List.of("ORD001")), any())).thenReturn(perfResponse);
 
         ColonelsettlementActivity activity = new ColonelsettlementActivity();
         activity.setActivityId("ACT001");
         activity.setName("Test Activity");
         when(activityMapper.selectNamesByActivityIds(any())).thenReturn(List.of(activity));
 
-        SysUser channelUser = new SysUser();
-        channelUser.setId(channelUserId);
-        channelUser.setRealName("ChannelZhang");
-        SysUser recruiterUser = new SysUser();
-        recruiterUser.setId(recruiterUserId);
-        recruiterUser.setRealName("RecruiterLi");
-        when(sysUserMapper.selectList(any())).thenReturn(List.of(channelUser, recruiterUser));
+        when(userDomainFacade.loadUserDisplayNamesByIds(any()))
+                .thenReturn(Map.of(channelUserId, "ChannelZhang", recruiterUserId, "RecruiterLi"));
 
         var result = dataController.getOrderDetailPage(
                 1, 20, null, null, null, null, null, null, null, null,
@@ -1324,6 +1457,7 @@ class DataControllerTest {
         assertThat(vo.getEffectiveServiceProfit()).isEqualByComparingTo("4.70");
         assertThat(vo.getEstimateGrossProfit()).isEqualByComparingTo("5.20");
         assertThat(vo.getEffectiveGrossProfit()).isEqualByComparingTo("4.93");
+        verify(userDomainFacade, never()).getUsersByIds(any());
 
         // 双轨金额
         assertThat(vo.getPayAmount()).isNotNull();
@@ -1347,7 +1481,9 @@ class DataControllerTest {
         orderPage.setRecords(List.of(order));
         orderPage.setTotal(1);
         when(orderMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(orderPage);
-        when(performanceRecordMapper.findByOrderIds(List.of("ORD002"))).thenReturn(List.of());
+        OrderPerformanceBatchResponse emptyPerfResponse = new OrderPerformanceBatchResponse();
+        emptyPerfResponse.setItems(List.of());
+        when(orderPerformanceQueryFacade.batchGetOrderPerformance(eq(List.of("ORD002")), any())).thenReturn(emptyPerfResponse);
         org.mockito.Mockito.lenient().when(activityMapper.selectNamesByActivityIds(any())).thenReturn(List.of());
 
         var result = dataController.getOrderDetailPage(
@@ -1387,7 +1523,9 @@ class DataControllerTest {
         orderPage.setTotal(1);
         orderPage.setPages(1);
         when(orderMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(orderPage);
-        when(performanceRecordMapper.findByOrderIds(any())).thenReturn(List.of());
+        OrderPerformanceBatchResponse emptyPerfResponse = new OrderPerformanceBatchResponse();
+        emptyPerfResponse.setItems(List.of());
+        when(orderPerformanceQueryFacade.batchGetOrderPerformance(any(), any())).thenReturn(emptyPerfResponse);
         org.mockito.Mockito.lenient().when(activityMapper.selectNamesByActivityIds(any())).thenReturn(List.of());
 
         MockHttpServletResponse response = new MockHttpServletResponse();

@@ -3,6 +3,7 @@ package com.colonel.saas.aspect;
 import com.colonel.saas.annotation.RequireRoles;
 import com.colonel.saas.common.exception.ForbiddenException;
 import com.colonel.saas.constant.RoleCodes;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import jakarta.servlet.http.HttpServletRequest;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
@@ -14,12 +15,7 @@ import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
 import java.lang.reflect.Method;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.HashSet;
-import java.util.Locale;
-import java.util.Objects;
-import java.util.Set;
+import java.util.List;
 
 /**
  * 角色守卫切面（Role Guard Aspect）。
@@ -53,8 +49,8 @@ import java.util.Set;
  * 这确保了所有 Controller 端点都受角色鉴权保护，无需逐个添加切点。</p>
  *
  * <h3>角色编码比较规则</h3>
- * <p>所有角色编码在比较前统一进行 {@code trim().toLowerCase(Locale.ROOT)} 规范化处理，
- * 以实现大小写不敏感和去除前后空格的健壮匹配。</p>
+ * <p>角色编码解析与匹配统一委托给用户域 {@link CurrentUserPermissionPolicy}，
+ * 以复用登录上下文、数据范围和业务域权限入口的同一套角色编码规范化规则。</p>
  *
  * @see com.colonel.saas.annotation.RequireRoles 标注此注解的 Controller 方法/类会被此切面鉴权
  * @see com.colonel.saas.constant.RoleCodes 系统角色编码常量定义
@@ -63,6 +59,12 @@ import java.util.Set;
 @Aspect
 @Component
 public class RoleGuardAspect {
+
+    private final CurrentUserPermissionPolicy currentUserPermissionPolicy;
+
+    public RoleGuardAspect(CurrentUserPermissionPolicy currentUserPermissionPolicy) {
+        this.currentUserPermissionPolicy = currentUserPermissionPolicy;
+    }
 
     /**
      * 环绕通知：拦截所有 Controller 方法，在执行前进行角色鉴权。
@@ -86,18 +88,16 @@ public class RoleGuardAspect {
         }
 
         // 第二步：从当前 HTTP 请求中提取用户的角色编码集合
-        Set<String> currentRoles = resolveCurrentRoles();
+        List<String> currentRoles = resolveCurrentRoles();
         // 管理员角色拥有最高权限，直接放行，无需匹配具体角色列表
-        if (currentRoles.contains(RoleCodes.ADMIN)) {
+        if (currentUserPermissionPolicy.hasAnyRole(currentRoles, RoleCodes.ADMIN)) {
             return point.proceed();
         }
 
         // 第三步：遍历注解声明的角色列表，检查当前用户是否拥有匹配的角色
         // 只要有一个角色匹配即视为通过鉴权
-        for (String role : requireRoles.value()) {
-            if (currentRoles.contains(normalize(role))) {
-                return point.proceed();
-            }
+        if (currentUserPermissionPolicy.hasAnyRole(currentRoles, requireRoles.value())) {
+            return point.proceed();
         }
 
         // 所有角色均不匹配，抛出 403 无权限异常
@@ -142,60 +142,17 @@ public class RoleGuardAspect {
      *   <li><strong>String 类型</strong>（如 {@code "OPERATOR,VIEWER"}）：按逗号拆分后逐个规范化后加入集合</li>
      * </ul>
      *
-     * @return 当前用户的角色编码集合（全部已规范化为小写）；非 HTTP 环境或无角色信息时返回空集合（永不返回 null）
+     * @return 当前用户的角色编码集合（全部已按用户域权限策略规范化）；非 HTTP 环境或无角色信息时返回空集合（永不返回 null）
      */
-    private Set<String> resolveCurrentRoles() {
+    private List<String> resolveCurrentRoles() {
         // 从 Spring 的 RequestContextHolder 获取当前请求的属性
         // 若不在 HTTP 请求上下文中，返回空集合
         RequestAttributes attributes = RequestContextHolder.getRequestAttributes();
         if (!(attributes instanceof ServletRequestAttributes servletAttrs)) {
-            return Set.of();
+            return List.of();
         }
         HttpServletRequest request = servletAttrs.getRequest();
         // 从 request attribute 中获取 roleCodes，由上游认证拦截器写入
-        Object raw = request.getAttribute("roleCodes");
-        if (raw == null) {
-            return Set.of();
-        }
-
-        Set<String> roles = new HashSet<>();
-        // 处理 Collection 类型的角色编码（如 List<String>、Set<String>）
-        if (raw instanceof Collection<?> collection) {
-            for (Object value : collection) {
-                String normalized = normalize(Objects.toString(value, ""));
-                if (!normalized.isBlank()) {
-                    roles.add(normalized);
-                }
-            }
-            return roles;
-        }
-        // 处理逗号分隔的字符串类型角色编码（如 "OPERATOR,VIEWER"）
-        String text = Objects.toString(raw, "");
-        if (text.isBlank()) {
-            return Set.of();
-        }
-        Arrays.stream(text.split(","))
-                .map(this::normalize)
-                .filter(item -> !item.isBlank())
-                .forEach(roles::add);
-        return roles;
-    }
-
-    /**
-     * 规范化角色编码字符串，实现大小写不敏感的健壮匹配。
-     *
-     * <p>对角色编码执行以下规范化操作：</p>
-     * <ol>
-     *   <li>null 值转为空字符串</li>
-     *   <li>去除前后空白字符（{@code trim()}）</li>
-     *   <li>统一转为小写（{@code toLowerCase(Locale.ROOT)}，使用 ROOT Locale 避免特定语言环境的大小写异常）</li>
-     * </ol>
-     *
-     * @param roleCode 原始角色编码，可能为 null 或包含前后空格/大小写混用
-     * @return 规范化后的小写角色编码字符串；输入为 null 时返回空字符串
-     */
-    private String normalize(String roleCode) {
-        return roleCode == null ? "" : roleCode.trim().toLowerCase(Locale.ROOT);
+        return currentUserPermissionPolicy.normalizeRoleCodes(request.getAttribute("roleCodes"));
     }
 }
-

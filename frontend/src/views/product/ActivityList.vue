@@ -187,6 +187,7 @@ import {
   batchSyncActivityProducts,
   formatActivityProductSyncMessage
 } from './activity-sync'
+import { buildActivityProductListRoute } from './product-page-data-source'
 
 const ACTIVITY_TABLE_SCROLL_X = 2030
 const ACTIVITY_PAGE_SIZE_OPTIONS = [10, 20, 50] as const
@@ -408,12 +409,10 @@ const columns = computed(() => [
             onClick: () => {
               const id = String(row.activityId ?? '').trim()
               if (!id) {
-                message.warning('活动 ID 无效，无法进入商品库')
+                message.warning('活动 ID 无效，无法进入商品列表')
                 return
               }
-              // V1 统一入口契约：活动列表 → 商品库，使用 query 参数而非 path param
-              // 与 /product/library?activityId=... 一致，便于收藏、刷新与权限审计
-              router.push({ path: '/product/library', query: { activityId: id } })
+              router.push(buildActivityProductListRoute(id))
             }
           },
           { default: () => '商品信息' }
@@ -684,6 +683,11 @@ const handleBatchAction = (key: string) => {
 }
 
 const loadInstitutionName = async () => {
+  if (!isAdminUser.value) {
+    institutionName.value = ''
+    return
+  }
+
   try {
     const res = await getDouyinInstitutionInfo()
     institutionName.value = extractInstitutionName(res)

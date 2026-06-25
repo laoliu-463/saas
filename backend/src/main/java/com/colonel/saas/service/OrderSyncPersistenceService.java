@@ -1,22 +1,25 @@
 package com.colonel.saas.service;
 
 import com.colonel.saas.common.exception.OptimisticLockSupport;
+import com.colonel.saas.config.DddRefactorProperties;
+import com.colonel.saas.domain.order.application.OrderAmountMappingRouter;
+import com.colonel.saas.domain.order.event.OrderDomainEventPublisher;
+import com.colonel.saas.domain.order.event.OrderEventPayloadMapper;
+import com.colonel.saas.domain.order.event.OrderStatusChangedEvent;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.event.OrderSyncedEvent;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.mapper.OrderSyncDedupClaimMapper;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
 
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -27,9 +30,11 @@ import java.util.UUID;
 @Service
 public class OrderSyncPersistenceService {
 
-    /** 同步来源：6468 instituteOrderColonel，负责事实/预估轨。 */
+    /** 同步来源：6468 instituteOrderColonel，主订单事实 + 预估轨 + 已结算普通单结算轨。 */
     public static final String SYNC_SOURCE_INSTITUTE = "INSTITUTE";
-    /** 同步来源：2704 colonelMultiSettlementOrders，负责结算/有效轨。 */
+    /** 同步来源：1603 instituteOrderColonel 结算口径，默认结算写库主链路。 */
+    public static final String SYNC_SOURCE_INSTITUTE_SETTLEMENT = "INSTITUTE_SETTLEMENT";
+    /** 同步来源：2704 colonelMultiSettlementOrders，分次结算补充源（非主入库、非结算轨唯一来源）。 */
     public static final String SYNC_SOURCE_SETTLEMENT = "SETTLEMENT";
 
     /** 订单表 Mapper，提供按 orderId 查询、乐观锁更新和幂等插入能力 */
@@ -46,8 +51,14 @@ public class OrderSyncPersistenceService {
     private final OperationLogService operationLogService;
     /** 用户域门面，提供用户名称查询能力（DDD-USER-002 替代 SysUserMapper） */
     private final UserDomainFacade userDomainFacade;
-    /** Spring 事件发布器，用于发布 OrderSyncedEvent */
-    private final ApplicationEventPublisher eventPublisher;
+    /** 订单金额映射路由（DDD-ORDER-002） */
+    private final OrderAmountMappingRouter orderAmountMappingRouter;
+    /** 订单域事件发布器（DDD-ORDER-005 / OUTBOX-001） */
+    private final OrderDomainEventPublisher orderDomainEventPublisher;
+    /** 订单事件载荷映射（DDD-ORDER-005） */
+    private final OrderEventPayloadMapper orderEventPayloadMapper;
+    /** DDD 重构安全开关（DDD-SAMPLE-004 寄样交作业事件驱动） */
+    private final DddRefactorProperties dddRefactorProperties;
 
     public OrderSyncPersistenceService(
             ColonelsettlementOrderMapper orderMapper,
@@ -57,7 +68,10 @@ public class OrderSyncPersistenceService {
             SampleLifecycleService sampleLifecycleService,
             OperationLogService operationLogService,
             UserDomainFacade userDomainFacade,
-            ApplicationEventPublisher eventPublisher) {
+            OrderAmountMappingRouter orderAmountMappingRouter,
+            OrderDomainEventPublisher orderDomainEventPublisher,
+            OrderEventPayloadMapper orderEventPayloadMapper,
+            DddRefactorProperties dddRefactorProperties) {
         this.orderMapper = orderMapper;
         this.orderSyncDedupClaimMapper = orderSyncDedupClaimMapper;
         this.pickSourceMappingService = pickSourceMappingService;
@@ -65,7 +79,10 @@ public class OrderSyncPersistenceService {
         this.sampleLifecycleService = sampleLifecycleService;
         this.operationLogService = operationLogService;
         this.userDomainFacade = userDomainFacade;
-        this.eventPublisher = eventPublisher;
+        this.orderAmountMappingRouter = orderAmountMappingRouter;
+        this.orderDomainEventPublisher = orderDomainEventPublisher;
+        this.orderEventPayloadMapper = orderEventPayloadMapper;
+        this.dddRefactorProperties = dddRefactorProperties;
     }
 
     /** 根据用户 ID 查询真实姓名，不存在时返回 null（DDD-USER-002 委派 UserDomainFacade）。 */
@@ -106,13 +123,14 @@ public class OrderSyncPersistenceService {
         ColonelsettlementOrder existing = orderMapper.findByOrderId(order.getOrderId());
         if (existing != null) {
             orderSyncDedupClaimMapper.bindOrderRow(order.getOrderId(), existing.getId());
+            Integer previousStatus = existing.getOrderStatus();
             mergeBySource(existing, order);
             order.setId(existing.getId());
             order.setCreateTime(existing.getCreateTime());
             order.setVersion(existing.getVersion());
             OptimisticLockSupport.requireUpdated(orderMapper.updateSyncedById(order));
             runAttributionFollowUps(order);
-            publishOrderSynced(order, false);
+            publishOrderSynced(order, false, previousStatus);
             return false;
         }
         if (claimEffect <= 0) {
@@ -125,81 +143,105 @@ public class OrderSyncPersistenceService {
                 return false;
             }
             orderSyncDedupClaimMapper.bindOrderRow(order.getOrderId(), existing.getId());
+            Integer previousStatus = existing.getOrderStatus();
             mergeBySource(existing, order);
             order.setId(existing.getId());
             order.setCreateTime(existing.getCreateTime());
             order.setVersion(existing.getVersion());
             OptimisticLockSupport.requireUpdated(orderMapper.updateSyncedById(order));
             runAttributionFollowUps(order);
-            publishOrderSynced(order, false);
+            publishOrderSynced(order, false, previousStatus);
             return false;
         }
         runAttributionFollowUps(order);
-        publishOrderSynced(order, true);
+        publishOrderSynced(order, true, null);
         return true;
     }
 
-    /** 根据同步来源保护对方轨道，避免 6468/2704 互相覆盖不属于自己的字段。 */
+    /**
+     * 根据同步来源保护对方轨道：6468 空结算字段不覆盖已有结算轨；2704 不覆盖预估轨。
+     * 2704 fetched=0 或 orders=[] 时不触发本合并。
+     */
     private void mergeBySource(ColonelsettlementOrder existing, ColonelsettlementOrder incoming) {
         if (SYNC_SOURCE_INSTITUTE.equals(incoming.getSyncSource())) {
-            OrderDualTrackAmountResolver.mergeSettlementSnapshot(existing, incoming);
+            orderAmountMappingRouter.mergeSettlementSnapshot(existing, incoming);
             return;
         }
-        OrderDualTrackAmountResolver.mergeEstimateSnapshot(existing, incoming);
+        if (SYNC_SOURCE_INSTITUTE_SETTLEMENT.equals(incoming.getSyncSource())) {
+            boolean explicitSettlementTechFee = hasExplicitSettlementTechFee(incoming);
+            Long incomingEffectiveTechFee = incoming.getEffectiveTechServiceFee();
+            orderAmountMappingRouter.mergeEstimateSnapshot(existing, incoming);
+            orderAmountMappingRouter.mergeSettlementSnapshot(existing, incoming);
+            if (explicitSettlementTechFee) {
+                long effectiveTechFee = incomingEffectiveTechFee == null ? 0L : Math.max(incomingEffectiveTechFee, 0L);
+                incoming.setEffectiveTechServiceFee(effectiveTechFee);
+                incoming.setSettleColonelTechServiceFee(effectiveTechFee > 0L ? effectiveTechFee : null);
+            }
+            return;
+        }
+        orderAmountMappingRouter.mergeEstimateSnapshot(existing, incoming);
+        orderAmountMappingRouter.mergeSettlementSnapshot(existing, incoming);
+    }
+
+    private static boolean hasExplicitSettlementTechFee(ColonelsettlementOrder incoming) {
+        if (incoming == null) {
+            return false;
+        }
+        Map<String, Object> raw = incoming.getExtraData();
+        return containsAny(raw, Set.of(
+                "settled_tech_service_fee",
+                "settledTechServiceFee",
+                "real_tech_service_fee",
+                "realTechServiceFee"))
+                || containsAny(asObjectMap(raw == null ? null : raw.get("colonel_order_info")), Set.of(
+                "settled_tech_service_fee",
+                "settledTechServiceFee",
+                "real_tech_service_fee",
+                "realTechServiceFee"))
+                || containsAny(asObjectMap(raw == null ? null : raw.get("colonelOrderInfo")), Set.of(
+                "settled_tech_service_fee",
+                "settledTechServiceFee",
+                "real_tech_service_fee",
+                "realTechServiceFee"));
+    }
+
+    private static boolean containsAny(Map<String, Object> source, Set<String> keys) {
+        if (source == null || keys == null) {
+            return false;
+        }
+        for (String key : keys) {
+            if (source.containsKey(key)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static Map<String, Object> asObjectMap(Object value) {
+        if (!(value instanceof Map<?, ?> map)) {
+            return null;
+        }
+        java.util.LinkedHashMap<String, Object> result = new java.util.LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : map.entrySet()) {
+            if (entry.getKey() instanceof String key) {
+                result.put(key, entry.getValue());
+            }
+        }
+        return result;
     }
 
     /** 发布订单同步完成事件，将订单的金额快照和归因信息通知下游消费者。 */
-    private void publishOrderSynced(ColonelsettlementOrder order, boolean newlyInserted) {
-        if (order == null || eventPublisher == null) {
+    private void publishOrderSynced(ColonelsettlementOrder order, boolean newlyInserted, Integer previousStatus) {
+        if (order == null || orderDomainEventPublisher == null) {
             return;
         }
-        OrderSyncedEvent event = new OrderSyncedEvent(
-                order.getOrderId(),
-                order.getId(),
-                newlyInserted,
-                order.getAttributionStatus(),
-                order.getOrderAmount() == null ? 0L : order.getOrderAmount(),
-                order.getOrderAmount() == null ? 0L : order.getOrderAmount(),
-                order.getSettleAmount() == null ? 0L : order.getSettleAmount(),
-                order.getEstimateServiceFee() == null ? 0L : order.getEstimateServiceFee(),
-                order.getEffectiveServiceFee() == null ? 0L : order.getEffectiveServiceFee(),
-                order.getEstimateTechServiceFee() == null ? 0L : order.getEstimateTechServiceFee(),
-                order.getEffectiveTechServiceFee() == null ? 0L : order.getEffectiveTechServiceFee(),
-                order.getSettleColonelCommission() == null ? 0L : order.getSettleColonelCommission(),
-                order.getSettleColonelTechServiceFee() == null ? 0L : order.getSettleColonelTechServiceFee(),
-                order.getSettleSecondColonelCommission() == null ? 0L : order.getSettleSecondColonelCommission(),
-                order.getOrderStatus(),
-                order.getCreateTime(),
-                resolveTalentUid(order.getExtraData()),
-                order.getExtraData());
-        publishAfterCommit(event);
-    }
-
-    private void publishAfterCommit(OrderSyncedEvent event) {
-        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
-            eventPublisher.publishEvent(event);
-            return;
+        OrderSyncedEvent event = orderEventPayloadMapper.toOrderSyncedEvent(order, newlyInserted);
+        orderDomainEventPublisher.publishOrderSynced(event);
+        if (!newlyInserted && previousStatus != null && !previousStatus.equals(order.getOrderStatus())) {
+            OrderStatusChangedEvent statusEvent = orderEventPayloadMapper.toOrderStatusChangedEvent(
+                    order, previousStatus, newlyInserted);
+            orderDomainEventPublisher.publishOrderStatusChangedDirect(statusEvent);
         }
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override
-            public void afterCommit() {
-                eventPublisher.publishEvent(event);
-            }
-        });
-    }
-
-    /** 从 extraData 中按优先级尝试解析达人 UID，兼容多种上游字段命名。 */
-    private String resolveTalentUid(Map<String, Object> extraData) {
-        if (extraData == null || extraData.isEmpty()) {
-            return null;
-        }
-        for (String key : List.of("author_id", "talent_uid", "talentUid", "authorId", "talent_id")) {
-            Object value = extraData.get(key);
-            if (value != null && StringUtils.hasText(value.toString())) {
-                return value.toString().trim();
-            }
-        }
-        return null;
     }
 
     /** 依次执行归因后置步骤：补齐推广映射、沉淀商家、完成寄样作业，每步记录操作日志。 */
@@ -210,8 +252,16 @@ public class OrderSyncPersistenceService {
         merchantService.ensureMerchantFromOrder(order);
         recordAttributionFollowUp(order, "沉淀商家", "ensureMerchantFromOrder");
 
-        sampleLifecycleService.completePendingHomeworkByOrder(order);
-        recordAttributionFollowUp(order, "完成寄样作业", "completePendingHomeworkByOrder");
+        if (!isSampleHomeworkEventDriven()) {
+            sampleLifecycleService.completePendingHomeworkByOrder(order);
+            recordAttributionFollowUp(order, "完成寄样作业", "completePendingHomeworkByOrder");
+        }
+    }
+
+    /** DDD-SAMPLE-004：寄样交作业改由 {@link OrderSyncedEvent} 异步驱动。 */
+    private boolean isSampleHomeworkEventDriven() {
+        return dddRefactorProperties.isEnabled()
+                && dddRefactorProperties.getSampleHomeworkEvent().isEnabled();
     }
 
     /** 记录单次归因后置步骤的操作日志，便于问题排查和执行轨迹追踪。 */

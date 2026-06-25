@@ -19,7 +19,7 @@ class ProductServiceColonelBuyinIdTest {
     private static final String LONG_BUYIN_ID = "46128341673481000";
 
     @Mock
-    private com.colonel.saas.gateway.douyin.DouyinPromotionGateway douyinPromotionGateway;
+    private com.colonel.saas.domain.product.application.port.DouyinConvertPort douyinConvertPort;
     @Mock
     private com.colonel.saas.gateway.douyin.DouyinProductGateway douyinProductGateway;
     @Mock
@@ -35,7 +35,7 @@ class ProductServiceColonelBuyinIdTest {
     @Mock
     private com.colonel.saas.mapper.MerchantMapper merchantMapper;
     @Mock
-    private com.colonel.saas.mapper.SysUserMapper sysUserMapper;
+    private com.colonel.saas.domain.user.facade.UserDomainFacade userDomainFacade;
     @Mock
     private PickSourceMappingService pickSourceMappingService;
     @Mock
@@ -47,20 +47,22 @@ class ProductServiceColonelBuyinIdTest {
     @Mock
     private com.colonel.saas.gateway.douyin.DouyinActivityGateway douyinActivityGateway;
     @Mock
-    private BusinessRuleConfigService businessRuleConfigService;
+    private com.colonel.saas.domain.config.facade.ConfigDomainFacade configDomainFacade;
     @Mock
     private ProductDisplayRuleService productDisplayRuleService;
     @Mock
     private ColonelPartnerSyncService colonelPartnerSyncService;
     @Mock
     private ProductDomainEventPublisher productDomainEventPublisher;
+    @Mock
+    private com.colonel.saas.domain.product.application.CopyPromotionApplicationService copyPromotionApplicationService;
 
     private ProductService productService;
 
     @BeforeEach
     void setUp() {
         productService = new ProductService(
-                douyinPromotionGateway,
+                douyinConvertPort,
                 douyinProductGateway,
                 snapshotMapper,
                 operationStateMapper,
@@ -68,17 +70,19 @@ class ProductServiceColonelBuyinIdTest {
                 promotionLinkMapper,
                 orderMapper,
                 merchantMapper,
-                sysUserMapper,
+                userDomainFacade,
                 pickSourceMappingService,
                 productBizStatusService,
                 colonelActivityMapper,
                 talentFollowService,
                 douyinActivityGateway,
                 new PromotionLinkIdempotencyService(new com.fasterxml.jackson.databind.ObjectMapper()),
-                businessRuleConfigService,
+                configDomainFacade,
                 productDisplayRuleService,
                 colonelPartnerSyncService,
-                productDomainEventPublisher
+                productDomainEventPublisher,
+                new com.colonel.saas.domain.product.policy.ProductDisplayPolicy(),
+                copyPromotionApplicationService
         );
     }
 

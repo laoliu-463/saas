@@ -641,7 +641,10 @@ CREATE TABLE IF NOT EXISTS system_config (
     update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     create_by UUID,
     update_by UUID,
-    remark VARCHAR(500)
+    remark VARCHAR(500),
+    config_version INT NOT NULL DEFAULT 1,
+    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    visible_in_rule_center BOOLEAN NOT NULL DEFAULT TRUE
 );
 
 CREATE TABLE IF NOT EXISTS commissions (

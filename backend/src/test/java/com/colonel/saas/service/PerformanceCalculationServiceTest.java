@@ -1,5 +1,7 @@
 package com.colonel.saas.service;
 
+import com.colonel.saas.config.SystemConfigKeys;
+import com.colonel.saas.domain.config.facade.ConfigDomainFacade;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.PerformanceRecord;
 import com.colonel.saas.mapper.PerformanceRecordMapper;
@@ -9,10 +11,10 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.UUID;
 import java.time.LocalDateTime;
+import java.math.BigDecimal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -27,7 +29,7 @@ class PerformanceCalculationServiceTest {
     @Mock
     private PerformanceRecordMapper performanceRecordMapper;
     @Mock
-    private JdbcTemplate jdbcTemplate;
+    private ConfigDomainFacade configDomainFacade;
     @Mock
     private CommissionRuleService commissionRuleService;
 
@@ -37,18 +39,22 @@ class PerformanceCalculationServiceTest {
     void setUp() {
         service = new PerformanceCalculationService(
                 performanceRecordMapper,
-                new CommissionService(jdbcTemplate, commissionRuleService, null));
+                new CommissionService(configDomainFacade, commissionRuleService, null));
         lenient().when(commissionRuleService.resolveRatio(any(), any(), any())).thenReturn(null);
-        lenient().when(jdbcTemplate.query(
-                        anyString(),
-                        org.mockito.ArgumentMatchers.<org.springframework.jdbc.core.ResultSetExtractor<String>>any(),
-                        anyString()))
+        lenient().when(configDomainFacade.getDecimal(SystemConfigKeys.COMMISSION_BUSINESS_DEFAULT_RATIO, new BigDecimal("0.15")))
+                .thenReturn(new BigDecimal("0.10"));
+        lenient().when(configDomainFacade.getDecimal(SystemConfigKeys.COMMISSION_CHANNEL_DEFAULT_RATIO, new BigDecimal("0.15")))
+                .thenReturn(new BigDecimal("0.20"));
+        lenient().when(configDomainFacade.getConfig(anyString()))
                 .thenAnswer(invocation -> {
-                    String key = invocation.getArgument(2);
+                    String key = invocation.getArgument(0);
                     if (key != null && key.contains("business")) {
                         return "0.10";
                     }
-                    return "0.20";
+                    if (key != null && key.contains("channel")) {
+                        return "0.20";
+                    }
+                    return null;
                 });
     }
 
@@ -201,5 +207,99 @@ class PerformanceCalculationServiceTest {
         assertThat(record.getRecruiterAttribution()).isEqualTo("activity_owner");
         assertThat(record.getValid()).isTrue();
         assertThat(record.getReversed()).isFalse();
+    }
+
+    @Test
+    void upsertFromOrder_shouldUseCustomRatioFromCommissionRuleService() {
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setId(UUID.randomUUID());
+        order.setOrderId("ORD-CUSTOM-RATIO");
+        order.setActivityId("ACT-CUSTOM");
+        order.setOrderAmount(10000L);
+        order.setSettleAmount(10000L);
+        order.setEstimateServiceFee(1000L);
+        order.setEffectiveServiceFee(1000L);
+        order.setOrderStatus(1);
+
+        when(performanceRecordMapper.findByOrderId("ORD-CUSTOM-RATIO")).thenReturn(null);
+        when(performanceRecordMapper.upsert(any())).thenReturn(1);
+
+        // Mock custom ratios
+        when(commissionRuleService.resolveRatio(
+                org.mockito.ArgumentMatchers.eq(CommissionRuleService.TYPE_RECRUITER),
+                any(),
+                any()))
+                .thenReturn(new BigDecimal("0.25"));
+        when(commissionRuleService.resolveRatio(
+                org.mockito.ArgumentMatchers.eq(CommissionRuleService.TYPE_CHANNEL),
+                any(),
+                any()))
+                .thenReturn(new BigDecimal("0.35"));
+
+        PerformanceRecord saved = service.upsertFromOrder(order);
+
+        assertThat(saved).isNotNull();
+        // Base profit = 1000L (EstimateServiceFee)
+        // Recruiter commission = 1000L * 0.25 = 250L
+        // Channel commission = 1000L * 0.35 = 350L
+        assertThat(saved.getEstimateRecruiterCommission()).isEqualTo(250L);
+        assertThat(saved.getEstimateChannelCommission()).isEqualTo(350L);
+        assertThat(saved.getRecruiterCommissionRate()).isEqualTo(new BigDecimal("0.25"));
+        assertThat(saved.getChannelCommissionRate()).isEqualTo(new BigDecimal("0.35"));
+    }
+
+    @Test
+    void upsertFromOrder_shouldHandleAttributionCorrectlyWhenUserIdsMissing() {
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setId(UUID.randomUUID());
+        order.setOrderId("ORD-NO-ATTRIBUTION");
+        order.setEstimateServiceFee(1000L);
+        order.setOrderStatus(1);
+        // Missing channelUserId and colonelUserId/userId
+        order.setChannelUserId(null);
+        order.setColonelUserId(null);
+        order.setUserId(null);
+
+        when(performanceRecordMapper.findByOrderId("ORD-NO-ATTRIBUTION")).thenReturn(null);
+        when(performanceRecordMapper.upsert(any())).thenReturn(1);
+
+        PerformanceRecord saved = service.upsertFromOrder(order);
+
+        assertThat(saved).isNotNull();
+        assertThat(saved.getDefaultChannelUserId()).isNull();
+        assertThat(saved.getDefaultRecruiterUserId()).isNull();
+        assertThat(saved.getChannelAttribution()).isEqualTo("unattributed");
+        assertThat(saved.getRecruiterAttribution()).isEqualTo("unattributed");
+    }
+
+    @Test
+    void upsertFromOrder_shouldCorrectlyMapServiceFeeExpensesOnBothTracks() {
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setId(UUID.randomUUID());
+        order.setOrderId("ORD-EXPENSES");
+        order.setEstimateServiceFee(1000L);
+        order.setEstimateTechServiceFee(100L);
+        order.setEstimateServiceFeeExpense(150L);
+        
+        order.setEffectiveServiceFee(800L);
+        order.setEffectiveTechServiceFee(80L);
+        order.setEffectiveServiceFeeExpense(120L);
+        order.setOrderStatus(1);
+
+        when(performanceRecordMapper.findByOrderId("ORD-EXPENSES")).thenReturn(null);
+        when(performanceRecordMapper.upsert(any())).thenReturn(1);
+
+        PerformanceRecord saved = service.upsertFromOrder(order);
+
+        assertThat(saved).isNotNull();
+        // Check mapping
+        assertThat(saved.getEstimateServiceFeeExpense()).isEqualTo(150L);
+        assertThat(saved.getEffectiveServiceFeeExpense()).isEqualTo(120L);
+        
+        // Net profit calculation
+        // Estimate Net = 1000 - 100 - 150 = 750L
+        // Effective Net = 800 - 120 = 680L (as effective tech fee is not deducted again)
+        assertThat(saved.getEstimateServiceProfit()).isEqualTo(750L);
+        assertThat(saved.getEffectiveServiceProfit()).isEqualTo(680L);
     }
 }

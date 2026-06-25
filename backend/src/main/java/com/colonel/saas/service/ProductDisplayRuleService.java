@@ -7,6 +7,9 @@ import com.colonel.saas.constant.ProductDisplayStatus;
 import com.colonel.saas.service.display.DisplayRuleOperatorContext;
 import com.colonel.saas.service.display.ProductDisplayAuditService;
 import com.colonel.saas.domain.product.event.ProductDomainEventPublisher;
+import com.colonel.saas.domain.product.policy.ProductDisplayPolicy;
+import com.colonel.saas.domain.product.policy.ProductDisplayPolicyResult;
+import com.colonel.saas.domain.product.policy.ProductDisplayRelationInput;
 import com.colonel.saas.entity.ColonelsettlementActivity;
 import com.colonel.saas.entity.ProductOperationState;
 import com.colonel.saas.entity.ProductSnapshot;
@@ -26,7 +29,6 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -122,7 +124,7 @@ public class ProductDisplayRuleService {
     /** 商品推广中状态码（snapshot.status == 1 表示商品正在推广） */
     private static final int PROMOTING_STATUS = 1;
     private static final int DEFAULT_REPAIR_LIMIT = 1000;
-    private static final int MAX_REPAIR_LIMIT = 10000;
+    private static final int MAX_REPAIR_LIMIT = 50000;
     private static final String AUTO_LIBRARY_REPAIR_REMARK = "上游状态为推广中，系统自动入库展示";
 
     /** JSON 序列化/反序列化工具，用于解析审核附加数据 payload */
@@ -147,6 +149,8 @@ public class ProductDisplayRuleService {
     private final ProductDomainEventPublisher productDomainEventPublisher;
     /** 展示审计日志服务（记录展示切换事件，用于合规追溯） */
     private final ProductDisplayAuditService productDisplayAuditService;
+    /** 商品展示去重纯策略（DDD-PRODUCT-002） */
+    private final ProductDisplayPolicy productDisplayPolicy;
 
     /**
      * 构造注入所有依赖。
@@ -157,6 +161,7 @@ public class ProductDisplayRuleService {
      * @param colonelActivityMapper     团长结算活动 Mapper
      * @param productDomainEventPublisher 商品领域事件发布器
      * @param productDisplayAuditService  展示审计日志服务
+     * @param productDisplayPolicy        商品展示去重策略
      */
     public ProductDisplayRuleService(
             ProductOperationStateMapper operationStateMapper,
@@ -164,13 +169,15 @@ public class ProductDisplayRuleService {
             ProductBizStatusService productBizStatusService,
             ColonelsettlementActivityMapper colonelActivityMapper,
             ProductDomainEventPublisher productDomainEventPublisher,
-            ProductDisplayAuditService productDisplayAuditService) {
+            ProductDisplayAuditService productDisplayAuditService,
+            ProductDisplayPolicy productDisplayPolicy) {
         this.operationStateMapper = operationStateMapper;
         this.snapshotMapper = snapshotMapper;
         this.productBizStatusService = productBizStatusService;
         this.colonelActivityMapper = colonelActivityMapper;
         this.productDomainEventPublisher = productDomainEventPublisher;
         this.productDisplayAuditService = productDisplayAuditService;
+        this.productDisplayPolicy = productDisplayPolicy;
     }
 
     /**
@@ -200,11 +207,12 @@ public class ProductDisplayRuleService {
         if (!StringUtils.hasText(productId)) {
             return;
         }
-        /* 查询该商品下所有运营状态，按创建时间排序（先创建的优先考虑） */
+        /* 查询该商品下所有运营状态，保留创建时间优先语义，并用主键补稳定排序 */
         List<ProductOperationState> states = operationStateMapper.selectList(
                 new LambdaQueryWrapper<ProductOperationState>()
                         .eq(ProductOperationState::getProductId, productId.trim())
-                        .orderByAsc(ProductOperationState::getCreateTime));
+                        .orderByAsc(ProductOperationState::getCreateTime)
+                        .orderByAsc(ProductOperationState::getId));
         if (states.isEmpty()) {
             return;
         }
@@ -245,7 +253,9 @@ public class ProductDisplayRuleService {
         List<ProductOperationState> states = operationStateMapper.selectList(
                 new LambdaQueryWrapper<ProductOperationState>()
                         .eq(ProductOperationState::getActivityId, normalizedActivityId)
-                        .eq(ProductOperationState::getSelectedToLibrary, true));
+                        .eq(ProductOperationState::getSelectedToLibrary, true)
+                        .orderByAsc(ProductOperationState::getProductId)
+                        .orderByAsc(ProductOperationState::getId));
         long queryCostMs = elapsedMs(queryStartedAt);
         long calcStartedAt = System.nanoTime();
         /* 提取去重后的商品 ID 集合（LinkedHashSet 保持插入顺序） */
@@ -362,6 +372,97 @@ public class ProductDisplayRuleService {
                 .orderByAsc(ProductSnapshot::getActivityId)
                 .orderByAsc(ProductSnapshot::getProductId));
         return repairSnapshots(null, snapshots, dryRun);
+    }
+
+    /**
+     * 修复停留在 {@code PENDING} 状态的商品库运营记录（P-FIX-002E）。
+     * <p>
+     * 适用场景：当一条 {@code product_operation_state} 记录的展示状态因历史断链、
+     * 同步失败或状态机漂移等原因停留在 {@code PENDING} 时，本方法按下列规则逐条
+     * 重新判定：
+     * </p>
+     * <ul>
+     *   <li>如果对应的 {@code product_snapshot} 上游推广中（{@code status=1}）且未
+     *       本地暂停、推广期未结束：补齐 {@code selected_to_library=true}、
+     *       {@code audit_status=2}、{@code biz_status=APPROVED}；展示状态保持
+     *       {@code PENDING}，由后续 {@link #applyForProductId} 走展示去重决策
+     *       选为 {@code DISPLAYING} 或降级。</li>
+     *   <li>如果上游不再推广中（{@code status!=1}）或活动已结束：展示状态切换为
+     *       {@code HIDDEN}，并写入对应的隐藏原因（{@code UPSTREAM_NOT_PROMOTING}
+     *       或 {@code ACTIVITY_EXPIRED}）。</li>
+     *   <li>如果本地已 {@code manual_disabled=true}：展示状态切换为
+     *       {@code HIDDEN}，隐藏原因 {@code LOCAL_PAUSED}。</li>
+     * </ul>
+     * <p>
+     * 本方法在 {@code dryRun=true} 时仅返回差异，不会写入任何数据；在
+     * {@code dryRun=false} 时按 {@link #applyRepairDecision} 的结果逐条
+     * {@code updateById}。由于每次写入前都会比较新旧状态，重复执行本方法对已修复
+     * 的记录是幂等的。
+     * </p>
+     * <p>
+     * 性能说明：仅查询 {@code display_status='PENDING'} 的运营状态（按活动 ID +
+     * 商品 ID 升序以保证 deterministic），不依赖全表扫描。{@code limit} 上限为
+     * {@value #MAX_REPAIR_LIMIT}。
+     * </p>
+     *
+     * @param dryRun 是否仅返回预期差异而不写入
+     * @param limit  本次处理的最大 PENDING 记录数（≤0 使用默认
+     *               {@value #DEFAULT_REPAIR_LIMIT}，超过上限时截断）
+     * @return repair 差异结果（包含 {@code willSelectToLibrary} / {@code willDisplay}
+     *         / {@code willHideByUpstream} / {@code unchanged} 等统计字段）
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public LibraryRepairResult repairLibraryStateForPendingProducts(boolean dryRun, int limit) {
+        int normalizedLimit = normalizeRepairLimit(limit);
+        List<ProductOperationState> pendingStates = operationStateMapper.selectList(
+                new LambdaQueryWrapper<ProductOperationState>()
+                        .eq(ProductOperationState::getDisplayStatus, ProductDisplayStatus.PENDING.name())
+                        .eq(ProductOperationState::getDeleted, 0)
+                        .orderByAsc(ProductOperationState::getActivityId)
+                        .orderByAsc(ProductOperationState::getProductId)
+                        .last("LIMIT " + normalizedLimit));
+        if (pendingStates.isEmpty()) {
+            return LibraryRepairResult.empty(null, dryRun);
+        }
+        Map<String, ProductSnapshot> snapshotMap = loadSnapshotsForStates(pendingStates);
+        LocalDateTime now = LocalDateTime.now();
+        LibraryRepairAccumulator accumulator = new LibraryRepairAccumulator(null, dryRun);
+
+        for (ProductOperationState state : pendingStates) {
+            ProductSnapshot snapshot = snapshotMap.get(snapshotKey(state.getActivityId(), state.getProductId()));
+            LibraryRepairDecision decision = buildRepairDecision(snapshot, state, now);
+            accumulator.accept(snapshot, state, decision);
+            if (!dryRun && decision.changed()) {
+                applyRepairDecision(state, decision, now);
+                OptimisticLockSupport.requireUpdated(operationStateMapper.updateById(state));
+            }
+        }
+
+        LibraryRepairResult result = accumulator.toResult();
+        log.info("Product library pending repair completed, dryRun={}, scanned={}, willSelectToLibrary={}, willDisplay={}, willHideByUpstream={}, willHideByLocalPaused={}, willHideByLocalRejected={}, unchanged={}",
+                dryRun,
+                result.scanned(),
+                result.willSelectToLibrary(),
+                result.willDisplay(),
+                result.willHideByUpstream(),
+                result.willHideByLocalPaused(),
+                result.willHideByLocalRejected(),
+                result.unchanged());
+        return result;
+    }
+
+    /**
+     * 根据一组运营状态加载对应的商品快照（按 activityId+productId 联合查询）。
+     * <p>
+     * 该方法对 {@link #loadSnapshots(List)}（按 candidate 列表）做了相同语义的封装，
+     * 专供 {@link #repairLibraryStateForPendingProducts} 之类的入口复用。
+     * </p>
+     */
+    private Map<String, ProductSnapshot> loadSnapshotsForStates(List<ProductOperationState> states) {
+        if (states == null || states.isEmpty()) {
+            return Map.of();
+        }
+        return loadSnapshots(states);
     }
 
     @Transactional(readOnly = true)
@@ -646,15 +747,7 @@ public class ProductDisplayRuleService {
      * @return 在保护期内返回 true，否则返回 false
      */
     boolean isInProtectionPeriod(LocalDateTime firstDisplayedAt, Integer monthsOfProtection, LocalDateTime now) {
-        /* 首次展示时间为 null 时，不在保护期内 */
-        if (firstDisplayedAt == null) {
-            return false;
-        }
-        /* 计算保护期结束时间：首次展示时间 + 保护月数 */
-        int months = resolveProtectionMonths(monthsOfProtection);
-        LocalDateTime protectionEnd = firstDisplayedAt.plusMonths(months);
-        /* 当前时间早于保护期结束时间，仍在保护期内 */
-        return now.isBefore(protectionEnd);
+        return productDisplayPolicy.isInProtectionPeriod(firstDisplayedAt, monthsOfProtection, now);
     }
 
     /**
@@ -681,16 +774,9 @@ public class ProductDisplayRuleService {
     }
 
     boolean hasAdvantageOver(DisplayCandidate challenger, DisplayCandidate incumbent) {
-        if (challenger == null || incumbent == null || challenger.state().getId().equals(incumbent.state().getId())) {
-            return false;
-        }
-        if (challenger.commissionRatio().compareTo(incumbent.commissionRatio()) > 0) {
-            return true;
-        }
-        if (challenger.serviceFeeRatio().compareTo(incumbent.serviceFeeRatio()) < 0) {
-            return true;
-        }
-        return challenger.supportsAds() && !incumbent.supportsAds();
+        return productDisplayPolicy.hasAdvantageOver(
+                toRelationInputFromCandidate(challenger),
+                toRelationInputFromCandidate(incumbent));
     }
 
     private void applyForStates(String productId, List<ProductOperationState> states, DisplayRuleOperatorContext operator) {
@@ -713,44 +799,32 @@ public class ProductDisplayRuleService {
             DisplayRuleOperatorContext operator,
             LocalDateTime now,
             UUID oldDisplayRelationId) {
-        List<DisplayCandidate> eligible = new ArrayList<>();
+        List<ProductDisplayRelationInput> relationInputs = new ArrayList<>(states.size());
+        Map<UUID, ProductOperationState> stateById = new java.util.HashMap<>(states.size());
         for (ProductOperationState state : states) {
             ProductSnapshot snapshot = snapshotMap.get(snapshotKey(state.getActivityId(), state.getProductId()));
-            if (isEligibleForDisplay(state, snapshot, now)) {
-                eligible.add(toCandidate(state, snapshot));
-            }
+            relationInputs.add(toRelationInput(state, snapshot));
+            stateById.put(state.getId(), state);
         }
 
+        ProductDisplayPolicyResult policyResult = productDisplayPolicy.decide(relationInputs, now);
         DisplayCandidate currentDisplaying = findCurrentDisplaying(states, snapshotMap, now);
         LocalDateTime productFirstDisplayedAt = resolveProductFirstDisplayedAt(states, currentDisplaying);
-        Integer protectionMonths = resolveProtectionMonthsForCandidate(currentDisplaying, snapshotMap);
-
-        DisplayCandidate winner = selectWinner(eligible, currentDisplaying, productFirstDisplayedAt, protectionMonths, now);
-        String selectedReason = resolveSelectedReason(winner, currentDisplaying, now);
+        String selectedReason = policyResult.selectedRelationId() == null
+                ? null
+                : policyResult.displayReasons().get(policyResult.selectedRelationId());
 
         List<DisplayDecision> decisions = new ArrayList<>();
-        for (ProductOperationState state : states) {
-            ProductSnapshot snapshot = snapshotMap.get(snapshotKey(state.getActivityId(), state.getProductId()));
+        for (ProductDisplayPolicyResult.RelationDisplayOutcome outcome : policyResult.relationOutcomes()) {
+            ProductOperationState state = stateById.get(outcome.relationId());
             ProductDisplayStatus currentStatus = ProductDisplayStatus.fromCode(state.getDisplayStatus());
-            ProductDisplayStatus nextStatus;
-            String hiddenReason = null;
-            String displayReason = null;
-
-            if (!Boolean.TRUE.equals(state.getSelectedToLibrary())) {
-                nextStatus = ProductDisplayStatus.PENDING;
-            } else if (winner != null && state.getId().equals(winner.state().getId())) {
-                nextStatus = ProductDisplayStatus.DISPLAYING;
-                displayReason = selectedReason;
-            } else if (isEligibleForDisplay(state, snapshot, now)) {
-                nextStatus = ProductDisplayStatus.HIDDEN;
-                hiddenReason = resolveReplacedReason(state, winner, currentDisplaying, eligible, snapshotMap, now);
-            } else if (Boolean.TRUE.equals(state.getSelectedToLibrary())) {
-                nextStatus = ProductDisplayStatus.HIDDEN;
-                hiddenReason = resolveIneligibleReason(state, snapshot, now);
-            } else {
-                nextStatus = ProductDisplayStatus.PENDING;
-            }
-            decisions.add(new DisplayDecision(state, currentStatus, nextStatus, hiddenReason, displayReason));
+            ProductDisplayStatus nextStatus = ProductDisplayStatus.valueOf(outcome.nextDisplayStatus());
+            decisions.add(new DisplayDecision(
+                    state,
+                    currentStatus,
+                    nextStatus,
+                    outcome.hiddenReason(),
+                    outcome.displayReason()));
         }
 
         for (DisplayDecision decision : decisions) {
@@ -772,17 +846,12 @@ public class ProductDisplayRuleService {
             }
         }
 
-        UUID newDisplayRelationId = states.stream()
-                .filter(state -> ProductDisplayStatus.DISPLAYING.name().equals(state.getDisplayStatus()))
-                .map(ProductOperationState::getId)
-                .findFirst()
-                .orElse(null);
-        if (!Objects.equals(oldDisplayRelationId, newDisplayRelationId)) {
-            List<UUID> candidateIds = eligible.stream().map(c -> c.state().getId()).toList();
+        if (policyResult.whetherNeedEvent()) {
+            List<UUID> candidateIds = policyResult.eventCandidates();
             productDisplayAuditService.writeAudit(
                     productId,
-                    oldDisplayRelationId,
-                    newDisplayRelationId,
+                    policyResult.previousDisplayRelationId(),
+                    policyResult.selectedRelationId(),
                     candidateIds,
                     "DISPLAY_SWITCH",
                     selectedReason,
@@ -792,8 +861,8 @@ public class ProductDisplayRuleService {
                     Map.of("candidateCount", candidateIds.size()));
             productDomainEventPublisher.publishDisplayRuleApplied(
                     productId,
-                    oldDisplayRelationId,
-                    newDisplayRelationId,
+                    policyResult.previousDisplayRelationId(),
+                    policyResult.selectedRelationId(),
                     DISPLAY_RULE_VERSION,
                     operator.operatorType(),
                     operator.operatorId(),
@@ -801,112 +870,64 @@ public class ProductDisplayRuleService {
         }
     }
 
-    private String resolveSelectedReason(DisplayCandidate winner, DisplayCandidate currentDisplaying, LocalDateTime now) {
-        if (winner == null) {
-            return null;
-        }
-        if (isForceDisplayActive(winner.state(), now)) {
-            return DISPLAY_REASON_FORCE;
-        }
-        if (currentDisplaying != null
-                && !winner.state().getId().equals(currentDisplaying.state().getId())
-                && hasAdvantageOver(winner, currentDisplaying)) {
-            return DISPLAY_REASON_ADVANTAGE;
-        }
-        return DISPLAY_REASON_RULE;
+    private ProductDisplayRelationInput toRelationInput(ProductOperationState state, ProductSnapshot snapshot) {
+        DisplayCandidate candidate = toCandidate(state, snapshot);
+        return new ProductDisplayRelationInput(
+                state.getId(),
+                state.getProductId(),
+                state.getActivityId(),
+                state.getBizStatus(),
+                snapshot == null ? null : snapshot.getStatus(),
+                snapshot == null ? null : parseDateTime(snapshot.getPromotionStartTime()),
+                snapshot == null ? null : parseDateTime(snapshot.getPromotionEndTime()),
+                state.getDisplayStatus(),
+                state.getSelectedAt(),
+                state.getFirstDisplayedAt(),
+                state.getLastDisplayedAt(),
+                candidate.commissionRatio(),
+                candidate.serviceFeeRatio(),
+                candidate.supportsAds(),
+                state.getPinnedAt() != null,
+                state.getPinnedUntil(),
+                null,
+                null,
+                Boolean.TRUE.equals(state.getSelectedToLibrary()),
+                isLocalPaused(state),
+                isLocalRejected(state),
+                Boolean.TRUE.equals(state.getForceDisplay()),
+                state.getForceDisplayUntil(),
+                candidate.shelfTime(),
+                snapshot == null ? null : snapshot.getMonthsOfProtection());
     }
 
-    private boolean isForceDisplayActive(ProductOperationState state, LocalDateTime now) {
-        if (state == null || !Boolean.TRUE.equals(state.getForceDisplay())) {
-            return false;
-        }
-        return state.getForceDisplayUntil() == null || !now.isAfter(state.getForceDisplayUntil());
-    }
-
-    private DisplayCandidate selectWinner(
-            List<DisplayCandidate> eligible,
-            DisplayCandidate currentDisplaying,
-            LocalDateTime productFirstDisplayedAt,
-            Integer protectionMonths,
-            LocalDateTime now) {
-        if (eligible.isEmpty()) {
-            return null;
-        }
-        DisplayCandidate forced = eligible.stream()
-                .filter(candidate -> isForceDisplayActive(candidate.state(), now))
-                .max(this::compareCandidates)
-                .orElse(null);
-        if (forced != null) {
-            return forced;
-        }
-        if (currentDisplaying == null) {
-            return eligible.stream().max(this::compareCandidates).orElse(null);
-        }
-
-        boolean currentEligible = eligible.stream()
-                .anyMatch(candidate -> candidate.state().getId().equals(currentDisplaying.state().getId()));
-
-        if (!currentEligible) {
-            return eligible.stream().max(this::compareCandidates).orElse(null);
-        }
-
-        boolean inProtection = isInProtectionPeriod(productFirstDisplayedAt, protectionMonths, now);
-        if (!inProtection) {
-            return eligible.stream().max(this::compareCandidates).orElse(null);
-        }
-
-        DisplayCandidate advantageWinner = eligible.stream()
-                .filter(candidate -> !candidate.state().getId().equals(currentDisplaying.state().getId()))
-                .filter(candidate -> hasAdvantageOver(candidate, currentDisplaying))
-                .max(this::compareCandidates)
-                .orElse(null);
-        if (advantageWinner != null) {
-            return advantageWinner;
-        }
-        return currentDisplaying;
-    }
-
-    private String resolveReplacedReason(
-            ProductOperationState state,
-            DisplayCandidate winner,
-            DisplayCandidate currentDisplaying,
-            List<DisplayCandidate> eligible,
-            Map<String, ProductSnapshot> snapshotMap,
-            LocalDateTime now) {
-        if (winner == null || currentDisplaying == null) {
-            return HIDDEN_REASON_REPLACED;
-        }
-        if (currentDisplaying.state().getId().equals(state.getId())
-                && winner.state().getId().equals(currentDisplaying.state().getId())) {
-            return HIDDEN_REASON_REPLACED;
-        }
-        if (currentDisplaying.state().getId().equals(state.getId())) {
-            DisplayCandidate replacement = eligible.stream()
-                    .filter(candidate -> candidate.state().getId().equals(winner.state().getId()))
-                    .findFirst()
-                    .orElse(null);
-            if (replacement != null && hasAdvantageOver(replacement, currentDisplaying)) {
-                return HIDDEN_REASON_REPLACED_BY_ADVANTAGE;
-            }
-            return HIDDEN_REASON_REPLACED;
-        }
-        return HIDDEN_REASON_REPLACED;
-    }
-
-    private String resolveIneligibleReason(ProductOperationState state, ProductSnapshot snapshot, LocalDateTime now) {
-        if (snapshot != null && !isLocallyDisplayableSnapshotStatus(snapshot)) {
-            return HIDDEN_REASON_UPSTREAM_NOT_PROMOTING;
-        }
-        if (isLocalPaused(state)) {
-            return HIDDEN_REASON_LOCAL_PAUSED;
-        }
-        if (snapshot != null && isPromotionExpired(snapshot, now)) {
-            return HIDDEN_REASON_ACTIVITY_EXPIRED;
-        }
-        if (isLocalRejected(state)) {
-            return HIDDEN_REASON_LOCAL_REJECTED;
-        }
-        return HIDDEN_REASON_NOT_ELIGIBLE;
+    private ProductDisplayRelationInput toRelationInputFromCandidate(DisplayCandidate candidate) {
+        ProductOperationState state = candidate.state();
+        return new ProductDisplayRelationInput(
+                state.getId(),
+                state.getProductId(),
+                state.getActivityId(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                candidate.commissionRatio(),
+                candidate.serviceFeeRatio(),
+                candidate.supportsAds(),
+                false,
+                null,
+                null,
+                null,
+                true,
+                false,
+                false,
+                false,
+                null,
+                candidate.shelfTime(),
+                null);
     }
 
     private DisplayCandidate findCurrentDisplaying(
@@ -934,29 +955,6 @@ public class ProductDisplayRuleService {
                 .filter(Objects::nonNull)
                 .min(LocalDateTime::compareTo)
                 .orElse(null);
-    }
-
-    private Integer resolveProtectionMonthsForCandidate(
-            DisplayCandidate currentDisplaying,
-            Map<String, ProductSnapshot> snapshotMap) {
-        if (currentDisplaying == null) {
-            return DEFAULT_PROTECTION_MONTHS;
-        }
-        ProductSnapshot snapshot = snapshotMap.get(snapshotKey(
-                currentDisplaying.state().getActivityId(),
-                currentDisplaying.state().getProductId()));
-        return resolveProtectionMonths(snapshot == null ? null : snapshot.getMonthsOfProtection());
-    }
-
-    private int resolveProtectionMonths(Integer monthsOfProtection) {
-        if (monthsOfProtection == null || monthsOfProtection <= 0) {
-            return DEFAULT_PROTECTION_MONTHS;
-        }
-        return monthsOfProtection;
-    }
-
-    private int compareCandidates(DisplayCandidate left, DisplayCandidate right) {
-        return DISPLAY_CANDIDATE_COMPARATOR.compare(left, right);
     }
 
     private void persistDisplayDecision(
@@ -1392,13 +1390,6 @@ public class ProductDisplayRuleService {
 
     private record DisplayRuleActivityStats(long displaying, long hidden) {
     }
-
-    private static final Comparator<DisplayCandidate> DISPLAY_CANDIDATE_COMPARATOR = Comparator
-            .comparing(DisplayCandidate::supportsAds)
-            .thenComparing(DisplayCandidate::commissionRatio)
-            .thenComparing(DisplayCandidate::serviceFeeRatio, Comparator.reverseOrder())
-            .thenComparing(DisplayCandidate::shelfTime, Comparator.nullsLast(Comparator.naturalOrder()))
-            .thenComparing(candidate -> candidate.state().getId().toString());
 
     record DisplayCandidate(
             ProductOperationState state,

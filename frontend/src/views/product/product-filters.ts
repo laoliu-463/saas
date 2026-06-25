@@ -264,6 +264,7 @@ export const allianceStatusToUpstreamStatus: Record<string, number> = {
   promoting: 1,
   rejected: 2,
   terminated: 3,
+  canceled: 4,
   expired: 6
 }
 
@@ -273,7 +274,8 @@ export const allianceStatusOptions = [
   { label: '待审核', value: 'pending_audit' },
   { label: '申请未通过', value: 'rejected' },
   { label: '合作已终止', value: 'terminated' },
-  { label: '合作已过期', value: 'expired' }
+  { label: '合作前取消', value: 'canceled' },
+  { label: '合作已到期', value: 'expired' }
 ]
 
 const parsePercent = (value?: string | number | null) =>
@@ -379,7 +381,8 @@ const allianceStatusKeywords: Record<string, string[]> = {
   pending_audit: ['待审核', '审核中'],
   rejected: ['未通过', '拒绝', '申请未通过'],
   terminated: ['终止', '已终止'],
-  expired: ['过期', '已过期']
+  canceled: ['合作前取消', '取消'],
+  expired: ['到期', '已到期', '过期', '已过期']
 }
 
 export function matchAllianceStatus(item: any, allianceStatus: string | null) {

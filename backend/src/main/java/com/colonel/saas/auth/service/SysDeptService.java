@@ -4,26 +4,15 @@ import com.colonel.saas.auth.dto.DeptMemberPageRequest;
 import com.colonel.saas.auth.dto.SysDeptCreateRequest;
 import com.colonel.saas.auth.dto.SysDeptUpdateRequest;
 import com.baomidou.mybatisplus.core.metadata.IPage;
-import com.colonel.saas.constant.DeptType;
-import com.colonel.saas.constant.RoleCodes;
-import com.colonel.saas.common.exception.BusinessException;
-import com.colonel.saas.common.exception.ForbiddenException;
-import com.colonel.saas.entity.SysDept;
-import com.colonel.saas.mapper.SysDeptMapper;
-import com.colonel.saas.service.OperationLogService;
+import com.colonel.saas.domain.user.application.OrgUnitDirectoryApplicationService;
+import com.colonel.saas.domain.user.application.OrgUnitWriteApplicationService;
 import com.colonel.saas.vo.DeptStatsVO;
 import com.colonel.saas.vo.SysDeptVO;
 import com.colonel.saas.vo.SysUserVO;
 import org.springframework.stereotype.Service;
-import org.springframework.util.StringUtils;
 
-import java.util.ArrayList;
 import java.util.Collection;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -37,47 +26,35 @@ import java.util.UUID;
  *   <li>按父级查询下级业务组（支持按组别类型筛选）</li>
  *   <li>部门统计（成员数、各类型子组数量）</li>
  *   <li>部门/组别 CRUD，含编码唯一性校验和父级校验</li>
- *   <li>删除前通过 OrgStructureService 校验关联约束</li>
+ *   <li>删除前通过用户域组织校验策略校验关联约束</li>
  *   <li>所有变更操作记录审计日志</li>
  * </ul>
  *
  * <p>所属业务领域：用户域 / 组织架构
  *
- * @see com.colonel.saas.auth.service.OrgStructureService
- * @see com.colonel.saas.entity.SysDept
+ * @see com.colonel.saas.domain.user.application.OrgUnitDirectoryApplicationService
+ * @see com.colonel.saas.domain.user.application.OrgUnitWriteApplicationService
  */
 @Service
 public class SysDeptService {
 
-    /** 部门/组别数据访问 */
-    private final SysDeptMapper sysDeptMapper;
+    /** 组织单元目录查询应用服务 */
+    private final OrgUnitDirectoryApplicationService orgUnitDirectoryApplicationService;
 
-    /** 审计日志服务 */
-    private final OperationLogService operationLogService;
-
-    /** 组织架构归属解析服务，用于删除校验和组长角色校验 */
-    private final OrgStructureService orgStructureService;
-
-    /** 用户服务，用于部门成员分页查询 */
-    private final SysUserService sysUserService;
+    /** 组织单元写应用服务 */
+    private final OrgUnitWriteApplicationService orgUnitWriteApplicationService;
 
     /**
      * 构造注入所有依赖项。
      *
-     * @param sysDeptMapper        部门/组别数据访问
-     * @param operationLogService  审计日志服务
-     * @param orgStructureService  组织架构归属解析服务
-     * @param sysUserService       用户服务
+     * @param orgUnitDirectoryApplicationService 组织单元目录查询应用服务
+     * @param orgUnitWriteApplicationService 组织单元写应用服务
      */
     public SysDeptService(
-            SysDeptMapper sysDeptMapper,
-            OperationLogService operationLogService,
-            OrgStructureService orgStructureService,
-            SysUserService sysUserService) {
-        this.sysDeptMapper = sysDeptMapper;
-        this.operationLogService = operationLogService;
-        this.orgStructureService = orgStructureService;
-        this.sysUserService = sysUserService;
+            OrgUnitDirectoryApplicationService orgUnitDirectoryApplicationService,
+            OrgUnitWriteApplicationService orgUnitWriteApplicationService) {
+        this.orgUnitDirectoryApplicationService = orgUnitDirectoryApplicationService;
+        this.orgUnitWriteApplicationService = orgUnitWriteApplicationService;
     }
 
     /**
@@ -89,20 +66,7 @@ public class SysDeptService {
      * @return 树形结构的部门列表（仅包含顶层节点）
      */
     public List<SysDeptVO> findTree() {
-        List<SysDept> depts = sysDeptMapper.findAllActive();
-        Map<UUID, SysDeptVO> index = new LinkedHashMap<>();
-        for (SysDept dept : depts) {
-            index.put(dept.getId(), toVO(dept));
-        }
-        List<SysDeptVO> roots = new ArrayList<>();
-        for (SysDeptVO node : index.values()) {
-            if (node.getParentId() != null && index.containsKey(node.getParentId())) {
-                index.get(node.getParentId()).getChildren().add(node);
-            } else {
-                roots.add(node);
-            }
-        }
-        return roots;
+        return orgUnitDirectoryApplicationService.findTree();
     }
 
     /**
@@ -111,7 +75,7 @@ public class SysDeptService {
      * @return 所有未删除的部门/组别 VO 列表
      */
     public List<SysDeptVO> findAll() {
-        return sysDeptMapper.findAllActive().stream().map(this::toVO).toList();
+        return orgUnitDirectoryApplicationService.findAll();
     }
 
     /**
@@ -123,13 +87,7 @@ public class SysDeptService {
      * @throws BusinessException 父部门不存在时抛出
      */
     public List<SysDeptVO> findGroupsByParent(UUID parentId, String deptType) {
-        requireDept(parentId);
-        return sysDeptMapper.findByParentId(parentId).stream()
-                .filter(dept -> !StringUtils.hasText(deptType)
-                        || DeptType.normalize(deptType).equals(DeptType.normalize(dept.getDeptType())))
-                .filter(dept -> DeptType.isGroup(dept.getDeptType()))
-                .map(this::toVO)
-                .toList();
+        return orgUnitDirectoryApplicationService.findGroupsByParent(parentId, deptType);
     }
 
     /**
@@ -142,19 +100,13 @@ public class SysDeptService {
      * @throws BusinessException 部门不存在时抛出
      */
     public DeptStatsVO getStats(UUID deptId) {
-        requireDept(deptId);
-        DeptStatsVO stats = new DeptStatsVO();
-        stats.setDeptId(deptId);
-        stats.setMemberCount(sysDeptMapper.countMembersUnderDept(deptId));
-        stats.setRecruiterGroupCount(sysDeptMapper.countChildGroupsByType(deptId, DeptType.RECRUITER_GROUP));
-        stats.setChannelGroupCount(sysDeptMapper.countChildGroupsByType(deptId, DeptType.CHANNEL_GROUP));
-        return stats;
+        return orgUnitDirectoryApplicationService.getStats(deptId);
     }
 
     /**
      * 分页查询部门/组别下的成员列表。
      *
-     * <p>委托给 SysUserService 的 findDeptMembers 方法执行实际查询。
+     * <p>委托给用户域组织单元目录应用服务执行实际查询。
      *
      * @param deptId   部门/组别 ID
      * @param request  分页查询参数
@@ -162,8 +114,7 @@ public class SysDeptService {
      * @throws BusinessException 部门不存在时抛出
      */
     public IPage<SysUserVO> findMembers(UUID deptId, DeptMemberPageRequest request) {
-        requireDept(deptId);
-        return sysUserService.findDeptMembers(deptId, request);
+        return orgUnitDirectoryApplicationService.findMembers(deptId, request);
     }
 
     /**
@@ -174,7 +125,7 @@ public class SysDeptService {
      * @throws BusinessException 记录不存在或已删除时抛出
      */
     public SysDeptVO getById(UUID id) {
-        return toVO(requireDept(id));
+        return orgUnitDirectoryApplicationService.getById(id);
     }
 
     /**
@@ -197,32 +148,7 @@ public class SysDeptService {
      * @throws BusinessException 编码重复、父级无效或组长角色不匹配时抛出
      */
     public SysDeptVO create(SysDeptCreateRequest request, UUID currentUserId) {
-        ensureDeptCodeUnique(request.deptCode(), null);
-        validateParent(request.parentId(), null);
-        SysDept dept = new SysDept();
-        dept.setParentId(request.parentId());
-        dept.setDeptCode(request.deptCode().trim());
-        dept.setDeptName(request.deptName().trim());
-        dept.setDeptType(resolveDeptType(request.deptType()));
-        dept.setLeaderUserId(request.leaderUserId());
-        dept.setLeader(resolveLeaderName(request.leaderUserId(), dept.getDeptType(), request.leader()));
-        dept.setPhone(request.phone());
-        dept.setEmail(request.email());
-        dept.setSortOrder(request.sortOrder() == null ? 0 : request.sortOrder());
-        dept.setStatus(request.status() == null ? 1 : request.status());
-        dept.setRemark(request.remark());
-        sysDeptMapper.insert(dept);
-        operationLogService.recordSystemAction(
-                currentUserId,
-                "部门管理",
-                "新建部门",
-                "POST",
-                "SysDept",
-                dept.getId() == null ? null : dept.getId().toString(),
-                dept.getDeptCode(),
-                "新建部门: " + dept.getDeptName()
-        );
-        return toVO(dept);
+        return orgUnitWriteApplicationService.create(request, currentUserId);
     }
 
     /**
@@ -237,33 +163,7 @@ public class SysDeptService {
      * @throws BusinessException 记录不存在、编码重复或校验失败时抛出
      */
     public SysDeptVO update(UUID id, SysDeptUpdateRequest request, UUID currentUserId, Collection<?> roleCodes) {
-        SysDept dept = requireDept(id);
-        assertCanModify(dept, currentUserId, roleCodes);
-        ensureDeptCodeUnique(request.deptCode(), id);
-        validateParent(request.parentId(), id);
-        dept.setParentId(request.parentId());
-        dept.setDeptCode(request.deptCode().trim());
-        dept.setDeptName(request.deptName().trim());
-        dept.setDeptType(resolveDeptType(request.deptType()));
-        dept.setLeaderUserId(request.leaderUserId());
-        dept.setLeader(resolveLeaderName(request.leaderUserId(), dept.getDeptType(), request.leader()));
-        dept.setPhone(request.phone());
-        dept.setEmail(request.email());
-        dept.setSortOrder(request.sortOrder() == null ? 0 : request.sortOrder());
-        dept.setStatus(request.status() == null ? 1 : request.status());
-        dept.setRemark(request.remark());
-        sysDeptMapper.updateById(dept);
-        operationLogService.recordSystemAction(
-                currentUserId,
-                "部门管理",
-                "更新部门",
-                "PUT",
-                "SysDept",
-                id.toString(),
-                dept.getDeptCode(),
-                "更新部门: " + dept.getDeptName()
-        );
-        return toVO(dept);
+        return orgUnitWriteApplicationService.update(id, request, currentUserId, roleCodes);
     }
 
     /**
@@ -272,7 +172,7 @@ public class SysDeptService {
      * <p>处理流程：
      * <ol>
      *   <li>校验部门存在且未被删除</li>
-     *   <li>通过 OrgStructureService 校验无关联员工和子组别</li>
+     *   <li>通过用户域组织校验策略校验无关联员工和子组别</li>
      *   <li>执行软删除（设置 deleted 标记）</li>
      *   <li>记录审计日志</li>
      * </ol>
@@ -282,158 +182,6 @@ public class SysDeptService {
      * @throws BusinessException 记录不存在、下有员工或子组别时抛出
      */
     public void delete(UUID id, UUID currentUserId, Collection<?> roleCodes) {
-        SysDept dept = requireDept(id);
-        assertCanModify(dept, currentUserId, roleCodes);
-        orgStructureService.assertCanDeleteDept(id);
-        if (sysDeptMapper.softDeleteById(id) <= 0) {
-            throw BusinessException.notFound("部门不存在或已删除");
-        }
-        operationLogService.recordSystemAction(
-                currentUserId,
-                "部门管理",
-                "删除部门",
-                "DELETE",
-                "SysDept",
-                id.toString(),
-                dept.getDeptCode(),
-                "删除部门: " + dept.getDeptName()
-        );
-    }
-
-    /**
-     * 校验部门编码唯一性。
-     *
-     * @param deptCode   部门编码
-     * @param excludeId  排除的记录 ID（更新时排除自身），创建时为 null
-     * @throws BusinessException 编码为空或已存在时抛出
-     */
-    private void ensureDeptCodeUnique(String deptCode, UUID excludeId) {
-        if (!StringUtils.hasText(deptCode)) {
-            throw BusinessException.param("部门编码不能为空");
-        }
-        sysDeptMapper.findByDeptCode(deptCode.trim()).ifPresent(existing -> {
-            if (excludeId == null || !Objects.equals(existing.getId(), excludeId)) {
-                throw BusinessException.duplicate("部门编码已存在: " + deptCode);
-            }
-        });
-    }
-
-    /**
-     * 校验父级部门有效性。
-     *
-     * @param parentId 父部门 ID，可为 null 表示无父级
-     * @param selfId   当前记录 ID（防止自引用），创建时为 null
-     * @throws BusinessException 父级为自己或父级不存在时抛出
-     */
-    private void validateParent(UUID parentId, UUID selfId) {
-        if (parentId == null) {
-            return;
-        }
-        if (Objects.equals(parentId, selfId)) {
-            throw BusinessException.param("上级部门不能选择自己");
-        }
-        requireDept(parentId);
-    }
-
-    /**
-     * 查询并校验部门/组别存在且未被删除。
-     *
-     * @param id 部门/组别 ID
-     * @return 有效的 SysDept 实体
-     * @throws BusinessException 记录不存在或已删除时抛出
-     */
-    private SysDept requireDept(UUID id) {
-        SysDept dept = sysDeptMapper.selectById(id);
-        if (dept == null || Objects.equals(dept.getDeleted(), 1)) {
-            throw BusinessException.notFound("部门不存在");
-        }
-        return dept;
-    }
-
-    /**
-     * 校验当前用户是否有权修改指定部门。
-     *
-     * <p>权限判断：ADMIN 直接放行；CHANNEL_LEADER 仅当其为该部门的 leaderUserId 时放行；
-     * 其他角色或负责人不匹配时抛出 {@link ForbiddenException}。</p>
-     *
-     * @param dept           目标部门实体
-     * @param currentUserId  当前操作用户 ID
-     * @param roleCodes      当前用户的角色编码集合
-     * @throws ForbiddenException 无权修改时抛出
-     */
-    private void assertCanModify(SysDept dept, UUID currentUserId, Collection<?> roleCodes) {
-        if (hasAdminRole(roleCodes)) {
-            return;
-        }
-        if (hasChannelLeaderRole(roleCodes) && Objects.equals(dept.getLeaderUserId(), currentUserId)) {
-            return;
-        }
-        throw new ForbiddenException("无权修改该部门");
-    }
-
-    private boolean hasAdminRole(Collection<?> roleCodes) {
-        return containsNormalized(roleCodes, RoleCodes.ADMIN);
-    }
-
-    private boolean hasChannelLeaderRole(Collection<?> roleCodes) {
-        return containsNormalized(roleCodes, RoleCodes.CHANNEL_LEADER);
-    }
-
-    private boolean containsNormalized(Collection<?> roleCodes, String target) {
-        if (roleCodes == null) {
-            return false;
-        }
-        String normalized = target.trim().toLowerCase(Locale.ROOT);
-        for (Object rc : roleCodes) {
-            if (normalized.equals(rc.toString().trim().toLowerCase(Locale.ROOT))) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private String resolveLeaderName(UUID leaderUserId, String deptType, String fallbackLeader) {
-        if (leaderUserId == null) {
-            return fallbackLeader;
-        }
-        return orgStructureService.validateGroupLeader(leaderUserId, deptType);
-    }
-
-    /**
-     * 将 SysDept 实体转换为 VO。
-     *
-     * @param dept 部门/组别实体
-     * @return 对应的 VO 对象
-     */
-    private SysDeptVO toVO(SysDept dept) {
-        SysDeptVO vo = new SysDeptVO();
-        vo.setId(dept.getId());
-        vo.setParentId(dept.getParentId());
-        vo.setDeptCode(dept.getDeptCode());
-        vo.setDeptName(dept.getDeptName());
-        vo.setDeptType(dept.getDeptType());
-        vo.setLeaderUserId(dept.getLeaderUserId());
-        vo.setLeader(dept.getLeader());
-        vo.setPhone(dept.getPhone());
-        vo.setEmail(dept.getEmail());
-        vo.setSortOrder(dept.getSortOrder());
-        vo.setStatus(dept.getStatus());
-        vo.setRemark(dept.getRemark());
-        return vo;
-    }
-
-    /**
-     * 解析并校验组织类型编码。
-     *
-     * @param deptType 前端传入的组织类型
-     * @return 归一化后的组织类型编码
-     * @throws BusinessException 类型不合法时抛出
-     */
-    private String resolveDeptType(String deptType) {
-        String normalized = DeptType.normalize(deptType);
-        if (!DeptType.isAllowed(normalized)) {
-            throw BusinessException.param("组织类型非法: " + deptType);
-        }
-        return normalized;
+        orgUnitWriteApplicationService.delete(id, currentUserId, roleCodes);
     }
 }

@@ -90,10 +90,36 @@ product:
       cron: "${PRODUCT_ACTIVITY_SYNC_CRON:0 */5 * * * ?}"
       batch-size: ${PRODUCT_ACTIVITY_SYNC_BATCH_SIZE:20}
       whitelist-activities: "${PRODUCT_ACTIVITY_SYNC_WHITELIST_ACTIVITIES:}"
+  sync:
+    activityProduct:
+      pageSize: ${PRODUCT_SYNC_ACTIVITY_PRODUCT_PAGE_SIZE:20}
+      maxPagesPerActivity: ${PRODUCT_SYNC_ACTIVITY_PRODUCT_MAX_PAGES_PER_ACTIVITY:1000}
+      maxRowsPerActivity: ${PRODUCT_SYNC_ACTIVITY_PRODUCT_MAX_ROWS_PER_ACTIVITY:50000}
+      maxActivitiesPerRun: ${PRODUCT_SYNC_ACTIVITY_PRODUCT_MAX_ACTIVITIES_PER_RUN:100}
+      fullBackfillEnabled: ${PRODUCT_SYNC_ACTIVITY_PRODUCT_FULL_BACKFILL_ENABLED:true}
+      incrementalEnabled: ${PRODUCT_SYNC_ACTIVITY_PRODUCT_INCREMENTAL_ENABLED:${PRODUCT_ACTIVITY_SYNC_ENABLED:false}}
+      apiSleepMs: ${PRODUCT_SYNC_ACTIVITY_PRODUCT_API_SLEEP_MS:300}
+      errorThreshold: ${PRODUCT_SYNC_ACTIVITY_PRODUCT_ERROR_THRESHOLD:5}
+      cursorRepeatLimit: ${PRODUCT_SYNC_ACTIVITY_PRODUCT_CURSOR_REPEAT_LIMIT:1}
+    # Phase 4-1.5 deadlock 修复：商品全量回补的并发/事务/重试配置。
+    backfill:
+      writeBatchSize: ${PRODUCT_SYNC_BACKFILL_WRITE_BATCH_SIZE:100}
+      deadlockRetryMax: ${PRODUCT_SYNC_BACKFILL_DEADLOCK_RETRY_MAX:3}
+      lockWaitSeconds: ${PRODUCT_SYNC_BACKFILL_LOCK_WAIT_SECONDS:10}
+      runningTimeoutMinutes: ${PRODUCT_SYNC_BACKFILL_RUNNING_TIMEOUT_MINUTES:30}
+      displayRefreshMode: ${PRODUCT_SYNC_BACKFILL_DISPLAY_REFRESH_MODE:DEFERRED}
+      skipDisplayRefreshForExpiredActivity: ${PRODUCT_SYNC_BACKFILL_SKIP_DISPLAY_REFRESH_FOR_EXPIRED:true}
+      apiSleepMs: ${PRODUCT_SYNC_BACKFILL_API_SLEEP_MS:100}
+      staleReconcileCron: ${PRODUCT_SYNC_BACKFILL_STALE_RECONCILE_CRON:0 */15 * * * ?}
 
 app:
   performance:
     slow-query-threshold-ms: ${APP_SLOW_QUERY_THRESHOLD_MS:500}
+  order-query:
+    stats-cache-enabled: ${APP_ORDER_QUERY_STATS_CACHE_ENABLED:false}
+    stats-cache-ttl-seconds: ${APP_ORDER_QUERY_STATS_CACHE_TTL_SECONDS:60}
+    default-window-enabled: ${APP_ORDER_QUERY_DEFAULT_WINDOW_ENABLED:false}
+    default-window-days: ${APP_ORDER_QUERY_DEFAULT_WINDOW_DAYS:30}
   short-ttl-cache:
     max-entries: ${APP_SHORT_TTL_CACHE_MAX_ENTRIES:1024}
   logistics:
@@ -169,10 +195,18 @@ douyin:
     auto-refresh:
       enabled: ${DOUYIN_TOKEN_AUTO_REFRESH_ENABLED:true}
       cron: ${DOUYIN_TOKEN_AUTO_REFRESH_CRON:0 */10 * * * ?}
+  order:
+    settlement-source: ${DOUYIN_ORDER_SETTLEMENT_SOURCE:instituteOrderColonel}
+    institute-settlement-time-type: ${DOUYIN_ORDER_INSTITUTE_SETTLEMENT_TIME_TYPE:update}
+    settlement-fallback-enabled: ${DOUYIN_ORDER_SETTLEMENT_FALLBACK_ENABLED:false}
+    settlement-dual-read-no-write-enabled: ${DOUYIN_ORDER_SETTLEMENT_DUAL_READ_NO_WRITE_ENABLED:false}
+    allow-estimate-as-effective-fallback: ${DOUYIN_ORDER_ALLOW_ESTIMATE_AS_EFFECTIVE_FALLBACK:false}
 
 order:
   sync:
     enabled: ${ORDER_SYNC_ENABLED:true}
+    max-pages: ${ORDER_SYNC_MAX_PAGES:500}
+    max-orders: ${ORDER_SYNC_MAX_ORDERS:50000}
     lag-seconds: ${ORDER_SYNC_LAG_SECONDS:60}
     window-seconds: ${ORDER_SYNC_WINDOW_SECONDS:600}
     overlap-seconds: ${ORDER_SYNC_OVERLAP_SECONDS:60}
@@ -271,3 +305,9 @@ ddd:
       enabled: ${DDD_REFACTOR_ANALYTICS_SHADOW_ENABLED:false}
     outbox:
       enabled: ${DDD_REFACTOR_OUTBOX_ENABLED:false}
+    data-scope-policy:
+      enabled: ${DDD_REFACTOR_DATA_SCOPE_POLICY_ENABLED:false}
+    sample-homework-event:
+      enabled: ${DDD_REFACTOR_SAMPLE_HOMEWORK_EVENT_ENABLED:false}
+    colonel-partner-contact:
+      enabled: ${DDD_REFACTOR_COLONEL_PARTNER_CONTACT_ENABLED:false}

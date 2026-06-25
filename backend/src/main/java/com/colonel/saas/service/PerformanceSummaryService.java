@@ -3,8 +3,8 @@ package com.colonel.saas.service;
 import com.colonel.saas.dto.performance.PerformanceSummaryQuery;
 import com.colonel.saas.dto.performance.PerformanceSummaryResponse;
 import com.colonel.saas.dto.performance.PerformanceTrackSummaryDTO;
-import com.colonel.saas.service.performance.PerformanceAccessContext;
-import com.colonel.saas.service.performance.PerformanceAccessScope;
+import com.colonel.saas.domain.performance.policy.PerformanceAccessContext;
+import com.colonel.saas.domain.performance.policy.PerformanceAccessScope;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -304,7 +304,8 @@ public class PerformanceSummaryService {
         long serviceProfit = CommissionService.serviceFeeNetCent(
                 serviceFeeIncome,
                 techServiceFee,
-                serviceFeeExpense);
+                serviceFeeExpense,
+                estimateTrack);
         long recruiter = asLong(row.get("recruiter_commission"));
         long channel = asLong(row.get("channel_commission"));
         track.setOrderCount(asLong(row.get("order_count")));
@@ -315,7 +316,7 @@ public class PerformanceSummaryService {
         track.setServiceFeeProfit(serviceProfit);
         track.setRecruiterCommission(recruiter);
         track.setChannelCommission(channel);
-        track.setGrossProfit(asLong(row.get("gross_profit")));
+        track.setGrossProfit(Math.max(serviceProfit - recruiter - channel, 0L));
         return track;
     }
 

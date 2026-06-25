@@ -50,12 +50,21 @@ test('real-pre P0 / 33 / 寄样链', async ({}, testInfo) => {
     const admin = await apiLogin(`${backend}/api`, accounts.admin.username, accounts.admin.password);
     const channelStaff = await apiLogin(`${backend}/api`, accounts.channelStaff.username, accounts.channelStaff.password);
     let bizStaffToken = '';
+    let bizStaffUserId = '';
+    let bizLeaderToken = '';
     let opsToken = '';
     try {
       const biz = await apiLogin(`${backend}/api`, 'biz_staff', BIZ_STAFF_PASSWORD);
       bizStaffToken = String(biz.token || '');
+      bizStaffUserId = queryUserIdByUsername('biz_staff') || String(biz.id || biz.userId || '');
     } catch (error) {
       markBlocked(ctx, `BLOCKED_AUTH: biz_staff 登录失败：${error instanceof Error ? error.message : String(error)}`);
+    }
+    try {
+      const bizLeader = await apiLogin(`${backend}/api`, accounts.bizLeader.username, accounts.bizLeader.password);
+      bizLeaderToken = String(bizLeader.token || '');
+    } catch (error) {
+      markBlocked(ctx, `BLOCKED_AUTH: biz_leader 登录失败：${error instanceof Error ? error.message : String(error)}`);
     }
     try {
       const ops = await apiLogin(`${backend}/api`, accounts.ops.username, accounts.ops.password);
@@ -67,7 +76,9 @@ test('real-pre P0 / 33 / 寄样链', async ({}, testInfo) => {
     setDetail(ctx, 'accounts', {
       admin: String(admin.userId || admin.id || ''),
       channelStaff: String(channelStaff.userId || channelStaff.id || ''),
+      bizStaffUserId,
       bizStaffLoginOk: Boolean(bizStaffToken),
+      bizLeaderLoginOk: Boolean(bizLeaderToken),
       opsLoginOk: Boolean(opsToken)
     });
 
@@ -76,16 +87,17 @@ test('real-pre P0 / 33 / 寄样链', async ({}, testInfo) => {
       params: { page: 1, size: 20 }
     });
     const libraryRecords = extractRecords(safeUnwrap<JsonMap>(libraryResult.body));
-    const productLookup = await resolveProductCandidate(api, String(admin.token || ''), libraryRecords);
+    const productLookup = await resolveProductCandidate(api, bizLeaderToken, libraryRecords, bizStaffUserId);
     setDetail(ctx, 'productLibrary', {
       total: libraryRecords.length,
       status: libraryResult.status,
       candidateSource: productLookup.source,
-      fallbackMapping: productLookup.mapping
+      fallbackMapping: productLookup.mapping,
+      assignment: productLookup.assignment
     });
     const productCandidate = productLookup.product;
     if (!productCandidate) {
-      markPending(ctx, 'PENDING_NO_ACTIVITY_PRODUCTS: 渠道账号商品库为空，且无可复用转链商品详情，无法发起真实寄样');
+      markPending(ctx, 'PENDING_NO_ASSIGNED_SAMPLE_PRODUCT: 未找到已入库且可由 biz_staff 审核的真实商品，无法继续寄样审核链路');
       persistStepSummary(ctx);
       await testInfo.attach('step-summary.json', { body: JSON.stringify(ctx.summary, null, 2), contentType: 'application/json' });
       await api.dispose();
@@ -177,26 +189,13 @@ test('real-pre P0 / 33 / 寄样链', async ({}, testInfo) => {
 
     // 5) biz_staff 审核通过 -> 待发货。
     //    biz_staff 审核依赖 isSampleProductAssignedToUser(product_operation_state.assigneeId = userId)。
-    //    当商品来自商品库时 product_operation_state 由运营选品时建立，
-    //    但当商品来自 colonel 活动时需要先通过 biz_leader 调用 audit-assignee 接口
-    //    将商品分配给 biz_staff。
-    const bizStaffUserId = String(
-      (await apiLogin(`${backend}/api`, 'biz_staff', BIZ_STAFF_PASSWORD)).userId || ''
-    );
-    if (bizStaffUserId && productLookup.mapping?.activityId && productLookup.mapping?.productId) {
-      const assignRes = await rawApi(
-        api,
-        'PUT',
-        `/api/colonel/activities/${productLookup.mapping.activityId}/products/${productLookup.mapping.productId}/audit-assignee`,
-        String(admin.token || ''),
-        { data: { assigneeId: bizStaffUserId } }
-      );
-      setDetail(ctx, 'bizStaffAssignResult', { status: assignRes.status, ok: assignRes.ok });
-      if (!assignRes.ok) {
-        markBlocked(ctx, `分配商品给 biz_staff 失败 HTTP ${assignRes.status}`);
-      }
+    //    P0 优先使用可复用活动商品并在创建寄样前完成 audit-assignee 分配；
+    //    若只能回退到普通商品库商品，不能把前置数据缺失误判为后端审核失败。
+    setDetail(ctx, 'bizStaffAssignResult', productLookup.assignment || null);
+    if (!productLookup.assignment?.ok && ctx.summary.conclusion === 'PASS') {
+      markBlocked(ctx, 'BLOCKED_NO_ASSIGNED_SAMPLE_PRODUCT: 无法找到并分配可由 biz_staff 审核的寄样商品');
     }
-    if (bizStaffToken && sampleId) {
+    if (bizStaffToken && sampleId && ctx.summary.conclusion === 'PASS') {
       const audit = await rawApi(api, 'PUT', `/api/samples/${sampleId}/status`, bizStaffToken, {
         data: { action: 'PENDING_SHIP', reason: `real-pre P0 33 biz audit ${ctx.runId}` }
       });
@@ -207,7 +206,7 @@ test('real-pre P0 / 33 / 寄样链', async ({}, testInfo) => {
       } else if (String(auditData.status) !== 'PENDING_SHIP') {
         markFail(ctx, `招商审核后状态不是 PENDING_SHIP, 实际=${auditData.status}`);
       }
-    } else if (!bizStaffToken) {
+    } else if (!bizStaffToken && ctx.summary.conclusion === 'PASS') {
       markBlocked(ctx, 'BLOCKED_AUTH: 缺少 biz_staff 账号，无法验证审核步骤');
     }
 
@@ -278,29 +277,227 @@ test('real-pre P0 / 33 / 寄样链', async ({}, testInfo) => {
 
 async function resolveProductCandidate(
   api: APIRequestContext,
-  adminToken: string,
-  libraryRecords: JsonMap[]
-): Promise<{ product: JsonMap | null; source: string; mapping: JsonMap | null }> {
-  const fromLibrary = libraryRecords.find((row) => row.id);
-  if (fromLibrary) {
-    return { product: fromLibrary, source: 'product-library', mapping: null };
+  bizLeaderToken: string,
+  libraryRecords: JsonMap[],
+  bizStaffUserId: string
+): Promise<{ product: JsonMap | null; source: string; mapping: JsonMap | null; assignment: JsonMap | null }> {
+  const assignedCandidates = scanAssignedLibraryCandidates(bizStaffUserId);
+  for (const mapping of assignedCandidates) {
+    const detail = await rawApi(
+      api,
+      'GET',
+      `/api/colonel/activities/${mapping.activityId}/products/${mapping.productId}`,
+      bizLeaderToken
+    );
+    const product = safeUnwrap<JsonMap>(detail.body) || null;
+    if (product && product.id) {
+      return {
+        product,
+        source: 'assigned-selected-library',
+        mapping,
+        assignment: {
+          ok: true,
+          status: detail.status,
+          targetAssigneeId: bizStaffUserId,
+          mapping,
+          dbAssigneeId: queryOperationAssignee(mapping.activityId, mapping.productId),
+          detailAssigneeId: String(product.assigneeId || product.assignee_id || ''),
+          detailBody: product
+        }
+      };
+    }
   }
-  const mapping = scanAnyReusableMapping()[0];
-  if (!mapping?.activityId || !mapping?.productId) {
-    return { product: null, source: 'none', mapping: mapping || null };
+
+  let lastAssignment: JsonMap | null = null;
+  const assignableLibraryCandidates = scanAssignableLibraryCandidates();
+  if (bizLeaderToken && bizStaffUserId) {
+    for (const mapping of assignableLibraryCandidates) {
+      if (!mapping?.activityId || !mapping?.productId) {
+        continue;
+      }
+      const assign = await rawApi(
+        api,
+        'PUT',
+        `/api/colonel/activities/${mapping.activityId}/products/${mapping.productId}/assignee`,
+        bizLeaderToken,
+        { data: { assigneeId: bizStaffUserId } }
+      );
+      const assignBody = safeUnwrap<JsonMap>(assign.body) || assign.body;
+      const assignBusinessOk = assign.ok && Number((assign.body as JsonMap | undefined)?.code) === 200;
+      const assignment = {
+        status: assign.status,
+        ok: assignBusinessOk,
+        targetAssigneeId: bizStaffUserId,
+        mapping,
+        body: assignBody,
+        dbAssigneeId: queryOperationAssignee(mapping.activityId, mapping.productId),
+        mode: 'assignee'
+      };
+      if (!assignBusinessOk) {
+        lastAssignment = assignment;
+        continue;
+      }
+      const detail = await rawApi(
+        api,
+        'GET',
+        `/api/colonel/activities/${mapping.activityId}/products/${mapping.productId}`,
+        bizLeaderToken
+      );
+      const product = safeUnwrap<JsonMap>(detail.body) || null;
+      lastAssignment = {
+        ...assignment,
+        detailStatus: detail.status,
+        detailAssigneeId: String(product?.assigneeId || product?.assignee_id || ''),
+        detailBody: product
+      };
+      if (
+        product
+        && product.id
+        && (
+          String(product.assigneeId || product.assignee_id || '') === bizStaffUserId
+          || queryOperationAssignee(mapping.activityId, mapping.productId) === bizStaffUserId
+        )
+      ) {
+        return {
+          product,
+          source: 'approved-library-assigned-via-assignee',
+          mapping,
+          assignment: lastAssignment
+        };
+      }
+    }
   }
-  const detail = await rawApi(
-    api,
-    'GET',
-    `/api/colonel/activities/${mapping.activityId}/products/${mapping.productId}`,
-    adminToken
-  );
-  const product = safeUnwrap<JsonMap>(detail.body) || null;
+
+  const mappings = scanAnyReusableMapping();
+  if (bizLeaderToken && bizStaffUserId) {
+    for (const mapping of mappings) {
+      if (!mapping?.activityId || !mapping?.productId) {
+        continue;
+      }
+      const assign = await rawApi(
+        api,
+        'PUT',
+        `/api/colonel/activities/${mapping.activityId}/products/${mapping.productId}/audit-assignee`,
+        bizLeaderToken,
+        { data: { assigneeId: bizStaffUserId } }
+      );
+      const assignBody = safeUnwrap<JsonMap>(assign.body) || assign.body;
+      const assignBusinessOk = assign.ok && Number((assign.body as JsonMap | undefined)?.code) === 200;
+      lastAssignment = {
+        status: assign.status,
+        ok: assignBusinessOk,
+        targetAssigneeId: bizStaffUserId,
+        mapping,
+        body: assignBody,
+        dbAssigneeId: queryOperationAssignee(mapping.activityId, mapping.productId)
+      };
+      if (!assignBusinessOk) {
+        continue;
+      }
+      const detail = await rawApi(
+        api,
+        'GET',
+        `/api/colonel/activities/${mapping.activityId}/products/${mapping.productId}`,
+        bizLeaderToken
+      );
+      const product = safeUnwrap<JsonMap>(detail.body) || null;
+      lastAssignment = {
+        ...lastAssignment,
+        detailStatus: detail.status,
+        detailAssigneeId: String(product?.assigneeId || product?.assignee_id || ''),
+        detailBody: product
+      };
+      if (
+        product
+        && product.id
+        && (
+          String(product.assigneeId || product.assignee_id || '') === bizStaffUserId
+          || queryOperationAssignee(mapping.activityId, mapping.productId) === bizStaffUserId
+        )
+      ) {
+        return {
+          product,
+          source: 'reusable-promotion-mapping',
+          mapping,
+          assignment: lastAssignment
+        };
+      }
+    }
+  }
+
   return {
-    product: product && product.id ? product : null,
-    source: product && product.id ? 'reusable-promotion-mapping' : 'none',
-    mapping
+    product: null,
+    source: libraryRecords.length > 0 ? 'product-library-without-biz-staff-assignment' : 'none',
+    mapping: mappings[0] || null,
+    assignment: lastAssignment
   };
+}
+
+function scanAssignedLibraryCandidates(assigneeId: string): ReusablePromotionMapping[] {
+  if (!assigneeId) {
+    return [];
+  }
+  const { execFileSync } = require('node:child_process');
+  const container = process.env.E2E_DB_CONTAINER || 'saas-active-postgres-real-pre-1';
+  const user = process.env.E2E_DB_USER || 'saas';
+  const db = process.env.E2E_DB_NAME || 'saas_real_pre';
+  const safeAssigneeId = assigneeId.replace(/'/g, "''");
+  const sql = [
+    "select pos.product_id, pos.activity_id, pos.assignee_id::text",
+    'from product_operation_state pos',
+    'join product_snapshot ps on ps.activity_id = pos.activity_id and ps.product_id = pos.product_id',
+    `where pos.assignee_id = '${safeAssigneeId}'`,
+    '  and pos.selected_to_library = true',
+    '  and coalesce(pos.manual_disabled, false) = false',
+    "  and coalesce(ps.status_text, '') <> ''",
+    'order by pos.update_time desc nulls last',
+    'limit 10;'
+  ].join('\n');
+  const out = execFileSync(
+    'docker',
+    ['exec', container, 'psql', '-X', '-q', '-v', 'ON_ERROR_STOP=1', '-U', user, '-d', db, '-t', '-A', '-F', '|', '-c', sql],
+    { encoding: 'utf8' }
+  );
+  return String(out || '').split(/\r?\n/).filter(Boolean).map((line) => {
+    const parts = line.split('|');
+    return {
+      productId: parts[0] || '',
+      activityId: parts[1] || '',
+      userId: parts[2] || ''
+    };
+  });
+}
+
+function scanAssignableLibraryCandidates(): ReusablePromotionMapping[] {
+  const { execFileSync } = require('node:child_process');
+  const container = process.env.E2E_DB_CONTAINER || 'saas-active-postgres-real-pre-1';
+  const user = process.env.E2E_DB_USER || 'saas';
+  const db = process.env.E2E_DB_NAME || 'saas_real_pre';
+  const sql = [
+    'select pos.product_id, pos.activity_id, pos.assignee_id::text',
+    'from product_operation_state pos',
+    'join product_snapshot ps on ps.activity_id = pos.activity_id and ps.product_id = pos.product_id',
+    'where pos.selected_to_library = true',
+    '  and pos.assignee_id is null',
+    "  and pos.biz_status = 'APPROVED'",
+    '  and coalesce(pos.manual_disabled, false) = false',
+    "  and coalesce(ps.status_text, '') <> ''",
+    'order by pos.update_time desc nulls last',
+    'limit 10;'
+  ].join('\n');
+  const out = execFileSync(
+    'docker',
+    ['exec', container, 'psql', '-X', '-q', '-v', 'ON_ERROR_STOP=1', '-U', user, '-d', db, '-t', '-A', '-F', '|', '-c', sql],
+    { encoding: 'utf8' }
+  );
+  return String(out || '').split(/\r?\n/).filter(Boolean).map((line) => {
+    const parts = line.split('|');
+    return {
+      productId: parts[0] || '',
+      activityId: parts[1] || '',
+      userId: parts[2] || ''
+    };
+  });
 }
 
 function scanAnyReusableMapping(): ReusablePromotionMapping[] {
@@ -333,6 +530,43 @@ function scanAnyReusableMapping(): ReusablePromotionMapping[] {
       userId: parts[3] || ''
     };
   });
+}
+
+function queryUserIdByUsername(username: string): string {
+  const { execFileSync } = require('node:child_process');
+  const container = process.env.E2E_DB_CONTAINER || 'saas-active-postgres-real-pre-1';
+  const user = process.env.E2E_DB_USER || 'saas';
+  const db = process.env.E2E_DB_NAME || 'saas_real_pre';
+  const safeUsername = username.replace(/'/g, "''");
+  const sql = `select id::text from sys_user where username = '${safeUsername}' and deleted = 0 limit 1;`;
+  const out = execFileSync(
+    'docker',
+    ['exec', container, 'psql', '-X', '-q', '-v', 'ON_ERROR_STOP=1', '-U', user, '-d', db, '-t', '-A', '-c', sql],
+    { encoding: 'utf8' }
+  );
+  return String(out || '').trim();
+}
+
+function queryOperationAssignee(activityId: unknown, productId: unknown): string {
+  const { execFileSync } = require('node:child_process');
+  const container = process.env.E2E_DB_CONTAINER || 'saas-active-postgres-real-pre-1';
+  const user = process.env.E2E_DB_USER || 'saas';
+  const db = process.env.E2E_DB_NAME || 'saas_real_pre';
+  const safeActivityId = String(activityId || '').replace(/'/g, "''");
+  const safeProductId = String(productId || '').replace(/'/g, "''");
+  const sql = [
+    'select assignee_id::text',
+    'from product_operation_state',
+    `where activity_id = '${safeActivityId}'`,
+    `  and product_id = '${safeProductId}'`,
+    'limit 1;'
+  ].join('\n');
+  const out = execFileSync(
+    'docker',
+    ['exec', container, 'psql', '-X', '-q', '-v', 'ON_ERROR_STOP=1', '-U', user, '-d', db, '-t', '-A', '-c', sql],
+    { encoding: 'utf8' }
+  );
+  return String(out || '').trim();
 }
 
 async function rawApi(

@@ -1,8 +1,8 @@
 package com.colonel.saas.job;
 
+import com.colonel.saas.domain.talent.application.ExclusiveTalentApplicationService;
 import com.colonel.saas.service.DistributedJobLockService;
 import com.colonel.saas.service.ExclusiveMerchantService;
-import com.colonel.saas.service.ExclusiveTalentService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -22,7 +22,7 @@ import static org.mockito.Mockito.when;
 class ExclusiveEvaluateJobTest {
 
     @Mock
-    private ExclusiveTalentService exclusiveTalentService;
+    private ExclusiveTalentApplicationService exclusiveTalentApplicationService;
     @Mock
     private ExclusiveMerchantService exclusiveMerchantService;
     @Mock
@@ -32,12 +32,12 @@ class ExclusiveEvaluateJobTest {
 
     @BeforeEach
     void setUp() {
-        job = new ExclusiveEvaluateJob(exclusiveTalentService, exclusiveMerchantService, jobLockService);
+        job = new ExclusiveEvaluateJob(exclusiveTalentApplicationService, exclusiveMerchantService, jobLockService);
         lenient().when(jobLockService.tryAcquire(any(), any(Duration.class))).thenReturn(true);
     }
 
     private ExclusiveEvaluateJob enabledJob() {
-        return new ExclusiveEvaluateJob(exclusiveTalentService, exclusiveMerchantService, jobLockService, true);
+        return new ExclusiveEvaluateJob(exclusiveTalentApplicationService, exclusiveMerchantService, jobLockService, true);
     }
 
     @Test
@@ -45,17 +45,17 @@ class ExclusiveEvaluateJobTest {
         job.evaluateTalentMonthly();
 
         verify(jobLockService, never()).tryAcquire(eq(JobLockKeys.EXCLUSIVE_TALENT_EVALUATE), any(Duration.class));
-        verify(exclusiveTalentService, never()).evaluatePreviousMonthAndApplyCurrentMonth();
+        verify(exclusiveTalentApplicationService, never()).evaluatePreviousMonthAndApplyCurrentMonth();
     }
 
     @Test
     void evaluateTalentMonthly_shouldCallService() {
         job = enabledJob();
-        when(exclusiveTalentService.evaluatePreviousMonthAndApplyCurrentMonth()).thenReturn(5);
+        when(exclusiveTalentApplicationService.evaluatePreviousMonthAndApplyCurrentMonth()).thenReturn(5);
 
         job.evaluateTalentMonthly();
 
-        verify(exclusiveTalentService).evaluatePreviousMonthAndApplyCurrentMonth();
+        verify(exclusiveTalentApplicationService).evaluatePreviousMonthAndApplyCurrentMonth();
         verify(jobLockService).release(JobLockKeys.EXCLUSIVE_TALENT_EVALUATE);
     }
 
@@ -66,18 +66,18 @@ class ExclusiveEvaluateJobTest {
 
         job.evaluateTalentMonthly();
 
-        verify(exclusiveTalentService, never()).evaluatePreviousMonthAndApplyCurrentMonth();
+        verify(exclusiveTalentApplicationService, never()).evaluatePreviousMonthAndApplyCurrentMonth();
     }
 
     @Test
     void evaluateTalentMonthly_shouldCatchException() {
         job = enabledJob();
-        when(exclusiveTalentService.evaluatePreviousMonthAndApplyCurrentMonth())
+        when(exclusiveTalentApplicationService.evaluatePreviousMonthAndApplyCurrentMonth())
                 .thenThrow(new RuntimeException("eval failed"));
 
         job.evaluateTalentMonthly();
 
-        verify(exclusiveTalentService).evaluatePreviousMonthAndApplyCurrentMonth();
+        verify(exclusiveTalentApplicationService).evaluatePreviousMonthAndApplyCurrentMonth();
     }
 
     @Test

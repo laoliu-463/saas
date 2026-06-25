@@ -33,14 +33,14 @@
 - [V1 必做] `GET /api/dashboard/metrics` 返回 `estimate` 与 `settle` 双轨对象，数据页经营指标矩阵必须展示：
   - 总订单数：`estimate.totalOrders/todayOrderCount` 展示为“成交”，`settle.totalOrders/todayOrderCount` 展示为“结算”。
   - 订单额：`estimate.totalAmount/todayGmv` 展示为“成交”，`settle.totalAmount/todayGmv` 展示为“结算”。
-  - 服务费收入：`serviceFeeIncome`，展示“预估 / 结算”；预估服务费收入 = 预估订单额 × 服务费率（未扣除技术服务费），结算服务费收入 = 结算订单额 × 服务费率 - 技术服务费。
+  - 服务费收入：`serviceFeeIncome`，展示“预估 / 结算”；预估服务费收入 = 预估订单额 × 服务费率（未扣除技术服务费），结算服务费收入以官方结算服务费字段为准，不用订单额重算且不扣技术服务费。
   - 技术服务费：`techServiceFee`，展示“预估 / 结算”。
   - 服务费支出：优先读取 `serviceFeeExpense`，缺失时按 `bizCommission + channelCommission` 或 `commission` 派生，展示“预估 / 结算”。
   - 服务费收益：`serviceFee` / `serviceFeeProfit`，展示“预估 / 结算”；业务公式必须区分两轨：预估服务费收益 = 预估服务费收入 - 预估服务费支出 - 技术服务费；结算服务费收益 = 结算服务费收入 - 结算服务费支出。
   - 招商提成：`bizCommission`，展示“预估 / 结算”。
   - 媒介提成：当前代码字段为 `channelCommission`，页面可按业务文案展示为“媒介提成”，展示“预估 / 结算”。
   - 毛利：`grossProfit`，公式为 `服务费收益 - 招商提成 - 媒介/渠道提成`，展示“预估 / 结算”。
-- [V1 必做] `techServiceFee` 仍作为经营指标展示和预估服务费收益输入；结算服务费收益公式不扣减技术服务费，后端 / 前端不得用同一“收入 - 技术服务费”公式套两轨。
+- [V1 必做] `techServiceFee` 仍作为经营指标展示和预估服务费收益输入；结算轨只展示技术服务费，结算服务费收入和收益公式均不扣减技术服务费，后端 / 前端不得用同一“收入 - 技术服务费”公式套两轨。
 - [V1 必做] 以上字段属于经营指标，不代表财务结算、商家结算或多账期治理；后者仍为 V2 预留。
 
 ## 活动 API 补充事实（2026-05-29 / 2026-06-01）
@@ -53,6 +53,7 @@
 - [V1 必做] 活动状态只描述活动自身，用于活动列表展示、活动筛选和活动数据范围判断；不得驱动商品入库、审核状态或展示状态。
 - [V1 必做] `POST /api/colonel/activities/{activityId}/products/sync` 用于前端手动触发活动商品后台同步；接口只提交后台任务并立即返回 `syncStatus=ACCEPTED/RUNNING`，前端提示“后台同步中”，不得阻塞列表查询等待上游完成。
 - [V1 必做] `GET /api/colonel/activities/{activityId}/products` 活动商品列表行需透出 `relationId`（`product_snapshot.id`，UUID）以及规范状态字段：`officialStatus`、`reviewStatus`、`publishStatus`、`manualDisabled`、`selectedToLibrary`、`displayStatus`、`hiddenReason`。前端审核、暂停/恢复等商品关系写操作必须使用 `relationId`，不能用平台 `productId` 代替；前端筛选和操作按钮优先使用上游数字状态与这些规范字段，不依赖 `statusText` 文案漂移。
+- [V1 必做] `GET /api/colonel/activities/{activityId}/products` 返回 `statusCounts`，按活动全部有效快照统计 `total`、`pendingReview`、`promoting`、`rejected`、`terminated`、`expired`；该聚合不受当前状态筛选分页影响。前端必须区分“已加载行数”和接口 `total`，精选联盟状态筛选栏使用 `statusCounts`，单个状态数量达到 100 时显示 `99+`。
 - [V1 必做] `GET /api/colonel/activities/{activityId}/products?refresh=true` 继续兼容返回 `syncStats`；`libraryEntryCount` 表示本次因上游商品自身 `status=1/推广中` 新进入商品库的数量，`autoLibraryEligible` 表示本次存在自动入库商品。商品是否入库和活动商品页是否可操作以商品自身上游状态为主：`status=1` 自动补齐 `selectedToLibrary=true`、`auditStatus=2` 和可操作业务状态，历史本地拒绝不得阻断；本地暂停仅表示发布控制，不使活动商品行退化为只读。
 - 字段级契约见 [接口/活动分配与推广入库API契约.md](接口/活动分配与推广入库API契约.md)。
 
@@ -61,6 +62,7 @@
 - [V1 必做] `GET /api/products` 商品库分页返回的 `records[]` 需带出商品卡片展示输入：`shopName`、`detailUrl`、`promotionStartTime`、`promotionEndTime`。这些字段来源于 `product_snapshot`，用于前端商品库卡片展示店铺、商品链接和推广时间范围。
 - [V1 必做] `GET /api/products` 商品库分页支持 `productId` 查询参数，按商品外部 ID 精确匹配；该参数独立于 `keyword`，`keyword` 仍用于商品名称 / 商品 ID / 店铺关键字模糊匹配。前端商品库搜索框输入商品 ID 时走 `keyword` 模糊查询；内部单行刷新等精确定位场景才使用 `productId`。
 - [V1 必做] `POST /api/products/manage/{relationId}/approve` 为旧商品管理审核通过兼容入口，仍必须遵守活动商品审核补充字段契约：审核通过前请求体需携带 `exclusivePriceRemark`、`shippingInfo`、`sellingPoints`、`promotionScript`、`supportsAds`、`rewardRemark`、`participationRequirements`、`campaignTimeRemark`、`materialFiles`；后端透传到商品域审核服务写入 `audit_payload`，缺失时返回业务错误 `code=461` 和“审核通过前请补充：...”提示。拒绝入口 `POST /api/products/manage/{relationId}/reject` 只要求拒绝原因。
+- [V1 必做] 活动商品审核通过入口与旧商品管理审核通过兼容入口共享同一入库前置校验：按平台商品 `product_id` 查询近三个月内其他已入库关系（`selected_to_library=true`、`selected_at >= now - 3 months`），命中时返回业务错误 `code=461`，并且当前关系不得写入 `selected_to_library=true`。
 - [V1 必做] `POST /api/products/{relationId}/pause`：招商角色可暂停当前商品关系发布，后端写入 `product_operation_state.manual_disabled=true`、`display_status=HIDDEN`、`hidden_reason=LOCAL_PAUSED`，保留 `selected_to_library` 入库事实；`GET /api/products` 商品库分页必须不再返回该关系。
 - [V1 必做] `POST /api/products/{relationId}/resume`：招商角色可清除当前商品关系暂停标记，写入 `manual_disabled=false`、`display_status=PENDING` 并触发商品展示规则重新计算；是否重新出现在商品库由上游推广状态、推广期和去重规则共同决定。
 - [V1 必做] `POST /api/colonel/activities/{activityId}/products/repair-library-state`：仅管理员可执行活动商品库展示状态修复；默认 `dryRun=true`，返回历史推广中但未入库/未展示的差异。repair 与活动商品同步使用同一套规则：`status=1` 自动补齐入库、审核通过和可操作状态；非推广中不自动入库；本地暂停保持 `publishStatus=PAUSED`、商品库隐藏但活动商品页可恢复。`dryRun=false` 只写入历史入库状态，不强制所有商品进入 `DISPLAYING`；活动商品刷新链路可在 repair 后按展示规则单独重算。real-pre 写入前必须先保存 dryRun 结果并人工确认窗口。

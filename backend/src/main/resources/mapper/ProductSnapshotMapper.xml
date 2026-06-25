@@ -20,8 +20,6 @@
             #{snapshot.createBy}, #{snapshot.updateBy}, #{snapshot.deleted}
         )
         ON CONFLICT (activity_id, product_id) DO UPDATE SET
-            activity_id = EXCLUDED.activity_id,
-            product_id = EXCLUDED.product_id,
             title = EXCLUDED.title,
             cover = EXCLUDED.cover,
             price = EXCLUDED.price,
@@ -48,6 +46,28 @@
             update_time = EXCLUDED.update_time,
             update_by = EXCLUDED.update_by,
             deleted = EXCLUDED.deleted
+        WHERE
+            product_snapshot.title IS DISTINCT FROM EXCLUDED.title
+            OR product_snapshot.cover IS DISTINCT FROM EXCLUDED.cover
+            OR product_snapshot.price IS DISTINCT FROM EXCLUDED.price
+            OR product_snapshot.price_text IS DISTINCT FROM EXCLUDED.price_text
+            OR product_snapshot.shop_id IS DISTINCT FROM EXCLUDED.shop_id
+            OR product_snapshot.shop_name IS DISTINCT FROM EXCLUDED.shop_name
+            OR product_snapshot.status IS DISTINCT FROM EXCLUDED.status
+            OR product_snapshot.status_text IS DISTINCT FROM EXCLUDED.status_text
+            OR product_snapshot.category_name IS DISTINCT FROM EXCLUDED.category_name
+            OR product_snapshot.product_stock IS DISTINCT FROM EXCLUDED.product_stock
+            OR product_snapshot.sales IS DISTINCT FROM EXCLUDED.sales
+            OR product_snapshot.detail_url IS DISTINCT FROM EXCLUDED.detail_url
+            OR product_snapshot.promotion_start_time IS DISTINCT FROM EXCLUDED.promotion_start_time
+            OR product_snapshot.promotion_end_time IS DISTINCT FROM EXCLUDED.promotion_end_time
+            OR product_snapshot.activity_cos_ratio IS DISTINCT FROM EXCLUDED.activity_cos_ratio
+            OR product_snapshot.activity_cos_ratio_text IS DISTINCT FROM EXCLUDED.activity_cos_ratio_text
+            OR product_snapshot.cos_type IS DISTINCT FROM EXCLUDED.cos_type
+            OR product_snapshot.cos_type_text IS DISTINCT FROM EXCLUDED.cos_type_text
+            OR product_snapshot.ad_service_ratio IS DISTINCT FROM EXCLUDED.ad_service_ratio
+            OR product_snapshot.activity_ad_cos_ratio IS DISTINCT FROM EXCLUDED.activity_ad_cos_ratio
+            OR product_snapshot.has_douin_goods_tag IS DISTINCT FROM EXCLUDED.has_douin_goods_tag
     </insert>
 
     <!--
@@ -65,9 +85,14 @@
            AND pos.deleted = 0
          WHERE ps.activity_id = #{activityId}
            AND ps.deleted = 0
-           <if test="promotionStatus != null">
+           <choose>
+               <when test="promotionStatus != null">
            AND ps.status = #{promotionStatus}
-           </if>
+               </when>
+               <otherwise>
+           AND ps.status IN (0, 1, 2, 3, 4, 6)
+               </otherwise>
+           </choose>
            <if test="productInfo != null and productInfo != ''">
            AND (
                ps.title LIKE CONCAT('%', #{productInfo}, '%')

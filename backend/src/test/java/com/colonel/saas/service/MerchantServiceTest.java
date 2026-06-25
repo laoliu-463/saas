@@ -1,10 +1,11 @@
 package com.colonel.saas.service;
 
 import com.colonel.saas.entity.ColonelsettlementOrder;
+import com.colonel.saas.domain.user.facade.dto.UserOwnershipReference;
 import com.colonel.saas.entity.Merchant;
 import com.colonel.saas.entity.SysUser;
 import com.colonel.saas.mapper.MerchantMapper;
-import com.colonel.saas.mapper.SysUserMapper;
+import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.service.OperationLogService;
 import com.colonel.saas.vo.PartnerDetailVO;
 import com.colonel.saas.vo.PartnerProductVO;
@@ -43,7 +44,7 @@ class MerchantServiceTest {
     @Mock
     private OperationLogService operationLogService;
     @Mock
-    private SysUserMapper sysUserMapper;
+    private UserDomainFacade userDomainFacade;
     @Mock
     private JdbcTemplate jdbcTemplate;
 
@@ -51,7 +52,7 @@ class MerchantServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new MerchantService(merchantMapper, operationLogService, sysUserMapper, jdbcTemplate);
+        service = new MerchantService(merchantMapper, operationLogService, userDomainFacade, jdbcTemplate);
     }
 
     @Test
@@ -416,7 +417,7 @@ class MerchantServiceTest {
     @Test
     void overrideMerchantAssignment_shouldThrowWhenUserNotFound() {
         UUID userId = UUID.randomUUID();
-        when(sysUserMapper.selectById(userId)).thenReturn(null);
+        when(userDomainFacade.loadUserOwnershipReferencesByIds(any())).thenReturn(Map.of());
 
         org.assertj.core.api.Assertions.assertThatThrownBy(
                 () -> service.overrideMerchantAssignment("m1", userId, "reason", UUID.randomUUID()))
@@ -427,9 +428,7 @@ class MerchantServiceTest {
     @Test
     void overrideMerchantAssignment_shouldThrowWhenUserDeleted() {
         UUID userId = UUID.randomUUID();
-        SysUser deletedUser = new SysUser();
-        deletedUser.setDeleted(1);
-        when(sysUserMapper.selectById(userId)).thenReturn(deletedUser);
+        when(userDomainFacade.loadUserOwnershipReferencesByIds(any())).thenReturn(Map.of());
 
         org.assertj.core.api.Assertions.assertThatThrownBy(
                 () -> service.overrideMerchantAssignment("m1", userId, "reason", UUID.randomUUID()))
@@ -440,10 +439,9 @@ class MerchantServiceTest {
     @Test
     void overrideMerchantAssignment_shouldUpdateOwnerAndDeptId() {
         UUID userId = UUID.randomUUID();
-        SysUser user = new SysUser();
-        user.setDeleted(0);
-        user.setDeptId(UUID.randomUUID());
-        when(sysUserMapper.selectById(userId)).thenReturn(user);
+        UUID deptId = UUID.randomUUID();
+        UserOwnershipReference user = new UserOwnershipReference(userId, deptId);
+        when(userDomainFacade.loadUserOwnershipReferencesByIds(any())).thenReturn(Map.of(userId, user));
 
         Merchant merchant = new Merchant();
         merchant.setMerchantId("m1");
@@ -453,8 +451,9 @@ class MerchantServiceTest {
         service.overrideMerchantAssignment("m1", userId, "test reason", UUID.randomUUID());
 
         assertThat(merchant.getOwnerId()).isEqualTo(userId);
-        assertThat(merchant.getOwnerDeptId()).isEqualTo(user.getDeptId());
+        assertThat(merchant.getOwnerDeptId()).isEqualTo(deptId);
         verify(merchantMapper).updateById(merchant);
+        verify(userDomainFacade, never()).getUserById(any());
     }
 
     private static class OrderBuilder {

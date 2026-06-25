@@ -1,15 +1,16 @@
 package com.colonel.saas.service;
 
+import com.colonel.saas.config.SystemConfigKeys;
+import com.colonel.saas.domain.config.facade.ConfigDomainFacade;
+import com.colonel.saas.domain.performance.policy.PerformanceMoneyPolicy;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Lazy;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -25,7 +26,8 @@ import java.util.UUID;
  *
  * <p>计算公式（调用方按轨道传入扣减额）：
  * <ul>
- *   <li>服务费收益（serviceFeeNet）= 服务费收入 - 调用方传入的技术服务费扣减额</li>
+ *   <li>预估服务费收益 = 服务费收入 - 技术服务费 - 服务费支出</li>
+ *   <li>结算服务费收益 = 服务费收入 - 服务费支出</li>
  *   <li>招商提成 = 服务费收益 x 招商提成比例（按活动分桶计算后求和）</li>
  *   <li>渠道提成 = 服务费收益 x 渠道提成比例（按活动分桶计算后求和）</li>
  *   <li>毛利 = 服务费收益 - 招商提成 - 渠道提成</li>
@@ -35,7 +37,7 @@ import java.util.UUID;
  *
  * <p>依赖服务/仓储：
  * <ul>
- *   <li>{@link JdbcTemplate} —— 从 system_config 表读取提成比例配置</li>
+ *   <li>{@link ConfigDomainFacade} —— 全局默认提成比例（DDD-CONFIG-003）</li>
  *   <li>{@link CommissionRuleService} —— 提成规则优先级解析</li>
  *   <li>{@link PerformanceCalculationService} —— 业绩记录写入</li>
  *   <li>{@link OrderCommissionPolicy} —— 订单状态判定（是否计入提成）</li>
@@ -48,23 +50,19 @@ public class CommissionService {
 
     /** 默认提成比例（兜底值，15%） */
     private static final BigDecimal DEFAULT_RATIO = new BigDecimal("0.15");
-    /** 配置键：招商提成全局默认比例 */
-    private static final String KEY_BIZ_RATIO = "commission.business_default_ratio";
-    /** 配置键：渠道提成全局默认比例 */
-    private static final String KEY_CHANNEL_RATIO = "commission.channel_default_ratio";
     /** 配置键前缀：活动级招商提成比例覆盖 */
     private static final String KEY_BIZ_ACTIVITY_RATIO_PREFIX = "commission.business_activity_ratio.";
     /** 配置键前缀：活动级渠道提成比例覆盖 */
     private static final String KEY_CHANNEL_ACTIVITY_RATIO_PREFIX = "commission.channel_activity_ratio.";
 
-    private final JdbcTemplate jdbcTemplate;
+    private final ConfigDomainFacade configDomainFacade;
     private final CommissionRuleService commissionRuleService;
     private final PerformanceCalculationService performanceCalculationService;
 
-    public CommissionService(JdbcTemplate jdbcTemplate,
+    public CommissionService(ConfigDomainFacade configDomainFacade,
                              CommissionRuleService commissionRuleService,
                              @Lazy PerformanceCalculationService performanceCalculationService) {
-        this.jdbcTemplate = jdbcTemplate;
+        this.configDomainFacade = configDomainFacade;
         this.commissionRuleService = commissionRuleService;
         this.performanceCalculationService = performanceCalculationService;
     }
@@ -181,7 +179,22 @@ public class CommissionService {
      * 看板 / 汇总 API 必须与卡片展示共用此公式，避免混用 DB profit 汇总与订单 income 汇总。
      */
     public static long serviceFeeNetCent(long serviceFeeIncome, long techServiceFee, long serviceFeeExpense) {
-        return Math.max(serviceFeeIncome - techServiceFee - serviceFeeExpense, 0L);
+        return PerformanceMoneyPolicy.serviceFeeNetCent(serviceFeeIncome, techServiceFee, serviceFeeExpense);
+    }
+
+    /**
+     * 轨道感知服务费收益公式（分）。
+     * 预估轨扣技术服务费，结算轨只扣服务费支出，技术服务费仅展示。
+     */
+    public static long serviceFeeNetCent(
+            long serviceFeeIncome,
+            long techServiceFee,
+            long serviceFeeExpense,
+            boolean deductTechServiceFee) {
+        return PerformanceMoneyPolicy.serviceFeeNetCent(
+                serviceFeeIncome,
+                deductTechServiceFee ? techServiceFee : 0L,
+                serviceFeeExpense);
     }
 
     public CommissionSummary calculateTrack(
@@ -278,48 +291,34 @@ public class CommissionService {
      * @return 提成计算汇总
      */
     public CommissionSummary calculateByActivityBuckets(List<ActivityCommissionBucket> buckets, LocalDateTime effectiveAt) {
-        long serviceFeeIncome = sumBuckets(buckets, ActivityCommissionBucket::serviceFeeIncome);
-        long techServiceFee = sumBuckets(buckets, ActivityCommissionBucket::techServiceFee);
-        long serviceFeeExpense = sumBuckets(buckets, ActivityCommissionBucket::serviceFeeExpense);
-        long talentCommission = sumBuckets(buckets, ActivityCommissionBucket::talentCommission);
+        BigDecimal defaultBizRatio = loadDefaultRatio(SystemConfigKeys.COMMISSION_BUSINESS_DEFAULT_RATIO);
+        BigDecimal defaultChannelRatio = loadDefaultRatio(SystemConfigKeys.COMMISSION_CHANNEL_DEFAULT_RATIO);
 
-        // 服务费收益 = 服务费收入 − 服务费支出 − 技术服务费。
-        // 预估轨传入实际技术服务费和服务费支出；结算轨同理。
-        // 达人佣金(talentCommission)来自抖店结算，不从团长毛利中再扣一次
-        long serviceFeeNet = serviceFeeNetCent(serviceFeeIncome, techServiceFee, serviceFeeExpense);
-        BigDecimal defaultBizRatio = loadRatio(KEY_BIZ_RATIO);
-        BigDecimal defaultChannelRatio = loadRatio(KEY_CHANNEL_RATIO);
-
-        long bizCommission = 0L;
-        long channelCommission = 0L;
-        BigDecimal lastBizRatio = defaultBizRatio;
-        BigDecimal lastChannelRatio = defaultChannelRatio;
+        List<PerformanceMoneyPolicy.BucketInput> inputs = new ArrayList<>();
         for (ActivityCommissionBucket bucket : normalizeBuckets(buckets)) {
-            // 活动级服务费收益 = 该活动收入 − 该活动支出 − 本轨应扣技术费
-            long activityServiceFeeNet = Math.max(
-                    bucket.serviceFeeIncome() - bucket.serviceFeeExpense() - bucket.techServiceFee(),
-                    0L);
             BigDecimal activityBizRatio = resolveBizRatio(bucket, defaultBizRatio, effectiveAt);
             BigDecimal activityChannelRatio = resolveChannelRatio(bucket, defaultChannelRatio, effectiveAt);
-            lastBizRatio = activityBizRatio;
-            lastChannelRatio = activityChannelRatio;
-            bizCommission += multiplyCent(activityServiceFeeNet, activityBizRatio);
-            channelCommission += multiplyCent(activityServiceFeeNet, activityChannelRatio);
+            inputs.add(new PerformanceMoneyPolicy.BucketInput(
+                    bucket.serviceFeeIncome(),
+                    bucket.techServiceFee(),
+                    bucket.serviceFeeExpense(),
+                    bucket.talentCommission(),
+                    activityBizRatio,
+                    activityChannelRatio));
         }
-        // 毛利 = 服务费收益 − 招商提成 − 渠道提成
-        long grossProfit = Math.max(serviceFeeNet - bizCommission - channelCommission, 0L);
 
+        PerformanceMoneyPolicy.MoneyResult result = PerformanceMoneyPolicy.calculate(inputs);
         return new CommissionSummary(
-                serviceFeeIncome,
-                techServiceFee,
-                serviceFeeExpense,
-                talentCommission,
-                serviceFeeNet,
-                bizCommission,
-                channelCommission,
-                grossProfit,
-                lastBizRatio,
-                lastChannelRatio);
+                result.serviceFeeIncome(),
+                result.techServiceFee(),
+                result.serviceFeeExpense(),
+                result.talentCommission(),
+                result.serviceFeeNet(),
+                result.bizCommission(),
+                result.channelCommission(),
+                result.grossProfit(),
+                result.lastBizRatio(),
+                result.lastChannelRatio());
     }
 
     private BigDecimal resolveBizRatio(
@@ -395,16 +394,23 @@ public class CommissionService {
         return defaultRatio;
     }
 
-    private BigDecimal loadRatio(String key) {
-        BigDecimal ratio = queryRatio(key);
-        return ratio == null ? DEFAULT_RATIO : ratio;
+    private BigDecimal loadDefaultRatio(String key) {
+        try {
+            BigDecimal ratio = configDomainFacade.getDecimal(key, DEFAULT_RATIO);
+            if (ratio == null || ratio.compareTo(BigDecimal.ZERO) < 0) {
+                return DEFAULT_RATIO;
+            }
+            return ratio;
+        } catch (Exception ex) {
+            log.warn("Failed to load default commission ratio config, fallback to default: {}", key, ex);
+            return DEFAULT_RATIO;
+        }
     }
 
     private BigDecimal queryRatio(String key) {
         try {
-            String sql = "SELECT config_value FROM system_config WHERE config_key = ? AND deleted = 0 LIMIT 1";
-            String value = jdbcTemplate.query(sql, rs -> rs.next() ? rs.getString(1) : null, key);
-            if (value == null || value.isBlank()) {
+            String value = configDomainFacade.getConfig(key);
+            if (!StringUtils.hasText(value)) {
                 return null;
             }
             BigDecimal ratio = new BigDecimal(value.trim());
@@ -435,27 +441,6 @@ public class CommissionService {
             return List.of(new ActivityCommissionBucket("", null, null, 0L, 0L, 0L, 0L));
         }
         return buckets;
-    }
-
-    private long sumBuckets(List<ActivityCommissionBucket> buckets, java.util.function.ToLongFunction<ActivityCommissionBucket> getter) {
-        if (buckets == null || buckets.isEmpty()) {
-            return 0L;
-        }
-        long result = 0L;
-        for (ActivityCommissionBucket bucket : buckets) {
-            result += getter.applyAsLong(bucket);
-        }
-        return result;
-    }
-
-    private long multiplyCent(long amount, BigDecimal ratio) {
-        if (amount <= 0L) {
-            return 0L;
-        }
-        return BigDecimal.valueOf(amount)
-                .multiply(ratio)
-                .setScale(0, RoundingMode.HALF_UP)
-                .longValue();
     }
 
     public record CommissionSummary(

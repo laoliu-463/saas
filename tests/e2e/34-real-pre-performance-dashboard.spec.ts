@@ -54,7 +54,8 @@ test('real-pre P0 / 34 / 业绩看板', async ({ page }, testInfo) => {
     const performanceData = safeUnwrap<JsonMap>(performance.body) || {};
     setDetail(ctx, 'performanceSummary', performance.ok ? summarizeMetrics(performanceData) : { skipped: true, status: performance.status });
 
-    // 公式校验：仅当本次能拿到 serviceFeeIncome / techServiceFee / serviceFeeProfit 时才进行。
+    // 公式校验：同时兼容 /performance/summary 的 estimate/effective 双轨，
+    // 以及 /dashboard/metrics 的 estimate/settle 嵌套轨道。
     const formulaChecks = checkFormulas([metricsData, summaryData, performanceData]);
     setDetail(ctx, 'formulaChecks', formulaChecks);
     if (formulaChecks.violations.length) {
@@ -113,27 +114,66 @@ function summarizeMetrics(data: Record<string, unknown>): Record<string, unknown
 function checkFormulas(samples: Array<Record<string, unknown>>): { hasSample: boolean; violations: string[]; checked: Array<Record<string, unknown>> } {
   const violations: string[] = [];
   const checked: Array<Record<string, unknown>> = [];
-  for (const sample of samples) {
-    if (!sample || typeof sample !== 'object') continue;
+  for (const candidate of collectFormulaCandidates(samples)) {
+    const sample = candidate.sample;
     const income = toNumber(sample.serviceFeeIncome ?? sample.effectiveServiceFee);
     const tech = toNumber(sample.techServiceFee ?? sample.effectiveTechServiceFee);
+    const expense = toNumber(sample.serviceFeeExpense);
     const profit = toNumber(sample.serviceFeeProfit);
-    if (income === null || tech === null || profit === null) continue;
-    const computed = income - tech;
+    if (income === null || profit === null) continue;
+    const mode = resolveFormulaMode(candidate.name, sample);
+    const computed = mode === 'estimate'
+      ? income - (expense ?? 0) - (tech ?? 0)
+      : income - (expense ?? 0);
     const passed = Math.abs(computed - profit) <= FORMULA_EPSILON;
     checked.push({
-      formula: 'serviceFeeProfit = serviceFeeIncome - techServiceFee',
+      source: candidate.name,
+      formula: mode === 'estimate'
+        ? 'serviceFeeProfit = serviceFeeIncome - serviceFeeExpense - techServiceFee'
+        : 'serviceFeeProfit = serviceFeeIncome - serviceFeeExpense',
+      mode,
       income,
       tech,
+      expense,
       profit,
       computed,
       passed
     });
     if (!passed) {
-      violations.push(`serviceFeeProfit=${profit} 与 income(${income}) - tech(${tech})=${computed} 不一致`);
+      violations.push(`${candidate.name} serviceFeeProfit=${profit} 与 computed=${computed} 不一致`);
     }
   }
   return { hasSample: checked.length > 0, violations, checked };
+}
+
+function collectFormulaCandidates(samples: Array<Record<string, unknown>>): Array<{ name: string; sample: Record<string, unknown> }> {
+  const candidates: Array<{ name: string; sample: Record<string, unknown> }> = [];
+  for (const sample of samples) {
+    collectFormulaCandidate(candidates, 'root', sample);
+  }
+  return candidates;
+}
+
+function collectFormulaCandidate(
+  candidates: Array<{ name: string; sample: Record<string, unknown> }>,
+  name: string,
+  sample: unknown
+): void {
+  if (!sample || typeof sample !== 'object' || Array.isArray(sample)) return;
+  const record = sample as Record<string, unknown>;
+  if (record.serviceFeeIncome !== undefined && record.serviceFeeProfit !== undefined) {
+    candidates.push({ name, sample: record });
+  }
+  for (const key of ['estimate', 'effective', 'settle']) {
+    if (record[key] && typeof record[key] === 'object' && !Array.isArray(record[key])) {
+      collectFormulaCandidate(candidates, key, record[key]);
+    }
+  }
+}
+
+function resolveFormulaMode(name: string, sample: Record<string, unknown>): 'estimate' | 'effective' {
+  const marker = String(sample.amountTrack ?? sample.track ?? name).toLowerCase();
+  return marker.includes('estimate') || marker.includes('pay') ? 'estimate' : 'effective';
 }
 
 function toNumber(value: unknown): number | null {

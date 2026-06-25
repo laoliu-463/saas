@@ -305,3 +305,16 @@ export const getActivityProductOperationLogs = (
  */
 export const syncActivityProducts = (activityId: string | number) =>
   request.post(`/colonel/activities/${activityId}/products/sync`);
+
+/**
+ * 查询活动商品同步任务状态
+ *
+ * @param activityId - 活动 ID
+ * @param jobId - 后端一键同步返回的任务 ID
+ * @returns 同步任务状态与统计
+ */
+export const getActivityProductSyncJob = (
+  activityId: string | number,
+  jobId: string | number,
+  config: any = {}
+) => request.get(`/colonel/activities/${activityId}/products/sync-jobs/${jobId}`, config);

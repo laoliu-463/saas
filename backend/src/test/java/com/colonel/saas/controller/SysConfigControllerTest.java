@@ -2,6 +2,7 @@ package com.colonel.saas.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.common.exception.GlobalExceptionHandler;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.entity.SystemConfig;
 import com.colonel.saas.service.SysConfigService;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -45,7 +46,7 @@ class SysConfigControllerTest {
     void setUp() {
         objectMapper = new ObjectMapper();
         mockMvc = MockMvcBuilders
-                .standaloneSetup(new SysConfigController(sysConfigService))
+                .standaloneSetup(new SysConfigController(sysConfigService, new CurrentUserPermissionPolicy()))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
     }
@@ -74,6 +75,17 @@ class SysConfigControllerTest {
                         .requestAttr("roleCodes", List.of("admin")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.douyin[0].configKey").value("douyin.access_token"));
+    }
+
+    @Test
+    void grouped_shouldUseUserPermissionPolicyNormalizationForAdminRoleAttribute() throws Exception {
+        when(sysConfigService.findGrouped(true)).thenReturn(Map.of());
+
+        mockMvc.perform(get("/configs/grouped")
+                        .requestAttr("roleCodes", List.of(" ADMIN ")))
+                .andExpect(status().isOk());
+
+        verify(sysConfigService).findGrouped(true);
     }
 
     @Test

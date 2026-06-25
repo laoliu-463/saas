@@ -4,12 +4,12 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.exception.ForbiddenException;
 import com.colonel.saas.common.exception.OptimisticLockSupport;
-import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.dto.sample.LogisticsImportResult;
 import com.colonel.saas.dto.sample.LogisticsImportRow;
 import com.colonel.saas.entity.SampleRequest;
 import com.colonel.saas.mapper.SampleRequestMapper;
 import com.colonel.saas.domain.sample.event.SampleDomainEventPublisher;
+import com.colonel.saas.domain.sample.policy.SampleActionPermissionPolicy;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.DataFormatter;
@@ -28,12 +28,10 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -89,16 +87,20 @@ public class SampleLogisticsImportService {
     private final SampleDomainEventPublisher sampleDomainEventPublisher;
     /** 物流订阅服务（快递100） */
     private final SampleLogisticsSubscriptionService sampleLogisticsSubscriptionService;
+    /** 寄样动作权限策略 */
+    private final SampleActionPermissionPolicy sampleActionPermissionPolicy;
 
     public SampleLogisticsImportService(
             SampleRequestMapper sampleRequestMapper,
             SampleStatusLogService sampleStatusLogService,
             SampleDomainEventPublisher sampleDomainEventPublisher,
-            SampleLogisticsSubscriptionService sampleLogisticsSubscriptionService) {
+            SampleLogisticsSubscriptionService sampleLogisticsSubscriptionService,
+            SampleActionPermissionPolicy sampleActionPermissionPolicy) {
         this.sampleRequestMapper = sampleRequestMapper;
         this.sampleStatusLogService = sampleStatusLogService;
         this.sampleDomainEventPublisher = sampleDomainEventPublisher;
         this.sampleLogisticsSubscriptionService = sampleLogisticsSubscriptionService;
+        this.sampleActionPermissionPolicy = sampleActionPermissionPolicy;
     }
 
     /**
@@ -271,7 +273,7 @@ public class SampleLogisticsImportService {
         if (sample == null) {
             return itemResult(row, null, false, "申请不存在");
         }
-        if (!canOperateSample(sample, roleCodes)) {
+        if (!canOperateSample(roleCodes)) {
             return itemResult(row, sample.getId(), false, "权限不足");
         }
         if (StringUtils.hasText(row.getProductId())) {
@@ -449,35 +451,14 @@ public class SampleLogisticsImportService {
     }
 
     private void ensureImportPermission(Object roleCodes, boolean allowOverwrite) {
-        if (!hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.OPS_STAFF)) {
-            throw new ForbiddenException("仅运营或管理员可导入物流单号");
-        }
-        if (allowOverwrite && !hasAnyRole(roleCodes, RoleCodes.ADMIN)) {
-            throw new ForbiddenException("仅管理员可覆盖已有物流单号");
+        sampleActionPermissionPolicy.ensureCanImportLogistics(roleCodes);
+        if (allowOverwrite) {
+            sampleActionPermissionPolicy.ensureCanOverwriteLogisticsImport(roleCodes);
         }
     }
 
-    private boolean canOperateSample(SampleRequest sample, Object roleCodes) {
-        return hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.OPS_STAFF);
-    }
-
-    private boolean hasAnyRole(Object roleCodes, String... expected) {
-        if (roleCodes == null) {
-            return false;
-        }
-        Set<String> targets = Set.of(expected);
-        if (roleCodes instanceof Collection<?> collection) {
-            return collection.stream()
-                    .map(item -> item == null ? "" : item.toString())
-                    .anyMatch(targets::contains);
-        }
-        String raw = roleCodes.toString();
-        for (String role : raw.replace("[", "").replace("]", "").split(",")) {
-            if (targets.contains(role.trim())) {
-                return true;
-            }
-        }
-        return false;
+    private boolean canOperateSample(Object roleCodes) {
+        return sampleActionPermissionPolicy.canImportLogistics(roleCodes);
     }
 
     private void putExtraValue(SampleRequest sample, String key, Object value) {

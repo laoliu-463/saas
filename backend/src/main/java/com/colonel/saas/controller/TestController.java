@@ -3,6 +3,7 @@ package com.colonel.saas.controller;
 import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.config.OrderDerivedCacheKeys;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.service.OrderSyncService;
 import com.colonel.saas.service.ShortTtlCacheService;
@@ -45,11 +46,13 @@ import java.util.UUID;
 public class TestController extends BaseController {
 
     /** 看板概览缓存键前缀 */
-    private static final String DASHBOARD_SUMMARY_CACHE_PREFIX = "dashboard:summary:";
+    private static final String DASHBOARD_SUMMARY_CACHE_PREFIX = OrderDerivedCacheKeys.DASHBOARD_SUMMARY_PREFIX;
     /** 看板指标缓存键前缀 */
-    private static final String DASHBOARD_METRICS_CACHE_PREFIX = "dashboard:metrics:";
+    private static final String DASHBOARD_METRICS_CACHE_PREFIX = OrderDerivedCacheKeys.DASHBOARD_METRICS_PREFIX;
+    /** 订单统计缓存键前缀 */
+    private static final String ORDER_STATS_CACHE_PREFIX = OrderDerivedCacheKeys.ORDER_STATS_PREFIX;
     /** 订单筛选选项缓存键前缀 */
-    private static final String ORDER_FILTER_OPTIONS_CACHE_PREFIX = "orders:filter-options:";
+    private static final String ORDER_FILTER_OPTIONS_CACHE_PREFIX = OrderDerivedCacheKeys.FILTER_OPTIONS_PREFIX;
 
     /** 测试数据服务，负责种子数据初始化与测试订单生成 */
     private final TestDataService testDataService;
@@ -248,6 +251,7 @@ public class TestController extends BaseController {
     private void evictOrderDerivedCaches() {
         shortTtlCacheService.evictByPrefix(DASHBOARD_SUMMARY_CACHE_PREFIX);
         shortTtlCacheService.evictByPrefix(DASHBOARD_METRICS_CACHE_PREFIX);
+        shortTtlCacheService.evictByPrefix(ORDER_STATS_CACHE_PREFIX);
         shortTtlCacheService.evictByPrefix(ORDER_FILTER_OPTIONS_CACHE_PREFIX);
     }
 }

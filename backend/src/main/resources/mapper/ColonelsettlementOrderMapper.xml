@@ -16,12 +16,15 @@
         <result property="effectiveServiceFee" column="effective_service_fee"/>
         <result property="estimateTechServiceFee" column="estimate_tech_service_fee"/>
         <result property="effectiveTechServiceFee" column="effective_tech_service_fee"/>
+        <result property="estimateServiceFeeExpense" column="estimate_service_fee_expense"/>
+        <result property="effectiveServiceFeeExpense" column="effective_service_fee_expense"/>
         <result property="colonelBuyinId" column="colonel_buyin_id"/>
         <result property="settleColonelCommission" column="settle_colonel_commission"/>
         <result property="settleColonelTechServiceFee" column="settle_colonel_tech_service_fee"/>
         <result property="secondColonelBuyinId" column="second_colonel_buyin_id"/>
         <result property="secondActivityId" column="second_colonel_activity_id"/>
         <result property="settleSecondColonelCommission" column="settle_second_colonel_commission"/>
+        <result property="flowPoint" column="flow_point"/>
         <result property="phaseId" column="phase_id"/>
         <result property="orderStatus" column="order_status"/>
         <result property="orderType" column="order_type"/>
@@ -71,8 +74,9 @@
             order_amount, actual_amount, settle_amount,
             estimate_service_fee, effective_service_fee,
             estimate_tech_service_fee, effective_tech_service_fee,
+            estimate_service_fee_expense, effective_service_fee_expense,
             colonel_buyin_id, settle_colonel_commission, settle_colonel_tech_service_fee,
-            second_colonel_buyin_id, second_colonel_activity_id, settle_second_colonel_commission, phase_id,
+            second_colonel_buyin_id, second_colonel_activity_id, settle_second_colonel_commission, flow_point, phase_id,
             order_status, order_type, pick_source, cursor,
             talent_id,
             channel_user_id, channel_user_name, channel_dept_id,
@@ -85,8 +89,9 @@
             #{orderAmount}, #{actualAmount}, #{settleAmount},
             #{estimateServiceFee}, #{effectiveServiceFee},
             #{estimateTechServiceFee}, #{effectiveTechServiceFee},
+            #{estimateServiceFeeExpense}, #{effectiveServiceFeeExpense},
             #{colonelBuyinId}, #{settleColonelCommission}, #{settleColonelTechServiceFee},
-            #{secondColonelBuyinId}, #{secondActivityId}, #{settleSecondColonelCommission}, #{phaseId},
+            #{secondColonelBuyinId}, #{secondActivityId}, #{settleSecondColonelCommission}, #{flowPoint}, #{phaseId},
             #{orderStatus}, #{orderType}, #{pickSource}, #{cursor},
             #{talentId},
             #{channelUserId}, #{channelUserName}, #{channelDeptId},
@@ -117,12 +122,15 @@
             effective_service_fee = #{effectiveServiceFee},
             estimate_tech_service_fee = #{estimateTechServiceFee},
             effective_tech_service_fee = #{effectiveTechServiceFee},
+            estimate_service_fee_expense = #{estimateServiceFeeExpense},
+            effective_service_fee_expense = #{effectiveServiceFeeExpense},
             colonel_buyin_id = #{colonelBuyinId},
             settle_colonel_commission = #{settleColonelCommission},
             settle_colonel_tech_service_fee = #{settleColonelTechServiceFee},
             second_colonel_buyin_id = #{secondColonelBuyinId},
             second_colonel_activity_id = #{secondActivityId},
             settle_second_colonel_commission = #{settleSecondColonelCommission},
+            flow_point = #{flowPoint},
             phase_id = #{phaseId},
             order_status = #{orderStatus},
             order_type = #{orderType},
@@ -168,6 +176,8 @@
             co.effective_service_fee,
             co.estimate_tech_service_fee,
             co.effective_tech_service_fee,
+            co.estimate_service_fee_expense,
+            co.effective_service_fee_expense,
             co.colonel_buyin_id,
             co.colonel_activity_id,
             co.settle_colonel_commission,
@@ -175,6 +185,7 @@
             co.second_colonel_buyin_id,
             co.second_colonel_activity_id,
             co.settle_second_colonel_commission,
+            co.flow_point,
             co.phase_id,
             co.order_status,
             co.order_type,

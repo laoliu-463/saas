@@ -1,0 +1,77 @@
+# Git Change Control
+
+> 本文件定义 Harness 中所有 Git 相关强约束。
+> 详细 Gate 定义见子文件。
+
+## 1. 总原则
+
+1. **任务开始前**：执行 Git Intake Gate → [详情](git-change-control.intake.md)
+2. **任务执行中**：只能改当前任务 Allowed Change Set 范围
+3. **提交前**：执行 Staged Scope Gate → [详情](git-change-control.commit.md)
+4. **推送前**：执行 Push Gate → [详情](git-change-control.commit.md)
+5. **部署前**：执行 Deploy Commit Gate → [详情](git-change-control.commit.md)
+6. **任务结束前**：执行 Git Exit Gate → [详情](git-change-control.exit.md)
+
+## 2. 禁止命令
+
+```powershell
+# 以下默认禁止
+git add .
+git add -A
+git add harness/
+git add backend/
+git add frontend/
+```
+
+文件必须逐个 `git add -- <file>` 添加。
+
+## 3. Git 终态
+
+| 终态 | 含义 | 允许后续 |
+|---|---|---|
+| `DONE_CLEAN` | 工作区干净，已 commit + push | 进入下一任务 |
+| `DONE_WITH_REGISTERED_DIRTY` | dirty 已分类并登记 | 下一任务 Intake 确认继承 |
+| `PARTIAL_DIRTY_REMAINING` | dirty 未收口 | 只能继续当前任务或收口 |
+| `BLOCKED_DIRTY_UNKNOWN` | 存在 unknown dirty | 必须先调查 |
+
+## 4. Dirty 十种分类
+
+| 类型 | 允许 stage | 允许 commit |
+|---|---|---|
+| `current_task` | 是 | 是 |
+| `previous_partial` | 仅继承时 | 仅 Batch 中 |
+| `docs_state` | 是 | 是（docs 任务） |
+| `report_only` | 是 | 是 |
+| `frontend` | 是 | 是（frontend 任务） |
+| `backend` | 是 | 是（backend 任务） |
+| `sql_migration` | 是 | 是（sql 任务） |
+| `docker_deploy` | 是 | 是（deploy 任务） |
+| `cleanup_retire` | 是 | 是（cleanup 任务） |
+| `unknown` | **否** | **否** |
+
+## 5. Allowed Change Set
+
+| Scope | 允许 | 禁止 |
+|---|---|---|
+| `docs` | harness/, docs/, AGENTS.md | backend/, frontend/, SQL, Docker |
+| `backend` | backend/src/, pom.xml | frontend/, harness/, Docker |
+| `frontend` | frontend/src/, package.json | backend/, harness/, Docker |
+| `docker_deploy` | docker-compose*.yml, Dockerfile | 业务代码, env |
+| `cleanup_retire` | harness/reports/, archive/ | 业务代码 |
+
+## 6. Commit Message 规范
+
+```text
+feat(<scope>): <描述>
+fix(<scope>): <描述>
+docs(harness): <描述>
+chore(cleanup): <描述>
+```
+
+## 7. 关联文件
+
+- [Git Intake Gate](git-change-control.intake.md)
+- [Commit / Push / Deploy Gate](git-change-control.commit.md)
+- [Git Exit Gate / Unknown Policy / Rollback](git-change-control.exit.md)
+- [批次提交流程](git-batch-submit.md)
+- [任务后清理](post-task-gc.md)

@@ -1,0 +1,22 @@
+{
+  "items": [
+    {
+      "path": "harness/reports/content-retire-20260613-165112.md",
+      "action": "archive",
+      "category": "old-harness-flow-report",
+      "reason": "DDD-CLEAN-001 report directory limit: superseded by 17:07 evidence"
+    },
+    {
+      "path": "harness/reports/evidence-20260613-165113.md",
+      "action": "archive",
+      "category": "old-harness-flow-report",
+      "reason": "DDD-CLEAN-001 report directory limit: superseded by 17:07 evidence"
+    },
+    {
+      "path": "harness/reports/retro-20260613-165136.md",
+      "action": "archive",
+      "category": "old-harness-flow-report",
+      "reason": "DDD-CLEAN-001 report directory limit: superseded by 17:08 retro"
+    }
+  ]
+}

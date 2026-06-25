@@ -35,6 +35,26 @@ public interface ProductSnapshotMapper extends BaseMapper<ProductSnapshot> {
     int upsert(@Param("snapshot") ProductSnapshot snapshot);
 
     /**
+     * 按活动统计有效商品快照的上游状态分布。
+     *
+     * @param activityId 活动 ID
+     * @return total / pendingReview / promoting / rejected / terminated / canceled / expired
+     */
+    @Select("""
+            SELECT COUNT(*) FILTER (WHERE status IN (0, 1, 2, 3, 4, 6)) AS "total",
+                   COUNT(*) FILTER (WHERE status = 0) AS "pendingReview",
+                   COUNT(*) FILTER (WHERE status = 1) AS "promoting",
+                   COUNT(*) FILTER (WHERE status = 2) AS "rejected",
+                   COUNT(*) FILTER (WHERE status = 3) AS "terminated",
+                   COUNT(*) FILTER (WHERE status = 4) AS "canceled",
+                   COUNT(*) FILTER (WHERE status = 6) AS "expired"
+              FROM product_snapshot
+             WHERE activity_id = #{activityId}
+               AND deleted = 0
+            """)
+    Map<String, Object> selectActivityStatusCounts(@Param("activityId") String activityId);
+
+    /**
      * 查询已上架且已选入精选库商品的品类名称列表
      * <p>
      * 关联 product_operation_state 表，筛选条件：
@@ -92,6 +112,28 @@ public interface ProductSnapshotMapper extends BaseMapper<ProductSnapshot> {
             ORDER BY category_name
             """)
     List<Map<String, Object>> listDisplayingLibraryCategoryOptions();
+
+    @Select("SELECT COUNT(1) FROM product_snapshot WHERE deleted = 0")
+    long countActiveRows();
+
+    @Select("SELECT COUNT(DISTINCT product_id) FROM product_snapshot WHERE deleted = 0")
+    long countDistinctProducts();
+
+    @Select("SELECT COUNT(DISTINCT activity_id) FROM product_snapshot WHERE deleted = 0")
+    long countDistinctActivities();
+
+    @Select("""
+            <script>
+            SELECT COUNT(1)
+            FROM product_snapshot
+            WHERE deleted = 0
+              AND activity_id IN
+              <foreach collection="activityIds" item="activityId" open="(" separator="," close=")">
+                  #{activityId}
+              </foreach>
+            </script>
+            """)
+    long countActiveRowsByActivityIds(@Param("activityIds") List<String> activityIds);
 
     /**
      * SQL 级别排序 + 分页查询活动商品快照。

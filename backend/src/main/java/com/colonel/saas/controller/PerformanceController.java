@@ -21,8 +21,10 @@ import com.colonel.saas.service.PerformanceExportService;
 import com.colonel.saas.service.PerformanceMonthRecalculationService;
 import com.colonel.saas.service.PerformanceQueryService;
 import com.colonel.saas.service.PerformanceSummaryService;
-import com.colonel.saas.service.performance.PerformanceAccessContext;
-import com.colonel.saas.service.performance.PerformanceAccessScope;
+import com.colonel.saas.domain.performance.policy.PerformanceAccessContext;
+import com.colonel.saas.domain.performance.policy.PerformanceAccessScope;
+import com.colonel.saas.config.DddRefactorProperties;
+import com.colonel.saas.domain.performance.facade.PerformanceQueryFacade;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletResponse;
@@ -112,17 +114,27 @@ public class PerformanceController extends BaseController {
     /** 操作日志服务：记录敏感操作（如导出、重算）的审计日志 */
     private final OperationLogService operationLogService;
 
+    /** DDD 重构安全开关 */
+    private final DddRefactorProperties dddRefactorProperties;
+
+    /** 业绩只读查询门面 */
+    private final PerformanceQueryFacade performanceQueryFacade;
+
     public PerformanceController(
             PerformanceQueryService performanceQueryService,
             PerformanceSummaryService performanceSummaryService,
             PerformanceExportService performanceExportService,
             PerformanceMonthRecalculationService monthRecalculationService,
-            OperationLogService operationLogService) {
+            OperationLogService operationLogService,
+            DddRefactorProperties dddRefactorProperties,
+            PerformanceQueryFacade performanceQueryFacade) {
         this.performanceQueryService = performanceQueryService;
         this.performanceSummaryService = performanceSummaryService;
         this.performanceExportService = performanceExportService;
         this.monthRecalculationService = monthRecalculationService;
         this.operationLogService = operationLogService;
+        this.dddRefactorProperties = dddRefactorProperties;
+        this.performanceQueryFacade = performanceQueryFacade;
     }
 
     /**
@@ -151,9 +163,12 @@ public class PerformanceController extends BaseController {
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
             @RequestAttribute(value = "roleCodes", required = false) List<String> roleCodes) {
         // 第一步：组装数据访问上下文，传入 Service 层做行级过滤
-        return ok(performanceQueryService.getByOrderId(
-                orderId,
-                PerformanceAccessContext.of(userId, deptId, dataScope, roleCodes)));
+        var context = PerformanceAccessContext.of(userId, deptId, dataScope, roleCodes);
+        if (dddRefactorProperties.isEnabled() && dddRefactorProperties.getPerformanceQuery().isEnabled()) {
+            return ok(performanceQueryFacade.getByOrderId(orderId, context));
+        } else {
+            return ok(performanceQueryService.getByOrderId(orderId, context));
+        }
     }
 
     /**
@@ -182,9 +197,13 @@ public class PerformanceController extends BaseController {
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
             @RequestAttribute(value = "roleCodes", required = false) List<String> roleCodes) {
-        return ok(performanceQueryService.batchGet(
-                request == null ? List.of() : request.getOrderIds(),
-                PerformanceAccessContext.of(userId, deptId, dataScope, roleCodes)));
+        var context = PerformanceAccessContext.of(userId, deptId, dataScope, roleCodes);
+        List<String> orderIds = (request == null || request.getOrderIds() == null) ? java.util.Collections.emptyList() : request.getOrderIds();
+        if (dddRefactorProperties.isEnabled() && dddRefactorProperties.getPerformanceQuery().isEnabled()) {
+            return ok(performanceQueryFacade.batchGet(orderIds, context));
+        } else {
+            return ok(performanceQueryService.batchGet(orderIds, context));
+        }
     }
 
     /**
@@ -251,9 +270,12 @@ public class PerformanceController extends BaseController {
                 orderId, productId, productName, partnerId, partnerName, activityId, talentId,
                 channelId, recruiterId, orderStatus, timeFilterType, timeStart, timeEnd, amountTrack,
                 page, pageSize, sortBy, sortOrder);
-        return ok(performanceQueryService.list(
-                query,
-                PerformanceAccessContext.of(userId, deptId, dataScope, roleCodes)));
+        var context = PerformanceAccessContext.of(userId, deptId, dataScope, roleCodes);
+        if (dddRefactorProperties.isEnabled() && dddRefactorProperties.getPerformanceQuery().isEnabled()) {
+            return ok(performanceQueryFacade.list(query, context));
+        } else {
+            return ok(performanceQueryService.list(query, context));
+        }
     }
 
     /**
@@ -320,9 +342,12 @@ public class PerformanceController extends BaseController {
         query.setOrderStatus(orderStatus);
         query.setPartnerId(partnerId);
         query.setTalentId(talentId);
-        return ok(performanceSummaryService.getSummary(
-                query,
-                PerformanceAccessContext.of(userId, deptId, dataScope, roleCodes)));
+        var context = PerformanceAccessContext.of(userId, deptId, dataScope, roleCodes);
+        if (dddRefactorProperties.isEnabled() && dddRefactorProperties.getPerformanceQuery().isEnabled()) {
+            return ok(performanceQueryFacade.getSummary(query, context));
+        } else {
+            return ok(performanceSummaryService.getSummary(query, context));
+        }
     }
 
     /**

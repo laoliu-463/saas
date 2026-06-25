@@ -4,7 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.Constants;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.colonel.saas.annotation.DataScope;
+import com.colonel.saas.domain.user.api.DataScope;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.colonel.saas.entity.SampleRequest;
 import org.apache.ibatis.annotations.Param;

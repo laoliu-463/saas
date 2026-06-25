@@ -1,6 +1,6 @@
-# 抖音团长 SaaS V1 Context
+# 抖音团长 SaaS Context
 
-This glossary standardizes the current V1 business and environment language used in this repo. `AGENTS.md` and `docs/*.md` remain the source of truth for requirements, milestones, and execution rules. Historical V2.2 terms are reference only and must not override V1 scope.
+This glossary standardizes the current business and environment language used in this repo. `AGENTS.md` and `docs/*.md` remain the source of truth for requirements, milestones, and execution rules. Historical V2.2 terms are reference only and must not override the current SaaS scope.
 
 ## Language
 
@@ -22,6 +22,10 @@ _Avoid_: 活动商品, 候选商品
 面向渠道或达人的可分发商品链接，是后续订单归因的入口线索。
 _Avoid_: 口令, 外链
 
+**渠道编码**:
+系统为渠道用户生成的短码，用于推广链接和归因映射中识别渠道来源。
+_Avoid_: 用户名, 渠道名称
+
 **归因映射**:
 把 `pick_source` 还原到活动、商品、负责人等业务上下文的映射记录。
 _Avoid_: 临时归属, 转链快照
@@ -38,6 +42,10 @@ _Avoid_: 对账, 结算
 围绕某个达人与某个商品的一次履约申请，按审核、发货、签收、待交作业到完成流转。
 _Avoid_: 样品表单, 快递单
 
+**寄样动作权限**:
+寄样域中用于判断当前用户能否申请、审核、删除、推进物流、导出或享有重复申请豁免的动作约束。
+_Avoid_: 用户域角色解析, 前端按钮权限, 数据范围
+
 **达人**:
 可被认领、跟进、寄样并产生产出结果的合作对象。
 _Avoid_: 用户, 客户
@@ -49,6 +57,36 @@ _Avoid_: 未分配列表
 **私海**:
 当前用户或其团队已认领并持续经营的达人池视图。
 _Avoid_: 个人收藏
+
+### 用户与权限
+
+**组织单元**:
+用户域内承载部门、招商组、渠道组或运营组的组织节点，是数据范围和组织管理的基础事实。
+_Avoid_: sys_dept, 部门表, 业务组表
+
+**数据范围**:
+用户域输出的 `self/group/all` 可见性范围，用于业务查询侧过滤当前用户可访问的数据。
+_Avoid_: 权限规则, 前端菜单权限, 业务归属
+
+**当前用户**:
+已通过认证并触发本次操作的系统用户身份，是审计、权限和数据范围解析的输入。
+_Avoid_: 达人, 客户, 操作人文本
+
+**角色编码**:
+系统用于鉴权和数据范围解析的稳定角色标识，如 `admin`、`biz_leader`、`channel_staff`。
+_Avoid_: 角色名称, 菜单名称
+
+**角色编码集合**:
+当前用户拥有的一组稳定角色标识，是业务域判断入口权限时消费的用户域事实集合。
+_Avoid_: 逗号字符串, 前端角色文本, 本地角色解析规则
+
+**用户展示名称**:
+业务记录中用于展示系统用户姓名的文本，真实姓名优先，用户名仅作兜底。
+_Avoid_: UserOptionResponse, 用户 DTO, 用户显示标签
+
+**负责人归属组织单元**:
+业务对象归属给某个系统用户时随负责人记录的主组织单元，用于团队范围查询和后续归属过滤。
+_Avoid_: deptId 字段, 用户 DTO, 部门快照
 
 ### 环境与契约
 
@@ -69,10 +107,17 @@ _Avoid_: SDK 直连, 页面直连第三方
 - A **团长活动** contains many **活动商品**
 - An **活动商品** can become one **共享商品库商品**
 - A **共享商品库商品** can generate one or more **推广链接**
-- A **推广链接** produces one or more **归因映射**
+- A **推广链接** can include a **渠道编码** and produces one or more **归因映射**
 - An **联盟订单** is interpreted through **归因映射** during **订单归因**
 - A **寄样单** links one **达人** and one **共享商品库商品**
+- A **寄样动作权限** consumes a **角色编码集合** to decide which actions may be attempted on a **寄样单**
 - A **达人** can appear in **公海** or **私海**
+- A **当前用户** belongs to zero or one primary **组织单元**
+- A **用户展示名称** is derived from one **当前用户** or managed user identity without exposing the full user profile
+- A **负责人归属组织单元** is derived from the assigned system user and does not decide whether that user is a valid assignee
+- A **角色编码** helps resolve one **当前用户** to one **数据范围**
+- A **角色编码集合** belongs to one **当前用户** and should be interpreted by the user-domain permission policy
+- A **数据范围** constrains business-domain queries but does not decide business ownership
 - The **test 环境** and **real-pre 环境** share one **Gateway 契约**
 
 ## Example dialogue
@@ -86,3 +131,5 @@ _Avoid_: SDK 直连, 页面直连第三方
 - “Mock”曾同时指历史 `local-mock` 口径和当前默认测试基线 — resolved: 当前默认 Mock 基线叫 **test 环境**，`local-mock` 仅作历史资料，不作为运行入口。
 - “real”与“real-pre”容易混用 — resolved: 当前真实上游与生产形态入口统一叫 **real-pre 环境**，不再保留独立 `real` / `prod` profile。
 - “组长”可能同时指招商组长与渠道组长 — resolved: 讨论权限、分配或菜单时必须明确是 `biz_leader` 还是 `channel_leader`。
+- “用户展示名称”和“用户显示标签”用途不同 — resolved: 业务记录用**用户展示名称**，下拉或筛选项用**用户显示标签**。
+- “寄样权限”容易混用数据范围、前端按钮和后端动作校验 — resolved: 申请、审核、删除、物流、导出和重复申请豁免统一称为**寄样动作权限**；查询可见性仍称为**数据范围**。

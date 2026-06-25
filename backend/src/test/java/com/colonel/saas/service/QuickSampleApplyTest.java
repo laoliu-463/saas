@@ -4,24 +4,24 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.colonel.saas.common.exception.ForbiddenException;
 import com.colonel.saas.constant.ProductDisplayStatus;
 import com.colonel.saas.constant.RoleCodes;
+import com.colonel.saas.domain.product.port.ProductSampleApplicationPort;
+import com.colonel.saas.domain.product.port.QuickSampleApplyCommand;
+import com.colonel.saas.domain.product.port.QuickSampleApplyPortResult;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.dto.product.QuickSampleApplyRequest;
 import com.colonel.saas.gateway.douyin.DouyinQuickSampleGateway;
-import com.colonel.saas.entity.CrawlerTalentInfo;
+import com.colonel.saas.config.DddRefactorProperties;
+import com.colonel.saas.domain.product.facade.ProductDomainFacade;
 import com.colonel.saas.entity.Product;
 import com.colonel.saas.entity.ProductOperationState;
 import com.colonel.saas.entity.ProductSnapshot;
-import com.colonel.saas.entity.SampleRequest;
-import com.colonel.saas.entity.Talent;
-import com.colonel.saas.entity.TalentClaim;
 import com.colonel.saas.mapper.ProductMapper;
 import com.colonel.saas.mapper.ProductOperationStateMapper;
 import com.colonel.saas.mapper.ProductSnapshotMapper;
-import com.colonel.saas.mapper.SampleRequestMapper;
-import com.colonel.saas.mapper.TalentClaimMapper;
-import com.colonel.saas.mapper.TalentMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -35,6 +35,13 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+/**
+ * 商品快速寄样服务测试（DDD-PRODUCT-005 重构后）。
+ * <p>
+ * 商品域只负责角色校验和商品上下文解析，
+ * 寄样创建委托 {@link ProductSampleApplicationPort}。
+ * </p>
+ */
 @ExtendWith(MockitoExtension.class)
 class QuickSampleApplyTest {
 
@@ -42,15 +49,10 @@ class QuickSampleApplyTest {
     @Mock private ProductMapper productMapper;
     @Mock private ProductSnapshotMapper productSnapshotMapper;
     @Mock private ProductOperationStateMapper productOperationStateMapper;
-    @Mock private SampleRequestMapper sampleRequestMapper;
-    @Mock private TalentMapper talentMapper;
-    @Mock private TalentClaimMapper talentClaimMapper;
-    @Mock private CrawlerTalentInfoService crawlerTalentInfoService;
-    @Mock private SampleEligibilityService sampleEligibilityService;
-    @Mock private com.colonel.saas.domain.config.facade.ConfigDomainFacade configDomainFacade;
-    @Mock private SampleStatusLogService sampleStatusLogService;
     @Mock private DouyinQuickSampleGateway douyinQuickSampleGateway;
-    @Mock private com.colonel.saas.domain.sample.event.SampleDomainEventPublisher sampleDomainEventPublisher;
+    @Mock private ProductSampleApplicationPort productSampleApplicationPort;
+    @Mock private DddRefactorProperties dddRefactorProperties;
+    @Mock private ProductDomainFacade productDomainFacade;
 
     private ProductQuickSampleService service;
 
@@ -61,21 +63,95 @@ class QuickSampleApplyTest {
                 productMapper,
                 productSnapshotMapper,
                 productOperationStateMapper,
-                sampleRequestMapper,
-                talentMapper,
-                talentClaimMapper,
-                crawlerTalentInfoService,
-                sampleEligibilityService,
-                configDomainFacade,
-                sampleStatusLogService,
                 douyinQuickSampleGateway,
-                sampleDomainEventPublisher,
-                false
+                productSampleApplicationPort,
+                false,
+                dddRefactorProperties,
+                productDomainFacade,
+                new CurrentUserPermissionPolicy()
         );
+        org.mockito.Mockito.lenient().when(dddRefactorProperties.isEnabled()).thenReturn(false);
         org.mockito.Mockito.lenient().when(douyinQuickSampleGateway.isSupported()).thenReturn(false);
         org.mockito.Mockito.lenient().when(douyinQuickSampleGateway.supportStatus())
                 .thenReturn(DouyinQuickSampleGateway.SupportStatus.UNSUPPORTED_BY_SDK);
     }
+
+    // --- Helper to build valid product context ---
+
+    private void setupValidProductContext(UUID relationId) {
+        Product product = new Product();
+        product.setId(relationId);
+        product.setProductId("9001");
+
+        ProductSnapshot snapshot = new ProductSnapshot();
+        snapshot.setId(relationId);
+        snapshot.setActivityId("10001");
+        snapshot.setProductId("9001");
+        snapshot.setTitle("测试商品");
+
+        ProductOperationState state = new ProductOperationState();
+        state.setDisplayStatus(ProductDisplayStatus.DISPLAYING.name());
+        state.setSelectedToLibrary(true);
+
+        when(productService.getById(relationId)).thenReturn(product);
+        when(productSnapshotMapper.selectById(relationId)).thenReturn(snapshot);
+        when(productOperationStateMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(state);
+    }
+
+    private QuickSampleApplyPortResult buildSuccessResult(String talentId, UUID sampleId) {
+        QuickSampleApplyPortResult result = new QuickSampleApplyPortResult();
+        result.setSuccess(true);
+        result.setSuccessCount(1);
+        result.setFailureCount(0);
+
+        QuickSampleApplyPortResult.TalentResult item = new QuickSampleApplyPortResult.TalentResult();
+        item.setTalentId(talentId);
+        item.setSuccess(true);
+        item.setSampleRequestId(sampleId);
+        item.setFallback(true);
+        item.setGatewayStatus("UNSUPPORTED_BY_SDK");
+        item.setFallbackType("LOCAL_FALLBACK");
+        item.setMessage("系统内寄样申请已提交");
+        result.getItems().add(item);
+        return result;
+    }
+
+    private QuickSampleApplyPortResult buildFailureResult(String talentId, String message) {
+        QuickSampleApplyPortResult result = new QuickSampleApplyPortResult();
+        result.setSuccess(false);
+        result.setSuccessCount(0);
+        result.setFailureCount(1);
+
+        QuickSampleApplyPortResult.TalentResult item = new QuickSampleApplyPortResult.TalentResult();
+        item.setTalentId(talentId);
+        item.setSuccess(false);
+        item.setMessage(message);
+        result.getItems().add(item);
+        return result;
+    }
+
+    private QuickSampleApplyPortResult buildPartialResult(String t1, String t2) {
+        QuickSampleApplyPortResult result = new QuickSampleApplyPortResult();
+        result.setSuccess(false);
+        result.setSuccessCount(1);
+        result.setFailureCount(1);
+
+        QuickSampleApplyPortResult.TalentResult ok = new QuickSampleApplyPortResult.TalentResult();
+        ok.setTalentId(t1);
+        ok.setSuccess(true);
+        ok.setSampleRequestId(UUID.randomUUID());
+        ok.setMessage("系统内寄样申请已提交");
+        result.getItems().add(ok);
+
+        QuickSampleApplyPortResult.TalentResult fail = new QuickSampleApplyPortResult.TalentResult();
+        fail.setTalentId(t2);
+        fail.setSuccess(false);
+        fail.setMessage("达人不存在");
+        result.getItems().add(fail);
+        return result;
+    }
+
+    // ==================== 角色校验 ====================
 
     @Test
     void applyQuickSample_shouldRejectNonChannelRole() {
@@ -86,6 +162,8 @@ class QuickSampleApplyTest {
                 UUID.randomUUID(), request, UUID.randomUUID(), UUID.randomUUID(), List.of(RoleCodes.BIZ_STAFF)))
                 .isInstanceOf(ForbiddenException.class);
     }
+
+    // ==================== 商品校验 ====================
 
     @Test
     void applyQuickSample_shouldThrowWhenProductNotFound() {
@@ -104,7 +182,6 @@ class QuickSampleApplyTest {
     @Test
     void applyQuickSample_shouldThrowWhenProductNotDisplaying() {
         UUID relationId = UUID.randomUUID();
-        UUID userId = UUID.randomUUID();
         Product product = new Product();
         product.setId(relationId);
         product.setProductId("9001");
@@ -125,140 +202,42 @@ class QuickSampleApplyTest {
         request.setTalentIds(List.of("douyin_talent_001"));
 
         assertThatThrownBy(() -> service.applyQuickSample(
-                relationId, request, userId, UUID.randomUUID(), List.of(RoleCodes.CHANNEL_STAFF)))
+                relationId, request, UUID.randomUUID(), UUID.randomUUID(), List.of(RoleCodes.CHANNEL_STAFF)))
                 .isInstanceOf(com.colonel.saas.common.exception.BusinessException.class)
                 .hasMessageContaining("仅展示中的商品可发起快速寄样");
     }
 
+    // ==================== 商品域不直接写 sample mapper（DDD-PRODUCT-005 核心断言） ====================
+
     @Test
-    void applyQuickSample_shouldThrowWhenSampleRestrictEnabledAndWithinSevenDays() {
+    void applyQuickSample_productDomainDoesNotDirectlyWriteSampleMapper() {
         UUID relationId = UUID.randomUUID();
-        UUID userId = UUID.randomUUID();
-        Product product = new Product();
-        product.setId(relationId);
-        product.setProductId("9001");
-
-        ProductSnapshot snapshot = new ProductSnapshot();
-        snapshot.setId(relationId);
-        snapshot.setActivityId("10001");
-        snapshot.setProductId("9001");
-
-        ProductOperationState state = new ProductOperationState();
-        state.setDisplayStatus(ProductDisplayStatus.DISPLAYING.name());
-        state.setSelectedToLibrary(true);
-
-        CrawlerTalentInfo talentInfo = new CrawlerTalentInfo();
-        talentInfo.setTalentId("douyin_talent_001");
-        talentInfo.setNickname("达人A");
-
-        Talent talent = new Talent();
-        talent.setId(UUID.randomUUID());
-        talent.setDouyinUid("douyin_talent_001");
-
-        when(productService.getById(relationId)).thenReturn(product);
-        when(productSnapshotMapper.selectById(relationId)).thenReturn(snapshot);
-        when(productOperationStateMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(state);
-        when(crawlerTalentInfoService.findByTalentId("douyin_talent_001")).thenReturn(talentInfo);
-        when(talentMapper.selectOne(any())).thenReturn(talent);
-        when(talentClaimMapper.findActiveByTalentAndUser(talent.getId(), userId))
-                .thenReturn(new com.colonel.saas.entity.TalentClaim());
-        when(configDomainFacade.isSampleLimitEnabled()).thenReturn(true);
-        when(configDomainFacade.getSampleLimitDays()).thenReturn(7);
-        when(sampleRequestMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(1L);
+        UUID sampleId = UUID.randomUUID();
+        setupValidProductContext(relationId);
+        when(productSampleApplicationPort.applyQuickSample(any()))
+                .thenReturn(buildSuccessResult("douyin_talent_001", sampleId));
 
         QuickSampleApplyRequest request = new QuickSampleApplyRequest();
         request.setTalentIds(List.of("douyin_talent_001"));
 
         var response = service.applyQuickSample(
-                relationId, request, userId, UUID.randomUUID(), List.of(RoleCodes.CHANNEL_STAFF));
+                relationId, request, UUID.randomUUID(), UUID.randomUUID(), List.of(RoleCodes.CHANNEL_STAFF));
 
-        assertThat(response.getFailureCount()).isEqualTo(1);
-        assertThat(response.getItems().get(0).getMessage()).contains("Duplicate sample request is blocked");
+        // 验证：商品域委托端口，不直接操作 sample mapper
+        verify(productSampleApplicationPort).applyQuickSample(any(QuickSampleApplyCommand.class));
+        assertThat(response.getSuccessCount()).isEqualTo(1);
     }
 
-    @Test
-    void applyQuickSample_shouldThrowWhenEligibilityFailsAndNoRemark() {
-        UUID relationId = UUID.randomUUID();
-        UUID userId = UUID.randomUUID();
-        Product product = new Product();
-        product.setId(relationId);
-        product.setProductId("9001");
-
-        ProductSnapshot snapshot = new ProductSnapshot();
-        snapshot.setId(relationId);
-        snapshot.setActivityId("10001");
-        snapshot.setProductId("9001");
-
-        ProductOperationState state = new ProductOperationState();
-        state.setDisplayStatus(ProductDisplayStatus.DISPLAYING.name());
-        state.setSelectedToLibrary(true);
-
-        CrawlerTalentInfo talentInfo = new CrawlerTalentInfo();
-        talentInfo.setTalentId("douyin_talent_001");
-        talentInfo.setNickname("达人A");
-
-        Talent talent = new Talent();
-        talent.setId(UUID.randomUUID());
-        talent.setDouyinUid("douyin_talent_001");
-
-        when(productService.getById(relationId)).thenReturn(product);
-        when(productSnapshotMapper.selectById(relationId)).thenReturn(snapshot);
-        when(productOperationStateMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(state);
-        when(crawlerTalentInfoService.findByTalentId("douyin_talent_001")).thenReturn(talentInfo);
-        when(talentMapper.selectOne(any())).thenReturn(talent);
-        when(talentClaimMapper.findActiveByTalentAndUser(talent.getId(), userId))
-                .thenReturn(new com.colonel.saas.entity.TalentClaim());
-        when(configDomainFacade.isSampleLimitEnabled()).thenReturn(false);
-        when(sampleEligibilityService.evaluate(any(), any())).thenReturn(
-                new SampleEligibilityService.EligibilityResult(false, List.of("粉丝数不足"), null, null));
-
-        QuickSampleApplyRequest request = new QuickSampleApplyRequest();
-        request.setTalentIds(List.of("douyin_talent_001"));
-        request.setRemark(null);
-
-        var response = service.applyQuickSample(
-                relationId, request, userId, UUID.randomUUID(), List.of(RoleCodes.CHANNEL_STAFF));
-
-        assertThat(response.getFailureCount()).isEqualTo(1);
-        assertThat(response.getItems().get(0).getMessage()).contains("达人未满足默认寄样标准");
-    }
+    // ==================== 单达人快速寄样成功 ====================
 
     @Test
-    void applyQuickSample_shouldCreateSampleWithQuickProductLibrarySource() {
+    void applyQuickSample_singleTalentSuccess() {
         UUID relationId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
-        Product product = new Product();
-        product.setId(relationId);
-        product.setProductId("9001");
-
-        ProductSnapshot snapshot = new ProductSnapshot();
-        snapshot.setId(relationId);
-        snapshot.setActivityId("10001");
-        snapshot.setProductId("9001");
-
-        ProductOperationState state = new ProductOperationState();
-        state.setDisplayStatus(ProductDisplayStatus.DISPLAYING.name());
-        state.setSelectedToLibrary(true);
-
-        CrawlerTalentInfo talentInfo = new CrawlerTalentInfo();
-        talentInfo.setTalentId("douyin_talent_001");
-        talentInfo.setNickname("达人A");
-
-        Talent talent = new Talent();
-        talent.setId(UUID.randomUUID());
-        talent.setDouyinUid("douyin_talent_001");
-
-        when(productService.getById(relationId)).thenReturn(product);
-        when(productSnapshotMapper.selectById(relationId)).thenReturn(snapshot);
-        when(productOperationStateMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(state);
-        when(crawlerTalentInfoService.findByTalentId("douyin_talent_001")).thenReturn(talentInfo);
-        when(talentMapper.selectOne(any())).thenReturn(talent);
-        when(talentClaimMapper.findActiveByTalentAndUser(talent.getId(), userId))
-                .thenReturn(new com.colonel.saas.entity.TalentClaim());
-        when(configDomainFacade.isSampleLimitEnabled()).thenReturn(false);
-        when(sampleEligibilityService.evaluate(any(), any())).thenReturn(
-                new SampleEligibilityService.EligibilityResult(true, List.of(), null, null));
-        when(sampleRequestMapper.insert(any(SampleRequest.class))).thenReturn(1);
+        UUID sampleId = UUID.randomUUID();
+        setupValidProductContext(relationId);
+        when(productSampleApplicationPort.applyQuickSample(any()))
+                .thenReturn(buildSuccessResult("douyin_talent_001", sampleId));
 
         QuickSampleApplyRequest request = new QuickSampleApplyRequest();
         request.setTalentIds(List.of("douyin_talent_001"));
@@ -270,18 +249,126 @@ class QuickSampleApplyTest {
                 relationId, request, userId, UUID.randomUUID(), List.of(RoleCodes.CHANNEL_STAFF));
 
         assertThat(response.getSuccessCount()).isEqualTo(1);
+        assertThat(response.getFailureCount()).isEqualTo(0);
+        assertThat(response.isSuccess()).isTrue();
         assertThat(response.getItems()).singleElement()
-                .satisfies(item -> assertThat(item.isSuccess()).isTrue());
+                .satisfies(item -> {
+                    assertThat(item.isSuccess()).isTrue();
+                    assertThat(item.getSampleRequestId()).isEqualTo(sampleId);
+                });
+
+        // 验证命令字段正确传递
+        ArgumentCaptor<QuickSampleApplyCommand> captor =
+                ArgumentCaptor.forClass(QuickSampleApplyCommand.class);
+        verify(productSampleApplicationPort).applyQuickSample(captor.capture());
+        QuickSampleApplyCommand cmd = captor.getValue();
+        assertThat(cmd.relationId()).isEqualTo(relationId);
+        assertThat(cmd.talentIds()).containsExactly("douyin_talent_001");
+        assertThat(cmd.quantity()).isEqualTo(2);
+        assertThat(cmd.spec()).isEqualTo("红色/L");
+        assertThat(cmd.receiverAddress()).isEqualTo("上海");
+        assertThat(cmd.requestSource()).isEqualTo("quick_product_library");
+        assertThat(cmd.userId()).isEqualTo(userId);
+    }
+
+    // ==================== 多达人快速寄样 ====================
+
+    @Test
+    void applyQuickSample_multiTalentPartialFailure() {
+        UUID relationId = UUID.randomUUID();
+        setupValidProductContext(relationId);
+        when(productSampleApplicationPort.applyQuickSample(any()))
+                .thenReturn(buildPartialResult("douyin_talent_001", "invalid_talent"));
+
+        QuickSampleApplyRequest request = new QuickSampleApplyRequest();
+        request.setTalentIds(List.of("douyin_talent_001", "invalid_talent"));
+
+        var response = service.applyQuickSample(
+                relationId, request, UUID.randomUUID(), UUID.randomUUID(), List.of(RoleCodes.CHANNEL_STAFF));
+
+        assertThat(response.getSuccessCount()).isEqualTo(1);
+        assertThat(response.getFailureCount()).isEqualTo(1);
+        assertThat(response.isSuccess()).isFalse();
+    }
+
+    // ==================== 寄样校验失败时错误明细返回前端 ====================
+
+    @Test
+    void applyQuickSample_validationFailureReturnsErrorDetail() {
+        UUID relationId = UUID.randomUUID();
+        setupValidProductContext(relationId);
+        when(productSampleApplicationPort.applyQuickSample(any()))
+                .thenReturn(buildFailureResult("douyin_talent_001", "达人未满足默认寄样标准，请填写备注说明申请原因"));
+
+        QuickSampleApplyRequest request = new QuickSampleApplyRequest();
+        request.setTalentIds(List.of("douyin_talent_001"));
+
+        var response = service.applyQuickSample(
+                relationId, request, UUID.randomUUID(), UUID.randomUUID(), List.of(RoleCodes.CHANNEL_STAFF));
+
+        assertThat(response.getFailureCount()).isEqualTo(1);
+        assertThat(response.getItems().get(0).getMessage()).contains("达人未满足默认寄样标准");
     }
 
     @Test
-    void applyQuickSample_shouldMaterializeProductAndPersistPendingSampleFromSnapshotId() {
+    void applyQuickSample_sevenDaysDuplicateReturnsErrorDetail() {
         UUID relationId = UUID.randomUUID();
-        UUID userId = UUID.randomUUID();
+        setupValidProductContext(relationId);
+        when(productSampleApplicationPort.applyQuickSample(any()))
+                .thenReturn(buildFailureResult("douyin_talent_001",
+                        "Duplicate sample request is blocked within 7 days"));
+
+        QuickSampleApplyRequest request = new QuickSampleApplyRequest();
+        request.setTalentIds(List.of("douyin_talent_001"));
+
+        var response = service.applyQuickSample(
+                relationId, request, UUID.randomUUID(), UUID.randomUUID(), List.of(RoleCodes.CHANNEL_STAFF));
+
+        assertThat(response.getFailureCount()).isEqualTo(1);
+        assertThat(response.getItems().get(0).getMessage()).contains("Duplicate sample request is blocked");
+    }
+
+    // ==================== 商品不存在/不可寄样时错误不变 ====================
+
+    @Test
+    void applyQuickSample_productNotInLibraryThrowsSameError() {
+        UUID relationId = UUID.randomUUID();
+        Product product = new Product();
+        product.setId(relationId);
+        product.setProductId("9001");
+
+        ProductSnapshot snapshot = new ProductSnapshot();
+        snapshot.setId(relationId);
+        snapshot.setActivityId("10001");
+        snapshot.setProductId("9001");
+
+        ProductOperationState state = new ProductOperationState();
+        state.setDisplayStatus(ProductDisplayStatus.DISPLAYING.name());
+        state.setSelectedToLibrary(false);
+
+        when(productService.getById(relationId)).thenReturn(product);
+        when(productSnapshotMapper.selectById(relationId)).thenReturn(snapshot);
+        when(productOperationStateMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(state);
+
+        QuickSampleApplyRequest request = new QuickSampleApplyRequest();
+        request.setTalentIds(List.of("douyin_talent_001"));
+
+        assertThatThrownBy(() -> service.applyQuickSample(
+                relationId, request, UUID.randomUUID(), UUID.randomUUID(), List.of(RoleCodes.CHANNEL_STAFF)))
+                .isInstanceOf(com.colonel.saas.common.exception.BusinessException.class)
+                .hasMessageContaining("该商品尚未加入商品库");
+    }
+
+    // ==================== 商品物化 ====================
+
+    @Test
+    void applyQuickSample_shouldMaterializeProductFromSnapshot() {
+        UUID relationId = UUID.randomUUID();
+        UUID sampleId = UUID.randomUUID();
+
         Product legacyProduct = new Product();
         legacyProduct.setId(relationId);
         legacyProduct.setProductId("9001");
-        legacyProduct.setName("快照视图商品");
 
         ProductSnapshot snapshot = new ProductSnapshot();
         snapshot.setId(relationId);
@@ -295,383 +382,99 @@ class QuickSampleApplyTest {
         state.setDisplayStatus(ProductDisplayStatus.DISPLAYING.name());
         state.setSelectedToLibrary(true);
 
-        CrawlerTalentInfo talentInfo = new CrawlerTalentInfo();
-        talentInfo.setTalentId("douyin_talent_001");
-        talentInfo.setNickname("达人A");
-
-        Talent talent = new Talent();
-        talent.setId(UUID.randomUUID());
-        talent.setDouyinUid("douyin_talent_001");
-
         when(productService.getById(relationId)).thenReturn(legacyProduct);
         when(productSnapshotMapper.selectById(relationId)).thenReturn(snapshot);
         when(productOperationStateMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(state);
         when(productMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
         when(productMapper.insert(any(Product.class))).thenReturn(1);
-        when(crawlerTalentInfoService.findByTalentId("douyin_talent_001")).thenReturn(talentInfo);
-        when(talentMapper.selectOne(any())).thenReturn(talent);
-        when(talentClaimMapper.findActiveByTalentAndUser(talent.getId(), userId))
-                .thenReturn(new com.colonel.saas.entity.TalentClaim());
-        when(configDomainFacade.isSampleLimitEnabled()).thenReturn(false);
-        when(sampleEligibilityService.evaluate(any(), any())).thenReturn(
-                new SampleEligibilityService.EligibilityResult(true, List.of(), null, null));
-        when(sampleRequestMapper.insert(any(SampleRequest.class))).thenReturn(1);
+        when(productSampleApplicationPort.applyQuickSample(any()))
+                .thenReturn(buildSuccessResult("douyin_talent_001", sampleId));
 
         QuickSampleApplyRequest request = new QuickSampleApplyRequest();
         request.setTalentIds(List.of("douyin_talent_001"));
-        request.setQuantity(1);
 
         var response = service.applyQuickSample(
-                relationId, request, userId, UUID.randomUUID(), List.of(RoleCodes.CHANNEL_STAFF));
+                relationId, request, UUID.randomUUID(), UUID.randomUUID(), List.of(RoleCodes.CHANNEL_STAFF));
 
         assertThat(response.getSuccessCount()).isEqualTo(1);
 
-        org.mockito.ArgumentCaptor<Product> productCaptor = org.mockito.ArgumentCaptor.forClass(Product.class);
+        ArgumentCaptor<Product> productCaptor = ArgumentCaptor.forClass(Product.class);
         verify(productMapper).insert(productCaptor.capture());
         assertThat(productCaptor.getValue().getId()).isEqualTo(relationId);
-        assertThat(productCaptor.getValue().getProductId()).isEqualTo("9001");
         assertThat(productCaptor.getValue().getName()).isEqualTo("快照商品标题");
-
-        org.mockito.ArgumentCaptor<SampleRequest> sampleCaptor = org.mockito.ArgumentCaptor.forClass(SampleRequest.class);
-        verify(sampleRequestMapper).insert(sampleCaptor.capture());
-        assertThat(sampleCaptor.getValue().getProductId()).isEqualTo(relationId);
-        assertThat(sampleCaptor.getValue().getStatus()).isEqualTo(1);
-        assertThat(sampleCaptor.getValue().getApplySource()).isEqualTo(ProductQuickSampleService.APPLY_SOURCE_LOCAL_FALLBACK);
     }
 
-    @Test
-    void applyQuickSample_shouldUseManualTalentWhenCrawlerInfoMissing() {
-        UUID relationId = UUID.randomUUID();
-        UUID userId = UUID.randomUUID();
-        Product product = new Product();
-        product.setId(relationId);
-        product.setProductId("9001");
-
-        ProductSnapshot snapshot = new ProductSnapshot();
-        snapshot.setId(relationId);
-        snapshot.setActivityId("10001");
-        snapshot.setProductId("9001");
-        snapshot.setTitle("商品标题");
-
-        ProductOperationState state = new ProductOperationState();
-        state.setDisplayStatus(ProductDisplayStatus.DISPLAYING.name());
-        state.setSelectedToLibrary(true);
-
-        Talent manualTalent = new Talent();
-        manualTalent.setId(UUID.randomUUID());
-        manualTalent.setDouyinUid("manual_talent_001");
-        manualTalent.setNickname("手动达人");
-        manualTalent.setFans(12000L);
-        manualTalent.setCategories("食品");
-
-        when(productService.getById(relationId)).thenReturn(product);
-        when(productSnapshotMapper.selectById(relationId)).thenReturn(snapshot);
-        when(productOperationStateMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(state);
-        when(crawlerTalentInfoService.findByTalentId("manual_talent_001")).thenReturn(null);
-        when(talentMapper.selectOne(any())).thenReturn(manualTalent);
-        when(talentClaimMapper.findActiveByTalentAndUser(manualTalent.getId(), userId))
-                .thenReturn(new com.colonel.saas.entity.TalentClaim());
-        when(configDomainFacade.isSampleLimitEnabled()).thenReturn(false);
-        when(sampleEligibilityService.evaluate(any(), any())).thenReturn(
-                new SampleEligibilityService.EligibilityResult(true, List.of(), null, null));
-        when(sampleRequestMapper.insert(any(SampleRequest.class))).thenReturn(1);
-
-        QuickSampleApplyRequest request = new QuickSampleApplyRequest();
-        request.setTalentIds(List.of("manual_talent_001"));
-        request.setQuantity(1);
-
-        var response = service.applyQuickSample(
-                relationId, request, userId, UUID.randomUUID(), List.of(RoleCodes.CHANNEL_STAFF));
-
-        assertThat(response.getSuccessCount()).isEqualTo(1);
-
-        org.mockito.ArgumentCaptor<SampleRequest> sampleCaptor = org.mockito.ArgumentCaptor.forClass(SampleRequest.class);
-        verify(sampleRequestMapper).insert(sampleCaptor.capture());
-        assertThat(sampleCaptor.getValue().getTalentId()).isEqualTo(manualTalent.getId());
-        assertThat(sampleCaptor.getValue().getTalentUid()).isEqualTo("manual_talent_001");
-        assertThat(sampleCaptor.getValue().getTalentNickname()).isEqualTo("手动达人");
-        assertThat(sampleCaptor.getValue().getTalentFansCount()).isEqualTo(12000L);
-        assertThat(sampleCaptor.getValue().getTalentMainCategory()).isEqualTo("食品");
-        assertThat(sampleCaptor.getValue().getStatus()).isEqualTo(1);
-    }
+    // ==================== 网关状态透传 ====================
 
     @Test
-    void applyQuickSample_shouldUseLocalFallbackWhenGatewayUnsupported() {
+    void applyQuickSample_gatewayStatusPassedToResponse() {
         UUID relationId = UUID.randomUUID();
-        UUID userId = UUID.randomUUID();
-        Product product = new Product();
-        product.setId(relationId);
-        product.setProductId("9001");
-
-        ProductSnapshot snapshot = new ProductSnapshot();
-        snapshot.setId(relationId);
-        snapshot.setActivityId("10001");
-        snapshot.setProductId("9001");
-
-        ProductOperationState state = new ProductOperationState();
-        state.setDisplayStatus(ProductDisplayStatus.DISPLAYING.name());
-        state.setSelectedToLibrary(true);
-
-        CrawlerTalentInfo talentInfo = new CrawlerTalentInfo();
-        talentInfo.setTalentId("douyin_talent_001");
-        talentInfo.setNickname("达人A");
-
-        Talent talent = new Talent();
-        talent.setId(UUID.randomUUID());
-        talent.setDouyinUid("douyin_talent_001");
-
-        when(productService.getById(relationId)).thenReturn(product);
-        when(productSnapshotMapper.selectById(relationId)).thenReturn(snapshot);
-        when(productOperationStateMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(state);
-        when(crawlerTalentInfoService.findByTalentId("douyin_talent_001")).thenReturn(talentInfo);
-        when(talentMapper.selectOne(any())).thenReturn(talent);
-        when(talentClaimMapper.findActiveByTalentAndUser(talent.getId(), userId))
-                .thenReturn(new com.colonel.saas.entity.TalentClaim());
-        when(configDomainFacade.isSampleLimitEnabled()).thenReturn(false);
-        when(sampleEligibilityService.evaluate(any(), any())).thenReturn(
-                new SampleEligibilityService.EligibilityResult(true, List.of(), null, null));
-        when(sampleRequestMapper.insert(any(SampleRequest.class))).thenReturn(1);
-        when(douyinQuickSampleGateway.isSupported()).thenReturn(false);
-
-        ProductQuickSampleService enabledService = new ProductQuickSampleService(
-                productService,
-                productMapper,
-                productSnapshotMapper,
-                productOperationStateMapper,
-                sampleRequestMapper,
-                talentMapper,
-                talentClaimMapper,
-                crawlerTalentInfoService,
-                sampleEligibilityService,
-                configDomainFacade,
-                sampleStatusLogService,
-                douyinQuickSampleGateway,
-                sampleDomainEventPublisher,
-                true);
+        setupValidProductContext(relationId);
+        when(productSampleApplicationPort.applyQuickSample(any()))
+                .thenReturn(buildSuccessResult("douyin_talent_001", UUID.randomUUID()));
 
         QuickSampleApplyRequest request = new QuickSampleApplyRequest();
         request.setTalentIds(List.of("douyin_talent_001"));
-        request.setQuantity(1);
-        request.setRemark("测试备注");
 
-        var response = enabledService.applyQuickSample(
-                relationId, request, userId, UUID.randomUUID(), List.of(RoleCodes.CHANNEL_STAFF));
+        var response = service.applyQuickSample(
+                relationId, request, UUID.randomUUID(), UUID.randomUUID(), List.of(RoleCodes.CHANNEL_STAFF));
 
         assertThat(response.isExternalSupported()).isFalse();
-        assertThat(response.getItems()).singleElement().satisfies(item -> {
-            assertThat(item.isSuccess()).isTrue();
-            assertThat(item.isExternalApplied()).isFalse();
-            assertThat(item.isFallback()).isTrue();
-            assertThat(item.getExternalApplyId()).isNull();
-            assertThat(item.getGatewayStatus()).isEqualTo(ProductQuickSampleService.GATEWAY_STATUS_UNSUPPORTED);
-            assertThat(item.getFallbackType()).isEqualTo(ProductQuickSampleService.FALLBACK_TYPE_LOCAL);
-            assertThat(item.getMessage()).contains("系统内寄样申请");
-        });
+        assertThat(response.getGatewayStatus()).isEqualTo("UNSUPPORTED_BY_SDK");
+        assertThat(response.getFallbackType()).isEqualTo("LOCAL_FALLBACK");
+        assertThat(response.getMessage()).contains("抖店外部寄样暂未接通");
     }
 
+    // ==================== 管理员角色可通过 ====================
+
     @Test
-    void applyQuickSample_shouldCollectPartialFailures() {
+    void applyQuickSample_adminRoleCanApply() {
         UUID relationId = UUID.randomUUID();
-        UUID userId = UUID.randomUUID();
-        Product product = new Product();
-        product.setId(relationId);
-        product.setProductId("9001");
-
-        ProductSnapshot snapshot = new ProductSnapshot();
-        snapshot.setId(relationId);
-        snapshot.setActivityId("10001");
-        snapshot.setProductId("9001");
-
-        ProductOperationState state = new ProductOperationState();
-        state.setDisplayStatus(ProductDisplayStatus.DISPLAYING.name());
-        state.setSelectedToLibrary(true);
-
-        CrawlerTalentInfo talentInfo = new CrawlerTalentInfo();
-        talentInfo.setTalentId("douyin_talent_001");
-        talentInfo.setNickname("达人A");
-
-        Talent talent = new Talent();
-        talent.setId(UUID.randomUUID());
-        talent.setDouyinUid("douyin_talent_001");
-
-        when(productService.getById(relationId)).thenReturn(product);
-        when(productSnapshotMapper.selectById(relationId)).thenReturn(snapshot);
-        when(productOperationStateMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(state);
-        when(crawlerTalentInfoService.findByTalentId("douyin_talent_001")).thenReturn(talentInfo);
-        when(talentMapper.selectOne(any())).thenReturn(talent, null);
-        when(talentClaimMapper.findActiveByTalentAndUser(talent.getId(), userId))
-                .thenReturn(new com.colonel.saas.entity.TalentClaim());
-        when(configDomainFacade.isSampleLimitEnabled()).thenReturn(false);
-        when(sampleEligibilityService.evaluate(any(), any())).thenReturn(
-                new SampleEligibilityService.EligibilityResult(false, List.of("粉丝数不足"), null, null));
-        when(sampleRequestMapper.insert(any(SampleRequest.class))).thenReturn(1);
-
-        // Second talent causes failure by not being found
-        when(crawlerTalentInfoService.findByTalentId("invalid_talent")).thenReturn(null);
+        setupValidProductContext(relationId);
+        when(productSampleApplicationPort.applyQuickSample(any()))
+                .thenReturn(buildSuccessResult("douyin_talent_001", UUID.randomUUID()));
 
         QuickSampleApplyRequest request = new QuickSampleApplyRequest();
-        request.setTalentIds(List.of("douyin_talent_001", "invalid_talent"));
-        request.setRemark("申请原因");
+        request.setTalentIds(List.of("douyin_talent_001"));
 
         var response = service.applyQuickSample(
-                relationId, request, userId, UUID.randomUUID(), List.of(RoleCodes.CHANNEL_STAFF));
+                relationId, request, UUID.randomUUID(), UUID.randomUUID(), List.of("admin"));
 
-        assertThat(response.getSuccessCount()).isEqualTo(1);
-        assertThat(response.getFailureCount()).isEqualTo(1);
+        assertThat(response.isSuccess()).isTrue();
     }
 
     @Test
-    void shouldSaveTalentAddressAfterSampleApply() {
+    void applyQuickSample_shouldAcceptCommaSeparatedChannelRoleCodes() {
         UUID relationId = UUID.randomUUID();
-        UUID userId = UUID.randomUUID();
-        Product product = new Product();
-        product.setId(relationId);
-        product.setProductId("9001");
-
-        ProductSnapshot snapshot = new ProductSnapshot();
-        snapshot.setId(relationId);
-        snapshot.setActivityId("10001");
-        snapshot.setProductId("9001");
-
-        ProductOperationState state = new ProductOperationState();
-        state.setDisplayStatus(ProductDisplayStatus.DISPLAYING.name());
-        state.setSelectedToLibrary(true);
-
-        CrawlerTalentInfo talentInfo = new CrawlerTalentInfo();
-        talentInfo.setTalentId("douyin_talent_001");
-        talentInfo.setNickname("达人A");
-
-        Talent talent = new Talent();
-        talent.setId(UUID.randomUUID());
-        talent.setDouyinUid("douyin_talent_001");
-
-        TalentClaim claim = new TalentClaim();
-        claim.setTalentId(talent.getId());
-        claim.setUserId(userId);
-
-        when(productService.getById(relationId)).thenReturn(product);
-        when(productSnapshotMapper.selectById(relationId)).thenReturn(snapshot);
-        when(productOperationStateMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(state);
-        when(crawlerTalentInfoService.findByTalentId("douyin_talent_001")).thenReturn(talentInfo);
-        when(talentMapper.selectOne(any())).thenReturn(talent);
-        when(talentClaimMapper.findActiveByTalentAndUser(talent.getId(), userId)).thenReturn(claim);
-        when(configDomainFacade.isSampleLimitEnabled()).thenReturn(false);
-        when(sampleEligibilityService.evaluate(any(), any())).thenReturn(
-                new SampleEligibilityService.EligibilityResult(true, null, null, null));
-        when(sampleRequestMapper.insert(any(SampleRequest.class))).thenReturn(1);
-        when(talentClaimMapper.updateById(any(TalentClaim.class))).thenReturn(1);
+        setupValidProductContext(relationId);
+        when(productSampleApplicationPort.applyQuickSample(any()))
+                .thenReturn(buildSuccessResult("douyin_talent_001", UUID.randomUUID()));
 
         QuickSampleApplyRequest request = new QuickSampleApplyRequest();
         request.setTalentIds(List.of("douyin_talent_001"));
-        request.setRecipientName("张三");
-        request.setRecipientPhone("13800138000");
-        request.setRecipientAddress("北京市朝阳区某地址");
 
-        service.applyQuickSample(
-                relationId, request, userId, UUID.randomUUID(), List.of(RoleCodes.CHANNEL_STAFF));
-
-        verify(talentClaimMapper).updateById(any(TalentClaim.class));
-    }
-
-    @Test
-    void shouldNotWriteBackAddressWhenEmpty() {
-        UUID relationId = UUID.randomUUID();
-        UUID userId = UUID.randomUUID();
-        Product product = new Product();
-        product.setId(relationId);
-        product.setProductId("9001");
-
-        ProductSnapshot snapshot = new ProductSnapshot();
-        snapshot.setId(relationId);
-        snapshot.setActivityId("10001");
-        snapshot.setProductId("9001");
-
-        ProductOperationState state = new ProductOperationState();
-        state.setDisplayStatus(ProductDisplayStatus.DISPLAYING.name());
-        state.setSelectedToLibrary(true);
-
-        CrawlerTalentInfo talentInfo = new CrawlerTalentInfo();
-        talentInfo.setTalentId("douyin_talent_001");
-        talentInfo.setNickname("达人A");
-
-        Talent talent = new Talent();
-        talent.setId(UUID.randomUUID());
-        talent.setDouyinUid("douyin_talent_001");
-
-        TalentClaim claim = new TalentClaim();
-        claim.setTalentId(talent.getId());
-        claim.setUserId(userId);
-
-        when(productService.getById(relationId)).thenReturn(product);
-        when(productSnapshotMapper.selectById(relationId)).thenReturn(snapshot);
-        when(productOperationStateMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(state);
-        when(crawlerTalentInfoService.findByTalentId("douyin_talent_001")).thenReturn(talentInfo);
-        when(talentMapper.selectOne(any())).thenReturn(talent);
-        when(talentClaimMapper.findActiveByTalentAndUser(talent.getId(), userId)).thenReturn(claim);
-        when(configDomainFacade.isSampleLimitEnabled()).thenReturn(false);
-        when(sampleEligibilityService.evaluate(any(), any())).thenReturn(
-                new SampleEligibilityService.EligibilityResult(true, null, null, null));
-        when(sampleRequestMapper.insert(any(SampleRequest.class))).thenReturn(1);
-
-        QuickSampleApplyRequest request = new QuickSampleApplyRequest();
-        request.setTalentIds(List.of("douyin_talent_001"));
-        // 不设置地址字段
-
-        service.applyQuickSample(
-                relationId, request, userId, UUID.randomUUID(), List.of(RoleCodes.CHANNEL_STAFF));
-
-        // 地址为空时不应调用 updateById 回写
-        verify(talentClaimMapper, never()).updateById(any(TalentClaim.class));
-    }
-
-    @Test
-    void shouldSkipWriteBackWhenClaimNotFound() {
-        UUID relationId = UUID.randomUUID();
-        UUID userId = UUID.randomUUID();
-        Product product = new Product();
-        product.setId(relationId);
-        product.setProductId("9001");
-
-        ProductSnapshot snapshot = new ProductSnapshot();
-        snapshot.setId(relationId);
-        snapshot.setActivityId("10001");
-        snapshot.setProductId("9001");
-
-        ProductOperationState state = new ProductOperationState();
-        state.setDisplayStatus(ProductDisplayStatus.DISPLAYING.name());
-        state.setSelectedToLibrary(true);
-
-        CrawlerTalentInfo talentInfo = new CrawlerTalentInfo();
-        talentInfo.setTalentId("douyin_talent_001");
-        talentInfo.setNickname("达人A");
-
-        Talent talent = new Talent();
-        talent.setId(UUID.randomUUID());
-        talent.setDouyinUid("douyin_talent_001");
-
-        when(productService.getById(relationId)).thenReturn(product);
-        when(productSnapshotMapper.selectById(relationId)).thenReturn(snapshot);
-        when(productOperationStateMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(state);
-        when(crawlerTalentInfoService.findByTalentId("douyin_talent_001")).thenReturn(talentInfo);
-        when(talentMapper.selectOne(any())).thenReturn(talent);
-        org.mockito.Mockito.lenient().when(configDomainFacade.isSampleLimitEnabled()).thenReturn(false);
-        org.mockito.Mockito.lenient().when(sampleEligibilityService.evaluate(any(), any())).thenReturn(
-                new SampleEligibilityService.EligibilityResult(true, null, null, null));
-        when(sampleRequestMapper.insert(any(SampleRequest.class))).thenReturn(1);
-        // 管理员场景下 findActiveByTalentAndUser 返回 null
-        when(talentClaimMapper.findActiveByTalentAndUser(talent.getId(), userId)).thenReturn(null);
-
-        QuickSampleApplyRequest request = new QuickSampleApplyRequest();
-        request.setTalentIds(List.of("douyin_talent_001"));
-        request.setRecipientName("张三");
-        request.setRecipientPhone("13800138000");
-        request.setRecipientAddress("北京市朝阳区某地址");
-
-        // 不应抛出异常
         var response = service.applyQuickSample(
-                relationId, request, userId, UUID.randomUUID(), List.of("admin"));
+                relationId, request, UUID.randomUUID(), UUID.randomUUID(), " BIZ_STAFF, CHANNEL_STAFF ");
 
-        // claim 不存在时不应调用 updateById
-        verify(talentClaimMapper, never()).updateById(any(TalentClaim.class));
+        assertThat(response.isSuccess()).isTrue();
+    }
+
+    // ==================== 端口未被调用时不应有副作用 ====================
+
+    @Test
+    void applyQuickSample_productValidationFails_portNotCalled() {
+        UUID relationId = UUID.randomUUID();
+        when(productService.getById(relationId)).thenReturn(null);
+
+        QuickSampleApplyRequest request = new QuickSampleApplyRequest();
+        request.setTalentIds(List.of("douyin_talent_001"));
+
+        try {
+            service.applyQuickSample(
+                    relationId, request, UUID.randomUUID(), UUID.randomUUID(), List.of(RoleCodes.CHANNEL_STAFF));
+        } catch (Exception ignored) {
+        }
+
+        verify(productSampleApplicationPort, never()).applyQuickSample(any());
     }
 }

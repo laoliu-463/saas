@@ -10,6 +10,7 @@ import com.colonel.saas.entity.SystemConfig;
 import com.colonel.saas.mapper.SystemConfigMapper;
 import com.colonel.saas.service.BusinessRuleConfigService;
 import com.colonel.saas.service.ShortTtlCacheService;
+import com.colonel.saas.service.SysConfigService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -18,12 +19,16 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 
 import java.math.BigDecimal;
 import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 /**
@@ -34,10 +39,14 @@ import static org.mockito.Mockito.when;
  * </ul>
  */
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 class LegacyConfigDomainFacadeTest {
 
     @Mock
     private SystemConfigMapper systemConfigMapper;
+
+    @Mock
+    private SysConfigService sysConfigService;
 
     private ConfigDomainFacade facade;
 
@@ -45,7 +54,14 @@ class LegacyConfigDomainFacadeTest {
     void setUp() {
         BusinessRuleConfigService businessRuleConfigService =
                 new BusinessRuleConfigService(systemConfigMapper, new ObjectMapper(), new ShortTtlCacheService());
-        facade = new LegacyConfigDomainFacade(businessRuleConfigService, new ObjectMapper());
+        lenient().when(sysConfigService.getConfigValue(anyString())).thenAnswer(invocation -> {
+            String key = invocation.getArgument(0);
+            return systemConfigMapper.findByConfigKey(key)
+                    .filter(config -> config.getDeleted() == null || config.getDeleted() == 0)
+                    .map(SystemConfig::getConfigValue)
+                    .orElse(null);
+        });
+        facade = new LegacyConfigDomainFacade(businessRuleConfigService, sysConfigService, new ObjectMapper());
     }
 
     // ==================== DDD-CONFIG-002：寄样/达人核心阈值 ====================
@@ -312,7 +328,7 @@ class LegacyConfigDomainFacadeTest {
                     .thenReturn(Optional.of(config("11")));
             when(systemConfigMapper.findByConfigKey(SystemConfigKeys.SAMPLE_DEFAULT_STANDARD))
                     .thenReturn(Optional.of(config(
-                            "{\"min30DaySales\":5000,\"minLevel\":\"L3\",\"raw\":{\"foo\":\"bar\"}}")));
+                            "{\"min_30day_sales\":5000,\"min_level\":\"L3\",\"foo\":\"bar\"}")));
 
             SampleRulesDTO rules = facade.getSampleRules();
 
@@ -359,14 +375,14 @@ class LegacyConfigDomainFacadeTest {
         }
 
         @Test
-        @DisplayName("getExclusiveRules: 商家规则聚合（缺失回退默认 0.70）")
+        @DisplayName("getExclusiveRules: 商家规则聚合（缺失回退默认 70）")
         void exclusiveRules() {
             when(systemConfigMapper.findByConfigKey(SystemConfigKeys.MERCHANT_EXCLUSIVE_SERVICE_FEE_RATIO))
                     .thenReturn(Optional.empty());
 
             ExclusiveRulesDTO rules = facade.getExclusiveRules();
 
-            assertThat(rules.merchantServiceFeeRatio()).isEqualByComparingTo("0.70");
+            assertThat(rules.merchantServiceFeeRatio()).isEqualByComparingTo("70");
         }
     }
 

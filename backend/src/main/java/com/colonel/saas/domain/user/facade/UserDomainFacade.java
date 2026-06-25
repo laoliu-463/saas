@@ -1,6 +1,7 @@
 package com.colonel.saas.domain.user.facade;
 
 import com.colonel.saas.domain.user.facade.dto.DepartmentOption;
+import com.colonel.saas.domain.user.facade.dto.UserOwnershipReference;
 import com.colonel.saas.dto.user.UserDataScopeResponse;
 import com.colonel.saas.dto.user.UserOptionResponse;
 
@@ -57,8 +58,52 @@ public interface UserDomainFacade {
     String getUserName(UUID userId);
 
     /**
+     * 按用户 ID 查询登录账号，不存在时返回 null。
+     */
+    String getUsername(UUID userId);
+
+    /**
+     * 按用户 ID 查询用户基础信息（DDD-USER-002）。
+     */
+    UserOptionResponse getUserById(UUID userId);
+
+    /**
+     * 批量加载用户基础信息（DDD-USER-002）。
+     */
+    List<UserOptionResponse> getUsersByIds(Collection<UUID> ids);
+
+    /**
      * 批量加载用户真实姓名，返回 userId → realName 映射（DDD-USER-002）。
      * 自动过滤 null 和重复 ID。
      */
     Map<UUID, String> loadUserNamesByIds(Collection<UUID> ids);
+
+    /**
+     * 批量加载用户展示名称，返回 userId → displayName 映射。
+     * 展示名称优先使用 realName，再回退到 username。
+     */
+    Map<UUID, String> loadUserDisplayNamesByIds(Collection<UUID> ids);
+
+    /**
+     * 批量加载用户展示标签，返回 userId → displayLabel 映射。
+     * 展示标签优先使用 "realName (username)"，再回退到 realName 或 username。
+     */
+    Map<UUID, String> loadUserDisplayLabelsByIds(Collection<UUID> ids);
+
+    /**
+     * 批量加载用户渠道编码，返回 userId -> channelCode 映射。
+     * 用于推广链接归因参数构造，避免业务域读取完整用户 DTO。
+     */
+    Map<UUID, String> loadUserChannelCodesByIds(Collection<UUID> ids);
+
+    /**
+     * 批量加载用户归属引用，返回 userId -> ownership reference 映射。
+     * 用于跨业务域归属覆盖时确认目标用户存在并读取其主组织单元。
+     */
+    Map<UUID, UserOwnershipReference> loadUserOwnershipReferencesByIds(Collection<UUID> ids);
+
+    /**
+     * 按类型过滤加载部门/组织单元列表。
+     */
+    List<DepartmentOption> listDepartments(Collection<String> deptTypes);
 }

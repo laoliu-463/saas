@@ -5,15 +5,17 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.exception.ForbiddenException;
+import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.dto.talent.TalentDetailResponse;
 import com.colonel.saas.dto.talent.TalentPageQuery;
 import com.colonel.saas.entity.Talent;
 import com.colonel.saas.entity.TalentClaim;
 import com.colonel.saas.entity.TalentEnrichTask;
-import com.colonel.saas.entity.SysUser;
+import com.colonel.saas.domain.user.facade.UserDomainFacade;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
+import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.mapper.SampleRequestMapper;
-import com.colonel.saas.mapper.SysUserMapper;
 import com.colonel.saas.mapper.TalentClaimMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -32,7 +34,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
@@ -52,7 +53,7 @@ import java.util.stream.Collectors;
  * <ul>
  *   <li>{@link TalentService} — 委托分页查询与单条查询</li>
  *   <li>{@link TalentClaimMapper} — 读取认领记录</li>
- *   <li>{@link SysUserMapper} — 批量查询认领人用户信息</li>
+ *   <li>{@link UserDomainFacade} ：查询认领人显示标签</li>
  *   <li>{@link SampleRequestMapper} — 寄样请求数据访问</li>
  *   <li>{@link org.springframework.jdbc.core.JdbcTemplate} — 原生 SQL 聚合寄样/订单统计</li>
  * </ul>
@@ -76,33 +77,47 @@ public class TalentQueryService {
     private final TalentService talentService;
     /** 达人认领 Mapper，查询认领归属关系 */
     private final TalentClaimMapper talentClaimMapper;
-    /** 系统用户 Mapper，批量查询认领人姓名 */
-    private final SysUserMapper sysUserMapper;
+    private final UserDomainFacade userDomainFacade;
     /** 寄样请求 Mapper，提供寄样数据访问 */
     private final SampleRequestMapper sampleRequestMapper;
     /** Spring JdbcTemplate，用于原生 SQL 聚合查询（寄样统计、订单统计） */
     private final JdbcTemplate jdbcTemplate;
+    /** 用户域权限策略，用于统一角色编码集合解析和匹配 */
+    private final CurrentUserPermissionPolicy currentUserPermissionPolicy;
+    /** 用户域数据范围策略，用于灰度开启后的详情访问范围决策 */
+    private final DataScopePolicy dataScopePolicy;
+    /** DDD 灰度开关，默认关闭时保留 Legacy 访问判断 */
+    private final DddRefactorProperties dddRefactorProperties;
 
     /**
      * 构造函数，通过依赖注入初始化所有服务和仓储。
      *
      * @param talentService        达人服务（基础 CRUD 和分页查询）
      * @param talentClaimMapper    达人认领记录 Mapper
-     * @param sysUserMapper        系统用户 Mapper（解析认领人姓名）
+     * @param userDomainFacade     用户领域门面（查询认领人显示标签）
      * @param sampleRequestMapper  寄样请求 Mapper（统计寄样次数）
      * @param jdbcTemplate         JDBC 模板（原生 SQL 聚合查询）
+     * @param currentUserPermissionPolicy 用户域权限策略（角色编码匹配）
+     * @param dataScopePolicy      用户域数据范围策略
+     * @param dddRefactorProperties DDD 灰度开关
      */
     public TalentQueryService(
             TalentService talentService,
             TalentClaimMapper talentClaimMapper,
-            SysUserMapper sysUserMapper,
+            UserDomainFacade userDomainFacade,
             SampleRequestMapper sampleRequestMapper,
-            JdbcTemplate jdbcTemplate) {
+            JdbcTemplate jdbcTemplate,
+            CurrentUserPermissionPolicy currentUserPermissionPolicy,
+            DataScopePolicy dataScopePolicy,
+            DddRefactorProperties dddRefactorProperties) {
         this.talentService = talentService;
         this.talentClaimMapper = talentClaimMapper;
-        this.sysUserMapper = sysUserMapper;
+        this.userDomainFacade = userDomainFacade;
         this.sampleRequestMapper = sampleRequestMapper;
         this.jdbcTemplate = jdbcTemplate;
+        this.currentUserPermissionPolicy = currentUserPermissionPolicy;
+        this.dataScopePolicy = dataScopePolicy;
+        this.dddRefactorProperties = dddRefactorProperties;
     }
 
     /**
@@ -305,14 +320,14 @@ public class TalentQueryService {
         Talent talent = talentService.getById(talentId);
         UUID resolvedTalentId = talent == null ? null : talent.getId();
         // 注意：达人不存在时放行，由下游业务层处理不存在场景
-        if (resolvedTalentId == null || hasRole(roleCodes, RoleCodes.ADMIN)) {
+        if (resolvedTalentId == null || currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.ADMIN)) {
             return;
         }
         // 查询该达人的所有生效认领记录
         List<TalentClaim> activeClaims = talentClaimMapper.findActiveByTalentId(resolvedTalentId);
         List<TalentClaim> safeActiveClaims = activeClaims == null ? List.of() : activeClaims;
         // 渠道主管：所属部门认领了该达人即有权操作
-        if (hasRole(roleCodes, RoleCodes.CHANNEL_LEADER)) {
+        if (currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.CHANNEL_LEADER)) {
             boolean ownedByCurrentDept = currentDeptId != null && safeActiveClaims.stream()
                     .anyMatch(claim -> currentDeptId.equals(claim.getDeptId()));
             if (ownedByCurrentDept) {
@@ -320,7 +335,7 @@ public class TalentQueryService {
             }
         }
         // 渠道专员：个人认领了该达人即有权操作
-        if (hasRole(roleCodes, RoleCodes.CHANNEL_STAFF)) {
+        if (currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.CHANNEL_STAFF)) {
             boolean ownedByCurrentUser = currentUserId != null && safeActiveClaims.stream()
                     .anyMatch(claim -> currentUserId.equals(claim.getUserId()));
             if (ownedByCurrentUser) {
@@ -368,12 +383,22 @@ public class TalentQueryService {
             UUID currentDeptId,
             DataScope dataScope,
             List<TalentClaim> activeClaims) {
-        // 达人不存在或数据范围为 ALL 时直接放行
         if (talent == null || talent.getId() == null || dataScope == null || dataScope == DataScope.ALL) {
             return;
         }
+        if (!dddRefactorProperties.getDataScopePolicy().isEnabled()) {
+            assertCanAccessLegacy(currentUserId, currentDeptId, dataScope, activeClaims);
+            return;
+        }
+        assertCanAccessWithPolicy(currentUserId, currentDeptId, dataScope, activeClaims);
+    }
+
+    private void assertCanAccessLegacy(
+            UUID currentUserId,
+            UUID currentDeptId,
+            DataScope dataScope,
+            List<TalentClaim> activeClaims) {
         List<TalentClaim> safeActiveClaims = activeClaims == null ? List.of() : activeClaims;
-        // PERSONAL 范围：仅当前用户是认领人之一时放行
         if (dataScope == DataScope.PERSONAL) {
             boolean ownedByCurrentUser = currentUserId != null && safeActiveClaims.stream()
                     .anyMatch(claim -> currentUserId.equals(claim.getUserId()));
@@ -390,22 +415,42 @@ public class TalentQueryService {
         }
     }
 
-    /**
-     * 判断角色集合中是否包含指定角色（忽略大小写）。
-     *
-     * @param roleCodes     用户角色编码集合
-     * @param expectedRole  待匹配的角色编码
-     * @return 包含则返回 true
-     */
-    private boolean hasRole(Collection<?> roleCodes, String expectedRole) {
-        if (roleCodes == null || roleCodes.isEmpty() || !StringUtils.hasText(expectedRole)) {
-            return false;
+    private void assertCanAccessWithPolicy(
+            UUID currentUserId,
+            UUID currentDeptId,
+            DataScope dataScope,
+            List<TalentClaim> activeClaims) {
+        DataScopePolicy.ContextRequirement requirement =
+                dataScopePolicy.contextRequirement(currentUserId, currentDeptId, dataScope);
+        if (requirement != DataScopePolicy.ContextRequirement.SATISFIED) {
+            throw new ForbiddenException("无权查看该达人详情");
         }
-        String normalizedExpected = expectedRole.trim().toLowerCase(Locale.ROOT);
-        return roleCodes.stream()
-                .filter(Objects::nonNull)
-                .map(value -> value.toString().trim().toLowerCase(Locale.ROOT))
-                .anyMatch(normalizedExpected::equals);
+
+        DataScopePolicy.Decision decision = dataScopePolicy.decide(currentUserId, currentDeptId, dataScope);
+        if (decision == DataScopePolicy.Decision.NO_FILTER) {
+            return;
+        }
+
+        List<TalentClaim> safeActiveClaims = activeClaims == null ? List.of() : activeClaims;
+        switch (decision) {
+            case FILTER_USER -> {
+                boolean ownedByCurrentUser = safeActiveClaims.stream()
+                        .anyMatch(claim -> currentUserId.equals(claim.getUserId()));
+                if (!ownedByCurrentUser) {
+                    throw new ForbiddenException("无权查看该达人详情");
+                }
+            }
+            case FILTER_DEPT -> {
+                boolean ownedByCurrentDept = safeActiveClaims.stream()
+                        .anyMatch(claim -> currentDeptId.equals(claim.getDeptId()));
+                if (!ownedByCurrentDept) {
+                    throw new ForbiddenException("无权查看该达人详情");
+                }
+            }
+            case NO_FILTER -> {
+                // handled above
+            }
+        }
     }
 
     /**
@@ -440,7 +485,7 @@ public class TalentQueryService {
         // 第一步：批量加载关联数据
         Set<UUID> talentIds = talents.stream().map(Talent::getId).filter(Objects::nonNull).collect(Collectors.toSet());
         ClaimMaps claimMaps = preloadedClaimMaps == null ? loadClaimMaps(talentIds) : preloadedClaimMaps;
-        Map<UUID, SysUser> ownerMap = loadOwnerMap(claimMaps.allClaims());
+        Map<UUID, String> ownerLabelMap = loadOwnerLabels(claimMaps.allClaims());
         Map<UUID, Long> sampleCountMap = loadSampleCounts(
                 talentIds
         );
@@ -463,12 +508,12 @@ public class TalentQueryService {
                 talent.setOwnerId(currentClaim.getUserId());
                 talent.setClaimedAt(currentClaim.getClaimedAt());
                 talent.setProtectedUntil(currentClaim.getProtectedUntil());
-                talent.setOwnerName(buildClaimSummary(activeClaims, ownerMap, currentUserId));
+                talent.setOwnerName(buildClaimSummary(activeClaims, ownerLabelMap, currentUserId));
             } else {
                 // 当前用户未认领：标记为公有池，展示公海认领提示
                 talent.setPoolStatus("PUBLIC");
                 talent.setOwnerId(null);
-                applyPublicClaimHint(talent, activeClaims, claimMaps.latestClaims().get(talent.getId()), ownerMap);
+                applyPublicClaimHint(talent, activeClaims, claimMaps.latestClaims().get(talent.getId()), ownerLabelMap);
             }
 
             // 填充寄样统计
@@ -539,12 +584,12 @@ public class TalentQueryService {
     }
 
     /**
-     * 批量加载认领人用户信息映射（userId → SysUser）。
+     * 批量加载认领人显示标签映射（userId → displayLabel）。
      *
      * @param claims 认领记录列表
-     * @return 用户 ID 到用户实体的映射
+     * @return 用户 ID 到显示标签的映射
      */
-    private Map<UUID, SysUser> loadOwnerMap(Collection<TalentClaim> claims) {
+    private Map<UUID, String> loadOwnerLabels(Collection<TalentClaim> claims) {
         if (claims == null || claims.isEmpty()) {
             return Collections.emptyMap();
         }
@@ -555,9 +600,7 @@ public class TalentQueryService {
         if (userIds.isEmpty()) {
             return Collections.emptyMap();
         }
-        return sysUserMapper.selectBatchIds(userIds).stream()
-                .filter(Objects::nonNull)
-                .collect(Collectors.toMap(SysUser::getId, Function.identity(), (a, b) -> a));
+        return userDomainFacade.loadUserDisplayLabelsByIds(userIds);
     }
 
     /**
@@ -876,16 +919,6 @@ public class TalentQueryService {
     }
 
     /**
-     * 获取用户显示名称（优先真实姓名 → 用户名 → 用户 ID）。
-     *
-     * @param user 用户实体
-     * @return 显示名称
-     */
-    private String displayName(SysUser user) {
-        return firstNonBlank(user.getRealName(), user.getUsername(), user.getId() == null ? null : user.getId().toString());
-    }
-
-    /**
      * 为公海达人（当前用户未认领）填充认领提示信息。
      * <p>展示逻辑分三种情况：</p>
      * <ul>
@@ -897,15 +930,15 @@ public class TalentQueryService {
      * @param talent      达人实体（结果写入该对象）
      * @param activeClaims 该达人的所有生效认领记录
      * @param latestClaim  该达人的最新认领记录（含已过期）
-     * @param ownerMap     用户 ID 到用户实体的映射
+     * @param ownerLabelMap 用户 ID 到显示标签的映射
      */
     private void applyPublicClaimHint(Talent talent,
                                       List<TalentClaim> activeClaims,
                                       TalentClaim latestClaim,
-                                      Map<UUID, SysUser> ownerMap) {
+                                      Map<UUID, String> ownerLabelMap) {
         if (activeClaims != null && !activeClaims.isEmpty()) {
             // 有生效认领：展示认领人摘要，保护期取所有认领中的最晚值
-            talent.setOwnerName(buildClaimSummary(activeClaims, ownerMap, null));
+            talent.setOwnerName(buildClaimSummary(activeClaims, ownerLabelMap, null));
             TalentClaim latestActiveClaim = activeClaims.get(0);
             talent.setClaimedAt(latestActiveClaim.getClaimedAt());
             talent.setProtectedUntil(activeClaims.stream()
@@ -926,8 +959,7 @@ public class TalentQueryService {
         talent.setClaimedAt(latestClaim.getClaimedAt());
         talent.setProtectedUntil(latestClaim.getProtectedUntil());
         if (latestClaim.getStatus() != null && latestClaim.getStatus() == CLAIM_STATUS_EXPIRED) {
-            SysUser owner = ownerMap.get(latestClaim.getUserId());
-            String ownerName = owner == null ? null : displayName(owner);
+            String ownerName = ownerLabelMap.get(latestClaim.getUserId());
             talent.setOwnerName(StringUtils.hasText(ownerName) ? "已过期释放 · 原归属 " + ownerName : "已过期释放");
             return;
         }
@@ -939,11 +971,11 @@ public class TalentQueryService {
      * <p>单人认领显示姓名，多人认领显示「XXX 等 N 人」，当前用户置顶展示。</p>
      *
      * @param claims        生效认领记录列表
-     * @param ownerMap      用户 ID 到用户实体的映射
+     * @param ownerLabelMap 用户 ID 到显示标签的映射
      * @param currentUserId 当前操作用户 ID（可为 null）
      * @return 认领人摘要文本
      */
-    private String buildClaimSummary(List<TalentClaim> claims, Map<UUID, SysUser> ownerMap, UUID currentUserId) {
+    private String buildClaimSummary(List<TalentClaim> claims, Map<UUID, String> ownerLabelMap, UUID currentUserId) {
         if (claims == null || claims.isEmpty()) {
             return null;
         }
@@ -951,9 +983,7 @@ public class TalentQueryService {
         List<String> names = claims.stream()
                 .map(TalentClaim::getUserId)
                 .filter(Objects::nonNull)
-                .map(ownerMap::get)
-                .filter(Objects::nonNull)
-                .map(this::displayName)
+                .map(ownerLabelMap::get)
                 .filter(StringUtils::hasText)
                 .distinct()
                 .toList();
@@ -963,9 +993,7 @@ public class TalentQueryService {
             primaryName = claims.stream()
                     .filter(claim -> currentUserId.equals(claim.getUserId()))
                     .map(TalentClaim::getUserId)
-                    .map(ownerMap::get)
-                    .filter(Objects::nonNull)
-                    .map(this::displayName)
+                    .map(ownerLabelMap::get)
                     .filter(StringUtils::hasText)
                     .findFirst()
                     .orElse(null);
@@ -987,7 +1015,7 @@ public class TalentQueryService {
      * <p>处理流程：</p>
      * <ol>
      *   <li>查询该达人所有生效的认领记录</li>
-     *   <li>批量加载认领人用户信息</li>
+     *   <li>批量加载认领人显示标签</li>
      *   <li>映射为 {@link TalentDetailResponse.ClaimOwnerItem}，当前用户标注「（我）」</li>
      * </ol>
      *
@@ -1003,13 +1031,12 @@ public class TalentQueryService {
         if (activeClaims == null || activeClaims.isEmpty()) {
             return List.of();
         }
-        Map<UUID, SysUser> ownerMap = loadOwnerMap(activeClaims);
+        Map<UUID, String> ownerLabelMap = loadOwnerLabels(activeClaims);
         return activeClaims.stream()
                 .map(claim -> {
                     TalentDetailResponse.ClaimOwnerItem item = new TalentDetailResponse.ClaimOwnerItem();
                     item.setUserId(claim.getUserId() == null ? null : claim.getUserId().toString());
-                    SysUser owner = claim.getUserId() == null ? null : ownerMap.get(claim.getUserId());
-                    String ownerName = owner == null ? null : displayName(owner);
+                    String ownerName = claim.getUserId() == null ? null : ownerLabelMap.get(claim.getUserId());
                     if (currentUserId != null && currentUserId.equals(claim.getUserId()) && StringUtils.hasText(ownerName)) {
                         ownerName = ownerName + "（我）";
                     }

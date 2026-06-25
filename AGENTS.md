@@ -2,7 +2,7 @@
 
 ## 1. 项目定位
 
-本仓库是抖音团长内部 SaaS V1 工程，服务商品管理、达人 CRM、寄样、订单归因、业绩统计和看板分析。
+本仓库是抖音团长内部 SaaS V2 工程，服务商品管理、达人 CRM、寄样、订单归因、业绩统计和看板分析。
 
 当前实际技术栈以源码和部署脚本为准：
 
@@ -17,13 +17,13 @@
 
 旧文档中的 FastAPI、Celery、Python 爬虫、旧 V2.2 全量方案只作为历史背景，不作为当前运行事实。
 
-V1 核心闭环以三条主链为准：
+V2 核心闭环以三条主链为准：
 
 - 渠道链：认领达人 -> 商品库选品 -> 复制讲解 / 转链 -> 寄样申请 -> 订单同步 -> 渠道业绩 -> 寄样自动完成。
 - 招商链：同步活动 -> 活动商品入库 -> 商品上架 -> 审核寄样 -> 订单同步 -> 招商业绩。
 - 管理链：用户角色 -> 数据范围 -> 规则配置 -> 各领域读取配置 -> 权限生效。
 
-详细状态见 `harness/CURRENT_STATE.md`，领域职责见 `harness/DOMAIN_MAP.md` 和 `docs/领域/*.md`。
+详细状态与执行入口见 `harness/INDEX.md`，领域职责见 `docs/领域/*.md`。
 
 ## 2. 最高优先级规则
 
@@ -49,8 +49,8 @@ V1 核心闭环以三条主链为准：
 
 1. `CLAUDE.md`
 2. `docs/README.md`
-3. `harness/CURRENT_STATE.md`
-4. `harness/TASK_ROUTING.md`
+3. `harness/README.md` 与 `harness/INDEX.md`
+4. `harness/rules/` 下的核心约束与规范
 5. 当前任务对应的领域、流程、接口、数据、权限、验收和部署文档
 
 涉及 real-pre 必须补读：
@@ -58,9 +58,8 @@ V1 核心闭环以三条主链为准：
 - `docs/08-第三方对接总览.md`
 - `docs/10-部署运行总览.md`
 - `docs/验收/real-pre联调手册.md`
-- `harness/skills/real-pre-debug.skill.md`
 
-涉及订单归因、寄样、商品库、业绩或看板，必须读取 `harness/skills/` 下对应 skill。
+涉及订单归因、寄样、商品库、业绩或看板，必须检索并读取相关领域文档及 `harness/rules/` 中的对应内容。
 
 ## 4. code-review-graph 先行
 
@@ -79,21 +78,21 @@ V1 核心闭环以三条主链为准：
 默认执行入口：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.ps1 -Env real-pre -Scope full -Message "说明本次修改"
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\agent-do.ps1 -Env real-pre -Scope full -Message "说明本次修改"
 ```
 
 文档 / Harness 变更：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.ps1 -Env real-pre -Scope docs -Message "docs: update harness"
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\agent-do.ps1 -Env real-pre -Scope docs -Message "docs: update harness"
 ```
 
-其他任务的 Scope 与必读文档见 `harness/TASK_ROUTING.md`，后续 Agent 不允许临时发明构建、重启、部署流程。若确需绕过，必须说明原因和风险。
+其他任务的 Scope 与必读文档见 `harness/INDEX.md`，后续 Agent 不允许临时发明构建、重启、部署流程。若确需绕过，必须说明原因和风险。
 
 用户明确要求远端部署时才允许增加：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.ps1 -Env real-pre -Scope full -DeployRemote true -Message "deploy: real-pre update"
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\agent-do.ps1 -Env real-pre -Scope full -DeployRemote true -Message "deploy: real-pre update"
 ```
 
 ## 6. 禁止事项
@@ -110,18 +109,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.
 - 禁止关闭真实抖音 API 开关后仍声明真实闭环通过。
 - 禁止用 mock 数据证明 real-pre 业务闭环。
 
-### V1 禁止
-
-- 不做独家达人。
-- 不做独家商家。
-- ~~不做毛利口径扩展。~~ **已撤销**（2026-06-05 用户决策：毛利要做，纳入 V1 交付与验收）
-- 不做个别品负责人覆盖。
-- 不做商品负责人变更历史重算。
-- 不做差异化提成。
-- 不做 Cookie 池 / 代理池。
-- 不做物流 API 自动跟踪作为 V1 必需能力。
-- 不做外部抖店快速寄样作为 V1 必需能力。
-- 不做数据平台整体导出。
 
 ### 模块边界禁止
 
@@ -138,20 +125,32 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.
 - 禁止提交 `*.pem`、`*.key`、凭证、私钥、证书。
 - 禁止输出或提交密钥、Token、密码、OAuth code。
 
+### 商品 backfill / dry-run 禁止
+
+- 禁止用同步 HTTP 长请求（`POST /api/product-sync/admin/backfill-activity-products`
+  直接 `Invoke-WebRequest`）跑 `RECENT_30D maxActivities>=10` 任务。
+  任务绑死在 HTTP 连接上，客户端超时或断连 → `ClientAbortException` →
+  `product_sync_job_log` 标 `ABANDONED`（但实际任务仍在跑），
+  出现"ABANDONED 状态但实际 SUCCESS 落库"的不一致（成功时间晚 14-26 分钟）。
+- 商品 backfill / dry-run 必须走异步 job 模式：
+  1. `POST /api/product-sync/admin/backfill-activity-products/async`
+     立即返回 `jobId`（不阻塞 HTTP）。
+  2. 后端 `TaskExecutor` / MQ 异步执行原 backfill service。
+  3. `GET /api/product-sync/admin/backfill-jobs/{jobId}` 查进度。
+  4. job_log 每个 activity / page / batch flush 一次进度。
+  5. 保留现有 lock owner / deadlock retry / stale reconcile / dryRun 边界。
+  6. `confirm=true` 才走真实写库；`dryRun=true` 永不写业务表。
+- 轻量探针（只读）用 `POST /api/product-sync-probes/full-products-dry-run`，
+  参数 `scope=RECENT_30D activityIds=[] pageSize=20 maxActivities=20
+  maxPagesPerActivity=1000 maxRowsPerActivity=50000 dryRun=true`。
+  即使是探针，单次同步请求仍不应超过 5-10 分钟；超过则必须分批或异步。
+- 杀 RUNNING 之前必须先 `SELECT job_id, dry_run FROM product_sync_job_log
+  WHERE status='RUNNING'` 确认是 dry-run（`dry_run=t`），防止误杀实跑。
+- 杀完后必须 `redis-cli KEYS '*backfill*'` 确认业务锁释放。
+
 ## 7. Definition of Done
 
-一个任务只有同时满足以下条件，才允许声明完成：
-
-- 代码或文档已修改。
-- 构建通过，或 `Scope=docs` 明确跳过构建。
-- 对应 Docker 容器已重启，或 `Scope=docs` 明确不需要重启。
-- 健康检查通过，或明确说明阻塞原因。
-- 相关业务验证通过，或明确说明 `BLOCKED` / `PENDING` / `FAIL` 证据。
-- evidence report 已生成。
-- retro summary 已生成，或明确说明本次无需 Harness 升级。
-- Git commit 已生成并 push 到当前分支上游，或用户明确要求本轮不提交 / 不推送。
-- 如果用户要求远端部署，远端部署已完成。
-- 剩余风险已列出。
+任务同时满足以下全部条件，才允许声明完成：代码或文档已修改；构建通过（或 `Scope=docs` 明确跳过）；对应 Docker 容器已重启（或 `Scope=docs` 明确不需要）；健康检查通过（或明确说明阻塞原因）；相关业务验证通过（或明确说明 `BLOCKED` / `PENDING` / `FAIL` 证据）；evidence report 已生成；retro summary 已生成（或明确说明本次无需 Harness 升级）；Git commit 已生成并 push 到当前分支上游（或用户明确要求本轮不提交 / 不推送）；如要求远端部署则已完成；剩余风险已列出。
 
 没有完成这些步骤，不允许声明任务完成。
 
@@ -160,43 +159,52 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.
 证据报告统一生成到：
 
 ```text
-harness/reports/evidence-YYYYMMDD-HHMMSS.md
+harness/reports/latest-evidence-YYYYMMDD.md
 ```
+(注意：必须遵循每目录不超过 50 个文件的限制，及时合并或归档旧报告至 `harness/archive/`)
 
-报告必须包含：
+报告必须包含（脚本能采集多少写多少，采集不到必须写"未采集 / 阻塞原因"，不得编造）：
 
-- 时间
-- 环境
-- 分支
-- commit hash
-- 工作区是否干净
-- 构建结果
-- Docker 状态
-- 健康检查结果
-- 业务验证结果
-- 是否部署远端
-- 远端健康检查结果
-- 结论：`PASS` / `PARTIAL` / `FAIL`
-- 剩余风险
-
-脚本能采集多少写多少；采集不到必须写“未采集 / 阻塞原因”，不得编造。
+时间、环境、分支、commit hash、工作区是否干净、构建结果、Docker 状态、健康检查结果、业务验证结果、是否部署远端、远端健康检查结果、结论（`PASS` / `PARTIAL` / `FAIL`）、剩余风险。
 
 ## 9. 当前文档关系
 
 - `CLAUDE.md`：仓库地图。
 - `docs/`：事实主源、领域合同、流程、接口、数据、验收、部署和 ADR。
 - `.claude/`：保留为 Claude 工作台和历史 Agent 工作流文档。
-- `scripts/`：保留现有启动、QA 和部署辅助脚本。
-- `harness/`：新增统一执行系统，负责固定入口、脚本、skills、evals、runbooks、prompts 和 reports。
+- `harness/`：统一执行系统与工程化基座，负责门禁规则、任务卡、报告、自动化脚本和资产清理清单。
 
-## 10. Harness 五子系统
+## 10. Harness 核心约束与结构 (50/50/200 规则)
 
-- Instructions：`harness/instructions/`、`AGENT_CONTRACT.md`、`FORBIDDEN_SCOPE.md`、`TASK_ROUTING.md`。
-- Tools：`harness/commands/`、`harness/tools/README.md`。
-- Environment：`harness/environment/`。
-- State：`harness/CURRENT_STATE.md`、`harness/state/`、`HARNESS_CHANGELOG.md`。
-- Feedback：`harness/feedback/`、`harness/evals/`、`harness/reports/`。
+所有 Agent 介入本工程时，对 `harness/` 目录进行任何文件创建与修改，**必须绝对服从以下硬性约束**，并在任务结束时通过合规自检：
 
-DDD 优化任务的总规则、顺序和执行口径见 `harness/AGENT_CONTRACT.md`、`harness/TASK_ROUTING.md`、`harness/plans/DDD_OPTIMIZATION_ROADMAP.md` 和 `harness/plans/DDD_DOMAIN_TASK_MATRIX.md`；本文件只保留跳转说明，不重复维护第二套 DDD 规则。
+1. **结构限制**：`harness/` 当前白名单为 9 个一级目录：`rules/`、`tasks/`、`probes/`、`reports/`、`scripts/`、`manifests/`、`archive/`、`templates/`、`engineering/`。
+2. **数量限制**：任何一级目录或子目录，其**直接文件数量不得超过 50 个**，其**直接子目录数量不得超过 50 个**。
+3. **行数限制**：除脚本文件（.ps1, .sh, .py, .js, .ts 等）外，所有文本文件（如 .md, .txt, .json）**内容不得超过 200 行**。
+4. **清理职责**：超限时必须主动合并、提炼摘要或归档至 `archive/`（打包旧数据）。任务结束后必须复查，且每周或每个迭代开始前定期执行清理复查。禁止在 `reports/` 等日常目录内堆积历史报告。
+5. **合规自检**：在声明修改完成前，推荐执行以下脚本进行检验：
+   `powershell -ExecutionPolicy Bypass -File harness/scripts/check-harness-limits.ps1`
 
-发现旧文档与当前事实冲突时，不得自行拍板，写入 `docs/决策/ADR-002-V1范围优先级.md`。
+如果发现旧文档与当前事实冲突，写入 `docs/决策/ADR-010-仓库阶段口径拍板为V2.md`（阶段口径）或 `docs/决策/ADR-002-V1范围优先级.md`（范围标记），不要自行拍板。
+
+## 11. Agent skills
+
+本仓库接入了 Matt Pocock 18 项 KEEP skills（执行方法，非业务总指挥）。项目级规则优先级：用户当前直接要求 > 本协议 > 当前阶段相关 `docs/*.md` > `CONTEXT.md` > skill 默认流程。
+
+> **变更说明（2026-06-19）**：原 `docs/agents/` 已**合并重构到 `harness/engineering/`**。本节内容相应更新，指向 harness 工程配置目录。
+
+- **Issue tracker**：GitHub Issues（`origin` = `https://github.com/laoliu-463/saas.git`）；`gitee` 为只读镜像，外部 PR 不作为 triage 源；harness 端通过 `harness/engineering/issues-index.md` 维护镜像。详见 `harness/engineering/issue-tracker.md`。
+- **Triage labels**：五项 canonical 标签（`needs-triage` / `needs-info` / `ready-for-agent` / `ready-for-human` / `wontfix`）按默认同名映射（GitHub Labels 已建立）。详见 `harness/engineering/triage-labels.md`。
+- **Domain docs**：Single-context，主入口 `AGENTS.md` + `CONTEXT.md` + `docs/README.md`；ADR 收口在 `docs/决策/`（已有 ADR-001~010），`docs/adr/` 不启用；harness 工程 Skill 配置全部在 `harness/engineering/`。详见 `harness/engineering/context.md`。
+
+**harness engineering 目录结构**：
+
+```text
+harness/engineering/
+├── issue-tracker.md     ← Issue tracker 配置
+├── triage-labels.md     ← Triage 标签映射
+├── context.md           ← 上下文文档消费规则
+└── issues-index.md      ← GitHub Issues 本地镜像
+```
+
+**历史位置**：原 `docs/agents/{issue-tracker,triage-labels,domain}.md` 已合并重构。后续如再启用新 skill，请在 `harness/engineering/` 下添加对应配置。

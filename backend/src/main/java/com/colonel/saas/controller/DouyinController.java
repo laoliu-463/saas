@@ -13,6 +13,10 @@ import com.colonel.saas.gateway.douyin.DouyinProductGateway;
 import com.colonel.saas.gateway.douyin.DouyinPromotionGateway;
 import com.colonel.saas.gateway.douyin.DouyinTokenGateway;
 import com.colonel.saas.service.DouyinWebhookEventService;
+import com.colonel.saas.service.OrderSyncPersistenceService;
+import com.colonel.saas.service.settlement.SettlementOrderGateway;
+import com.colonel.saas.service.settlement.SettlementOrderPage;
+import com.colonel.saas.service.settlement.SettlementOrderQuery;
 import com.fasterxml.jackson.annotation.JsonAlias;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -30,6 +34,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -82,6 +87,8 @@ public class DouyinController extends BaseController {
     private final DouyinProductGateway douyinProductGateway;
     /** 抖音订单网关，负责结算订单查询 */
     private final DouyinOrderGateway douyinOrderGateway;
+    /** 1603 结算口径网关，负责默认结算 probe */
+    private final SettlementOrderGateway instituteSettlementGateway;
     /** 抖音推广网关，负责推广链接转换与 RAW 探针 */
     private final DouyinPromotionGateway douyinPromotionGateway;
     /** 抖音 Token 网关，负责机构信息查询与 Token 创建探针 */
@@ -106,6 +113,7 @@ public class DouyinController extends BaseController {
             DouyinActivityGateway douyinActivityGateway,
             DouyinProductGateway douyinProductGateway,
             DouyinOrderGateway douyinOrderGateway,
+            @Qualifier("instituteOrderColonelSettlementGateway") SettlementOrderGateway instituteSettlementGateway,
             DouyinPromotionGateway douyinPromotionGateway,
             DouyinTokenGateway douyinTokenGateway,
             DouyinTokenService douyinTokenService,
@@ -113,6 +121,7 @@ public class DouyinController extends BaseController {
         this.douyinActivityGateway = douyinActivityGateway;
         this.douyinProductGateway = douyinProductGateway;
         this.douyinOrderGateway = douyinOrderGateway;
+        this.instituteSettlementGateway = instituteSettlementGateway;
         this.douyinPromotionGateway = douyinPromotionGateway;
         this.douyinTokenGateway = douyinTokenGateway;
         this.douyinTokenService = douyinTokenService;
@@ -295,15 +304,10 @@ public class DouyinController extends BaseController {
     }
 
     /**
-     * 联调探针：查询团长分次结算订单.
+     * 联调探针：1603 查询团长订单（结算口径）.
      *
-     * <p>验证上游 {@code buyin.colonelMultiSettlementOrders} 团长分次结算订单查询能力。
-     * 支持按时间范围或订单号列表两种查询模式：
-     * <ul>
-     *   <li>传入 orderIds 时按订单号查询</li>
-     *   <li>否则按时间范围查询（startTime / endTime）</li>
-     * </ul>
-     * 旧 {@code buyin.instituteOrderColonel} 仅保留 RAW 探针对照。</p>
+     * <p>验证上游 {@code buyin.instituteOrderColonel} 作为结算订单主接口的只读查询能力。
+     * {@code buyin.colonelMultiSettlementOrders} 仅作为 fallback / probe / 对照，不再作为默认写库主链路。</p>
      *
      * @param appId          抖音应用 appId（可选）
      * @param size           每次拉取条数，最大 100
@@ -313,24 +317,32 @@ public class DouyinController extends BaseController {
      * @param endTime        结束时间，格式 yyyy-MM-dd HH:mm:ss（可选）
      * @param orderIds       订单号列表，逗号分隔（可选，优先使用 camelCase 入参）
      * @param orderIdsLegacy 订单号列表（snake_case 兼容参数）
-     * @return 联调探针结果，包含结算订单原始响应
+     * @return 联调探针结果，包含 1603 结算口径原始响应
      */
-    @Operation(summary = "[联调] 查询团长分次结算订单", description = "验证上游 buyin.colonelMultiSettlementOrders 团长分次结算订单查询能力。RealDouyinOrderGateway 的订单主同步时间范围查询已使用该接口；旧 buyin.instituteOrderColonel 仅保留 RAW 探针对照。")
+    @Operation(summary = "[联调] 1603 查询团长订单（结算口径）", description = "验证上游 buyin.instituteOrderColonel 结算口径。2704 buyin.colonelMultiSettlementOrders 仅作为 fallback / probe / 对照。")
     @GetMapping("/order-settlements")
     public ApiResult<Map<String, Object>> dingdanJiesuan(
             @Parameter(description = "抖音应用 appId；不传则使用系统默认应用配置。") @RequestParam(name = "appId", required = false) String appId,
             @Parameter(description = "每次拉取条数，最大 100。") @RequestParam(name = "size", required = false, defaultValue = "20") @Min(1) @Max(100) Integer size,
             @Parameter(description = "游标，继续翻页时使用。") @RequestParam(name = "cursor", required = false, defaultValue = "0") String cursor,
-            @Parameter(description = "时间类型，如 update。待确认：更多取值请参考上游 SDK 文档。") @RequestParam(name = "timeType", required = false, defaultValue = "update") String timeType,
+            @Parameter(description = "时间类型，默认 update。") @RequestParam(name = "timeType", required = false, defaultValue = "update") String timeType,
             @Parameter(description = "开始时间，格式 yyyy-MM-dd HH:mm:ss。") @RequestParam(name = "startTime", required = false) String startTime,
             @Parameter(description = "结束时间，格式 yyyy-MM-dd HH:mm:ss。") @RequestParam(name = "endTime", required = false) String endTime,
             @Parameter(description = "订单号列表，逗号分隔，最多 100 个；与时间范围二选一，优先使用 camelCase 入参。") @RequestParam(name = "orderIds", required = false) String orderIds,
             @RequestParam(name = "order_ids", required = false) String orderIdsLegacy) {
         Map<String, Object> result = new HashMap<>();
         result.put("module", "M1.2 Douyin SDK");
-        result.put("endpoint", "buyin.colonelMultiSettlementOrders");
+        result.put("endpoint", "buyin.instituteOrderColonel");
+        result.put("source", OrderSyncPersistenceService.SYNC_SOURCE_INSTITUTE_SETTLEMENT);
+        result.put("fallbackEndpoint", "buyin.colonelMultiSettlementOrders");
         result.put("appId", appId);
         String normalizedOrderIds = StringUtils.hasText(orderIds) ? orderIds : orderIdsLegacy;
+        List<String> orderIdList = StringUtils.hasText(normalizedOrderIds)
+                ? java.util.Arrays.stream(normalizedOrderIds.split(","))
+                        .map(String::trim)
+                        .filter(StringUtils::hasText)
+                        .toList()
+                : List.of();
         Map<String, Object> query = new HashMap<>();
         query.put("size", size);
         query.put("cursor", cursor);
@@ -340,27 +352,28 @@ public class DouyinController extends BaseController {
         query.put("orderIds", normalizedOrderIds);
         result.put("query", query);
         try {
-            if (StringUtils.hasText(normalizedOrderIds)) {
-                List<String> orderIdList = java.util.Arrays.stream(normalizedOrderIds.split(","))
-                        .map(String::trim)
-                        .filter(StringUtils::hasText)
-                        .toList();
-                result.put("remoteResponse", douyinOrderGateway.listSettlementByOrderIds(orderIdList, timeType)
-                        .rawResponse());
-            } else {
-                result.put("remoteResponse", douyinOrderGateway.listSettlement(
-                        new DouyinOrderGateway.DouyinOrderQueryRequest(
-                                parseDateTimeToEpochSecond(startTime),
-                                parseDateTimeToEpochSecond(endTime),
-                                size == null ? 20 : size,
-                                cursor,
-                                timeType
-                        )
-                ).rawResponse());
+            SettlementOrderPage page = instituteSettlementGateway.fetch(new SettlementOrderQuery(
+                    startTime,
+                    endTime,
+                    timeType,
+                    size == null ? 20 : size,
+                    cursor,
+                    orderIdList,
+                    1,
+                    size == null ? 20 : size,
+                    false
+            ));
+            result.put("apiMethod", page.apiMethod());
+            result.put("fetched", page.orders() == null ? 0 : page.orders().size());
+            result.put("hasMore", page.hasMore());
+            result.put("nextCursor", page.nextCursor());
+            result.put("remoteResponse", page.rawResponse());
+            if (!orderIdList.isEmpty()) {
+                result.put("warning", "order_ids_ignored_by_1603_unless_upstream_support_is_confirmed");
             }
             result.put("status", "success");
         } catch (DouyinApiException | BusinessException | IllegalArgumentException | IllegalStateException e) {
-            log.error("Douyin order settlement call failed", e);
+            log.error("Douyin 1603 settlement probe failed", e);
             fillError(result, e);
         }
         return ok(result);

@@ -6,6 +6,7 @@ import com.colonel.saas.auth.dto.LogoutRequest;
 import com.colonel.saas.auth.dto.RefreshRequest;
 import com.colonel.saas.auth.dto.RefreshResponse;
 import com.colonel.saas.common.exception.BusinessException;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.entity.OperationLog;
 import com.colonel.saas.entity.SysRole;
 import com.colonel.saas.entity.SysUser;
@@ -76,7 +77,8 @@ class AuthServiceTest {
                 passwordEncoder,
                 redisTemplate,
                 operationLogService,
-                businessRuleConfigService);
+                businessRuleConfigService,
+                new CurrentUserPermissionPolicy());
     }
 
     private void stubJwtTokenGeneration() {
@@ -282,6 +284,28 @@ class AuthServiceTest {
     }
 
     @Test
+    @DisplayName("登录 - 角色编码通过用户域权限策略归一后计算dataScope")
+    void login_shouldResolveDataScopeWithNormalizedRoleCodes() {
+        SysUser user = createActiveUser("ops");
+
+        SysRole role = new SysRole();
+        role.setRoleCode(" OPS_STAFF ");
+        role.setDataScope(1);
+
+        when(sysUserMapper.findByUsername("ops")).thenReturn(Optional.of(user));
+        when(sysRoleMapper.findByUserId(user.getId())).thenReturn(List.of(role));
+        stubJwtTokenGeneration();
+
+        LoginRequest request = new LoginRequest();
+        request.setUsername("ops");
+        request.setPassword("password");
+
+        LoginResponse response = authService.login(request);
+
+        assertThat(response.getDataScope()).isEqualTo(3);
+    }
+
+    @Test
     @DisplayName("待激活用户可登录并返回受限态标记")
     void login_pendingActivationUser_shouldReturnTokenWithPendingFlag() {
         SysUser user = createActiveUser("pending");
@@ -378,6 +402,45 @@ class AuthServiceTest {
         assertThat(response.getAccessTokenExpiresIn()).isEqualTo(3600L);
         assertThat(response.getRefreshExpiresIn()).isEqualTo(604800L);
         verify(valueOperations).set("auth:refresh:refreshHash", "1", 604800L, TimeUnit.SECONDS);
+    }
+
+    @Test
+    @DisplayName("刷新令牌 - 角色编码通过用户域权限策略归一后计算dataScope")
+    void refreshToken_shouldResolveDataScopeWithNormalizedRoleCodes() {
+        UUID userId = UUID.randomUUID();
+        Claims claims = org.mockito.Mockito.mock(Claims.class);
+        when(claims.getSubject()).thenReturn(userId.toString());
+        when(claims.get("type", String.class)).thenReturn("refresh");
+        when(jwtTokenProvider.parseClaims("valid.refresh.token")).thenReturn(claims);
+
+        SysUser user = new SysUser();
+        user.setId(userId);
+        user.setStatus(1);
+        user.setUsername("admin");
+        when(sysUserMapper.selectById(userId)).thenReturn(user);
+
+        SysRole role = new SysRole();
+        role.setRoleCode(" ADMIN ");
+        role.setDataScope(1);
+        when(sysRoleMapper.findByUserId(userId)).thenReturn(List.of(role));
+
+        when(jwtTokenProvider.getTokenHash("valid.refresh.token")).thenReturn("refreshHash");
+        when(redisTemplate.hasKey("auth:refresh:refreshHash")).thenReturn(false);
+        when(jwtTokenProvider.generateAccessToken(eq(userId), any(), any(Integer.class), any(), any(), any(Boolean.class))).thenReturn("new.access.token");
+        when(jwtTokenProvider.generateRefreshToken(userId)).thenReturn("new.refresh.token");
+        when(jwtTokenProvider.getExpireSeconds()).thenReturn(3600L);
+        when(jwtTokenProvider.getRefreshExpireSeconds()).thenReturn(604800L);
+        when(jwtTokenProvider.getRemainingSeconds("valid.refresh.token")).thenReturn(604800L);
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+
+        RefreshRequest request = new RefreshRequest();
+        request.setRefreshToken("valid.refresh.token");
+
+        authService.refreshToken(request);
+
+        ArgumentCaptor<Integer> dataScopeCaptor = ArgumentCaptor.forClass(Integer.class);
+        verify(jwtTokenProvider).generateAccessToken(eq(userId), any(), dataScopeCaptor.capture(), any(), any(), any(Boolean.class));
+        assertThat(dataScopeCaptor.getValue()).isEqualTo(3);
     }
 
     @Test

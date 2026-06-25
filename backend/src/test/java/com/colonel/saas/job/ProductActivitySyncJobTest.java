@@ -39,6 +39,10 @@ class ProductActivitySyncJobTest {
 
     @BeforeEach
     void setUp() {
+        lenient().when(jobLockService.tryAcquire(any(), any(Duration.class)))
+                .thenReturn(true);
+        lenient().when(jobLockService.tryAcquire(eq(JobLockKeys.PRODUCT_BACKFILL_GLOBAL), any(Duration.class)))
+                .thenReturn(true);
         lenient().when(jobLockService.tryAcquire(eq(JobLockKeys.PRODUCT_ACTIVITY_SYNC), any(Duration.class)))
                 .thenReturn(true);
         lenient().when(productService.refreshActivitySnapshots(any()))
@@ -64,6 +68,7 @@ class ProductActivitySyncJobTest {
         verify(jobLockService).tryAcquire(eq(JobLockKeys.PRODUCT_ACTIVITY_SYNC), any(Duration.class));
         verifyNoInteractions(activityMapper, productService);
         verify(jobLockService, never()).release(JobLockKeys.PRODUCT_ACTIVITY_SYNC);
+        verify(jobLockService).release(JobLockKeys.PRODUCT_BACKFILL_GLOBAL);
     }
 
     @Test
@@ -77,6 +82,7 @@ class ProductActivitySyncJobTest {
         verify(activityMapper).touchLastSyncAt(eq("ACT-1"), any(LocalDateTime.class));
         verify(activityMapper).touchLastSyncAt(eq("ACT-2"), any(LocalDateTime.class));
         verify(jobLockService).release(JobLockKeys.PRODUCT_ACTIVITY_SYNC);
+        verify(jobLockService).release(JobLockKeys.PRODUCT_BACKFILL_GLOBAL);
     }
 
     @Test
@@ -92,6 +98,32 @@ class ProductActivitySyncJobTest {
         verify(activityMapper, never()).touchLastSyncAt(eq("ACT-1"), any(LocalDateTime.class));
         verify(activityMapper).touchLastSyncAt(eq("ACT-2"), any(LocalDateTime.class));
         verify(jobLockService).release(JobLockKeys.PRODUCT_ACTIVITY_SYNC);
+        verify(jobLockService).release(JobLockKeys.PRODUCT_BACKFILL_GLOBAL);
+    }
+
+    @Test
+    void syncAll_shouldNotTouchLastSyncAtWhenActivityIncomplete() {
+        ProductActivitySyncJob job = job(true, "ACT-1");
+        when(productService.refreshActivitySnapshots(any()))
+                .thenReturn(new ProductService.ActivityProductRefreshResult(
+                        2_000,
+                        1,
+                        100,
+                        1_900,
+                        0,
+                        100,
+                        2_000,
+                        2_000,
+                        0,
+                        "MAX_PAGES_REACHED",
+                        true,
+                        false));
+
+        job.syncAll();
+
+        verify(activityMapper, never()).touchLastSyncAt(eq("ACT-1"), any(LocalDateTime.class));
+        verify(jobLockService).release(JobLockKeys.PRODUCT_ACTIVITY_SYNC);
+        verify(jobLockService).release(JobLockKeys.PRODUCT_BACKFILL_GLOBAL);
     }
 
     @Test
@@ -114,12 +146,15 @@ class ProductActivitySyncJobTest {
         verify(activityMapper).touchLastSyncAt(eq("ACT-10"), any(LocalDateTime.class));
         verify(activityMapper).touchLastSyncAt(eq("ACT-20"), any(LocalDateTime.class));
         verify(jobLockService).release(JobLockKeys.PRODUCT_ACTIVITY_SYNC);
+        verify(jobLockService).release(JobLockKeys.PRODUCT_BACKFILL_GLOBAL);
     }
 
     private ProductActivitySyncJob job(boolean enabled, String whitelistActivities) {
         ProductActivitySyncJob job = new ProductActivitySyncJob(productService, jobLockService, activityMapper, 0);
         ReflectionTestUtils.setField(job, "enabled", enabled);
         ReflectionTestUtils.setField(job, "batchSize", 20);
+        ReflectionTestUtils.setField(job, "pageSize", 20);
+        ReflectionTestUtils.setField(job, "maxActivitiesPerRun", 20);
         ReflectionTestUtils.setField(job, "whitelistActivities", whitelistActivities);
         return job;
     }

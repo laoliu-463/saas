@@ -1,0 +1,16 @@
+{
+  "items": [
+    { "path": "harness/reports/ddd-order-002-amount-policy-20260612.md", "action": "archive", "reason": "Archive batch 2 order policy report" },
+    { "path": "harness/reports/ddd-perf-002-money-policy-20260612.md", "action": "archive", "reason": "Archive batch 2 perf policy report" },
+    { "path": "harness/reports/ddd-product-001-facade-20260612.md", "action": "archive", "reason": "Archive batch 2 product facade report" },
+    { "path": "harness/reports/ddd-sample-006-state-machine-20260612.md", "action": "archive", "reason": "Archive batch 2 sample state machine report" },
+    { "path": "harness/reports/ddd-talent-001-facade-20260612.md", "action": "archive", "reason": "Archive batch 2 talent facade report" },
+    { "path": "harness/reports/ddd-talent-002-claim-policy-20260612.md", "action": "archive", "reason": "Archive batch 2 talent claim policy report" },
+    { "path": "harness/reports/ddd-user-003-facade-consumption-20260612.md", "action": "archive", "reason": "Archive batch 2 user facade report" },
+    { "path": "harness/reports/evidence-20260612-123824.md", "action": "archive", "reason": "Archive long evidence report" },
+    { "path": "harness/reports/evidence-20260612-125146.md", "action": "archive", "reason": "Archive long evidence report" },
+    { "path": "harness/reports/order-1603-settlement-interface-audit.md", "action": "archive", "reason": "Archive settlement audit report" },
+    { "path": "harness/reports/retro-20260612-batch2-policy-done.md", "action": "archive", "reason": "Archive batch 2 retro report" },
+    { "path": "harness/reports/retro-20260612-ddd-user-003-doc-write.md", "action": "archive", "reason": "Archive user doc write report" }
+  ]
+}

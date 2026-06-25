@@ -2,12 +2,14 @@ package com.colonel.saas.service.data;
 
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.colonel.saas.common.enums.DataScope;
+import com.colonel.saas.config.DddRefactorProperties;
+import com.colonel.saas.domain.performance.facade.OrderPerformanceQueryFacade;
 import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.mapper.ExclusiveMerchantMapper;
 import com.colonel.saas.mapper.ExclusiveTalentMapper;
-import com.colonel.saas.mapper.PerformanceRecordMapper;
-import com.colonel.saas.mapper.SysUserMapper;
+import com.colonel.saas.domain.user.facade.UserDomainFacade;
+import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.service.CommissionService;
 import com.colonel.saas.service.PerformanceMetricsQueryService;
 import com.colonel.saas.service.ShortTtlCacheService;
@@ -55,8 +57,8 @@ class DataApplicationServiceOrderSummaryCacheTest {
     @Mock private ExclusiveMerchantMapper exclusiveMerchantMapper;
     @Mock private ColonelsettlementActivityMapper activityMapper;
     @Mock private PerformanceMetricsQueryService performanceMetricsQueryService;
-    @Mock private PerformanceRecordMapper performanceRecordMapper;
-    @Mock private SysUserMapper sysUserMapper;
+    @Mock private OrderPerformanceQueryFacade orderPerformanceQueryFacade;
+    @Mock private UserDomainFacade userDomainFacade;
     @Mock private JdbcTemplate jdbcTemplate;
 
     /** 真实的短 TTL 缓存服务（无 Redis）。 */
@@ -74,8 +76,10 @@ class DataApplicationServiceOrderSummaryCacheTest {
                 activityMapper,
                 realCache,
                 performanceMetricsQueryService,
-                performanceRecordMapper,
-                sysUserMapper,
+                orderPerformanceQueryFacade,
+                userDomainFacade,
+                new DataScopePolicy(),
+                new DddRefactorProperties(),
                 jdbcTemplate);
     }
 
@@ -152,7 +156,8 @@ class DataApplicationServiceOrderSummaryCacheTest {
         DataApplicationService zeroService = new DataApplicationService(
                 orderMapper, commissionService, exclusiveTalentMapper,
                 exclusiveMerchantMapper, activityMapper, zeroTtlCache,
-                performanceMetricsQueryService, performanceRecordMapper, sysUserMapper, jdbcTemplate);
+                performanceMetricsQueryService, orderPerformanceQueryFacade, userDomainFacade,
+                new DataScopePolicy(), new DddRefactorProperties(), jdbcTemplate);
 
         UUID userId = UUID.randomUUID();
         for (int i = 0; i < 5; i++) {

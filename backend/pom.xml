@@ -300,7 +300,7 @@
                                         <exclude>com.colonel.saas.crawler.DouyinTalentCrawler</exclude>
 
                                         <exclude>com.colonel.saas.config.CustomMetaObjectHandler</exclude>
-                                        <exclude>com.colonel.saas.aspect.DataScopeAspect</exclude>
+                                        <exclude>com.colonel.saas.domain.user.infrastructure.aspect.DataScopeAspect</exclude>
                                         <exclude>com.colonel.saas.job.SampleLifecycleJob</exclude>
                                         <exclude>com.colonel.saas.job.ExclusiveEvaluateJob</exclude>
                                         <exclude>com.colonel.saas.job.OrderSyncJob</exclude>

@@ -1,10 +1,31 @@
 import { syncActivityProducts } from '../../api/activityProduct'
 import { type ActivityRow } from './activity-list-display'
 
+export const POST_SYNC_REFRESH_DELAYS_MS = [1500, 4000, 8000, 15000]
+export const ACTIVITY_PRODUCT_SYNC_POLL_INTERVAL_MS = 500
+export const ACTIVITY_PRODUCT_SYNC_MAX_POLLS = 600
+
+export function shouldSchedulePostSyncRefresh(syncStatus?: string): boolean {
+  return syncStatus === 'ACCEPTED' || syncStatus === 'RUNNING'
+}
+
+export function shouldPollActivityProductSyncJob(syncStatus?: string): boolean {
+  return syncStatus === 'ACCEPTED' || syncStatus === 'RUNNING'
+}
+
+export function isActivityProductSyncSuccess(syncStatus?: string): boolean {
+  return syncStatus === 'SUCCESS'
+}
+
+export function isActivityProductSyncTerminal(syncStatus?: string): boolean {
+  return ['SUCCESS', 'PARTIAL', 'FAILED', 'FAILED_LOCKED', 'ABANDONED'].includes(String(syncStatus || ''))
+}
+
 export type ActivityProductSyncItemResult = {
   activityId: string
   ok: boolean
   error?: string
+  jobId?: string
   syncStatus?: string
   syncedProductCount?: number
   libraryEntryCount?: number
@@ -20,6 +41,7 @@ export type ActivityProductSyncBatchSummary = {
 }
 
 type ActivityProductSyncStats = {
+  jobId?: string
   syncStatus?: string
   syncedProductCount?: number
   libraryEntryCount?: number
@@ -33,6 +55,7 @@ function readSyncStats(payload: unknown): ActivityProductSyncStats {
     ? syncStats as Record<string, unknown>
     : {}
   return {
+    jobId: typeof data.jobId === 'string' ? data.jobId : undefined,
     syncStatus: typeof data.syncStatus === 'string' ? data.syncStatus : undefined,
     syncedProductCount: Number(stats.syncedProductCount ?? 0) || undefined,
     libraryEntryCount: Number(stats.libraryEntryCount ?? 0) || undefined
@@ -58,6 +81,7 @@ export async function syncSingleActivityProducts(
     return {
       activityId: normalizedId,
       ok: true,
+      jobId: stats.jobId,
       syncStatus: stats.syncStatus,
       syncedProductCount: stats.syncedProductCount,
       libraryEntryCount: stats.libraryEntryCount

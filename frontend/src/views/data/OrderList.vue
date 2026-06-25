@@ -285,6 +285,9 @@ type SummaryRow = {
   productCount?: number | null
   orderCount?: number | null
   orderAmount?: number | string | null
+  refundOrderCount?: number | null
+  refundOrderAmount?: number | string | null
+  refundServiceFee?: number | string | null
   productAverageServiceFeeRate?: number | string | null
   orderAverageServiceFeeRate?: number | string | null
   serviceFeeIncome?: number | string | null
@@ -360,12 +363,16 @@ const emptySummary: SummaryRow = {
   productCount: 0,
   orderCount: 0,
   orderAmount: '0.00',
+  refundOrderCount: 0,
+  refundOrderAmount: '0.00',
+  refundServiceFee: '0.00',
   productAverageServiceFeeRate: '0.00',
   orderAverageServiceFeeRate: '0.00',
   serviceFeeIncome: '0.00',
   techServiceFee: '0.00',
   serviceFeeExpense: '0.00',
-  serviceFeeProfit: '0.00'
+  serviceFeeProfit: '0.00',
+  grossProfit: '0.00'
 }
 
 const totalSummary = ref<SummaryRow>({ ...emptySummary })
@@ -411,11 +418,15 @@ const configurableColumns = [
   { title: '出单商品数', key: 'productCount' },
   { title: '订单数', key: 'orderCount' },
   { title: '订单额', key: 'orderAmount' },
+  { title: '退款订单数', key: 'refundOrderCount' },
+  { title: '退款订单额', key: 'refundOrderAmount' },
+  { title: '订单退款服务费', key: 'refundServiceFee' },
   { title: '平均服务费率', key: 'averageRate' },
   { title: '服务费收入', key: 'serviceFeeIncome' },
   { title: '技术服务费', key: 'techServiceFee' },
   { title: '服务费支出', key: 'serviceFeeExpense' },
-  { title: '服务费收益', key: 'serviceFeeProfit' }
+  { title: '服务费收益', key: 'serviceFeeProfit' },
+  { title: '毛利', key: 'grossProfit' }
 ]
 
 const visibleColumnKeys = ref(configurableColumns.map((item) => item.key))
@@ -443,8 +454,19 @@ const formatPercent = (value: unknown) => {
 const formatEstimateTrack = (value: unknown, formatter = formatMoney) =>
   timeField.value === 'settleTime' ? '-' : formatter(value)
 
-const formatSettleTrack = (value: unknown, formatter = formatMoney) =>
-  timeField.value === 'settleTime' ? formatter(value) : '-'
+const formatSettleTrack = (value: unknown, formatter = formatMoney) => {
+  if (timeField.value === 'settleTime') {
+    return formatter(value)
+  }
+  if (value === null || value === undefined) {
+    return '-'
+  }
+  const numeric = Number(value)
+  if (isNaN(numeric)) {
+    return '-'
+  }
+  return formatter === formatCompactMoney ? '¥0' : '¥0.00'
+}
 
 const summaryItems = computed(() => {
   const total = totalSummary.value || emptySummary
@@ -480,9 +502,27 @@ const summaryItems = computed(() => {
       ]
     },
     {
+      key: 'refundOrderCount',
+      title: '退款订单数',
+      tooltip: '<b>计算公式</b><br>退款订单数 = order_status=5 或 flow_point=REFUND 的订单数<br><b>数据来源</b>：colonelsettlement_order',
+      lines: [{ label: '', value: formatNumber(total.refundOrderCount) }]
+    },
+    {
+      key: 'refundOrderAmount',
+      title: '退款订单额',
+      tooltip: '<b>计算公式</b><br>退款订单额 = 退款订单原支付金额汇总<br><b>数据来源</b>：colonelsettlement_order.order_amount',
+      lines: [{ label: '', value: formatMoney(total.refundOrderAmount) }]
+    },
+    {
+      key: 'refundServiceFee',
+      title: '订单退款服务费',
+      tooltip: '<b>计算公式</b><br>订单退款服务费 = 退款订单 effective_service_fee，缺失时回退 estimate_service_fee<br><b>数据来源</b>：colonelsettlement_order',
+      lines: [{ label: '', value: formatMoney(total.refundServiceFee) }]
+    },
+    {
       key: 'rate',
       title: '平均服务费率',
-      tooltip: '<b>计算公式</b><br>商品：服务费收入 ÷ 结算金额<br>订单：服务费收入 ÷ 订单额<br><b>数据来源</b>：performance_records',
+      tooltip: '<b>计算公式</b><br>商品：服务费收入 ÷ 订单额<br>订单：服务费收益 ÷ 订单额<br><b>数据来源</b>：performance_records',
       lines: [
         { label: '商品：', value: formatPercent(total.productAverageServiceFeeRate) },
         { label: '订单：', value: formatPercent(total.orderAverageServiceFeeRate) }
@@ -509,7 +549,7 @@ const summaryItems = computed(() => {
     {
       key: 'expense',
       title: '服务费支出',
-      tooltip: '<b>计算公式</b><br>服务费支出 = 服务费收入 − 技术服务费 − 服务费收益<br><b>数据来源</b>：performance_records 平台侧实际服务费',
+      tooltip: '<b>计算公式</b><br>服务费支出为平台侧实际支出字段<br>预估收益扣技术服务费；结算收益不扣技术服务费<br><b>数据来源</b>：performance_records',
       lines: [
         { label: '预估：', value: formatEstimateTrack(total.serviceFeeExpense) },
         { label: '结算：', value: formatSettleTrack(total.serviceFeeExpense) }
@@ -522,6 +562,15 @@ const summaryItems = computed(() => {
       lines: [
         { label: '预估：', value: formatEstimateTrack(total.serviceFeeProfit) },
         { label: '结算：', value: formatSettleTrack(total.serviceFeeProfit) }
+      ]
+    },
+    {
+      key: 'grossProfit',
+      title: '毛利',
+      tooltip: '<b>计算公式</b><br>毛利 = 服务费收益 − 招商提成 − 渠道提成<br><b>数据来源</b>：performance_records 计算',
+      lines: [
+        { label: '预估：', value: formatEstimateTrack(total.grossProfit) },
+        { label: '结算：', value: formatSettleTrack(total.grossProfit) }
       ]
     }
   ]
@@ -567,6 +616,33 @@ const columns = computed(() => {
         h('div', `支付：${formatEstimateTrack(row.orderAmount)}`),
         h(NText, { depth: 3 }, { default: () => `结算：${formatSettleTrack(row.orderAmount)}` })
       ])
+    })
+  }
+  if (hasVisibleColumn('refundOrderCount')) {
+    cols.push({
+      title: '退款订单数',
+      key: 'refundOrderCount',
+      width: 140,
+      sorter: (a: SummaryRow, b: SummaryRow) => Number(a.refundOrderCount || 0) - Number(b.refundOrderCount || 0),
+      render: (row: SummaryRow) => formatNumber(row.refundOrderCount)
+    })
+  }
+  if (hasVisibleColumn('refundOrderAmount')) {
+    cols.push({
+      title: '退款订单额',
+      key: 'refundOrderAmount',
+      width: 150,
+      sorter: (a: SummaryRow, b: SummaryRow) => Number(a.refundOrderAmount || 0) - Number(b.refundOrderAmount || 0),
+      render: (row: SummaryRow) => formatMoney(row.refundOrderAmount)
+    })
+  }
+  if (hasVisibleColumn('refundServiceFee')) {
+    cols.push({
+      title: '订单退款服务费',
+      key: 'refundServiceFee',
+      width: 170,
+      sorter: (a: SummaryRow, b: SummaryRow) => Number(a.refundServiceFee || 0) - Number(b.refundServiceFee || 0),
+      render: (row: SummaryRow) => formatMoney(row.refundServiceFee)
     })
   }
   if (hasVisibleColumn('averageRate')) {
@@ -621,6 +697,17 @@ const columns = computed(() => {
       render: (row: SummaryRow) => h('div', { class: 'table-multi-line' }, [
         h('div', `预估：${formatEstimateTrack(row.serviceFeeProfit)}`),
         h(NText, { depth: 3 }, { default: () => `结算：${formatSettleTrack(row.serviceFeeProfit)}` })
+      ])
+    })
+  }
+  if (hasVisibleColumn('grossProfit')) {
+    cols.push({
+      title: '毛利',
+      key: 'grossProfit',
+      width: 160,
+      render: (row: SummaryRow) => h('div', { class: 'table-multi-line' }, [
+        h('div', `预估：${formatEstimateTrack(row.grossProfit)}`),
+        h(NText, { depth: 3 }, { default: () => `结算：${formatSettleTrack(row.grossProfit)}` })
       ])
     })
   }

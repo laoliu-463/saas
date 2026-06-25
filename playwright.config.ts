@@ -8,6 +8,9 @@ const alwaysCaptureArtifacts =
 const slowMo = Number(process.env.PW_SLOWMO_MS || 0);
 const requestedWorkers = Number(process.env.PW_WORKERS || 1);
 const workers = Number.isFinite(requestedWorkers) && requestedWorkers > 0 ? requestedWorkers : 1;
+const headless = process.env.E2E_HEADLESS === undefined
+  ? true
+  : process.env.E2E_HEADLESS === 'true';
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -30,7 +33,7 @@ export default defineConfig({
   outputDir: 'test-results/playwright',
   use: {
     baseURL: process.env.E2E_BASE_URL || 'http://127.0.0.1:3000',
-    headless: process.env.E2E_HEADLESS === 'true',
+    headless,
     launchOptions: {
       slowMo
     },

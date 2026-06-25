@@ -146,6 +146,8 @@ class PerformanceRecordMapperTest extends BaseIntegrationTest {
             record.setEffectiveServiceFee(950L);
             record.setEstimateTechServiceFee(500L);
             record.setEffectiveTechServiceFee(480L);
+            record.setEstimateServiceFeeExpense(80L);
+            record.setEffectiveServiceFeeExpense(70L);
             record.setEstimateServiceProfit(800L);
             record.setEffectiveServiceProfit(760L);
             record.setEstimateRecruiterCommission(400L);
@@ -188,6 +190,8 @@ class PerformanceRecordMapperTest extends BaseIntegrationTest {
             assertThat(found.getEffectiveServiceFee()).isEqualTo(950L);
             assertThat(found.getEstimateTechServiceFee()).isEqualTo(500L);
             assertThat(found.getEffectiveTechServiceFee()).isEqualTo(480L);
+            assertThat(found.getEstimateServiceFeeExpense()).isEqualTo(80L);
+            assertThat(found.getEffectiveServiceFeeExpense()).isEqualTo(70L);
             assertThat(found.getEstimateServiceProfit()).isEqualTo(800L);
             assertThat(found.getEffectiveServiceProfit()).isEqualTo(760L);
             assertThat(found.getEstimateRecruiterCommission()).isEqualTo(400L);

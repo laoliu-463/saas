@@ -2,13 +2,15 @@ package com.colonel.saas.service;
 
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.BusinessException;
+import com.colonel.saas.config.DddRefactorProperties;
+import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.dto.performance.PerformanceBatchRequest;
 import com.colonel.saas.dto.performance.PerformanceListQuery;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.PerformanceRecord;
-import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
+import com.colonel.saas.domain.order.facade.OrderReadFacade;
 import com.colonel.saas.mapper.PerformanceRecordMapper;
-import com.colonel.saas.service.performance.PerformanceAccessContext;
+import com.colonel.saas.domain.performance.policy.PerformanceAccessContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -31,6 +33,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -40,7 +43,7 @@ class PerformanceQueryServiceTest {
     @Mock
     private PerformanceRecordMapper performanceRecordMapper;
     @Mock
-    private ColonelsettlementOrderMapper orderMapper;
+    private OrderReadFacade orderReadFacade;
     @Mock
     private JdbcTemplate jdbcTemplate;
     @Mock
@@ -50,7 +53,7 @@ class PerformanceQueryServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new PerformanceQueryService(performanceRecordMapper, orderMapper, jdbcTemplate);
+        service = new PerformanceQueryService(performanceRecordMapper, orderReadFacade, jdbcTemplate);
     }
 
     @Test
@@ -87,9 +90,7 @@ class PerformanceQueryServiceTest {
     @Test
     void getPerformance_shouldReturnNotCalculatedWhenOrderExistsButPerformanceMissing() {
         when(performanceRecordMapper.findByOrderId("ORDER-MISSING")).thenReturn(null);
-        ColonelsettlementOrder order = new ColonelsettlementOrder();
-        order.setOrderId("ORDER-MISSING");
-        when(orderMapper.selectOne(any())).thenReturn(order);
+        when(orderReadFacade.existsActiveByOrderId("ORDER-MISSING")).thenReturn(true);
 
         assertThatThrownBy(() -> service.getPerformance("ORDER-MISSING", admin()))
                 .isInstanceOf(BusinessException.class)
@@ -103,9 +104,7 @@ class PerformanceQueryServiceTest {
         PerformanceRecord invalid = record("ORDER-REVERSED", UUID.randomUUID(), UUID.randomUUID());
         invalid.setValid(false);
         when(performanceRecordMapper.findByOrderId("ORDER-REVERSED")).thenReturn(invalid);
-        ColonelsettlementOrder order = new ColonelsettlementOrder();
-        order.setOrderId("ORDER-REVERSED");
-        when(orderMapper.selectOne(any())).thenReturn(order);
+        when(orderReadFacade.existsActiveByOrderId("ORDER-REVERSED")).thenReturn(true);
 
         assertThatThrownBy(() -> service.getPerformance("ORDER-REVERSED", admin()))
                 .isInstanceOf(BusinessException.class)
@@ -176,6 +175,42 @@ class PerformanceQueryServiceTest {
         assertThat(sqlCaptor.getValue()).contains("pr.calculated_at");
         assertThat(sqlCaptor.getValue()).contains("pr.final_recruiter_user_id = ?");
         assertThat(sqlCaptor.getValue()).contains("LIMIT ?");
+    }
+
+    @Test
+    void listPerformanceDataScopePolicyEnabledPath_shouldDelegateFallbackScopeDecisionToUserPolicy() {
+        DataScopePolicy dataScopePolicy = spy(new DataScopePolicy());
+        DddRefactorProperties properties = new DddRefactorProperties();
+        properties.getDataScopePolicy().setEnabled(true);
+        service = new PerformanceQueryService(
+                performanceRecordMapper,
+                orderReadFacade,
+                jdbcTemplate,
+                dataScopePolicy,
+                properties);
+        when(jdbcTemplate.queryForObject(any(String.class), eq(Long.class), any(Object[].class))).thenReturn(0L);
+        when(jdbcTemplate.query(anyString(), org.mockito.ArgumentMatchers.<RowMapper<?>>any(), any(Object[].class)))
+                .thenReturn(List.of());
+        PerformanceListQuery query = new PerformanceListQuery();
+        query.setPage(1);
+        query.setPageSize(20);
+        UUID userId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+
+        service.listPerformance(query, PerformanceAccessContext.of(
+                userId,
+                deptId,
+                DataScope.DEPT,
+                List.of()));
+
+        verify(dataScopePolicy).contextRequirement(userId, deptId, DataScope.DEPT);
+        verify(dataScopePolicy).decide(userId, deptId, DataScope.DEPT);
+        ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
+        verify(jdbcTemplate).query(sqlCaptor.capture(), org.mockito.ArgumentMatchers.<RowMapper<?>>any(), any(Object[].class));
+        assertThat(sqlCaptor.getValue())
+                .contains("pr.final_channel_user_id IN")
+                .contains("OR pr.final_recruiter_user_id IN")
+                .contains("LIMIT ?");
     }
 
     private PerformanceAccessContext admin() {

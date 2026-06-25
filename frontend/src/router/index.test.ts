@@ -141,13 +141,13 @@ describe('router configuration', () => {
 
     const activityRedirect = allRoutes.find((route) => route.path === 'product/activity/:activityId')?.redirect
     expect(typeof activityRedirect).toBe('function')
-    // ADR-003：历史 /product/manage/:activityId 与 /product/activity/:activityId
-    // 都统一重定向到 /product/library?activityId={id}，不再走 path param
-    expect(
-      (activityRedirect as (to: { params: { activityId: string } }) => { path: string; query: { activityId: string } })(
-        { params: { activityId: 'A-100' } }
-      )
-    ).toEqual({ path: '/product/library', query: { activityId: 'A-100' } })
+      // 历史 /product/manage/:activityId 与 /product/activity/:activityId
+      // 都统一重定向到活动商品列表，并用 query 保留 activityId。
+      expect(
+        (activityRedirect as (to: { params: { activityId: string } }) => { path: string; query: { activityId: string } })(
+          { params: { activityId: 'A-100' } }
+        )
+      ).toEqual({ path: '/product/manage/products', query: { activityId: 'A-100' } })
   }, 60000)
 })
 

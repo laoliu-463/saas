@@ -170,7 +170,9 @@ class RealDouyinActivityGatewayTest {
         assertThat(result.total()).isNull();
         assertThat(result.nextCursor()).isEqualTo("7");
         assertThat(result.items()).extracting(DouyinActivityGateway.ActivityProductItem::statusText)
-                .containsExactly("待审核", "推广中", "申请未通过", "合作已终止", "合作前取消", "合作已到期", "未知状态");
+                .containsExactly("待审核", "推广中", "申请未通过", "合作已终止", "未知状态", "合作已到期", "未知状态");
+        assertThat(result.items()).extracting(DouyinActivityGateway.ActivityProductItem::status)
+                .containsExactly(0, 1, 2, 3, 4, 6, 99);
         assertThat(result.items()).extracting(DouyinActivityGateway.ActivityProductItem::cosTypeText)
                 .contains("双佣金", "固定佣金");
         assertThat(result.items()).extracting(DouyinActivityGateway.ActivityProductItem::inStock)

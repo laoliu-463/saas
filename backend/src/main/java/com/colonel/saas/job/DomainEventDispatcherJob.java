@@ -5,9 +5,11 @@ import com.colonel.saas.domain.event.ConfigChangedEventRouter;
 import com.colonel.saas.domain.event.DomainEventOutbox;
 import com.colonel.saas.domain.event.DomainEventOutboxService;
 import com.colonel.saas.domain.event.ProductDomainEventOutboxRouter;
+import com.colonel.saas.domain.order.event.OrderDomainEventOutboxRouter;
 import com.colonel.saas.domain.sample.event.SampleDomainEventOutboxRouter;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -31,6 +33,7 @@ import java.util.List;
  *   <li><b>配置变更事件</b> → {@link ConfigChangedEventRouter}</li>
  *   <li><b>商品域事件</b> → {@link ProductDomainEventOutboxRouter}</li>
  *   <li><b>寄样域事件</b> → {@link SampleDomainEventOutboxRouter}</li>
+ *   <li><b>订单域事件</b> → {@link OrderDomainEventOutboxRouter}</li>
  * </ul>
  * </p>
  * <p>
@@ -65,20 +68,28 @@ public class DomainEventDispatcherJob {
     private final ProductDomainEventOutboxRouter productDomainEventOutboxRouter;
     /** 寄样域事件路由器 */
     private final SampleDomainEventOutboxRouter sampleDomainEventOutboxRouter;
+    /** 订单域事件路由器 */
+    private final OrderDomainEventOutboxRouter orderDomainEventOutboxRouter;
     /** JSON 序列化器，用于反序列化事件 payload */
     private final ObjectMapper objectMapper;
+    /** Dry Run 模式：仅打印事件日志，不执行路由投递和状态回写 */
+    private final boolean dryRun;
 
     public DomainEventDispatcherJob(
             DomainEventOutboxService domainEventOutboxService,
             ConfigChangedEventRouter configChangedEventRouter,
             ProductDomainEventOutboxRouter productDomainEventOutboxRouter,
             SampleDomainEventOutboxRouter sampleDomainEventOutboxRouter,
-            ObjectMapper objectMapper) {
+            OrderDomainEventOutboxRouter orderDomainEventOutboxRouter,
+            ObjectMapper objectMapper,
+            @Value("${app.domain-event.dispatch-dry-run:false}") boolean dryRun) {
         this.domainEventOutboxService = domainEventOutboxService;
         this.configChangedEventRouter = configChangedEventRouter;
         this.productDomainEventOutboxRouter = productDomainEventOutboxRouter;
         this.sampleDomainEventOutboxRouter = sampleDomainEventOutboxRouter;
+        this.orderDomainEventOutboxRouter = orderDomainEventOutboxRouter;
         this.objectMapper = objectMapper;
+        this.dryRun = dryRun;
     }
 
     /**
@@ -113,6 +124,11 @@ public class DomainEventDispatcherJob {
      * @param event 待分发的领域事件
      */
     private void dispatchOne(DomainEventOutbox event) {
+        if (dryRun) {
+            log.info("[DRY-RUN] Will dispatch eventId={}, eventType={}, payload={}",
+                    event.getEventId(), event.getEventType(), event.getPayload());
+            return;
+        }
         try {
             // 根据事件类型路由到对应处理器
             if (ConfigChangedEventPayload.EVENT_TYPE.equals(event.getEventType())) {
@@ -122,6 +138,8 @@ public class DomainEventDispatcherJob {
                 productDomainEventOutboxRouter.dispatch(event);
             } else if (sampleDomainEventOutboxRouter.supports(event.getEventType())) {
                 sampleDomainEventOutboxRouter.dispatch(event);
+            } else if (orderDomainEventOutboxRouter.supports(event.getEventType())) {
+                orderDomainEventOutboxRouter.dispatch(event);
             }
             // 分发成功，标记为已发布
             domainEventOutboxService.markPublished(event.getEventId(), event.getRetryCount() == null ? 0 : event.getRetryCount());

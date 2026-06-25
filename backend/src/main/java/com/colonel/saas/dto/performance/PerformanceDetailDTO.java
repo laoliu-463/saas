@@ -75,6 +75,10 @@ public class PerformanceDetailDTO {
     private Long estimateServiceProfit;
     /** 生效服务费利润（单位：分） */
     private Long effectiveServiceProfit;
+    /** 预估服务费支出（单位：分） */
+    private Long estimateServiceFeeExpense;
+    /** 生效服务费支出（单位：分） */
+    private Long effectiveServiceFeeExpense;
 
     /** 预估招募人佣金（单位：分） */
     private Long estimateRecruiterCommission;
