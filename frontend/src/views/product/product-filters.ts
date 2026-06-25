@@ -424,11 +424,12 @@ export function matchAuditTags(item: any, goodsTags: string[] = [], productTags:
 export type ProductLibraryQueryExtra = {
   page?: number
   size?: number
+  cursor?: string
+  limit?: number
   keyword?: string
   status?: number | null
   partnerId?: string | null
   partnerType?: string | null
-  sortBy?: string | null
   productIdMode?: 'exact' | 'keyword'
 }
 
@@ -445,6 +446,8 @@ export function buildProductLibraryQueryParams(
   return {
     page: extra.page,
     size: extra.size,
+    cursor: extra.cursor || undefined,
+    limit: extra.limit,
     keyword: keywordSearch || undefined,
     productId: productId && extra.productIdMode !== 'keyword' ? productId : undefined,
     productName: filters.productName || undefined,
@@ -468,7 +471,6 @@ export function buildProductLibraryQueryParams(
     decision: filters.decision || undefined,
     partnerId: partnerId || undefined,
     partnerType: partnerType || undefined,
-    sortBy: extra.sortBy || undefined,
     goodsTags: filters.goodsTags?.length ? filters.goodsTags.join(',') : undefined,
     productTags: filters.productTags?.length ? filters.productTags.join(',') : undefined,
     colonelName: filters.colonelName || undefined,
@@ -500,6 +502,38 @@ export function buildProductLibraryQueryParams(
     recruitActivityId: filters.recruitActivityId || undefined,
     recruitActivityName: filters.recruitActivityName || undefined
   }
+}
+
+export function canUseProductLibraryCursor(
+  filters: ProductFilterState,
+  extra: Pick<ProductLibraryQueryExtra, 'partnerType'> = {}
+) {
+  if (normalizeText(extra.partnerType) === 'COLONEL') return false
+  return !normalizeText(filters.serviceFee) &&
+    !normalizeText(filters.supportsAds) &&
+    !normalizeText(filters.salesRange) &&
+    !normalizeText(filters.commission) &&
+    !normalizeText(filters.hasSample) &&
+    !normalizeText(filters.systemTag) &&
+    !normalizeText(filters.decision) &&
+    !filters.goodsTags?.length &&
+    !filters.productTags?.length &&
+    !normalizeText(filters.colonelName) &&
+    !normalizeText(filters.livePriceMin) &&
+    !normalizeText(filters.livePriceMax) &&
+    !normalizeText(filters.commissionMin) &&
+    !normalizeText(filters.commissionMax) &&
+    !normalizeText(filters.sampleSalesMin) &&
+    !normalizeText(filters.sampleSalesMax) &&
+    !filters.materialDownload &&
+    !filters.exclusivePrice &&
+    !filters.productChain &&
+    !filters.handCard &&
+    !filters.doubleCommission &&
+    !filters.notInLibrary &&
+    !filters.dedup &&
+    !normalizeText(filters.recruitActivityName) &&
+    !normalizeText(filters.freeSample)
 }
 
 export function applyProductFilters(

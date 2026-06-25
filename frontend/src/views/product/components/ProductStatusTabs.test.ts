@@ -26,4 +26,14 @@ describe('ProductStatusTabs', () => {
     expect(wrapper.get('[data-testid="official-status-CANCELED"]').text()).toContain('4')
     expect(wrapper.get('[data-testid="official-status-EXPIRED"]').text()).toContain('6')
   })
+
+  it('does not show misleading page-local counts when backend status counts are absent', () => {
+    const wrapper = mount(ProductStatusTabs, {
+      props: {
+        officialStatus: null
+      }
+    })
+
+    expect(wrapper.find('[data-testid="official-status-count-PROMOTING"]').exists()).toBe(false)
+  })
 })

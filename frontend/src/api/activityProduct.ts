@@ -20,6 +20,18 @@
 import type { AxiosRequestConfig } from 'axios';
 import request from '../utils/request';
 
+type RequestConfig = AxiosRequestConfig & { suppressErrorNotice?: boolean };
+
+const ACTIVITY_PRODUCT_LIST_TIMEOUT_MS = 30000;
+const ACTIVITY_PRODUCT_SYNC_TIMEOUT_MS = 30000;
+const ACTIVITY_PRODUCT_SYNC_JOB_TIMEOUT_MS = 15000;
+
+export interface ActivityProductSyncRequest {
+  syncMode?: 'FULL' | 'PRIORITY_1000';
+  maxRowsPerActivity?: number;
+  priorityStatuses?: number[];
+}
+
 /**
  * 分页获取活动商品列表
  *
@@ -28,8 +40,12 @@ import request from '../utils/request';
  * @param config - axios 请求配置
  * @returns 活动商品分页列表
  */
-export const getActivityProducts = (activityId: string | number, params: any, config: any = {}) =>
-  request.get(`/colonel/activities/${activityId}/products`, { params, ...config });
+export const getActivityProducts = (activityId: string | number, params: any, config: RequestConfig = {}) =>
+  request.get(`/colonel/activities/${activityId}/products`, {
+    timeout: ACTIVITY_PRODUCT_LIST_TIMEOUT_MS,
+    params,
+    ...config
+  });
 
 /**
  * 获取单个活动商品详情
@@ -303,8 +319,15 @@ export const getActivityProductOperationLogs = (
  * @param activityId - 活动 ID
  * @returns 同步任务结果
  */
-export const syncActivityProducts = (activityId: string | number) =>
-  request.post(`/colonel/activities/${activityId}/products/sync`);
+export const syncActivityProducts = (
+  activityId: string | number,
+  data?: ActivityProductSyncRequest,
+  config: RequestConfig = {}
+) =>
+  request.post(`/colonel/activities/${activityId}/products/sync`, data, {
+    timeout: ACTIVITY_PRODUCT_SYNC_TIMEOUT_MS,
+    ...config
+  });
 
 /**
  * 查询活动商品同步任务状态
@@ -316,5 +339,8 @@ export const syncActivityProducts = (activityId: string | number) =>
 export const getActivityProductSyncJob = (
   activityId: string | number,
   jobId: string | number,
-  config: any = {}
-) => request.get(`/colonel/activities/${activityId}/products/sync-jobs/${jobId}`, config);
+  config: RequestConfig = {}
+) => request.get(`/colonel/activities/${activityId}/products/sync-jobs/${jobId}`, {
+  timeout: ACTIVITY_PRODUCT_SYNC_JOB_TIMEOUT_MS,
+  ...config
+});

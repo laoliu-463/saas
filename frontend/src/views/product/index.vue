@@ -231,11 +231,10 @@
 
 <script setup lang="ts">
 import { notifyApiFailure } from '../../utils/requestError'
-import { computed, h, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, h, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { NButton, useMessage } from 'naive-ui'
 import { useRoute, useRouter } from 'vue-router'
 import PageHeader from '../../components/PageHeader.vue'
-import ManualCopyDialog from '../../components/common/ManualCopyDialog.vue'
 import { useAuthStore } from '../../stores/auth'
 import { hasAccess } from '../../constants/rbac'
 import {
@@ -256,7 +255,6 @@ import { loadAssignedActivityOptions } from './assigned-activity-options'
 import ProductManageFilters from './components/ProductManageFilters.vue'
 import ProductManageTable from './components/ProductManageTable.vue'
 import ProductManageToolbar from './components/ProductManageToolbar.vue'
-import ProductSyncActivityDialog from './components/ProductSyncActivityDialog.vue'
 import ProductStatusTabs from './components/ProductStatusTabs.vue'
 import ProductActionColumn from './components/ProductActionColumn.vue'
 import {
@@ -264,6 +262,7 @@ import {
   allianceStatusToUpstreamStatus,
   buildActivityProductInfoQuery,
   buildProductLibraryQueryParams,
+  canUseProductLibraryCursor,
   DEFAULT_PRODUCT_FILTERS,
   formatGmv30d,
   formatSales30d,
@@ -275,16 +274,6 @@ import {
   resolveActivityContextForManageProductsPath,
   shouldLoadActivityProducts
 } from './product-page-data-source'
-import ProductDetail from './ProductDetail.vue'
-import ProductAuditDialog from './components/ProductAuditDialog.vue'
-import ProductAssignDialog from './components/ProductAssignDialog.vue'
-import ProductBatchAssignDialog from './components/ProductBatchAssignDialog.vue'
-import ProductOperationLogDrawer from './components/ProductOperationLogDrawer.vue'
-import ProductEditModal from './components/ProductEditModal.vue'
-import CooperationSettingModal from './components/CooperationSettingModal.vue'
-import SampleSettingModal from './components/SampleSettingModal.vue'
-import BatchSupplementModal from './components/BatchSupplementModal.vue'
-import ExtendPromotionModal from './components/ExtendPromotionModal.vue'
 import CurrentActivityBanner from './components/CurrentActivityBanner.vue'
 import {
   formatLibraryEntrySuccessMessage,
@@ -319,7 +308,7 @@ import { useDelayedFlag } from '../../utils/delayedFlag'
 import { tryCopyText } from '../../utils/clipboard'
 import {
   ACTIVITY_PRODUCT_SYNC_MAX_POLLS,
-  ACTIVITY_PRODUCT_SYNC_POLL_INTERVAL_MS,
+  getActivityProductSyncPollDelayMs,
   POST_SYNC_REFRESH_DELAYS_MS,
   isActivityProductSyncSuccess,
   isActivityProductSyncTerminal,
@@ -334,6 +323,27 @@ import type {
 
 type ProductAction = 'audit' | 'assign' | 'auditOwner'
 type AssignDialogMode = 'businessOwner' | 'auditOwner'
+type ProductSyncMode = 'FULL' | 'PRIORITY_1000'
+
+interface ProductSyncActivityConfirmPayload {
+  activityId: string
+  syncMode: ProductSyncMode
+  maxRowsPerActivity?: number
+  priorityStatuses?: number[]
+}
+
+const ManualCopyDialog = defineAsyncComponent(() => import('../../components/common/ManualCopyDialog.vue'))
+const ProductSyncActivityDialog = defineAsyncComponent(() => import('./components/ProductSyncActivityDialog.vue'))
+const ProductDetail = defineAsyncComponent(() => import('./ProductDetail.vue'))
+const ProductAuditDialog = defineAsyncComponent(() => import('./components/ProductAuditDialog.vue'))
+const ProductAssignDialog = defineAsyncComponent(() => import('./components/ProductAssignDialog.vue'))
+const ProductBatchAssignDialog = defineAsyncComponent(() => import('./components/ProductBatchAssignDialog.vue'))
+const ProductOperationLogDrawer = defineAsyncComponent(() => import('./components/ProductOperationLogDrawer.vue'))
+const ProductEditModal = defineAsyncComponent(() => import('./components/ProductEditModal.vue'))
+const CooperationSettingModal = defineAsyncComponent(() => import('./components/CooperationSettingModal.vue'))
+const SampleSettingModal = defineAsyncComponent(() => import('./components/SampleSettingModal.vue'))
+const BatchSupplementModal = defineAsyncComponent(() => import('./components/BatchSupplementModal.vue'))
+const ExtendPromotionModal = defineAsyncComponent(() => import('./components/ExtendPromotionModal.vue'))
 
 const PRODUCT_LIST_PAGE_SIZE = 5
 const PRODUCT_TABLE_SCROLL_X = 1968
@@ -781,12 +791,22 @@ const fetchProducts = async (reset: boolean, forceRemote = false, overrideActivi
 
     if (isSharedLibraryMode.value) {
       const page = reset ? 1 : Math.floor(products.value.length / PRODUCT_LIST_PAGE_SIZE) + 1
-      const res: any = await getProducts(buildProductLibraryQueryParams(filters.value, {
-        page,
-        size: PRODUCT_LIST_PAGE_SIZE,
+      const useCursor = canUseProductLibraryCursor(filters.value)
+      const baseQuery = {
         keyword: filters.value.productId || filters.value.productName || undefined,
-        productIdMode: 'keyword'
-      }))
+        productIdMode: 'keyword' as const
+      }
+      const res: any = await getProducts(buildProductLibraryQueryParams(filters.value, useCursor ? {
+        ...baseQuery,
+        cursor: reset ? undefined : nextCursor.value,
+        limit: PRODUCT_LIST_PAGE_SIZE
+      } : {
+        ...baseQuery,
+        page,
+        size: PRODUCT_LIST_PAGE_SIZE
+      }), {
+        suppressErrorNotice: syncing.value
+      })
       const data = res?.data || {}
       const records = Array.isArray(data.records) ? data.records : []
       const items = records.map((p: any) => normalizeItem({
@@ -798,8 +818,13 @@ const fetchProducts = async (reset: boolean, forceRemote = false, overrideActivi
       const currentPage = Number(data.page || page || 1)
       const pageSize = Number(data.size || PRODUCT_LIST_PAGE_SIZE)
       const total = Number(data.total || 0)
-      hasMore.value = currentPage * pageSize < total
-      nextCursor.value = ''
+      if (useCursor) {
+        hasMore.value = Boolean(data.hasMore || data.nextCursor)
+        nextCursor.value = String(data.nextCursor || '')
+      } else {
+        hasMore.value = currentPage * pageSize < total
+        nextCursor.value = ''
+      }
       return true
     }
 
@@ -1013,8 +1038,17 @@ const clearPostSyncRefreshTimers = () => {
 }
 
 const refreshProductsAfterActivitySync = async (activityId: string) => {
-  if (normalizeText(fallbackActivityId.value) !== activityId) return
-  await refreshProducts()
+  const selectedActivityId = normalizeText(activityId)
+  if (!selectedActivityId) return
+  const currentFallbackActivityId = normalizeText(fallbackActivityId.value)
+  if (currentFallbackActivityId && currentFallbackActivityId !== selectedActivityId) return
+  filters.value = {
+    ...filters.value,
+    recruitActivityId: selectedActivityId,
+    activityId: selectedActivityId
+  }
+  fallbackActivityId.value = selectedActivityId
+  await fetchProducts(true, false, selectedActivityId)
 }
 
 const schedulePostSyncRefreshes = (activityId: string, syncStatus?: string) => {
@@ -1066,7 +1100,7 @@ const pollActivityProductSyncJob = async (
   postSyncPollTimer = window.setTimeout(() => {
     postSyncPollTimer = null
     void pollActivityProductSyncJob(activityId, jobId, attempt + 1)
-  }, ACTIVITY_PRODUCT_SYNC_POLL_INTERVAL_MS)
+  }, getActivityProductSyncPollDelayMs(attempt))
 }
 
 const scheduleActivityProductSyncJobPolling = (activityId: string, jobId: string) => {
@@ -1081,8 +1115,15 @@ const openSyncActivityProductsDialog = () => {
   }
 }
 
-const syncActivityProductsFromRemote = async (activityId: string) => {
-  const selectedActivityId = normalizeText(activityId)
+const syncActivityProductsFromRemote = async (payload: ProductSyncActivityConfirmPayload | string) => {
+  const selectedActivityId = normalizeText(typeof payload === 'string' ? payload : payload.activityId)
+  const syncRequest = typeof payload === 'string'
+    ? undefined
+    : {
+        syncMode: payload.syncMode,
+        maxRowsPerActivity: payload.maxRowsPerActivity,
+        priorityStatuses: payload.priorityStatuses
+      }
   if (!selectedActivityId) {
     message.warning('缺少活动 ID，暂时无法同步活动商品')
     return
@@ -1105,18 +1146,27 @@ const syncActivityProductsFromRemote = async (activityId: string) => {
   clearBatchSelection()
   syncing.value = true
   try {
-    const res: any = await syncActivityProducts(selectedActivityId)
+    const res: any = await syncActivityProducts(selectedActivityId, syncRequest, {
+      suppressErrorNotice: true
+    })
     const data = res?.data || {}
     const jobId = normalizeText(data.jobId)
     const syncStatus = normalizeText(data.syncStatus)
     dialogs.value.syncActivityProducts = false
     if (jobId && shouldPollActivityProductSyncJob(syncStatus)) {
-      message.info('商品同步已提交，完成后自动刷新列表')
+      const pendingMessage = syncStatus === 'QUEUED'
+        ? '商品同步已排队，开始执行后会自动刷新列表'
+        : '商品同步已提交，完成后自动刷新列表'
+      message.info(pendingMessage)
       scheduleActivityProductSyncJobPolling(selectedActivityId, jobId)
       return
     }
     if (syncStatus === 'LOCKED') {
       message.warning(normalizeText(data.message) || '后台商品同步正在执行，请稍后重试')
+      return
+    }
+    if (syncStatus === 'QUEUE_FULL') {
+      message.warning(normalizeText(data.message) || '活动商品同步队列已满，请稍后重试')
       return
     }
     if (isActivityProductSyncSuccess(syncStatus)) {

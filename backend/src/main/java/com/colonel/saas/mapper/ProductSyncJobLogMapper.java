@@ -55,4 +55,62 @@ public interface ProductSyncJobLogMapper extends BaseMapper<ProductSyncJobLog> {
             LIMIT 1
             """)
     ProductSyncJobLog selectLatestByJobId(@Param("jobId") String jobId);
+
+    /**
+     * 查询同一任务类型和作用域下仍处于活动状态的最新任务。
+     */
+    @Select("""
+            SELECT * FROM product_sync_job_log
+            WHERE deleted = 0
+              AND job_type = #{jobType}
+              AND scope = #{scope}
+              AND status IN ('QUEUED', 'RUNNING')
+            ORDER BY create_time DESC
+            LIMIT 1
+            """)
+    ProductSyncJobLog selectLatestActiveByJobTypeAndScope(@Param("jobType") String jobType,
+                                                           @Param("scope") String scope);
+
+    /**
+     * 统计待执行队列长度，用于提交入口限流，避免无限入队。
+     */
+    @Select("""
+            SELECT COUNT(*) FROM product_sync_job_log
+            WHERE deleted = 0
+              AND job_type = #{jobType}
+              AND status = 'QUEUED'
+            """)
+    int countQueuedJobs(@Param("jobType") String jobType);
+
+    /**
+     * 拉取待执行的手动同步队列任务。
+     */
+    @Select("""
+            SELECT * FROM product_sync_job_log
+            WHERE deleted = 0
+              AND job_type = #{jobType}
+              AND status = 'QUEUED'
+            ORDER BY create_time ASC
+            LIMIT #{limit}
+            """)
+    List<ProductSyncJobLog> selectQueuedJobs(@Param("jobType") String jobType,
+                                             @Param("limit") int limit);
+
+    /**
+     * 把 QUEUED 任务原子切换为 RUNNING，防止重复 worker 同时执行同一 job。
+     */
+    @Update("""
+            UPDATE product_sync_job_log
+            SET status = 'RUNNING',
+                started_at = #{startedAt},
+                request_params_json = #{requestParamsJson},
+                error_message = NULL,
+                update_time = #{startedAt}
+            WHERE id = #{id}
+              AND status = 'QUEUED'
+              AND deleted = 0
+            """)
+    int markQueuedJobRunning(@Param("id") java.util.UUID id,
+                             @Param("startedAt") LocalDateTime startedAt,
+                             @Param("requestParamsJson") String requestParamsJson);
 }

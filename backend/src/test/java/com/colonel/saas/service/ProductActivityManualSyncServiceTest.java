@@ -8,6 +8,7 @@ import com.colonel.saas.mapper.ProductSyncJobLogMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.dao.DuplicateKeyException;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -21,9 +22,11 @@ import java.util.concurrent.Executor;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.lenient;
@@ -52,6 +55,18 @@ class ProductActivityManualSyncServiceTest {
                         anyInt(),
                         any()))
                 .thenReturn(new ProductService.ActivityProductRefreshResult(3, 1, 1, 2, 0));
+        lenient().when(productService.refreshActivitySnapshotsByStatusPartitions(
+                        any(DouyinProductGateway.ActivityProductQueryRequest.class),
+                        anyList(),
+                        anyInt(),
+                        anyInt(),
+                        eq(100L),
+                        anyInt(),
+                        any()))
+                .thenReturn(new ProductService.ActivityProductRefreshResult(50, 1, 20, 30, 0));
+        lenient().when(jobLogMapper.markQueuedJobRunning(any(), any(LocalDateTime.class), any()))
+                .thenReturn(1);
+        lenient().when(jobLogMapper.countQueuedJobs(any())).thenReturn(0);
     }
 
     @Test
@@ -67,7 +82,7 @@ class ProductActivityManualSyncServiceTest {
 
         assertThat(result.activityId()).isEqualTo("ACT-1");
         assertThat(result.jobId()).startsWith("activity-product-sync-");
-        assertThat(result.syncStatus()).isEqualTo("ACCEPTED");
+        assertThat(result.syncStatus()).isEqualTo("QUEUED");
         verify(colonelActivityService).syncActivitySummaryFromUpstream("ACT-1", null);
         ArgumentCaptor<DouyinProductGateway.ActivityProductQueryRequest> captor =
                 ArgumentCaptor.forClass(DouyinProductGateway.ActivityProductQueryRequest.class);
@@ -80,12 +95,13 @@ class ProductActivityManualSyncServiceTest {
         verify(jobLogMapper).insert(jobLogCaptor.capture());
         assertThat(jobLogCaptor.getValue().getJobId()).isEqualTo(result.jobId());
         assertThat(jobLogCaptor.getValue().getStatus()).isEqualTo("SUCCESS");
+        assertThat(jobLogCaptor.getValue().getStartedAt()).isNotNull();
         assertThat(jobLogCaptor.getValue().getApiFetchedRows()).isEqualTo(3L);
         verify(jobLogMapper).updateById(any(ProductSyncJobLog.class));
     }
 
     @Test
-    void trigger_shouldReturnRunningWhenSameActivityAlreadyQueued() {
+    void trigger_shouldReuseQueuedJobWhenSameActivityAlreadyQueued() {
         List<Runnable> queuedTasks = new ArrayList<>();
         Executor queuedExecutor = queuedTasks::add;
         ProductActivityManualSyncService service = new ProductActivityManualSyncService(
@@ -98,15 +114,15 @@ class ProductActivityManualSyncServiceTest {
         ProductActivityManualSyncService.SyncTriggerResult first = service.trigger("ACT-1", null);
         ProductActivityManualSyncService.SyncTriggerResult second = service.trigger("ACT-1", null);
 
-        assertThat(first.syncStatus()).isEqualTo("ACCEPTED");
+        assertThat(first.syncStatus()).isEqualTo("QUEUED");
         assertThat(first.jobId()).startsWith("activity-product-sync-");
-        assertThat(second.syncStatus()).isEqualTo("RUNNING");
+        assertThat(second.syncStatus()).isEqualTo("QUEUED");
         assertThat(second.jobId()).isEqualTo(first.jobId());
         assertThat(queuedTasks).hasSize(1);
 
         queuedTasks.get(0).run();
         ProductActivityManualSyncService.SyncTriggerResult third = service.trigger("ACT-1", null);
-        assertThat(third.syncStatus()).isEqualTo("ACCEPTED");
+        assertThat(third.syncStatus()).isEqualTo("QUEUED");
         assertThat(third.jobId()).isNotEqualTo(first.jobId());
         assertThat(queuedTasks).hasSize(2);
     }
@@ -142,7 +158,7 @@ class ProductActivityManualSyncServiceTest {
 
         ProductActivityManualSyncService.SyncTriggerResult result = service.trigger("ACT-1", null);
 
-        assertThat(result.syncStatus()).isEqualTo("ACCEPTED");
+        assertThat(result.syncStatus()).isEqualTo("QUEUED");
         verify(activityMapper, never()).touchLastSyncAt(eq("ACT-1"), any(LocalDateTime.class));
         ArgumentCaptor<ProductSyncJobLog> jobLogCaptor = ArgumentCaptor.forClass(ProductSyncJobLog.class);
         verify(jobLogMapper).updateById(jobLogCaptor.capture());
@@ -171,9 +187,75 @@ class ProductActivityManualSyncServiceTest {
     }
 
     @Test
-    void trigger_shouldReturnLockedWithoutCreatingJobWhenGlobalLockIsHeld() {
-        when(jobLockService.tryAcquire(eq(JobLockKeys.PRODUCT_BACKFILL_GLOBAL), any(), any(String.class)))
-                .thenReturn(false);
+    void trigger_shouldRunPrioritySyncWithRequestedRowsAndStatuses() {
+        when(productService.refreshActivitySnapshotsByStatusPartitions(
+                        any(DouyinProductGateway.ActivityProductQueryRequest.class),
+                        anyList(),
+                        anyInt(),
+                        anyInt(),
+                        eq(100L),
+                        anyInt(),
+                        any()))
+                .thenReturn(new ProductService.ActivityProductRefreshResult(50, 1, 20, 30, 0));
+        ProductActivityManualSyncService service = new ProductActivityManualSyncService(
+                productService,
+                colonelActivityService,
+                activityMapper,
+                jobLogMapper,
+                Runnable::run);
+
+        ProductActivityManualSyncService.SyncTriggerResult result = service.trigger(
+                "ACT-1",
+                null,
+                null,
+                new ProductActivityManualSyncService.SyncOptions("PRIORITY_1000", 1000, List.of(0, 1)));
+
+        assertThat(result.syncStatus()).isEqualTo("QUEUED");
+        ArgumentCaptor<DouyinProductGateway.ActivityProductQueryRequest> requestCaptor =
+                ArgumentCaptor.forClass(DouyinProductGateway.ActivityProductQueryRequest.class);
+        verify(productService).refreshActivitySnapshotsByStatusPartitions(
+                requestCaptor.capture(),
+                eq(List.of(0, 1)),
+                eq(3000),
+                eq(1000),
+                eq(100L),
+                eq(2),
+                any());
+        assertThat(requestCaptor.getValue().status()).isNull();
+        verify(productService, never()).refreshActivitySnapshots(
+                any(DouyinProductGateway.ActivityProductQueryRequest.class),
+                anyInt(),
+                anyInt(),
+                anyLong(),
+                any());
+    }
+
+    @Test
+    void trigger_shouldKeepDifferentActivityQueuedWhenUpstreamStartIntervalIsNotReached() {
+        ProductActivityManualSyncService service = new ProductActivityManualSyncService(
+                productService,
+                colonelActivityService,
+                activityMapper,
+                jobLogMapper,
+                Runnable::run);
+        ReflectionTestUtils.setField(service, "manualUpstreamMinStartIntervalMs", 10_000L);
+
+        ProductActivityManualSyncService.SyncTriggerResult first = service.trigger("ACT-1", null);
+        ProductActivityManualSyncService.SyncTriggerResult second = service.trigger("ACT-2", null);
+
+        assertThat(first.syncStatus()).isEqualTo("QUEUED");
+        assertThat(second.syncStatus()).isEqualTo("QUEUED");
+        verify(productService, times(1)).refreshActivitySnapshotsByStatusPartitions(
+                any(DouyinProductGateway.ActivityProductQueryRequest.class),
+                anyInt(),
+                anyInt(),
+                anyLong(),
+                anyInt(),
+                any());
+    }
+
+    @Test
+    void trigger_shouldQueueJobWithoutRunningWhenGlobalLockIsHeld() {
         when(jobLockService.currentLockValue(JobLockKeys.PRODUCT_BACKFILL_GLOBAL)).thenReturn("scheduler");
         when(jobLockService.currentLockTtlSeconds(JobLockKeys.PRODUCT_BACKFILL_GLOBAL)).thenReturn(120L);
         ProductActivityManualSyncService service = new ProductActivityManualSyncService(
@@ -188,13 +270,10 @@ class ProductActivityManualSyncServiceTest {
         ProductActivityManualSyncService.SyncTriggerResult result = service.trigger("ACT-1", null);
 
         assertThat(result.activityId()).isEqualTo("ACT-1");
-        assertThat(result.jobId()).isNull();
-        assertThat(result.syncStatus()).isEqualTo("LOCKED");
-        assertThat(result.message()).contains("商品同步全局锁被占用");
-        assertThat(result.lockKey()).isEqualTo(JobLockKeys.PRODUCT_BACKFILL_GLOBAL);
-        assertThat(result.lockOwner()).isEqualTo("scheduler");
-        assertThat(result.lockTtlSeconds()).isEqualTo(120L);
-        verify(jobLogMapper, never()).insert(any(ProductSyncJobLog.class));
+        assertThat(result.jobId()).startsWith("activity-product-sync-");
+        assertThat(result.syncStatus()).isEqualTo("QUEUED");
+        verify(jobLogMapper).insert(any(ProductSyncJobLog.class));
+        verify(jobLogMapper).updateById(any(ProductSyncJobLog.class));
         verify(productService, never()).refreshActivitySnapshotsByStatusPartitions(
                 any(DouyinProductGateway.ActivityProductQueryRequest.class),
                 anyInt(),
@@ -203,6 +282,68 @@ class ProductActivityManualSyncServiceTest {
                 anyInt(),
                 any());
         verify(colonelActivityService, never()).syncActivitySummaryFromUpstream(any(), any());
+    }
+
+    @Test
+    void trigger_shouldReturnQueueFullWithoutCreatingJobWhenManualQueueLimitReached() {
+        when(jobLogMapper.countQueuedJobs("activity_product_manual_sync")).thenReturn(100);
+        ProductActivityManualSyncService service = new ProductActivityManualSyncService(
+                productService,
+                colonelActivityService,
+                activityMapper,
+                jobLogMapper,
+                Runnable::run);
+
+        ProductActivityManualSyncService.SyncTriggerResult result = service.trigger("ACT-1", null);
+
+        assertThat(result.activityId()).isEqualTo("ACT-1");
+        assertThat(result.jobId()).isNull();
+        assertThat(result.syncStatus()).isEqualTo("QUEUE_FULL");
+        assertThat(result.message()).contains("队列已满");
+        verify(jobLogMapper, never()).insert(any(ProductSyncJobLog.class));
+        verify(productService, never()).refreshActivitySnapshotsByStatusPartitions(
+                any(DouyinProductGateway.ActivityProductQueryRequest.class),
+                anyInt(),
+                anyInt(),
+                anyLong(),
+                anyInt(),
+                any());
+    }
+
+    @Test
+    void trigger_shouldReuseActiveJobWhenDatabaseUniqueConstraintRejectsDuplicateInsert() {
+        List<Runnable> queuedTasks = new ArrayList<>();
+        ProductSyncJobLog activeJob = new ProductSyncJobLog();
+        activeJob.setJobId("activity-product-sync-existing");
+        activeJob.setJobType("activity_product_manual_sync");
+        activeJob.setScope("ACTIVITY:ACT-1");
+        activeJob.setStatus("QUEUED");
+        when(jobLogMapper.insert(any(ProductSyncJobLog.class)))
+                .thenThrow(new DuplicateKeyException("duplicate active sync"));
+        when(jobLogMapper.selectLatestActiveByJobTypeAndScope(
+                "activity_product_manual_sync",
+                "ACTIVITY:ACT-1"))
+                .thenReturn(null, activeJob);
+        ProductActivityManualSyncService service = new ProductActivityManualSyncService(
+                productService,
+                colonelActivityService,
+                activityMapper,
+                jobLogMapper,
+                queuedTasks::add);
+
+        ProductActivityManualSyncService.SyncTriggerResult result = service.trigger("ACT-1", null);
+
+        assertThat(result.activityId()).isEqualTo("ACT-1");
+        assertThat(result.jobId()).isEqualTo("activity-product-sync-existing");
+        assertThat(result.syncStatus()).isEqualTo("QUEUED");
+        assertThat(queuedTasks).hasSize(1);
+        verify(productService, never()).refreshActivitySnapshotsByStatusPartitions(
+                any(DouyinProductGateway.ActivityProductQueryRequest.class),
+                anyInt(),
+                anyInt(),
+                anyLong(),
+                anyInt(),
+                any());
     }
 
     @Test

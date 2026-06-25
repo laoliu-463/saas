@@ -37,6 +37,8 @@
           :src="card.imageUrl"
           :alt="card.productName"
           class="selection-card__img"
+          loading="lazy"
+          decoding="async"
           @error="onImageError"
         />
         <div v-else class="selection-card__img-fallback" aria-hidden="true">

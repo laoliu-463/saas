@@ -1,5 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { reactive } from 'vue'
 
 import ProductLibrary from './ProductLibrary.vue'
@@ -71,8 +71,9 @@ function buildRows(start: number, count: number) {
   })
 }
 
-function mountLibrary() {
+function mountLibrary(options: { attachTo?: HTMLElement } = {}) {
   return mount(ProductLibrary, {
+    attachTo: options.attachTo,
     global: {
       stubs: {
         PageHeader: {
@@ -119,32 +120,19 @@ function mountLibrary() {
         NSpace: {
           template: '<div><slot /></div>'
         },
-        NSelect: {
-          props: ['value', 'options'],
-          template: `
-            <select
-              data-testid="product-library-sort"
-              :value="value"
-              @change="$emit('update:value', $event.target.value)"
-            >
-              <option
-                v-for="item in options"
-                :key="item.value"
-                :value="item.value"
-              >
-                {{ item.label }}
-              </option>
-            </select>
-          `
-        }
+        NSelect: true
       }
     }
   })
 }
 
-describe('ProductLibrary pagination weakening', () => {
+describe('ProductLibrary infinite scroll', () => {
+  let attachedRoots: HTMLElement[] = []
+
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(getProducts).mockReset()
+    vi.mocked(getProductLibraryCategories).mockReset()
     routeState.path = '/product'
     routeState.query = {}
     vi.mocked(getProductLibraryCategories).mockResolvedValue({ data: [] } as any)
@@ -166,38 +154,87 @@ describe('ProductLibrary pagination weakening', () => {
     })
   })
 
-  it('loads 100 products by default, appends more products, and resets when filters change', async () => {
+  afterEach(() => {
+    attachedRoots.forEach((root) => root.remove())
+    attachedRoots = []
+    vi.unstubAllGlobals()
+  })
+
+  function createLayoutScrollHarness() {
+    const scrollRoot = document.createElement('div')
+    scrollRoot.className = 'n-layout-scroll-container'
+    scrollRoot.style.overflowY = 'auto'
+    Object.defineProperty(scrollRoot, 'clientHeight', {
+      configurable: true,
+      value: 900
+    })
+    Object.defineProperty(scrollRoot, 'clientWidth', {
+      configurable: true,
+      value: 1280
+    })
+    Object.defineProperty(scrollRoot, 'scrollHeight', {
+      configurable: true,
+      value: 20000
+    })
+    Object.defineProperty(scrollRoot, 'scrollTop', {
+      configurable: true,
+      writable: true,
+      value: 0
+    })
+    scrollRoot.getBoundingClientRect = () => ({
+      top: 0,
+      left: 0,
+      bottom: 900,
+      right: 1280,
+      width: 1280,
+      height: 900,
+      x: 0,
+      y: 0,
+      toJSON: () => ({})
+    } as DOMRect)
+
+    const mountPoint = document.createElement('div')
+    scrollRoot.appendChild(mountPoint)
+    document.body.appendChild(scrollRoot)
+    attachedRoots.push(scrollRoot)
+    return { scrollRoot, mountPoint }
+  }
+
+  async function waitForScheduledViewportUpdate() {
+    await new Promise((resolve) => window.setTimeout(resolve, 20))
+    await flushPromises()
+  }
+
+  it('loads product batches, appends more products, and resets when filters change', async () => {
     vi.mocked(getProducts)
       .mockResolvedValueOnce({
         data: {
           records: buildRows(1, 100),
-          total: 150,
+          total: 0,
           page: 1,
-          size: 100
+          size: 100,
+          hasMore: true,
+          nextCursor: 'cursor-1'
         }
       } as any)
       .mockResolvedValueOnce({
         data: {
           records: buildRows(101, 50),
-          total: 150,
+          total: 0,
           page: 2,
-          size: 100
+          size: 100,
+          hasMore: false,
+          nextCursor: null
         }
       } as any)
       .mockResolvedValueOnce({
         data: {
           records: buildRows(200, 1),
-          total: 1,
+          total: 0,
           page: 1,
-          size: 100
-        }
-      } as any)
-      .mockResolvedValueOnce({
-        data: {
-          records: buildRows(300, 1),
-          total: 1,
-          page: 1,
-          size: 100
+          size: 100,
+          hasMore: false,
+          nextCursor: null
         }
       } as any)
 
@@ -205,20 +242,29 @@ describe('ProductLibrary pagination weakening', () => {
     await flushPromises()
 
     expect(vi.mocked(getProducts).mock.calls[0][0]).toMatchObject({
-      page: 1,
-      size: 100,
-      sortBy: 'default'
+      limit: 100
     })
+    expect(vi.mocked(getProducts).mock.calls[0][0].page).toBeUndefined()
+    expect(vi.mocked(getProducts).mock.calls[0][0].size).toBeUndefined()
+    expect(vi.mocked(getProducts).mock.calls[0][0].cursor).toBeUndefined()
+    expect(vi.mocked(getProducts).mock.calls[0][0].sortBy).toBeUndefined()
+    expect(wrapper.find('[data-testid="product-library-sort"]').exists()).toBe(false)
     expect(wrapper.findAll('[data-testid="product-card"]')).toHaveLength(100)
+    expect(wrapper.text()).toContain('已加载 100 件')
+    expect(wrapper.text()).not.toContain('/ 100')
 
     await wrapper.get('[data-testid="product-library-load-more"]').trigger('click')
     await flushPromises()
 
     expect(vi.mocked(getProducts).mock.calls[1][0]).toMatchObject({
-      page: 2,
-      size: 100
+      limit: 100,
+      cursor: 'cursor-1'
     })
-    expect(wrapper.findAll('[data-testid="product-card"]')).toHaveLength(150)
+    expect(vi.mocked(getProducts).mock.calls[1][0].page).toBeUndefined()
+    expect(vi.mocked(getProducts).mock.calls[1][0].size).toBeUndefined()
+    expect(wrapper.text()).toContain('已加载 150 件')
+    expect(wrapper.find('[data-testid="product-grid-virtual-window"]').exists()).toBe(true)
+    expect(wrapper.findAll('[data-testid="product-card"]').length).toBeLessThan(150)
 
     await wrapper.get('[data-testid="emit-filter"]').trigger('click')
     await flushPromises()
@@ -228,18 +274,9 @@ describe('ProductLibrary pagination weakening', () => {
       size: 100,
       productTags: '主推'
     })
-
-    await wrapper.get('[data-testid="product-library-sort"]').setValue('latest')
-    await flushPromises()
-
-    expect(replaceMock).toHaveBeenCalledWith({
-      path: '/product',
-      query: { sortBy: 'latest' }
-    })
-    expect(vi.mocked(getProducts).mock.calls[3][0]).toMatchObject({
-      page: 1,
-      sortBy: 'latest'
-    })
+    expect(vi.mocked(getProducts).mock.calls[2][0].limit).toBeUndefined()
+    expect(vi.mocked(getProducts).mock.calls[2][0].cursor).toBeUndefined()
+    expect(vi.mocked(getProducts).mock.calls[2][0].sortBy).toBeUndefined()
     expect(wrapper.findAll('[data-testid="product-card"]')).toHaveLength(1)
     expect(wrapper.text()).toContain('已全部加载')
   })
@@ -249,25 +286,31 @@ describe('ProductLibrary pagination weakening', () => {
       .mockResolvedValueOnce({
         data: {
           records: buildRows(1, 100),
-          total: 250,
+          total: 0,
           page: 1,
-          size: 100
+          size: 100,
+          hasMore: true,
+          nextCursor: 'cursor-1'
         }
       } as any)
       .mockResolvedValueOnce({
         data: {
           records: buildRows(101, 100),
-          total: 250,
+          total: 0,
           page: 2,
-          size: 100
+          size: 100,
+          hasMore: true,
+          nextCursor: 'cursor-2'
         }
       } as any)
       .mockResolvedValueOnce({
         data: {
           records: buildRows(201, 50),
-          total: 250,
+          total: 0,
           page: 3,
-          size: 100
+          size: 100,
+          hasMore: false,
+          nextCursor: null
         }
       } as any)
 
@@ -285,10 +328,12 @@ describe('ProductLibrary pagination weakening', () => {
     await flushPromises()
 
     expect(vi.mocked(getProducts).mock.calls[1][0]).toMatchObject({
-      page: 2,
-      size: 100
+      limit: 100,
+      cursor: 'cursor-1'
     })
-    expect(wrapper.findAll('[data-testid="product-card"]')).toHaveLength(200)
+    expect(wrapper.text()).toContain('已加载 200 件')
+    expect(wrapper.find('[data-testid="product-grid-virtual-window"]').exists()).toBe(true)
+    expect(wrapper.findAll('[data-testid="product-card"]').length).toBeLessThan(200)
 
     lastIntersectionCallback?.(
       [{ isIntersecting: true } as IntersectionObserverEntry],
@@ -297,10 +342,11 @@ describe('ProductLibrary pagination weakening', () => {
     await flushPromises()
 
     expect(vi.mocked(getProducts).mock.calls[2][0]).toMatchObject({
-      page: 3,
-      size: 100
+      limit: 100,
+      cursor: 'cursor-2'
     })
-    expect(wrapper.findAll('[data-testid="product-card"]')).toHaveLength(250)
+    expect(wrapper.text()).toContain('已加载 250 件')
+    expect(wrapper.findAll('[data-testid="product-card"]').length).toBeLessThan(250)
     expect(wrapper.text()).toContain('已全部加载')
   })
 
@@ -309,18 +355,22 @@ describe('ProductLibrary pagination weakening', () => {
       .mockResolvedValueOnce({
         data: {
           records: buildRows(1, 100),
-          total: 200,
+          total: 0,
           page: 1,
-          size: 100
+          size: 100,
+          hasMore: true,
+          nextCursor: 'retry-cursor'
         }
       } as any)
       .mockRejectedValueOnce(new Error('network down'))
       .mockResolvedValueOnce({
         data: {
           records: buildRows(101, 100),
-          total: 200,
+          total: 0,
           page: 2,
-          size: 100
+          size: 100,
+          hasMore: false,
+          nextCursor: null
         }
       } as any)
 
@@ -347,10 +397,52 @@ describe('ProductLibrary pagination weakening', () => {
     await flushPromises()
 
     expect(vi.mocked(getProducts).mock.calls[2][0]).toMatchObject({
-      page: 2,
-      size: 100
+      limit: 100,
+      cursor: 'retry-cursor'
     })
-    expect(wrapper.findAll('[data-testid="product-card"]')).toHaveLength(200)
+    expect(wrapper.text()).toContain('已加载 200 件')
+    expect(wrapper.findAll('[data-testid="product-card"]').length).toBeLessThan(200)
     expect(wrapper.text()).toContain('已全部加载')
+  })
+
+  it('updates the virtual window when the layout scroll container scrolls', async () => {
+    vi.mocked(getProducts).mockResolvedValueOnce({
+      data: {
+        records: buildRows(1, 200),
+        total: 200,
+        page: 1,
+        size: 200,
+        hasMore: false,
+        nextCursor: null
+      }
+    } as any)
+
+    const { scrollRoot, mountPoint } = createLayoutScrollHarness()
+    const wrapper = mountLibrary({ attachTo: mountPoint })
+    await flushPromises()
+
+    const grid = wrapper.get('[data-testid="product-grid"]').element as HTMLElement
+    grid.getBoundingClientRect = () => ({
+      top: -scrollRoot.scrollTop,
+      left: 0,
+      bottom: 20000 - scrollRoot.scrollTop,
+      right: 1280,
+      width: 1280,
+      height: 20000,
+      x: 0,
+      y: -scrollRoot.scrollTop,
+      toJSON: () => ({})
+    } as DOMRect)
+
+    await waitForScheduledViewportUpdate()
+    expect(wrapper.findAll('[data-testid="product-card"]').map((card) => card.text())).toContain('product-1')
+
+    scrollRoot.scrollTop = 25 * 431
+    scrollRoot.dispatchEvent(new Event('scroll'))
+    await waitForScheduledViewportUpdate()
+
+    const visibleProductIds = wrapper.findAll('[data-testid="product-card"]').map((card) => card.text())
+    expect(visibleProductIds).not.toContain('product-1')
+    expect(visibleProductIds.some((id) => Number(id.replace('product-', '')) > 80)).toBe(true)
   })
 })

@@ -130,15 +130,13 @@ describe('product filters', () => {
     expect(params.productId).toBe('9001')
   })
 
-  it('buildProductLibraryQueryParams forwards partner scope and sort', () => {
+  it('buildProductLibraryQueryParams forwards partner scope without client sort', () => {
     expect(buildProductLibraryQueryParams(DEFAULT_PRODUCT_FILTERS(), {
       partnerId: '7351155267604218149',
-      partnerType: 'COLONEL',
-      sortBy: 'latest'
+      partnerType: 'COLONEL'
     })).toMatchObject({
       partnerId: '7351155267604218149',
-      partnerType: 'COLONEL',
-      sortBy: 'latest'
+      partnerType: 'COLONEL'
     })
   })
 

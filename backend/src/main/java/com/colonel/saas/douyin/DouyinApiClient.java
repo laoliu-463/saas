@@ -2,8 +2,10 @@ package com.colonel.saas.douyin;
 
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.exception.UpstreamErrorCode;
+import com.colonel.saas.douyin.ratelimit.DouyinRateLimiter;
 import com.doudian.open.utils.SignUtil;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
@@ -52,6 +54,7 @@ public class DouyinApiClient {
     private final DouyinTokenService douyinTokenService;
     private final RestTemplate douyinRestTemplate;
     private final DouyinConfig douyinConfig;
+    private final DouyinRateLimiter douyinRateLimiter;
     @Value("${douyin.test.enabled:false}")
     private boolean testEnabled;
     @Value("${douyin.api.retry.max-attempts:3}")
@@ -59,14 +62,24 @@ public class DouyinApiClient {
     @Value("${douyin.api.retry.initial-delay-ms:400}")
     private long retryInitialDelayMs;
 
+    @Autowired
     public DouyinApiClient(
             DouyinTokenService douyinTokenService,
             @Qualifier("douyinRestTemplate")
             RestTemplate douyinRestTemplate,
-            DouyinConfig douyinConfig) {
+            DouyinConfig douyinConfig,
+            DouyinRateLimiter douyinRateLimiter) {
         this.douyinTokenService = douyinTokenService;
         this.douyinRestTemplate = douyinRestTemplate;
         this.douyinConfig = douyinConfig;
+        this.douyinRateLimiter = douyinRateLimiter == null ? DouyinRateLimiter.noop() : douyinRateLimiter;
+    }
+
+    DouyinApiClient(
+            DouyinTokenService douyinTokenService,
+            RestTemplate douyinRestTemplate,
+            DouyinConfig douyinConfig) {
+        this(douyinTokenService, douyinRestTemplate, douyinConfig, DouyinRateLimiter.noop());
     }
 
     /**
@@ -137,6 +150,7 @@ public class DouyinApiClient {
         RuntimeException lastFailure = null;
         for (int attempt = 1; attempt <= attempts; attempt++) {
             try {
+                douyinRateLimiter.acquire(appId, method);
                 return executePost(method, params, appId, token);
             } catch (DouyinApiException ex) {
                 lastFailure = ex;

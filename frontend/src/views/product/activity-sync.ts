@@ -2,15 +2,20 @@ import { syncActivityProducts } from '../../api/activityProduct'
 import { type ActivityRow } from './activity-list-display'
 
 export const POST_SYNC_REFRESH_DELAYS_MS = [1500, 4000, 8000, 15000]
-export const ACTIVITY_PRODUCT_SYNC_POLL_INTERVAL_MS = 500
-export const ACTIVITY_PRODUCT_SYNC_MAX_POLLS = 600
+export const ACTIVITY_PRODUCT_SYNC_MAX_POLLS = 89
+
+export const getActivityProductSyncPollDelayMs = (attempt: number) => {
+  if (attempt < 10) return 1000
+  if (attempt < 30) return 3000
+  return 10000
+}
 
 export function shouldSchedulePostSyncRefresh(syncStatus?: string): boolean {
-  return syncStatus === 'ACCEPTED' || syncStatus === 'RUNNING'
+  return syncStatus === 'ACCEPTED' || syncStatus === 'QUEUED' || syncStatus === 'RUNNING'
 }
 
 export function shouldPollActivityProductSyncJob(syncStatus?: string): boolean {
-  return syncStatus === 'ACCEPTED' || syncStatus === 'RUNNING'
+  return syncStatus === 'ACCEPTED' || syncStatus === 'QUEUED' || syncStatus === 'RUNNING'
 }
 
 export function isActivityProductSyncSuccess(syncStatus?: string): boolean {
@@ -18,7 +23,7 @@ export function isActivityProductSyncSuccess(syncStatus?: string): boolean {
 }
 
 export function isActivityProductSyncTerminal(syncStatus?: string): boolean {
-  return ['SUCCESS', 'PARTIAL', 'FAILED', 'FAILED_LOCKED', 'ABANDONED'].includes(String(syncStatus || ''))
+  return ['SUCCESS', 'PARTIAL', 'FAILED', 'FAILED_LOCKED', 'ABANDONED', 'CANCELED', 'TIMEOUT', 'QUEUE_FULL'].includes(String(syncStatus || ''))
 }
 
 export type ActivityProductSyncItemResult = {
@@ -35,6 +40,7 @@ export type ActivityProductSyncBatchSummary = {
   results: ActivityProductSyncItemResult[]
   succeeded: number
   failed: number
+  queued: number
   running: number
   totalSyncedProducts: number
   totalLibraryEntries: number
@@ -116,12 +122,16 @@ export function summarizeActivityProductSyncResults(
 ): ActivityProductSyncBatchSummary {
   let succeeded = 0
   let failed = 0
+  let queued = 0
   let running = 0
   let totalSyncedProducts = 0
   let totalLibraryEntries = 0
   results.forEach((item) => {
-    if (item.ok) {
+    if (item.ok && item.syncStatus !== 'QUEUE_FULL') {
       succeeded += 1
+      if (item.syncStatus === 'QUEUED') {
+        queued += 1
+      }
       if (item.syncStatus === 'RUNNING') {
         running += 1
       }
@@ -135,6 +145,7 @@ export function summarizeActivityProductSyncResults(
     results,
     succeeded,
     failed,
+    queued,
     running,
     totalSyncedProducts,
     totalLibraryEntries
@@ -149,6 +160,9 @@ export function formatActivityProductSyncMessage(summary: ActivityProductSyncBat
     return '活动商品同步失败，请稍后重试'
   }
   const parts = [`已提交 ${summary.succeeded} 个活动商品后台同步`]
+  if (summary.queued > 0) {
+    parts.push(`${summary.queued} 个活动已排队`)
+  }
   if (summary.running > 0) {
     parts.push(`${summary.running} 个活动已在同步中`)
   }

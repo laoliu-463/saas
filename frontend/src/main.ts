@@ -1,11 +1,12 @@
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
-import naive from 'naive-ui'
 
 import App from './App.vue'
 import router from './router'
 import { hasAccess } from './constants/rbac'
 import { useAuthStore } from './stores/auth'
+import { installNaiveComponents } from './plugins/naive-components'
+import { installNaiveRouteComponents } from './plugins/naive-route-components'
 import './styles/tokens.css'
 import './styles/global.css'
 
@@ -17,8 +18,11 @@ app.config.errorHandler = (err, instance, info) => {
 
 const pinia = createPinia()
 app.use(pinia)
+app.use(installNaiveComponents)
+router.beforeEach(async (to) => {
+  await installNaiveRouteComponents(app, to.path)
+})
 app.use(router)
-app.use(naive)
 
 const authStore = useAuthStore()
 authStore.setupCrossTabSync(() => {

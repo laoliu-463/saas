@@ -11,6 +11,15 @@ const stubs = {
   NForm: { template: '<form><slot /></form>' },
   NFormItem: { template: '<label><slot /></label>' },
   NSpace: { template: '<div><slot /></div>' },
+  NRadioGroup: {
+    props: ['value'],
+    emits: ['update:value'],
+    template: '<div data-testid="sync-mode-radio-group" @change="$emit(\'update:value\', $event.target.value)"><slot /></div>'
+  },
+  NRadio: {
+    props: ['value'],
+    template: '<label><input type="radio" :value="value" /><slot /></label>'
+  },
   NSelect: {
     props: ['value', 'options'],
     emits: ['update:value'],
@@ -49,7 +58,14 @@ describe('ProductSyncActivityDialog', () => {
     await wrapper.get('[data-testid="sync-activity-select"]').setValue('ACT002')
     await wrapper.findAll('button').find((button) => button.text() === '开始同步')?.trigger('click')
 
-    expect(wrapper.emitted('confirm')).toEqual([['ACT002']])
+    expect(wrapper.emitted('confirm')).toEqual([[
+      {
+        activityId: 'ACT002',
+        syncMode: 'FULL',
+        maxRowsPerActivity: undefined,
+        priorityStatuses: undefined
+      }
+    ]])
   })
 
   it('uses the default activity when the dialog opens', async () => {
@@ -57,6 +73,29 @@ describe('ProductSyncActivityDialog', () => {
 
     await wrapper.findAll('button').find((button) => button.text() === '开始同步')?.trigger('click')
 
-    expect(wrapper.emitted('confirm')).toEqual([['ACT001']])
+    expect(wrapper.emitted('confirm')).toEqual([[
+      {
+        activityId: 'ACT001',
+        syncMode: 'FULL',
+        maxRowsPerActivity: undefined,
+        priorityStatuses: undefined
+      }
+    ]])
+  })
+
+  it('emits priority sync options when priority mode is selected', async () => {
+    const wrapper = mountDialog({ defaultActivityId: 'ACT001' })
+
+    await wrapper.get('[data-testid="sync-mode-priority-1000"] input').setValue(true)
+    await wrapper.findAll('button').find((button) => button.text() === '开始同步')?.trigger('click')
+
+    expect(wrapper.emitted('confirm')).toEqual([[
+      {
+        activityId: 'ACT001',
+        syncMode: 'PRIORITY_1000',
+        maxRowsPerActivity: 1000,
+        priorityStatuses: [0, 1]
+      }
+    ]])
   })
 })
