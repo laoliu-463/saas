@@ -3,7 +3,7 @@ import {
   batchSyncActivityProducts,
   formatActivityProductSyncMessage,
   ACTIVITY_PRODUCT_SYNC_MAX_POLLS,
-  ACTIVITY_PRODUCT_SYNC_POLL_INTERVAL_MS,
+  getActivityProductSyncPollDelayMs,
   POST_SYNC_REFRESH_DELAYS_MS,
   isActivityProductSyncSuccess,
   isActivityProductSyncTerminal,
@@ -83,8 +83,12 @@ describe('activity-sync', () => {
   })
 
   it('classifies manual sync job statuses for completion polling', () => {
-    expect(ACTIVITY_PRODUCT_SYNC_POLL_INTERVAL_MS).toBe(500)
-    expect(ACTIVITY_PRODUCT_SYNC_MAX_POLLS).toBe(600)
+    expect(getActivityProductSyncPollDelayMs(0)).toBe(1000)
+    expect(getActivityProductSyncPollDelayMs(9)).toBe(1000)
+    expect(getActivityProductSyncPollDelayMs(10)).toBe(3000)
+    expect(getActivityProductSyncPollDelayMs(29)).toBe(3000)
+    expect(getActivityProductSyncPollDelayMs(30)).toBe(10000)
+    expect(ACTIVITY_PRODUCT_SYNC_MAX_POLLS).toBe(89)
     expect(shouldPollActivityProductSyncJob('ACCEPTED')).toBe(true)
     expect(shouldPollActivityProductSyncJob('QUEUED')).toBe(true)
     expect(shouldPollActivityProductSyncJob('RUNNING')).toBe(true)

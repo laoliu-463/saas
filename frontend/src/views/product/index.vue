@@ -319,7 +319,7 @@ import { useDelayedFlag } from '../../utils/delayedFlag'
 import { tryCopyText } from '../../utils/clipboard'
 import {
   ACTIVITY_PRODUCT_SYNC_MAX_POLLS,
-  ACTIVITY_PRODUCT_SYNC_POLL_INTERVAL_MS,
+  getActivityProductSyncPollDelayMs,
   POST_SYNC_REFRESH_DELAYS_MS,
   isActivityProductSyncSuccess,
   isActivityProductSyncTerminal,
@@ -1085,7 +1085,7 @@ const pollActivityProductSyncJob = async (
   postSyncPollTimer = window.setTimeout(() => {
     postSyncPollTimer = null
     void pollActivityProductSyncJob(activityId, jobId, attempt + 1)
-  }, ACTIVITY_PRODUCT_SYNC_POLL_INTERVAL_MS)
+  }, getActivityProductSyncPollDelayMs(attempt))
 }
 
 const scheduleActivityProductSyncJobPolling = (activityId: string, jobId: string) => {
