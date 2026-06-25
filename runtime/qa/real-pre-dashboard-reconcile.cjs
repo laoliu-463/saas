@@ -96,11 +96,11 @@ function buildSummarySql(user) {
   return `
 SELECT
   COUNT(*) AS order_count,
-  COALESCE(SUM(pr.settle_amount), 0) AS order_amount,
-  COALESCE(SUM(pr.effective_service_fee), 0) AS service_fee
-FROM performance_records pr
-JOIN colonelsettlement_order co ON co.order_id = pr.order_id AND co.deleted = 0
-WHERE pr.is_valid = TRUE${scope.sql};
+  COALESCE(SUM(co.settle_amount), 0) AS order_amount,
+  COALESCE(SUM(co.effective_service_fee), 0) AS service_fee
+FROM colonelsettlement_order co
+LEFT JOIN performance_records pr ON pr.order_id = co.order_id
+WHERE co.deleted = 0${scope.sql};
 `.trim();
 }
 
@@ -260,7 +260,7 @@ async function collectRoleEvidence(roleName, account, ctx) {
     role.status = 'PASS';
     role.scopeStatus = scope.status;
     role.currentUser = currentUser;
-    role.summarySource = hasPerformanceRecords ? 'performance_records' : 'order_fallback';
+    role.summarySource = hasPerformanceRecords ? 'order_facts_with_performance_records' : 'order_fallback';
     role.apiSummary = apiSummary;
     role.dbSummary = dbSummaryRows[0] || {};
     role.attributedCount = toNumber(attributedRows[0]?.count);

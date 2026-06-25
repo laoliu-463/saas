@@ -60,15 +60,16 @@ test('buildScopeClause creates safe scoped SQL filters', () => {
   assert.throws(() => buildScopeClause({ scope: 'self', userId: "bad';drop" }), /Invalid UUID/);
 });
 
-test('buildSummarySql mirrors dashboard performance-record summary source', () => {
+test('buildSummarySql mirrors dashboard order-fact summary source', () => {
   const sql = buildSummarySql({
     scope: 'group',
     deptId: '00000000-0000-0000-0000-000000000002'
   });
 
-  assert.match(sql, /FROM performance_records pr/);
-  assert.match(sql, /JOIN colonelsettlement_order co/);
-  assert.match(sql, /pr\.is_valid = TRUE/);
+  assert.match(sql, /FROM colonelsettlement_order co/);
+  assert.match(sql, /LEFT JOIN performance_records pr ON pr\.order_id = co\.order_id/);
+  assert.match(sql, /co\.deleted = 0/);
+  assert.doesNotMatch(sql, /pr\.is_valid = TRUE/);
   assert.match(sql, /co\.dept_id = '00000000-0000-0000-0000-000000000002'::uuid/);
 });
 

@@ -5,9 +5,10 @@
 - Env: local `real-pre`.
 - Branch: `feature/auth-system`.
 - Commit at investigation: `1be87f2c`.
-- Code changes: none.
-- Build/restart/remote deploy: not executed because this was read-only diagnosis.
-- Result status: `PARTIAL` - root-cause evidence collected; no fix applied.
+- Fix commit: `55aab956` plus follow-up QA evidence commit pending at report update time.
+- Code changes: dashboard metrics, performance summary, frontend copy, and reconcile QA script now align counts with order facts.
+- Build/restart/remote deploy: local `real-pre` full harness executed; remote deploy not requested.
+- Result status: `PASS` for local `real-pre` after fix.
 
 ## Reproduction
 - Existing read-only script:
@@ -47,14 +48,45 @@
 - The remaining same-day gap is explained by invalid/cancelled order facts: `4759 - 4654 = 105`.
 - The earlier 8-order `/dashboard/summary` mismatch disappeared after TTL and is consistent with short cache / live sync timing, not a stable root cause.
 
-## Options
-- Temporary UI clarification: label metrics as "今日有效订单数（创建轨）" and keep order detail as full order facts.
-- Root-cause alignment option A: if business expects equality, add equivalent date/status filters when drilling from create-track metrics into order detail.
-- Root-cause alignment option B: if business expects detail to remain full facts, add a visible status breakdown and do not compare it directly with valid performance metrics.
-- Long-term governance: add a read-only reconcile script covering `dashboard/metrics` vs `data/orders/detail` with explicit time range and status semantics.
+## Fix
+- `PerformanceMetricsQueryService`:
+  - `aggregateRange()` and `trendByDay()` now start from `colonelsettlement_order co`.
+  - `performance_records pr` is left-joined only for attribution/profit/commission fields.
+  - Order count, order amount, service fee income, tech fee, and expense use order fact columns.
+- `PerformanceSummaryService`:
+  - `/performance/summary` also starts from order facts.
+  - Status, activity, product, talent, and cohort time filters use `co.*` facts.
+- `frontend/src/views/data/index.vue`:
+  - Removed "仅统计有效订单" copy.
+  - Copy now states order facts align with details, while收益/提成来自业绩记录.
+- `runtime/qa/real-pre-dashboard-reconcile.cjs`:
+  - DB expectation updated to order facts + left join performance records.
 
-## Verification Gap
-- No code was changed.
-- No build, restart, or E2E was executed for a fix.
-- Business decision still required: whether "创建轨订单总数" should mean valid performance orders or all order facts.
-- Retro: no Harness upgrade needed; existing scripts were sufficient but a focused metrics/detail reconcile script would reduce future ambiguity.
+## Verification
+- Red/green tests:
+  - `mvn -Dtest=PerformanceMetricsQueryServiceTest test`: red before fix, pass after fix.
+  - `mvn -Dtest=PerformanceSummaryServiceTest test`: red before fix, pass after fix.
+- Targeted regression:
+  - `mvn "-Dtest=PerformanceMetricsQueryServiceTest,PerformanceSummaryServiceTest,DataControllerTest" test`: `60` tests pass.
+  - `node --test runtime/qa/real-pre-dashboard-reconcile.test.cjs`: `5` tests pass.
+- Build:
+  - `npm --prefix frontend run build`: pass.
+  - Harness backend package and frontend build: pass.
+- Restart / health:
+  - `agent-do.ps1 -Env real-pre -Scope full`: Docker backend/frontend rebuilt and restarted.
+  - Backend `/api/system/health`: `200`, body `{"status":"UP"}`.
+  - Frontend `/healthz`: `200`.
+- Business validation:
+  - `npm run e2e:real-pre:p0:preflight`: pass.
+  - `npm run e2e:real-pre:dashboard-reconcile`: pass at `runtime/qa/out/real-pre-dashboard-reconcile-20260625-184120`.
+  - Admin `/dashboard/summary`: `orderCount=331938`, DB order facts `331938`, diff `0`.
+  - Admin create-track API check: `/dashboard/metrics` estimate `todayOrderCount=4900`; `/data/orders/detail` today create-time total `4900`; diff `0`.
+
+## Remaining Risk
+- `metricsSource` remains `performance_records` for API compatibility; actual count source is now order facts with performance left join.
+- Real-pre data is still live-synchronizing. Reconcile checks should wait one short-cache cycle when comparing point-in-time values.
+- `npm ci` reports existing dependency audit findings; not introduced by this fix.
+
+## Retro
+- Harness behavior did not require structural changes.
+- QA reconcile SQL was updated because its expected value encoded the old business口径.
