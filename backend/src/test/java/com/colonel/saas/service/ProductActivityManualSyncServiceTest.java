@@ -25,6 +25,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.lenient;
@@ -176,9 +177,31 @@ class ProductActivityManualSyncServiceTest {
     }
 
     @Test
+    void trigger_shouldKeepDifferentActivityQueuedWhenUpstreamStartIntervalIsNotReached() {
+        ProductActivityManualSyncService service = new ProductActivityManualSyncService(
+                productService,
+                colonelActivityService,
+                activityMapper,
+                jobLogMapper,
+                Runnable::run);
+        ReflectionTestUtils.setField(service, "manualUpstreamMinStartIntervalMs", 10_000L);
+
+        ProductActivityManualSyncService.SyncTriggerResult first = service.trigger("ACT-1", null);
+        ProductActivityManualSyncService.SyncTriggerResult second = service.trigger("ACT-2", null);
+
+        assertThat(first.syncStatus()).isEqualTo("QUEUED");
+        assertThat(second.syncStatus()).isEqualTo("QUEUED");
+        verify(productService, times(1)).refreshActivitySnapshotsByStatusPartitions(
+                any(DouyinProductGateway.ActivityProductQueryRequest.class),
+                anyInt(),
+                anyInt(),
+                anyLong(),
+                anyInt(),
+                any());
+    }
+
+    @Test
     void trigger_shouldQueueJobWithoutRunningWhenGlobalLockIsHeld() {
-        when(jobLockService.tryAcquire(eq(JobLockKeys.PRODUCT_BACKFILL_GLOBAL), any(), any(String.class)))
-                .thenReturn(false);
         when(jobLockService.currentLockValue(JobLockKeys.PRODUCT_BACKFILL_GLOBAL)).thenReturn("scheduler");
         when(jobLockService.currentLockTtlSeconds(JobLockKeys.PRODUCT_BACKFILL_GLOBAL)).thenReturn(120L);
         ProductActivityManualSyncService service = new ProductActivityManualSyncService(

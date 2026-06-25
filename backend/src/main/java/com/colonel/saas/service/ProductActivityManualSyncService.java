@@ -64,6 +64,8 @@ public class ProductActivityManualSyncService {
     private final Executor syncExecutor;
     private final Map<String, ProductSyncJobLog> activeJobsByActivity = new ConcurrentHashMap<>();
     private final Set<String> scheduledJobIds = ConcurrentHashMap.newKeySet();
+    private final Set<String> upstreamRunningJobIds = ConcurrentHashMap.newKeySet();
+    private long lastManualUpstreamStartMillis = 0L;
     @Value("${product.sync.activityProduct.pageSize:20}")
     private int pageSize;
     @Value("${product.sync.activityProduct.manual-page-interval-ms:300}")
@@ -80,6 +82,10 @@ public class ProductActivityManualSyncService {
     private int manualQueueDrainBatchSize = 5;
     @Value("${product.sync.activityProduct.manual-queue-max-size:100}")
     private int manualQueueMaxSize = 100;
+    @Value("${product.sync.activityProduct.manual-upstream-max-concurrency:2}")
+    private int manualUpstreamMaxConcurrency = 2;
+    @Value("${product.sync.activityProduct.manual-upstream-min-start-interval-ms:300}")
+    private long manualUpstreamMinStartIntervalMs = 300L;
 
     ProductActivityManualSyncService(
             ProductService productService,
@@ -283,6 +289,19 @@ public class ProductActivityManualSyncService {
                     lockState.lockTtlSeconds());
             return;
         }
+        boolean enteredUpstreamSlot = false;
+        try {
+            if (!tryEnterManualUpstreamSlot(jobLog.getJobId())) {
+                updateQueuedLimiterState(jobLog);
+                releaseManualSyncLocks(
+                        activityId,
+                        activityLockKey,
+                        lockState.acquiredActivityLock(),
+                        lockState.acquiredGlobalLock(),
+                        lockOwner);
+                return;
+            }
+            enteredUpstreamSlot = true;
         if (!markJobRunning(jobLog)) {
             releaseManualSyncLocks(
                     activityId,
@@ -301,6 +320,11 @@ public class ProductActivityManualSyncService {
                 lockOwner,
                 lockState.acquiredActivityLock(),
                 lockState.acquiredGlobalLock());
+        } finally {
+            if (enteredUpstreamSlot) {
+                releaseManualUpstreamSlot(jobLog.getJobId());
+            }
+        }
     }
 
     private boolean markJobRunning(ProductSyncJobLog jobLog) {
@@ -328,6 +352,20 @@ public class ProductActivityManualSyncService {
         jobLog.setStatus(STATUS_QUEUED);
         jobLog.setErrorMessage(lockState.message());
         jobLog.setRequestParamsJson(appendMeta(jobLog.getRequestParamsJson(), meta));
+        jobLog.setUpdateTime(now);
+        jobLogMapper.updateById(jobLog);
+    }
+
+    private void updateQueuedLimiterState(ProductSyncJobLog jobLog) {
+        LocalDateTime now = LocalDateTime.now();
+        String message = "活动商品同步上游并发槽已满，任务保持排队";
+        jobLog.setStatus(STATUS_QUEUED);
+        jobLog.setErrorMessage(message);
+        jobLog.setRequestParamsJson(appendMeta(jobLog.getRequestParamsJson(), Map.of(
+                "lastQueueAttemptAt", now.toString(),
+                "queuedReason", message,
+                "upstreamRunningJobs", upstreamRunningJobIds.size(),
+                "upstreamMaxConcurrency", normalizedManualUpstreamMaxConcurrency())));
         jobLog.setUpdateTime(now);
         jobLogMapper.updateById(jobLog);
     }
@@ -380,17 +418,14 @@ public class ProductActivityManualSyncService {
         if (jobLockService == null) {
             return ManualSyncLockState.acquired(activityLockKey, false, false);
         }
-        boolean acquiredGlobalLock = jobLockService.tryAcquire(
-                JobLockKeys.PRODUCT_BACKFILL_GLOBAL,
-                MANUAL_SYNC_LOCK_TTL,
-                lockOwner);
-        if (!acquiredGlobalLock) {
+        String globalLockOwner = safeCurrentLockOwner(JobLockKeys.PRODUCT_BACKFILL_GLOBAL);
+        if (StringUtils.hasText(globalLockOwner)) {
             return ManualSyncLockState.locked(
                     activityLockKey,
                     JobLockKeys.PRODUCT_BACKFILL_GLOBAL,
-                    safeCurrentLockOwner(JobLockKeys.PRODUCT_BACKFILL_GLOBAL),
+                    globalLockOwner,
                     safeCurrentLockTtlSeconds(JobLockKeys.PRODUCT_BACKFILL_GLOBAL),
-                    "商品同步全局锁被占用，请等待当前商品同步或回补任务完成后重试");
+                    "商品回补全局锁被占用，活动商品同步已排队等待执行");
         }
         boolean acquiredActivityLock = false;
         try {
@@ -403,11 +438,35 @@ public class ProductActivityManualSyncService {
                         safeCurrentLockTtlSeconds(activityLockKey),
                         "当前活动商品同步锁被占用，请等待当前活动任务完成后重试");
             }
-            return ManualSyncLockState.acquired(activityLockKey, true, true);
+            return ManualSyncLockState.acquired(activityLockKey, true, false);
         } finally {
             if (!acquiredActivityLock) {
-                releaseManualSyncLocks(activityId, activityLockKey, false, true, lockOwner);
+                releaseManualSyncLocks(activityId, activityLockKey, false, false, lockOwner);
             }
+        }
+    }
+
+    private synchronized boolean tryEnterManualUpstreamSlot(String jobId) {
+        if (!StringUtils.hasText(jobId)) {
+            return false;
+        }
+        int maxConcurrency = normalizedManualUpstreamMaxConcurrency();
+        if (upstreamRunningJobIds.size() >= maxConcurrency) {
+            return false;
+        }
+        long now = System.currentTimeMillis();
+        long minIntervalMs = normalizedManualUpstreamMinStartIntervalMs();
+        if (lastManualUpstreamStartMillis > 0L && now - lastManualUpstreamStartMillis < minIntervalMs) {
+            return false;
+        }
+        upstreamRunningJobIds.add(jobId);
+        lastManualUpstreamStartMillis = now;
+        return true;
+    }
+
+    private synchronized void releaseManualUpstreamSlot(String jobId) {
+        if (StringUtils.hasText(jobId)) {
+            upstreamRunningJobIds.remove(jobId);
         }
     }
 
@@ -584,6 +643,14 @@ public class ProductActivityManualSyncService {
 
     private int normalizedManualQueueMaxSize() {
         return Math.min(Math.max(manualQueueMaxSize, 1), 1000);
+    }
+
+    private int normalizedManualUpstreamMaxConcurrency() {
+        return Math.min(Math.max(manualUpstreamMaxConcurrency, 1), 10);
+    }
+
+    private long normalizedManualUpstreamMinStartIntervalMs() {
+        return Math.min(Math.max(manualUpstreamMinStartIntervalMs, 0L), 10_000L);
     }
 
     private static TransactionTemplate createRequiresNewTemplate(PlatformTransactionManager transactionManager) {
