@@ -2168,7 +2168,7 @@ public class ProductService {
                         normalizeActivityProductStatusPartitions(requestedStatuses),
                         maxPagesPerActivity,
                         maxRowsPerActivity,
-                        pageIntervalMs,
+                        normalizedProductActivityPrioritySyncPageIntervalMs(pageIntervalMs),
                         progressConsumer);
             }
             return refreshActivitySnapshots(request, maxPagesPerActivity, maxRowsPerActivity, pageIntervalMs, progressConsumer);
@@ -2182,7 +2182,9 @@ public class ProductService {
         int pageSize = Math.min(Math.max(request.count() == null ? productSyncActivityProductPageSize : request.count(), 1), 20);
         int normalizedMaxPages = Math.max(maxPagesPerActivity <= 0 ? productSyncActivityProductMaxPagesPerActivity : maxPagesPerActivity, 1);
         int normalizedMaxRows = Math.max(maxRowsPerActivity <= 0 ? productSyncActivityProductMaxRowsPerActivity : maxRowsPerActivity, 1);
-        long normalizedPageIntervalMs = normalizedProductActivitySyncPageIntervalMs(pageIntervalMs);
+        long normalizedPageIntervalMs = constrainedStatuses
+                ? normalizedProductActivityPrioritySyncPageIntervalMs(pageIntervalMs)
+                : normalizedProductActivitySyncPageIntervalMs(pageIntervalMs);
         if (!statusPartitionPreflightSafe(request, statuses, pageSize, normalizedMaxPages, normalizedMaxRows)) {
             log.info("Activity product status-partition sync fallback to serial, activityId={}, statuses={}, pageSize={}, maxPages={}, maxRows={}",
                     request.activityId(), statuses, pageSize, normalizedMaxPages, normalizedMaxRows);
@@ -2691,6 +2693,10 @@ public class ProductService {
 
     private long normalizedProductActivitySyncPageIntervalMs(long pageIntervalMs) {
         return Math.min(1000L, Math.max(300L, pageIntervalMs));
+    }
+
+    private long normalizedProductActivityPrioritySyncPageIntervalMs(long pageIntervalMs) {
+        return Math.min(1000L, Math.max(100L, pageIntervalMs));
     }
 
     private void sleepQuietly(long millis, String phase, String activityId, int pageNo, int attempt) {
