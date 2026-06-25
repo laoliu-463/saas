@@ -192,6 +192,14 @@ describe('ProductLibrary pagination weakening', () => {
           size: 100
         }
       } as any)
+      .mockResolvedValueOnce({
+        data: {
+          records: buildRows(300, 1),
+          total: 1,
+          page: 1,
+          size: 100
+        }
+      } as any)
 
     const wrapper = mountLibrary()
     await flushPromises()

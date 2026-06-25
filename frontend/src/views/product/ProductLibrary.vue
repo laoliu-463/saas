@@ -88,6 +88,14 @@
         />
       </div>
 
+      <div
+        v-if="products.length && hasMore"
+        ref="loadMoreTrigger"
+        class="product-library-scroll-sentinel"
+        data-testid="product-library-scroll-sentinel"
+        aria-hidden="true"
+      />
+
       <PageEmpty
         v-else-if="!loading"
         title="暂无商品数据"
@@ -128,7 +136,7 @@
 
 <script setup lang="ts">
 import { notifyApiFailure } from '../../utils/requestError'
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useMessage } from 'naive-ui'
 import PageEmpty from '../../components/PageEmpty.vue'
@@ -175,6 +183,7 @@ const products = ref<any[]>([])
 const currentPage = ref(1)
 const hasMore = ref(false)
 const totalCount = ref(0)
+const loadMoreTrigger = ref<HTMLElement | null>(null)
 const libraryStatus = ref<number | null>(null)
 const filters = ref<ProductFilterState>(DEFAULT_PRODUCT_FILTERS())
 const libraryCategoryOptions = ref<{ label: string; value: string }[]>([])
@@ -184,6 +193,7 @@ const quickSampleProduct = ref<any | null>(null)
 const showDetail = ref(false)
 const detailRefreshKey = ref(0)
 const manualCopyDialog = ref(createEmptyManualCopyDialogState())
+let loadMoreObserver: IntersectionObserver | null = null
 
 const canCopyPromotionLink = computed(() =>
   hasAccess(authStore.roleCodes, [ROLE_CODES.CHANNEL_LEADER, ROLE_CODES.CHANNEL_STAFF])
@@ -358,6 +368,7 @@ const fetchProducts = async (reset: boolean) => {
   } finally {
     loading.value = false
     loadingMore.value = false
+    void scheduleLoadMoreObservation()
   }
 }
 
@@ -376,8 +387,46 @@ const refreshProducts = async () => {
   await fetchProducts(true)
 }
 
+const canLoadNextPage = () => hasMore.value && !loading.value && !loadingMore.value
+
+const triggerLoadMore = () => {
+  if (canLoadNextPage()) void fetchProducts(false)
+}
+
 const loadMore = () => {
-  if (hasMore.value && !loading.value && !loadingMore.value) fetchProducts(false)
+  triggerLoadMore()
+}
+
+const getLoadMoreObserver = () => {
+  if (typeof window === 'undefined' || typeof window.IntersectionObserver === 'undefined') {
+    return null
+  }
+  if (!loadMoreObserver) {
+    loadMoreObserver = new window.IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        triggerLoadMore()
+      }
+    }, {
+      root: null,
+      rootMargin: '480px 0px',
+      threshold: 0
+    })
+  }
+  return loadMoreObserver
+}
+
+const refreshLoadMoreObserver = () => {
+  const observer = getLoadMoreObserver()
+  if (!observer) return
+  observer.disconnect()
+  if (hasMore.value && loadMoreTrigger.value) {
+    observer.observe(loadMoreTrigger.value)
+  }
+}
+
+const scheduleLoadMoreObservation = async () => {
+  await nextTick()
+  refreshLoadMoreObserver()
 }
 
 const handleFiltersChange = (nextFilters: ProductFilterState) => {
@@ -603,6 +652,19 @@ watch(
     void refreshProducts()
   }
 )
+
+watch(
+  () => [hasMore.value, products.value.length],
+  () => {
+    void scheduleLoadMoreObservation()
+  },
+  { flush: 'post' }
+)
+
+onBeforeUnmount(() => {
+  loadMoreObserver?.disconnect()
+  loadMoreObserver = null
+})
 </script>
 
 <style scoped>
@@ -676,6 +738,11 @@ watch(
   gap: 16px;
   align-items: start;
   justify-items: center;
+}
+
+.product-library-scroll-sentinel {
+  width: 100%;
+  height: 1px;
 }
 
 @media (min-width: 1600px) {
