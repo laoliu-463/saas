@@ -81,6 +81,11 @@
   - `npm run e2e:real-pre:dashboard-reconcile`: pass at `runtime/qa/out/real-pre-dashboard-reconcile-20260625-184120`.
   - Admin `/dashboard/summary`: `orderCount=331938`, DB order facts `331938`, diff `0`.
   - Admin create-track API check: `/dashboard/metrics` estimate `todayOrderCount=4900`; `/data/orders/detail` today create-time total `4900`; diff `0`.
+- Remote deploy:
+  - `agent-do.ps1 -Env real-pre -Scope full -DeployRemote true`: pass, commit `5c9e4b96`.
+  - Remote backend `http://127.0.0.1:8081/api/system/health` via `ssh saas`: `{"status":"UP"}`.
+  - Remote frontend `http://127.0.0.1:3001/healthz` via `ssh saas`: `ok`.
+  - Remote in-host create-track API check: `/dashboard/metrics` estimate `todayOrderCount=5345`; `/data/orders/detail` today create-time total `5345`; diff `0`.
 
 ## Remaining Risk
 - `metricsSource` remains `performance_records` for API compatibility; actual count source is now order facts with performance left join.
