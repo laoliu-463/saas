@@ -36,6 +36,9 @@ const routeState = reactive({
 })
 
 const replaceMock = vi.fn()
+const observeMock = vi.fn()
+const disconnectMock = vi.fn()
+let lastIntersectionCallback: IntersectionObserverCallback | null = null
 
 vi.mock('vue-router', () => ({
   useRoute: () => routeState,
@@ -145,6 +148,22 @@ describe('ProductLibrary pagination weakening', () => {
     routeState.path = '/product'
     routeState.query = {}
     vi.mocked(getProductLibraryCategories).mockResolvedValue({ data: [] } as any)
+    lastIntersectionCallback = null
+    const intersectionObserverMock = vi.fn((callback: IntersectionObserverCallback) => {
+      lastIntersectionCallback = callback
+      return {
+        observe: observeMock,
+        disconnect: disconnectMock,
+        unobserve: vi.fn(),
+        takeRecords: vi.fn()
+      }
+    })
+    vi.stubGlobal('IntersectionObserver', intersectionObserverMock)
+    Object.defineProperty(window, 'IntersectionObserver', {
+      configurable: true,
+      writable: true,
+      value: intersectionObserverMock
+    })
   })
 
   it('loads 100 products by default, appends more products, and resets when filters change', async () => {
@@ -214,6 +233,66 @@ describe('ProductLibrary pagination weakening', () => {
       sortBy: 'latest'
     })
     expect(wrapper.findAll('[data-testid="product-card"]')).toHaveLength(1)
+    expect(wrapper.text()).toContain('已全部加载')
+  })
+
+  it('keeps appending product pages when the scroll trigger enters the viewport', async () => {
+    vi.mocked(getProducts)
+      .mockResolvedValueOnce({
+        data: {
+          records: buildRows(1, 100),
+          total: 250,
+          page: 1,
+          size: 100
+        }
+      } as any)
+      .mockResolvedValueOnce({
+        data: {
+          records: buildRows(101, 100),
+          total: 250,
+          page: 2,
+          size: 100
+        }
+      } as any)
+      .mockResolvedValueOnce({
+        data: {
+          records: buildRows(201, 50),
+          total: 250,
+          page: 3,
+          size: 100
+        }
+      } as any)
+
+    const wrapper = mountLibrary()
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="product-library-scroll-sentinel"]').exists()).toBe(true)
+    expect(observeMock).toHaveBeenCalled()
+    expect(wrapper.findAll('[data-testid="product-card"]')).toHaveLength(100)
+
+    lastIntersectionCallback?.(
+      [{ isIntersecting: true } as IntersectionObserverEntry],
+      {} as IntersectionObserver
+    )
+    await flushPromises()
+
+    expect(vi.mocked(getProducts).mock.calls[1][0]).toMatchObject({
+      page: 2,
+      size: 100
+    })
+    expect(wrapper.findAll('[data-testid="product-card"]')).toHaveLength(200)
+
+    lastIntersectionCallback?.(
+      [{ isIntersecting: true } as IntersectionObserverEntry],
+      {} as IntersectionObserver
+    )
+    await flushPromises()
+
+    expect(vi.mocked(getProducts).mock.calls[2][0]).toMatchObject({
+      page: 3,
+      size: 100
+    })
+    expect(wrapper.findAll('[data-testid="product-card"]')).toHaveLength(250)
     expect(wrapper.text()).toContain('已全部加载')
   })
 })

@@ -62,7 +62,7 @@ public class ProductActivityManualSyncService {
     private int manualMaxPagesPerActivity = DEFAULT_MANUAL_MAX_PAGES_PER_ACTIVITY;
     @Value("${product.sync.activityProduct.manual-maxRowsPerActivity:50000}")
     private int manualMaxRowsPerActivity = DEFAULT_MANUAL_MAX_ROWS_PER_ACTIVITY;
-    @Value("${product.sync.activityProduct.manual-status-partition-parallelism:3}")
+    @Value("${product.sync.activityProduct.manual-status-partition-parallelism:1}")
     private int manualStatusPartitionParallelism = 1;
 
     ProductActivityManualSyncService(

@@ -111,6 +111,8 @@ public class ProductService {
     private static final long SELECTED_LIBRARY_BATCH_SIZE = 200L;
     /** 上游商品状态：推广中。 */
     private static final int UPSTREAM_PRODUCT_STATUS_PROMOTING = 1;
+    /** 审核入库去重窗口：近 3 个月内同商品 ID 不允许重复进入商品库。 */
+    private static final int AUDIT_LIBRARY_DUPLICATE_WINDOW_MONTHS = 3;
     /** 上游推广中商品自动进入商品库时写入的审核备注。 */
     private static final String AUTO_APPROVE_PROMOTING_REMARK = "上游状态为推广中，系统自动入库展示";
     /** 抖店团长 buyin 通常为 17–20 位；捕获组上限 30 位，并在数字后截断避免粘连字段。 */
@@ -394,8 +396,11 @@ public class ProductService {
         }
         if ("latest".equals(sortBy)) {
             products.sort(Comparator.comparing(
-                    (Product p) -> p == null ? null : p.getSyncTime(),
+                    (Product p) -> p == null ? null : resolveLibraryCooperationStartTime(p),
                     Comparator.nullsLast(Comparator.reverseOrder()))
+                    .thenComparing(
+                            Product::getSyncTime,
+                            Comparator.nullsLast(Comparator.reverseOrder()))
                     .thenComparing(
                             Product::getSelectedAt,
                             Comparator.nullsLast(Comparator.reverseOrder())));
@@ -436,6 +441,13 @@ public class ProductService {
             return -1;
         }
         return right.getSelectedAt().compareTo(left.getSelectedAt());
+    }
+
+    private LocalDateTime resolveLibraryCooperationStartTime(Product product) {
+        if (product == null) {
+            return null;
+        }
+        return parseDateTime(product.getPromotionStartTime());
     }
 
     private boolean isPinnedAndNotExpired(Product p) {
@@ -1993,9 +2005,23 @@ public class ProductService {
         long estimatedPages = 0L;
         java.util.concurrent.atomic.AtomicInteger preflightPageCounter = new java.util.concurrent.atomic.AtomicInteger();
         for (Integer status : statuses) {
-            DouyinProductGateway.ActivityProductListResult firstPage = queryActivityProductsWithRetry(
-                    activityProductRequestWithStatus(request, status, pageSize, null),
-                    preflightPageCounter.getAndIncrement());
+            DouyinProductGateway.ActivityProductListResult firstPage;
+            try {
+                firstPage = queryActivityProductsWithRetry(
+                        activityProductRequestWithStatus(request, status, pageSize, null),
+                        preflightPageCounter.getAndIncrement());
+            } catch (DouyinApiException ex) {
+                if (isDouyinRateLimited(ex)) {
+                    throw ex;
+                }
+                log.warn("Activity product status-partition preflight failed, fallback to serial, activityId={}, status={}, errorCode={}, subCode={}, message={}",
+                        request.activityId(), status, ex.getErrorCode(), ex.getSubCode(), ex.getErrorMsg());
+                return false;
+            } catch (RuntimeException ex) {
+                log.warn("Activity product status-partition preflight failed, fallback to serial, activityId={}, status={}, message={}",
+                        request.activityId(), status, ex.getMessage());
+                return false;
+            }
             if (firstPage.total() == null) {
                 log.info("Activity product status-partition preflight missing total, activityId={}, status={}",
                         request.activityId(), status);
@@ -2894,6 +2920,7 @@ public class ProductService {
         if (approved) {
             validateAuditSupplement(supplement);
             auditPayload = writeAuditPayload(supplement);
+            assertNoRecentLibraryDuplicateForAudit(activityId, productId);
         }
         final String approvedAuditPayload = auditPayload;
         Map<String, Object> payload = new LinkedHashMap<>();
@@ -5047,6 +5074,26 @@ public class ProductService {
         if (!missing.isEmpty()) {
             throw BusinessException.stateInvalid("审核通过前请补充：" + String.join("、", missing));
         }
+    }
+
+    private void assertNoRecentLibraryDuplicateForAudit(String activityId, String productId) {
+        if (!StringUtils.hasText(productId)) {
+            return;
+        }
+        LocalDateTime cutoff = LocalDateTime.now().minusMonths(AUDIT_LIBRARY_DUPLICATE_WINDOW_MONTHS);
+        LambdaQueryWrapper<ProductOperationState> query = new LambdaQueryWrapper<ProductOperationState>()
+                .eq(ProductOperationState::getProductId, productId.trim())
+                .eq(ProductOperationState::getSelectedToLibrary, true)
+                .ge(ProductOperationState::getSelectedAt, cutoff);
+        if (StringUtils.hasText(activityId)) {
+            query.and(w -> w.ne(ProductOperationState::getActivityId, activityId).or().isNull(ProductOperationState::getActivityId));
+        }
+        List<ProductOperationState> duplicates = operationStateMapper.selectList(query.last("limit 1"));
+        if (duplicates == null || duplicates.isEmpty()) {
+            return;
+        }
+        throw BusinessException.stateInvalid(
+                "近三个月内商品库已存在同商品ID，禁止重复进入商品库：productId=" + productId.trim());
     }
 
     private void requireText(Map<String, Object> payload, String key, String label, List<String> missing) {

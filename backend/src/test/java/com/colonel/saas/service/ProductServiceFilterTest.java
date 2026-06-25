@@ -214,19 +214,19 @@ class ProductServiceFilterTest {
     @Test
     void getSelectedLibraryPage_shouldNormalizeLatestSortByBeforeSorting() {
         LocalDateTime now = LocalDateTime.now();
-        ProductOperationState olderHighCommission = state("10001", "9001");
-        olderHighCommission.setSelectedAt(now.minusHours(1));
-        ProductOperationState newerLowCommission = state("10002", "9002");
-        newerLowCommission.setSelectedAt(now.minusDays(2));
+        ProductOperationState newerByCooperationTime = state("10001", "9001");
+        newerByCooperationTime.setSelectedAt(now.minusHours(1));
+        ProductOperationState olderByCooperationTime = state("10002", "9002");
+        olderByCooperationTime.setSelectedAt(now.minusDays(2));
         Page<ProductOperationState> statePage = new Page<>(1, 200, 2);
-        statePage.setRecords(List.of(olderHighCommission, newerLowCommission));
+        statePage.setRecords(List.of(newerByCooperationTime, olderByCooperationTime));
 
         ProductSnapshot older = snapshot("10001", "9001", "玩具乐器", 9900L);
         older.setActivityCosRatio(5000L);
-        older.setSyncTime(now.minusDays(2));
+        older.setPromotionStartTime(now.minusDays(2).toString());
         ProductSnapshot newer = snapshot("10002", "9002", "美妆", 8800L);
         newer.setActivityCosRatio(100L);
-        newer.setSyncTime(now.minusHours(1));
+        newer.setPromotionStartTime(now.minusHours(1).toString());
 
         when(operationStateMapper.selectPage(any(Page.class), any())).thenReturn(statePage);
         when(snapshotMapper.selectBatchIds(any())).thenReturn(List.of(older, newer));
@@ -236,6 +236,31 @@ class ProductServiceFilterTest {
         assertThat(result.getRecords())
                 .extracting("productId")
                 .containsExactly("9002", "9001");
+    }
+
+    @Test
+    void getSelectedLibraryPage_shouldFallbackToSyncTimeWhenCooperationTimeIsMissing() {
+        LocalDateTime now = LocalDateTime.now();
+        ProductOperationState newerBySyncTime = state("20001", "9010");
+        ProductOperationState olderBySyncTime = state("20002", "9011");
+        Page<ProductOperationState> statePage = new Page<>(1, 200, 2);
+        statePage.setRecords(List.of(newerBySyncTime, olderBySyncTime));
+
+        ProductSnapshot newer = snapshot("20001", "9010", "食品饮料", 9900L);
+        newer.setPromotionStartTime("");
+        newer.setSyncTime(now.minusHours(1));
+        ProductSnapshot older = snapshot("20002", "9011", "家清", 8800L);
+        older.setPromotionStartTime(null);
+        older.setSyncTime(now.minusDays(2));
+
+        when(operationStateMapper.selectPage(any(Page.class), any())).thenReturn(statePage);
+        when(snapshotMapper.selectBatchIds(any())).thenReturn(List.of(newer, older));
+
+        var result = service.getSelectedLibraryPage(1, 10, filter().sortBy("latest").build());
+
+        assertThat(result.getRecords())
+                .extracting("productId")
+                .containsExactly("9010", "9011");
     }
 
     @Test

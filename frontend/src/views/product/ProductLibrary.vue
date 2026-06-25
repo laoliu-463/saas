@@ -200,7 +200,7 @@ const canQuickSample = computed(() => canCopyPromotionLink.value || authStore.is
 
 const librarySortOptions = [
   { label: '置顶优先', value: 'default' },
-  { label: '上游同步时间', value: 'latest' }
+  { label: '上游合作时间', value: 'latest' }
 ]
 
 const normalizeSortBy = (value?: string | null) => {
