@@ -1,8 +1,6 @@
 # Domain Status
-
 ## 作用
 本文件记录 DDD 领域优化状态。它不替代 `docs/领域/*.md` 的领域合同，也不代表代码已经完成对应重构。
-
 ## 任务结束状态更新规则
 每次任务结束前，Agent 必须更新本文件中与本次任务相关的领域状态。更新内容包括：
 
@@ -13,7 +11,6 @@
 5. 标记优先级（P0 / P1 / P2）。
 
 如果本次任务未涉及某个领域，该领域状态保持不变，不得无故修改。
-
 ### Session Exit 时的领域状态更新
 
 每次会话退出前，Agent 必须确保：
@@ -132,8 +129,8 @@
 - 标记：P0。
 
 ## 商品域
-- 最新边界变化：DDD-PRODUCT-SERVICE-SLIM-5000 已把 `ProductService` 中活动商品读侧视图组装委托给商品域 `ActivityProductViewAssembler`，并把审核补充信息解析 / 归一化收口到 `ProductAuditSupplementPayload`；`ProductService.java` 从 5000+ 降至 4829 行。本轮不改转链写库、`pick_source_mapping`、商品状态机、订单归因、提成、寄样状态机、DB schema、默认开关或真实数据。
-- 最新验证：`mvn -q -f backend/pom.xml -DskipTests compile` PASS；`ProductServiceShopScoreTest,ProductServiceFilterTest,ProductServiceLibraryViewTest,DddSlimProduct001DisplayPolicyRoutingTest,ProductDisplayPolicyTest` 定向回归 PASS；后续需以本轮 `agent-do` backend evidence 作为运行态最终证据。
+- 最新边界变化：DDD-PRODUCT-SERVICE-SLIM-5000 已把 `ProductService` 中活动商品读侧视图组装委托给商品域 `ActivityProductViewAssembler`，并把审核补充信息解析 / 归一化收口到 `ProductAuditSupplementPayload`；`ProductService.java` 从 5000+ 降至 4829 行。本商品域切片不改转链写库、`pick_source_mapping`、商品状态机、订单归因、提成、寄样状态机、DB schema、默认开关或真实数据。同提交因工作区已有用户域 `SysMenuService` 委派依赖纳入 `SysMenuApplication` / `SysMenuApplicationTest`，review 时需与商品域拆分分开看。
+- 最新验证：`mvn -q -f backend/pom.xml -DskipTests compile` PASS；`ProductServiceShopScoreTest,ProductServiceFilterTest,ProductServiceLibraryViewTest,DddSlimProduct001DisplayPolicyRoutingTest,ProductDisplayPolicyTest` 定向回归 PASS；`agent-do.ps1 -Env real-pre -Scope backend -ContentMaintenance off` PASS，backend package、Docker rebuild/restart、健康检查与 real-pre P0 preflight 均通过；补充 `SysMenuApplicationTest,SysMenuServiceTest` PASS；code-review-graph 复查 5000 行以上文件为 0。
 - 最新报告路径：`harness/reports/product-service-ddd-slim-20260626.md`。
 - 最新边界变化：`ProductService.SelectedLibraryFilter` 商品库 `allianceStatus` 过滤解释已委托 `ProductDisplayPolicy.matchesSelectedLibraryAllianceStatusFilter`；服务层只传入上游状态码和状态文案，保持 pending/promoting/rejected/terminated/expired 的 Legacy 码值与中文文案判定。本轮计划未改转链写库、归因、状态机、真实数据或默认灰度开关。
 - 最新验证：红测先失败后转绿；`ProductDisplayPolicyTest`、`DddSlimProduct001DisplayPolicyRoutingTest` 与 `ProductServiceFilterTest` 定向回归 42 tests PASS；`agent-do.ps1 -Env real-pre -Scope full` PASS，backend/frontend 构建、Docker 重启、健康检查与 real-pre P0 preflight 均通过；补充包含混入文件的 `ProductServiceActivityStatusIndependenceTest`、`ColonelActivityControllerTest` 组合回归 72 tests PASS。

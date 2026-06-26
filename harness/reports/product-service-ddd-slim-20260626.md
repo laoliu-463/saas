@@ -20,14 +20,20 @@
 - Post-change line count: `ProductService.java` = 4829 lines.
 - Compile: `mvn -q -f backend/pom.xml -DskipTests compile` PASS.
 - Targeted tests: `ProductServiceShopScoreTest,ProductServiceFilterTest,ProductServiceLibraryViewTest,DddSlimProduct001DisplayPolicyRoutingTest,ProductDisplayPolicyTest` PASS.
+- code-review-graph post-check: 0 files >= 5000 lines.
+- First `agent-do.ps1 -Env real-pre -Scope backend` attempt failed after isolating the pre-existing user-domain `SysMenuApplication` slice; evidence: `harness/reports/evidence-20260626-152238.md`.
+- Final `agent-do.ps1 -Env real-pre -Scope backend -ContentMaintenance off` PASS; evidence: `harness/reports/evidence-20260626-152545.md`.
+- Runtime gate covered backend package, backend Docker rebuild/restart, `/api/system/health`, and `npm run e2e:real-pre:p0:preflight`.
+- Mixed-slice guard: `SysMenuApplicationTest,SysMenuServiceTest` PASS after `SysMenuService` / `SysMenuApplication` were included by the harness commit.
 
-## Dirty Worktree Note
+## Mixed Commit Note
 
-- Unrelated untracked files observed during this task:
+- Pre-existing user-domain DDD files observed during this task:
   - `backend/src/main/java/com/colonel/saas/domain/user/application/SysMenuApplication.java`
   - `backend/src/test/java/com/colonel/saas/domain/user/application/SysMenuApplicationTest.java`
-- They are not part of this商品域切片 and must not be staged in this commit.
+- `backend/src/main/java/com/colonel/saas/auth/service/SysMenuService.java` already depended on `SysMenuApplication` in the working tree.
+- The final harness commit included this user-domain slice because the backend package gate required it. Review product-domain extraction and user-domain menu migration as separate logical changes inside the same commit.
 
 ## Conclusion
 
-PARTIAL until `agent-do.ps1 -Env real-pre -Scope backend` completes build, restart, health and business validation.
+PASS with mixed-commit review risk noted above.
