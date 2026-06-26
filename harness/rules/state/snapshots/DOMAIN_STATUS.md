@@ -132,6 +132,9 @@
 - 标记：P0。
 
 ## 商品域
+- 最新边界变化：DDD-PRODUCT-SERVICE-SLIM-5000 已把 `ProductService` 中活动商品读侧视图组装委托给商品域 `ActivityProductViewAssembler`，并把审核补充信息解析 / 归一化收口到 `ProductAuditSupplementPayload`；`ProductService.java` 从 5000+ 降至 4829 行。本轮不改转链写库、`pick_source_mapping`、商品状态机、订单归因、提成、寄样状态机、DB schema、默认开关或真实数据。
+- 最新验证：`mvn -q -f backend/pom.xml -DskipTests compile` PASS；`ProductServiceShopScoreTest,ProductServiceFilterTest,ProductServiceLibraryViewTest,DddSlimProduct001DisplayPolicyRoutingTest,ProductDisplayPolicyTest` 定向回归 PASS；后续需以本轮 `agent-do` backend evidence 作为运行态最终证据。
+- 最新报告路径：`harness/reports/product-service-ddd-slim-20260626.md`。
 - 最新边界变化：`ProductService.SelectedLibraryFilter` 商品库 `allianceStatus` 过滤解释已委托 `ProductDisplayPolicy.matchesSelectedLibraryAllianceStatusFilter`；服务层只传入上游状态码和状态文案，保持 pending/promoting/rejected/terminated/expired 的 Legacy 码值与中文文案判定。本轮计划未改转链写库、归因、状态机、真实数据或默认灰度开关。
 - 最新验证：红测先失败后转绿；`ProductDisplayPolicyTest`、`DddSlimProduct001DisplayPolicyRoutingTest` 与 `ProductServiceFilterTest` 定向回归 42 tests PASS；`agent-do.ps1 -Env real-pre -Scope full` PASS，backend/frontend 构建、Docker 重启、健康检查与 real-pre P0 preflight 均通过；补充包含混入文件的 `ProductServiceActivityStatusIndependenceTest`、`ColonelActivityControllerTest` 组合回归 72 tests PASS。
 - 最新报告路径：`harness/reports/evidence-20260622-235215.md`；retro：`harness/reports/retro-20260622-235256.md`。风险记录：`agent-do` 自动提交 `bd03568d` 同时纳入活动商品刷新 stale-delete、Controller 刷新后再读 DB、mapper 终止状态查询口径和对应测试，应在 review 中与 allianceStatus 策略迁移分开看。
