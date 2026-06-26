@@ -24,7 +24,7 @@
 - First `agent-do.ps1 -Env real-pre -Scope backend` attempt failed after isolating the pre-existing user-domain `SysMenuApplication` slice; evidence: `harness/reports/evidence-20260626-152238.md`.
 - Final `agent-do.ps1 -Env real-pre -Scope backend -ContentMaintenance off` PASS; evidence: `harness/reports/evidence-20260626-152545.md`.
 - Runtime gate covered backend package, backend Docker rebuild/restart, `/api/system/health`, and `npm run e2e:real-pre:p0:preflight`.
-- Mixed-slice guard: `SysMenuApplicationTest,SysMenuServiceTest` PASS after `SysMenuService` / `SysMenuApplication` were included by the harness commit.
+- Mixed-slice guard: `SysMenuServiceTest,SysMenuApplicationTest,SysMenuControllerTest,SysRoleControllerTest` PASS after `SysMenuService` / `SysMenuApplication` were included by the harness commit.
 
 ## Mixed Commit Note
 
