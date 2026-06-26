@@ -29,6 +29,8 @@ public class OrderEventPayloadMapper {
                 order.getSettleAmount() == null ? 0L : order.getSettleAmount(),
                 order.getEstimateServiceFee() == null ? 0L : order.getEstimateServiceFee(),
                 order.getEffectiveServiceFee() == null ? 0L : order.getEffectiveServiceFee(),
+                order.getEstimateServiceFeeExpense() == null ? 0L : order.getEstimateServiceFeeExpense(),
+                order.getEffectiveServiceFeeExpense() == null ? 0L : order.getEffectiveServiceFeeExpense(),
                 order.getEstimateTechServiceFee() == null ? 0L : order.getEstimateTechServiceFee(),
                 order.getEffectiveTechServiceFee() == null ? 0L : order.getEffectiveTechServiceFee(),
                 order.getSettleColonelCommission() == null ? 0L : order.getSettleColonelCommission(),

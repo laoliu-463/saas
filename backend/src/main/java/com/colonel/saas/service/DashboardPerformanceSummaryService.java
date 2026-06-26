@@ -1,5 +1,6 @@
 package com.colonel.saas.service;
 
+import com.colonel.saas.domain.performance.policy.PerformanceMoneyPolicy;
 import com.colonel.saas.event.OrderSyncedEvent;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -16,7 +17,7 @@ import java.time.LocalDate;
  * <p>聚合策略：
  * <ul>
  *   <li>仅处理新增插入事件（{@code newlyInserted=true}）且订单状态计入业绩的事件</li>
- *   <li>服务费净收益使用结算服务费收入；该收入已按结算订单额 × 服务费率 - 技术服务费形成</li>
+ *   <li>服务费净收益使用结算服务费收入扣除结算服务费支出后的结果</li>
  *   <li>使用 PostgreSQL {@code ON CONFLICT ... DO UPDATE} 实现按日期幂等累加</li>
  * </ul>
  *
@@ -42,7 +43,7 @@ public class DashboardPerformanceSummaryService {
      * <p>执行逻辑：
      * <ol>
      *   <li>过滤：非新增插入或不计入业绩的订单状态，直接跳过</li>
-     *   <li>读取结算服务费收入作为服务费净收益（取下限 0）</li>
+     *   <li>读取结算服务费收入与结算服务费支出，按业绩域金额策略计算净收益</li>
      *   <li>确定统计日期：取订单创建日期，无创建时间时使用当天</li>
      *   <li>UPSERT 到 dashboard_performance_daily 表：已存在则累加，不存在则插入新行</li>
      * </ol>
@@ -56,7 +57,10 @@ public class DashboardPerformanceSummaryService {
                 || !OrderCommissionPolicy.countsTowardPerformance(event.orderStatus())) {
             return;
         }
-        long serviceFeeNet = Math.max(event.effectiveServiceFee(), 0L);
+        long serviceFeeNet = PerformanceMoneyPolicy.serviceFeeNetCent(
+                event.effectiveServiceFee(),
+                0L,
+                event.effectiveServiceFeeExpense());
         LocalDate statDate = event.orderCreateTime() == null
                 ? LocalDate.now()
                 : event.orderCreateTime().toLocalDate();

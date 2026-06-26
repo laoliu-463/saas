@@ -78,4 +78,50 @@ class DashboardPerformanceSummaryServiceTest {
                 eq(12800L),
                 eq(1100L));
     }
+
+    @Test
+    void applyOrderSynced_shouldUseSettlementServiceFeeExpenseForNetProfit() {
+        JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
+        DashboardPerformanceSummaryService service = new DashboardPerformanceSummaryService(jdbcTemplate);
+
+        service.applyOrderSynced(new OrderSyncedEvent(
+                "ORDER-EXPENSE-001",
+                UUID.randomUUID(),
+                true,
+                "ATTRIBUTED",
+                12800L,
+                12800L,
+                12000L,
+                1200L,
+                1100L,
+                300L,
+                200L,
+                100L,
+                90L,
+                1200L,
+                100L,
+                200L,
+                2,
+                LocalDateTime.of(2026, 4, 17, 10, 30),
+                null,
+                Map.of(),
+                "P-1",
+                "A-1",
+                "SHOP-1",
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                "DEFAULT",
+                "usr_ABC_1712000000",
+                LocalDateTime.of(2026, 4, 17, 10, 30),
+                LocalDateTime.of(2026, 4, 20, 10, 30),
+                false,
+                LocalDateTime.of(2026, 4, 17, 10, 31)));
+
+        verify(jdbcTemplate).update(
+                anyString(),
+                eq(LocalDate.of(2026, 4, 17)),
+                eq(12800L),
+                eq(900L));
+    }
 }

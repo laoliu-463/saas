@@ -93,6 +93,10 @@ _Avoid_: 硬编码 alias（任何新增 alias 必须在 AliasPolicy 注册，不
 双机构订单中，一级机构与二级机构同时有服务费时，二级机构服务费计入服务费支出。它是订单同步从 raw payload 解析出的订单金额事实，后续业绩域只消费该事实，不在分析模块重算。
 _Avoid_: 把 serviceFeeExpense 当成 serviceFeeRate / commissionRate；把二级机构 fallback 收入误算为支出
 
+**serviceFeeProfit（服务费收益）**:
+业绩域基于服务费收入、服务费支出和技术服务费形成的收益口径。预估轨 = estimateServiceFee - estimateServiceFeeExpense - estimateTechServiceFee；结算轨 = effectiveServiceFee - effectiveServiceFeeExpense。分析模块和看板只能展示或汇总该口径，不得把 serviceFeeIncome 直接当成 serviceFeeProfit。
+_Avoid_: serviceFeeNet 作为业务术语；服务费收入；毛利
+
 ### 兜底规则
 
 5 个允许的兜底链（按 `OrderAmountFallbackPolicy` 强制执行）：

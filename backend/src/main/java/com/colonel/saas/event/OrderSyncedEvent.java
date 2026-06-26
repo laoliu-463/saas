@@ -22,7 +22,7 @@ import java.util.UUID;
  *   <li>{@code newlyInserted} — 是否为新插入记录（区别于更新已有记录）</li>
  *   <li>{@code attributionStatus} — 归属状态，标识订单是否已完成业绩归属</li>
  *   <li>{@code orderAmount / payAmount / settleAmount} — 订单金额、支付金额、结算金额，单位：分</li>
- *   <li>{@code estimate*Fee / effective*Fee} — 预估/实际服务费和技服费，单位：分</li>
+ *   <li>{@code estimate*Fee / effective*Fee} — 预估/实际服务费、服务费支出和技服费，单位：分</li>
  *   <li>{@code settleColonel*} — 结算维度的团长佣金和技服费，单位：分</li>
  *   <li>{@code productId / activityId / partnerId} — 订单事实的商品、活动和合作方标识</li>
  *   <li>{@code defaultChannelId / defaultRecruiterId} — 订单域默认归因结果，不代表最终业绩归属</li>
@@ -39,6 +39,8 @@ import java.util.UUID;
  * @param settleAmount 结算金额，单位：分
  * @param estimateServiceFee 预估服务费，单位：分
  * @param effectiveServiceFee 实际服务费，单位：分
+ * @param estimateServiceFeeExpense 预估服务费支出，单位：分
+ * @param effectiveServiceFeeExpense 实际服务费支出，单位：分
  * @param estimateTechServiceFee 预估技服费，单位：分
  * @param effectiveTechServiceFee 实际技服费，单位：分
  * @param settleColonelCommission 结算团长佣金，单位：分
@@ -83,6 +85,10 @@ public record OrderSyncedEvent(
         long estimateServiceFee,
         /** 实际服务费，单位：分 */
         long effectiveServiceFee,
+        /** 预估服务费支出，单位：分 */
+        long estimateServiceFeeExpense,
+        /** 实际服务费支出，单位：分 */
+        long effectiveServiceFeeExpense,
         /** 预估技服费，单位：分 */
         long estimateTechServiceFee,
         /** 实际技服费，单位：分 */
@@ -155,6 +161,8 @@ public record OrderSyncedEvent(
                 settleAmount,
                 estimateServiceFee,
                 effectiveServiceFee,
+                0L,
+                0L,
                 estimateTechServiceFee,
                 effectiveTechServiceFee,
                 settleColonelCommission,

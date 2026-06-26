@@ -38,6 +38,8 @@ class OrderEventPayloadMapperTest {
         order.setSettleAmount(80L);
         order.setEstimateServiceFee(10L);
         order.setEffectiveServiceFee(9L);
+        order.setEstimateServiceFeeExpense(3L);
+        order.setEffectiveServiceFeeExpense(4L);
         order.setOrderStatus(3);
         order.setCreateTime(LocalDateTime.of(2026, 6, 1, 10, 0));
         order.setOrderCreateTime(orderCreateTime);
@@ -64,6 +66,8 @@ class OrderEventPayloadMapperTest {
         assertThat(event.payTime()).isEqualTo(payTime);
         assertThat(event.settleTime()).isEqualTo(settleTime);
         assertThat(event.orderCreateTime()).isEqualTo(orderCreateTime);
+        assertThat(event.estimateServiceFeeExpense()).isEqualTo(3L);
+        assertThat(event.effectiveServiceFeeExpense()).isEqualTo(4L);
         assertThat(event.occurredAt()).isNotNull();
     }
 }

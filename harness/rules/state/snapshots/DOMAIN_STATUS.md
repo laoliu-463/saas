@@ -87,7 +87,7 @@
 - 标记：P1。
 
 ## 订单域
-- 最新边界变化：ORDER-AMOUNT-ROUTER-EXPENSE-001 已修复 `OrderAmountMappingRouter` 在 order amount policy 开关启用时丢失 `estimateServiceFeeExpense` / `effectiveServiceFeeExpense` 的 adapter 漂移；修复只保留 legacy 已解析出的订单金额事实，不新增 DB 字段、不改双轨服务费公式、不让订单域计算业绩。目标验证：`OrderAmountMappingRouterTest,OrderAmountMapperPolicyTest,OrderDualTrackAmountResolverTest,OrderDualTrackAmountResolver1603SettlementTest,OrderSettlement20260612OfficialFixtureTest,PerformanceCalculationServiceTest` 共 75/0/0。
+- 最新边界变化：ORDER-SYNC-EVENT-EXPENSE-001 已让 `OrderSyncedEvent` 携带 `estimateServiceFeeExpense` / `effectiveServiceFeeExpense` 订单金额事实，`OrderEventPayloadMapper` 从订单事实映射该载荷；订单域仍只发布事实，不计算业绩。上一变化：ORDER-AMOUNT-ROUTER-EXPENSE-001 已修复 policy 开关启用时丢失服务费支出的 adapter 漂移。
 - 最新边界变化：`OrderAttributionService` 未归因分页与订单回流摘要数据范围过滤新增默认关闭的用户域 `DataScopePolicy` 旁路；默认关闭继续走 Legacy PERSONAL/DEPT `QueryWrapper.eq` 条件，开启后才调用 `DataScopePolicy.applyTo`。本轮未改订单事实、归因状态、同步、业绩事件、Mapper SQL、接口参数或历史数据。
 - 最新报告路径：`harness/reports/evidence-20260622-191140.md`；retro：`harness/reports/retro-20260622-191156.md`。
 - 当前状态：订单事实、退款事实、同步日志和归因输入已具备；P0-ORDER-001 PAY_RECENT 6h 补拉与同步日志增强已完成（2026-06-03，代码 + 运行态）；ORDER-P0-DUAL-SOURCE-SYNC 已在本地 real-pre 接入 1603 事实订单源并验证入库；ORDER-P0-DUAL-SOURCE-REMOTE-VERIFY 已完成远端部署验证，远端 commit 对齐 `77b723b6`，1603 入库与管理员可见通过；订单明细表字段对齐已完成本地 real-pre 验证（2026-06-04，commit `abf3f9eb`）；ORDER-DETAIL-TAB-FIX-001 已完成前端 16 列扩展与“渠道”文案统一（2026-06-05，commit `db934d99`）；ORDER-PERFORMANCE-EVENT-AFTER-COMMIT-FIX-001 已完成本地 real-pre 修复验证（2026-06-06），订单已同步事件改为事务提交后发布。
@@ -100,9 +100,9 @@
 - ORDER-DETAIL-FIELD-ALIGN 本地 real-pre 证据：`harness/reports/evidence-20260604-191102.md`；页面 smoke `runtime/qa/out/order-detail-page-smoke-20260604-191711/result.json`。`/api/data/orders/detail` 200、total=738、records=20；订单明细页面 16 个目标列可见，商品信息可见，未结算样本 `6953418877360936032` 显示 `结算：-`，页面不含“媒介”和“毛利”。
 - ORDER-DETAIL-TAB-FIX-001 前端展示证据：`harness/reports/order-detail-tab-fix-001-20260605-100305.md`；`harness/reports/evidence-20260604-221838.md`；页面 smoke `runtime/qa/out/order-detail-tab-fix-001-20260605-020048/result.json`。`/api/data/orders/detail` 200、total=933、records=20；订单明细页面 16 个最终表头可见，页面不含“媒介”和“毛利”，金额列显示人民币，未结算 null 显示 `-`。
 - ORDER-PERFORMANCE-EVENT-AFTER-COMMIT-FIX-001 证据：`harness/reports/order-performance-event-after-commit-fix-001-20260606-121000.md`；Harness evidence `harness/reports/evidence-20260606-120829.md`；real-pre preflight `runtime/qa/out/real-pre-preflight-20260606-120648/report.md`。本地后端全量测试 1730/0/0，`backend-real-pre` rebuild/recreate 后 healthy；SQL anti-join 显示历史缺口仍为 `missing_performance=15`。
-- 待优化能力：`pick_source` 返回样本与 mapping 命中后的渠道正向可见性验证；Dashboard summary 双轨聚合另开 `ANALYTICS-DUAL-TRACK-SUMMARY-FIX`；如需远端同步展示订单明细新表头，另起远端部署任务。
+- 待优化能力：`pick_source` 返回样本与 mapping 命中后的渠道正向可见性验证；如需远端同步展示订单明细新表头，另起远端部署任务。
 - 当前风险：真实订单 PAY_RECENT 周期最坏 30 分钟可见延迟，如商务要求更短可调小 cron；抖音 update_time 上限延迟超 6h 时 PAY_RECENT 也会丢，6h 为当前观测经验值；1603 是否稳定返回 `settle_time` / `effective_*` / `flow_point` 仍需 raw probe + dry-run 取证；渠道可见性正向样本仍 PENDING；订单事件时序根因已修复本地 real-pre，但历史 `performance_records` 缺口仍需 backfill，当前本地 anti-join 为 15。
-- DDD 优化下一步：先执行 `ORDER-PERFORMANCE-BACKFILL-001` 清理历史缺口；有 `pick_source` 样本后做渠道可见性验证；之后进入 P0-SAMPLE-001 寄样流转，Dashboard summary 双轨单独处理；远端订单明细展示按部署需求单独执行。
+- DDD 优化下一步：先执行 `ORDER-PERFORMANCE-BACKFILL-001` 清理历史缺口；有 `pick_source` 样本后做渠道可见性验证；之后进入 P0-SAMPLE-001 寄样流转；远端订单明细展示按部署需求单独执行。
 - 标记：P0。
 
 ## 业绩域
@@ -120,7 +120,7 @@
 - 标记：P0。
 
 ## 分析模块
-- 最新边界变化：`DashboardService` 看板 summary fallback 查询、诊断/活动商品下钻 SQL 上下文和 `QueryWrapper` 数据范围过滤已新增默认关闭旁路；默认关闭保持 Legacy PERSONAL/DEPT 条件拼接与受限上下文 fail-closed，开启后仅把 PERSONAL/DEPT/ALL 数据范围解释委托给用户域 `DataScopePolicy`。本轮不改变 dashboard 指标公式、排行 SQL、订单归因或业绩归属。
+- 最新边界变化：ORDER-SYNC-EVENT-EXPENSE-001 已让 `DashboardPerformanceSummaryService` 消费订单事件中的结算服务费支出，并通过业绩域 `PerformanceMoneyPolicy` 计算 `service_fee_net`，不再把 `effectiveServiceFee` 直接当服务费收益。上一变化：`DashboardService` 看板 summary 数据范围过滤已新增默认关闭旁路。
 - 最新边界变化：`DataApplicationService` 的数据页订单明细、订单汇总、导出、核心指标和运营监控查询已新增默认关闭旁路；默认关闭保持 Legacy PERSONAL/DEPT 条件与缺上下文 fail-closed，开启后仅把 PERSONAL/DEPT/ALL 数据范围解释委托给用户域 `DataScopePolicy`。本轮只收口可见性，不改变订单事实、业绩补全、导出列、服务费双轨公式或历史数据。
 - 最新验证变化：新增 `DddAnalyticsReadOnlyBoundaryTest`，把分析模块只读边界变成后端架构测试：Dashboard/DataApplication/PerformanceMetrics 核心源文件不得写业务事实，不得调用订单同步、归因重算、业绩回填或寄样命令流；相关数据范围旁路组合测试 PASS。上一轮 real-pre Dashboard API/SQL 对账 evidence：`runtime/qa/out/real-pre-dashboard-reconcile-20260622-205417/`；harness evidence：`harness/reports/evidence-20260622-205724.md`。
 - 最新边界变化：`PerformanceMetricsQueryService` 汇总读侧数据范围过滤已具备默认关闭旁路；默认关闭保持 Legacy SQL 条件拼接，开启后仅把 PERSONAL/DEPT/ALL 数据范围解释委托给用户域。本轮不改变 dashboard 指标公式、排行 SQL、订单归因或业绩归属。
