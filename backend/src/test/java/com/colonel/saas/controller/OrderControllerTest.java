@@ -25,12 +25,10 @@ import com.colonel.saas.service.DashboardService;
 import com.colonel.saas.service.OperationLogService;
 import com.colonel.saas.service.OrderAttributionReplayService;
 import com.colonel.saas.service.OrderQueryService;
-import com.colonel.saas.service.CommissionService;
 import com.colonel.saas.service.OrderSyncService;
 import com.colonel.saas.service.Order1603SettlementDryRunService;
 import com.colonel.saas.service.Order2704SettlementDryRunService;
 import com.colonel.saas.service.Order6468PaginationDryRunService;
-import com.colonel.saas.service.PerformanceBackfillService;
 import com.colonel.saas.service.ShortTtlCacheService;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
@@ -80,10 +78,6 @@ class OrderControllerTest {
     @Mock
     private OperationLogService operationLogService;
     @Mock
-    private CommissionService commissionService;
-    @Mock
-    private PerformanceBackfillService performanceBackfillService;
-    @Mock
     private UserDomainFacade userDomainFacade;
     @Mock
     private Order1603SettlementDryRunService order1603SettlementDryRunService;
@@ -124,8 +118,6 @@ class OrderControllerTest {
                 orderAttributionReplayService,
                 operationLogService,
                 shortTtlCacheService,
-                commissionService,
-                performanceBackfillService,
                 userDomainFacade,
                 order6468PaginationDryRunService,
                 order1603SettlementDryRunService,

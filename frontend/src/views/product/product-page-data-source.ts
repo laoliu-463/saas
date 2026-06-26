@@ -48,7 +48,16 @@ export function resolveActivityContextForManageProductsPath(
   }
   const activityId = normalizeActivityQueryId(route?.query?.activityId || route?.query?.recruitActivityId)
   if (!activityId) {
-    return state.loading ? { status: 'loading' } : { status: 'empty' }
+    if (state.loading) return { status: 'loading' }
+    const firstAssigned = assignedOptions.find((option) => normalizeActivityQueryId(option.value))
+    if (firstAssigned) {
+      return {
+        status: 'ready',
+        activityId: normalizeActivityQueryId(firstAssigned.value),
+        activityName: activityNameFromOption(firstAssigned) || undefined
+      }
+    }
+    return { status: 'empty' }
   }
   if (state.loading) {
     return { status: 'loading', activityId }

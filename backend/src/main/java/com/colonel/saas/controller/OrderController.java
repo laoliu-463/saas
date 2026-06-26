@@ -24,7 +24,6 @@ import com.colonel.saas.domain.order.query.OrderQueryView;
 import com.colonel.saas.domain.order.query.OrderListAssembler;
 import com.colonel.saas.domain.order.query.OrderDetailAssembler;
 import com.colonel.saas.service.AttributionService;
-import com.colonel.saas.service.CommissionService;
 import com.colonel.saas.service.DashboardService;
 import com.colonel.saas.service.OperationLogService;
 import com.colonel.saas.service.OrderAttributionReplayService;
@@ -34,7 +33,6 @@ import com.colonel.saas.service.Order6468PaginationDryRunService;
 import com.colonel.saas.service.OrderQueryService;
 import com.colonel.saas.service.OrderService;
 import com.colonel.saas.service.OrderSyncService;
-import com.colonel.saas.service.PerformanceBackfillService;
 import com.colonel.saas.service.ShortTtlCacheService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -71,7 +69,7 @@ import java.util.UUID;
  * 订单管理控制器。
  * <p>
  * 负责订单域的全部 HTTP 接口，包括订单同步、分页查询、统计汇总、筛选项候选值、
- * 详情查询以及历史订单归因重算和业绩回填等运维操作。
+ * 详情查询以及历史订单归因重算等订单事实运维操作。
  * </p>
  *
  * <ul>
@@ -82,8 +80,6 @@ import java.util.UUID;
  *   <li>订单统计：按当前筛选条件统计总量、已归因、未归因与未归因原因分布</li>
  *   <li>筛选选项：返回订单页所需的全部筛选候选值（状态、商品、渠道、团长、部门等）</li>
  *   <li>归因重算：对已落库订单重新执行归因逻辑，用于补映射后的历史订单回放验证</li>
- *   <li>业绩回填：批量写入缺失的 performance_records 业绩记录</li>
- *   <li>提成计算：批量或单笔计算并持久化双轨提成到 performance_records</li>
  * </ul>
  *
  * <h3>架构角色</h3>
@@ -94,7 +90,7 @@ import java.util.UUID;
  * <p>{@code /orders}</p>
  *
  * <h3>业务领域</h3>
- * <p>订单域 —— 订单归因、订单查询、订单同步、提成计算、业绩回填</p>
+ * <p>订单域 —— 订单同步、订单查询、订单归因重算</p>
  *
  * <h3>访问控制</h3>
  * <p>类级别要求具备以下角色之一：BIZ_LEADER、BIZ_STAFF、CHANNEL_LEADER、CHANNEL_STAFF、ADMIN。
@@ -104,8 +100,6 @@ import java.util.UUID;
  * @see com.colonel.saas.service.OrderSyncService 订单同步服务
  * @see com.colonel.saas.service.OrderQueryService 订单查询服务
  * @see com.colonel.saas.service.AttributionService 归因服务
- * @see com.colonel.saas.service.CommissionService 提成计算服务
- * @see com.colonel.saas.service.PerformanceBackfillService 业绩回填服务
  * @see com.colonel.saas.service.OrderAttributionReplayService 归因重算服务
  * @see com.colonel.saas.common.base.BaseController 基础控制器
  */
@@ -149,12 +143,6 @@ public class OrderController extends BaseController {
     /** 短 TTL 缓存服务：用于筛选选项等高频读取场景的秒级缓存 */
     private final ShortTtlCacheService shortTtlCacheService;
 
-    /** 提成计算服务：批量/单笔计算并持久化双轨提成 */
-    private final CommissionService commissionService;
-
-    /** 业绩回填服务：批量写入缺失的 performance_records */
-    private final PerformanceBackfillService performanceBackfillService;
-
     /** 用户域 Facade：用于加载部门下拉选项 */
     private final UserDomainFacade userDomainFacade;
 
@@ -195,8 +183,6 @@ public class OrderController extends BaseController {
             OrderAttributionReplayService orderAttributionReplayService,
             OperationLogService operationLogService,
             ShortTtlCacheService shortTtlCacheService,
-            CommissionService commissionService,
-            PerformanceBackfillService performanceBackfillService,
             UserDomainFacade userDomainFacade,
             Order6468PaginationDryRunService order6468PaginationDryRunService,
             Order1603SettlementDryRunService order1603SettlementDryRunService,
@@ -211,8 +197,6 @@ public class OrderController extends BaseController {
         this.orderAttributionReplayService = orderAttributionReplayService;
         this.operationLogService = operationLogService;
         this.shortTtlCacheService = shortTtlCacheService;
-        this.commissionService = commissionService;
-        this.performanceBackfillService = performanceBackfillService;
         this.userDomainFacade = userDomainFacade;
         this.order6468PaginationDryRunService = order6468PaginationDryRunService;
         this.order1603SettlementDryRunService = order1603SettlementDryRunService;
@@ -482,156 +466,6 @@ public class OrderController extends BaseController {
             evictOrderDerivedCaches();
         }
         return ok(result);
-    }
-
-    /**
-     * 回填历史业绩记录。
-     * <p>
-     * 按订单号或结算时间范围批量写入 performance_records，仅管理员可执行。
-     * 默认仅处理尚未生成业绩记录的订单（onlyMissing=true）。
-     * </p>
-     *
-     * <ol>
-     *   <li>第一步：补全请求参数，onlyMissing 默认为 true</li>
-     *   <li>第二步：委托 {@link PerformanceBackfillService#backfill} 执行回填</li>
-     *   <li>第三步：记录操作审计日志</li>
-     *   <li>第四步：清除所有订单衍生缓存</li>
-     * </ol>
-     *
-     * @param request 回填请求体，可选；支持指定 orderIds 或按结算时间范围扫描缺失记录
-     * @param userId  当前登录用户 ID（由拦截器注入）
-     * @return 回填结果，包含 scanned/upserted/failed/onlyMissing 信息
-     */
-    @Operation(summary = "回填历史业绩记录", description = "按订单号或结算时间范围批量写入 performance_records，默认仅处理尚未生成业绩记录的订单。")
-    @RequireRoles({RoleCodes.ADMIN})
-    @PostMapping("/performance-backfill")
-    public ApiResult<PerformanceBackfillService.BackfillResult> performanceBackfill(
-            @io.swagger.v3.oas.annotations.parameters.RequestBody(
-                    description = "历史业绩回填请求。可指定 orderIds，或按结算时间范围扫描缺失记录。",
-                    required = false,
-                    content = @Content(examples = @ExampleObject(value = "{\"onlyMissing\":true,\"limit\":200}"))
-            )
-            @RequestBody(required = false) PerformanceBackfillRequest request,
-            @RequestAttribute("userId") UUID userId) {
-        PerformanceBackfillRequest safeRequest = request == null ? new PerformanceBackfillRequest() : request;
-        boolean onlyMissing = safeRequest.getOnlyMissing() == null || Boolean.TRUE.equals(safeRequest.getOnlyMissing());
-        PerformanceBackfillService.BackfillResult result = performanceBackfillService.backfill(
-                safeRequest.getOrderIds(),
-                parseLocalDateTime(safeRequest.getStartTime()),
-                parseLocalDateTime(safeRequest.getEndTime()),
-                safeRequest.getLimit(),
-                onlyMissing);
-        operationLogService.recordSystemAction(
-                userId,
-                "订单业绩",
-                "回填历史业绩记录",
-                "POST",
-                "performance_backfill",
-                null,
-                safeRequest.getStartTime() + " ~ " + safeRequest.getEndTime(),
-                String.format(
-                        "scanned=%d, upserted=%d, failed=%d, onlyMissing=%s",
-                        result.scanned(),
-                        result.upserted(),
-                        result.failed(),
-                        result.onlyMissing()));
-        evictOrderDerivedCaches();
-        return ok(result);
-    }
-
-    /**
-     * 重算失效/退款订单上的过期有效业绩记录。
-     */
-    @Operation(summary = "重算失效订单过期业绩", description = "扫描 order_status=4/5 且 performance_records.is_valid=true 的订单并重算冲正。")
-    @RequireRoles({RoleCodes.ADMIN})
-    @PostMapping("/performance-reconcile-invalidated")
-    public ApiResult<PerformanceBackfillService.BackfillResult> reconcileInvalidatedPerformance(
-            @RequestBody(required = false) PerformanceReconcileRequest request,
-            @RequestAttribute("userId") UUID userId) {
-        PerformanceReconcileRequest safeRequest = request == null ? new PerformanceReconcileRequest() : request;
-        PerformanceBackfillService.BackfillResult result =
-                performanceBackfillService.reconcileInvalidatedPerformance(safeRequest.getLimit());
-        operationLogService.recordSystemAction(
-                userId,
-                "订单业绩",
-                "重算失效订单过期业绩",
-                "POST",
-                "performance_reconcile_invalidated",
-                null,
-                null,
-                String.format("scanned=%d, upserted=%d, failed=%d", result.scanned(), result.upserted(), result.failed()));
-        evictOrderDerivedCaches();
-        return ok(result);
-    }
-
-    /**
-     * 批量补全订单业绩（双轨提成计算）。
-     * <p>
-     * 按订单号批量计算并持久化双轨提成到 performance_records（Y-08）；
-     * 取消/失效订单自动标记为冲正。
-     * </p>
-     *
-     * <ol>
-     *   <li>第一步：从请求中提取并去重订单号列表，过滤空白值</li>
-     *   <li>第二步：订单号列表为空时直接返回空结果</li>
-     *   <li>第三步：从数据库查询未删除的订单记录</li>
-     *   <li>第四步：委托 {@link CommissionService#batchUpsertPerformanceRecords} 批量计算提成并持久化</li>
-     * </ol>
-     *
-     * @param request 批量提成请求体，包含待补全业绩的订单号列表
-     * @return 每个订单的提成计算结果列表
-     */
-    @Operation(summary = "批量补全订单业绩", description = "按订单号批量计算并持久化双轨提成到 performance_records（Y-08）；取消/失效订单标记为冲正。")
-    @PostMapping("/commission-batch")
-    public ApiResult<List<CommissionService.OrderCommissionItem>> batchFillCommission(
-            @RequestBody OrderCommissionBatchRequest request) {
-        List<String> orderIds = request == null || request.getOrderIds() == null
-                ? List.of()
-                : request.getOrderIds().stream().filter(StringUtils::hasText).map(String::trim).distinct().toList();
-        if (orderIds.isEmpty()) {
-            return ok(List.of());
-        }
-        List<ColonelsettlementOrder> orders = orderMapper.selectList(new LambdaQueryWrapper<ColonelsettlementOrder>()
-                .in(ColonelsettlementOrder::getOrderId, orderIds)
-                .eq(ColonelsettlementOrder::getDeleted, 0));
-        return ok(commissionService.batchUpsertPerformanceRecords(orders));
-    }
-
-    /**
-     * 管理员单笔重算业绩。
-     * <p>
-     * 传入单个 orderId，重算并回写 performance_records（Y-09）。仅管理员可执行。
-     * 若订单不存在或 orderId 为空，返回冲正标记结果。
-     * </p>
-     *
-     * <ol>
-     *   <li>第一步：校验 orderId 是否非空，为空则返回冲正结果</li>
-     *   <li>第二步：按 orderId 查询单条未删除的订单记录</li>
-     *   <li>第三步：订单不存在时返回冲正标记结果</li>
-     *   <li>第四步：委托 {@link CommissionService#batchUpsertPerformanceRecords} 执行单笔提成计算</li>
-     * </ol>
-     *
-     * @param orderId 订单 ID（请求参数）
-     * @return 单笔订单的提成计算结果；订单不存在时返回冲正标记
-     */
-    @Operation(summary = "管理员单笔重算业绩", description = "传入单个 orderId，重算并回写 performance_records（Y-09）。需 ADMIN 权限。")
-    @PostMapping("/commission-recalculate")
-    @RequireRoles({RoleCodes.ADMIN})
-    public ApiResult<CommissionService.OrderCommissionItem> recalculateSingle(
-            @RequestParam("orderId") String orderId) {
-        if (!StringUtils.hasText(orderId)) {
-            return ok(CommissionService.OrderCommissionItem.reversed(null));
-        }
-        ColonelsettlementOrder order = orderMapper.selectOne(new LambdaQueryWrapper<ColonelsettlementOrder>()
-                .eq(ColonelsettlementOrder::getOrderId, orderId.trim())
-                .eq(ColonelsettlementOrder::getDeleted, 0)
-                .last("limit 1"));
-        if (order == null) {
-            return ok(CommissionService.OrderCommissionItem.reversed(orderId));
-        }
-        List<CommissionService.OrderCommissionItem> results =
-                commissionService.batchUpsertPerformanceRecords(List.of(order));
-        return ok(results.isEmpty() ? CommissionService.OrderCommissionItem.reversed(orderId) : results.get(0));
     }
 
     /**
@@ -1665,12 +1499,6 @@ public class OrderController extends BaseController {
     }
 
     @Data
-    public static class OrderCommissionBatchRequest {
-        @Schema(description = "待补全业绩的订单号列表。")
-        private List<String> orderIds;
-    }
-
-    @Data
     public static class ReplayAttributionRequest {
         @Schema(description = "指定需要重算的订单号列表；为空时按未归因订单筛选。")
         private List<String> orderIds;
@@ -1683,30 +1511,6 @@ public class OrderController extends BaseController {
 
         @Schema(description = "是否仅预演不落库。默认 false。")
         private Boolean dryRun;
-    }
-
-    @Data
-    public static class PerformanceReconcileRequest {
-        @Schema(description = "批量扫描上限，默认 200，最大 2000。")
-        private Integer limit;
-    }
-
-    @Data
-    public static class PerformanceBackfillRequest {
-        @Schema(description = "指定需要回填的订单号列表；为空时按时间范围与 onlyMissing 扫描。")
-        private List<String> orderIds;
-
-        @Schema(description = "结算开始时间，格式 yyyy-MM-dd HH:mm:ss。")
-        private String startTime;
-
-        @Schema(description = "结算结束时间，格式 yyyy-MM-dd HH:mm:ss。")
-        private String endTime;
-
-        @Schema(description = "批量扫描上限，默认 200，最大 2000。仅在未指定 orderIds 时生效。")
-        private Integer limit;
-
-        @Schema(description = "是否仅处理尚未生成 performance_records 的订单。默认 true。")
-        private Boolean onlyMissing;
     }
 
     @Data

@@ -12,7 +12,6 @@ import com.colonel.saas.dto.order.OrderDetailResponse;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.service.AttributionService;
-import com.colonel.saas.service.CommissionService;
 import com.colonel.saas.service.OperationLogService;
 import com.colonel.saas.service.Order1603SettlementDryRunService;
 import com.colonel.saas.service.Order2704SettlementDryRunService;
@@ -21,7 +20,6 @@ import com.colonel.saas.service.OrderAttributionReplayService;
 import com.colonel.saas.service.OrderQueryService;
 import com.colonel.saas.service.OrderService;
 import com.colonel.saas.service.OrderSyncService;
-import com.colonel.saas.service.PerformanceBackfillService;
 import com.colonel.saas.service.ShortTtlCacheService;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.domain.user.policy.DataScopePolicy;
@@ -53,8 +51,6 @@ class DddOrder003RoutingTest {
     @Mock private OrderAttributionReplayService orderAttributionReplayService;
     @Mock private OperationLogService operationLogService;
     @Mock private ShortTtlCacheService shortTtlCacheService;
-    @Mock private CommissionService commissionService;
-    @Mock private PerformanceBackfillService performanceBackfillService;
     @Mock private UserDomainFacade userDomainFacade;
     @Mock private Order6468PaginationDryRunService order6468PaginationDryRunService;
     @Mock private Order1603SettlementDryRunService order1603SettlementDryRunService;
@@ -78,8 +74,6 @@ class DddOrder003RoutingTest {
                 orderAttributionReplayService,
                 operationLogService,
                 shortTtlCacheService,
-                commissionService,
-                performanceBackfillService,
                 userDomainFacade,
                 order6468PaginationDryRunService,
                 order1603SettlementDryRunService,

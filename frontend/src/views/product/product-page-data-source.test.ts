@@ -31,10 +31,21 @@ describe('product-page-data-source', () => {
     })
   })
 
-  it('resolves empty state for /product/manage/products without query', () => {
+  it('uses first assigned activity for /product/manage/products without query', () => {
     expect(resolveActivityContextForManageProductsPath(
       { path: PRODUCT_MANAGE_PRODUCTS_PATH, query: {} },
       [{ label: '星链达客-zy (3916506)', value: '3916506' }]
+    )).toEqual({
+      status: 'ready',
+      activityId: '3916506',
+      activityName: '星链达客-zy'
+    })
+  })
+
+  it('resolves empty state for /product/manage/products without query or assigned activities', () => {
+    expect(resolveActivityContextForManageProductsPath(
+      { path: PRODUCT_MANAGE_PRODUCTS_PATH, query: {} },
+      []
     )).toEqual({ status: 'empty' })
   })
 
