@@ -46,6 +46,65 @@ _Avoid_: 样品表单, 快递单
 寄样域中用于判断当前用户能否申请、审核、删除、推进物流、导出或享有重复申请豁免的动作约束。
 _Avoid_: 用户域角色解析, 前端按钮权限, 数据范围
 
+### 订单金额事实
+
+> 范围：仅指**联盟订单**同步链路中事实落库的金额字段，单位为**人民币分**（long，整数）。与 ADR-009（订单金额双轨结算口径冻结）保持一致：预估轨和结算轨是两套独立事实字段，禁止 estimate → effective 兜底。
+
+**payAmount（实付金额）**:
+联盟订单从上游回流的实付金额，是预估轨和结算轨的"基础事实"。
+_Avoid_: 实付分, pay_goods_amount（任一 alias 不是规范名）
+
+**settleAmount（已结金额）**:
+已结订单的最终金额（结算轨）。待结算单保持 0/null。SETTLEMENT_STRICT 模式下不向 payAmount 兜底。
+_Avoid_: settle_amount（应使用 settleAmount）
+
+**estimateServiceFee（预估服务费）**:
+预估轨服务费，来自上游"预估服务费"字段或按 serviceFeeRate × payAmount 推导。
+_Avoid_: 佣金（commission 是另一回事）
+
+**effectiveServiceFee（已结服务费）**:
+结算轨服务费。**只能来自上游"已结服务费"字段**，不得用 estimateServiceFee、payAmount 或预估技术服务费兜底（ADR-009）。
+_Avoid_: settle_colonel_commission 单独使用（见"历史兼容字段"）
+
+**estimateTechServiceFee（预估技术服务费）** / **effectiveTechServiceFee（已结技术服务费）**:
+同 estimateServiceFee / effectiveServiceFee 规则，分别属于预估轨 / 结算轨。
+_Avoid_: tech_service_fee 单独使用（在 INSTITUTE 轨是模糊字段，需 alias 解析后落到 estimate 或 effective）
+
+**serviceFeeRate（服务费率）** / **commissionRate（招商提成率）**:
+费率字段（小数，如 0.05 = 5%）。**raw payload 未提供时保持 null，不得伪造或用其他字段推导**。
+
+### 解析轨道
+
+**INSTITUTE 轨**:
+学院/招商来源的订单同步。允许 estimate 字段互相 fallback；**禁止 estimate → effective 兜底**（ADR-009）。
+
+**SETTLEMENT_STRICT 轨**:
+已结订单的严格结算轨。**禁止所有 estimate → effective 兜底**；raw settleAmount 缺失时保持 0；raw effectiveTechServiceFee 缺失时回退到 ambiguousTechRaw（INSTITUTE 轨之外的**唯一**允许的回退）。
+_Avoid_: 结算兜底（"兜底"是 estimate→effective 的委婉说法，禁止）
+
+### 别名解析
+
+每个 OutputField 在 raw payload 中可能有多个上游字段名。**`payAmount` 一个字段就有 8 个 alias**（pay_goods_amount, payGoodsAmount, order_amount, orderAmount, total_pay_amount, totalPayAmount, pay_amount, payAmount）—— alias 字典是 `OrderPayAmountAliasPolicy` 的输入，不在 Policy 内重复硬编码。
+_Avoid_: 硬编码 alias（任何新增 alias 必须在 AliasPolicy 注册，不允许在 Writer 里临时 add 一个）
+
+### 兜底规则
+
+5 个允许的兜底链（按 `OrderAmountFallbackPolicy` 强制执行）：
+
+1. effectiveTechServiceFee 缺失时回退到 ambiguousTechRaw（仅 SETTLEMENT_STRICT 轨）
+2. estimateTechServiceFee 缺失时回退到 ambiguousTechRaw（仅 INSTITUTE 轨）
+3. estimateTechServiceFee ≤ 0 时回退到 effectiveTechServiceFee（任何轨）
+4. estimateServiceFee ≤ 0 且 effectiveServiceFee > 0 时回退到 effectiveServiceFee
+5. estimateServiceFee ≤ 0 且已有订单 estimateServiceFee > 0 时回退到已有值（**仅当 SyncTrack=INSTITUTE**）
+
+**禁止的兜底**（ADR-009 复述）：estimate → effective 兜底（除第 1 条之外）、payAmount → settleAmount 兜底（SETTLEMENT_STRICT 模式下）、用 serviceFeeRate × payAmount 推 effectiveServiceFee。
+
+### 历史兼容字段
+
+**settleColonelCommission** / **settleColonelTechServiceFee**:
+旧 6468 系统的命名。**仅用于兼容旧链路数据**，不得用预估轨冒充结算事实（ADR-009 line 31）。
+_Avoid_: 在新代码中作为主字段名（保留为 alias，但 Writer 应当写到 effectiveServiceFee / effectiveTechServiceFee）
+
 **达人**:
 可被认领、跟进、寄样并产生产出结果的合作对象。
 _Avoid_: 用户, 客户
