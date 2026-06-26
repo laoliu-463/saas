@@ -27,6 +27,13 @@
       查询较慢，请稍候…
     </n-alert>
 
+    <CurrentActivityBanner
+      v-if="isProductManageProductsMode"
+      :status="productManageActivityContext.status"
+      :activity-id="productManageActivityContext.activityId"
+      :activity-name="productManageActivityContext.activityName"
+    />
+
     <section
       v-if="isActivityProductMode"
       class="activity-workbench"
@@ -241,6 +248,7 @@ import ProductManageTable from './components/ProductManageTable.vue'
 import ProductManageToolbar from './components/ProductManageToolbar.vue'
 import ProductSyncActivityDialog from './components/ProductSyncActivityDialog.vue'
 import ProductStatusTabs from './components/ProductStatusTabs.vue'
+import CurrentActivityBanner from './components/CurrentActivityBanner.vue'
 import ProductActionColumn from './components/ProductActionColumn.vue'
 import {
   applyProductFilters,
@@ -255,6 +263,7 @@ import {
 import {
   normalizeActivityQueryId,
   isProductManageProductsPath,
+  resolveActivityContextForManageProductsPath,
   shouldLoadActivityProducts
 } from './product-page-data-source'
 import ProductDetail from './ProductDetail.vue'
@@ -394,6 +403,7 @@ const productTableScrollX = computed(() =>
 const syncRouteActivityIdToFilters = () => {
   const activityId = routeQueryActivityId.value
   if (!isProductManageProductsMode.value || !activityId) return
+  if (productManageActivityContext.value.status !== 'ready') return
   fallbackActivityId.value = activityId
   if (filters.value.recruitActivityId === activityId && filters.value.activityId === activityId) return
   filters.value = {
@@ -425,7 +435,19 @@ const pageDescription = computed(() => {
   return '支持候选商品浏览、审核、转链和入库沉淀，作为商品协同的统一工作台。'
 })
 
+const productManageActivityContext = computed(() => resolveActivityContextForManageProductsPath(
+  { path: route.path, query: route.query as Record<string, unknown> },
+  assignedActivityOptions.value,
+  { loading: assignedActivityOptionsLoading.value }
+))
+
 const emptyDescription = computed(() => {
+  if (isProductManageProductsMode.value && productManageActivityContext.value.status === 'empty') {
+    return '请先选择活动'
+  }
+  if (isProductManageProductsMode.value && productManageActivityContext.value.status === 'forbidden') {
+    return '无权限查看当前活动'
+  }
   if (isSharedLibraryMode.value) return '当前还没有加入商品库的商品，可先在商品管理里进入活动并将商品沉淀到商品库。'
   if (isActivityProductMode.value) return '当前活动暂无商品数据，可先同步活动商品，或返回活动列表切换活动。'
   return isBizStaffOnly.value
@@ -572,6 +594,20 @@ const hasDoubleCommission = (item: any) =>
 const ensureActivityId = async () => {
   if (isSharedLibraryMode.value) return ''
   syncRouteActivityIdToFilters()
+  if (isProductManageProductsMode.value) {
+    const context = productManageActivityContext.value
+    if (context.status === 'ready' && context.activityId) {
+      fallbackActivityId.value = context.activityId
+      return context.activityId
+    }
+    const selectedRecruitActivityId = normalizeText(filters.value.recruitActivityId)
+    if (selectedRecruitActivityId && !routeQueryActivityId.value) {
+      fallbackActivityId.value = selectedRecruitActivityId
+      return selectedRecruitActivityId
+    }
+    fallbackActivityId.value = ''
+    return ''
+  }
   const selectedRecruitActivityId = normalizeText(filters.value.recruitActivityId)
   if (selectedRecruitActivityId) {
     fallbackActivityId.value = selectedRecruitActivityId

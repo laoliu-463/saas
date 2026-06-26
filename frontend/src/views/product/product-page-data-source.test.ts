@@ -5,6 +5,7 @@ import {
   isProductManageProductsPath,
   normalizeActivityQueryId,
   PRODUCT_MANAGE_PRODUCTS_PATH,
+  resolveActivityContextForManageProductsPath,
   shouldLoadActivityProducts
 } from './product-page-data-source'
 
@@ -27,6 +28,45 @@ describe('product-page-data-source', () => {
     expect(buildActivityProductListRoute('3916506')).toEqual({
       path: PRODUCT_MANAGE_PRODUCTS_PATH,
       query: { activityId: '3916506' }
+    })
+  })
+
+  it('resolves empty state for /product/manage/products without query', () => {
+    expect(resolveActivityContextForManageProductsPath(
+      { path: PRODUCT_MANAGE_PRODUCTS_PATH, query: {} },
+      [{ label: '星链达客-zy (3916506)', value: '3916506' }]
+    )).toEqual({ status: 'empty' })
+  })
+
+  it('resolves ready state for assigned activity query', () => {
+    expect(resolveActivityContextForManageProductsPath(
+      { path: PRODUCT_MANAGE_PRODUCTS_PATH, query: { activityId: '3916506' } },
+      [{ label: '星链达客-zy (3916506)', value: '3916506' }]
+    )).toEqual({
+      status: 'ready',
+      activityId: '3916506',
+      activityName: '星链达客-zy'
+    })
+  })
+
+  it('resolves forbidden state for non-assigned activity query', () => {
+    expect(resolveActivityContextForManageProductsPath(
+      { path: PRODUCT_MANAGE_PRODUCTS_PATH, query: { activityId: '99999999' } },
+      [{ label: '星链达客-zy (3916506)', value: '3916506' }]
+    )).toEqual({
+      status: 'forbidden',
+      activityId: '99999999'
+    })
+  })
+
+  it('resolves loading state while assigned activity options are loading', () => {
+    expect(resolveActivityContextForManageProductsPath(
+      { path: PRODUCT_MANAGE_PRODUCTS_PATH, query: { activityId: '3916506' } },
+      [],
+      { loading: true }
+    )).toEqual({
+      status: 'loading',
+      activityId: '3916506'
     })
   })
 })
