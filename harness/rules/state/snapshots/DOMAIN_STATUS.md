@@ -87,6 +87,7 @@
 - 标记：P1。
 
 ## 订单域
+- 最新边界变化：ORDER-AMOUNT-ROUTER-EXPENSE-001 已修复 `OrderAmountMappingRouter` 在 order amount policy 开关启用时丢失 `estimateServiceFeeExpense` / `effectiveServiceFeeExpense` 的 adapter 漂移；修复只保留 legacy 已解析出的订单金额事实，不新增 DB 字段、不改双轨服务费公式、不让订单域计算业绩。目标验证：`OrderAmountMappingRouterTest,OrderAmountMapperPolicyTest,OrderDualTrackAmountResolverTest,OrderDualTrackAmountResolver1603SettlementTest,OrderSettlement20260612OfficialFixtureTest,PerformanceCalculationServiceTest` 共 75/0/0。
 - 最新边界变化：`OrderAttributionService` 未归因分页与订单回流摘要数据范围过滤新增默认关闭的用户域 `DataScopePolicy` 旁路；默认关闭继续走 Legacy PERSONAL/DEPT `QueryWrapper.eq` 条件，开启后才调用 `DataScopePolicy.applyTo`。本轮未改订单事实、归因状态、同步、业绩事件、Mapper SQL、接口参数或历史数据。
 - 最新报告路径：`harness/reports/evidence-20260622-191140.md`；retro：`harness/reports/retro-20260622-191156.md`。
 - 当前状态：订单事实、退款事实、同步日志和归因输入已具备；P0-ORDER-001 PAY_RECENT 6h 补拉与同步日志增强已完成（2026-06-03，代码 + 运行态）；ORDER-P0-DUAL-SOURCE-SYNC 已在本地 real-pre 接入 1603 事实订单源并验证入库；ORDER-P0-DUAL-SOURCE-REMOTE-VERIFY 已完成远端部署验证，远端 commit 对齐 `77b723b6`，1603 入库与管理员可见通过；订单明细表字段对齐已完成本地 real-pre 验证（2026-06-04，commit `abf3f9eb`）；ORDER-DETAIL-TAB-FIX-001 已完成前端 16 列扩展与“渠道”文案统一（2026-06-05，commit `db934d99`）；ORDER-PERFORMANCE-EVENT-AFTER-COMMIT-FIX-001 已完成本地 real-pre 修复验证（2026-06-06），订单已同步事件改为事务提交后发布。

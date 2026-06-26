@@ -62,9 +62,7 @@ class OrderAmountMappingRouterTest {
 
     @Test
     void mergeEstimateSnapshot_shouldPreserveExistingEstimateWhenPolicyEnabled() {
-        when(dddRefactorProperties.isEnabled()).thenReturn(true);
-        when(dddRefactorProperties.getOrderAmountPolicy()).thenReturn(orderAmountPolicySwitch);
-        when(orderAmountPolicySwitch.isEnabled()).thenReturn(true);
+        enableOrderAmountPolicy();
 
         ColonelsettlementOrder existing = new ColonelsettlementOrder();
         existing.setEstimateServiceFee(500L);
@@ -76,6 +74,57 @@ class OrderAmountMappingRouterTest {
         router.mergeEstimateSnapshot(existing, incoming);
 
         assertThat(incoming.getEstimateServiceFee()).isEqualTo(500L);
+    }
+
+    @Test
+    void resolveAmounts_shouldPreserveServiceFeeExpensesWhenPolicyEnabled() {
+        enableOrderAmountPolicy();
+
+        Map<String, Object> raw = new LinkedHashMap<>();
+        raw.put("pay_goods_amount", 5000L);
+        raw.put("settled_goods_amount", 4800L);
+        raw.put("colonel_order_info", Map.of(
+                "real_commission", 120L,
+                "estimated_commission", 130L
+        ));
+        raw.put("colonel_order_info_second", Map.of(
+                "real_commission", 8L,
+                "estimated_commission", 8L
+        ));
+
+        var legacy = OrderDualTrackAmountResolver.resolve(raw, null, null);
+        var routed = router.resolveAmounts(
+                OrderAmountMappingRouter.SyncSource.INSTITUTE, raw, null, null);
+
+        assertThat(routed.estimateServiceFeeExpense()).isEqualTo(legacy.estimateServiceFeeExpense());
+        assertThat(routed.effectiveServiceFeeExpense()).isEqualTo(legacy.effectiveServiceFeeExpense());
+        assertThat(routed.estimateServiceFeeExpense()).isEqualTo(8L);
+        assertThat(routed.effectiveServiceFeeExpense()).isEqualTo(8L);
+    }
+
+    @Test
+    void applyAmounts_shouldWriteServiceFeeExpensesWhenPolicyEnabled() {
+        enableOrderAmountPolicy();
+
+        var amounts = new OrderDualTrackAmountResolver.DualTrackAmounts(
+                5000L,
+                4800L,
+                130L,
+                120L,
+                4L,
+                3L,
+                8L,
+                7L);
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+
+        router.applyAmounts(
+                OrderAmountMappingRouter.SyncSource.SETTLEMENT,
+                order,
+                amounts,
+                Map.of());
+
+        assertThat(order.getEstimateServiceFeeExpense()).isEqualTo(8L);
+        assertThat(order.getEffectiveServiceFeeExpense()).isEqualTo(7L);
     }
 
     @Test
@@ -98,5 +147,11 @@ class OrderAmountMappingRouterTest {
 
         assertThat(order.getSettleTime()).isNotNull();
         assertThat(order.getOrderAmount()).isEqualTo(1000L);
+    }
+
+    private void enableOrderAmountPolicy() {
+        when(dddRefactorProperties.isEnabled()).thenReturn(true);
+        when(dddRefactorProperties.getOrderAmountPolicy()).thenReturn(orderAmountPolicySwitch);
+        when(orderAmountPolicySwitch.isEnabled()).thenReturn(true);
     }
 }

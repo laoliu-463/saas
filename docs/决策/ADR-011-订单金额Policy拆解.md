@@ -11,8 +11,8 @@
 ## 背景
 
 - [V2 必做] `OrderAmountMapperPolicy.java`（740 行）`domain/order/policy/` 标为"纯 Policy"，但实测藏 3 个独立子概念（alias 字典、字段赋值规则、兜底链）—— interface ≈ implementation，删测不通过。
-- [V2 必做] `OrderAmountMappingRouter.java:144-145` `toDualTrack()` 在 flag=OFF 时**静默置 `serviceFeeRate` 和 `commissionRate` 为 `0L, 0L`**；`toMapped()` 在 line 156-157 同位置写 `null, null`。
-- [V2 必做] 此 bug 直接违反 ADR-009 line 20-22（"effective_* 不得用 estimate_*、实付金额或预估技术服务费兜底"）—— `serviceFeeRate` 和 `commissionRate` 是**结算轨事实字段**，不得静默置零。
+- [V2 必做] `OrderAmountMappingRouter.java` 的 policy-enabled adapter 曾把 `DualTrackAmounts` 第 7/8 位误当成可丢弃字段：`toDualTrack()` 写 `0L, 0L`，`toMapped()` 写 `null, null`。源码证据显示这两位实际是 `estimateServiceFeeExpense` / `effectiveServiceFeeExpense`，不是 `serviceFeeRate` / `commissionRate`。
+- [V2 必做] 此 bug 会导致 DDD order amount policy 开关启用时双机构服务费支出被清零，进而影响业绩域服务费收益与毛利消费事实。`serviceFeeRate` / `commissionRate` 当前是 raw payload 或商品快照中的费率提示，不是 `ColonelsettlementOrder` 落库金额事实。
 - [V2 必做] `OrderAmountMapperPolicy` 是 ADR-009 line 29 明确点名的对象："`OrderAmountMapperPolicy` 和 1603 结算链路禁止 estimate -> effective fallback"——本 ADR 是该声明的执行细化。
 - [V2 必做] 唯一调用方为 `OrderAmountMappingRouter`（7 个方法），属"1 个 caller → hypothetical seam"阶段，但 3 子概念足够独立值得深化。
 - [历史归档] 旧归档文档（`docs/归档/`）未涉及本结构问题，不构成参考。
@@ -39,7 +39,7 @@
 | 阶段 | 任务 | 灰度 |
 | --- | --- | --- |
 | 0 | 本 ADR + CONTEXT.md 术语补充 | - |
-| 1 | 修 `toDualTrack` / `toMapped` 字段丢失 | 1 周 |
+| 1 | 修 `toDualTrack` / `toMapped` serviceFeeExpense 字段丢失 | 1 周 |
 | 2 | 抽 `OrderPayAmountAliasPolicy` | 1 周 |
 | 3 | 抽 `OrderAmountAssignmentPolicy` | 1 周 |
 | 4 | 抽 `OrderAmountFallbackPolicy` + `OrderAmountWriter` | 1 周 |
@@ -80,14 +80,14 @@
 ## 影响
 
 - [V2 必做] `OrderAmountMapperPolicy` 在阶段 5 物理删除；备份留 `harness/manifests/2026-XX-XX-order-amount-policy-decompose.json`。
-- [V2 必做] `OrderAmountMappingRouter.map()` 阶段 4 后退化为单行委派；`toDualTrack` / `toMapped` adapter 行为变更（修 bug，字段不再丢失）。
+- [V2 必做] `OrderAmountMappingRouter.map()` 阶段 4 后退化为单行委派；`toDualTrack` / `toMapped` adapter 行为变更（修 bug，`estimateServiceFeeExpense` / `effectiveServiceFeeExpense` 不再丢失）。
 - [V2 必做] 新增 3 Policy + 1 Writer + 至少 200+ 测试用例。
 - [V2 必做] 工期 6 周 + 1 天（4 周灰度 + 2 周开发 + 1 天清理）。
 - [V2 必做] 不影响 `OrderService`、其他 BC、DB、前端。
 
 ## 验证方式
 
-- [V2 必做] 阶段 1: `OrderAmountMappingRouterParityTest` 8 用例 + `OrderAmountMappingRouterFieldLossRegressionTest` 1 用例全绿。
+- [V2 必做] 阶段 1: `OrderAmountMappingRouterTest` policy-enabled serviceFeeExpense 回归用例全绿，并与 legacy `OrderDualTrackAmountResolver` 结果保持一致。
 - [V2 必做] 阶段 2: `OrderPayAmountAliasPolicyTest` 30+ 用例全绿（8 字段 × 8 alias 矩阵）。
 - [V2 必做] 阶段 3: `OrderAmountAssignmentPolicyTest` 40+ 用例全绿（8 字段 × 2 轨 × 4 边界）。
 - [V2 必做] 阶段 4: `OrderAmountFallbackPolicyTest` 120+ 用例 + `OrderAmountWriterTest` 200+ 用例全绿。

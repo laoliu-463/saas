@@ -51,9 +51,13 @@ public class OrderAmountMappingRouter {
             };
         }
         return switch (source) {
-            case INSTITUTE -> toDualTrack(mapWithFallback(rawPayload, fallbackPayAmount, fallbackServiceFee, Track.INSTITUTE));
+            case INSTITUTE -> toDualTrack(
+                    mapWithFallback(rawPayload, fallbackPayAmount, fallbackServiceFee, Track.INSTITUTE),
+                    OrderDualTrackAmountResolver.resolve(rawPayload, fallbackPayAmount, fallbackServiceFee));
             case INSTITUTE_SETTLEMENT -> OrderDualTrackAmountResolver.resolveInstituteSettlement(rawPayload);
-            case SETTLEMENT -> toDualTrack(mapWithFallback(rawPayload, fallbackPayAmount, fallbackServiceFee, Track.SETTLEMENT_STRICT));
+            case SETTLEMENT -> toDualTrack(
+                    mapWithFallback(rawPayload, fallbackPayAmount, fallbackServiceFee, Track.SETTLEMENT_STRICT),
+                    OrderDualTrackAmountResolver.resolveStrictSettlement(rawPayload, fallbackPayAmount, fallbackServiceFee));
         };
     }
 
@@ -75,9 +79,15 @@ public class OrderAmountMappingRouter {
         }
         MappedAmounts mapped = toMapped(amounts);
         switch (source) {
-            case INSTITUTE -> OrderAmountMapperPolicy.applyInstituteFactToOrder(order, mapped, rawPayload);
+            case INSTITUTE -> {
+                OrderAmountMapperPolicy.applyInstituteFactToOrder(order, mapped, rawPayload);
+                applyInstituteServiceFeeExpenses(order, amounts);
+            }
             case INSTITUTE_SETTLEMENT -> OrderDualTrackAmountResolver.applyInstituteSettlementToOrder(order, amounts);
-            case SETTLEMENT -> OrderAmountMapperPolicy.applyToOrder(order, mapped);
+            case SETTLEMENT -> {
+                OrderAmountMapperPolicy.applyToOrder(order, mapped);
+                applySettlementServiceFeeExpenses(order, amounts);
+            }
         }
     }
 
@@ -133,7 +143,7 @@ public class OrderAmountMappingRouter {
         return OrderAmountMapperPolicy.map(rawPayload, fallback, null, track);
     }
 
-    private static DualTrackAmounts toDualTrack(MappedAmounts amounts) {
+    private static DualTrackAmounts toDualTrack(MappedAmounts amounts, DualTrackAmounts expenseSource) {
         return new DualTrackAmounts(
                 amounts.payAmount(),
                 amounts.settleAmount(),
@@ -141,8 +151,8 @@ public class OrderAmountMappingRouter {
                 amounts.effectiveServiceFee(),
                 amounts.estimateTechServiceFee(),
                 amounts.effectiveTechServiceFee(),
-                0L,
-                0L);
+                expenseSource == null ? 0L : expenseSource.estimateServiceFeeExpense(),
+                expenseSource == null ? 0L : expenseSource.effectiveServiceFeeExpense());
     }
 
     private static MappedAmounts toMapped(DualTrackAmounts amounts) {
@@ -157,5 +167,18 @@ public class OrderAmountMappingRouter {
                 null,
                 java.util.List.of(),
                 java.util.Map.of());
+    }
+
+    private static void applyInstituteServiceFeeExpenses(
+            ColonelsettlementOrder order,
+            DualTrackAmounts amounts) {
+        order.setEstimateServiceFeeExpense(amounts.estimateServiceFeeExpense());
+    }
+
+    private static void applySettlementServiceFeeExpenses(
+            ColonelsettlementOrder order,
+            DualTrackAmounts amounts) {
+        order.setEstimateServiceFeeExpense(amounts.estimateServiceFeeExpense());
+        order.setEffectiveServiceFeeExpense(amounts.effectiveServiceFeeExpense());
     }
 }
