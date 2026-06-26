@@ -13,7 +13,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
-import org.springframework.util.StringUtils;
 
 /**
  * 商品库展示去重纯策略（DDD-PRODUCT-002）。
@@ -283,7 +282,7 @@ public class ProductDisplayPolicy {
     }
 
     public String normalizeActivityProductSortBy(String sortBy) {
-        if (!StringUtils.hasText(sortBy)) {
+        if (!hasText(sortBy)) {
             return "default";
         }
         String normalized = sortBy.trim().toLowerCase(Locale.ROOT);
@@ -299,7 +298,7 @@ public class ProductDisplayPolicy {
             return false;
         }
         for (String link : links) {
-            if (StringUtils.hasText(link)) {
+            if (hasText(link)) {
                 return true;
             }
         }
@@ -712,6 +711,10 @@ public class ProductDisplayPolicy {
         } catch (IllegalArgumentException ex) {
             return ProductBizStatus.PENDING_AUDIT;
         }
+    }
+
+    private static boolean hasText(String value) {
+        return value != null && !value.isBlank();
     }
 
     private boolean containsAny(String text, String... needles) {
