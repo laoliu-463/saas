@@ -1,7 +1,7 @@
 # GitHub Issues Index (Mirror)
 
 > 本文件是 GitHub Issues 的本地镜像，用于 Matt Pocock engineering skills 与 harness 任务路由。
-> 最后更新：2026-06-26（DDD100 100% leaf issues 发布后）
+> 最后更新：2026-06-26（#29 关闭状态与补充治理证据同步后）
 
 ## 同步规则
 
@@ -84,13 +84,14 @@
 | 26 | [P1-URGENT] [PRODUCT-FIX-001] /product/manage/products 无 query 时 fallback 到 assigned[0] 导致数据归属错位 | 2026-06-25 | `product/manage/products` fallback fix |
 | 27 | [P1-URGENT] [PRODUCT-FIX-002] 验证 /product/manage/products fallback 修复端到端行为 | 2026-06-26 | `harness/reports/evidence-20260623-product-manage-fallback-verification.md` |
 | 28 | [P1-URGENT] [PRODUCT-FIX-003] DB 快照 total 与抖音实时 total 偏差排查 | 2026-06-26 | `harness/reports/evidence-20260623-db-snapshot-vs-douyin-total.md` |
-| 29 | PRD: 代码质量与 DDD 设计合规治理 | 2026-06-26 | GitHub closed; details in issue |
+| 29 | PRD: 代码质量与 DDD 设计合规治理 | 2026-06-26 | `harness/reports/evidence-20260626-173757.md`, `runtime/qa/out/real-pre-p0-20260626-173922/report.md`, `99b4c032` |
 
 ## 当前判断
 
 - #3 是 DDD 迁移总 PRD，不能因单个切片完成而关闭。
 - #30-#89 是按 DDD-MIGRATION-100 的 100% 目标发布的 leaf issues。
 - #29 已在 GitHub 关闭，本文件不再把它列为 open。
+- 本轮补充完成商品链 real-pre 红灯修复与订单/业绩运维入口边界迁移；完整 real-pre P0 仍因真实订单/寄样样本缺口为 `PENDING`，不得写成 P0 PASS。
 
 ## 常用命令
 
