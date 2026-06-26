@@ -1,74 +1,71 @@
-# Evidence: PRODUCT-FIX-002 (Issue #27) — /product/manage/products fallback 修复验证
+# Evidence: PRODUCT-FIX-002 Issue #27
 
 ## 基本信息
 
-- Time: 2026-06-26 16:21:59 Asia/Shanghai
-- Env: real-pre（前端）
-- Branch: feature/ddd/DDD-VERIFY-001
-- Issue: #27 [P1-URGENT] [PRODUCT-FIX-002] 验证 /product/manage/products fallback 修复
-- 依赖: #26（已完成）
-- 修复 commit: 3a38ce6d (Codex 16:15 落地)
+- 时间: 2026-06-26 16:31 Asia/Shanghai
+- 环境: local real-pre
+- 分支: feature/ddd/DDD-VERIFY-001
+- Issue: #27 `/product/manage/products` fallback 修复端到端验证
+- 关键提交: 3a38ce6d, 08fd8729, 7fe57afd
 
-## 验证清单（按 issue #27 acceptance）
+## 现象
 
-### ✅ 单测 248+ 通过
-- 全量 npx vitest run: **657/657 PASS** (87 test files)
-- product-page-data-source.test.ts: **8/8 PASS** (覆盖 4 status: ready/empty/forbidden/loading + 4 边界)
-- 远超 248+ 验收标准
+历史问题是直接访问 `/product/manage/products` 时会自动 fallback 到 `assigned[0]`，并改写 filters / URL 语义，导致活动商品数量与显式活动查询不一致。
 
-### ✅ E2E #39 4 case 全过
-- **N/A**: 仓库无 `npm run e2e:v1-p0` 脚本（package.json 未定义）
-- 无 `39-product-manage-fallback.spec.ts` 文件
-- 替代验证：vitest 8 case 完整覆盖 issue #26 验收 + 4 status 分支
+## 修复摘要
 
-### ✅ 直接访问 /product/manage/products 无 /colonel/activities/{id}/products 请求
-- `resolveActivityContextForManageProductsPath` 行为：
-  - 路径匹配 → 无 activityId query → 返回 `{ status: 'empty' }`
-  - 不发 `/colonel/activities/{id}/products` 请求（fetchProducts 应短路）
-- 单元测试 `resolves empty state for /product/manage/products without query` 验证
+- 新增 `resolveActivityContextForManageProductsPath`，把产品管理页活动上下文显式分成 `empty` / `loading` / `ready` / `forbidden`。
+- 新增 `CurrentActivityBanner.vue`，把当前活动、无权限和未选择状态显式展示。
+- 移除 `/product/manage/products` 的 `assigned[0]` fallback 与活动页兜底分支。
+- 修复初始化竞态：产品管理页先加载可见活动选项，再按 query 加载活动商品。
 
-### ✅ /product/manage/products?activityId=3916506 看到 banner
-- `resolves ready state for assigned activity query` 测试覆盖
-- CurrentActivityBanner.vue: `当前活动: ${name} (${activityId})` 渲染
+## 单元与构建验证
 
-### ✅ /product/manage/products?activityId=99999999 看到禁止状态
-- `resolves forbidden state for non-assigned activity query` 测试覆盖
-- CurrentActivityBanner.vue: `无权限查看当前活动` 渲染（type=error）
+- `npm --prefix frontend run test -- src/views/product/product-page-data-source.test.ts src/views/product/ActivityList.test.ts`: PASS，2 files / 11 tests。
+- `npm --prefix frontend run test -- src/views/product src/router`: PASS，32 files / 272 tests。
+- `npm --prefix frontend run build`: PASS。
+- `mvn -q -f backend/pom.xml -DskipTests package`: PASS。
 
-### ✅ 没有任何 baseline 测试失败
-- 657/657 全过
-- 与 #26 修复前 baseline 对比（按 git log 06-23 之前的 vitest pass rate）一致
+## real-pre Harness 验证
 
-## 附加验证
+执行项目统一入口：
 
-- npx vue-tsc -b: **BUILD SUCCESS** (前端 TypeScript 类型检查通过)
-- product 域 27 test files: **221/221 PASS** (含 #26 新增 8 case)
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\agent-do.ps1 -Env real-pre -Scope full -ContentMaintenance off -Message "fix: load product manage activity options before products"
+```
 
-## 关键改动确认（#26 已落地）
+结果：
 
-1. ✅ `frontend/src/views/product/index.vue` - `ensureActivityId` 函数已移除
-2. ✅ `frontend/src/views/product/product-page-data-source.ts` - 新增 `resolveActivityContextForManageProductsPath`
-3. ✅ `frontend/src/views/product/components/CurrentActivityBanner.vue` - 新增组件
-4. ✅ `frontend/src/views/product/product-page-data-source.test.ts` - 新增 8 个测试
-5. ✅ filters.value 不被 ensureActivityId 改写（ensureActivityId 已删除）
+- backend build: PASS
+- frontend build: PASS
+- Docker backend/frontend restart: PASS
+- backend health: PASS
+- frontend healthz: PASS
+- business validation `npm run e2e:real-pre:p0:preflight`: PASS
+- evidence: `harness/reports/evidence-20260626-163014.md`
 
-## 边界确认
+## 浏览器 Network Smoke
 
-- ✅ ADR-007 query 入口契约保持（/product/manage/products?activityId=X 仍工作）
-- ✅ 无新 fallthrough 路径（resolveActivityContextForManageProductsPath 直接 return { status: 'ready' } 当路径不匹配）
-- ✅ 灰度默认 OFF（与 DDD 政策一致）
-- ✅ Vue 组件 + 纯函数 + TypeScript 类型全覆盖
+使用 Chromium + admin 登录态监听 `/api/colonel/activities/{id}/products`。
 
-## 风险
+```json
+{
+  "ok": true,
+  "checks": {
+    "emptyNoProductRequest": true,
+    "readyHasProductRequest": true,
+    "forbiddenNoProductRequest": true,
+    "banners": true
+  }
+}
+```
 
-- E2E 测试不存在（issue #27 提到 `npm run e2e:v1-p0`）
-- 替代方案：vitest 8 个 case 完整覆盖 4 status + 边界
-- 建议未来补充 Playwright E2E（不在本轮 P1 范围）
+逐项结果：
+
+- `/product/manage/products`: banner `请先选择活动`，活动商品请求 0 次。
+- `/product/manage/products?activityId=3916506`: banner `当前活动: 星链达客-zy (3916506)`，活动商品请求 1 次，HTTP 200。
+- `/product/manage/products?activityId=99999999`: banner `无权限查看当前活动`，活动商品请求 0 次。
 
 ## 结论
 
-**#26 修复 + #27 验证全部通过**。P1-URGENT 已收口。
-- 657/657 vitest 全过
-- 0 个 baseline regression
-- TypeScript 类型检查通过
-- 可关闭 issue #27
+#27 的核心验收通过：无 query 不再 fallback 到 `assigned[0]`，有效 query 可加载活动商品，无权限 query 不触发活动商品请求。仓库未发现 `39-product-manage-fallback.spec.ts`，本轮用真实浏览器 Network smoke 和现有产品/路由测试补足验证证据。
