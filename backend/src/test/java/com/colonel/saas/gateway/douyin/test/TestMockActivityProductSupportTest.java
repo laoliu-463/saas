@@ -20,6 +20,7 @@ class TestMockActivityProductSupportTest {
         assertThat(TestMockActivityProductSupport.resolveMockProductStatus(100001L, 12)).isEqualTo(0);
         assertThat(TestMockActivityProductSupport.resolveMockProductStatus(100017L, 13)).isEqualTo(1);
         assertThat(TestMockActivityProductSupport.resolveMockProductStatus(100017L, 14)).isEqualTo(2);
+        assertThat(TestMockActivityProductSupport.resolveMockProductStatus(100017L, 18)).isEqualTo(0);
     }
 
     @Test

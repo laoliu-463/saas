@@ -1,8 +1,8 @@
 package com.colonel.saas.domain.product.policy;
 
+import com.colonel.saas.domain.shared.policy.DomainText;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -20,7 +20,7 @@ public final class ProductAuditSupplementPayload {
     }
 
     public static Map<String, Object> parse(String rawPayload) {
-        if (!StringUtils.hasText(rawPayload)) {
+        if (!DomainText.hasText(rawPayload)) {
             return Map.of();
         }
         try {
@@ -120,7 +120,7 @@ public final class ProductAuditSupplementPayload {
 
     private static void putNormalizedText(Map<String, Object> payload, String key, Object rawValue) {
         String value = rawValue == null ? null : String.valueOf(rawValue).trim();
-        if (StringUtils.hasText(value)) {
+        if (DomainText.hasText(value)) {
             payload.put(key, value);
         }
     }
@@ -134,7 +134,7 @@ public final class ProductAuditSupplementPayload {
             return;
         }
         String value = String.valueOf(rawValue).trim();
-        if (!StringUtils.hasText(value)) {
+        if (!DomainText.hasText(value)) {
             return;
         }
         try {
@@ -153,7 +153,7 @@ public final class ProductAuditSupplementPayload {
             return;
         }
         String value = String.valueOf(rawValue).trim();
-        if (!StringUtils.hasText(value)) {
+        if (!DomainText.hasText(value)) {
             return;
         }
         payload.put(key, Boolean.parseBoolean(value));
@@ -166,14 +166,14 @@ public final class ProductAuditSupplementPayload {
         List<String> normalized = new ArrayList<>();
         if (rawValue instanceof Iterable<?> iterable) {
             for (Object item : iterable) {
-                if (item != null && StringUtils.hasText(String.valueOf(item))) {
+                if (item != null && DomainText.hasText(String.valueOf(item))) {
                     normalized.add(String.valueOf(item).trim());
                 }
             }
             return normalized;
         }
         String text = String.valueOf(rawValue).trim();
-        if (StringUtils.hasText(text)) {
+        if (DomainText.hasText(text)) {
             normalized.add(text);
         }
         return normalized;

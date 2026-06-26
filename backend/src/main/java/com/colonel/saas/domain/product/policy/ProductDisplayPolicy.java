@@ -2,6 +2,7 @@ package com.colonel.saas.domain.product.policy;
 
 import com.colonel.saas.common.enums.ProductBizStatus;
 import com.colonel.saas.constant.ProductDisplayStatus;
+import com.colonel.saas.domain.shared.policy.DomainText;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -13,7 +14,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
-import org.springframework.util.StringUtils;
 
 /**
  * 商品库展示去重纯策略（DDD-PRODUCT-002）。
@@ -260,7 +260,7 @@ public class ProductDisplayPolicy {
     }
 
     public String normalizeActivityProductSortBy(String sortBy) {
-        if (!StringUtils.hasText(sortBy)) {
+        if (!DomainText.hasText(sortBy)) {
             return "default";
         }
         String normalized = sortBy.trim().toLowerCase(Locale.ROOT);
@@ -268,7 +268,7 @@ public class ProductDisplayPolicy {
     }
 
     public String normalizeSelectedLibrarySortBy(String sortBy) {
-        if (!StringUtils.hasText(sortBy)) {
+        if (!DomainText.hasText(sortBy)) {
             return "default";
         }
         String normalized = sortBy.trim();
@@ -286,7 +286,7 @@ public class ProductDisplayPolicy {
             return false;
         }
         for (String link : links) {
-            if (StringUtils.hasText(link)) {
+            if (DomainText.hasText(link)) {
                 return true;
             }
         }

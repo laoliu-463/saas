@@ -61,7 +61,7 @@ final class TestMockActivityProductSupport {
      * <p>处理流程：</p>
      * <ol>
      *   <li>仅使用商品排名构造稳定分布</li>
-     *   <li>同一活动下可同时出现待审核、推广中、申请未通过、合作已终止、合作已到期</li>
+     *   <li>按 6 位循环生成稳定样本，同一活动下可同时出现待审核、推广中、申请未通过、合作已终止、合作已到期</li>
      * </ol>
      *
      * @param activitySeed 活动 ID 种子值，仅用于保持方法签名兼容
@@ -69,7 +69,7 @@ final class TestMockActivityProductSupport {
      * @return 商品状态码（0=待审核, 1=推广中, 2=申请未通过, 3=合作已终止, 6=合作已到期）
      */
     static int resolveMockProductStatus(long activitySeed, int rank) {
-        return switch (Math.floorMod(rank, 5)) {
+        return switch (Math.floorMod(rank, 6)) {
             case 0 -> 0;
             case 1 -> 1;
             case 2 -> 2;
