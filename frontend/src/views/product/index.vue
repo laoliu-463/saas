@@ -613,18 +613,6 @@ const ensureActivityId = async () => {
     fallbackActivityId.value = selectedRecruitActivityId
     return selectedRecruitActivityId
   }
-  const firstAssignedActivity = assignedActivityOptions.value[0]?.value
-  if (isProductManageProductsMode.value && firstAssignedActivity) {
-    const firstAssignedName = assignedActivityOptions.value[0]?.label.replace(/\s*\([^)]*\)\s*$/, '').trim()
-    fallbackActivityId.value = firstAssignedActivity
-    filters.value = {
-      ...filters.value,
-      recruitActivityId: firstAssignedActivity,
-      activityId: firstAssignedActivity,
-      recruitActivityName: firstAssignedName || null
-    }
-    return firstAssignedActivity
-  }
   if (route.params.activityId) {
     fallbackActivityId.value = ''
     return String(route.params.activityId)
@@ -643,14 +631,6 @@ const ensureActivityId = async () => {
     if (activity?.activityId) {
       const activityId = String(activity.activityId)
       fallbackActivityId.value = activityId
-      if (isProductManageProductsMode.value) {
-        filters.value = {
-          ...filters.value,
-          recruitActivityId: activityId,
-          activityId,
-          recruitActivityName: normalizeText(activity.activityName || activity.name) || null
-        }
-      }
       return fallbackActivityId.value
     }
   } catch {
