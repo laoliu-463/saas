@@ -19,6 +19,7 @@ backend/lib/doudian-sdk-java-1.1.0-*.jar
 
 # Local agent/tooling and run artifacts
 /.opencode/
+/.hermes/
 /.worktrees/
 /tmp/
 /args.json
