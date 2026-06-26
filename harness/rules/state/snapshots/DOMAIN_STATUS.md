@@ -89,7 +89,7 @@
 ## 订单域
 - 最新边界变化：ORDER-SYNC-EVENT-EXPENSE-001 已让 `OrderSyncedEvent` 携带 `estimateServiceFeeExpense` / `effectiveServiceFeeExpense` 订单金额事实，`OrderEventPayloadMapper` 从订单事实映射该载荷；订单域仍只发布事实，不计算业绩。上一变化：ORDER-AMOUNT-ROUTER-EXPENSE-001 已修复 policy 开关启用时丢失服务费支出的 adapter 漂移。
 - 最新边界变化：`OrderAttributionService` 未归因分页与订单回流摘要数据范围过滤新增默认关闭的用户域 `DataScopePolicy` 旁路；默认关闭继续走 Legacy PERSONAL/DEPT `QueryWrapper.eq` 条件，开启后才调用 `DataScopePolicy.applyTo`。本轮未改订单事实、归因状态、同步、业绩事件、Mapper SQL、接口参数或历史数据。
-- 最新报告路径：`harness/reports/evidence-20260622-191140.md`；retro：`harness/reports/retro-20260622-191156.md`。
+- 最新报告路径：`harness/reports/evidence-20260626-140029.md`；retro：`harness/reports/retro-20260626-140058.md`。上一报告：`harness/reports/evidence-20260622-191140.md`。
 - 当前状态：订单事实、退款事实、同步日志和归因输入已具备；P0-ORDER-001 PAY_RECENT 6h 补拉与同步日志增强已完成（2026-06-03，代码 + 运行态）；ORDER-P0-DUAL-SOURCE-SYNC 已在本地 real-pre 接入 1603 事实订单源并验证入库；ORDER-P0-DUAL-SOURCE-REMOTE-VERIFY 已完成远端部署验证，远端 commit 对齐 `77b723b6`，1603 入库与管理员可见通过；订单明细表字段对齐已完成本地 real-pre 验证（2026-06-04，commit `abf3f9eb`）；ORDER-DETAIL-TAB-FIX-001 已完成前端 16 列扩展与“渠道”文案统一（2026-06-05，commit `db934d99`）；ORDER-PERFORMANCE-EVENT-AFTER-COMMIT-FIX-001 已完成本地 real-pre 修复验证（2026-06-06），订单已同步事件改为事务提交后发布。
 - 已完成能力：订单同步（默认 1603 `INSTITUTE_SETTLEMENT` 结算口径 + PAY_RECENT 6h 30min 兜底回扫 + 1603 INSTITUTE_RECENT 24h 事实订单源）、订单入库、退款事实、归因输入保存、双轨独立 Redis 水位 + 独立锁、同步日志含 `api/mode/timeType/inserted/updated/attributed/unattributed/noPickSource/noMapping/failed` 维度。
 - P0-ORDER-001 报告路径：`harness/reports/p0-order-001-real-order-visible-20260603-180450.md`、`harness/reports/p0-order-001-diagnosis-20260603-173500.md`、`harness/reports/p0-order-001-intake-20260603-172923.md`。
@@ -124,7 +124,7 @@
 - 最新边界变化：`DataApplicationService` 的数据页订单明细、订单汇总、导出、核心指标和运营监控查询已新增默认关闭旁路；默认关闭保持 Legacy PERSONAL/DEPT 条件与缺上下文 fail-closed，开启后仅把 PERSONAL/DEPT/ALL 数据范围解释委托给用户域 `DataScopePolicy`。本轮只收口可见性，不改变订单事实、业绩补全、导出列、服务费双轨公式或历史数据。
 - 最新验证变化：新增 `DddAnalyticsReadOnlyBoundaryTest`，把分析模块只读边界变成后端架构测试：Dashboard/DataApplication/PerformanceMetrics 核心源文件不得写业务事实，不得调用订单同步、归因重算、业绩回填或寄样命令流；相关数据范围旁路组合测试 PASS。上一轮 real-pre Dashboard API/SQL 对账 evidence：`runtime/qa/out/real-pre-dashboard-reconcile-20260622-205417/`；harness evidence：`harness/reports/evidence-20260622-205724.md`。
 - 最新边界变化：`PerformanceMetricsQueryService` 汇总读侧数据范围过滤已具备默认关闭旁路；默认关闭保持 Legacy SQL 条件拼接，开启后仅把 PERSONAL/DEPT/ALL 数据范围解释委托给用户域。本轮不改变 dashboard 指标公式、排行 SQL、订单归因或业绩归属。
-- 最新报告路径：`harness/reports/evidence-20260622-195231.md`；retro：`harness/reports/retro-20260622-195253.md`。
+- 最新报告路径：`harness/reports/evidence-20260626-140029.md`；retro：`harness/reports/retro-20260626-140058.md`。上一报告：`harness/reports/evidence-20260622-195231.md`。
 - 当前状态：dashboard、报表和只读汇总主链路已具备；数据平台订单页已保留汇总模块，并新增/收口订单明细 Tab 与 16 列订单级明细导出；ORDER-DETAIL-TAB-FIX-001 已补齐订单明细 Tab 前端 16 列展示、人民币金额格式与“渠道”文案统一；SERVICE-FEE-INCOME-FORMULA-CODE-001 已更新经营指标矩阵服务费收入 / 收益双轨公式口径与后端展示层单测；`DataApplicationService` 订单明细负责人展示已改为消费用户域 `loadUserDisplayNamesByIds`，分析模块不再为该展示读取完整用户 DTO。
 - 报告路径：DDD-USER-DATA-APPLICATION-FACADE `harness/reports/2026-06-21/ddd-user/evidence-20260621-132400-data-application-facade.md`。
 - 已完成能力：看板汇总、报表查询、导出能力。
