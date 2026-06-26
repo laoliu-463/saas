@@ -1670,6 +1670,11 @@ const columns = computed(() => [
 onMounted(async () => {
   try {
     syncRouteActivityIdToFilters()
+    if (isProductManageProductsMode.value) {
+      await refreshAssignedActivityOptions()
+      await refreshProducts()
+      return
+    }
     await Promise.all([refreshAssignedActivityOptions(), refreshProducts()])
   } catch (error: any) {
     notifyApiFailure(error, message, { fallbackMessage: '页面初始化失败' })
