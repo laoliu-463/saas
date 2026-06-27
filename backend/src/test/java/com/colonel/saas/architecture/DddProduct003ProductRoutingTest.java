@@ -167,7 +167,7 @@ class DddProduct003ProductRoutingTest {
     void productAuditDecision_shouldDelegateAuditStatusAndLogPayloadToPolicy() throws Exception {
         String source = readSource("com/colonel/saas/service/ProductService.java");
         String readModelSource = readSource(
-                "com/colonel/saas/service/ActivityProductReadModelQueryService.java");
+                "com/colonel/saas/domain/product/query/ActivityProductReadModelQueryService.java");
 
         assertThat(source)
                 .contains("ProductAuditDecisionPolicy")

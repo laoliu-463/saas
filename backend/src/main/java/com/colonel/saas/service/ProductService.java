@@ -168,9 +168,9 @@ public class ProductService {
     /** 商品操作日志与状态操作语义策略（DDD100-PRODUCT-STATUS）。 */
     private final ProductOperationDecisionPolicy productOperationDecisionPolicy = new ProductOperationDecisionPolicy();
     /** 商品快照读侧查询服务（DDD100-PRODUCT-SNAPSHOT）。 */
-    private final ProductSnapshotQueryService productSnapshotQueryService;
+    private final com.colonel.saas.domain.product.query.ProductSnapshotQueryService productSnapshotQueryService;
     /** 活动商品读侧查询服务（DDD100-PRODUCT-READMODEL）。 */
-    private final ActivityProductReadModelQueryService activityProductReadModelQueryService;
+    private final com.colonel.saas.domain.product.query.ActivityProductReadModelQueryService activityProductReadModelQueryService;
     /** 活动商品读侧视图组装器，避免 ProductService 承载展示 Map 细节。 */
     private final ActivityProductViewAssembler activityProductViewAssembler;
     @Value("${douyin.real.promotion-write-enabled:false}")
@@ -230,8 +230,8 @@ public class ProductService {
         this.productDomainEventPublisher = productDomainEventPublisher;
         this.productDisplayPolicy = productDisplayPolicy;
         this.copyPromotionApplicationService = copyPromotionApplicationService;
-        this.productSnapshotQueryService = new ProductSnapshotQueryService(snapshotMapper);
-        this.activityProductReadModelQueryService = new ActivityProductReadModelQueryService(
+        this.productSnapshotQueryService = new com.colonel.saas.domain.product.query.ProductSnapshotQueryService(snapshotMapper);
+        this.activityProductReadModelQueryService = new com.colonel.saas.domain.product.query.ActivityProductReadModelQueryService(
                 operationStateMapper,
                 operationLogMapper,
                 promotionLinkMapper,
