@@ -44,6 +44,7 @@ import com.colonel.saas.mapper.ProductSnapshotMapper;
 import com.colonel.saas.mapper.PromotionLinkMapper;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.domain.user.facade.dto.UserOwnershipReference;
+import com.colonel.saas.domain.product.policy.ProductAuditDecisionPolicy;
 import com.colonel.saas.domain.product.policy.ProductAuditSupplementPayload;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -165,6 +166,8 @@ public class ProductService {
     private final ProductDomainEventPublisher productDomainEventPublisher;
     /** 商品库展示优先级策略（DDD-PRODUCT-002，不含置顶） */
     private final ProductDisplayPolicy productDisplayPolicy;
+    /** 商品审核状态和日志语义策略（DDD100-PRODUCT-STATUS）。 */
+    private final ProductAuditDecisionPolicy productAuditDecisionPolicy = new ProductAuditDecisionPolicy();
     /** 活动商品读侧视图组装器，避免 ProductService 承载展示 Map 细节。 */
     private final ActivityProductViewAssembler activityProductViewAssembler;
     @Value("${douyin.real.promotion-write-enabled:false}")
@@ -2460,49 +2463,35 @@ public class ProductService {
             Map<String, Object> supplement,
             UUID operatorId,
             UUID operatorDeptId) {
-        if (!approved && !StringUtils.hasText(reason)) {
-            throw BusinessException.stateInvalid("审核拒绝时必须填写原因");
-        }
         ensureSnapshotExists(activityId, productId);
         ProductOperationState state = getOrInitOperationState(activityId, productId);
-        ProductBizStatus beforeStatus = productBizStatusService.readBizStatus(state);
-        if (beforeStatus == null) {
-            beforeStatus = ProductBizStatus.PENDING_AUDIT;
-        }
-        String auditPayload = null;
-        if (approved) {
-            validateAuditSupplement(supplement);
-            auditPayload = writeAuditPayload(supplement);
-        }
-        final String approvedAuditPayload = auditPayload;
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("approved", approved);
-        payload.put("reason", reason);
+        ProductAuditDecisionPolicy.AuditDecision auditDecision =
+                productAuditDecisionPolicy.resolve(approved, reason, supplement);
+        final String approvedAuditPayload = auditDecision.approved()
+                ? writeAuditPayload(auditDecision.normalizedSupplement())
+                : null;
+        Map<String, Object> payload = new LinkedHashMap<>(auditDecision.payload());
         state.setLastOperationAt(LocalDateTime.now());
-        state.setAuditStatus(approved ? 2 : 3);
-        state.setAuditRemark(approved ? null : reason);
+        state.setAuditStatus(auditDecision.auditStatus());
+        state.setAuditRemark(auditDecision.auditRemark());
         state.setAuditPayload(approvedAuditPayload);
-        if (approved) {
-            state.setSelectedToLibrary(true);
+        if (auditDecision.approved()) {
+            state.setSelectedToLibrary(auditDecision.selectedToLibrary());
             state.setSelectedAt(LocalDateTime.now());
             state.setSelectedBy(operatorId);
-            payload.put("eventLabel", "审核通过并加入商品库");
-            payload.put("selectedToLibrary", true);
-            payload.put("libraryVisible", true);
-            payload.put("supplement", ProductAuditSupplementPayload.normalize(supplement));
             productBizStatusService.changeStatus(
                     state,
-                    ProductBizStatus.APPROVED,
-                    "AUDIT",
+                    auditDecision.targetStatus(),
+                    auditDecision.operationType(),
                     operatorId,
                     operatorDeptId,
                     payload,
-                    "审核通过，已加入商品库",
+                    auditDecision.operationRemark(),
                     current -> {
-                        current.setAuditStatus(2);
-                        current.setAuditRemark(null);
+                        current.setAuditStatus(auditDecision.auditStatus());
+                        current.setAuditRemark(auditDecision.auditRemark());
                         current.setAuditPayload(approvedAuditPayload);
-                        current.setSelectedToLibrary(true);
+                        current.setSelectedToLibrary(auditDecision.selectedToLibrary());
                         current.setSelectedAt(LocalDateTime.now());
                         current.setSelectedBy(operatorId);
                         current.setLastOperationAt(LocalDateTime.now());
@@ -2515,29 +2504,28 @@ public class ProductService {
             return detail;
         }
 
-        state.setSelectedToLibrary(false);
+        state.setSelectedToLibrary(auditDecision.selectedToLibrary());
         state.setSelectedAt(null);
         state.setSelectedBy(null);
-        state.setDisplayStatus(ProductDisplayStatus.HIDDEN.name());
-        state.setHiddenReason("审核拒绝");
-        payload.put("eventLabel", "审核拒绝");
+        state.setDisplayStatus(auditDecision.displayStatus());
+        state.setHiddenReason(auditDecision.hiddenReason());
         productBizStatusService.changeStatus(
                 state,
-                ProductBizStatus.REJECTED,
-                "AUDIT",
+                auditDecision.targetStatus(),
+                auditDecision.operationType(),
                 operatorId,
                 operatorDeptId,
                 payload,
-                "审核拒绝",
+                auditDecision.operationRemark(),
                 current -> {
-                    current.setAuditStatus(3);
-                    current.setAuditRemark(reason);
+                    current.setAuditStatus(auditDecision.auditStatus());
+                    current.setAuditRemark(auditDecision.auditRemark());
                     current.setAuditPayload(null);
-                    current.setSelectedToLibrary(false);
+                    current.setSelectedToLibrary(auditDecision.selectedToLibrary());
                     current.setSelectedAt(null);
                     current.setSelectedBy(null);
-                    current.setDisplayStatus(ProductDisplayStatus.HIDDEN.name());
-                    current.setHiddenReason("审核拒绝");
+                    current.setDisplayStatus(auditDecision.displayStatus());
+                    current.setHiddenReason(auditDecision.hiddenReason());
                     current.setLastOperationAt(LocalDateTime.now());
                 }
         );
@@ -4440,37 +4428,6 @@ public class ProductService {
         state.setSelectedAt(LocalDateTime.now());
         state.setSelectedBy(operatorId);
         persistOperationState(state);
-    }
-
-    private void validateAuditSupplement(Map<String, Object> supplement) {
-        Map<String, Object> normalized = ProductAuditSupplementPayload.normalize(supplement);
-        List<String> missing = new ArrayList<>();
-        requireText(normalized, "exclusivePriceRemark", "专属价说明", missing);
-        requireText(normalized, "shippingInfo", "发货信息", missing);
-        requireList(normalized, "sellingPoints", "商品卖点", missing);
-        requireText(normalized, "promotionScript", "推广话术", missing);
-        if (!normalized.containsKey("supportsAds")) {
-            missing.add("是否支持投流");
-        }
-        requireText(normalized, "rewardRemark", "奖励说明", missing);
-        requireText(normalized, "participationRequirements", "参与要求", missing);
-        requireText(normalized, "campaignTimeRemark", "活动时间", missing);
-        requireList(normalized, "materialFiles", "手卡素材", missing);
-        if (!missing.isEmpty()) {
-            throw BusinessException.stateInvalid("审核通过前请补充：" + String.join("、", missing));
-        }
-    }
-
-    private void requireText(Map<String, Object> payload, String key, String label, List<String> missing) {
-        if (!StringUtils.hasText(readString(payload, key))) {
-            missing.add(label);
-        }
-    }
-
-    private void requireList(Map<String, Object> payload, String key, String label, List<String> missing) {
-        if (ProductAuditSupplementPayload.readStringList(payload, key).isEmpty()) {
-            missing.add(label);
-        }
     }
 
     private String writeAuditPayload(Map<String, Object> supplement) {

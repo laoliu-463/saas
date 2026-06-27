@@ -162,6 +162,18 @@ class DddProduct003ProductRoutingTest {
                 .contains("currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.BIZ_LEADER)");
     }
 
+    @Test
+    @DisplayName("商品审核状态和日志语义委托商品域策略")
+    void productAuditDecision_shouldDelegateAuditStatusAndLogPayloadToPolicy() throws Exception {
+        String source = readSource("com/colonel/saas/service/ProductService.java");
+
+        assertThat(source)
+                .contains("ProductAuditDecisionPolicy")
+                .contains("productAuditDecisionPolicy.resolve")
+                .doesNotContain("审核通过前请补充：")
+                .doesNotContain("审核通过并加入商品库");
+    }
+
     private String readSource(String relativePath) throws Exception {
         Path sourcePath = Path.of("src/main/java", relativePath);
         if (!Files.exists(sourcePath)) {
