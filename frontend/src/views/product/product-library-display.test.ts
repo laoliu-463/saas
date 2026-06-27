@@ -96,6 +96,7 @@ describe('product-library-display', () => {
     expect(hasDoubleCommission({ cos_type: '1' })).toBe(true)
     expect(hasDoubleCommission({ cosType: 0 })).toBe(false)
     expect(hasDoubleCommission({ doubleCommission: true })).toBe(true)
+    expect(hasDoubleCommission({ cosType: 0, doubleCommission: true })).toBe(true)
   })
 
   it('mergeLibraryDisplayFields stops inflating libraryVisible from approved status', () => {

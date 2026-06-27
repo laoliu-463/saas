@@ -99,15 +99,16 @@ export function isPromotingAllianceStatus(item: any) {
 }
 
 export function hasDoubleCommission(item: any) {
+  const manualEnabled = Boolean(item?.doubleCommission || item?.dualCommission)
+    || item?.serviceFeeMode === 'DOUBLE'
+    || item?.promotionMode === 'DOUBLE'
   const cosType = item?.cosType ?? item?.cos_type
   if (cosType !== undefined && cosType !== null && cosType !== '') {
-    return Number(cosType) === 1
+    return Number(cosType) === 1 || manualEnabled
   }
   const cosTypeText = normalizeText(item?.cosTypeText ?? item?.cos_type_text)
   return cosTypeText.includes('双佣金')
-    || Boolean(item?.doubleCommission || item?.dualCommission)
-    || item?.serviceFeeMode === 'DOUBLE'
-    || item?.promotionMode === 'DOUBLE'
+    || manualEnabled
 }
 
 /** 入库后能否进入共享商品库列表（不含同品去重等运行时竞争） */
