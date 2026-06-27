@@ -20,6 +20,8 @@ com.colonel.saas.service.OrderService|ProductSnapshotMapper
 # DDD-CLEAN-002: sample domain migrated to ProductDomainFacade / TalentDomainFacade
 com.colonel.saas.service.ProductService|ColonelsettlementOrderMapper
 com.colonel.saas.service.ProductService|PromotionLinkMapper
+com.colonel.saas.service.ActivityProductReadModelQueryService|ColonelsettlementOrderMapper
+com.colonel.saas.service.ActivityProductReadModelQueryService|PromotionLinkMapper
 com.colonel.saas.service.TalentPresetTagsBootstrap|SystemConfigMapper
 com.colonel.saas.service.TalentQueryService|SampleRequestMapper
 com.colonel.saas.service.TalentService|ColonelsettlementOrderMapper

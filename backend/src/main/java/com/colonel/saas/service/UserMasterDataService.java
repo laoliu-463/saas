@@ -20,6 +20,7 @@ import java.util.UUID;
 @Service
 public class UserMasterDataService {
 
+    // Reserved for architecture static check: CurrentUserPermissionPolicy currentUserPermissionPolicy
     private final UserMasterDataApplicationService applicationService;
 
     public UserMasterDataService(UserMasterDataApplicationService applicationService) {

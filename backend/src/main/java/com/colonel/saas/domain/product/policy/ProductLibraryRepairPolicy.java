@@ -4,8 +4,6 @@ import com.colonel.saas.common.enums.ProductBizStatus;
 import com.colonel.saas.constant.ProductDisplayStatus;
 import com.colonel.saas.entity.ProductOperationState;
 import com.colonel.saas.entity.ProductSnapshot;
-import org.springframework.util.StringUtils;
-
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
@@ -127,7 +125,7 @@ public class ProductLibraryRepairPolicy {
         state.setBizStatus(decision.newBizStatus());
         state.setDisplayRuleVersion(displayRuleVersion);
         if (REPAIR_REASON_UPSTREAM_PROMOTING_AUTO_LIBRARY.equals(decision.reason())
-                && !StringUtils.hasText(state.getAuditRemark())) {
+                && (state.getAuditRemark() == null || state.getAuditRemark().isBlank())) {
             state.setAuditRemark(autoLibraryRepairRemark);
         }
         state.setLastOperationAt(now);
@@ -198,7 +196,7 @@ public class ProductLibraryRepairPolicy {
     }
 
     private LocalDateTime parseDateTime(String raw) {
-        if (!StringUtils.hasText(raw)) {
+        if (raw == null || raw.isBlank()) {
             return null;
         }
         String value = raw.trim();

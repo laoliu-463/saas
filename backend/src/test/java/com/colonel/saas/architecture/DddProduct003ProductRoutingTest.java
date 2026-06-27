@@ -166,6 +166,8 @@ class DddProduct003ProductRoutingTest {
     @DisplayName("商品审核状态和日志语义委托商品域策略")
     void productAuditDecision_shouldDelegateAuditStatusAndLogPayloadToPolicy() throws Exception {
         String source = readSource("com/colonel/saas/service/ProductService.java");
+        String readModelSource = readSource(
+                "com/colonel/saas/service/ActivityProductReadModelQueryService.java");
 
         assertThat(source)
                 .contains("ProductAuditDecisionPolicy")
@@ -176,7 +178,6 @@ class DddProduct003ProductRoutingTest {
                 .contains("productOperationDecisionPolicy.assignProduct")
                 .contains("productOperationDecisionPolicy.assignAuditOwner")
                 .contains("productOperationDecisionPolicy.progressDecision")
-                .contains("productOperationDecisionPolicy.decisionLabel")
                 .doesNotContain("审核通过前请补充：")
                 .doesNotContain("审核通过并加入商品库")
                 .doesNotContain("商品已分配给审核负责人")
@@ -184,6 +185,9 @@ class DddProduct003ProductRoutingTest {
                 .doesNotContain("商品推进判断已更新")
                 .doesNotContain("private String normalizeDecisionLevel")
                 .doesNotContain("private String decisionLabel");
+        assertThat(readModelSource)
+                .contains("ProductOperationDecisionPolicy")
+                .contains("productOperationDecisionPolicy.decisionLabel");
     }
 
     @Test
@@ -197,6 +201,24 @@ class DddProduct003ProductRoutingTest {
                 .contains("productSnapshotQueryService.requireById")
                 .contains("productSnapshotQueryService.requireActivityProduct")
                 .contains("productSnapshotQueryService.findActivityProduct");
+    }
+
+    @Test
+    @DisplayName("活动商品列表和详情读模型委托商品域 query 服务")
+    void activityProductReadModels_shouldDelegateToProductQueryService() throws Exception {
+        String source = readSource("com/colonel/saas/service/ProductService.java");
+
+        assertThat(source)
+                .contains("ActivityProductReadModelQueryService")
+                .contains("activityProductReadModelQueryService.buildRemoteListView")
+                .contains("activityProductReadModelQueryService.buildSnapshotItems")
+                .contains("activityProductReadModelQueryService.buildDetailBase")
+                .doesNotContain("private Map<String, DecisionSummary> buildDecisionSummaryMap")
+                .doesNotContain("private DecisionSummary findDecisionSummary")
+                .doesNotContain("private Map<String, OrderSummary> buildOrderSummaryMap")
+                .doesNotContain("private OrderSummary findOrderSummary")
+                .doesNotContain("private Map<String, PromotionSummary> buildPromotionSummaryMap")
+                .doesNotContain("private PromotionSummary findPromotionSummary");
     }
 
     @Test

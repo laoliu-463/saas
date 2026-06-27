@@ -3,7 +3,6 @@
 # New entries are forbidden. Existing entries must expose a DataScopePolicy path unless listed as test-time glue.
 
 controller/OrderController.java
-domain/order/facade/LegacyOrderDomainFacade.java
 domain/performance/policy/PerformanceAccessContext.java
 domain/performance/policy/PerformanceAccessScope.java
 job/PerformanceCacheWarmupJob.java

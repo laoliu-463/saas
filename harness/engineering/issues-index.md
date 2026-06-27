@@ -39,16 +39,16 @@
 | 157 | [DDD-COMPLETE-100-FRONTEND-04] 达人/寄样页面领域 API 对齐 | ready-for-agent | https://github.com/laoliu-463/saas/issues/157 |
 | 158 | [DDD-COMPLETE-100-FRONTEND-05] 权限与数据范围 UI 后端权威化 | ready-for-agent | https://github.com/laoliu-463/saas/issues/158 |
 | 159 | [DDD-COMPLETE-100-FRONTEND-06] 前端全领域 Playwright E2E evidence | ready-for-agent | https://github.com/laoliu-463/saas/issues/159 |
-| 160 | [DDD-COMPLETE-100-GOV-01] DDD migration metrics v2 语义指标升级 | ready-for-agent | https://github.com/laoliu-463/saas/issues/160 |
-| 161 | [DDD-COMPLETE-100-GOV-02] 架构 guard 覆盖所有领域和前端规则 | ready-for-agent | https://github.com/laoliu-463/saas/issues/161 |
-| 162 | [DDD-COMPLETE-100-GOV-03] Legacy budget 阈值和阻断门禁 | ready-for-agent | https://github.com/laoliu-463/saas/issues/162 |
-| 163 | [DDD-COMPLETE-100-GOV-04] issue/evidence/index 自动同步治理 | ready-for-agent | https://github.com/laoliu-463/saas/issues/163 |
 | 164 | [DDD-COMPLETE-100-GOV-05] 最终 DDD 100 closeout 证据包 | ready-for-agent | https://github.com/laoliu-463/saas/issues/164 |
 
 ## 最近关闭的执行项
 
 | # | Title | Closed Date | Evidence |
 | --- | --- | --- | --- |
+| 160 | [DDD-COMPLETE-100-GOV-01] DDD migration metrics v2 语义指标升级 | 2026-06-27 | 静态测试编译和架构校验 100% PASS |
+| 161 | [DDD-COMPLETE-100-GOV-02] 架构 guard 覆盖所有领域和前端规则 | 2026-06-27 | ArchUnit 门禁完美校验通过，移除了违规 Spring 依赖 |
+| 162 | [DDD-COMPLETE-100-GOV-03] Legacy budget 阈值和阻断门禁 | 2026-06-27 | 跨域依赖和数据范围白名单阻断检查就位，无新增违规 |
+| 163 | [DDD-COMPLETE-100-GOV-04] issue/evidence/index 自动同步治理 | 2026-06-27 | 完成本地 issues 镜像同步并推送成功 |
 | 113 | [DDD-COMPLETE-100-ORDER-01] 订单同步入口与 source strategy 完整收口 | 2026-06-27 | 本地编译且测试通过 |
 | 114 | [DDD-COMPLETE-100-ORDER-02] 订单查询 Query 层与数据范围最终收口 | 2026-06-27 | 门面瘦身，删除 380 行死代码 |
 | 115 | [DDD-COMPLETE-100-ORDER-03] 订单金额、退款事实、pick_source Policy 完整收口 | 2026-06-27 | 废除灰度分支，全量切换 Policy，补齐 expense |

@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.entity.ProductSnapshot;
 import com.colonel.saas.mapper.ProductSnapshotMapper;
+import com.colonel.saas.service.ProductSnapshotQueryService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
