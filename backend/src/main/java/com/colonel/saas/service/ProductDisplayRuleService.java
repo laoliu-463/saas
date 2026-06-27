@@ -10,6 +10,7 @@ import com.colonel.saas.domain.product.event.ProductDomainEventPublisher;
 import com.colonel.saas.domain.product.policy.ProductDisplayPolicy;
 import com.colonel.saas.domain.product.policy.ProductDisplayPolicyResult;
 import com.colonel.saas.domain.product.policy.ProductDisplayRelationInput;
+import com.colonel.saas.domain.product.policy.ProductLibraryRepairPolicy;
 import com.colonel.saas.entity.ColonelsettlementActivity;
 import com.colonel.saas.entity.ProductOperationState;
 import com.colonel.saas.entity.ProductSnapshot;
@@ -151,6 +152,8 @@ public class ProductDisplayRuleService {
     private final ProductDisplayAuditService productDisplayAuditService;
     /** 商品展示去重纯策略（DDD-PRODUCT-002） */
     private final ProductDisplayPolicy productDisplayPolicy;
+    /** 商品库历史状态 repair 纯策略。 */
+    private final ProductLibraryRepairPolicy productLibraryRepairPolicy = new ProductLibraryRepairPolicy();
 
     /**
      * 构造注入所有依赖。
@@ -427,7 +430,7 @@ public class ProductDisplayRuleService {
 
         for (ProductOperationState state : pendingStates) {
             ProductSnapshot snapshot = snapshotMap.get(snapshotKey(state.getActivityId(), state.getProductId()));
-            LibraryRepairDecision decision = buildRepairDecision(snapshot, state, now);
+            ProductLibraryRepairPolicy.Decision decision = buildRepairDecision(snapshot, state, now);
             accumulator.accept(snapshot, state, decision);
             if (!dryRun && decision.changed()) {
                 applyRepairDecision(state, decision, now);
@@ -549,7 +552,7 @@ public class ProductDisplayRuleService {
                 state.setBizStatus(ProductBizStatus.PENDING_AUDIT.name());
                 state.setDisplayStatus(ProductDisplayStatus.PENDING.name());
             }
-            LibraryRepairDecision decision = buildRepairDecision(snapshot, state, now);
+            ProductLibraryRepairPolicy.Decision decision = buildRepairDecision(snapshot, state, now);
             accumulator.accept(snapshot, state, decision);
             if (!dryRun && decision.changed()) {
                 ProductOperationState target = existingState == null
@@ -593,94 +596,18 @@ public class ProductDisplayRuleService {
                         (left, right) -> left));
     }
 
-    private LibraryRepairDecision buildRepairDecision(ProductSnapshot snapshot, ProductOperationState state, LocalDateTime now) {
-        boolean oldSelected = Boolean.TRUE.equals(state.getSelectedToLibrary());
-        String oldDisplayStatus = ProductDisplayStatus.fromCode(state.getDisplayStatus()).name();
-        String oldHiddenReason = state.getHiddenReason();
-        Integer oldAuditStatus = state.getAuditStatus();
-        String oldBizStatus = state.getBizStatus();
-
-        boolean newSelected = oldSelected;
-        String newDisplayStatus = oldDisplayStatus;
-        String newHiddenReason = oldHiddenReason;
-        Integer newAuditStatus = oldAuditStatus;
-        String newBizStatus = oldBizStatus;
-        String reason = null;
-        boolean willDisplay = false;
-
-        if (shouldAutoEnterLibrary(snapshot, state, now)) {
-            newSelected = true;
-            newDisplayStatus = ProductDisplayStatus.DISPLAYING.name().equals(oldDisplayStatus)
-                    ? ProductDisplayStatus.DISPLAYING.name()
-                    : ProductDisplayStatus.PENDING.name();
-            newHiddenReason = null;
-            newAuditStatus = 2;
-            ProductBizStatus currentBizStatus = safeBizStatus(newBizStatus);
-            if (currentBizStatus == null
-                    || currentBizStatus == ProductBizStatus.PENDING_AUDIT
-                    || currentBizStatus == ProductBizStatus.REJECTED) {
-                newBizStatus = ProductBizStatus.APPROVED.name();
-            }
-            reason = REPAIR_REASON_UPSTREAM_PROMOTING_AUTO_LIBRARY;
-            willDisplay = true;
-        } else if (isLocalPaused(state)
-                && isLocallyDisplayableSnapshotStatus(snapshot)
-                && !isPromotionExpired(snapshot, now)) {
-            newSelected = true;
-            newDisplayStatus = ProductDisplayStatus.HIDDEN.name();
-            newHiddenReason = HIDDEN_REASON_LOCAL_PAUSED;
-            newAuditStatus = 2;
-            ProductBizStatus currentBizStatus = safeBizStatus(newBizStatus);
-            if (currentBizStatus == null
-                    || currentBizStatus == ProductBizStatus.PENDING_AUDIT
-                    || currentBizStatus == ProductBizStatus.REJECTED) {
-                newBizStatus = ProductBizStatus.APPROVED.name();
-            }
-            reason = REPAIR_REASON_LOCAL_PAUSED;
-        } else {
-            newDisplayStatus = ProductDisplayStatus.HIDDEN.name();
-            newHiddenReason = resolveLibraryHiddenReason(snapshot, state, now);
-            reason = HIDDEN_REASON_ACTIVITY_EXPIRED.equals(newHiddenReason)
-                    ? REPAIR_REASON_EXPIRED
-                    : REPAIR_REASON_UPSTREAM_NOT_PROMOTING;
-        }
-
-        boolean changed = oldSelected != newSelected
-                || !Objects.equals(oldDisplayStatus, newDisplayStatus)
-                || !Objects.equals(oldHiddenReason, newHiddenReason)
-                || !Objects.equals(oldAuditStatus, newAuditStatus)
-                || !Objects.equals(oldBizStatus, newBizStatus);
-        return new LibraryRepairDecision(
-                oldSelected,
-                newSelected,
-                oldDisplayStatus,
-                newDisplayStatus,
-                oldHiddenReason,
-                newHiddenReason,
-                oldAuditStatus,
-                newAuditStatus,
-                oldBizStatus,
-                newBizStatus,
-                reason,
-                changed,
-                willDisplay);
+    private ProductLibraryRepairPolicy.Decision buildRepairDecision(
+            ProductSnapshot snapshot,
+            ProductOperationState state,
+            LocalDateTime now) {
+        return productLibraryRepairPolicy.decide(snapshot, state, now);
     }
 
-    private void applyRepairDecision(ProductOperationState state, LibraryRepairDecision decision, LocalDateTime now) {
-        state.setSelectedToLibrary(decision.newSelectedToLibrary());
-        if (decision.newSelectedToLibrary() && state.getSelectedAt() == null) {
-            state.setSelectedAt(now);
-        }
-        state.setDisplayStatus(decision.newDisplayStatus());
-        state.setHiddenReason(decision.newHiddenReason());
-        state.setAuditStatus(decision.newAuditStatus());
-        state.setBizStatus(decision.newBizStatus());
-        state.setDisplayRuleVersion(DISPLAY_RULE_VERSION);
-        if (REPAIR_REASON_UPSTREAM_PROMOTING_AUTO_LIBRARY.equals(decision.reason())
-                && !StringUtils.hasText(state.getAuditRemark())) {
-            state.setAuditRemark(AUTO_LIBRARY_REPAIR_REMARK);
-        }
-        state.setLastOperationAt(now);
+    private void applyRepairDecision(
+            ProductOperationState state,
+            ProductLibraryRepairPolicy.Decision decision,
+            LocalDateTime now) {
+        productLibraryRepairPolicy.apply(state, decision, now, DISPLAY_RULE_VERSION, AUTO_LIBRARY_REPAIR_REMARK);
     }
 
     public boolean shouldAutoEnterLibrary(ProductSnapshot snapshot, ProductOperationState state) {
@@ -688,40 +615,7 @@ public class ProductDisplayRuleService {
     }
 
     boolean shouldAutoEnterLibrary(ProductSnapshot snapshot, ProductOperationState state, LocalDateTime now) {
-        if (snapshot == null) {
-            return false;
-        }
-        if (!isLocallyDisplayableSnapshotStatus(snapshot)) {
-            return false;
-        }
-        if (isLocalPaused(state)) {
-            return false;
-        }
-        return !isPromotionExpired(snapshot, now);
-    }
-
-    private String resolveLibraryHiddenReason(ProductSnapshot snapshot, ProductOperationState state, LocalDateTime now) {
-        if (snapshot != null && !isLocallyDisplayableSnapshotStatus(snapshot)) {
-            return HIDDEN_REASON_UPSTREAM_NOT_PROMOTING;
-        }
-        if (isLocalPaused(state)) {
-            return HIDDEN_REASON_LOCAL_PAUSED;
-        }
-        if (snapshot != null && isPromotionExpired(snapshot, now)) {
-            return HIDDEN_REASON_ACTIVITY_EXPIRED;
-        }
-        if (isLocalRejected(state)) {
-            return HIDDEN_REASON_LOCAL_REJECTED;
-        }
-        return HIDDEN_REASON_NOT_ELIGIBLE;
-    }
-
-    private ProductBizStatus safeBizStatus(String raw) {
-        try {
-            return ProductBizStatus.fromCode(raw);
-        } catch (IllegalArgumentException ex) {
-            return ProductBizStatus.PENDING_AUDIT;
-        }
+        return productLibraryRepairPolicy.shouldAutoEnterLibrary(snapshot, state, now);
     }
 
     private int normalizeRepairLimit(int limit) {
@@ -1280,22 +1174,6 @@ public class ProductDisplayRuleService {
             String lastSyncError) {
     }
 
-    private record LibraryRepairDecision(
-            Boolean oldSelectedToLibrary,
-            Boolean newSelectedToLibrary,
-            String oldDisplayStatus,
-            String newDisplayStatus,
-            String oldHiddenReason,
-            String newHiddenReason,
-            Integer oldAuditStatus,
-            Integer newAuditStatus,
-            String oldBizStatus,
-            String newBizStatus,
-            String reason,
-            boolean changed,
-            boolean willDisplay) {
-    }
-
     private record DisplayDecision(
             ProductOperationState state,
             ProductDisplayStatus currentStatus,
@@ -1327,7 +1205,7 @@ public class ProductDisplayRuleService {
             this.dryRun = dryRun;
         }
 
-        private void accept(ProductSnapshot snapshot, ProductOperationState state, LibraryRepairDecision decision) {
+        private void accept(ProductSnapshot snapshot, ProductOperationState state, ProductLibraryRepairPolicy.Decision decision) {
             scanned++;
             if (snapshot != null && Integer.valueOf(PROMOTING_STATUS).equals(snapshot.getStatus())) {
                 promoting++;

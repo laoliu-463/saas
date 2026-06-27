@@ -131,11 +131,11 @@
 - 标记：P0。
 
 ## 商品域
-- 最新边界变化：#64 已新增 `ProductSnapshotQueryService`，商品快照分页、按 ID 读取和活动商品关系读取由 query service 承接，`ProductService` 只消费读侧结果；#63 人工审核状态/日志语义已下沉到 `ProductAuditDecisionPolicy`；#62 本地发布暂停/恢复展示状态已下沉到 `ProductDisplayPolicy`；#61 同步入口已经商品域 Application 调用。上述切片均未改变 API、DB schema、默认 real-pre 配置或 Legacy 行为。
-- 最新验证：#64 `ProductSnapshotQueryServiceTest,ProductServiceCharacterizationTest,ProductServiceFilterTest,ProductServiceLibraryViewTest,ProductServiceActivityStatusIndependenceTest,ProductControllerTest,DddProduct003ProductRoutingTest` targeted/组合 PASS；#63/#62/#61 targeted PASS；`mvn -q -f backend/pom.xml -DskipTests compile` PASS；`agent-do.ps1 -Env real-pre -Scope backend -ContentMaintenance off` PASS，backend package、Docker rebuild/restart、health 与 real-pre P0 preflight 均通过。
-- 最新报告路径：#64 `harness/reports/2026-06-21/ddd-product-snapshot-064/evidence-20260627-145500-ddd100-product-snapshot-query.md`；#63 `harness/reports/2026-06-21/ddd-product-status-063/evidence-20260627-144200-ddd100-product-status-policy.md`；#62 `harness/reports/2026-06-21/ddd-product-display-062/evidence-20260627-143000-ddd100-product-display-policy.md`。
-- 已完成能力：商品库、商品快照基础 query 层、活动商品同步入口收口、人工审核状态/日志 policy、本地发布展示策略下沉、活动商品展示策略部分下沉、转链和 `pick_source_mapping` 主链路；历史 P-FIX/P-DIAG 明细见 Git 历史和归档报告。
-- 当前风险：完整活动商品列表/详情/material pack 组装、真实同步/落库算法及分配、推进判断、转链、repair/backfill 等逻辑仍有部分留在 `ProductService`，#65-#67 继续拆 backfill、转链和 E2E；未执行远端 real-pre 部署。
+- 最新边界变化：#65 已新增 `ProductBackfillJobMetadata` 与 `ProductLibraryRepairPolicy`，backfill job 进度 metadata 和商品库 repair 决策从服务私有逻辑拆成可测试组件；#64 已新增商品快照基础 query 层；#63 人工审核状态/日志语义已下沉到 `ProductAuditDecisionPolicy`；#62 本地发布暂停/恢复展示状态已下沉到 `ProductDisplayPolicy`；#61 同步入口已经商品域 Application 调用。上述切片均未改变 API、DB schema、默认 real-pre 配置或 Legacy 行为。
+- 最新验证：#65 `ProductBackfillJobMetadataTest,ProductLibraryRepairPolicyTest,ProductActivityBackfillServiceTest,ProductBackfillConcurrencyAndDeadlockTest,ProductDisplayRuleServiceTest,ProductSyncAdminControllerTest,ProductLibraryRepairControllerTest,DddProduct003ProductRoutingTest` targeted PASS；#64/#63/#62/#61 targeted PASS；`mvn -q -f backend/pom.xml -DskipTests compile` PASS；`agent-do.ps1 -Env real-pre -Scope backend -ContentMaintenance off` 完成 backend package、Docker rebuild/restart、health 与 real-pre P0 preflight PASS，但脚本末尾 Git 自动提交阶段出现失败并已单独归档证据。
+- 最新报告路径：#65 `harness/reports/2026-06-21/ddd-product-backfill-065/evidence-20260627-151600-ddd100-product-backfill-repair-components.md`；#64 `harness/reports/2026-06-21/ddd-product-snapshot-064/evidence-20260627-145500-ddd100-product-snapshot-query.md`；#63 `harness/reports/2026-06-21/ddd-product-status-063/evidence-20260627-144200-ddd100-product-status-policy.md`。
+- 已完成能力：商品库、商品快照基础 query 层、backfill job metadata 组件、商品库 repair 决策 policy、活动商品同步入口收口、人工审核状态/日志 policy、本地发布展示策略下沉、活动商品展示策略部分下沉、转链和 `pick_source_mapping` 主链路；历史 P-FIX/P-DIAG 明细见 Git 历史和归档报告。
+- 当前风险：真实活动商品 backfill 写库样本、完整活动商品列表/详情/material pack 组装、转链和归因映射事件证据仍需 #66/#67 继续验证；未执行远端 real-pre 部署。
 - 待优化能力：活动商品状态断链 repair、远端部署对齐、推广中商品自动入库、商品域 E2E。
 - 标记：P0。
 

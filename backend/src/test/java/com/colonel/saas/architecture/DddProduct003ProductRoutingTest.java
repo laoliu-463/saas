@@ -187,6 +187,25 @@ class DddProduct003ProductRoutingTest {
                 .contains("productSnapshotQueryService.findActivityProduct");
     }
 
+    @Test
+    @DisplayName("商品 backfill/repair 组件拆分保持服务只负责编排")
+    void productBackfillAndRepair_shouldDelegateToDedicatedComponents() throws Exception {
+        String backfillSource = readSource("com/colonel/saas/service/ProductActivityBackfillService.java");
+        String displayRuleSource = readSource("com/colonel/saas/service/ProductDisplayRuleService.java");
+
+        assertThat(backfillSource)
+                .contains("ProductBackfillJobMetadata")
+                .contains("backfillJobMetadata.started")
+                .contains("backfillJobMetadata.progress")
+                .contains("backfillJobMetadata.finished");
+
+        assertThat(displayRuleSource)
+                .contains("ProductLibraryRepairPolicy")
+                .contains("productLibraryRepairPolicy.decide")
+                .contains("productLibraryRepairPolicy.apply")
+                .doesNotContain("private record LibraryRepairDecision");
+    }
+
     private String readSource(String relativePath) throws Exception {
         Path sourcePath = Path.of("src/main/java", relativePath);
         if (!Files.exists(sourcePath)) {

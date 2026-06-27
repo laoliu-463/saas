@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 
@@ -87,6 +88,82 @@ class ProductSyncAdminControllerTest {
                 .containsExactly("/product-sync/admin");
         assertThat(method.getAnnotation(PostMapping.class).value())
                 .containsExactly("/backfill-activity-products");
+        assertThat(method.getAnnotation(RequireRoles.class).value())
+                .containsExactly(RoleCodes.ADMIN);
+    }
+
+    @Test
+    void backfillActivityProductsAsync_shouldRequireAdminAndDelegateUserId() throws Exception {
+        UUID userId = UUID.randomUUID();
+        ProductActivityBackfillService.BackfillAsyncResponse result =
+                new ProductActivityBackfillService.BackfillAsyncResponse("job-async-1", "RUNNING");
+        ProductActivityBackfillService.BackfillRequest request =
+                new ProductActivityBackfillService.BackfillRequest(
+                        "CUSTOM_ACTIVITY_IDS",
+                        List.of("3859423"),
+                        20,
+                        50,
+                        1000,
+                        50_000,
+                        true,
+                        false,
+                        "DEFERRED");
+        when(backfillService.backfillAsync(request, userId)).thenReturn(result);
+
+        var response = controller.backfillActivityProductsAsync(request, userId);
+
+        assertThat(response.getData().jobId()).isEqualTo("job-async-1");
+        assertThat(response.getData().status()).isEqualTo("RUNNING");
+        verify(backfillService).backfillAsync(request, userId);
+
+        Method method = ProductSyncAdminController.class.getMethod(
+                "backfillActivityProductsAsync",
+                ProductActivityBackfillService.BackfillRequest.class,
+                UUID.class);
+        assertThat(method.getAnnotation(PostMapping.class).value())
+                .containsExactly("/backfill-activity-products/async");
+        assertThat(method.getAnnotation(RequireRoles.class).value())
+                .containsExactly(RoleCodes.ADMIN);
+    }
+
+    @Test
+    void getBackfillJobStatus_shouldRequireAdminAndDelegateJobId() throws Exception {
+        ProductActivityBackfillService.BackfillJobStatus status =
+                new ProductActivityBackfillService.BackfillJobStatus(
+                        "job-1",
+                        "RUNNING",
+                        true,
+                        "CUSTOM_ACTIVITY_IDS",
+                        1,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        Map.of(),
+                        "ACT-1",
+                        "2026-06-27T15:20:00",
+                        0L,
+                        0L,
+                        0,
+                        "2026-06-27T15:19:00",
+                        null);
+        when(backfillService.getJobStatus("job-1")).thenReturn(status);
+
+        var response = controller.getBackfillJobStatus("job-1");
+
+        assertThat(response.getData().currentActivityId()).isEqualTo("ACT-1");
+        verify(backfillService).getJobStatus("job-1");
+
+        Method method = ProductSyncAdminController.class.getMethod("getBackfillJobStatus", String.class);
+        assertThat(method.getAnnotation(GetMapping.class).value())
+                .containsExactly("/backfill-jobs/{jobId}");
         assertThat(method.getAnnotation(RequireRoles.class).value())
                 .containsExactly(RoleCodes.ADMIN);
     }

@@ -1,6 +1,7 @@
 package com.colonel.saas.service;
 
 import com.colonel.saas.common.exception.BusinessException;
+import com.colonel.saas.domain.product.application.ProductBackfillJobMetadata;
 import com.colonel.saas.entity.ColonelsettlementActivity;
 import com.colonel.saas.entity.ProductActivitySyncState;
 import com.colonel.saas.entity.ProductSyncJobLog;
@@ -96,6 +97,7 @@ public class ProductActivityBackfillService {
     private final DouyinProductGateway douyinProductGateway;
     private final Executor backfillExecutor;
     private final TransactionTemplate batchTransactionTemplate;
+    private final ProductBackfillJobMetadata backfillJobMetadata = new ProductBackfillJobMetadata();
     @Value("${product.sync.activityProduct.fullBackfillEnabled:true}")
     private boolean fullBackfillEnabled = true;
     @Value("${product.sync.backfill.writeBatchSize:100}")
@@ -1129,19 +1131,7 @@ public class ProductActivityBackfillService {
         log.setDryRun(request.dryRun());
         log.setStatus("RUNNING");
         log.setRequestedBy(requestedBy);
-        log.setRequestParamsJson(appendMeta(toJson(request), Map.of(
-                "currentActivityId",
-                "",
-                "lastProgressAt",
-                now.toString(),
-                "lockWaitCount",
-                0L,
-                "deadlockRetryCount",
-                0L,
-                "dbRowsBefore",
-                0L,
-                "estimatedGapRows",
-                0L)));
+        log.setRequestParamsJson(backfillJobMetadata.started(toJson(request), now));
         log.setStartedAt(now);
         log.setCreateTime(now);
         log.setUpdateTime(now);
@@ -1168,50 +1158,29 @@ public class ProductActivityBackfillService {
         log.setUpdateTime(LocalDateTime.now());
         // 把 lockWaitCount / deadlockRetryCount 写入 requestParamsJson 的 metadata 子段，
         // 现有 schema 不新增列，避免破坏既有 reader。
-        log.setRequestParamsJson(appendMeta(log.getRequestParamsJson(),
-                Map.of(
-                        "lockWaitCount", lockWaitCount,
-                        "deadlockRetryCount", deadlockRetryCount,
-                        "dbRowsBefore", result.dbRowsBefore(),
-                        "estimatedGapRows", result.estimatedGapRows(),
-                        "currentActivityId", "",
-                        "lastProgressAt", LocalDateTime.now().toString())));
+        log.setRequestParamsJson(backfillJobMetadata.finished(
+                log.getRequestParamsJson(),
+                new ProductBackfillJobMetadata.FinishMetrics(
+                        lockWaitCount,
+                        deadlockRetryCount,
+                        result.dbRowsBefore(),
+                        result.estimatedGapRows()),
+                LocalDateTime.now()));
         jobLogMapper.updateById(log);
     }
 
-    private String appendMeta(String original, Map<String, Object> updates) {
-        if (original == null || original.isBlank()) {
-            original = "{}";
-        }
-        try {
-            Map<String, Object> map = OBJECT_MAPPER.readValue(original, Map.class);
-            map.putAll(updates);
-            return OBJECT_MAPPER.writeValueAsString(map);
-        } catch (JsonProcessingException ex) {
-            return original;
-        }
-    }
-
     private ProductSyncJobLog updateProgressMetadata(ProductSyncJobLog log, String currentActivityId) {
-        log.setRequestParamsJson(appendMeta(log.getRequestParamsJson(), Map.of(
-                "currentActivityId", currentActivityId == null ? "" : currentActivityId,
-                "lastProgressAt", LocalDateTime.now().toString())));
+        log.setRequestParamsJson(backfillJobMetadata.progress(
+                log.getRequestParamsJson(),
+                currentActivityId,
+                LocalDateTime.now()));
         log.setUpdateTime(LocalDateTime.now());
         jobLogMapper.updateById(log);
         return log;
     }
 
     private Map<String, Object> readRequestMetadata(String requestParamsJson) {
-        if (!StringUtils.hasText(requestParamsJson)) {
-            return Map.of();
-        }
-        try {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> map = OBJECT_MAPPER.readValue(requestParamsJson, Map.class);
-            return map == null ? Map.of() : map;
-        } catch (JsonProcessingException ex) {
-            return Map.of();
-        }
+        return backfillJobMetadata.read(requestParamsJson);
     }
 
     private Map<String, Long> readStopReasonStats(String stopReasonStatsJson) {
@@ -1235,18 +1204,7 @@ public class ProductActivityBackfillService {
     }
 
     private long readMetadataLong(Map<String, Object> metadata, String key) {
-        if (metadata == null || !metadata.containsKey(key) || metadata.get(key) == null) {
-            return 0L;
-        }
-        Object raw = metadata.get(key);
-        if (raw instanceof Number number) {
-            return number.longValue();
-        }
-        try {
-            return Long.parseLong(raw.toString());
-        } catch (NumberFormatException ex) {
-            return 0L;
-        }
+        return backfillJobMetadata.longValue(metadata, key);
     }
 
     private int valueOrZero(Integer value) {
