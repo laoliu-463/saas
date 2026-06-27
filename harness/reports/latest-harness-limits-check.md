@@ -6,12 +6,12 @@
 - Non-script text lines per file: <= 200
 
 ## Conclusion
-PASS
+FAIL
 
 ## Violations
 | Path | Issue | Suggestion |
 | --- | --- | --- |
-| None | None | None |
+| D:\Projects\SAAS\harness\reports | File count over 50 (59) | Archive |
 
 ## Next Steps
 Run this check after each task and during weekly or iteration-start cleanup reviews.

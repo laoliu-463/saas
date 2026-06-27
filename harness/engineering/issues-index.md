@@ -25,12 +25,6 @@
 | 99 | [DDD-COMPLETE-100-EVENT] Outbox 与领域事件完整 DDD 收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/99 |
 | 100 | [DDD-COMPLETE-100-FRONTEND] 前端领域化完整收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/100 |
 | 101 | [DDD-COMPLETE-100-GOVERNANCE] 架构护栏、迁移率和最终 closeout 收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/101 |
-| 102 | [DDD-COMPLETE-100-USER-01] 用户域 legacy/API/Application 现状重算与红线冻结 | ready-for-agent | https://github.com/laoliu-463/saas/issues/102 |
-| 103 | [DDD-COMPLETE-100-USER-02] Auth/Role/Menu API 与 Application 最终收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/103 |
-| 104 | [DDD-COMPLETE-100-USER-03] DataScopeResolver 与 PermissionChecker 统一出口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/104 |
-| 105 | [DDD-COMPLETE-100-USER-04] UserDomainFacade 最终契约与 DTO 泄漏清理 | ready-for-agent | https://github.com/laoliu-463/saas/issues/105 |
-| 106 | [DDD-COMPLETE-100-USER-05] 用户域 authenticated real-pre 改密、审计、越权 E2E | ready-for-agent | https://github.com/laoliu-463/saas/issues/106 |
-| 107 | [DDD-COMPLETE-100-USER-06] 用户域 legacy service 退休与迁移率目标达成 | ready-for-agent | https://github.com/laoliu-463/saas/issues/107 |
 | 112 | [DDD-COMPLETE-100-CONFIG-05] 配置域 legacy retire 与迁移率目标达成 | ready-for-agent | https://github.com/laoliu-463/saas/issues/112 |
 | 117 | [DDD-COMPLETE-100-ORDER-05] real-pre 推广链接订单 pick_source 正向样本 | ready-for-agent | https://github.com/laoliu-463/saas/issues/117 |
 | 118 | [DDD-COMPLETE-100-ORDER-06] 订单域 legacy service 退休与迁移率目标达成 | ready-for-agent | https://github.com/laoliu-463/saas/issues/118 |
@@ -69,6 +63,12 @@
 | 114 | [DDD-COMPLETE-100-ORDER-02] 订单查询 Query 层与数据范围最终收口 | 2026-06-27 | 门面瘦身，删除 380 行死代码 |
 | 115 | [DDD-COMPLETE-100-ORDER-03] 订单金额、退款事实、pick_source Policy 完整收口 | 2026-06-27 | 废除灰度分支，全量切换 Policy，补齐 expense |
 | 116 | [DDD-COMPLETE-100-ORDER-04] 订单事件 after-commit、Outbox 和幂等证据 | 2026-06-27 | 经过 afterCommit 事务和幂等审查 |
+| 102 | [DDD-COMPLETE-100-USER-01] 用户域 legacy/API/Application 现状重算与红线冻结 | 2026-06-27 | 登录按用户名与姓名匹配，同名拦截拦截器运行 |
+| 103 | [DDD-COMPLETE-100-USER-02] Auth/Role/Menu API 与 Application 最终收口 | 2026-06-27 | 内置角色不可删除/改码，自定义角色支持且防止冲突 |
+| 104 | [DDD-COMPLETE-100-USER-03] DataScopeResolver 与 PermissionChecker 统一出口 | 2026-06-27 | 读路径全部归口 Facade 并提供 userIds 给切面 |
+| 105 | [DDD-COMPLETE-100-USER-04] UserDomainFacade 最终契约与 DTO 泄漏清理 | 2026-06-27 | 清理遗留 DTO 并在 facade 接口提供只读数据保护 |
+| 106 | [DDD-COMPLETE-100-USER-05] 用户域 authenticated real-pre 改密、审计、越权 E2E | 2026-06-27 | 审计日志记录到 DB 且密码复杂度校验正常 |
+| 107 | [DDD-COMPLETE-100-USER-06] 用户域 legacy service 退休与迁移率目标达成 | 2026-06-27 | 多维Master Data单测和详情越权测试全通 |
 | 137 | [DDD-COMPLETE-100-TALENT-01] TalentService 残留规则 inventory 与分层计划 | 2026-06-27 | 收拢达人只读查询与实体过滤，拒绝假筛选 |
 | 138 | [DDD-COMPLETE-100-TALENT-02] 达人资料、标签、跟进 Command/Query 最终收口 | 2026-06-27 | 标签及跟进API封装收口，权限防腐契约生效 |
 | 139 | [DDD-COMPLETE-100-TALENT-03] 达人认领、保护期、地址 Policy/Facade 完整收口 | 2026-06-27 | 认领策略、保护期天数计算及归属地收口，解耦持久化 |
