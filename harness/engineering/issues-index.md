@@ -1,7 +1,7 @@
 # GitHub Issues Index (Mirror)
 
 > 本文件是 GitHub Issues 的本地镜像，用于 Matt Pocock engineering skills 与 harness 任务路由。
-> 最后更新：2026-06-27（#132 商品展示/状态/审核/日志 Policy 收口完成）。
+> 最后更新：2026-06-27（#96 商品域 epic closeout 完成）。
 
 ## 同步规则
 
@@ -19,7 +19,6 @@
 | 93 | [DDD-COMPLETE-100-ORDER] 订单域完整 DDD 收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/93 |
 | 94 | [DDD-COMPLETE-100-PERF] 业绩域完整 DDD 收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/94 |
 | 95 | [DDD-COMPLETE-100-ANALYTICS] 分析模块完整 DDD 收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/95 |
-| 96 | [DDD-COMPLETE-100-PRODUCT] 商品域完整 DDD 收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/96 |
 | 97 | [DDD-COMPLETE-100-TALENT] 达人域完整 DDD 收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/97 |
 | 98 | [DDD-COMPLETE-100-SAMPLE] 寄样域完整 DDD 收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/98 |
 | 99 | [DDD-COMPLETE-100-EVENT] Outbox 与领域事件完整 DDD 收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/99 |
@@ -33,31 +32,32 @@
 | 129 | [DDD-COMPLETE-100-ANALYTICS-05] 分析模块 legacy retire 与迁移率目标达成 | ready-for-agent | https://github.com/laoliu-463/saas/issues/129 |
 | 147 | [DDD-COMPLETE-100-SAMPLE-05] real-pre 寄样全链路正向样本 | ready-for-agent | https://github.com/laoliu-463/saas/issues/147 |
 | 148 | [DDD-COMPLETE-100-SAMPLE-06] 寄样域 legacy retire 与迁移率目标达成 | ready-for-agent | https://github.com/laoliu-463/saas/issues/148 |
+| 149 | [DDD-COMPLETE-100-EVENT-01] 领域事件目录、payload、版本和幂等键最终冻结 | ready-for-agent | https://github.com/laoliu-463/saas/issues/149 |
+| 150 | [DDD-COMPLETE-100-EVENT-02] Outbox producer after-commit 强制 guard | ready-for-agent | https://github.com/laoliu-463/saas/issues/150 |
+| 151 | [DDD-COMPLETE-100-EVENT-03] Consumer 失败、重试、回放、重复消费证据 | ready-for-agent | https://github.com/laoliu-463/saas/issues/151 |
+| 152 | [DDD-COMPLETE-100-EVENT-04] 跨领域事件端到端集成证据 | ready-for-agent | https://github.com/laoliu-463/saas/issues/152 |
+| 153 | [DDD-COMPLETE-100-EVENT-05] 清理遗留同步副作用与 in-process 直写 | ready-for-agent | https://github.com/laoliu-463/saas/issues/153 |
 | 154 | [DDD-COMPLETE-100-FRONTEND-01] 前端 API client/store 领域边界 inventory | ready-for-agent | https://github.com/laoliu-463/saas/issues/154 |
 | 155 | [DDD-COMPLETE-100-FRONTEND-02] 清理前端硬编码业务规则、权限和状态机 | ready-for-agent | https://github.com/laoliu-463/saas/issues/155 |
 | 156 | [DDD-COMPLETE-100-FRONTEND-03] 商品/订单/分析页面领域 API 对齐 | ready-for-agent | https://github.com/laoliu-463/saas/issues/156 |
 | 157 | [DDD-COMPLETE-100-FRONTEND-04] 达人/寄样页面领域 API 对齐 | ready-for-agent | https://github.com/laoliu-463/saas/issues/157 |
 | 158 | [DDD-COMPLETE-100-FRONTEND-05] 权限与数据范围 UI 后端权威化 | ready-for-agent | https://github.com/laoliu-463/saas/issues/158 |
 | 159 | [DDD-COMPLETE-100-FRONTEND-06] 前端全领域 Playwright E2E evidence | ready-for-agent | https://github.com/laoliu-463/saas/issues/159 |
+| 160 | [DDD-COMPLETE-100-GOV-01] DDD migration metrics v2 语义指标升级 | ready-for-agent | https://github.com/laoliu-463/saas/issues/160 |
+| 161 | [DDD-COMPLETE-100-GOV-02] 架构 guard 覆盖所有领域和前端规则 | ready-for-agent | https://github.com/laoliu-463/saas/issues/161 |
+| 162 | [DDD-COMPLETE-100-GOV-03] Legacy budget 阈值和阻断门禁 | ready-for-agent | https://github.com/laoliu-463/saas/issues/162 |
+| 163 | [DDD-COMPLETE-100-GOV-04] issue/evidence/index 自动同步治理 | ready-for-agent | https://github.com/laoliu-463/saas/issues/163 |
 | 164 | [DDD-COMPLETE-100-GOV-05] 最终 DDD 100 closeout 证据包 | ready-for-agent | https://github.com/laoliu-463/saas/issues/164 |
 
 ## 最近关闭的执行项
 
 | # | Title | Closed Date | Evidence |
 | --- | --- | --- | --- |
-| 160 | [DDD-COMPLETE-100-GOV-01] DDD migration metrics v2 语义指标升级 | 2026-06-27 | 静态测试编译和架构校验 100% PASS |
-| 161 | [DDD-COMPLETE-100-GOV-02] 架构 guard 覆盖所有领域和前端规则 | 2026-06-27 | ArchUnit 门禁完美校验通过，移除了违规 Spring 依赖 |
-| 162 | [DDD-COMPLETE-100-GOV-03] Legacy budget 阈值和阻断门禁 | 2026-06-27 | 跨域依赖和数据范围白名单阻断检查就位，无新增违规 |
-| 163 | [DDD-COMPLETE-100-GOV-04] issue/evidence/index 自动同步治理 | 2026-06-27 | 完成本地 issues 镜像同步并推送成功 |
+| 96 | [DDD-COMPLETE-100-PRODUCT] 商品域完整 DDD 收口 | 2026-06-27 | `harness/reports/2026-06-27/ddd-complete-product-096/evidence-20260627-220900-product-domain-closeout.md` |
 | 113 | [DDD-COMPLETE-100-ORDER-01] 订单同步入口与 source strategy 完整收口 | 2026-06-27 | 本地编译且测试通过 |
 | 114 | [DDD-COMPLETE-100-ORDER-02] 订单查询 Query 层与数据范围最终收口 | 2026-06-27 | 门面瘦身，删除 380 行死代码 |
 | 115 | [DDD-COMPLETE-100-ORDER-03] 订单金额、退款事实、pick_source Policy 完整收口 | 2026-06-27 | 废除灰度分支，全量切换 Policy，补齐 expense |
 | 116 | [DDD-COMPLETE-100-ORDER-04] 订单事件 after-commit、Outbox 和幂等证据 | 2026-06-27 | 经过 afterCommit 事务和幂等审查 |
-| 149 | [DDD-COMPLETE-100-EVENT-01] 领域事件目录、payload、版本和幂等键最终冻结 | 2026-06-27 | 领域事件命名规范、版本及防重复幂等键约束建立 |
-| 150 | [DDD-COMPLETE-100-EVENT-02] Outbox producer after-commit 强制 guard | 2026-06-27 | 所有生产端强在事务提交后触发发送，确保无脏数据 |
-| 151 | [DDD-COMPLETE-100-EVENT-03] Consumer 失败、重试、回放、重复消费证据 | 2026-06-27 | 支持消费状态与重试逻辑，指数退避和死信手动重放就位 |
-| 152 | [DDD-COMPLETE-100-EVENT-04] 跨领域事件端到端集成证据 | 2026-06-27 | 跨模块事件解耦端到端联调链路通畅 |
-| 153 | [DDD-COMPLETE-100-EVENT-05] 清理遗留同步副作用与 in-process 直写 | 2026-06-27 | 移除同步耦合直写逻辑，退役冗余类全部单测通过 |
 | 132 | [DDD-COMPLETE-100-PRODUCT-03] 商品展示、状态、审核、操作日志 Policy 完整收口 | 2026-06-27 | 10 个核心审核字段入库约束建立，本地拒绝不阻断上游 |
 | 133 | [DDD-COMPLETE-100-PRODUCT-04] 商品快照、活动商品和 query/read model 完整收口 | 2026-06-27 | 支持 productId 精确匹配与 keyword 模糊查询防假过滤 |
 | 134 | [DDD-COMPLETE-100-PRODUCT-05] 活动商品状态断链 repair 与一致性证据 | 2026-06-27 | 商品库断链通过 repair 适配工具修复成功 |
@@ -99,11 +99,11 @@
 
 ## 当前判断
 
-- GitHub 当前 open issue 为 #90-#164 去除 #130/#131/#132，共 72 个，全部属于 `DDD-COMPLETE-100` 新批次。
+- GitHub 当前 open issue 为 35 个：#90-#95、#97-#101、#112、#117-#118、#123-#124、#129、#147-#164，全部属于 `DDD-COMPLETE-100` 新批次。
 - 新目标是完整项目、全领域、全链路 DDD 重构优化到 100%，不是单个领域，也不是旧 DDD100 issue 全关闭。
-- 当前可重复迁移率指标：raw `domain/` share 21.5%，business migration proxy 28.3%。
-- 当前最低 proxy 领域：analytics 10.5%、talent 16.6%、performance 20.7%、config 24.5%、sample 25.0%、product 27.1%、order 27.6%。
-- 商品域 #130 inventory、#131 backfill Application、#132 展示/状态/审核/日志 Policy 边界已完成；#133-#136 仍 open，真实订单 `pick_source` 正向回流样本仍 PENDING。
+- 当前可重复迁移率指标：raw `domain/` share 22.2%，business migration proxy 29.2%。
+- 当前最低 proxy 领域：analytics 10.5%、talent 16.8%、performance 20.7%、config 24.5%、sample 25.0%、order 27.6%、product 30.8%。
+- 商品域 #130-#136 与 epic #96 均已关闭；跨订单域真实订单 `pick_source` 正向样本继续由 #117 跟踪。
 - 每个 issue 必须按证据链推进：复现/盘点 -> 最小验证 -> 依赖链和边界 -> 修改 -> 构建/重启/健康 -> 业务验证 -> evidence -> retro -> commit/push。
 
 ## 常用命令

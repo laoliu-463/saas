@@ -131,12 +131,12 @@
 - 标记：P0。
 
 ## 商品域
-- 最新边界变化：#132 已新增 `ProductOperationDecisionPolicy`，将入库、活动绑定、分配招商、分配审核人和推进判断的 operation type、payload、remark、decision level 规范化从 `ProductService` 收口到商品域 Policy；`ProductService` 只编排状态读取/持久化/日志插入，架构 guard 禁止关键日志语义字符串回流 service。
-- 最新验证：#132 backend targeted tests 35/35 PASS；`CurrentUserApplicationServiceTest` blocker 4/4 PASS；backend package PASS；frontend product display tests 53/53 PASS；frontend build PASS；从干净 worktree 2e93a069 构建 backend/frontend real-pre 镜像并用 `--no-build` 重启，Docker health PASS，HTTP health PASS，real-pre P0 preflight PASS。
-- 最新报告路径：#132 `harness/reports/2026-06-27/ddd-complete-product-132/evidence-20260627-211900-product-operation-policy.md`；#131 `harness/reports/2026-06-27/ddd-complete-product-131/evidence-20260627-204000-product-backfill-application.md`；#130 `harness/reports/2026-06-27/ddd-complete-product-130/evidence-20260627-200829-product-service-inventory.md`。
-- 已完成能力：商品库、商品快照基础 query 层、backfill job metadata 组件、backfill 管理 API Application 边界、商品库 repair 决策 policy、活动商品同步入口收口、人工审核状态/日志 policy、操作日志与推进判断 policy、本地发布展示策略下沉、活动商品展示策略部分下沉、转链 Port 唯一收口、`pick_source_mapping` mapping id 证据、转链完成事件证据。
-- 当前风险：真实订单 `pick_source` 正向归因闭环仍 PENDING，需要等待一笔由系统推广链接产生并回流的真实订单；本轮执行期间存在并行 agent dirty，标准 `agent-do` 可能读取外部文件，因此改用干净 worktree 构建；未执行远端 real-pre 部署。
-- 待优化能力：#133 快照/活动商品 query/read model 收口；#134 状态断链 repair；#135 推广链接到订单归因正向闭环；#136 legacy retire 与迁移率目标。
+- 最新边界变化：#96 商品域 epic closeout 完成；#130-#136 均已关闭。商品读侧已把 `ProductSnapshotQueryService` 与 `ActivityProductReadModelQueryService` 迁入 `domain/product/query`，同步/backfill、展示状态、审核日志、repair、转链 port 与 legacy retire 均完成对应子任务证据。
+- 最新验证：当前迁移率探针显示 raw domain share 22.2%、business migration proxy 29.2%、product proxy 30.8%；#133 `ActivityProductReadModelQueryServiceTest` 3/3 PASS；#132 backend targeted tests 35/35 PASS；frontend product display tests 53/53 PASS；real-pre backend/frontend health 与 P0 preflight 已有 PASS evidence。
+- 最新报告路径：#96 `harness/reports/2026-06-27/ddd-complete-product-096/evidence-20260627-220900-product-domain-closeout.md`；#133 `harness/reports/evidence-20260627-215952.md`；#132 `harness/reports/2026-06-27/ddd-complete-product-132/evidence-20260627-211900-product-operation-policy.md`；#131 `harness/reports/2026-06-27/ddd-complete-product-131/evidence-20260627-204000-product-backfill-application.md`；#130 `harness/reports/2026-06-27/ddd-complete-product-130/evidence-20260627-200829-product-service-inventory.md`。
+- 已完成能力：商品库、商品快照与活动商品 query/read model、backfill job metadata、backfill 管理 API Application、商品库 repair 决策 policy、活动商品同步入口、人工审核状态/日志 policy、操作日志与推进判断 policy、本地发布展示策略、活动商品展示策略、转链 Port、`pick_source_mapping` mapping id 证据、转链完成事件证据。
+- 当前风险：商品域内 #96 已收口；跨订单域真实订单 `pick_source` 长周期正向样本继续由 #117 跟踪，不在商品域 epic 中重复声明 PASS。
+- 待优化能力：转入订单 #117、业绩 #123/#124、前端 #154-#159 等跨域剩余 issue。
 - 标记：P0。
 
 ## 达人域
