@@ -4,7 +4,6 @@ import com.colonel.saas.common.enums.ProductBizStatus;
 import com.colonel.saas.constant.ProductDisplayStatus;
 import com.colonel.saas.domain.product.policy.ProductDisplayPolicy;
 import com.colonel.saas.domain.product.policy.ProductOperationDecisionPolicy;
-import com.colonel.saas.service.ActivityProductReadModelQueryService;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.entity.ColonelsettlementActivity;
 import com.colonel.saas.entity.ColonelsettlementOrder;
