@@ -1,7 +1,7 @@
 # GitHub Issues Index (Mirror)
 
 > 本文件是 GitHub Issues 的本地镜像，用于 Matt Pocock engineering skills 与 harness 任务路由。
-> 最后更新：2026-06-27（#62 商品展示策略收口后）
+> 最后更新：2026-06-27（#63 商品状态与操作日志收口后）
 
 ## 同步规则
 
@@ -14,7 +14,6 @@
 | # | Title | Labels | Link |
 | --- | --- | --- | --- |
 | 3 | PRD: DDD 渐进式迁移到 100%（DDD-MIGRATION-100） | ready-for-agent | https://github.com/laoliu-463/saas/issues/3 |
-| 63 | [DDD100-PRODUCT-STATUS] 商品业务状态与操作日志收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/63 |
 | 64 | [DDD100-PRODUCT-SNAPSHOT] 商品快照、read model、query 层 | ready-for-agent | https://github.com/laoliu-463/saas/issues/64 |
 | 65 | [DDD100-PRODUCT-BACKFILL] backfill 异步/repair 组件拆分 | ready-for-agent | https://github.com/laoliu-463/saas/issues/65 |
 | 66 | [DDD100-PRODUCT-PROMOTION] 转链、归因映射 Port 与事件证据 | ready-for-agent | https://github.com/laoliu-463/saas/issues/66 |
@@ -34,6 +33,7 @@
 
 | # | Title | Closed Date | Evidence |
 | --- | --- | --- | --- |
+| 63 | [DDD100-PRODUCT-STATUS] 商品业务状态与操作日志收口 | 2026-06-27 | `ProductAuditDecisionPolicy`, `harness/reports/2026-06-21/ddd-product-status-063/evidence-20260627-144200-ddd100-product-status-policy.md` |
 | 62 | [DDD100-PRODUCT-DISPLAY] 展示规则 Policy/Application 收口 | 2026-06-27 | `ProductDisplayPolicy.resolveLocalPublishControl`, `harness/reports/2026-06-21/ddd-product-display-062/evidence-20260627-143000-ddd100-product-display-policy.md` |
 | 61 | [DDD100-PRODUCT-SYNC] 商品同步 Application 拆分 | 2026-06-27 | `ProductActivitySyncApplicationService`, `harness/reports/2026-06-21/ddd-product-sync-061/evidence-20260627-142000-ddd100-product-sync-application.md` |
 | 35 | [DDD100-USER-ASSIGN] 用户分配、渠道、组织归属 Application 收口 | 2026-06-27 | `UserGroupMembershipStore`, `harness/reports/2026-06-21/ddd-user-assign-035/evidence-20260627-134900-user-assign-org-membership.md` |
@@ -52,8 +52,8 @@
 ## 当前判断
 
 - #3 是 DDD 迁移总 PRD，不能因单个切片完成而关闭。
-- 当前 GitHub open leaf issues 为 #63-#76 与 #78；#77、#79-#89 当前不在 open 列表。
-- #61 已完成商品同步 Application 收口；#62 已完成本地发布展示规则下沉到商品域 policy；两者均已在 GitHub 关闭。
+- 当前 GitHub open leaf issues 为 #64-#76 与 #78；#77、#79-#89 当前不在 open 列表。
+- #61 已完成商品同步 Application 收口；#62 已完成本地发布展示规则下沉；#63 已完成人工审核状态与操作日志语义 policy 收口；三者均已在 GitHub 关闭。
 - #30 给出的 2026-06-27 口径是 raw `domain/` share 20.1%、业务迁移代理 26.3%；它是推进基线，不是 100% 完成证明。
 - #31 已新增可重复执行的架构红线 guard，冻结 Controller 直连 Mapper/Gateway 既有债务并阻止新增。
 - #32 已新增 `harness/scripts/probes/ddd-migration-metrics.ps1`；当前业务迁移代理指标为 26.6%。
