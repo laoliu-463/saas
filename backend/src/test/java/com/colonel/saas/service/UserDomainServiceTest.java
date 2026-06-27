@@ -130,54 +130,54 @@ class UserDomainServiceTest {
     }
 
     @Test
-        void getUserDataScope_shouldReturnAllEmptyForAdmin() {
-            UserDataScopeResponse response = applicationService.getUserDataScope(userId, deptId, DataScope.ALL);
-            assertThat(response.scope()).isEqualTo("all");
-            assertThat(response.code()).isEqualTo(DataScope.ALL.getCode());
-            assertThat(response.userIds()).isEmpty();
-        }
+    void getUserDataScope_shouldReturnAllEmptyForAdmin() {
+        UserDataScopeResponse response = applicationService.getUserDataScope(userId, deptId, DataScope.ALL);
+        assertThat(response.scope()).isEqualTo("all");
+        assertThat(response.code()).isEqualTo(DataScope.ALL.getCode());
+        assertThat(response.userIds()).isEmpty();
+    }
 
-        @Test
-        void getUserDataScope_shouldReturnDeptMembersForGroupScope() {
-            SysUser u1 = new SysUser();
-            u1.setId(UUID.randomUUID());
-            u1.setUsername("u1");
-            u1.setDeptId(deptId);
-            u1.setStatus(SysUserStatus.ACTIVE);
-            u1.setDeleted(0);
-            SysUser u2 = new SysUser();
-            u2.setId(UUID.randomUUID());
-            u2.setUsername("u2");
-            u2.setDeptId(deptId);
-            u2.setStatus(SysUserStatus.ACTIVE);
-            u2.setDeleted(0);
-            when(sysUserMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of(u1, u2));
+    @Test
+    void getUserDataScope_shouldReturnDeptMembersForGroupScope() {
+        SysUser u1 = new SysUser();
+        u1.setId(UUID.randomUUID());
+        u1.setUsername("u1");
+        u1.setDeptId(deptId);
+        u1.setStatus(SysUserStatus.ACTIVE);
+        u1.setDeleted(0);
+        SysUser u2 = new SysUser();
+        u2.setId(UUID.randomUUID());
+        u2.setUsername("u2");
+        u2.setDeptId(deptId);
+        u2.setStatus(SysUserStatus.ACTIVE);
+        u2.setDeleted(0);
+        when(sysUserMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of(u1, u2));
 
-            UserDataScopeResponse response = applicationService.getUserDataScope(userId, deptId, DataScope.DEPT);
-            assertThat(response.scope()).isEqualTo("group");
-            assertThat(response.userIds()).containsExactlyInAnyOrder(u1.getId(), u2.getId());
-        }
+        UserDataScopeResponse response = applicationService.getUserDataScope(userId, deptId, DataScope.DEPT);
+        assertThat(response.scope()).isEqualTo("group");
+        assertThat(response.userIds()).containsExactlyInAnyOrder(u1.getId(), u2.getId());
+    }
 
-        @Test
-        void getUserDataScope_shouldReturnSelfOnlyForPersonalScope() {
-            UserDataScopeResponse response = applicationService.getUserDataScope(userId, deptId, DataScope.PERSONAL);
-            assertThat(response.scope()).isEqualTo("self");
-            assertThat(response.userIds()).containsExactly(userId);
-        }
+    @Test
+    void getUserDataScope_shouldReturnSelfOnlyForPersonalScope() {
+        UserDataScopeResponse response = applicationService.getUserDataScope(userId, deptId, DataScope.PERSONAL);
+        assertThat(response.scope()).isEqualTo("self");
+        assertThat(response.userIds()).containsExactly(userId);
+    }
 
-        @Test
-        void checkPermission_shouldDelegateToPolicy() {
-            SysUser user = user("admin", "管理员", deptId, "$2a$e");
-            org.mockito.Mockito.lenient().when(sysUserMapper.selectById(userId)).thenReturn(user);
-            org.mockito.Mockito.lenient().when(sysRoleMapper.findByUserId(userId)).thenReturn(List.of(role(RoleCodes.ADMIN, 1, Map.of())));
+    @Test
+    void checkPermission_shouldDelegateToPolicy() {
+        SysUser user = user("admin", "管理员", deptId, "$2a$e");
+        org.mockito.Mockito.lenient().when(sysUserMapper.selectById(userId)).thenReturn(user);
+        org.mockito.Mockito.lenient().when(sysRoleMapper.findByUserId(userId)).thenReturn(List.of(role(RoleCodes.ADMIN, 1, Map.of())));
 
-            CheckPermissionResponse response = applicationService.checkPermission(
-                    userId,
-                    List.of(RoleCodes.ADMIN),
-                    new CheckPermissionRequest("talent", "claim"));
+        CheckPermissionResponse response = applicationService.checkPermission(
+                userId,
+                List.of(RoleCodes.ADMIN),
+                new CheckPermissionRequest("talent", "claim"));
 
-            assertThat(response.allowed()).isTrue();
-        }
+        assertThat(response.allowed()).isTrue();
+    }
 
     // ========================== Helper ==========================
 

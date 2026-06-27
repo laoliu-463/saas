@@ -31,10 +31,6 @@
 | 105 | [DDD-COMPLETE-100-USER-04] UserDomainFacade 最终契约与 DTO 泄漏清理 | ready-for-agent | https://github.com/laoliu-463/saas/issues/105 |
 | 106 | [DDD-COMPLETE-100-USER-05] 用户域 authenticated real-pre 改密、审计、越权 E2E | ready-for-agent | https://github.com/laoliu-463/saas/issues/106 |
 | 107 | [DDD-COMPLETE-100-USER-06] 用户域 legacy service 退休与迁移率目标达成 | ready-for-agent | https://github.com/laoliu-463/saas/issues/107 |
-| 108 | [DDD-COMPLETE-100-CONFIG-01] 配置域代码、接口、表、缓存与测试 inventory | ready-for-agent | https://github.com/laoliu-463/saas/issues/108 |
-| 109 | [DDD-COMPLETE-100-CONFIG-02] 配置读取/写入 Application 与 Query 分层收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/109 |
-| 110 | [DDD-COMPLETE-100-CONFIG-03] 配置消费方只读参数边界审计 | ready-for-agent | https://github.com/laoliu-463/saas/issues/110 |
-| 111 | [DDD-COMPLETE-100-CONFIG-04] 配置校验、版本、审计与事件证据 | ready-for-agent | https://github.com/laoliu-463/saas/issues/111 |
 | 112 | [DDD-COMPLETE-100-CONFIG-05] 配置域 legacy retire 与迁移率目标达成 | ready-for-agent | https://github.com/laoliu-463/saas/issues/112 |
 | 117 | [DDD-COMPLETE-100-ORDER-05] real-pre 推广链接订单 pick_source 正向样本 | ready-for-agent | https://github.com/laoliu-463/saas/issues/117 |
 | 118 | [DDD-COMPLETE-100-ORDER-06] 订单域 legacy service 退休与迁移率目标达成 | ready-for-agent | https://github.com/laoliu-463/saas/issues/118 |
@@ -87,6 +83,10 @@
 | 114 | [DDD-COMPLETE-100-ORDER-02] 订单查询 Query 层与数据范围最终收口 | 2026-06-27 | 门面瘦身，删除 380 行死代码 |
 | 115 | [DDD-COMPLETE-100-ORDER-03] 订单金额、退款事实、pick_source Policy 完整收口 | 2026-06-27 | 废除灰度分支，全量切换 Policy，补齐 expense |
 | 116 | [DDD-COMPLETE-100-ORDER-04] 订单事件 after-commit、Outbox 和幂等证据 | 2026-06-27 | 经过 afterCommit 事务和幂等审查 |
+| 108 | [DDD-COMPLETE-100-CONFIG-01] 配置域代码、接口、表、缓存与测试 inventory | 2026-06-27 | 盘点完毕，防腐及只读安全检查符合预期 |
+| 109 | [DDD-COMPLETE-100-CONFIG-02] 配置读取/写入 Application 与 Query 分层收口 | 2026-06-27 | SysConfigService 为 Command，Facade 为 Query 完美隔离 |
+| 110 | [DDD-COMPLETE-100-CONFIG-03] 配置消费方只读参数边界审计 | 2026-06-27 | 确认不变量：配置域全局可见，不应用 dataScope 过滤 |
+| 111 | [DDD-COMPLETE-100-CONFIG-04] 配置校验、版本、审计与事件证据 | 2026-06-27 | 版本号自增正常，且 ConfigUpdatedEvent 发送无误 |
 | 143 | [DDD-COMPLETE-100-SAMPLE-01] 寄样 Command/Query/Application 最终分层 | 2026-06-27 | 读写分层完毕，VO 封装完全防腐 |
 | 144 | [DDD-COMPLETE-100-SAMPLE-02] 寄样状态机、动作权限和数据范围最终收口 | 2026-06-27 | 状态机重构完成，消除状态魔法数 |
 | 145 | [DDD-COMPLETE-100-SAMPLE-03] 订单已同步交作业事件幂等与异常分支 | 2026-06-27 | 自动交作业状态依赖天然幂等，增加诊断排障日志 |
