@@ -1,72 +1,62 @@
 package com.colonel.saas.service;
 
 import com.colonel.saas.constant.SysUserStatus;
-import com.colonel.saas.domain.user.event.UserCreatedEvent;
-import com.colonel.saas.domain.user.event.UserDisabledEvent;
+import com.colonel.saas.domain.user.application.UserDomainEventPublisherApplicationService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.context.ApplicationEventPublisher;
 
 import java.util.UUID;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
 class UserDomainEventPublisherTest {
 
     @Mock
-    private ApplicationEventPublisher applicationEventPublisher;
+    private UserDomainEventPublisherApplicationService applicationService;
 
     @InjectMocks
     private UserDomainEventPublisher publisher;
 
     @Test
-    void publishUserCreated_shouldIncludeEventIdAndStatusLabel() {
+    void publishUserCreated_shouldDelegateToApplicationService() {
         UUID userId = UUID.randomUUID();
         UUID deptId = UUID.randomUUID();
         UUID operatorId = UUID.randomUUID();
+        UUID roleId = UUID.randomUUID();
 
         publisher.publishUserCreated(
                 userId,
                 "alice",
                 "Alice",
-                UUID.randomUUID(),
+                roleId,
                 "channel",
                 deptId,
                 deptId,
                 SysUserStatus.PENDING_ACTIVATION,
                 operatorId);
 
-        ArgumentCaptor<UserCreatedEvent> captor = ArgumentCaptor.forClass(UserCreatedEvent.class);
-        verify(applicationEventPublisher).publishEvent(captor.capture());
-        UserCreatedEvent event = captor.getValue();
-        assertThat(event.eventId()).isNotNull();
-        assertThat(event.userId()).isEqualTo(userId);
-        assertThat(event.username()).isEqualTo("alice");
-        assertThat(event.status()).isEqualTo("PENDING_ACTIVATION");
-        assertThat(event.roleCode()).isEqualTo("channel");
-        assertThat(event.operatorId()).isEqualTo(operatorId);
+        verify(applicationService).publishUserCreated(
+                userId, "alice", "Alice", roleId, "channel", deptId, deptId, SysUserStatus.PENDING_ACTIVATION, operatorId
+        );
     }
 
     @Test
-    void publishUserDisabled_shouldSwallowPublisherFailures() {
-        doThrow(new RuntimeException("broker down"))
-                .when(applicationEventPublisher)
-                .publishEvent(any(UserDisabledEvent.class));
+    void publishUserDisabled_shouldDelegateToApplicationService() {
+        UUID userId = UUID.randomUUID();
+        UUID operatorId = UUID.randomUUID();
 
         publisher.publishUserDisabled(
-                UUID.randomUUID(),
+                userId,
                 SysUserStatus.ACTIVE,
                 SysUserStatus.DISABLED,
-                UUID.randomUUID());
+                operatorId);
 
-        verify(applicationEventPublisher).publishEvent(any(UserDisabledEvent.class));
+        verify(applicationService).publishUserDisabled(
+                userId, SysUserStatus.ACTIVE, SysUserStatus.DISABLED, operatorId
+        );
     }
 }

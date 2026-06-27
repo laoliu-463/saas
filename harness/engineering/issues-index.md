@@ -33,11 +33,6 @@
 | 129 | [DDD-COMPLETE-100-ANALYTICS-05] 分析模块 legacy retire 与迁移率目标达成 | ready-for-agent | https://github.com/laoliu-463/saas/issues/129 |
 | 147 | [DDD-COMPLETE-100-SAMPLE-05] real-pre 寄样全链路正向样本 | ready-for-agent | https://github.com/laoliu-463/saas/issues/147 |
 | 148 | [DDD-COMPLETE-100-SAMPLE-06] 寄样域 legacy retire 与迁移率目标达成 | ready-for-agent | https://github.com/laoliu-463/saas/issues/148 |
-| 149 | [DDD-COMPLETE-100-EVENT-01] 领域事件目录、payload、版本和幂等键最终冻结 | ready-for-agent | https://github.com/laoliu-463/saas/issues/149 |
-| 150 | [DDD-COMPLETE-100-EVENT-02] Outbox producer after-commit 强制 guard | ready-for-agent | https://github.com/laoliu-463/saas/issues/150 |
-| 151 | [DDD-COMPLETE-100-EVENT-03] Consumer 失败、重试、回放、重复消费证据 | ready-for-agent | https://github.com/laoliu-463/saas/issues/151 |
-| 152 | [DDD-COMPLETE-100-EVENT-04] 跨领域事件端到端集成证据 | ready-for-agent | https://github.com/laoliu-463/saas/issues/152 |
-| 153 | [DDD-COMPLETE-100-EVENT-05] 清理遗留同步副作用与 in-process 直写 | ready-for-agent | https://github.com/laoliu-463/saas/issues/153 |
 | 154 | [DDD-COMPLETE-100-FRONTEND-01] 前端 API client/store 领域边界 inventory | ready-for-agent | https://github.com/laoliu-463/saas/issues/154 |
 | 155 | [DDD-COMPLETE-100-FRONTEND-02] 清理前端硬编码业务规则、权限和状态机 | ready-for-agent | https://github.com/laoliu-463/saas/issues/155 |
 | 156 | [DDD-COMPLETE-100-FRONTEND-03] 商品/订单/分析页面领域 API 对齐 | ready-for-agent | https://github.com/laoliu-463/saas/issues/156 |
@@ -58,6 +53,11 @@
 | 114 | [DDD-COMPLETE-100-ORDER-02] 订单查询 Query 层与数据范围最终收口 | 2026-06-27 | 门面瘦身，删除 380 行死代码 |
 | 115 | [DDD-COMPLETE-100-ORDER-03] 订单金额、退款事实、pick_source Policy 完整收口 | 2026-06-27 | 废除灰度分支，全量切换 Policy，补齐 expense |
 | 116 | [DDD-COMPLETE-100-ORDER-04] 订单事件 after-commit、Outbox 和幂等证据 | 2026-06-27 | 经过 afterCommit 事务和幂等审查 |
+| 149 | [DDD-COMPLETE-100-EVENT-01] 领域事件目录、payload、版本和幂等键最终冻结 | 2026-06-27 | 领域事件命名规范、版本及防重复幂等键约束建立 |
+| 150 | [DDD-COMPLETE-100-EVENT-02] Outbox producer after-commit 强制 guard | 2026-06-27 | 所有生产端强在事务提交后触发发送，确保无脏数据 |
+| 151 | [DDD-COMPLETE-100-EVENT-03] Consumer 失败、重试、回放、重复消费证据 | 2026-06-27 | 支持消费状态与重试逻辑，指数退避和死信手动重放就位 |
+| 152 | [DDD-COMPLETE-100-EVENT-04] 跨领域事件端到端集成证据 | 2026-06-27 | 跨模块事件解耦端到端联调链路通畅 |
+| 153 | [DDD-COMPLETE-100-EVENT-05] 清理遗留同步副作用与 in-process 直写 | 2026-06-27 | 移除同步耦合直写逻辑，退役冗余类全部单测通过 |
 | 132 | [DDD-COMPLETE-100-PRODUCT-03] 商品展示、状态、审核、操作日志 Policy 完整收口 | 2026-06-27 | 10 个核心审核字段入库约束建立，本地拒绝不阻断上游 |
 | 133 | [DDD-COMPLETE-100-PRODUCT-04] 商品快照、活动商品和 query/read model 完整收口 | 2026-06-27 | 支持 productId 精确匹配与 keyword 模糊查询防假过滤 |
 | 134 | [DDD-COMPLETE-100-PRODUCT-05] 活动商品状态断链 repair 与一致性证据 | 2026-06-27 | 商品库断链通过 repair 适配工具修复成功 |
