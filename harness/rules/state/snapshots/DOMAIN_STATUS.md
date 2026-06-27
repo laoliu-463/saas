@@ -79,10 +79,11 @@
 - 标记：P0。
 
 ## 配置域
-- 当前状态：配置读取、变更和审计主链路已具备。
-- 已完成能力：配置 API、规则参数、配置变更日志。
-- 待优化能力：配置域只出参数的边界审查、配置消费方梳理、异常分支和审计证据补齐。
-- DDD 优化下一步：C-1 盘点配置域代码、接口、表和测试。
+- 最新边界变化：#112 已将 `SysConfigService` 迁入 `domain/config/application`，将 `BusinessRuleConfigService` 迁入 `domain/config/infrastructure`；HTTP、Facade、事件消费者、监听器和业务消费方均改为配置域新包入口，不再从 legacy `service/` 承载配置规则。
+- 最新验证：配置域迁移率 proxy 68.1%；`SysConfigControllerTest`、`LegacyConfigDomainFacadeTest`、`AuthApplicationTest`、`SampleControllerTest` 合计 132/132 PASS；code-review-graph 风险分 0.00，无测试缺口。
+- 最新报告路径：#112 `harness/reports/2026-06-27/ddd-complete-config-112/evidence-20260627-221700-config-legacy-retire.md`。
+- 已完成能力：配置 API、规则参数、配置变更日志、配置读取/写入 Application/Facade 分层、legacy service 退休与迁移率目标。
+- 当前风险：配置域 epic #92 仍 open，需继续按 #90 总目标对跨域消费边界做最终 closeout。
 - 标记：P1。
 
 ## 订单域
