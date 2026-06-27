@@ -131,11 +131,11 @@
 - 标记：P0。
 
 ## 商品域
-- 最新边界变化：#63 已新增 `ProductAuditDecisionPolicy`，人工审核通过/拒绝的业务状态决策、必填补充信息校验和操作日志 payload 语义由商品域 policy 生成，`ProductService.auditProduct` 只应用策略结果；#62 本地发布暂停/恢复展示状态已下沉到 `ProductDisplayPolicy`；#61 同步入口已经商品域 Application 调用。上述切片均未改变 API、DB schema、默认 real-pre 配置或 Legacy 行为。
-- 最新验证：#63 `ProductAuditDecisionPolicyTest,ProductBizStatusServiceTest,ProductServiceActivityStatusIndependenceTest,ProductControllerTest,DddProduct003ProductRoutingTest` targeted PASS；#62/#61 targeted PASS；三轮 `mvn -q -f backend/pom.xml -DskipTests compile` PASS；`agent-do.ps1 -Env real-pre -Scope backend -ContentMaintenance off` PASS，backend package、Docker rebuild/restart、health 与 real-pre P0 preflight 均通过。
-- 最新报告路径：#63 `harness/reports/2026-06-21/ddd-product-status-063/evidence-20260627-144200-ddd100-product-status-policy.md`；#62 `harness/reports/2026-06-21/ddd-product-display-062/evidence-20260627-143000-ddd100-product-display-policy.md`；#61 `harness/reports/2026-06-21/ddd-product-sync-061/evidence-20260627-142000-ddd100-product-sync-application.md`。
-- 已完成能力：商品库、活动商品同步入口收口、人工审核状态/日志 policy、本地发布展示策略下沉、活动商品展示策略部分下沉、转链和 `pick_source_mapping` 主链路；历史 P-FIX/P-DIAG 明细见 Git 历史和归档报告。
-- 当前风险：真实同步/落库算法及分配、推进判断、转链、repair/backfill 等部分商品状态赋值仍在 `ProductService`，#64-#67 继续拆快照、backfill、转链和 E2E；未执行远端 real-pre 部署。
+- 最新边界变化：#64 已新增 `ProductSnapshotQueryService`，商品快照分页、按 ID 读取和活动商品关系读取由 query service 承接，`ProductService` 只消费读侧结果；#63 人工审核状态/日志语义已下沉到 `ProductAuditDecisionPolicy`；#62 本地发布暂停/恢复展示状态已下沉到 `ProductDisplayPolicy`；#61 同步入口已经商品域 Application 调用。上述切片均未改变 API、DB schema、默认 real-pre 配置或 Legacy 行为。
+- 最新验证：#64 `ProductSnapshotQueryServiceTest,ProductServiceCharacterizationTest,ProductServiceFilterTest,ProductServiceLibraryViewTest,ProductServiceActivityStatusIndependenceTest,ProductControllerTest,DddProduct003ProductRoutingTest` targeted/组合 PASS；#63/#62/#61 targeted PASS；`mvn -q -f backend/pom.xml -DskipTests compile` PASS；`agent-do.ps1 -Env real-pre -Scope backend -ContentMaintenance off` PASS，backend package、Docker rebuild/restart、health 与 real-pre P0 preflight 均通过。
+- 最新报告路径：#64 `harness/reports/2026-06-21/ddd-product-snapshot-064/evidence-20260627-145500-ddd100-product-snapshot-query.md`；#63 `harness/reports/2026-06-21/ddd-product-status-063/evidence-20260627-144200-ddd100-product-status-policy.md`；#62 `harness/reports/2026-06-21/ddd-product-display-062/evidence-20260627-143000-ddd100-product-display-policy.md`。
+- 已完成能力：商品库、商品快照基础 query 层、活动商品同步入口收口、人工审核状态/日志 policy、本地发布展示策略下沉、活动商品展示策略部分下沉、转链和 `pick_source_mapping` 主链路；历史 P-FIX/P-DIAG 明细见 Git 历史和归档报告。
+- 当前风险：完整活动商品列表/详情/material pack 组装、真实同步/落库算法及分配、推进判断、转链、repair/backfill 等逻辑仍有部分留在 `ProductService`，#65-#67 继续拆 backfill、转链和 E2E；未执行远端 real-pre 部署。
 - 待优化能力：活动商品状态断链 repair、远端部署对齐、推广中商品自动入库、商品域 E2E。
 - 标记：P0。
 
