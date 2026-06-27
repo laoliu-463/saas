@@ -55,6 +55,8 @@ The first preflight attempt used a custom evidence directory before creating its
 - Step 31 summary: `runtime/qa/out/ddd-product-e2e-067-20260627-154858/steps/31-real-pre-product-chain/step-summary.json`
 - Step 32 summary: `runtime/qa/out/ddd-product-e2e-067-20260627-154858/steps/32-real-pre-order-attribution/step-summary.json`
 - SQL evidence: `runtime/qa/out/ddd-product-e2e-067-20260627-154858/sql-evidence-verified.txt`
+- Agent-do docs evidence: `harness/reports/2026-06-21/ddd-product-e2e-067/evidence-20260627-155336-agent-do-docs.md`
+- Agent-do docs retro: `harness/reports/2026-06-21/ddd-product-e2e-067/retro-20260627-155354-agent-do-docs.md`
 
 ## Conclusion
 
