@@ -2,6 +2,7 @@ package com.colonel.saas.domain.talent.facade;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.colonel.saas.domain.talent.facade.dto.TalentReadDTO;
+import com.colonel.saas.domain.talent.facade.dto.TalentShippingAddressDTO;
 import com.colonel.saas.entity.Talent;
 import com.colonel.saas.entity.TalentClaim;
 import com.colonel.saas.mapper.TalentClaimMapper;
@@ -134,6 +135,21 @@ public class LegacyTalentDomainFacade implements TalentDomainFacade {
         claim.setRecipientPhone(recipientPhone);
         claim.setRecipientAddress(recipientAddress);
         talentClaimMapper.updateById(claim);
+    }
+
+    @Override
+    public TalentShippingAddressDTO findClaimShippingAddress(UUID channelUserId, UUID talentId) {
+        if (channelUserId == null || talentId == null) {
+            return TalentShippingAddressDTO.empty();
+        }
+        TalentClaim claim = talentClaimMapper.findActiveByTalentAndUser(talentId, channelUserId);
+        if (claim == null) {
+            return TalentShippingAddressDTO.empty();
+        }
+        return new TalentShippingAddressDTO(
+                claim.getRecipientName(),
+                claim.getRecipientPhone(),
+                claim.getRecipientAddress());
     }
 
     @Override

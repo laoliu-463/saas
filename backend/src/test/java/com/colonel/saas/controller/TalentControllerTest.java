@@ -5,8 +5,10 @@ import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.GlobalExceptionHandler;
 import com.colonel.saas.dto.talent.TalentPageQuery;
 import com.colonel.saas.entity.Talent;
+import com.colonel.saas.domain.talent.application.TalentAddressApplicationService;
 import com.colonel.saas.domain.talent.application.TalentProfileApplicationService;
 import com.colonel.saas.domain.talent.application.TalentQueryApplicationService;
+import com.colonel.saas.domain.talent.facade.dto.TalentShippingAddressDTO;
 import com.colonel.saas.job.TalentWeeklyRefreshJob;
 import com.colonel.saas.service.TalentService;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -45,6 +47,8 @@ class TalentControllerTest {
     @Mock
     private TalentService talentService;
     @Mock
+    private TalentAddressApplicationService talentAddressApplicationService;
+    @Mock
     private TalentProfileApplicationService talentProfileApplicationService;
     @Mock
     private TalentQueryApplicationService talentQueryApplicationService;
@@ -61,7 +65,11 @@ class TalentControllerTest {
     void setUp() {
         objectMapper = new ObjectMapper();
         TalentController controller = new TalentController(
-                talentService, talentProfileApplicationService, talentQueryApplicationService, talentWeeklyRefreshJob);
+                talentService,
+                talentAddressApplicationService,
+                talentProfileApplicationService,
+                talentQueryApplicationService,
+                talentWeeklyRefreshJob);
         mockMvc = MockMvcBuilders
                 .standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
@@ -255,6 +263,55 @@ class TalentControllerTest {
 
         verify(talentQueryApplicationService).assertCanOperate(talentId, userId, deptId, List.of("CHANNEL_LEADER"));
         verify(talentProfileApplicationService).updateTags(talentId, List.of("美妆", "高转化"), userId);
+    }
+
+    @Test
+    void getShippingAddress_shouldAssertCanOperateThenReadViaTalentAddressApplicationService() throws Exception {
+        UUID talentId = UUID.randomUUID();
+        when(talentAddressApplicationService.getShippingAddress(talentId, userId))
+                .thenReturn(new TalentShippingAddressDTO("张三", "13800138000", "上海市浦东新区"));
+
+        mockMvc.perform(get("/talents/{id}/shipping-address", talentId)
+                        .requestAttr("userId", userId)
+                        .requestAttr("deptId", deptId)
+                        .requestAttr("dataScope", DataScope.PERSONAL)
+                        .requestAttr("roleCodes", List.of("CHANNEL_STAFF")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.recipientName").value("张三"))
+                .andExpect(jsonPath("$.data.recipientPhone").value("13800138000"))
+                .andExpect(jsonPath("$.data.recipientAddress").value("上海市浦东新区"));
+
+        verify(talentQueryApplicationService).assertCanOperate(talentId, userId, deptId, List.of("CHANNEL_STAFF"));
+        verify(talentAddressApplicationService).getShippingAddress(talentId, userId);
+    }
+
+    @Test
+    void updateShippingAddress_shouldAssertCanOperateThenDelegateToTalentAddressApplicationService() throws Exception {
+        UUID talentId = UUID.randomUUID();
+        Talent updated = new Talent();
+        updated.setId(talentId);
+        updated.setShippingRecipientName("李四");
+        updated.setShippingRecipientPhone("13900139000");
+        updated.setShippingRecipientAddress("杭州市西湖区");
+        when(talentAddressApplicationService.updateShippingAddress(
+                talentId, userId, "李四", "13900139000", "杭州市西湖区"))
+                .thenReturn(updated);
+
+        mockMvc.perform(put("/talents/{id}/shipping-address", talentId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"recipientName\":\"李四\",\"recipientPhone\":\"13900139000\",\"recipientAddress\":\"杭州市西湖区\"}")
+                        .requestAttr("userId", userId)
+                        .requestAttr("deptId", deptId)
+                        .requestAttr("dataScope", DataScope.PERSONAL)
+                        .requestAttr("roleCodes", List.of("CHANNEL_STAFF")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.shippingRecipientName").value("李四"))
+                .andExpect(jsonPath("$.data.shippingRecipientPhone").value("13900139000"))
+                .andExpect(jsonPath("$.data.shippingRecipientAddress").value("杭州市西湖区"));
+
+        verify(talentQueryApplicationService).assertCanOperate(talentId, userId, deptId, List.of("CHANNEL_STAFF"));
+        verify(talentAddressApplicationService).updateShippingAddress(
+                talentId, userId, "李四", "13900139000", "杭州市西湖区");
     }
 
     @Test

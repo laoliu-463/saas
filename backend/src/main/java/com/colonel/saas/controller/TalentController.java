@@ -16,8 +16,10 @@ import com.colonel.saas.dto.talent.TalentOperateRequest;
 import com.colonel.saas.dto.talent.TalentPageQuery;
 import com.colonel.saas.dto.talent.TalentUpdateRequest;
 import com.colonel.saas.entity.Talent;
+import com.colonel.saas.domain.talent.application.TalentAddressApplicationService;
 import com.colonel.saas.domain.talent.application.TalentProfileApplicationService;
 import com.colonel.saas.domain.talent.application.TalentQueryApplicationService;
+import com.colonel.saas.domain.talent.facade.dto.TalentShippingAddressDTO;
 import com.colonel.saas.job.TalentWeeklyRefreshJob;
 import com.colonel.saas.service.TalentService;
 import com.colonel.saas.vo.TalentEnrichTaskVO;
@@ -75,6 +77,9 @@ public class TalentController extends BaseController {
     /** 达人服务，负责达人增删改查、标签管理、收货地址维护、认领释放与黑名单等操作 */
     private final TalentService talentService;
 
+    /** 达人地址应用层，负责向寄样链路暴露地址事实 */
+    private final TalentAddressApplicationService talentAddressApplicationService;
+
     /** 达人资料写侧应用层，负责资料、标签、补全和导入命令入口 */
     private final TalentProfileApplicationService talentProfileApplicationService;
 
@@ -93,10 +98,12 @@ public class TalentController extends BaseController {
      */
     public TalentController(
             TalentService talentService,
+            TalentAddressApplicationService talentAddressApplicationService,
             TalentProfileApplicationService talentProfileApplicationService,
             TalentQueryApplicationService talentQueryApplicationService,
             TalentWeeklyRefreshJob talentWeeklyRefreshJob) {
         this.talentService = talentService;
+        this.talentAddressApplicationService = talentAddressApplicationService;
         this.talentProfileApplicationService = talentProfileApplicationService;
         this.talentQueryApplicationService = talentQueryApplicationService;
         this.talentWeeklyRefreshJob = talentWeeklyRefreshJob;
@@ -322,12 +329,12 @@ public class TalentController extends BaseController {
         // 第一步：校验操作权限
         talentQueryApplicationService.assertCanOperate(id, userId, deptId, roleCodes);
         // 第二步：查询达人收货地址
-        Talent talent = talentService.getShippingAddress(id, userId);
+        TalentShippingAddressDTO address = talentAddressApplicationService.getShippingAddress(id, userId);
         // 第三步：组装收货地址响应
         return ok(new ShippingAddressRequest(
-                talent.getShippingRecipientName(),
-                talent.getShippingRecipientPhone(),
-                talent.getShippingRecipientAddress()));
+                address.recipientName(),
+                address.recipientPhone(),
+                address.recipientAddress()));
     }
 
     /**
@@ -363,7 +370,7 @@ public class TalentController extends BaseController {
         // 第一步：校验操作权限
         talentQueryApplicationService.assertCanOperate(id, userId, deptId, roleCodes);
         // 第二步：更新收货地址
-        return ok(TalentVO.from(talentService.updateShippingAddress(
+        return ok(TalentVO.from(talentAddressApplicationService.updateShippingAddress(
                 id,
                 userId,
                 request == null ? null : request.recipientName(),

@@ -2,7 +2,9 @@ package com.colonel.saas.domain.talent.facade;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.colonel.saas.domain.talent.facade.dto.TalentReadDTO;
+import com.colonel.saas.domain.talent.facade.dto.TalentShippingAddressDTO;
 import com.colonel.saas.entity.Talent;
+import com.colonel.saas.entity.TalentClaim;
 import com.colonel.saas.mapper.TalentClaimMapper;
 import com.colonel.saas.mapper.TalentMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -129,5 +131,31 @@ class LegacyTalentDomainFacadeTest {
     @Test
     void loadNicknamesByIds_nullCollectionReturnsEmptyMap() {
         assertThat(facade.loadNicknamesByIds(null)).isEmpty();
+    }
+
+    @Test
+    void findClaimShippingAddress_shouldReturnActiveClaimAddress() {
+        UUID talentId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        TalentClaim claim = new TalentClaim();
+        claim.setRecipientName("张三");
+        claim.setRecipientPhone("13800138000");
+        claim.setRecipientAddress("上海市浦东新区");
+        when(talentClaimMapper.findActiveByTalentAndUser(talentId, userId)).thenReturn(claim);
+
+        TalentShippingAddressDTO address = facade.findClaimShippingAddress(userId, talentId);
+
+        assertThat(address.recipientName()).isEqualTo("张三");
+        assertThat(address.recipientPhone()).isEqualTo("13800138000");
+        assertThat(address.recipientAddress()).isEqualTo("上海市浦东新区");
+    }
+
+    @Test
+    void findClaimShippingAddress_missingClaimReturnsEmptyAddress() {
+        TalentShippingAddressDTO address = facade.findClaimShippingAddress(UUID.randomUUID(), UUID.randomUUID());
+
+        assertThat(address.recipientName()).isNull();
+        assertThat(address.recipientPhone()).isNull();
+        assertThat(address.recipientAddress()).isNull();
     }
 }

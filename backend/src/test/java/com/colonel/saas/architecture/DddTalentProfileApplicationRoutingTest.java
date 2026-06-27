@@ -25,6 +25,27 @@ class DddTalentProfileApplicationRoutingTest {
     }
 
     @Test
+    void talentControllerAddressCommandsShouldRouteThroughAddressApplicationService() throws Exception {
+        String source = Files.readString(ROOT.resolve(
+                "src/main/java/com/colonel/saas/controller/TalentController.java"));
+
+        assertThat(source).contains("TalentAddressApplicationService");
+        assertThat(source).contains("talentAddressApplicationService.getShippingAddress");
+        assertThat(source).contains("talentAddressApplicationService.updateShippingAddress");
+        assertThat(source).doesNotContain("talentService.getShippingAddress(id, userId)");
+        assertThat(source).doesNotContain("talentService.updateShippingAddress(");
+    }
+
+    @Test
+    void talentFacadeShouldExposeClaimShippingAddressFact() throws Exception {
+        String source = Files.readString(ROOT.resolve(
+                "src/main/java/com/colonel/saas/domain/talent/facade/TalentDomainFacade.java"));
+
+        assertThat(source).contains("findClaimShippingAddress");
+        assertThat(source).contains("TalentShippingAddressDTO");
+    }
+
+    @Test
     void productServiceShouldConsumeTalentFollowApplicationService() throws Exception {
         String source = Files.readString(ROOT.resolve(
                 "src/main/java/com/colonel/saas/service/ProductService.java"));

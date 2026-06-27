@@ -1,6 +1,7 @@
 package com.colonel.saas.domain.talent.facade;
 
 import com.colonel.saas.domain.talent.facade.dto.TalentReadDTO;
+import com.colonel.saas.domain.talent.facade.dto.TalentShippingAddressDTO;
 
 import java.util.Collection;
 import java.util.Map;
@@ -33,6 +34,9 @@ public interface TalentDomainFacade {
 
     /** 寄样创建成功后回写收件地址到有效认领记录。 */
     void writeBackClaimAddress(UUID channelUserId, UUID talentId, String recipientName, String recipientPhone, String recipientAddress);
+
+    /** 按渠道用户和达人读取有效认领记录中的寄样地址事实。 */
+    TalentShippingAddressDTO findClaimShippingAddress(UUID channelUserId, UUID talentId);
 
     /** 订单完成寄样时，根据有效认领关系修正样本负责人。 */
     UUID resolveSampleOwnerForOrderCompletion(UUID attributedOwner, UUID talentId);
