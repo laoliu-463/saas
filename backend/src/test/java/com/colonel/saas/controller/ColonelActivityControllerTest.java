@@ -9,6 +9,7 @@ import com.colonel.saas.gateway.douyin.DouyinActivityGateway;
 import com.colonel.saas.gateway.douyin.DouyinProductGateway;
 import com.colonel.saas.auth.service.SysUserService;
 import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
+import com.colonel.saas.domain.product.application.ProductActivitySyncApplicationService;
 import com.colonel.saas.domain.product.policy.ProductDisplayPolicy;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
@@ -69,6 +70,8 @@ class ColonelActivityControllerTest {
     @Mock
     private ProductActivityManualSyncService productActivityManualSyncService;
     @Mock
+    private ProductActivitySyncApplicationService productActivitySyncApplicationService;
+    @Mock
     private UserDomainFacade userDomainFacade;
     @Mock
     private ColonelsettlementActivityMapper colonelActivityMapper;
@@ -88,6 +91,7 @@ class ColonelActivityControllerTest {
                 sysUserService,
                 colonelActivityService,
                 productActivityManualSyncService,
+                productActivitySyncApplicationService,
                 userDomainFacade,
                 activityAccessService,
                 new ProductDisplayPolicy()
@@ -135,6 +139,7 @@ class ColonelActivityControllerTest {
                 sysUserService,
                 colonelActivityService,
                 productActivityManualSyncService,
+                productActivitySyncApplicationService,
                 userDomainFacade,
                 activityAccessService,
                 new ProductDisplayPolicy());
@@ -509,8 +514,8 @@ class ColonelActivityControllerTest {
         listView.put("items", List.of(itemView));
 
         when(productService.buildActivityProductListViewFromDb("100018", 20, null, null, null, null, null, null, null)).thenReturn(listView);
-        when(productService.refreshActivitySnapshots(any())).thenReturn(
-                new ProductService.ActivityProductRefreshResult(1, 1, 1, 0, 0));
+        when(productActivitySyncApplicationService.refreshActivitySnapshots(any())).thenReturn(
+                new ProductActivitySyncApplicationService.ActivityProductRefreshResult(1, 1, 1, 0, 0));
 
         mockMvc.perform(get("/colonel/activities/{activityId}/products", "100018")
                         .param("count", "20")
@@ -526,12 +531,12 @@ class ColonelActivityControllerTest {
 
         verify(productService, never()).hasActivitySnapshots("100018");
         verify(colonelActivityService).syncActivitySummaryFromUpstream(eq("100018"), eq(null));
-        verify(productService).refreshActivitySnapshots(any());
+        verify(productActivitySyncApplicationService).refreshActivitySnapshots(any());
         verify(douyinProductGateway, never()).queryActivityProducts(any());
         verify(productService, never()).upsertSnapshots(eq("100018"), any());
         verify(productService).buildActivityProductListViewFromDb("100018", 20, null, null, null, null, null, null, null);
-        InOrder inOrder = inOrder(productService);
-        inOrder.verify(productService).refreshActivitySnapshots(any());
+        InOrder inOrder = inOrder(productActivitySyncApplicationService, productService);
+        inOrder.verify(productActivitySyncApplicationService).refreshActivitySnapshots(any());
         inOrder.verify(productService).buildActivityProductListViewFromDb("100018", 20, null, null, null, null, null, null, null);
     }
 
@@ -571,11 +576,13 @@ class ColonelActivityControllerTest {
         for (ErrorCase item : cases) {
             DouyinProductGateway productGateway = mock(DouyinProductGateway.class);
             ProductService localProductService = mock(ProductService.class);
+            ProductActivitySyncApplicationService localProductActivitySyncApplicationService =
+                    mock(ProductActivitySyncApplicationService.class);
             when(localProductService.hasActivitySnapshots("100018")).thenReturn(false);
             when(localProductService.buildActivityProductListViewFromDb(eq("100018"), any(), any(), any(), any(), any(), any(), any(), any()))
                     .thenReturn(Map.of("items", List.of(), "total", 0));
             // refresh=true 路径调用的是 refreshActivitySnapshots（不是 queryActivityProducts）
-            when(localProductService.refreshActivitySnapshots(any()))
+            when(localProductActivitySyncApplicationService.refreshActivitySnapshots(any()))
                     .thenThrow(item.exception());
             ColonelActivityController errorController = new ColonelActivityController(
                     douyinActivityGateway,
@@ -585,6 +592,7 @@ class ColonelActivityControllerTest {
                     sysUserService,
                     colonelActivityService,
                     productActivityManualSyncService,
+                    localProductActivitySyncApplicationService,
                     userDomainFacade,
                     activityAccessService,
                     new ProductDisplayPolicy());

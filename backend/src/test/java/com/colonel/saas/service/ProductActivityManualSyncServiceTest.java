@@ -1,5 +1,6 @@
 package com.colonel.saas.service;
 
+import com.colonel.saas.domain.product.application.ProductActivitySyncApplicationService;
 import com.colonel.saas.gateway.douyin.DouyinProductGateway;
 import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -25,7 +26,7 @@ import static org.mockito.Mockito.when;
 class ProductActivityManualSyncServiceTest {
 
     @Mock
-    private ProductService productService;
+    private ProductActivitySyncApplicationService productActivitySyncApplicationService;
     @Mock
     private ColonelsettlementActivityService colonelActivityService;
     @Mock
@@ -33,14 +34,14 @@ class ProductActivityManualSyncServiceTest {
 
     @BeforeEach
     void setUp() {
-        when(productService.refreshActivitySnapshots(any()))
-                .thenReturn(new ProductService.ActivityProductRefreshResult(3, 1, 1, 2, 0));
+        when(productActivitySyncApplicationService.refreshActivitySnapshots(any()))
+                .thenReturn(new ProductActivitySyncApplicationService.ActivityProductRefreshResult(3, 1, 1, 2, 0));
     }
 
     @Test
     void trigger_shouldReturnAcceptedAndRunRefreshInBackgroundExecutor() {
         ProductActivityManualSyncService service = new ProductActivityManualSyncService(
-                productService,
+                productActivitySyncApplicationService,
                 colonelActivityService,
                 activityMapper,
                 Runnable::run);
@@ -52,7 +53,7 @@ class ProductActivityManualSyncServiceTest {
         verify(colonelActivityService).syncActivitySummaryFromUpstream("ACT-1", null);
         ArgumentCaptor<DouyinProductGateway.ActivityProductQueryRequest> captor =
                 ArgumentCaptor.forClass(DouyinProductGateway.ActivityProductQueryRequest.class);
-        verify(productService).refreshActivitySnapshots(captor.capture());
+        verify(productActivitySyncApplicationService).refreshActivitySnapshots(captor.capture());
         assertThat(captor.getValue().activityId()).isEqualTo("ACT-1");
         assertThat(captor.getValue().count()).isEqualTo(20);
         verify(activityMapper).touchLastSyncAt(eq("ACT-1"), any(LocalDateTime.class));
@@ -63,7 +64,7 @@ class ProductActivityManualSyncServiceTest {
         List<Runnable> queuedTasks = new ArrayList<>();
         Executor queuedExecutor = queuedTasks::add;
         ProductActivityManualSyncService service = new ProductActivityManualSyncService(
-                productService,
+                productActivitySyncApplicationService,
                 colonelActivityService,
                 activityMapper,
                 queuedExecutor);
@@ -83,8 +84,8 @@ class ProductActivityManualSyncServiceTest {
 
     @Test
     void trigger_shouldNotTouchLastSyncAtWhenRefreshIsIncomplete() {
-        when(productService.refreshActivitySnapshots(any()))
-                .thenReturn(new ProductService.ActivityProductRefreshResult(
+        when(productActivitySyncApplicationService.refreshActivitySnapshots(any()))
+                .thenReturn(new ProductActivitySyncApplicationService.ActivityProductRefreshResult(
                         2_000,
                         1,
                         100,
@@ -98,7 +99,7 @@ class ProductActivityManualSyncServiceTest {
                         true,
                         false));
         ProductActivityManualSyncService service = new ProductActivityManualSyncService(
-                productService,
+                productActivitySyncApplicationService,
                 colonelActivityService,
                 activityMapper,
                 Runnable::run);

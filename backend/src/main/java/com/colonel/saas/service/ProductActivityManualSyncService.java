@@ -1,5 +1,6 @@
 package com.colonel.saas.service;
 
+import com.colonel.saas.domain.product.application.ProductActivitySyncApplicationService;
 import com.colonel.saas.gateway.douyin.DouyinProductGateway;
 import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
 import lombok.extern.slf4j.Slf4j;
@@ -23,7 +24,7 @@ public class ProductActivityManualSyncService {
 
     private static final int DEFAULT_PAGE_SIZE = 20;
 
-    private final ProductService productService;
+    private final ProductActivitySyncApplicationService productActivitySyncApplicationService;
     private final ColonelsettlementActivityService colonelActivityService;
     private final ColonelsettlementActivityMapper activityMapper;
     private final Executor syncExecutor;
@@ -32,11 +33,11 @@ public class ProductActivityManualSyncService {
     private int pageSize;
 
     public ProductActivityManualSyncService(
-            ProductService productService,
+            ProductActivitySyncApplicationService productActivitySyncApplicationService,
             ColonelsettlementActivityService colonelActivityService,
             ColonelsettlementActivityMapper activityMapper,
             @Qualifier("applicationTaskExecutor") Executor syncExecutor) {
-        this.productService = productService;
+        this.productActivitySyncApplicationService = productActivitySyncApplicationService;
         this.colonelActivityService = colonelActivityService;
         this.activityMapper = activityMapper;
         this.syncExecutor = syncExecutor;
@@ -62,8 +63,8 @@ public class ProductActivityManualSyncService {
     private void runSync(String activityId, String appId) {
         try {
             colonelActivityService.syncActivitySummaryFromUpstream(activityId, appId);
-            ProductService.ActivityProductRefreshResult result =
-                    productService.refreshActivitySnapshots(buildQueryRequest(activityId, appId));
+            ProductActivitySyncApplicationService.ActivityProductRefreshResult result =
+                    productActivitySyncApplicationService.refreshActivitySnapshots(buildQueryRequest(activityId, appId));
             if (result.complete()) {
                 activityMapper.touchLastSyncAt(activityId, LocalDateTime.now());
             }

@@ -1,9 +1,9 @@
 package com.colonel.saas.job;
 
+import com.colonel.saas.domain.product.application.ProductActivitySyncApplicationService;
 import com.colonel.saas.gateway.douyin.DouyinProductGateway;
 import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
 import com.colonel.saas.service.DistributedJobLockService;
-import com.colonel.saas.service.ProductService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -31,7 +31,7 @@ public class ProductActivitySyncJob {
     private static final int MAX_PAGE_SIZE = 20;
     private static final int MAX_ACTIVITIES_PER_RUN = 200;
 
-    private final ProductService productService;
+    private final ProductActivitySyncApplicationService productActivitySyncApplicationService;
     private final DistributedJobLockService jobLockService;
     private final ColonelsettlementActivityMapper activityMapper;
     private final int qpsGuardSleepMillis;
@@ -53,18 +53,18 @@ public class ProductActivitySyncJob {
 
     @Autowired
     public ProductActivitySyncJob(
-            ProductService productService,
+            ProductActivitySyncApplicationService productActivitySyncApplicationService,
             DistributedJobLockService jobLockService,
             ColonelsettlementActivityMapper activityMapper) {
-        this(productService, jobLockService, activityMapper, QPS_GUARD_SLEEP_MS);
+        this(productActivitySyncApplicationService, jobLockService, activityMapper, QPS_GUARD_SLEEP_MS);
     }
 
     ProductActivitySyncJob(
-            ProductService productService,
+            ProductActivitySyncApplicationService productActivitySyncApplicationService,
             DistributedJobLockService jobLockService,
             ColonelsettlementActivityMapper activityMapper,
             int qpsGuardSleepMillis) {
-        this.productService = productService;
+        this.productActivitySyncApplicationService = productActivitySyncApplicationService;
         this.jobLockService = jobLockService;
         this.activityMapper = activityMapper;
         this.qpsGuardSleepMillis = Math.max(0, qpsGuardSleepMillis);
@@ -109,8 +109,8 @@ public class ProductActivitySyncJob {
                     continue;
                 }
                 try {
-                    ProductService.ActivityProductRefreshResult result =
-                            productService.refreshActivitySnapshots(buildQueryRequest(activityId));
+                    ProductActivitySyncApplicationService.ActivityProductRefreshResult result =
+                            productActivitySyncApplicationService.refreshActivitySnapshots(buildQueryRequest(activityId));
                     if (result.complete()) {
                         activityMapper.touchLastSyncAt(activityId, LocalDateTime.now());
                         ok++;

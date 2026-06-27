@@ -13,6 +13,7 @@ import com.colonel.saas.entity.ColonelsettlementActivity;
 import com.colonel.saas.entity.SysUser;
 import com.colonel.saas.gateway.douyin.DouyinActivityGateway;
 import com.colonel.saas.gateway.douyin.DouyinProductGateway;
+import com.colonel.saas.domain.product.application.ProductActivitySyncApplicationService;
 import com.colonel.saas.domain.product.policy.ProductDisplayPolicy;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.service.activity.ActivityAccessService;
@@ -66,6 +67,7 @@ public class ColonelActivityController extends BaseController {
     private final SysUserService sysUserService;
     private final ColonelsettlementActivityService colonelActivityService;
     private final ProductActivityManualSyncService productActivityManualSyncService;
+    private final ProductActivitySyncApplicationService productActivitySyncApplicationService;
     private final UserDomainFacade userDomainFacade;
     private final ActivityAccessService activityAccessService;
     private final ProductDisplayPolicy productDisplayPolicy;
@@ -78,6 +80,7 @@ public class ColonelActivityController extends BaseController {
             SysUserService sysUserService,
             ColonelsettlementActivityService colonelActivityService,
             ProductActivityManualSyncService productActivityManualSyncService,
+            ProductActivitySyncApplicationService productActivitySyncApplicationService,
             UserDomainFacade userDomainFacade,
             ActivityAccessService activityAccessService,
             ProductDisplayPolicy productDisplayPolicy) {
@@ -88,6 +91,7 @@ public class ColonelActivityController extends BaseController {
         this.sysUserService = sysUserService;
         this.colonelActivityService = colonelActivityService;
         this.productActivityManualSyncService = productActivityManualSyncService;
+        this.productActivitySyncApplicationService = productActivitySyncApplicationService;
         this.userDomainFacade = userDomainFacade;
         this.activityAccessService = activityAccessService;
         this.productDisplayPolicy = productDisplayPolicy;
@@ -222,8 +226,8 @@ public class ColonelActivityController extends BaseController {
                                 appId, activityId, searchType, sortType, count, cooperationInfo, cooperationType,
                                 productInfo, status, retrieveMode, cursor, page);
                 colonelActivityService.syncActivitySummaryFromUpstream(activityId, appId);
-                ProductService.ActivityProductRefreshResult refreshResult =
-                        productService.refreshActivitySnapshots(queryRequest);
+                ProductActivitySyncApplicationService.ActivityProductRefreshResult refreshResult =
+                        productActivitySyncApplicationService.refreshActivitySnapshots(queryRequest);
                 Map<String, Object> payload = productService.buildActivityProductListViewFromDb(
                         activityId, count, cursor, productInfo, bizStatus, status, sortBy, goodsTags, productTags);
                 Map<String, Object> syncStats = new LinkedHashMap<>();
