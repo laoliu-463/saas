@@ -2,6 +2,7 @@ package com.colonel.saas.service;
 
 import com.colonel.saas.config.AppProperties;
 import com.colonel.saas.domain.order.application.OrderAmountMappingRouter;
+import com.colonel.saas.domain.order.application.OrderAmountMappingRouter.SyncSource;
 import com.colonel.saas.domain.order.application.OrderAttributionRouter;
 import com.colonel.saas.job.JobLockKeys;
 import com.colonel.saas.gateway.douyin.DouyinOrderGateway;
@@ -112,12 +113,6 @@ public class OrderSyncService {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
     };
-
-    private enum SyncSource {
-        INSTITUTE,
-        INSTITUTE_SETTLEMENT,
-        SETTLEMENT
-    }
 
     private final DouyinOrderGateway douyinOrderGateway;
     private final SettlementOrderGateway instituteSettlementGateway;
@@ -1188,11 +1183,7 @@ public class OrderSyncService {
         order.setShopName(item.merchantName());
         LocalDateTime itemSettleTime = item.settleTime() == null ? null : AppZone.fromEpochSecond(item.settleTime());
         orderAmountMappingRouter.mapAndApplyToOrder(
-                switch (source) {
-                    case INSTITUTE -> OrderAmountMappingRouter.SyncSource.INSTITUTE;
-                    case INSTITUTE_SETTLEMENT -> OrderAmountMappingRouter.SyncSource.INSTITUTE_SETTLEMENT;
-                    case SETTLEMENT -> OrderAmountMappingRouter.SyncSource.SETTLEMENT;
-                },
+                source,
                 order,
                 rawPayload,
                 item.orderAmount(),

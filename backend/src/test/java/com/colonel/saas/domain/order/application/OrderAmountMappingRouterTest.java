@@ -1,8 +1,8 @@
 package com.colonel.saas.domain.order.application;
 
 import com.colonel.saas.config.DddRefactorProperties;
+import com.colonel.saas.domain.order.policy.OrderAmountMapperPolicy.MappedAmounts;
 import com.colonel.saas.entity.ColonelsettlementOrder;
-import com.colonel.saas.service.OrderDualTrackAmountResolver;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -13,15 +13,12 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class OrderAmountMappingRouterTest {
 
     @Mock
     private DddRefactorProperties dddRefactorProperties;
-    @Mock
-    private DddRefactorProperties.Switch orderAmountPolicySwitch;
 
     private OrderAmountMappingRouter router;
 
@@ -31,41 +28,20 @@ class OrderAmountMappingRouterTest {
     }
 
     @Test
-    void isPolicyEnabled_requiresRootAndOrderAmountPolicySwitches() {
-        when(dddRefactorProperties.isEnabled()).thenReturn(false);
-        when(dddRefactorProperties.getOrderAmountPolicy()).thenReturn(orderAmountPolicySwitch);
-        when(orderAmountPolicySwitch.isEnabled()).thenReturn(true);
-        assertThat(router.isPolicyEnabled()).isFalse();
-
-        when(dddRefactorProperties.isEnabled()).thenReturn(true);
-        when(orderAmountPolicySwitch.isEnabled()).thenReturn(false);
-        assertThat(router.isPolicyEnabled()).isFalse();
-
-        when(orderAmountPolicySwitch.isEnabled()).thenReturn(true);
-        assertThat(router.isPolicyEnabled()).isTrue();
-    }
-
-    @Test
-    void resolveAmounts_shouldMatchLegacyWhenPolicyDisabled() {
-        when(dddRefactorProperties.isEnabled()).thenReturn(false);
-
+    void resolveAmounts_shouldUsePolicyToResolve() {
         Map<String, Object> raw = new LinkedHashMap<>();
         raw.put("pay_goods_amount", 1000L);
         raw.put("settled_goods_amount", 900L);
 
-        var legacy = OrderDualTrackAmountResolver.resolve(raw, null, null);
-        var routed = router.resolveAmounts(
+        MappedAmounts routed = router.resolveAmounts(
                 OrderAmountMappingRouter.SyncSource.INSTITUTE, raw, null, null);
 
-        assertThat(routed).isEqualTo(legacy);
+        assertThat(routed.payAmount()).isEqualTo(1000L);
+        assertThat(routed.settleAmount()).isEqualTo(900L);
     }
 
     @Test
-    void mergeEstimateSnapshot_shouldPreserveExistingEstimateWhenPolicyEnabled() {
-        when(dddRefactorProperties.isEnabled()).thenReturn(true);
-        when(dddRefactorProperties.getOrderAmountPolicy()).thenReturn(orderAmountPolicySwitch);
-        when(orderAmountPolicySwitch.isEnabled()).thenReturn(true);
-
+    void mergeEstimateSnapshot_shouldPreserveExistingEstimate() {
         ColonelsettlementOrder existing = new ColonelsettlementOrder();
         existing.setEstimateServiceFee(500L);
         existing.setOrderAmount(1000L);
@@ -80,8 +56,6 @@ class OrderAmountMappingRouterTest {
 
     @Test
     void mapAndApplyToOrder_shouldWriteInstituteSettleTimeWhenSignalPresent() {
-        when(dddRefactorProperties.isEnabled()).thenReturn(false);
-
         Map<String, Object> raw = new LinkedHashMap<>();
         raw.put("flow_point", "SETTLE");
         raw.put("settle_time", "2026-06-12 10:00:00");

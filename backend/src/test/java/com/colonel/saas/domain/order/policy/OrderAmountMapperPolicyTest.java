@@ -416,7 +416,7 @@ class OrderAmountMapperPolicyTest {
             order.setEffectiveServiceFee(0L);
 
             MappedAmounts amounts = new MappedAmounts(
-                    10_000L, 0L, 1_000L, 0L, 50L, 0L,
+                    10_000L, 0L, 1_000L, 0L, 50L, 0L, 0L, 0L,
                     new BigDecimal("0.10"), null,
                     List.of(), Map.of());
             Map<String, Object> raw = new LinkedHashMap<>();
@@ -440,7 +440,7 @@ class OrderAmountMapperPolicyTest {
         void applyInstituteFactShouldWriteSettlementWhenSettled() {
             ColonelsettlementOrder order = new ColonelsettlementOrder();
             MappedAmounts amounts = new MappedAmounts(
-                    16_80L, 16_80L, 34L, 30L, 3L, 2L,
+                    16_80L, 16_80L, 34L, 30L, 3L, 2L, 0L, 0L,
                     null, null,
                     List.of(), Map.of());
             Map<String, Object> raw = new LinkedHashMap<>();
@@ -478,7 +478,7 @@ class OrderAmountMapperPolicyTest {
             raw.put("colonel_order_info", Map.of("real_commission", 0L));
 
             OrderAmountMapperPolicy.applyInstituteFactToOrder(order,
-                    new MappedAmounts(10_000L, 0L, 1_000L, 0L, 50L, 0L, null, null, List.of(), Map.of()),
+                    new MappedAmounts(10_000L, 0L, 1_000L, 0L, 50L, 0L, 0L, 0L, null, null, List.of(), Map.of()),
                     raw);
 
             assertThat(order.getSettleAmount()).isEqualTo(9000L);
@@ -509,7 +509,7 @@ class OrderAmountMapperPolicyTest {
             ColonelsettlementOrder order = new ColonelsettlementOrder();
 
             MappedAmounts amounts = new MappedAmounts(
-                    10_000L, 9_500L, 1_000L, 950L, 50L, 40L,
+                    10_000L, 9_500L, 1_000L, 950L, 50L, 40L, 0L, 0L,
                     new BigDecimal("0.10"), null,
                     List.of(), Map.of());
 
@@ -532,7 +532,7 @@ class OrderAmountMapperPolicyTest {
             ColonelsettlementOrder order = new ColonelsettlementOrder();
 
             MappedAmounts amounts = new MappedAmounts(
-                    10_000L, 0L, 1_000L, 0L, 50L, 0L,
+                    10_000L, 0L, 1_000L, 0L, 50L, 0L, 0L, 0L,
                     new BigDecimal("0.10"), null,
                     List.of(), Map.of());
 
@@ -593,8 +593,8 @@ class OrderAmountMapperPolicyTest {
             MappedAmounts result = OrderAmountMapperPolicy.map(raw, null);
 
             // 只输出 10 个任务清单字段，serviceFeeExpense 不在产物中
-            // 验证：MappedAmounts 记录字段数 = 10
-            assertThat(MappedAmounts.class.getRecordComponents()).hasSize(10);
+            // 验证：MappedAmounts 记录字段数 = 12
+            assertThat(MappedAmounts.class.getRecordComponents()).hasSize(12);
             // serviceFeeRate 归一化
             assertThat(result.serviceFeeRate()).isEqualByComparingTo(new BigDecimal("0.10"));
         }

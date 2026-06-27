@@ -8,24 +8,12 @@ import java.math.RoundingMode;
 import java.util.Map;
 
 /**
- * 订单双轨金额解析器，从抖店订单原始载荷（rawPayload）中解析预估轨与结算轨金额。
+ * 订单双轨金额解析器（已废弃）。
  *
- * <ul>
- *   <li>解析双轨服务费：预估服务费（estimateServiceFee）与结算服务费（effectiveServiceFee）</li>
- *   <li>解析双轨技术服务费：预估技术服务费（estimateTechServiceFee）与结算技术服务费（effectiveTechServiceFee）</li>
- *   <li>解析订单实付金额（payAmount）和结算金额（settleAmount）</li>
- *   <li>支持多字段名别名自动匹配，兼容抖店 API 不同版本的字段命名</li>
- *   <li>提供预估轨快照保留机制（mergeEstimateSnapshot），避免重复同步覆盖首次预估值</li>
- *   <li>所有金额单位为分（人民币最小单位），避免浮点精度问题</li>
- * </ul>
- *
- * <p>在架构中属于订单域（Order Domain）的核心金额计算工具类，
- * 被 {@link OrderSyncService} 和 {@link OrderSyncPersistenceService} 调用，
- * 对应订单域 V1.6 §2.4.2 双轨金额规范。</p>
- *
- * @see OrderSyncService
- * @see OrderSyncPersistenceService
+ * @deprecated 已迁移至 {@link com.colonel.saas.domain.order.policy.OrderAmountMapperPolicy}，
+ *     本类仅供 DryRun 服务过渡期调用。新代码请使用 OrderAmountMapperPolicy。
  */
+@Deprecated(since = "DDD-ORDER-002", forRemoval = true)
 public final class OrderDualTrackAmountResolver {
 
     /** 工具类，禁止实例化 */

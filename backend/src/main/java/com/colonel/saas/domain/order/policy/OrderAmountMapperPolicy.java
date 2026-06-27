@@ -64,6 +64,8 @@ public final class OrderAmountMapperPolicy {
      * @param effectiveServiceFee      结算服务费收入（分）
      * @param estimateTechServiceFee   预估技术服务费（分）
      * @param effectiveTechServiceFee  结算技术服务费（分）
+     * @param estimateServiceFeeExpense 预估服务费支出（分）
+     * @param effectiveServiceFeeExpense 结算服务费支出（分）
      * @param serviceFeeRate           归一化后的服务费率（0~1 之间）；缺失时为 null
      * @param commissionRate           归一化后的招商提成率（0~1 之间）；缺失时为 null
      * @param amountWarnings           映射过程产生的警告（只读视图）
@@ -76,6 +78,8 @@ public final class OrderAmountMapperPolicy {
             long effectiveServiceFee,
             long estimateTechServiceFee,
             long effectiveTechServiceFee,
+            long estimateServiceFeeExpense,
+            long effectiveServiceFeeExpense,
             BigDecimal serviceFeeRate,
             BigDecimal commissionRate,
             List<AmountWarning> amountWarnings,
@@ -224,6 +228,10 @@ public final class OrderAmountMapperPolicy {
                     "commission_rate", "commissionRate", "招商_提成率"));
         }
 
+        // 第六步：计算服务费支出（二级机构分佣场景）
+        long estimateServiceFeeExpense = computeEstimateServiceFeeExpense(safe);
+        long effectiveServiceFeeExpense = computeEffectiveServiceFeeExpense(safe);
+
         return new MappedAmounts(
                 payAmount,
                 settleAmount,
@@ -231,6 +239,8 @@ public final class OrderAmountMapperPolicy {
                 effectiveServiceFee,
                 estimateTechServiceFee,
                 effectiveTechServiceFee,
+                estimateServiceFeeExpense,
+                effectiveServiceFeeExpense,
                 serviceFeeRate,
                 commissionRate,
                 List.copyOf(warnings),
@@ -314,6 +324,7 @@ public final class OrderAmountMapperPolicy {
         order.setActualAmount(amounts.payAmount());
         order.setEstimateServiceFee(amounts.estimateServiceFee());
         order.setEstimateTechServiceFee(amounts.estimateTechServiceFee());
+        order.setEstimateServiceFeeExpense(amounts.estimateServiceFeeExpense());
         if (rawPayload != null && hasInstituteSettlementSignal(rawPayload)) {
             applyInstituteSettlementFromRaw(order, rawPayload);
         }
@@ -426,8 +437,139 @@ public final class OrderAmountMapperPolicy {
         order.setEffectiveServiceFee(amounts.effectiveServiceFee());
         order.setEstimateTechServiceFee(amounts.estimateTechServiceFee());
         order.setEffectiveTechServiceFee(amounts.effectiveTechServiceFee());
+        order.setEstimateServiceFeeExpense(amounts.estimateServiceFeeExpense());
+        order.setEffectiveServiceFeeExpense(amounts.effectiveServiceFeeExpense());
         order.setSettleColonelCommission(amounts.effectiveServiceFee() > 0 ? amounts.effectiveServiceFee() : null);
         order.setSettleColonelTechServiceFee(amounts.effectiveTechServiceFee() > 0 ? amounts.effectiveTechServiceFee() : null);
+    }
+
+    /**
+     * 将 1603 结算口径金额写入订单实体；结算轨字段没有值时保持 0/null，不使用预估轨兜底。
+     */
+    public static void applyInstituteSettlementToOrder(ColonelsettlementOrder order, MappedAmounts amounts) {
+        if (order == null || amounts == null) {
+            return;
+        }
+        order.setOrderAmount(amounts.payAmount());
+        order.setActualAmount(amounts.payAmount());
+        order.setSettleAmount(amounts.settleAmount());
+        order.setEstimateServiceFee(amounts.estimateServiceFee());
+        order.setEffectiveServiceFee(amounts.effectiveServiceFee());
+        order.setEstimateTechServiceFee(amounts.estimateTechServiceFee());
+        order.setEffectiveTechServiceFee(amounts.effectiveTechServiceFee());
+        order.setEstimateServiceFeeExpense(amounts.estimateServiceFeeExpense());
+        order.setEffectiveServiceFeeExpense(amounts.effectiveServiceFeeExpense());
+        order.setSettleColonelCommission(amounts.effectiveServiceFee() > 0 ? amounts.effectiveServiceFee() : null);
+        order.setSettleColonelTechServiceFee(amounts.effectiveTechServiceFee() > 0 ? amounts.effectiveTechServiceFee() : null);
+    }
+
+    /**
+     * 1603 结算口径解析：只读取上游明确返回的结算字段，不做实付/预估硬兜底。
+     */
+    public static MappedAmounts mapInstituteSettlement(Map<String, Object> rawPayload) {
+        Map<String, Object> safe = rawPayload == null ? Map.of() : rawPayload;
+        long payAmount = firstNonNegative(asLong(pick(safe,
+                "pay_goods_amount", "payGoodsAmount", "order_amount", "orderAmount",
+                "total_pay_amount", "totalPayAmount", "pay_amount", "payAmount")));
+        long settleAmount = firstNonNegative(asLong(pick(safe,
+                "settled_goods_amount", "settledGoodsAmount", "settle_goods_amount", "settleGoodsAmount",
+                "settle_amount", "settleAmount", "real_goods_amount", "realGoodsAmount",
+                "actual_amount", "actualAmount")));
+        long estimateServiceFee = firstFromInstitutions(safe,
+                "estimated_commission", "estimatedCommission", "estimated_service_fee", "estimatedServiceFee",
+                "estimate_institution_commission", "estimateInstitutionCommission",
+                "estimate_commission", "estimateCommission");
+        long effectiveServiceFee = firstFromInstitutions(safe,
+                "real_commission", "realCommission", "settled_commission", "settledCommission",
+                "commission", "institution_commission", "institutionCommission",
+                "colonel_commission", "colonelCommission", "service_fee", "serviceFee");
+        long estimateTechServiceFee = firstNonNegative(asLong(pickNestedLong(safe,
+                "estimated_tech_service_fee", "estimatedTechServiceFee",
+                "estimate_platform_service_fee", "estimatePlatformServiceFee")));
+        long effectiveTechServiceFee = firstNonNegative(asLong(pickNestedLong(safe,
+                "settled_tech_service_fee", "settledTechServiceFee",
+                "real_tech_service_fee", "realTechServiceFee")));
+        long estimateServiceFeeExpense = computeEstimateServiceFeeExpense(safe);
+        long effectiveServiceFeeExpense = computeEffectiveServiceFeeExpense(safe);
+        return new MappedAmounts(
+                payAmount, settleAmount,
+                estimateServiceFee, effectiveServiceFee,
+                estimateTechServiceFee, effectiveTechServiceFee,
+                estimateServiceFeeExpense, effectiveServiceFeeExpense,
+                null, null,
+                List.of(), Map.of());
+    }
+
+    // ============ 服务费支出计算 ============
+
+    /**
+     * 计算预估服务费支出：
+     * 当且仅当一级机构与二级机构同时存在预估服务费时，二级机构的预估服务费计入支出。
+     */
+    static long computeEstimateServiceFeeExpense(Map<String, Object> rawPayload) {
+        if (rawPayload == null || rawPayload.isEmpty()) {
+            return 0L;
+        }
+        String[] estKeys = {
+                "estimated_commission", "estimatedCommission", "estimated_service_fee", "estimatedServiceFee",
+                "estimate_institution_commission", "estimateInstitutionCommission",
+                "estimate_commission", "estimateCommission"
+        };
+        long primaryFee = firstFromPrimaryInstitution(rawPayload, estKeys);
+        long secondFee = fromSecondInstitution(rawPayload, estKeys);
+        return primaryFee > 0L && secondFee > 0L ? secondFee : 0L;
+    }
+
+    /**
+     * 计算结算服务费支出：
+     * 当且仅当一级机构与二级机构同时存在结算服务费时，二级机构的结算服务费计入支出。
+     */
+    static long computeEffectiveServiceFeeExpense(Map<String, Object> rawPayload) {
+        if (rawPayload == null || rawPayload.isEmpty()) {
+            return 0L;
+        }
+        String[] effKeys = {
+                "real_commission", "realCommission", "settled_commission", "settledCommission",
+                "commission", "institution_commission", "institutionCommission",
+                "colonel_commission", "colonelCommission", "service_fee", "serviceFee"
+        };
+        long primaryFee = firstFromPrimaryInstitution(rawPayload, effKeys);
+        long secondFee = fromSecondInstitution(rawPayload, effKeys);
+        return primaryFee > 0L && secondFee > 0L ? secondFee : 0L;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static long firstFromPrimaryInstitution(Map<String, Object> rawPayload, String... keys) {
+        Object direct = pick(rawPayload, keys);
+        if (direct != null) {
+            long value = firstNonNegative(asLong(direct));
+            if (value > 0L) {
+                return value;
+            }
+        }
+        Object nested1 = pick(rawPayload, "colonel_order_info", "colonelOrderInfo");
+        if (nested1 instanceof Map<?, ?> map1) {
+            Object val = pick((Map<String, Object>) map1, keys);
+            if (val != null) {
+                long value = firstNonNegative(asLong(val));
+                if (value > 0L) {
+                    return value;
+                }
+            }
+        }
+        return 0L;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static long fromSecondInstitution(Map<String, Object> rawPayload, String... keys) {
+        Object nested2 = pick(rawPayload, "colonel_order_info_second", "colonelOrderInfoSecond");
+        if (nested2 instanceof Map<?, ?> map2) {
+            Object val = pick((Map<String, Object>) map2, keys);
+            if (val != null) {
+                return firstNonNegative(asLong(val));
+            }
+        }
+        return 0L;
     }
 
     // ============ 内部辅助方法（private static） ============

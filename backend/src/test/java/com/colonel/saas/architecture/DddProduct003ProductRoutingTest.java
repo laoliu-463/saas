@@ -207,6 +207,24 @@ class DddProduct003ProductRoutingTest {
     }
 
     @Test
+    @DisplayName("商品 backfill 管理 API 统一经过商品域应用入口")
+    void productBackfillAdmin_shouldRouteThroughProductApplicationBoundary() throws Exception {
+        String controllerSource = readSource("com/colonel/saas/controller/ProductSyncAdminController.java");
+        String applicationSource = readSource(
+                "com/colonel/saas/domain/product/application/ProductActivityBackfillApplicationService.java");
+
+        assertThat(controllerSource)
+                .contains("ProductActivityBackfillApplicationService")
+                .contains("BackfillCommand")
+                .doesNotContain("ProductActivityBackfillService")
+                .doesNotContain("ProductSyncDryRunProbeService");
+        assertThat(applicationSource)
+                .contains("ProductActivityBackfillService")
+                .contains("ProductSyncDryRunProbeService.ActivityDryRunResult")
+                .contains("toLegacyRequest");
+    }
+
+    @Test
     @DisplayName("商品转链 Port、mapping 和事件边界唯一收口")
     void productPromotion_shouldUseSingleApplicationPortAndCompletedEvent() throws Exception {
         String productServiceSource = readSource("com/colonel/saas/service/ProductService.java");

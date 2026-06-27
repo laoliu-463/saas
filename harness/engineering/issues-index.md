@@ -36,10 +36,6 @@
 | 110 | [DDD-COMPLETE-100-CONFIG-03] 配置消费方只读参数边界审计 | ready-for-agent | https://github.com/laoliu-463/saas/issues/110 |
 | 111 | [DDD-COMPLETE-100-CONFIG-04] 配置校验、版本、审计与事件证据 | ready-for-agent | https://github.com/laoliu-463/saas/issues/111 |
 | 112 | [DDD-COMPLETE-100-CONFIG-05] 配置域 legacy retire 与迁移率目标达成 | ready-for-agent | https://github.com/laoliu-463/saas/issues/112 |
-| 113 | [DDD-COMPLETE-100-ORDER-01] 订单同步入口与 source strategy 完整收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/113 |
-| 114 | [DDD-COMPLETE-100-ORDER-02] 订单查询 Query 层与数据范围最终收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/114 |
-| 115 | [DDD-COMPLETE-100-ORDER-03] 订单金额、退款事实、pick_source Policy 完整收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/115 |
-| 116 | [DDD-COMPLETE-100-ORDER-04] 订单事件 after-commit、Outbox 和幂等证据 | ready-for-agent | https://github.com/laoliu-463/saas/issues/116 |
 | 117 | [DDD-COMPLETE-100-ORDER-05] real-pre 推广链接订单 pick_source 正向样本 | ready-for-agent | https://github.com/laoliu-463/saas/issues/117 |
 | 118 | [DDD-COMPLETE-100-ORDER-06] 订单域 legacy service 退休与迁移率目标达成 | ready-for-agent | https://github.com/laoliu-463/saas/issues/118 |
 | 119 | [DDD-COMPLETE-100-PERF-01] performance_records 生成边界完整收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/119 |
@@ -92,6 +88,10 @@
 
 | # | Title | Closed Date | Evidence |
 | --- | --- | --- | --- |
+| 113 | [DDD-COMPLETE-100-ORDER-01] 订单同步入口与 source strategy 完整收口 | 2026-06-27 | 本地编译且测试通过 |
+| 114 | [DDD-COMPLETE-100-ORDER-02] 订单查询 Query 层与数据范围最终收口 | 2026-06-27 | 门面瘦身，删除 380 行死代码 |
+| 115 | [DDD-COMPLETE-100-ORDER-03] 订单金额、退款事实、pick_source Policy 完整收口 | 2026-06-27 | 废除灰度分支，全量切换 Policy，补齐 expense |
+| 116 | [DDD-COMPLETE-100-ORDER-04] 订单事件 after-commit、Outbox 和幂等证据 | 2026-06-27 | 经过 afterCommit 事务和幂等审查 |
 | 130 | [DDD-COMPLETE-100-PRODUCT-01] ProductService 大类拆解 inventory 与切片计划 | 2026-06-27 | `harness/reports/2026-06-27/ddd-complete-product-130/evidence-20260627-200829-product-service-inventory.md` |
 | 3 | PRD: DDD 渐进式迁移到 100%（DDD-MIGRATION-100） | 2026-06-27 | 旧 DDD100 批次关闭；不等于完整项目 DDD 100%。 |
 | 30-89 | DDD100 issue 批次 | 2026-06-27 | 旧批次全部关闭；当前作为 `DDD-COMPLETE-100` 基线。 |
