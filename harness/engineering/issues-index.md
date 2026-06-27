@@ -1,7 +1,7 @@
 # GitHub Issues Index (Mirror)
 
 > 本文件是 GitHub Issues 的本地镜像，用于 Matt Pocock engineering skills 与 harness 任务路由。
-> 最后更新：2026-06-27（#31 架构红线 guard 完成后）
+> 最后更新：2026-06-27（#32 迁移率脚本固化完成后）
 
 ## 同步规则
 
@@ -14,7 +14,6 @@
 | # | Title | Labels | Link |
 | --- | --- | --- | --- |
 | 3 | PRD: DDD 渐进式迁移到 100%（DDD-MIGRATION-100） | ready-for-agent | https://github.com/laoliu-463/saas/issues/3 |
-| 32 | [DDD100-METRIC] DDD 迁移率脚本与 evidence 指标固化 | ready-for-agent | https://github.com/laoliu-463/saas/issues/32 |
 | 33 | [DDD100-USER-DATASCOPE] 数据范围剩余消费点收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/33 |
 | 34 | [DDD100-USER-CRUD] SysUser CRUD Application 收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/34 |
 | 35 | [DDD100-USER-ASSIGN] 用户分配、渠道、组织归属 Application 收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/35 |
@@ -77,6 +76,7 @@
 
 | # | Title | Closed Date | Evidence |
 | --- | --- | --- | --- |
+| 32 | [DDD100-METRIC] DDD 迁移率脚本与 evidence 指标固化 | 2026-06-27 | `harness/scripts/probes/ddd-migration-metrics.ps1`, proxy 26.6% |
 | 31 | [DDD100-GUARD] 架构护栏与跨域依赖扫描收口 | 2026-06-27 | `DddArchitectureRedlineGuardTest`, `harness/reports/2026-06-21/ddd-architecture-guard-031/evidence-20260627-115000-architecture-redline-guard.md` |
 | 30 | [DDD100-BASELINE] 当前 100% 迁移率与风险基线重算 | 2026-06-27 | `harness/reports/ddd100-baseline-20260627.md`, business proxy 26.3% |
 | 24 | [Sprint-4M-W3] DDD-USER-MIGRATION-015 创建 AuthApplication | 2026-06-26 | `AuthServiceTest`, `AuthApplicationTest` |
@@ -89,10 +89,11 @@
 ## 当前判断
 
 - #3 是 DDD 迁移总 PRD，不能因单个切片完成而关闭。
-- #32-#89 是按 DDD-MIGRATION-100 的 100% 目标发布的剩余 open leaf issues；#30/#31 已完成基线与 guard。
+- #33-#89 是按 DDD-MIGRATION-100 的 100% 目标发布的剩余 open leaf issues；#30/#31/#32 已完成基线、guard 与指标脚本。
 - #29 已在 GitHub 关闭，本文件不再把它列为 open。
 - #30 给出的 2026-06-27 口径是 raw `domain/` share 20.1%、业务迁移代理 26.3%；它是推进基线，不是 100% 完成证明。
 - #31 已新增可重复执行的架构红线 guard，冻结 Controller 直连 Mapper/Gateway 既有债务并阻止新增。
+- #32 已新增 `harness/scripts/probes/ddd-migration-metrics.ps1`；当前业务迁移代理指标为 26.6%。
 
 ## 常用命令
 

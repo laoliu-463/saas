@@ -7,6 +7,11 @@
 
 ## 最近版本摘要
 
+### v0.7.6 — 2026-06-27
+- DDD100 #32 迁移率脚本固化：新增 `harness/scripts/probes/ddd-migration-metrics.ps1`，支持 Markdown/JSON 输出。
+- 当前脚本口径：raw `domain/` share 20.2%，业务迁移代理 26.6%，并输出每个领域 application/query/port/policy/facade/infrastructure/api/domain/event 与 legacy service 指标。
+- 证据：`harness/reports/2026-06-21/ddd-migration-metric-032/evidence-20260627-120000-ddd-migration-metrics.md`。
+
 ### v0.7.5 — 2026-06-27
 - DDD100 #31 架构红线 guard 新增：Controller 直连 Mapper/Gateway 既有债务冻结为 whitelist，新增即失败，债务删除后必须清理 whitelist。
 - strict domain api/query/policy/port 层 Mapper import 与前端第三方 HTTP 直连采用零容忍扫描。
