@@ -35,9 +35,9 @@
 | Check | Result | Evidence |
 | --- | --- | --- |
 | Clean targeted tests | PASS | `D:\Projects\SAAS-product-131-verify`, `mvn "-Dtest=ProductActivityBackfillApplicationServiceTest,ProductSyncAdminControllerTest,DddProduct003ProductRoutingTest" test`, 15 tests, 0 failures |
+| Current targeted tests | PASS | `D:\Projects\SAAS\backend`, same Maven test filter, 15 tests, 0 failures after concurrent commits settled |
 | Clean backend package | PASS | `D:\Projects\SAAS-product-131-verify`, `mvn -f backend/pom.xml -DskipTests package` |
 | Main backend main-code package | PASS | `mvn -f backend/pom.xml "-Dmaven.test.skip=true" "-Djacoco.skip=true" package` |
-| Main targeted tests | BLOCKED_EXTERNAL | test compile blocked by concurrent order-domain dirty changes to `OrderAmountMappingRouter` / `OrderAmountMapperPolicy.MappedAmounts` |
 | Standard `agent-do` | NOT_RUN_EXTERNAL_DIRTY | would stage all dirty files through `git-push-safe`; unsafe while another agent owns order/user changes |
 | Docker restart | PASS | `restart-compose.ps1 -Env real-pre -Scope backend`; backend image rebuilt and container recreated |
 | Health check | PASS | `verify-local.ps1 -Env real-pre -Scope backend`; `/api/system/health` returned `{"status":"UP"}` |
@@ -53,10 +53,10 @@
 
 ## Conclusion
 
-#131 product Application boundary is complete and verified. The bounded dry-run status is `PARTIAL` by design because max pages was set to 1; it proves the async route/job-status chain works without business writes. Remaining workspace test red is external to #131 and belongs to concurrent order-domain work.
+#131 product Application boundary is complete and verified. The bounded dry-run status is `PARTIAL` by design because max pages was set to 1; it proves the async route/job-status chain works without business writes.
 
 ## Remaining Risk
 
 - Standard `agent-do` was not used because it would commit another agent's dirty files.
-- Current branch already contains local commit `0c74aeed` from another agent ahead of origin.
+- Current branch contains concurrent user/order/sample commits from other agents.
 - Real promotion-link order `pick_source` positive sample remains PENDING for #135.
