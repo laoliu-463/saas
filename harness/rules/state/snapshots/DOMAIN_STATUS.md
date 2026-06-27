@@ -154,6 +154,7 @@
 - 标记：P1。
 
 ## 寄样域
+- 最新边界变化：#76 重新执行寄样动作权限和数据范围边界复核，`SampleActionPermissionPolicyTest` 5/5、`SampleActionRequestTest` nested 9/9、`SampleBatchActionRequestTest` nested 8/8、用户域权限 / 数据范围 / Facade 边界 9/9、`SampleControllerTest` 83/83 PASS；real-pre 本地容器 backend/frontend/postgres/redis 均 healthy，backend container `/api/system/health` 返回 `UP`。本轮未改业务代码、DB schema、默认 real-pre 配置或真实数据。报告：`harness/reports/2026-06-21/ddd100-sample-permission-076/evidence-20260627-170711-ddd100-sample-permission-reverified.md`。
 - 最新边界变化：#73 已完成寄样状态机基线验证：`CharacterizationBaselineTest` 14/14 PASS、`SampleStateMachineTest` 4/4 PASS，补充 `SampleControllerTest` 83/83、`SampleLifecycleServiceTest` 12/12、`SampleStatusLogServiceTest` 4/4 PASS；状态机覆盖 PENDING_AUDIT/PENDING_SHIP/SHIPPING/DELIVERED/PENDING_HOMEWORK/COMPLETED/REJECTED/CLOSED 与别名归一化。本轮未改业务代码、DB schema 或 real-pre 配置。报告：`harness/reports/2026-06-21/ddd-sample-baseline-073/evidence-20260627-165524-ddd100-sample-state-machine-baseline.md`。
 - 最新边界变化：`SampleApplicationService.exportSamples` 新增默认关闭的用户域 `DataScopePolicy` 旁路；默认关闭继续走 Legacy `findPageWithScope` 与 mapper `@DataScope` 导出路径，开启后仅在 plain biz staff + PERSONAL 由用户域 policy 判定后切到寄样域审核人视角 `findPageForAuditor`。本轮未改导出接口、CSV 列、筛选条件、Mapper SQL、寄样状态机、动作权限、默认开关或真实数据。报告：`harness/archive/by-date/report-packages/reports-20260622-ddd-datascope-late/2026-06-22-sample-datascope/evidence-20260622-184722.md`；retro：`harness/archive/by-date/report-packages/reports-20260622-ddd-datascope-late/2026-06-22-sample-datascope/retro-20260622-184904.md`。
 - 最新边界变化：`SampleApplicationService.getSampleBoard` 新增默认关闭的用户域 `DataScopePolicy` 旁路；默认关闭继续走 Legacy `findPageWithScope` 与 mapper `@DataScope` 切面，开启后仅在 plain biz staff + PERSONAL 由用户域 policy 判定后切到寄样域审核人视角 `findPageForAuditor`。本轮未改寄样状态机、动作权限、Mapper SQL、VO 组装、接口契约、默认开关或真实数据。报告：`harness/archive/by-date/report-packages/reports-20260622-ddd-datascope-late/2026-06-22-sample-datascope/evidence-20260622-181901.md`；retro：`harness/archive/by-date/report-packages/reports-20260622-ddd-datascope-late/2026-06-22-sample-datascope/retro-20260622-181923.md`。
@@ -168,7 +169,7 @@
 - DDD-SAMPLE-ACTION-PERMISSION-POLICY 报告路径：`harness/reports/2026-06-21/ddd-user/permission-next/evidence-20260621-160300-sample-action-permission-policy.md`。
 - TALENT-ADDRESS-SAMPLE-DEFAULT 修改文件：`ProductQuickSampleService.java`、`SampleApplicationService.java`（后端回写）；`QuickSampleModal.vue`、`SampleCreateModal.vue`（前端加载+提交）；测试 4 文件 8 用例。
 - 待优化能力：交作业命中条件、重复消费幂等和真实样本证据补齐。
-- DDD 优化下一步：#74 申请、审核、发货、签收 Application 收口。
+- DDD 优化下一步：#78 幂等、异常分支、real-pre 样本证据。
 - 标记：P0。
 
 ## Harness
