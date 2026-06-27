@@ -131,41 +131,12 @@
 - 标记：P0。
 
 ## 商品域
-- 最新边界变化：DDD-PRODUCT-SERVICE-SLIM-5000 已把 `ProductService` 中活动商品读侧视图组装委托给商品域 `ActivityProductViewAssembler`，并把审核补充信息解析 / 归一化收口到 `ProductAuditSupplementPayload`；`ProductService.java` 从 5000+ 降至 4829 行。本商品域切片不改转链写库、`pick_source_mapping`、商品状态机、订单归因、提成、寄样状态机、DB schema、默认开关或真实数据。同提交因工作区已有用户域 `SysMenuService` 委派依赖纳入 `SysMenuApplication` / `SysMenuApplicationTest`，review 时需与商品域拆分分开看。
-- 最新验证：`mvn -q -f backend/pom.xml -DskipTests compile` PASS；`ProductServiceShopScoreTest,ProductServiceFilterTest,ProductServiceLibraryViewTest,DddSlimProduct001DisplayPolicyRoutingTest,ProductDisplayPolicyTest` 定向回归 PASS；`agent-do.ps1 -Env real-pre -Scope backend -ContentMaintenance off` PASS，backend package、Docker rebuild/restart、健康检查与 real-pre P0 preflight 均通过；补充 `SysMenuServiceTest,SysMenuApplicationTest,SysMenuControllerTest,SysRoleControllerTest` PASS；code-review-graph 复查 5000 行以上文件为 0。
-- 最新报告路径：`harness/reports/product-service-ddd-slim-20260626.md`。
-- 最新边界变化：`ProductService.SelectedLibraryFilter` 商品库 `allianceStatus` 过滤解释已委托 `ProductDisplayPolicy.matchesSelectedLibraryAllianceStatusFilter`；服务层只传入上游状态码和状态文案，保持 pending/promoting/rejected/terminated/expired 的 Legacy 码值与中文文案判定。本轮计划未改转链写库、归因、状态机、真实数据或默认灰度开关。
-- 最新验证：红测先失败后转绿；`ProductDisplayPolicyTest`、`DddSlimProduct001DisplayPolicyRoutingTest` 与 `ProductServiceFilterTest` 定向回归 42 tests PASS；`agent-do.ps1 -Env real-pre -Scope full` PASS，backend/frontend 构建、Docker 重启、健康检查与 real-pre P0 preflight 均通过；补充包含混入文件的 `ProductServiceActivityStatusIndependenceTest`、`ColonelActivityControllerTest` 组合回归 72 tests PASS。
-- 最新报告路径：`harness/reports/evidence-20260622-235215.md`；retro：`harness/reports/retro-20260622-235256.md`。风险记录：`agent-do` 自动提交 `bd03568d` 同时纳入活动商品刷新 stale-delete、Controller 刷新后再读 DB、mapper 终止状态查询口径和对应测试，应在 review 中与 allianceStatus 策略迁移分开看。
-- 上一边界变化：`published/listed` 过滤解释已委托 `ProductDisplayPolicy.matchesSelectedLibraryPublishedFilter` / `matchesSelectedLibraryListedFilter`，保持 published=是否存在推广链接、listed=上游 `status=1` 的 Legacy 判定。报告：`harness/reports/evidence-20260622-233456.md`；retro：`harness/reports/retro-20260622-233528.md`。
-- 上一边界变化：`ColonelActivityController.listProducts` 活动商品查询 `status` public enum 校验已委托 `ProductDisplayPolicy.isSupportedActivityProductQueryStatus` / `activityProductQueryStatusHint`；Controller 只负责 HTTP 入参转业务异常，保持 `status=4` 请求仍按已提交行为拒绝，`ProductService` 历史数据 `status=4 -> 3` 存储 / 筛选规范化不变。
-- 上一验证：`ProductDisplayPolicyTest`、`DddSlimProduct001DisplayPolicyRoutingTest`、`ColonelActivityControllerTest` 定向回归 33 tests PASS；加入 `ProductServiceFilterTest` 组合回归 46 tests PASS。
-- 上一边界变化：活动商品状态码规范化已收口到 `ProductDisplayPolicy`；`ProductService` 仅委派策略处理历史 `status=4 -> 3`、状态文案和筛选入参，Controller 保持当前已提交的 public enum 校验行为。
-- 上一验证：`ProductDisplayPolicyTest`、`ProductServiceFilterTest`、`DddSlimProduct001DisplayPolicyRoutingTest` 与 `ColonelActivityControllerTest` 组合回归 44 tests PASS。
-- 最新边界变化：`ProductQuickSampleService` 快速寄样入口继续负责商品存在性、展示中状态、商品库入库状态、商品快照/主表上下文和寄样域端口委托，但角色编码集合匹配已委托用户域 `CurrentUserPermissionPolicy.hasAnyRole`；本轮未改商品状态机、转链规则、`pick_source` 归因语义、寄样状态机或真实数据。
-- 最新报告路径：`harness/archive/by-date/report-packages/reports-20260621-ddd-role-policy-2115-2207/evidence-20260621-213011.md`。
-- 最新边界变化：活动列表负责人展示已通过用户域 `loadUserDisplayNamesByIds` 出口读取，只消费展示名称标量，不改变活动分配、活动商品同步或商品库展示规则。
-- 最新边界变化：`ProductService` 已通过用户域显示标签、归属引用、渠道编码出口完成负责人展示、分配、转链 `pick_extra` 和跨部门绑定校验，不改变商品状态机、转链规则或 `pick_source` 归因语义。
-- 最新报告路径：`harness/reports/2026-06-21/ddd-user/facade-next/evidence-20260621-145100-product-service-facade.md`。
-- 当前状态：商品库、活动商品同步、转链和映射主链路已具备。FUNC-001 卡片改造已完成。P-FIX-001C 分页弱化已完成。P-DIAG-002 商品库数量不足排查已完成。P-FIX-002A 同步任务 5 分钟周期配置已完成。P-FIX-002 代码与配置准备已完成。P-FIX-002D 本地运行态验证已完成。P-FIX-002D-REMOTE 远端部署验证已完成（2026-06-03），远端 commit=dea06e4c，同步参数生效，两个周期零冲突。GIT-BATCH-2 frontend-product-ui 已于 2026-06-03 14:08 提交并部署（commit=5fe6ba23）。PRODUCT-LIBRARY-FULL-BACKFILL-FIX-001：Phase 4-1.5B PASS。单活动 3859423 真实 backfill 与幂等复跑已验证通过；允许进入 RECENT_30D maxActivities=20 小批量回补。当前工作区历史未提交改动已在 Phase 4-2 前置门禁中复查，Git 视角仅发现两个无效临时 dry-run 文件并已清理。
-- 已完成能力：商品库、活动商品、转链、`pick_source_mapping`；FUNC-001 卡片 UI；P-FIX-001C 分页优化；P-FIX-002A 同步周期配置；P-FIX-002B 唯一索引冲突修复（两遍处理）。
-- P-FIX-002 修复结论：`applyNormalDisplayDedup` 改为三阶段持久化（先降级旧 DISPLAYING→HIDDEN，再处理其他非 DISPLAYING，最后升级新 winner→DISPLAYING），避免 `uk_pos_one_displaying_per_product` partial unique index 冲突。新增/补齐 4 个相关测试覆盖严格调用顺序、切换顺序、幂等性和多候选场景。
-- P-FIX-002 报告路径：`harness/reports/p-fix-002-product-sync-display-5min-20260603-121257.md`。
-- P-FIX-002D 报告路径：`harness/reports/p-fix-002d-real-pre-runtime-verify-20260603-123411.md`。
-- P-FIX-002D-REMOTE 报告路径：`harness/reports/p-fix-002d-remote-deploy-verify-20260603-132805.md`。
-- P-FIX-002 修改文件：`ProductActivitySyncJob.java`、`ProductDisplayRuleService.java`、`ProductDisplayRuleServiceTest.java`、`application.yml`、`docker-compose.real-pre.yml`、`.env.real-pre.example`、`remote-deploy.md`、`deploy-remote.ps1`。
-- P-FIX-002 只读对账：本地 7284 快照 / 7284 运营状态 / 1963 DISPLAYING / 4566 HIDDEN / 755 PENDING / 无重复 DISPLAYING / 716 推广中但未展示；商品库 API total=1963 与 SQL DISPLAYING 一致。
-- P-FIX-002D 运行态对账：重启后同步执行，本地 7323 快照 / 2377 DISPLAYING / 4575 HIDDEN / 371 PENDING / 无重复；API total=2377 与 SQL 一致。
-- P-FIX-002D-REMOTE 远端对账：远端 3846 快照 / 604 DISPLAYING / 1114 HIDDEN / 2128 PENDING / 无重复；API total=604 与 SQL 一致。远端 DISPLAYING 从 420 增长到 604（+184）。
-- P-DIAG-002 报告路径：`harness/reports/p-diag-002-product-library-count-sync-remote-20260603-114742.md`。
-- P-FIX-002A 报告路径：`harness/reports/p-fix-002a-product-sync-5min-config-20260603-120100.md`。
-- P-FIX-001C 报告路径：`harness/reports/p-fix-001c-product-library-pagination-20260603-113616.md`。
-- FUNC-001 报告路径：`harness/reports/func-001-product-card-hover-ui-20260603-111451.md`。
-- GIT-BATCH-2 报告路径：`harness/reports/git-batch-2-frontend-product-ui-20260603-140800.md`。
-- PRODUCT-LIBRARY-FULL-BACKFILL-FIX-001 报告路径：`harness/reports/evidence-20260615-114620.md`；`harness/reports/product-library-full-backfill-evidence-20260615.md`；`harness/reports/product-library-backfill-observability-fix-final-20260616-0832.md`。
-- 当前风险：1) 本地 PENDING 总量 371，远端 PENDING 总量 2128，均需后续区分过期活动、未选中和待重算来源；2) 远端 env 手工补齐了 `PRODUCT_ACTIVITY_SYNC_ENABLED` 和 `PRODUCT_ACTIVITY_SYNC_CRON`，需纳入部署文档；3) Gitee 双 remote 同步流程需确保每次推送同时 push 到 gitee；4) Phase 4-2 仍未全量补齐，成功标准是 20 个活动小批量补数稳定：无死锁、无重复、无锁残留、展示口径不乱、失败可定位。
-- 待优化能力：活动商品状态断链 repair、远端部署对齐、推广中商品自动入库。
-- DDD 优化下一步：Phase 4-2 先执行 RECENT_30D、maxActivities=20、dryRun=true 预评估；dry-run PASS 后再执行 RECENT_30D、maxActivities=20、dryRun=false、confirm=true 受控真实回补，并验证 job log 无 RUNNING、Redis lock 无残留、duplicate=0、DISPLAYING total 与 `/api/products` total 稳定、`/api/products/admin/counts` 全量口径增长合理、backend health=UP。
+- 最新边界变化：#61 已新增商品域 `ProductActivitySyncApplicationService`，定时同步、手动后台同步和 `refresh=true` 手动刷新入口改为经商品域 Application 调用；`ProductService.refreshActivitySnapshots` 内分页、落库、repair、事件发布、DB schema、默认 real-pre 配置和 Legacy 行为保持不变。
+- 最新验证：`ProductActivitySyncApplicationServiceTest,ProductActivitySyncJobTest,ProductActivityManualSyncServiceTest,ColonelActivityControllerTest` targeted PASS；`mvn -q -f backend/pom.xml -DskipTests compile` PASS；`agent-do.ps1 -Env real-pre -Scope backend -ContentMaintenance off` PASS，backend package、Docker rebuild/restart、health 与 real-pre P0 preflight 均通过。
+- 最新报告路径：`harness/reports/2026-06-21/ddd-product-sync-061/evidence-20260627-142000-ddd100-product-sync-application.md`；agent-do evidence/retro 同目录。
+- 已完成能力：商品库、活动商品同步入口收口、活动商品展示策略部分下沉、转链和 `pick_source_mapping` 主链路；历史 P-FIX/P-DIAG 明细见 Git 历史和归档报告。
+- 当前风险：真实同步/落库算法仍在 `ProductService`，#62-#67 继续拆展示、状态、快照、backfill、转链和 E2E；未执行远端 real-pre 部署。
+- 待优化能力：活动商品状态断链 repair、远端部署对齐、推广中商品自动入库、商品域 E2E。
 - 标记：P0。
 
 ## 达人域
