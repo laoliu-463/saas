@@ -1,7 +1,7 @@
 # GitHub Issues Index (Mirror)
 
 > 本文件是 GitHub Issues 的本地镜像，用于 Matt Pocock engineering skills 与 harness 任务路由。
-> 最后更新：2026-06-27（创建 `DDD-COMPLETE-100` #90-#164 后）。
+> 最后更新：2026-06-27（#130 商品域 inventory 完成并准备关闭）。
 
 ## 同步规则
 
@@ -53,7 +53,6 @@
 | 127 | [DDD-COMPLETE-100-ANALYTICS-03] Dashboard 双轨 summary 与历史结算污染修复 | ready-for-agent | https://github.com/laoliu-463/saas/issues/127 |
 | 128 | [DDD-COMPLETE-100-ANALYTICS-04] 分析模块 admin/group/self E2E 与导出证据 | ready-for-agent | https://github.com/laoliu-463/saas/issues/128 |
 | 129 | [DDD-COMPLETE-100-ANALYTICS-05] 分析模块 legacy retire 与迁移率目标达成 | ready-for-agent | https://github.com/laoliu-463/saas/issues/129 |
-| 130 | [DDD-COMPLETE-100-PRODUCT-01] ProductService 大类拆解 inventory 与切片计划 | ready-for-agent | https://github.com/laoliu-463/saas/issues/130 |
 | 131 | [DDD-COMPLETE-100-PRODUCT-02] 商品同步/backfill 异步 job Application 最终收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/131 |
 | 132 | [DDD-COMPLETE-100-PRODUCT-03] 商品展示、状态、审核、操作日志 Policy 完整收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/132 |
 | 133 | [DDD-COMPLETE-100-PRODUCT-04] 商品快照、活动商品和 query/read model 完整收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/133 |
@@ -93,15 +92,17 @@
 
 | # | Title | Closed Date | Evidence |
 | --- | --- | --- | --- |
+| 130 | [DDD-COMPLETE-100-PRODUCT-01] ProductService 大类拆解 inventory 与切片计划 | 2026-06-27 | `harness/reports/2026-06-27/ddd-complete-product-130/evidence-20260627-200829-product-service-inventory.md` |
 | 3 | PRD: DDD 渐进式迁移到 100%（DDD-MIGRATION-100） | 2026-06-27 | 旧 DDD100 批次关闭；不等于完整项目 DDD 100%。 |
 | 30-89 | DDD100 issue 批次 | 2026-06-27 | 旧批次全部关闭；当前作为 `DDD-COMPLETE-100` 基线。 |
 
 ## 当前判断
 
-- GitHub 当前 open issue 为 #90-#164，共 75 个，全部属于 `DDD-COMPLETE-100` 新批次。
+- GitHub 当前 open issue 为 #90-#164 去除 #130，共 74 个，全部属于 `DDD-COMPLETE-100` 新批次。
 - 新目标是完整项目、全领域、全链路 DDD 重构优化到 100%，不是单个领域，也不是旧 DDD100 issue 全关闭。
 - 当前可重复迁移率指标：raw `domain/` share 20.9%，business migration proxy 27.5%。
 - 当前最低 proxy 领域：analytics 10.5%、talent 16.6%、performance 20.7%、config 24.5%、sample 25.0%、product 25.2%、order 29.8%。
+- 商品域 #130 已完成 inventory；#131-#136 仍 open，真实订单 `pick_source` 正向回流样本仍 PENDING。
 - 每个 issue 必须按证据链推进：复现/盘点 -> 最小验证 -> 依赖链和边界 -> 修改 -> 构建/重启/健康 -> 业务验证 -> evidence -> retro -> commit/push。
 
 ## 常用命令
