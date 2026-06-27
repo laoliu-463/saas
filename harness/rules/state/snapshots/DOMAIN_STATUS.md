@@ -131,11 +131,11 @@
 - 标记：P0。
 
 ## 商品域
-- 最新边界变化：#66 已删除重复未使用的商品域 `DouyinConvertPort`，保留转链编排实际使用的 Application Port；`PickSourceMappingService.saveOrUpdate` 返回 mapping id，`ProductService` 在转链、mapping、状态和操作日志写入成功后发布 `ProductPromotionLinkCompletedEvent`。#65 已新增 `ProductBackfillJobMetadata` 与 `ProductLibraryRepairPolicy`；#64 已新增商品快照基础 query 层；#63 人工审核状态/日志语义已下沉到 `ProductAuditDecisionPolicy`；#62 本地发布暂停/恢复展示状态已下沉到 `ProductDisplayPolicy`；#61 同步入口已经商品域 Application 调用。上述切片均未改变 API、DB schema、默认 real-pre 配置或 Legacy 行为。
-- 最新验证：#66 `ProductServicePromotionLinkFlowTest,PickSourceMappingServiceTest,PromotionLinkIdempotencyServiceTest,ProductDomainEventPublisherTest,DddProduct003ProductRoutingTest,CopyPromotionApplicationServiceTest,DouyinPromotionGatewayConvertAdapterTest,ProductServicePromotionPortArchitectureTest,ProductControllerTest,ColonelActivityProductControllerCopyPromotionTest,ProductServiceColonelBuyinIdTest` targeted PASS；#65/#64/#63/#62/#61 targeted PASS；`mvn -q -f backend/pom.xml -DskipTests compile` PASS；#66 `agent-do.ps1 -Env real-pre -Scope backend -ContentMaintenance off` 完成 backend package、Docker rebuild/restart、health 与 real-pre P0 preflight PASS。
-- 最新报告路径：#66 `harness/reports/2026-06-21/ddd-product-promotion-066/evidence-20260627-154100-ddd100-product-promotion-link-event.md`；#65 `harness/reports/2026-06-21/ddd-product-backfill-065/evidence-20260627-151600-ddd100-product-backfill-repair-components.md`；#64 `harness/reports/2026-06-21/ddd-product-snapshot-064/evidence-20260627-145500-ddd100-product-snapshot-query.md`。
+- 最新边界变化：#67 已完成 real-pre 商品链验证：上游活动、活动商品、本地商品视图、商品详情、商品页面和可复用 `pick_source_mapping` 均有证据；真实订单同步拉到订单但当前订单 `pick_source` 为空，正向归因样本记为 PENDING。#66 已删除重复未使用的商品域 `DouyinConvertPort`，保留转链编排实际使用的 Application Port；`PickSourceMappingService.saveOrUpdate` 返回 mapping id，`ProductService` 发布 `ProductPromotionLinkCompletedEvent`。#65 已新增 `ProductBackfillJobMetadata` 与 `ProductLibraryRepairPolicy`；#64 已新增商品快照基础 query 层；#63/#62/#61 已完成对应商品域收口。上述切片均未改变 API、DB schema、默认 real-pre 配置或 Legacy 行为。
+- 最新验证：#67 targeted backend tests PASS；real-pre preflight PASS；real-pre P0 step 31 商品链 PASS；step 32 订单归因 PENDING（30 分钟订单同步 totalFetched=42、failed=0，但抽样订单 `pick_source` 全空）；verified SQL 显示 active mapping with URL=5、latest 100 orders with_pick_source=0。#66/#65/#64/#63/#62/#61 targeted 与 harness 验证见各自报告。
+- 最新报告路径：#67 `harness/reports/2026-06-21/ddd-product-e2e-067/evidence-20260627-155300-ddd100-product-real-pre-e2e.md`；#66 `harness/reports/2026-06-21/ddd-product-promotion-066/evidence-20260627-154100-ddd100-product-promotion-link-event.md`；#65 `harness/reports/2026-06-21/ddd-product-backfill-065/evidence-20260627-151600-ddd100-product-backfill-repair-components.md`。
 - 已完成能力：商品库、商品快照基础 query 层、backfill job metadata 组件、商品库 repair 决策 policy、活动商品同步入口收口、人工审核状态/日志 policy、本地发布展示策略下沉、活动商品展示策略部分下沉、转链 Port 唯一收口、`pick_source_mapping` mapping id 证据、转链完成事件证据；历史 P-FIX/P-DIAG 明细见 Git 历史和归档报告。
-- 当前风险：真实活动商品 backfill 写库样本、完整活动商品列表/详情/material pack 组装和真实订单 `pick_source` 归因闭环仍需 #67 后续验证；未执行远端 real-pre 部署。
+- 当前风险：真实订单 `pick_source` 正向归因闭环仍 PENDING，需要等待一笔由系统推广链接产生并回流的真实订单；未执行远端 real-pre 部署。
 - 待优化能力：活动商品状态断链 repair、远端部署对齐、推广中商品自动入库、商品域 E2E。
 - 标记：P0。
 
