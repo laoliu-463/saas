@@ -293,6 +293,25 @@ public class ProductDisplayPolicy {
         return false;
     }
 
+    public LocalPublishControl resolveLocalPublishControl(boolean paused) {
+        if (paused) {
+            return new LocalPublishControl(
+                    true,
+                    ProductDisplayStatus.HIDDEN.name(),
+                    HIDDEN_REASON_LOCAL_PAUSED);
+        }
+        return new LocalPublishControl(
+                false,
+                ProductDisplayStatus.PENDING.name(),
+                null);
+    }
+
+    public record LocalPublishControl(
+            boolean manualDisabled,
+            String displayStatus,
+            String hiddenReason) {
+    }
+
     public boolean matchesSelectedLibraryPromotionLinkFilter(
             String promotionLink,
             String promoteLink,

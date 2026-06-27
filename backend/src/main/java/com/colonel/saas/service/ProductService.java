@@ -1338,16 +1338,13 @@ public class ProductService {
         ProductBizStatus currentStatus = productBizStatusService.readBizStatus(state);
         LocalDateTime now = LocalDateTime.now();
 
-        state.setManualDisabled(paused);
+        ProductDisplayPolicy.LocalPublishControl publishControl =
+                productDisplayPolicy.resolveLocalPublishControl(paused);
+        state.setManualDisabled(publishControl.manualDisabled());
         state.setLastOperationAt(now);
         state.setDisplayReason(null);
-        if (paused) {
-            state.setDisplayStatus(ProductDisplayStatus.HIDDEN.name());
-            state.setHiddenReason(ProductDisplayRuleService.HIDDEN_REASON_PUBLISH_PAUSED);
-        } else {
-            state.setDisplayStatus(ProductDisplayStatus.PENDING.name());
-            state.setHiddenReason(null);
-        }
+        state.setDisplayStatus(publishControl.displayStatus());
+        state.setHiddenReason(publishControl.hiddenReason());
 
         if (state.getId() == null) {
             state.setId(UUID.randomUUID());

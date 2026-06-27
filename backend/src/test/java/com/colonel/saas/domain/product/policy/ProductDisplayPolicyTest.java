@@ -240,6 +240,19 @@ class ProductDisplayPolicyTest {
     }
 
     @Test
+    void localPublishControl_shouldOwnPauseAndResumeDisplayState() {
+        ProductDisplayPolicy.LocalPublishControl paused = policy.resolveLocalPublishControl(true);
+        assertThat(paused.manualDisabled()).isTrue();
+        assertThat(paused.displayStatus()).isEqualTo(ProductDisplayStatus.HIDDEN.name());
+        assertThat(paused.hiddenReason()).isEqualTo("LOCAL_PAUSED");
+
+        ProductDisplayPolicy.LocalPublishControl resumed = policy.resolveLocalPublishControl(false);
+        assertThat(resumed.manualDisabled()).isFalse();
+        assertThat(resumed.displayStatus()).isEqualTo(ProductDisplayStatus.PENDING.name());
+        assertThat(resumed.hiddenReason()).isNull();
+    }
+
+    @Test
     void selectedLibraryPromotionLinkFilter_shouldKeepLegacyStatusContract() {
         assertThat(policy.matchesSelectedLibraryPromotionLinkFilter(
                 "LINKED", "https://promote.example", null, "APPROVED")).isTrue();

@@ -36,6 +36,7 @@ class DddSlimProduct001DisplayPolicyRoutingTest {
                         "matchesSelectedLibraryListedFilter",
                         "matchesSelectedLibraryAllianceStatusFilter",
                         "matchesSelectedLibraryCoreVisibility",
+                        "resolveLocalPublishControl",
                         "isLocalRejectedProductState",
                         "hasPromotionLink",
                         "legacyDisplayMark");
