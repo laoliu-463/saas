@@ -166,6 +166,32 @@ class SysUserMapperTest extends BaseIntegrationTest {
         }
     }
 
+    @Nested
+    @DisplayName("updateDeptById")
+    class UpdateDeptByIdTest {
+
+        @Test
+        void shouldUpdateAndClearDeptId() {
+            SysUser user = createUser("dept_user", "ch-dept");
+            UUID firstDeptId = UUID.randomUUID();
+            UUID secondDeptId = UUID.randomUUID();
+            user.setDeptId(firstDeptId);
+            sysUserMapper.insert(user);
+
+            int assignedRows = sysUserMapper.updateDeptById(user.getId(), secondDeptId);
+            SysUser assigned = sysUserMapper.selectById(user.getId());
+
+            assertThat(assignedRows).isEqualTo(1);
+            assertThat(assigned.getDeptId()).isEqualTo(secondDeptId);
+
+            int clearedRows = sysUserMapper.updateDeptById(user.getId(), null);
+            SysUser cleared = sysUserMapper.selectById(user.getId());
+
+            assertThat(clearedRows).isEqualTo(1);
+            assertThat(cleared.getDeptId()).isNull();
+        }
+    }
+
     private SysUser createUser(String username, String channelCode) {
         SysUser user = new SysUser();
         user.setId(UUID.randomUUID());

@@ -2,22 +2,21 @@ package com.colonel.saas.domain.user.application;
 
 import com.colonel.saas.auth.service.OrgStructureService;
 import com.colonel.saas.common.exception.BusinessException;
-import com.colonel.saas.entity.SysUser;
-import com.colonel.saas.mapper.SysUserMapper;
+import com.colonel.saas.domain.user.port.UserGroupMembershipStore;
+import com.colonel.saas.domain.user.port.UserGroupMembershipStore.GroupMember;
 import com.colonel.saas.service.OperationLogService;
 import com.colonel.saas.service.UserDomainEventPublisher;
 import com.colonel.saas.service.UserPermissionCacheService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -29,7 +28,7 @@ import static org.mockito.Mockito.when;
 class SysUserGroupMembershipApplicationTest {
 
     @Mock
-    private SysUserMapper sysUserMapper;
+    private UserGroupMembershipStore userGroupMembershipStore;
     @Mock
     private OperationLogService operationLogService;
     @Mock
@@ -44,7 +43,7 @@ class SysUserGroupMembershipApplicationTest {
     @BeforeEach
     void setUp() {
         application = new SysUserGroupMembershipApplication(
-                sysUserMapper,
+                userGroupMembershipStore,
                 operationLogService,
                 userDomainEventPublisher,
                 userPermissionCacheService,
@@ -59,11 +58,11 @@ class SysUserGroupMembershipApplicationTest {
         UUID oldDeptId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
         UUID currentUserId = UUID.randomUUID();
-        SysUser user = user(userId, oldDeptId);
+        GroupMember user = user(userId, oldDeptId);
 
         when(orgStructureService.resolveAssignment(null, groupId))
                 .thenReturn(new OrgStructureService.ResolvedAssignment(effectiveDeptId, parentDeptId, groupId));
-        when(sysUserMapper.selectById(userId)).thenReturn(user);
+        when(userGroupMembershipStore.findMember(userId)).thenReturn(Optional.of(user));
         when(orgStructureService.splitAssignment(oldDeptId))
                 .thenReturn(new OrgStructureService.SplitAssignment(oldDeptId, null, "old", null, "department"));
         when(orgStructureService.splitAssignment(effectiveDeptId))
@@ -73,9 +72,7 @@ class SysUserGroupMembershipApplicationTest {
 
         application.assignUsersToGroup(groupId, List.of(userId), currentUserId);
 
-        ArgumentCaptor<SysUser> captor = ArgumentCaptor.forClass(SysUser.class);
-        verify(sysUserMapper).updateById(captor.capture());
-        assertThat(captor.getValue().getDeptId()).isEqualTo(effectiveDeptId);
+        verify(userGroupMembershipStore).updateDept(userId, effectiveDeptId);
         verify(operationLogService).recordSystemAction(
                 eq(currentUserId), eq("用户管理"), eq("组织归属变更"), eq("PUT"),
                 eq("SysUser"), eq(userId.toString()), eq("alice"), eq("org changed"));
@@ -91,9 +88,9 @@ class SysUserGroupMembershipApplicationTest {
         UUID parentDeptId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
         UUID currentUserId = UUID.randomUUID();
-        SysUser user = user(userId, groupId);
+        GroupMember user = user(userId, groupId);
 
-        when(sysUserMapper.selectById(userId)).thenReturn(user);
+        when(userGroupMembershipStore.findMember(userId)).thenReturn(Optional.of(user));
         when(orgStructureService.splitAssignment(groupId))
                 .thenReturn(new OrgStructureService.SplitAssignment(parentDeptId, groupId, "parent", "group", "biz"));
         when(orgStructureService.splitAssignment(null))
@@ -103,9 +100,7 @@ class SysUserGroupMembershipApplicationTest {
 
         application.removeUsersFromGroup(groupId, List.of(userId), currentUserId);
 
-        ArgumentCaptor<SysUser> captor = ArgumentCaptor.forClass(SysUser.class);
-        verify(sysUserMapper).updateById(captor.capture());
-        assertThat(captor.getValue().getDeptId()).isNull();
+        verify(userGroupMembershipStore).updateDept(userId, null);
         verify(operationLogService).recordSystemAction(
                 eq(currentUserId), eq("用户管理"), eq("组织归属变更"), eq("PUT"),
                 eq("SysUser"), eq(userId.toString()), eq("alice"), eq("removed"));
@@ -120,13 +115,13 @@ class SysUserGroupMembershipApplicationTest {
         UUID groupId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
         UUID currentUserId = UUID.randomUUID();
-        SysUser user = user(userId, UUID.randomUUID());
+        GroupMember user = user(userId, UUID.randomUUID());
 
-        when(sysUserMapper.selectById(userId)).thenReturn(user);
+        when(userGroupMembershipStore.findMember(userId)).thenReturn(Optional.of(user));
 
         application.removeUsersFromGroup(groupId, List.of(userId), currentUserId);
 
-        verify(sysUserMapper, never()).updateById(any());
+        verify(userGroupMembershipStore, never()).updateDept(any(), any());
         verify(operationLogService, never()).recordSystemAction(any(), any(), any(), any(), any(), any(), any(), any());
         verify(userDomainEventPublisher, never()).publishUserGroupChanged(any(), any(), any(), any(), any(), any());
         verify(userPermissionCacheService, never()).invalidateUser(any());
@@ -140,20 +135,16 @@ class SysUserGroupMembershipApplicationTest {
 
         when(orgStructureService.resolveAssignment(null, groupId))
                 .thenReturn(new OrgStructureService.ResolvedAssignment(groupId, null, groupId));
-        when(sysUserMapper.selectById(userId)).thenReturn(null);
+        when(userGroupMembershipStore.findMember(userId)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> application.assignUsersToGroup(groupId, List.of(userId), UUID.randomUUID()))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("用户不存在");
 
-        verify(sysUserMapper, never()).updateById(any());
+        verify(userGroupMembershipStore, never()).updateDept(any(), any());
     }
 
-    private static SysUser user(UUID id, UUID deptId) {
-        SysUser user = new SysUser();
-        user.setId(id);
-        user.setUsername("alice");
-        user.setDeptId(deptId);
-        return user;
+    private static GroupMember user(UUID id, UUID deptId) {
+        return new GroupMember(id, "alice", deptId);
     }
 }

@@ -7,6 +7,11 @@
 
 ## 最近版本摘要
 
+### v0.7.9 — 2026-06-27
+- DDD100 #35 将组织成员变更下沉到 `UserGroupMembershipStore` 端口和 `SysUserGroupMembershipStoreAdapter`。
+- 新增 `SysUserMapper.updateDeptById` 显式 SQL，覆盖 assign/remove group 时 `dept_id` 写入与清空。
+- 证据：`harness/reports/2026-06-21/ddd-user-assign-035/evidence-20260627-134900-user-assign-org-membership.md`。
+
 ### v0.7.8 — 2026-06-27
 - DDD100 #34 补齐 SysUser CRUD true-route 委托证据：`SysUserService` 的 getById/create/update/delete/resetPassword 必须委托用户域 `SysUserCRUDApplicationA/B`。
 - 修正 `SysUserCRUDApplicationA/B` 过期类注释，不再把已接入的生产路径描述为未接入。

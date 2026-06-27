@@ -81,6 +81,13 @@ public interface SysUserMapper extends BaseMapper<SysUser> {
     int softDeleteById(@Param("id") UUID id);
 
     /**
+     * 更新用户所属组织单元。
+     * <p>允许 {@code deptId} 为 null，用于从业务组移除成员。</p>
+     */
+    @Update("UPDATE sys_user SET dept_id = #{deptId}, update_time = CURRENT_TIMESTAMP WHERE id = #{id} AND deleted = 0")
+    int updateDeptById(@Param("id") UUID id, @Param("deptId") UUID deptId);
+
+    /**
      * 带数据权限范围的分页查询用户
      * <p>
      * 字段筛选（keyword/status/deptId/groupId/roleId/roleCode）与数据范围（self/group/all）

@@ -125,6 +125,21 @@ class SysUserServiceAssignableBoundaryTest {
     }
 
     @Test
+    void groupMembershipMethods_shouldDelegateToUserDomainApplication() {
+        UUID groupId = UUID.randomUUID();
+        UUID firstUserId = UUID.randomUUID();
+        UUID secondUserId = UUID.randomUUID();
+        UUID currentUserId = UUID.randomUUID();
+        List<UUID> userIds = List.of(firstUserId, secondUserId);
+
+        service.assignUsersToGroup(groupId, userIds, currentUserId);
+        service.removeUsersFromGroup(groupId, userIds, currentUserId);
+
+        verify(sysUserGroupMembershipApplication).assignUsersToGroup(groupId, userIds, currentUserId);
+        verify(sysUserGroupMembershipApplication).removeUsersFromGroup(groupId, userIds, currentUserId);
+    }
+
+    @Test
     void crudMethods_shouldDelegateToUserDomainCrudApplications() {
         UUID targetUserId = UUID.randomUUID();
         UUID currentUserId = UUID.randomUUID();

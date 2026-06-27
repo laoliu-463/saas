@@ -4,8 +4,8 @@ import com.colonel.saas.auth.service.OrgStructureService;
 import com.colonel.saas.auth.service.OrgStructureService.ResolvedAssignment;
 import com.colonel.saas.auth.service.OrgStructureService.SplitAssignment;
 import com.colonel.saas.common.exception.BusinessException;
-import com.colonel.saas.entity.SysUser;
-import com.colonel.saas.mapper.SysUserMapper;
+import com.colonel.saas.domain.user.port.UserGroupMembershipStore;
+import com.colonel.saas.domain.user.port.UserGroupMembershipStore.GroupMember;
 import com.colonel.saas.service.OperationLogService;
 import com.colonel.saas.service.UserDomainEventPublisher;
 import com.colonel.saas.service.UserPermissionCacheService;
@@ -25,19 +25,19 @@ import java.util.UUID;
 @Service
 public class SysUserGroupMembershipApplication {
 
-    private final SysUserMapper sysUserMapper;
+    private final UserGroupMembershipStore userGroupMembershipStore;
     private final OperationLogService operationLogService;
     private final UserDomainEventPublisher userDomainEventPublisher;
     private final UserPermissionCacheService userPermissionCacheService;
     private final OrgStructureService orgStructureService;
 
     public SysUserGroupMembershipApplication(
-            SysUserMapper sysUserMapper,
+            UserGroupMembershipStore userGroupMembershipStore,
             OperationLogService operationLogService,
             UserDomainEventPublisher userDomainEventPublisher,
             UserPermissionCacheService userPermissionCacheService,
             OrgStructureService orgStructureService) {
-        this.sysUserMapper = sysUserMapper;
+        this.userGroupMembershipStore = userGroupMembershipStore;
         this.operationLogService = operationLogService;
         this.userDomainEventPublisher = userDomainEventPublisher;
         this.userPermissionCacheService = userPermissionCacheService;
@@ -48,38 +48,35 @@ public class SysUserGroupMembershipApplication {
     public void assignUsersToGroup(UUID groupId, List<UUID> userIds, UUID currentUserId) {
         ResolvedAssignment groupAssignment = orgStructureService.resolveAssignment(null, groupId);
         for (UUID targetUserId : userIds) {
-            SysUser user = requireUser(targetUserId);
-            UUID previousDeptId = user.getDeptId();
-            user.setDeptId(groupAssignment.effectiveDeptId());
-            sysUserMapper.updateById(user);
-            recordOrgChangeIfNeeded(user, previousDeptId, user.getDeptId(), currentUserId);
-            userPermissionCacheService.invalidateUser(user.getId());
-            userPermissionCacheService.invalidateDataScopeForGroupChange(previousDeptId, user.getDeptId());
+            GroupMember user = requireUser(targetUserId);
+            UUID previousDeptId = user.deptId();
+            GroupMember updatedUser = user.withDept(groupAssignment.effectiveDeptId());
+            userGroupMembershipStore.updateDept(updatedUser.id(), updatedUser.deptId());
+            recordOrgChangeIfNeeded(updatedUser, previousDeptId, updatedUser.deptId(), currentUserId);
+            userPermissionCacheService.invalidateUser(updatedUser.id());
+            userPermissionCacheService.invalidateDataScopeForGroupChange(previousDeptId, updatedUser.deptId());
         }
     }
 
     @Transactional(rollbackFor = Exception.class)
     public void removeUsersFromGroup(UUID groupId, List<UUID> userIds, UUID currentUserId) {
         for (UUID targetUserId : userIds) {
-            SysUser user = requireUser(targetUserId);
-            if (!Objects.equals(user.getDeptId(), groupId)) {
+            GroupMember user = requireUser(targetUserId);
+            if (!Objects.equals(user.deptId(), groupId)) {
                 continue;
             }
-            UUID previousDeptId = user.getDeptId();
-            user.setDeptId(null);
-            sysUserMapper.updateById(user);
-            recordOrgChangeIfNeeded(user, previousDeptId, null, currentUserId);
-            userPermissionCacheService.invalidateUser(user.getId());
+            UUID previousDeptId = user.deptId();
+            GroupMember updatedUser = user.withDept(null);
+            userGroupMembershipStore.updateDept(updatedUser.id(), null);
+            recordOrgChangeIfNeeded(updatedUser, previousDeptId, null, currentUserId);
+            userPermissionCacheService.invalidateUser(updatedUser.id());
             userPermissionCacheService.invalidateDataScopeForGroupChange(previousDeptId, null);
         }
     }
 
-    private SysUser requireUser(UUID id) {
-        SysUser user = sysUserMapper.selectById(id);
-        if (user == null) {
-            throw BusinessException.notFound("用户不存在");
-        }
-        return user;
+    private GroupMember requireUser(UUID id) {
+        return userGroupMembershipStore.findMember(id)
+                .orElseThrow(() -> BusinessException.notFound("用户不存在"));
     }
 
     private boolean deptChanged(UUID previousDeptId, UUID newDeptId) {
@@ -87,7 +84,7 @@ public class SysUserGroupMembershipApplication {
     }
 
     private void recordOrgChangeIfNeeded(
-            SysUser user,
+            GroupMember user,
             UUID previousEffectiveDeptId,
             UUID newEffectiveDeptId,
             UUID operatorId) {
@@ -102,15 +99,15 @@ public class SysUserGroupMembershipApplication {
                 "组织归属变更",
                 "PUT",
                 "SysUser",
-                user.getId().toString(),
-                user.getUsername(),
+                user.id().toString(),
+                user.username(),
                 orgStructureService.formatOrgChangeRemark(
-                        user.getId(),
+                        user.id(),
                         previousEffectiveDeptId,
                         newEffectiveDeptId,
                         operatorId));
         userDomainEventPublisher.publishUserGroupChanged(
-                user.getId(),
+                user.id(),
                 oldSplit.groupId(),
                 newSplit.groupId(),
                 oldSplit.parentDeptId(),
