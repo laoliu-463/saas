@@ -56,6 +56,13 @@ class UserMasterDataServiceTest {
                 sysRoleMapper,
                 sysUserRoleMapper,
                 new CurrentUserPermissionPolicy());
+        // 全局默认 stub: 防止 NPE
+        when(sysRoleMapper.findByRoleCode(anyString())).thenReturn(Optional.empty());
+        when(sysUserRoleMapper.findByRoleId(any(UUID.class))).thenReturn(List.of());
+        when(sysUserRoleMapper.findByUserIds(any(List.class))).thenReturn(List.of());
+        when(sysUserMapper.selectBatchIds(any(Collection.class))).thenReturn(List.of());
+        when(sysRoleMapper.selectBatchIds(any(Collection.class))).thenReturn(List.of());
+        when(sysUserMapper.selectList(any())).thenReturn(List.of());
     }
 
     // ========================== 正常返回 ==========================
@@ -162,6 +169,10 @@ class UserMasterDataServiceTest {
         when(sysUserRoleMapper.findByRoleId(channelRole.getId())).thenReturn(List.of(
                 userRole(u.getId(), channelRole.getId())));
         when(sysUserMapper.selectBatchIds(any(Collection.class))).thenReturn(List.of(u));
+        // loadRoleCodes 调用 findByUserIds + selectBatchIds(roleIds)
+        when(sysUserRoleMapper.findByUserIds(any(List.class))).thenReturn(List.of(
+                userRole(u.getId(), channelRole.getId())));
+        when(sysRoleMapper.selectBatchIds(any(Collection.class))).thenReturn(List.of(channelRole));
 
         List<UserOptionResponse> result = applicationService.listChannels(null, null);
 

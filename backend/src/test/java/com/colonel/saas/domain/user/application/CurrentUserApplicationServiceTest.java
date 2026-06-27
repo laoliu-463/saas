@@ -109,6 +109,7 @@ class CurrentUserApplicationServiceTest {
 
         SysUser user = new SysUser();
         user.setId(userId);
+        user.setUsername("test");
         user.setStatus(1);
         user.setPassword("hashed-old-pass");
 
@@ -116,8 +117,10 @@ class CurrentUserApplicationServiceTest {
         when(passwordEncoder.matches("old-pass", "hashed-old-pass")).thenReturn(true);
         when(passwordEncoder.encode("new-pass-123")).thenReturn("hashed-new-pass");
 
-        UserCredentialPolicy.CredentialUser credentialUser = new UserCredentialPolicy.CredentialUser(1, user.getUsername());
-        UserCredentialPolicy.PasswordChangeUpdate update = new UserCredentialPolicy.PasswordChangeUpdate(userId, 1, "hashed-new-pass", false);
+        UserCredentialPolicy.CredentialUser credentialUser =
+                new UserCredentialPolicy.CredentialUser(1, user.getUsername());
+        UserCredentialPolicy.PasswordChangeUpdate update =
+                new UserCredentialPolicy.PasswordChangeUpdate(userId, "hashed-new-pass", 1, false);
         when(userCredentialPolicy.buildPasswordChangeUpdate(any(), any(), any())).thenReturn(update);
 
         UserCredentialPolicy.PasswordChangeAudit audit = new UserCredentialPolicy.PasswordChangeAudit(
@@ -137,7 +140,7 @@ class CurrentUserApplicationServiceTest {
         UUID deptId = UUID.randomUUID();
 
         UserDataScopeResponse response = applicationService.dataScope(userId, deptId, DataScope.PERSONAL);
-        assertThat(response.getScope()).isEqualTo("self");
-        assertThat(response.getUserIds()).containsExactly(userId);
+        assertThat(response.scope()).isEqualTo("self");
+        assertThat(response.userIds()).containsExactly(userId);
     }
 }
