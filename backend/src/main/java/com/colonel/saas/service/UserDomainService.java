@@ -23,10 +23,9 @@ import java.util.UUID;
 @Service
 public class UserDomainService {
 
-    private final com.colonel.saas.domain.user.application.CurrentUserApplicationService applicationService;
+    private final CurrentUserApplicationService applicationService;
 
-    public UserDomainService(
-            com.colonel.saas.domain.user.application.CurrentUserApplicationService applicationService) {
+    public UserDomainService(CurrentUserApplicationService applicationService) {
         this.applicationService = applicationService;
     }
 
