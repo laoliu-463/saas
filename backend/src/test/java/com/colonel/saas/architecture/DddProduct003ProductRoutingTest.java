@@ -174,6 +174,19 @@ class DddProduct003ProductRoutingTest {
                 .doesNotContain("审核通过并加入商品库");
     }
 
+    @Test
+    @DisplayName("商品快照基础读取委托商品域 query 服务")
+    void productSnapshotReads_shouldDelegateToProductQueryService() throws Exception {
+        String source = readSource("com/colonel/saas/service/ProductService.java");
+
+        assertThat(source)
+                .contains("ProductSnapshotQueryService")
+                .contains("productSnapshotQueryService.pageLatest")
+                .contains("productSnapshotQueryService.requireById")
+                .contains("productSnapshotQueryService.requireActivityProduct")
+                .contains("productSnapshotQueryService.findActivityProduct");
+    }
+
     private String readSource(String relativePath) throws Exception {
         Path sourcePath = Path.of("src/main/java", relativePath);
         if (!Files.exists(sourcePath)) {

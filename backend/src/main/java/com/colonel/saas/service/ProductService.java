@@ -34,6 +34,7 @@ import com.colonel.saas.domain.product.application.ActivityProductViewAssembler.
 import com.colonel.saas.domain.product.application.ActivityProductViewAssembler.OrderSummary;
 import com.colonel.saas.domain.product.application.ActivityProductViewAssembler.PromotionSummary;
 import com.colonel.saas.domain.product.application.port.DouyinConvertPort;
+import com.colonel.saas.domain.product.query.ProductSnapshotQueryService;
 import com.colonel.saas.gateway.douyin.DouyinPromotionGateway;
 import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
@@ -168,6 +169,8 @@ public class ProductService {
     private final ProductDisplayPolicy productDisplayPolicy;
     /** 商品审核状态和日志语义策略（DDD100-PRODUCT-STATUS）。 */
     private final ProductAuditDecisionPolicy productAuditDecisionPolicy = new ProductAuditDecisionPolicy();
+    /** 商品快照读侧查询服务（DDD100-PRODUCT-SNAPSHOT）。 */
+    private final ProductSnapshotQueryService productSnapshotQueryService;
     /** 活动商品读侧视图组装器，避免 ProductService 承载展示 Map 细节。 */
     private final ActivityProductViewAssembler activityProductViewAssembler;
     @Value("${douyin.real.promotion-write-enabled:false}")
@@ -228,6 +231,7 @@ public class ProductService {
         this.productDomainEventPublisher = productDomainEventPublisher;
         this.productDisplayPolicy = productDisplayPolicy;
         this.copyPromotionApplicationService = copyPromotionApplicationService;
+        this.productSnapshotQueryService = new ProductSnapshotQueryService(snapshotMapper);
         this.activityProductViewAssembler = new ActivityProductViewAssembler(productBizStatusService, productDisplayPolicy);
     }
 
@@ -239,14 +243,7 @@ public class ProductService {
         if (assigneeId != null) {
             return getAssignedPickPage(page, size, assigneeId);
         }
-        Page<ProductSnapshot> query = new Page<>(Math.max(page, 1), Math.max(size, 1));
-        LambdaQueryWrapper<ProductSnapshot> wrapper = new LambdaQueryWrapper<ProductSnapshot>()
-                .orderByDesc(ProductSnapshot::getSyncTime)
-                .orderByDesc(ProductSnapshot::getCreateTime);
-        if (status != null) {
-            wrapper.eq(ProductSnapshot::getStatus, status);
-        }
-        IPage<ProductSnapshot> snapshotPage = snapshotMapper.selectPage(query, wrapper);
+        IPage<ProductSnapshot> snapshotPage = productSnapshotQueryService.pageLatest(page, size, status);
         List<ProductSnapshot> snapshots = snapshotPage.getRecords();
         Map<String, ProductOperationState> stateMap = loadOperationStatesForSnapshots(snapshots);
         Map<UUID, String> assigneeNameMap = loadUserDisplayNames(stateMap.values().stream()
@@ -3467,26 +3464,15 @@ public class ProductService {
     }
 
     private ProductSnapshot getSnapshotById(UUID id) {
-        ProductSnapshot snapshot = snapshotMapper.selectById(id);
-        if (snapshot == null) {
-            throw BusinessException.notFound("商品不存在");
-        }
-        return snapshot;
+        return productSnapshotQueryService.requireById(id);
     }
 
     private ProductSnapshot ensureSnapshotExists(String activityId, String productId) {
-        ProductSnapshot snapshot = getSnapshot(activityId, productId);
-        if (snapshot == null) {
-            throw BusinessException.notFound("未找到商品快照，请先同步活动商品");
-        }
-        return snapshot;
+        return productSnapshotQueryService.requireActivityProduct(activityId, productId);
     }
 
     private ProductSnapshot getSnapshot(String activityId, String productId) {
-        return snapshotMapper.selectOne(new LambdaQueryWrapper<ProductSnapshot>()
-                .eq(ProductSnapshot::getActivityId, activityId)
-                .eq(ProductSnapshot::getProductId, productId)
-                .last("limit 1"));
+        return productSnapshotQueryService.findActivityProduct(activityId, productId);
     }
 
     private ProductOperationState getOperationState(String activityId, String productId) {

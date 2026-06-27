@@ -1,11 +1,13 @@
 package com.colonel.saas.service;
 
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.common.result.PageResult;
 import com.colonel.saas.domain.config.facade.ConfigDomainFacade;
 import com.colonel.saas.domain.product.application.CopyPromotionApplicationService;
 import com.colonel.saas.domain.product.event.ProductDomainEventPublisher;
 import com.colonel.saas.domain.product.policy.ProductDisplayPolicy;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
+import com.colonel.saas.entity.ProductSnapshot;
 import com.colonel.saas.gateway.douyin.DouyinActivityGateway;
 import com.colonel.saas.gateway.douyin.DouyinProductGateway;
 import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
@@ -104,6 +106,35 @@ class ProductServiceCharacterizationTest {
     void hasActivitySnapshotsFalse() {
         when(productSnapshotMapper.selectCount(any())).thenReturn(0L);
         assertThat(service.hasActivitySnapshots("empty")).isFalse();
+    }
+
+    @Test
+    @DisplayName("baseline: getPage keeps legacy Product mapping from snapshot query")
+    void getPageKeepsLegacyProductMappingFromSnapshotQuery() {
+        ProductSnapshot snapshot = new ProductSnapshot();
+        snapshot.setId(UUID.randomUUID());
+        snapshot.setActivityId("10001");
+        snapshot.setProductId("9001");
+        snapshot.setTitle("测试商品");
+        snapshot.setPrice(9900L);
+        snapshot.setStatus(1);
+
+        Page<ProductSnapshot> snapshotPage = new Page<>(1, 1, 1);
+        snapshotPage.setRecords(List.of(snapshot));
+        when(productSnapshotMapper.selectPage(any(Page.class), any())).thenReturn(snapshotPage);
+        when(operationStateMapper.selectList(any())).thenReturn(List.of());
+
+        var result = service.getPage(0, 0, 1);
+
+        assertThat(result.getCurrent()).isEqualTo(1);
+        assertThat(result.getSize()).isEqualTo(1);
+        assertThat(result.getTotal()).isEqualTo(1);
+        assertThat(result.getRecords()).singleElement()
+                .satisfies(product -> {
+                    assertThat(product.getProductId()).isEqualTo("9001");
+                    assertThat(product.getName()).isEqualTo("测试商品");
+                    assertThat(product.getPrice()).isEqualTo(9900L);
+                });
     }
 
     @Test
