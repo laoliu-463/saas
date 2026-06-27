@@ -1,7 +1,7 @@
 # GitHub Issues Index (Mirror)
 
 > 本文件是 GitHub Issues 的本地镜像，用于 Matt Pocock engineering skills 与 harness 任务路由。
-> 最后更新：2026-06-27（#35 用户分配与组织归属收口后）
+> 最后更新：2026-06-27（#61 商品同步 Application 收口后）
 
 ## 同步规则
 
@@ -14,32 +14,6 @@
 | # | Title | Labels | Link |
 | --- | --- | --- | --- |
 | 3 | PRD: DDD 渐进式迁移到 100%（DDD-MIGRATION-100） | ready-for-agent | https://github.com/laoliu-463/saas/issues/3 |
-| 36 | [DDD100-USER-ROLE-MENU] 角色菜单与 PermissionPolicy 收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/36 |
-| 37 | [DDD100-USER-API-QUERY] 用户域 api/query/port 补层 | ready-for-agent | https://github.com/laoliu-463/saas/issues/37 |
-| 38 | [DDD100-USER-RBAC] 用户域权限 E2E 与越权负例 | ready-for-agent | https://github.com/laoliu-463/saas/issues/38 |
-| 39 | [DDD100-CONFIG-READ] 配置读取、缓存与参数出口收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/39 |
-| 40 | [DDD100-CONFIG-WRITE] 配置保存、校验、版本与审计 | ready-for-agent | https://github.com/laoliu-463/saas/issues/40 |
-| 41 | [DDD100-CONFIG-CONSUMER] 提成、模板、pick_extra 消费边界审计 | ready-for-agent | https://github.com/laoliu-463/saas/issues/41 |
-| 42 | [DDD100-CONFIG-TEST] 配置域异常、权限和 evidence | ready-for-agent | https://github.com/laoliu-463/saas/issues/42 |
-| 43 | [DDD100-ORDER-SOURCE] 订单同步入口、raw_payload、幂等键基线 | ready-for-agent | https://github.com/laoliu-463/saas/issues/43 |
-| 44 | [DDD100-ORDER-SYNC] OrderSync Dispatcher/Lock/Checkpoint/CircuitBreaker 拆分 | ready-for-agent | https://github.com/laoliu-463/saas/issues/44 |
-| 45 | [DDD100-ORDER-DRYRUN] 1603/2704/6468 dry-run 策略化 | ready-for-agent | https://github.com/laoliu-463/saas/issues/45 |
-| 46 | [DDD100-ORDER-AMOUNT] 双轨金额 Policy 迁移 | ready-for-agent | https://github.com/laoliu-463/saas/issues/46 |
-| 47 | [DDD100-ORDER-REFUND] 退款事实保存与事件输入收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/47 |
-| 48 | [DDD100-ORDER-QUERY] 订单查询数据范围与 query 层收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/48 |
-| 49 | [DDD100-ORDER-VERIFY] 订单同步幂等、集成测试、real-pre 证据 | ready-for-agent | https://github.com/laoliu-463/saas/issues/49 |
-| 50 | [DDD100-PERF-GENERATE] performance_records 生成边界收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/50 |
-| 51 | [DDD100-PERF-ATTRIBUTION] 最终归属与提成策略收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/51 |
-| 52 | [DDD100-PERF-REVERSAL] 退款冲正与双轨审计 | ready-for-agent | https://github.com/laoliu-463/saas/issues/52 |
-| 53 | [DDD100-PERF-SUMMARY] 汇总刷新与业绩事件 | ready-for-agent | https://github.com/laoliu-463/saas/issues/53 |
-| 54 | [DDD100-PERF-QUERY] 业绩查询、导出、权限边界 | ready-for-agent | https://github.com/laoliu-463/saas/issues/54 |
-| 55 | [DDD100-PERF-VERIFY] 业绩集成测试与重复消费验证 | ready-for-agent | https://github.com/laoliu-463/saas/issues/55 |
-| 56 | [DDD100-ANALYTICS-SOURCE] dashboard 指标来源与只读边界 | ready-for-agent | https://github.com/laoliu-463/saas/issues/56 |
-| 57 | [DDD100-ANALYTICS-DATA] DataApplication 查询、导出 query 层 | ready-for-agent | https://github.com/laoliu-463/saas/issues/57 |
-| 58 | [DDD100-ANALYTICS-E2E] 看板 API/SQL 对账与 admin/group/self 差异 | ready-for-agent | https://github.com/laoliu-463/saas/issues/58 |
-| 59 | [DDD100-ANALYTICS-GUARD] 分析模块不重算归因架构测试 | ready-for-agent | https://github.com/laoliu-463/saas/issues/59 |
-| 60 | [DDD100-PRODUCT-BASELINE] ProductService characterization baseline | ready-for-agent | https://github.com/laoliu-463/saas/issues/60 |
-| 61 | [DDD100-PRODUCT-SYNC] 商品同步 Application 拆分 | ready-for-agent | https://github.com/laoliu-463/saas/issues/61 |
 | 62 | [DDD100-PRODUCT-DISPLAY] 展示规则 Policy/Application 收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/62 |
 | 63 | [DDD100-PRODUCT-STATUS] 商品业务状态与操作日志收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/63 |
 | 64 | [DDD100-PRODUCT-SNAPSHOT] 商品快照、read model、query 层 | ready-for-agent | https://github.com/laoliu-463/saas/issues/64 |
@@ -55,24 +29,13 @@
 | 74 | [DDD100-SAMPLE-COMMAND] 申请、审核、发货、签收 Application 收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/74 |
 | 75 | [DDD100-SAMPLE-EVENT] 订单已同步事件消费与交作业完成 | ready-for-agent | https://github.com/laoliu-463/saas/issues/75 |
 | 76 | [DDD100-SAMPLE-PERMISSION] 寄样动作权限和数据范围边界 | ready-for-agent | https://github.com/laoliu-463/saas/issues/76 |
-| 77 | [DDD100-SAMPLE-QUERY] 寄样 api/query/frontend 链路收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/77 |
 | 78 | [DDD100-SAMPLE-E2E] 幂等、异常分支、real-pre 样本证据 | ready-for-agent | https://github.com/laoliu-463/saas/issues/78 |
-| 79 | [DDD100-OUTBOX-CATALOG] 本地事件目录、payload、版本和幂等键 | ready-for-agent | https://github.com/laoliu-463/saas/issues/79 |
-| 80 | [DDD100-OUTBOX-PRODUCER] 订单、退款、业绩、寄样、商品事件生产时机 | ready-for-agent | https://github.com/laoliu-463/saas/issues/80 |
-| 81 | [DDD100-OUTBOX-CONSUMER] 消费失败、重试和重复消费证据 | ready-for-agent | https://github.com/laoliu-463/saas/issues/81 |
-| 82 | [DDD100-FRONTEND-BOUNDARY] 前端 API client/store 按领域边界收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/82 |
-| 83 | [DDD100-FRONTEND-PRODUCT-DATA] 商品、订单、分析页面领域化 | ready-for-agent | https://github.com/laoliu-463/saas/issues/83 |
-| 84 | [DDD100-FRONTEND-SAMPLE-TALENT] 寄样、达人页面领域化 | ready-for-agent | https://github.com/laoliu-463/saas/issues/84 |
-| 85 | [DDD100-FRONTEND-RULE-AUDIT] 前端不硬编码业务规则审计 | ready-for-agent | https://github.com/laoliu-463/saas/issues/85 |
-| 86 | [DDD100-LAYERS] api/query/domain/port 九层缺口补齐 | ready-for-agent | https://github.com/laoliu-463/saas/issues/86 |
-| 87 | [DDD100-LEGACY-RETIRE] LegacyFacade 删除前灰度证据与清理 | ready-for-agent | https://github.com/laoliu-463/saas/issues/87 |
-| 88 | [DDD100-E2E-FULL] 渠道链、招商链、管理链全链路验收 | ready-for-agent | https://github.com/laoliu-463/saas/issues/88 |
-| 89 | [DDD100-CLOSEOUT] 100% 迁移率、evidence、retro、Harness GC 收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/89 |
 
 ## 最近关闭的执行项
 
 | # | Title | Closed Date | Evidence |
 | --- | --- | --- | --- |
+| 61 | [DDD100-PRODUCT-SYNC] 商品同步 Application 拆分 | 2026-06-27 | `ProductActivitySyncApplicationService`, `harness/reports/2026-06-21/ddd-product-sync-061/evidence-20260627-142000-ddd100-product-sync-application.md` |
 | 35 | [DDD100-USER-ASSIGN] 用户分配、渠道、组织归属 Application 收口 | 2026-06-27 | `UserGroupMembershipStore`, `harness/reports/2026-06-21/ddd-user-assign-035/evidence-20260627-134900-user-assign-org-membership.md` |
 | 34 | [DDD100-USER-CRUD] SysUser CRUD Application 收口 | 2026-06-27 | `SysUserServiceAssignableBoundaryTest`, `harness/reports/2026-06-21/ddd-user-crud-034/evidence-20260627-123000-sysuser-crud-application.md` |
 | 33 | [DDD100-USER-DATASCOPE] 数据范围剩余消费点收口 | 2026-06-27 | `DddUserDataScopeRemainingConsumerGuardTest`, `harness/reports/2026-06-21/ddd-user-datascope-033/evidence-20260627-121500-datascope-consumer-guard.md` |
@@ -89,8 +52,8 @@
 ## 当前判断
 
 - #3 是 DDD 迁移总 PRD，不能因单个切片完成而关闭。
-- #36-#89 是按 DDD-MIGRATION-100 的 100% 目标发布的剩余 open leaf issues；#30-#35 已完成基线、guard、指标脚本、DataScope 消费点冻结、SysUser CRUD true-route 委托证明和组织成员变更端口下沉。
-- #29 已在 GitHub 关闭，本文件不再把它列为 open。
+- 当前 GitHub open leaf issues 为 #62-#76 与 #78；#77、#79-#89 当前不在 open 列表。
+- #61 已完成商品同步 Application 收口并在 GitHub 关闭。
 - #30 给出的 2026-06-27 口径是 raw `domain/` share 20.1%、业务迁移代理 26.3%；它是推进基线，不是 100% 完成证明。
 - #31 已新增可重复执行的架构红线 guard，冻结 Controller 直连 Mapper/Gateway 既有债务并阻止新增。
 - #32 已新增 `harness/scripts/probes/ddd-migration-metrics.ps1`；当前业务迁移代理指标为 26.6%。
