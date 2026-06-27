@@ -1,7 +1,7 @@
 # GitHub Issues Index (Mirror)
 
 > 本文件是 GitHub Issues 的本地镜像，用于 Matt Pocock engineering skills 与 harness 任务路由。
-> 最后更新：2026-06-27（#72 达人数据范围 E2E 关闭后）
+> 最后更新：2026-06-27（#73 寄样状态机基线关闭后）
 
 ## 同步规则
 
@@ -14,7 +14,6 @@
 | # | Title | Labels | Link |
 | --- | --- | --- | --- |
 | 3 | PRD: DDD 渐进式迁移到 100%（DDD-MIGRATION-100） | ready-for-agent | https://github.com/laoliu-463/saas/issues/3 |
-| 73 | [DDD100-SAMPLE-BASELINE] SampleApplicationService 状态机基线 | ready-for-agent | https://github.com/laoliu-463/saas/issues/73 |
 | 74 | [DDD100-SAMPLE-COMMAND] 申请、审核、发货、签收 Application 收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/74 |
 | 75 | [DDD100-SAMPLE-EVENT] 订单已同步事件消费与交作业完成 | ready-for-agent | https://github.com/laoliu-463/saas/issues/75 |
 | 76 | [DDD100-SAMPLE-PERMISSION] 寄样动作权限和数据范围边界 | ready-for-agent | https://github.com/laoliu-463/saas/issues/76 |
@@ -24,6 +23,7 @@
 
 | # | Title | Closed Date | Evidence |
 | --- | --- | --- | --- |
+| 73 | [DDD100-SAMPLE-BASELINE] SampleApplicationService 状态机基线 | 2026-06-27 | 状态机基线 18/18 PASS，补充 controller/lifecycle/log 99/99 PASS，`harness/reports/2026-06-21/ddd-sample-baseline-073/evidence-20260627-165524-ddd100-sample-state-machine-baseline.md` |
 | 72 | [DDD100-TALENT-E2E] 达人数据范围、越权负例和 E2E | 2026-06-27 | Targeted/E2E/RBAC/data-scope PASS，`harness/reports/2026-06-21/ddd-talent-e2e-072/evidence-20260627-164753-ddd100-talent-scope-e2e.md` |
 | 71 | [DDD100-TALENT-GATEWAY] 第三方达人接口真实响应或 BLOCKED 证据 | 2026-06-27 | 第三方真实响应 `BLOCKED`；HTTP/PublicWeb provider real-pre 关闭且 endpoint/token/auth 缺失，`harness/reports/2026-06-21/ddd-talent-gateway-071/evidence-20260627-163647-ddd100-talent-gateway-blocked.md` |
 | 70 | [DDD100-TALENT-ADDRESS] 达人地址供寄样域消费边界 | 2026-06-27 | `TalentAddressApplicationService`, `TalentShippingAddressDTO`, `harness/reports/2026-06-21/ddd-talent-address-070/evidence-20260627-163100-ddd100-talent-address-boundary.md` |
@@ -52,7 +52,7 @@
 ## 当前判断
 
 - #3 是 DDD 迁移总 PRD，不能因单个切片完成而关闭。
-- 当前 GitHub open leaf issues 为 #73-#76 与 #78；#71、#72、#77、#79-#89 当前不在 open 列表。
+- 当前 GitHub open leaf issues 为 #74、#75、#76 与 #78；#71-#73、#77、#79-#89 当前不在 open 列表。
 - #61 已完成商品同步 Application 收口；#62 已完成本地发布展示规则下沉；#63 已完成人工审核状态与操作日志语义 policy 收口；#64 已完成商品快照基础 query service 收口；#65 已完成 backfill job metadata 与商品库 repair policy 组件拆分；#66 已完成转链 Port 唯一收口、mapping id 证据与转链完成事件证据；#67 已验证商品链 PASS，并把真实订单正向归因样本不足记录为 PENDING；#68 已完成达人认领 / 保护期基线验证；#69 已完成达人资料 / 标签 / 跟进 Application 收口；#70 已完成达人地址供寄样消费边界；上述 issue 均已在 GitHub 关闭。
 - #30 给出的 2026-06-27 口径是 raw `domain/` share 20.1%、业务迁移代理 26.3%；它是推进基线，不是 100% 完成证明。
 - #31 已新增可重复执行的架构红线 guard，冻结 Controller 直连 Mapper/Gateway 既有债务并阻止新增。
@@ -62,6 +62,7 @@
 - #35 已将组织成员变更持久化下沉到 `UserGroupMembershipStore`，并用 `updateDeptById` 显式覆盖 `dept_id` 清空。
 - #71 已按要求补齐第三方达人真实响应 `BLOCKED` 证据；不能视为真实第三方响应 PASS。
 - #72 已完成达人数据范围、越权负例和 E2E 证据；channel 可读达人，biz/ops 访问达人接口返回 403。
+- #73 已完成寄样状态机基线验证；真实订单触发完成和幂等仍留给 #75/#78。
 
 ## 常用命令
 
