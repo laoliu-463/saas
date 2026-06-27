@@ -1,0 +1,20 @@
+# DDD100-GUARD frozen legacy Controller direct Mapper/Gateway imports.
+# Format: backend-relative-path|imported-fqcn
+# New entries are forbidden. Move orchestration to Application/Facade/Port layers instead.
+
+src/main/java/com/colonel/saas/controller/AdminDouyinQuickSampleController.java|com.colonel.saas.gateway.douyin.DouyinQuickSampleGateway
+src/main/java/com/colonel/saas/controller/ColonelActivityController.java|com.colonel.saas.gateway.douyin.DouyinActivityGateway
+src/main/java/com/colonel/saas/controller/ColonelActivityController.java|com.colonel.saas.gateway.douyin.DouyinProductGateway
+src/main/java/com/colonel/saas/controller/ColonelActivityProductController.java|com.colonel.saas.gateway.douyin.DouyinPromotionGateway
+src/main/java/com/colonel/saas/controller/ColonelsettlementActivityController.java|com.colonel.saas.gateway.douyin.DouyinActivityGateway
+src/main/java/com/colonel/saas/controller/DouyinController.java|com.colonel.saas.gateway.douyin.DouyinActivityGateway
+src/main/java/com/colonel/saas/controller/DouyinController.java|com.colonel.saas.gateway.douyin.DouyinOrderGateway
+src/main/java/com/colonel/saas/controller/DouyinController.java|com.colonel.saas.gateway.douyin.DouyinProductGateway
+src/main/java/com/colonel/saas/controller/DouyinController.java|com.colonel.saas.gateway.douyin.DouyinPromotionGateway
+src/main/java/com/colonel/saas/controller/DouyinController.java|com.colonel.saas.gateway.douyin.DouyinTokenGateway
+src/main/java/com/colonel/saas/controller/DataController.java|com.colonel.saas.mapper.ColonelsettlementActivityMapper
+src/main/java/com/colonel/saas/controller/DataController.java|com.colonel.saas.mapper.ColonelsettlementOrderMapper
+src/main/java/com/colonel/saas/controller/DataController.java|com.colonel.saas.mapper.ExclusiveMerchantMapper
+src/main/java/com/colonel/saas/controller/DataController.java|com.colonel.saas.mapper.ExclusiveTalentMapper
+src/main/java/com/colonel/saas/controller/OrderController.java|com.colonel.saas.mapper.ColonelsettlementOrderMapper
+src/main/java/com/colonel/saas/controller/ProductController.java|com.colonel.saas.gateway.douyin.DouyinPromotionGateway

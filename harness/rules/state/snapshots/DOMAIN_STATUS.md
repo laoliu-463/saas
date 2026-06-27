@@ -193,8 +193,8 @@
 - 标记：P0。
 
 ## Harness
-- 当前状态：GIT-HARNESS-001 工作区治理完成；DDD100 #30 基线已于 2026-06-27 重算：raw `domain/` share 20.1%，业务迁移代理 26.3%，报告 `harness/reports/ddd100-baseline-20260627.md`。
+- 当前状态：GIT-HARNESS-001 工作区治理完成；DDD100 #30 基线已于 2026-06-27 重算，#31 架构红线 guard 已新增：冻结 Controller 直连 Mapper/Gateway 债务，零容忍 strict domain-layer Mapper 穿透和前端第三方 HTTP 直连。报告 `harness/reports/2026-06-21/ddd-architecture-guard-031/evidence-20260627-115000-architecture-redline-guard.md`。
 - 已完成能力：Completion Gate (G0-G4)、Session Exit Gate、Quality Ledger、Git Intake / Exit Gate、Dirty Classification (10 种分类)、Allowed Change Set、Staged Scope Gate、Commit / Push / Deploy Commit Gate、批次提交流程 (GIT-BATCH-N)、Unknown Dirty Policy、Rollback Policy。
 - 当前风险：需要把所有任务落地到 Git Intake / Exit Gate；P-FIX-002 同步配置残留 (application-real-pre.yml) 仍需独立任务收口。
-- DDD 优化下一步：#31 架构护栏与跨域依赖扫描收口；所有未来任务必须按 git-change-control.md 执行 12 条 Git 强约束。
+- DDD 优化下一步：#32 DDD 迁移率脚本与 evidence 指标固化；所有未来任务必须按 git-change-control.md 执行 12 条 Git 强约束。
 - 标记：P0。

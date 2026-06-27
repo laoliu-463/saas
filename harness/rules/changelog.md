@@ -7,6 +7,11 @@
 
 ## 最近版本摘要
 
+### v0.7.5 — 2026-06-27
+- DDD100 #31 架构红线 guard 新增：Controller 直连 Mapper/Gateway 既有债务冻结为 whitelist，新增即失败，债务删除后必须清理 whitelist。
+- strict domain api/query/policy/port 层 Mapper import 与前端第三方 HTTP 直连采用零容忍扫描。
+- 证据：`harness/reports/2026-06-21/ddd-architecture-guard-031/evidence-20260627-115000-architecture-redline-guard.md`。
+
 ### v0.7.4 — 2026-06-27
 - DDD100 #30 基线重算：生产 Java raw `domain/` share 20.1%，业务迁移代理 26.3%。
 - 明确该指标是路径/命名代理，不是最终 DDD 完成证明；#31/#32 继续做架构护栏和指标脚本固化。
