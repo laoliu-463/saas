@@ -1,4 +1,4 @@
-# Evidence: DDD-COMPLETE-100-PRODUCT #96
+# Evidence: DDD-COMPLETE-100-PRODUCT #96 Partial Closeout
 
 ## Scope
 
@@ -7,10 +7,11 @@
 - Environment: local real-pre evidence review
 - Branch: `feature/ddd/DDD-VERIFY-001`
 - Remote deploy: not requested
+- Conclusion status: `PARTIAL / BLOCKED_BY_SAMPLE`
 
 ## Issue State
 
-GitHub sub-issues verified with `gh issue view <number> --json number,state,closedAt,url`:
+GitHub sub-issues verified with `gh issue view <number> --json number,state,closedAt,url` where applicable:
 
 | Issue | State | Closed At |
 | --- | --- | --- |
@@ -19,8 +20,10 @@ GitHub sub-issues verified with `gh issue view <number> --json number,state,clos
 | #132 | CLOSED | 2026-06-27 13:21:02 |
 | #133 | CLOSED | 2026-06-27 14:04:35 |
 | #134 | CLOSED | 2026-06-27 14:04:38 |
-| #135 | CLOSED | 2026-06-27 14:04:46 |
+| #135 | OPEN | reopened 2026-06-27 22:xx |
 | #136 | CLOSED | 2026-06-27 14:04:49 |
+
+Parent #96 was also reopened because #135 is an explicit child of the product epic.
 
 ## Current Metrics
 
@@ -50,11 +53,13 @@ Result excerpt:
 - #133 evidence: `harness/reports/evidence-20260627-215952.md`
 - Targeted #133 verification rerun: `mvn -f backend/pom.xml "-Dtest=ActivityProductReadModelQueryServiceTest" test` -> 3/3 PASS
 - Harness limits check: PASS
+- #134 real-pre read-only SQL: promoting snapshots `18201`, repaired states `18201`, unrepaired states `0`.
+- #135 real-pre read-only SQL: active `pick_source_mapping` rows `13`, active product/activity mappings `5`, orders with `pick_source` `0`, mapped orders `0`.
 
 ## Boundary
 
-This closeout covers the product domain epic and its seven product sub-issues. Cross-domain real order `pick_source` long-cycle verification remains tracked by order issue #117 and is not reclassified as product epic evidence.
+This review covers the product domain epic and its seven product sub-issues. Because #135 explicitly requires a real promotion-link order carrying `pick_source`, the current zero-order SQL result blocks product epic completion. Related order-domain observation also remains tracked by #117.
 
 ## Conclusion
 
-PASS for #96 closeout. GitHub #96 can be closed after this evidence and `issues-index.md` / `DOMAIN_STATUS.md` are committed and pushed.
+`PARTIAL / BLOCKED_BY_SAMPLE` for #96. Product query, repair, policy, backfill and legacy-retire slices have substantial evidence, but #135 lacks the required real order sample. GitHub #96 and #135 must remain open until at least one real `colonelsettlement_order.pick_source` row can be traced to an active `pick_source_mapping`, or the user explicitly accepts the residual risk.

@@ -1,7 +1,7 @@
 package com.colonel.saas.domain.event;
 
 import com.colonel.saas.config.SystemConfigKeys;
-import com.colonel.saas.service.BusinessRuleConfigService;
+import com.colonel.saas.domain.config.infrastructure.BusinessRuleConfigService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Component;
 

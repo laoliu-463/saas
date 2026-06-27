@@ -1,7 +1,7 @@
 package com.colonel.saas.listener;
 
 import com.colonel.saas.event.ConfigChangedApplicationEvent;
-import com.colonel.saas.service.BusinessRuleConfigService;
+import com.colonel.saas.domain.config.infrastructure.BusinessRuleConfigService;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;

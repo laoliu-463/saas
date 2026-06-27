@@ -16,7 +16,7 @@ import com.colonel.saas.entity.SysUser;
 import com.colonel.saas.mapper.SysRoleMapper;
 import com.colonel.saas.mapper.SysUserMapper;
 import com.colonel.saas.security.JwtTokenProvider;
-import com.colonel.saas.service.BusinessRuleConfigService;
+import com.colonel.saas.domain.config.infrastructure.BusinessRuleConfigService;
 import com.colonel.saas.service.OperationLogService;
 import io.jsonwebtoken.Claims;
 import org.springframework.data.redis.core.RedisTemplate;

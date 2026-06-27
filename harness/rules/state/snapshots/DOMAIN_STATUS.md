@@ -131,12 +131,12 @@
 - 标记：P0。
 
 ## 商品域
-- 最新边界变化：#96 商品域 epic closeout 完成；#130-#136 均已关闭。商品读侧已把 `ProductSnapshotQueryService` 与 `ActivityProductReadModelQueryService` 迁入 `domain/product/query`，同步/backfill、展示状态、审核日志、repair、转链 port 与 legacy retire 均完成对应子任务证据。
-- 最新验证：当前迁移率探针显示 raw domain share 22.2%、business migration proxy 29.2%、product proxy 30.8%；#133 `ActivityProductReadModelQueryServiceTest` 3/3 PASS；#132 backend targeted tests 35/35 PASS；frontend product display tests 53/53 PASS；real-pre backend/frontend health 与 P0 preflight 已有 PASS evidence。
+- 最新边界变化：#96 商品域 epic 已从误关闭状态恢复为 `PARTIAL / BLOCKED_BY_SAMPLE`；#130-#134/#136 已关闭，#135 因真实推广链接回流订单样本缺失恢复 open。商品读侧已把 `ProductSnapshotQueryService` 与 `ActivityProductReadModelQueryService` 迁入 `domain/product/query`，同步/backfill、展示状态、审核日志、repair、转链 port 与 legacy retire 均有对应切片证据。
+- 最新验证：当前迁移率探针显示 raw domain share 22.2%、business migration proxy 29.2%、product proxy 30.8%；#133 `ActivityProductReadModelQueryServiceTest` 3/3 PASS；#132 backend targeted tests 35/35 PASS；frontend product display tests 53/53 PASS；real-pre backend/frontend health 与 P0 preflight 已有 PASS evidence。2026-06-27 只读 SQL 显示推广中活动商品 repair 一致性为 18201/18201、未修复 0；`pick_source_mapping` 有 13 条有效映射，其中 5 条带 product/activity 上下文，但 `colonelsettlement_order.pick_source` 订单数为 0。
 - 最新报告路径：#96 `harness/reports/2026-06-27/ddd-complete-product-096/evidence-20260627-220900-product-domain-closeout.md`；#133 `harness/reports/evidence-20260627-215952.md`；#132 `harness/reports/2026-06-27/ddd-complete-product-132/evidence-20260627-211900-product-operation-policy.md`；#131 `harness/reports/2026-06-27/ddd-complete-product-131/evidence-20260627-204000-product-backfill-application.md`；#130 `harness/reports/2026-06-27/ddd-complete-product-130/evidence-20260627-200829-product-service-inventory.md`。
 - 已完成能力：商品库、商品快照与活动商品 query/read model、backfill job metadata、backfill 管理 API Application、商品库 repair 决策 policy、活动商品同步入口、人工审核状态/日志 policy、操作日志与推进判断 policy、本地发布展示策略、活动商品展示策略、转链 Port、`pick_source_mapping` mapping id 证据、转链完成事件证据。
-- 当前风险：商品域内 #96 已收口；跨订单域真实订单 `pick_source` 长周期正向样本继续由 #117 跟踪，不在商品域 epic 中重复声明 PASS。
-- 待优化能力：转入订单 #117、业绩 #123/#124、前端 #154-#159 等跨域剩余 issue。
+- 当前风险：#135 仍缺至少 1 条真实 `colonelsettlement_order.pick_source` 回流订单并命中有效 `pick_source_mapping` 的正向样本；#96 不能关闭为 PASS。相关订单域长期观察仍由 #117 跟踪，但 #135 作为商品域子任务仍必须保持 open。
+- 待优化能力：#135 真实推广链接订单样本；之后才能重新 closeout #96。后续还需衔接订单 #117、业绩 #123/#124、前端 #154-#159 等跨域剩余 issue。
 - 标记：P0。
 
 ## 达人域

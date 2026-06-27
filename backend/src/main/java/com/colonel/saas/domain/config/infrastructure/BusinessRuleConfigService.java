@@ -1,7 +1,8 @@
-package com.colonel.saas.service;
+package com.colonel.saas.domain.config.infrastructure;
 
 import com.colonel.saas.config.SystemConfigKeys;
 import com.colonel.saas.entity.SystemConfig;
+import com.colonel.saas.service.ShortTtlCacheService;
 import com.colonel.saas.mapper.SystemConfigMapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;

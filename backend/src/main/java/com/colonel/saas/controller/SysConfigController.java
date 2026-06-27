@@ -8,7 +8,7 @@ import com.colonel.saas.common.result.PageResult;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.entity.SystemConfig;
-import com.colonel.saas.service.SysConfigService;
+import com.colonel.saas.domain.config.application.SysConfigService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;

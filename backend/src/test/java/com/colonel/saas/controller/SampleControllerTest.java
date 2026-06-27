@@ -40,7 +40,7 @@ import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.domain.sample.event.SampleDomainEventPublisher;
 import com.colonel.saas.domain.sample.policy.SampleActionPermissionPolicy;
 import com.colonel.saas.service.CrawlerTalentInfoService;
-import com.colonel.saas.service.BusinessRuleConfigService;
+import com.colonel.saas.domain.config.infrastructure.BusinessRuleConfigService;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.controller.SampleFilterOptionsController;
 import com.colonel.saas.service.SampleFilterOptionsService;
