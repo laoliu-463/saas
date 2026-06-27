@@ -85,9 +85,9 @@ class CurrentUserApplicationServiceTest {
 
         CurrentUserResponse response = applicationService.currentUser(userId, deptId, DataScope.PERSONAL, null);
 
-        assertThat(response.getUserId()).isEqualTo(userId);
-        assertThat(response.getUsername()).isEqualTo("test");
-        assertThat(response.getRoleCodes()).contains("ROLE_USER");
+        assertThat(response.userId()).isEqualTo(userId);
+        assertThat(response.username()).isEqualTo("test");
+        assertThat(response.roleCodes()).contains("ROLE_USER");
     }
 
     @Test

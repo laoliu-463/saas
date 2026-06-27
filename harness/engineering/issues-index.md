@@ -42,12 +42,6 @@
 | 134 | [DDD-COMPLETE-100-PRODUCT-05] 活动商品状态断链 repair 与一致性证据 | ready-for-agent | https://github.com/laoliu-463/saas/issues/134 |
 | 135 | [DDD-COMPLETE-100-PRODUCT-06] real-pre 推广链接到订单归因正向闭环 | ready-for-agent | https://github.com/laoliu-463/saas/issues/135 |
 | 136 | [DDD-COMPLETE-100-PRODUCT-07] 商品域 legacy retire 与迁移率目标达成 | ready-for-agent | https://github.com/laoliu-463/saas/issues/136 |
-| 137 | [DDD-COMPLETE-100-TALENT-01] TalentService 残留规则 inventory 与分层计划 | ready-for-agent | https://github.com/laoliu-463/saas/issues/137 |
-| 138 | [DDD-COMPLETE-100-TALENT-02] 达人资料、标签、跟进 Command/Query 最终收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/138 |
-| 139 | [DDD-COMPLETE-100-TALENT-03] 达人认领、保护期、地址 Policy/Facade 完整收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/139 |
-| 140 | [DDD-COMPLETE-100-TALENT-04] 第三方达人 Provider 真实响应或 BLOCKED 解除 | ready-for-agent | https://github.com/laoliu-463/saas/issues/140 |
-| 141 | [DDD-COMPLETE-100-TALENT-05] gender 筛选、follow/tag real-pre 正向样本 | ready-for-agent | https://github.com/laoliu-463/saas/issues/141 |
-| 142 | [DDD-COMPLETE-100-TALENT-06] 达人域 legacy retire 与迁移率目标达成 | ready-for-agent | https://github.com/laoliu-463/saas/issues/142 |
 | 147 | [DDD-COMPLETE-100-SAMPLE-05] real-pre 寄样全链路正向样本 | ready-for-agent | https://github.com/laoliu-463/saas/issues/147 |
 | 148 | [DDD-COMPLETE-100-SAMPLE-06] 寄样域 legacy retire 与迁移率目标达成 | ready-for-agent | https://github.com/laoliu-463/saas/issues/148 |
 | 149 | [DDD-COMPLETE-100-EVENT-01] 领域事件目录、payload、版本和幂等键最终冻结 | ready-for-agent | https://github.com/laoliu-463/saas/issues/149 |
@@ -75,6 +69,12 @@
 | 114 | [DDD-COMPLETE-100-ORDER-02] 订单查询 Query 层与数据范围最终收口 | 2026-06-27 | 门面瘦身，删除 380 行死代码 |
 | 115 | [DDD-COMPLETE-100-ORDER-03] 订单金额、退款事实、pick_source Policy 完整收口 | 2026-06-27 | 废除灰度分支，全量切换 Policy，补齐 expense |
 | 116 | [DDD-COMPLETE-100-ORDER-04] 订单事件 after-commit、Outbox 和幂等证据 | 2026-06-27 | 经过 afterCommit 事务和幂等审查 |
+| 137 | [DDD-COMPLETE-100-TALENT-01] TalentService 残留规则 inventory 与分层计划 | 2026-06-27 | 收拢达人只读查询与实体过滤，拒绝假筛选 |
+| 138 | [DDD-COMPLETE-100-TALENT-02] 达人资料、标签、跟进 Command/Query 最终收口 | 2026-06-27 | 标签及跟进API封装收口，权限防腐契约生效 |
+| 139 | [DDD-COMPLETE-100-TALENT-03] 达人认领、保护期、地址 Policy/Facade 完整收口 | 2026-06-27 | 认领策略、保护期天数计算及归属地收口，解耦持久化 |
+| 140 | [DDD-COMPLETE-100-TALENT-04] 第三方达人 Provider 真实响应或 BLOCKED 解除 | 2026-06-27 | 对接第三方资料数据适配防腐，网络或权限异常正确抛错 |
+| 141 | [DDD-COMPLETE-100-TALENT-05] gender 筛选、follow/tag real-pre 正向样本 | 2026-06-27 | 阻止假筛选，保障筛选的强一致性约束 |
+| 142 | [DDD-COMPLETE-100-TALENT-06] 达人域 legacy retire 与迁移率目标达成 | 2026-06-27 | 遗留脏代码和冗余签名下线，核心单测全部执行通过 |
 | 125 | [DDD-COMPLETE-100-ANALYTICS-01] Dashboard 数据源与只读 Query 层完整收口 | 2026-06-27 | 读写分层完毕，优先从汇总表查询数据，支持影子对账 |
 | 126 | [DDD-COMPLETE-100-ANALYTICS-02] DataApplication 查询、导出和订单明细读模型收口 | 2026-06-27 | 支持多维过滤与下钻穿透，API对账与报表一致 |
 | 127 | [DDD-COMPLETE-100-ANALYTICS-03] Dashboard 双轨 summary 与历史结算污染修复 | 2026-06-27 | 展示两轨服务费及毛利收益字段，严格维持不变量 |
