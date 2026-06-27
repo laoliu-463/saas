@@ -7,6 +7,11 @@
 
 ## 最近版本摘要
 
+### v0.7.7 — 2026-06-27
+- DDD100 #33 新增 DataScope 剩余消费点 guard：冻结非用户域直接 `DataScope` 判断，阻止新增 self/group/all 复制规则。
+- 现有消费点必须暴露用户域 `DataScopePolicy` 路径；Legacy 默认分支保留为灰度兼容债务，不写成已清零。
+- 证据：`harness/reports/2026-06-21/ddd-user-datascope-033/evidence-20260627-121500-datascope-consumer-guard.md`。
+
 ### v0.7.6 — 2026-06-27
 - DDD100 #32 迁移率脚本固化：新增 `harness/scripts/probes/ddd-migration-metrics.ps1`，支持 Markdown/JSON 输出。
 - 当前脚本口径：raw `domain/` share 20.2%，业务迁移代理 26.6%，并输出每个领域 application/query/port/policy/facade/infrastructure/api/domain/event 与 legacy service 指标。

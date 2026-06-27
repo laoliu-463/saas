@@ -1,0 +1,19 @@
+# DDD100-USER-DATASCOPE frozen non-user-domain direct DataScope consumers.
+# Format: backend/src/main/java/com/colonel/saas relative path.
+# New entries are forbidden. Existing entries must expose a DataScopePolicy path unless listed as test-time glue.
+
+controller/OrderController.java
+domain/order/facade/LegacyOrderDomainFacade.java
+domain/performance/policy/PerformanceAccessContext.java
+domain/performance/policy/PerformanceAccessScope.java
+job/PerformanceCacheWarmupJob.java
+service/DashboardService.java
+service/data/DataApplicationService.java
+service/OrderAttributionService.java
+service/OrderQueryService.java
+service/OrderService.java
+service/PerformanceMetricsQueryService.java
+service/sample/SampleApplicationService.java
+service/SampleFilterOptionsService.java
+service/TalentQueryService.java
+service/TalentService.java
