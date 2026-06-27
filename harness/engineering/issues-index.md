@@ -31,10 +31,6 @@
 | 123 | [DDD-COMPLETE-100-PERF-05] 历史 performance_records 缺口 backfill 与幂等 | ready-for-agent | https://github.com/laoliu-463/saas/issues/123 |
 | 124 | [DDD-COMPLETE-100-PERF-06] 业绩域 legacy retire 与 real-pre API/SQL/page 对账 | ready-for-agent | https://github.com/laoliu-463/saas/issues/124 |
 | 129 | [DDD-COMPLETE-100-ANALYTICS-05] 分析模块 legacy retire 与迁移率目标达成 | ready-for-agent | https://github.com/laoliu-463/saas/issues/129 |
-| 133 | [DDD-COMPLETE-100-PRODUCT-04] 商品快照、活动商品和 query/read model 完整收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/133 |
-| 134 | [DDD-COMPLETE-100-PRODUCT-05] 活动商品状态断链 repair 与一致性证据 | ready-for-agent | https://github.com/laoliu-463/saas/issues/134 |
-| 135 | [DDD-COMPLETE-100-PRODUCT-06] real-pre 推广链接到订单归因正向闭环 | ready-for-agent | https://github.com/laoliu-463/saas/issues/135 |
-| 136 | [DDD-COMPLETE-100-PRODUCT-07] 商品域 legacy retire 与迁移率目标达成 | ready-for-agent | https://github.com/laoliu-463/saas/issues/136 |
 | 147 | [DDD-COMPLETE-100-SAMPLE-05] real-pre 寄样全链路正向样本 | ready-for-agent | https://github.com/laoliu-463/saas/issues/147 |
 | 148 | [DDD-COMPLETE-100-SAMPLE-06] 寄样域 legacy retire 与迁移率目标达成 | ready-for-agent | https://github.com/laoliu-463/saas/issues/148 |
 | 149 | [DDD-COMPLETE-100-EVENT-01] 领域事件目录、payload、版本和幂等键最终冻结 | ready-for-agent | https://github.com/laoliu-463/saas/issues/149 |
@@ -62,6 +58,11 @@
 | 114 | [DDD-COMPLETE-100-ORDER-02] 订单查询 Query 层与数据范围最终收口 | 2026-06-27 | 门面瘦身，删除 380 行死代码 |
 | 115 | [DDD-COMPLETE-100-ORDER-03] 订单金额、退款事实、pick_source Policy 完整收口 | 2026-06-27 | 废除灰度分支，全量切换 Policy，补齐 expense |
 | 116 | [DDD-COMPLETE-100-ORDER-04] 订单事件 after-commit、Outbox 和幂等证据 | 2026-06-27 | 经过 afterCommit 事务和幂等审查 |
+| 132 | [DDD-COMPLETE-100-PRODUCT-03] 商品展示、状态、审核、操作日志 Policy 完整收口 | 2026-06-27 | 10 个核心审核字段入库约束建立，本地拒绝不阻断上游 |
+| 133 | [DDD-COMPLETE-100-PRODUCT-04] 商品快照、活动商品和 query/read model 完整收口 | 2026-06-27 | 支持 productId 精确匹配与 keyword 模糊查询防假过滤 |
+| 134 | [DDD-COMPLETE-100-PRODUCT-05] 活动商品状态断链 repair 与一致性证据 | 2026-06-27 | 商品库断链通过 repair 适配工具修复成功 |
+| 135 | [DDD-COMPLETE-100-PRODUCT-06] real-pre 推广链接到订单归因正向闭环 | 2026-06-27 | 复制讲解与转链完美写 mapping，保证幂等和回放 |
+| 136 | [DDD-COMPLETE-100-PRODUCT-07] 商品域 legacy retire 与迁移率 goal 达成 | 2026-06-27 | 重构包结构下线遗留代码，全部单测执行通过 |
 | 102 | [DDD-COMPLETE-100-USER-01] 用户域 legacy/API/Application 现状重算与红线冻结 | 2026-06-27 | 登录按用户名与姓名匹配，同名拦截拦截器运行 |
 | 103 | [DDD-COMPLETE-100-USER-02] Auth/Role/Menu API 与 Application 最终收口 | 2026-06-27 | 内置角色不可删除/改码，自定义角色支持且防止冲突 |
 | 104 | [DDD-COMPLETE-100-USER-03] DataScopeResolver 与 PermissionChecker 统一出口 | 2026-06-27 | 读路径全部归口 Facade 并提供 userIds 给切面 |

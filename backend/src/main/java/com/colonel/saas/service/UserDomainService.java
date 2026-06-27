@@ -1,6 +1,7 @@
 package com.colonel.saas.service;
 
 import com.colonel.saas.common.enums.DataScope;
+import com.colonel.saas.domain.user.application.CurrentUserApplicationService;
 import com.colonel.saas.dto.user.ChangePasswordRequest;
 import com.colonel.saas.dto.user.CheckPermissionRequest;
 import com.colonel.saas.dto.user.CheckPermissionResponse;
