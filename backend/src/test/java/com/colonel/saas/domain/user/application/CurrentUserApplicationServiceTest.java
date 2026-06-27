@@ -30,6 +30,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -81,7 +82,7 @@ class CurrentUserApplicationServiceTest {
         when(currentUserPermissionPolicy.resolveRoleCodes(any(), any())).thenReturn(resolvedRoles);
         when(currentUserPermissionPolicy.resolveDataScopeCode(any(), any(), any())).thenReturn(1);
         when(currentUserPermissionPolicy.scopeName(1)).thenReturn("self");
-        when(currentUserPermissionPolicy.mergePermissions(any(), any())).thenReturn(Map.of());
+        when(currentUserPermissionPolicy.mergePermissions(any(), anyInt())).thenReturn(Map.of());
 
         CurrentUserResponse response = applicationService.currentUser(userId, deptId, DataScope.PERSONAL, null);
 
