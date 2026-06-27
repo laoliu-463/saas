@@ -5,6 +5,7 @@ import com.colonel.saas.domain.event.OutboxEventAppender;
 import com.colonel.saas.domain.product.event.ActivitySyncCompletedEvent;
 import com.colonel.saas.domain.product.event.PartnerSyncCompletedEvent;
 import com.colonel.saas.domain.product.event.ProductDomainEventPublisher;
+import com.colonel.saas.domain.product.event.ProductPromotionLinkCompletedEvent;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -72,6 +73,54 @@ class ProductDomainEventPublisherTest {
     }
 
     @Test
+    void publishPromotionLinkCompleted_shouldEmitSpringEventAndAppendOutboxWithMappingId() {
+        UUID promotionLinkId = UUID.randomUUID();
+        UUID mappingId = UUID.randomUUID();
+        UUID operatorId = UUID.randomUUID();
+
+        publisher.publishPromotionLinkCompleted(
+                "ACT-1",
+                "P-1",
+                promotionLinkId,
+                mappingId,
+                operatorId,
+                "talent-1",
+                "PS-1",
+                "pick-extra",
+                "https://promote",
+                "https://short",
+                "PRODUCT_LIBRARY");
+
+        ArgumentCaptor<Object> springCaptor = ArgumentCaptor.forClass(Object.class);
+        verify(applicationEventPublisher).publishEvent(springCaptor.capture());
+        assertThat(springCaptor.getValue()).isInstanceOf(ProductPromotionLinkCompletedEvent.class);
+        ProductPromotionLinkCompletedEvent event = (ProductPromotionLinkCompletedEvent) springCaptor.getValue();
+        assertThat(event.activityId()).isEqualTo("ACT-1");
+        assertThat(event.productId()).isEqualTo("P-1");
+        assertThat(event.promotionLinkId()).isEqualTo(promotionLinkId);
+        assertThat(event.mappingId()).isEqualTo(mappingId);
+        assertThat(event.pickSource()).isEqualTo("PS-1");
+
+        ArgumentCaptor<Map<String, Object>> payloadCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(outboxEventAppender).appendIfAbsent(
+                eq("ProductPromotionLinkCompleted:" + promotionLinkId),
+                eq(ProductDomainEventTypes.PRODUCT_PROMOTION_LINK_COMPLETED),
+                eq(OutboxEventAppender.AGGREGATE_PRODUCT),
+                eq("P-1"),
+                eq(1),
+                payloadCaptor.capture(),
+                eq(operatorId),
+                eq(null));
+        assertThat(payloadCaptor.getValue())
+                .containsEntry("activityId", "ACT-1")
+                .containsEntry("productId", "P-1")
+                .containsEntry("promotionLinkId", promotionLinkId.toString())
+                .containsEntry("mappingId", mappingId.toString())
+                .containsEntry("pickSource", "PS-1")
+                .containsEntry("scene", "PRODUCT_LIBRARY");
+    }
+
+    @Test
     void publishActivitySyncCompleted_shouldEmitSpringEventWithPayload() {
         UUID operatorId = UUID.fromString("00000000-0000-0000-0000-000000000001");
 
@@ -117,7 +166,7 @@ class ProductDomainEventPublisherTest {
     @Test
     void publishActivitySyncCompleted_shouldSwallowSpringPublisherFailure() {
         doThrow(new IllegalStateException("listener down"))
-                .when(applicationEventPublisher).publishEvent(any());
+                .when(applicationEventPublisher).publishEvent(any(Object.class));
 
         publisher.publishActivitySyncCompleted("10001", "活动", "FULL", 1, 0, 0, "SUCCESS", null);
     }

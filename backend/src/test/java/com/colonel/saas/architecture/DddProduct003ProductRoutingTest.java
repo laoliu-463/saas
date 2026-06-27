@@ -206,6 +206,31 @@ class DddProduct003ProductRoutingTest {
                 .doesNotContain("private record LibraryRepairDecision");
     }
 
+    @Test
+    @DisplayName("商品转链 Port、mapping 和事件边界唯一收口")
+    void productPromotion_shouldUseSingleApplicationPortAndCompletedEvent() throws Exception {
+        String productServiceSource = readSource("com/colonel/saas/service/ProductService.java");
+        String copyPromotionSource = readSource("com/colonel/saas/domain/product/application/CopyPromotionApplicationService.java");
+        String eventPublisherSource = readSource("com/colonel/saas/domain/product/event/ProductDomainEventPublisher.java");
+        Path duplicatePort = Path.of("src/main/java/com/colonel/saas/domain/product/port/DouyinConvertPort.java");
+        if (!Files.exists(duplicatePort)) {
+            duplicatePort = Path.of("backend/src/main/java/com/colonel/saas/domain/product/port/DouyinConvertPort.java");
+        }
+
+        assertThat(Files.exists(duplicatePort)).isFalse();
+        assertThat(productServiceSource)
+                .contains("domain.product.application.port.DouyinConvertPort")
+                .contains("publishPromotionLinkCompleted")
+                .contains("UUID mappingId;")
+                .contains("mappingId = pickSourceMappingService.saveOrUpdate");
+        assertThat(copyPromotionSource)
+                .doesNotContain("domain.product.port.DouyinConvertPort")
+                .doesNotContain("private final DouyinConvertPort");
+        assertThat(eventPublisherSource)
+                .contains("ProductPromotionLinkCompletedEvent")
+                .contains("PRODUCT_PROMOTION_LINK_COMPLETED");
+    }
+
     private String readSource(String relativePath) throws Exception {
         Path sourcePath = Path.of("src/main/java", relativePath);
         if (!Files.exists(sourcePath)) {

@@ -2,7 +2,6 @@ package com.colonel.saas.domain.product.application;
 
 import com.colonel.saas.domain.config.facade.ConfigDomainFacade;
 import com.colonel.saas.domain.product.application.dto.PromotionLinkCopyResult;
-import com.colonel.saas.domain.product.port.DouyinConvertPort;
 import com.colonel.saas.entity.ProductOperationState;
 import com.colonel.saas.entity.ProductSnapshot;
 import com.colonel.saas.service.ProductService;
@@ -25,8 +24,6 @@ class CopyPromotionApplicationServiceTest {
     @Mock
     private ProductService productService;
     @Mock
-    private DouyinConvertPort douyinConvertPort;
-    @Mock
     private ConfigDomainFacade configDomainFacade;
 
     private CopyPromotionApplicationService applicationService;
@@ -35,7 +32,6 @@ class CopyPromotionApplicationServiceTest {
     void setUp() {
         applicationService = new CopyPromotionApplicationService(
                 productService,
-                douyinConvertPort,
                 configDomainFacade);
     }
 

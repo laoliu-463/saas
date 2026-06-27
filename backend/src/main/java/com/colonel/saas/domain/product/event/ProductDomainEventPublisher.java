@@ -401,6 +401,63 @@ public class ProductDomainEventPublisher {
                 adminId);
     }
 
+    /**
+     * 发布商品转链完成事件。
+     *
+     * <p>该事件表示本地推广链接与归因映射事实已经写入，可被订单归因和审计链路消费。</p>
+     */
+    public void publishPromotionLinkCompleted(
+            String activityId,
+            String productId,
+            UUID promotionLinkId,
+            UUID mappingId,
+            UUID operatorId,
+            String talentId,
+            String pickSource,
+            String pickExtra,
+            String promoteLink,
+            String shortLink,
+            String scene) {
+        LocalDateTime occurredAt = LocalDateTime.now();
+        ProductPromotionLinkCompletedEvent event = new ProductPromotionLinkCompletedEvent(
+                UUID.randomUUID(),
+                activityId,
+                productId,
+                promotionLinkId,
+                mappingId,
+                operatorId,
+                talentId,
+                pickSource,
+                pickExtra,
+                promoteLink,
+                shortLink,
+                scene,
+                occurredAt,
+                null);
+        publishSpringEvent(event);
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("activityId", activityId);
+        payload.put("productId", productId);
+        payload.put("promotionLinkId", promotionLinkId == null ? null : promotionLinkId.toString());
+        payload.put("mappingId", mappingId == null ? null : mappingId.toString());
+        payload.put("operatorId", operatorId == null ? null : operatorId.toString());
+        payload.put("talentId", talentId);
+        payload.put("pickSource", pickSource);
+        payload.put("pickExtra", pickExtra);
+        payload.put("promoteLink", promoteLink);
+        payload.put("shortLink", shortLink);
+        payload.put("scene", scene);
+        payload.put("occurredAt", occurredAt.toString());
+        appendOutbox(
+                "ProductPromotionLinkCompleted:" + promotionLinkId,
+                ProductDomainEventTypes.PRODUCT_PROMOTION_LINK_COMPLETED,
+                OutboxEventAppender.AGGREGATE_PRODUCT,
+                productId,
+                payload,
+                operatorId);
+    }
+
     /** 由 Outbox 分发器调用，将 Outbox 载荷转为 Spring 本地事件供既有监听器消费。 */
     public void republishSpringEvent(String eventType, String payloadJson) {
         try {

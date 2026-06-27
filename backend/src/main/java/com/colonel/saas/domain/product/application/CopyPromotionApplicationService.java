@@ -3,7 +3,6 @@ package com.colonel.saas.domain.product.application;
 import com.colonel.saas.domain.config.facade.ConfigDomainFacade;
 import com.colonel.saas.domain.product.application.dto.PromotionLinkCopyResult;
 import com.colonel.saas.domain.product.policy.CopyTextPolicy;
-import com.colonel.saas.domain.product.port.DouyinConvertPort;
 import com.colonel.saas.entity.ProductOperationState;
 import com.colonel.saas.entity.ProductSnapshot;
 import com.colonel.saas.gateway.douyin.DouyinPromotionGateway;
@@ -20,8 +19,8 @@ import java.util.UUID;
  * <p>把 {@code ProductService.generatePromotionLinkCopy} 的业务编排抽到本服务：
  * 状态前置校验 → 转链 Port 调用 → 复制文本渲染 → 返回结果。</p>
  *
- * <p>纯文本渲染由 {@link CopyTextPolicy} 完成；上游 SDK 由 {@link DouyinConvertPort} 抽象。
- * 实际快照/状态读取和转链执行仍由 {@link ProductService} 负责（避免重复实现和循环依赖）。</p>
+ * <p>纯文本渲染由 {@link CopyTextPolicy} 完成；实际快照/状态读取和转链执行仍由
+ * {@link ProductService} 负责（避免重复实现和循环依赖）。</p>
  */
 @Service
 public class CopyPromotionApplicationService {
@@ -29,15 +28,12 @@ public class CopyPromotionApplicationService {
     public static final String FALLBACK_REASON_REAL_PROMOTION_WRITE_DISABLED = "REAL_PROMOTION_WRITE_DISABLED";
 
     private final ProductService productService;
-    private final DouyinConvertPort douyinConvertPort;
     private final ConfigDomainFacade configDomainFacade;
 
     public CopyPromotionApplicationService(
             @Autowired @Lazy ProductService productService,
-            DouyinConvertPort douyinConvertPort,
             ConfigDomainFacade configDomainFacade) {
         this.productService = productService;
-        this.douyinConvertPort = douyinConvertPort;
         this.configDomainFacade = configDomainFacade;
     }
 

@@ -77,7 +77,7 @@ public class PickSourceMappingService {
      * @param promotionLinkId 推广链接 ID（可为 null）
      */
     @Transactional(rollbackFor = Exception.class)
-    public void saveOrUpdate(
+    public UUID saveOrUpdate(
             UUID userId,
             String channelUserName,
             UUID deptId,
@@ -91,7 +91,7 @@ public class PickSourceMappingService {
             String sourceUrl,
             String convertedUrl,
             UUID promotionLinkId) {
-        saveOrUpdate(
+        return saveOrUpdate(
                 userId,
                 channelUserName,
                 deptId,
@@ -115,7 +115,7 @@ public class PickSourceMappingService {
      * @param scene 场景标识，如直播、短视频等（可为 null）
      */
     @Transactional(rollbackFor = Exception.class)
-    public void saveOrUpdate(
+    public UUID saveOrUpdate(
             UUID userId,
             String channelUserName,
             UUID deptId,
@@ -130,7 +130,7 @@ public class PickSourceMappingService {
             String convertedUrl,
             UUID promotionLinkId,
             String scene) {
-        saveOrUpdate(
+        return saveOrUpdate(
                 userId,
                 channelUserName,
                 deptId,
@@ -157,7 +157,7 @@ public class PickSourceMappingService {
      * @param pickExtra 附加的转链扩展信息（可为 null）
      */
     @Transactional(rollbackFor = Exception.class)
-    public void saveOrUpdate(
+    public UUID saveOrUpdate(
             UUID userId,
             String channelUserName,
             UUID deptId,
@@ -173,7 +173,7 @@ public class PickSourceMappingService {
             UUID promotionLinkId,
             String scene,
             String pickExtra) {
-        saveOrUpdate(
+        return saveOrUpdate(
                 userId,
                 channelUserName,
                 deptId,
@@ -202,7 +202,7 @@ public class PickSourceMappingService {
      * @param colonelBuyinId 团长买入 ID（可为 null），存在时标识 NATIVE 来源类型
      */
     @Transactional(rollbackFor = Exception.class)
-    public void saveOrUpdate(
+    public UUID saveOrUpdate(
             UUID userId,
             String channelUserName,
             UUID deptId,
@@ -219,7 +219,7 @@ public class PickSourceMappingService {
             String scene,
             String pickExtra,
             String colonelBuyinId) {
-        saveOrUpdate(
+        return saveOrUpdate(
                 userId,
                 channelUserName,
                 deptId,
@@ -255,7 +255,7 @@ public class PickSourceMappingService {
      * @param sourceType 来源类型，{@code null} 时根据 colonelBuyinId 自动推断
      */
     @Transactional(rollbackFor = Exception.class)
-    public void saveOrUpdate(
+    public UUID saveOrUpdate(
             UUID userId,
             String channelUserName,
             UUID deptId,
@@ -309,7 +309,7 @@ public class PickSourceMappingService {
                 mapping.setStatus(1);
                 pickSourceMappingMapper.insert(mapping);
                 logNativeAmbiguousIfNeeded(mapping);
-                return;
+                return mapping.getId();
             } catch (DuplicateKeyException ex) {
                 log.debug("Concurrent insert detected for pickSource={}, attempting recovery", pickSource);
                 existing = findExistingMapping(
@@ -349,6 +349,7 @@ public class PickSourceMappingService {
         try {
             persistPickSourceMapping(update);
             logNativeAmbiguousIfNeeded(materializeForLogging(existing, update));
+            return existing.getId();
         } catch (DuplicateKeyException ex) {
             PickSourceMapping recovered = recoverNativeConflict(
                     ex,
@@ -374,6 +375,7 @@ public class PickSourceMappingService {
                 throw ex;
             }
             logNativeAmbiguousIfNeeded(recovered);
+            return recovered.getId();
         }
     }
 

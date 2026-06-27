@@ -2812,13 +2812,14 @@ public class ProductService {
             promotionLinkMapper.insert(link);
 
             // 2. 保存 PickSourceMapping (用于订单归因反查)
+            UUID mappingId;
             if (nativeColonelBuyin.resolved()) {
                 log.info("Native mapping resolved for activityId={}, productId={}, colonelBuyinId={}, source={}",
                         snapshot.getActivityId(),
                         snapshot.getProductId(),
                         nativeColonelBuyin.colonelBuyinId(),
                         nativeColonelBuyin.source());
-                pickSourceMappingService.saveOrUpdate(
+                mappingId = pickSourceMappingService.saveOrUpdate(
                         userId,
                         channelUserName,
                         deptId,
@@ -2842,7 +2843,7 @@ public class ProductService {
                         snapshot.getActivityId(),
                         snapshot.getProductId(),
                         nativeColonelBuyin.source());
-                pickSourceMappingService.saveOrUpdate(
+                mappingId = pickSourceMappingService.saveOrUpdate(
                         userId,
                         channelUserName,
                         deptId,
@@ -2895,6 +2896,18 @@ public class ProductService {
                         true,
                         null
                 );
+                productDomainEventPublisher.publishPromotionLinkCompleted(
+                        snapshot.getActivityId(),
+                        snapshot.getProductId(),
+                        link.getId(),
+                        mappingId,
+                        userId,
+                        talentId,
+                        result.pickSource(),
+                        result.pickExtra(),
+                        result.promoteLink(),
+                        result.shortLink(),
+                        finalScene);
                 return result;
             }
             productBizStatusService.changeStatus(
@@ -2912,6 +2925,18 @@ public class ProductService {
                         current.setExternalUniqueId(finalExternalId);
                     }
             );
+            productDomainEventPublisher.publishPromotionLinkCompleted(
+                    snapshot.getActivityId(),
+                    snapshot.getProductId(),
+                    link.getId(),
+                    mappingId,
+                    userId,
+                    talentId,
+                    result.pickSource(),
+                    result.pickExtra(),
+                    result.promoteLink(),
+                    result.shortLink(),
+                    finalScene);
             return result;
         } catch (RuntimeException ex) {
             Map<String, Object> payload = new LinkedHashMap<>();
