@@ -3,6 +3,7 @@ package com.colonel.saas.service;
 import com.colonel.saas.entity.Merchant;
 import com.colonel.saas.entity.ProductOperationState;
 import com.colonel.saas.entity.ProductSnapshot;
+import com.colonel.saas.domain.talent.application.TalentFollowApplicationService;
 import com.colonel.saas.gateway.douyin.DouyinProductGateway;
 import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
 import com.colonel.saas.mapper.MerchantMapper;
@@ -53,7 +54,7 @@ class ProductServiceShopScoreTest {
     @Mock private PickSourceMappingService pickSourceMappingService;
     @Mock private ProductBizStatusService productBizStatusService;
     @Mock private ColonelsettlementActivityMapper colonelActivityMapper;
-    @Mock private TalentFollowService talentFollowService;
+    @Mock private TalentFollowApplicationService talentFollowService;
     @Mock private com.colonel.saas.gateway.douyin.DouyinActivityGateway douyinActivityGateway;
     @Mock private PromotionLinkIdempotencyService promotionLinkIdempotencyService;
     @Mock private com.colonel.saas.domain.config.facade.ConfigDomainFacade configDomainFacade;

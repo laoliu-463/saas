@@ -1,6 +1,7 @@
 package com.colonel.saas.service;
 
 import com.colonel.saas.entity.ColonelsettlementActivity;
+import com.colonel.saas.domain.talent.application.TalentFollowApplicationService;
 import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
 import com.colonel.saas.mapper.ProductOperationStateMapper;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
@@ -35,7 +36,7 @@ class ProductServiceActivityAssignTest {
     @Mock private PickSourceMappingService pickSourceMappingService;
     @Mock private ProductBizStatusService productBizStatusService;
     @Mock private ColonelsettlementActivityMapper colonelActivityMapper;
-    @Mock private TalentFollowService talentFollowService;
+    @Mock private TalentFollowApplicationService talentFollowService;
     @Mock private com.colonel.saas.gateway.douyin.DouyinActivityGateway douyinActivityGateway;
     @Mock private PromotionLinkIdempotencyService promotionLinkIdempotencyService;
     @Mock private com.colonel.saas.domain.config.facade.ConfigDomainFacade configDomainFacade;

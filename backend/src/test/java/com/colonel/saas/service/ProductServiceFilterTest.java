@@ -8,6 +8,7 @@ import com.colonel.saas.entity.ProductSnapshot;
 import com.colonel.saas.gateway.douyin.DouyinActivityGateway;
 import com.colonel.saas.gateway.douyin.DouyinProductGateway;
 import com.colonel.saas.domain.product.application.port.DouyinConvertPort;
+import com.colonel.saas.domain.talent.application.TalentFollowApplicationService;
 import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.mapper.MerchantMapper;
@@ -56,7 +57,7 @@ class ProductServiceFilterTest {
     @Mock private PickSourceMappingService pickSourceMappingService;
     @Mock private ProductBizStatusService productBizStatusService;
     @Mock private ColonelsettlementActivityMapper colonelActivityMapper;
-    @Mock private TalentFollowService talentFollowService;
+    @Mock private TalentFollowApplicationService talentFollowService;
     @Mock private DouyinActivityGateway douyinActivityGateway;
     @Mock private com.colonel.saas.domain.config.facade.ConfigDomainFacade configDomainFacade;
     @Mock private ProductDisplayRuleService productDisplayRuleService;

@@ -35,6 +35,7 @@ import com.colonel.saas.domain.product.application.ActivityProductViewAssembler.
 import com.colonel.saas.domain.product.application.ActivityProductViewAssembler.PromotionSummary;
 import com.colonel.saas.domain.product.application.port.DouyinConvertPort;
 import com.colonel.saas.domain.product.query.ProductSnapshotQueryService;
+import com.colonel.saas.domain.talent.application.TalentFollowApplicationService;
 import com.colonel.saas.gateway.douyin.DouyinPromotionGateway;
 import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
@@ -102,7 +103,7 @@ import java.util.stream.Collectors;
  * @see ProductBizStatusService 商品业务状态计算
  * @see ProductDisplayRuleService 商品展示规则
  * @see PickSourceMappingService 货源映射（pick_source）
- * @see TalentFollowService 达人跟品服务
+ * @see TalentFollowApplicationService 达人跟进应用层
  * @see PromotionLinkIdempotencyService 推广链接幂等
  */
 @Slf4j
@@ -149,8 +150,8 @@ public class ProductService {
     private final ProductBizStatusService productBizStatusService;
     /** 团长结算活动持久层，查询活动元数据（佣金、有效期等） */
     private final ColonelsettlementActivityMapper colonelActivityMapper;
-    /** 达人跟品服务，管理达人对商品的跟品记录 */
-    private final TalentFollowService talentFollowService;
+    /** 达人跟进应用层，管理达人对商品的跟进记录 */
+    private final TalentFollowApplicationService talentFollowApplicationService;
     /** 抖音活动网关，查询活动详情、SKU 列表 */
     private final DouyinActivityGateway douyinActivityGateway;
     /** 推广链接幂等服务，防止重复生成推广链接 */
@@ -201,7 +202,7 @@ public class ProductService {
             PickSourceMappingService pickSourceMappingService,
             ProductBizStatusService productBizStatusService,
             ColonelsettlementActivityMapper colonelActivityMapper,
-            TalentFollowService talentFollowService,
+            TalentFollowApplicationService talentFollowApplicationService,
             DouyinActivityGateway douyinActivityGateway,
             PromotionLinkIdempotencyService promotionLinkIdempotencyService,
             com.colonel.saas.domain.config.facade.ConfigDomainFacade configDomainFacade,
@@ -222,7 +223,7 @@ public class ProductService {
         this.pickSourceMappingService = pickSourceMappingService;
         this.productBizStatusService = productBizStatusService;
         this.colonelActivityMapper = colonelActivityMapper;
-        this.talentFollowService = talentFollowService;
+        this.talentFollowApplicationService = talentFollowApplicationService;
         this.douyinActivityGateway = douyinActivityGateway;
         this.promotionLinkIdempotencyService = promotionLinkIdempotencyService;
         this.configDomainFacade = configDomainFacade;
@@ -2257,7 +2258,7 @@ public class ProductService {
         detail.put("auditSupplement", auditSupplement);
         detail.put("promotionLinks", promotionSummary == null ? List.of() : promotionSummary.linkRecords());
         detail.put("promotionMaterialPack", buildPromotionMaterialPack(snapshot, state, merchant, auditSupplement));
-        detail.put("followRecords", talentFollowService.listByProduct(activityId, productId));
+        detail.put("followRecords", talentFollowApplicationService.listByProduct(activityId, productId));
         return detail;
     }
 
@@ -3432,7 +3433,7 @@ public class ProductService {
         ProductBizStatus beforeStatus = productBizStatusService.readBizStatus(state);
         TalentFollowStatus normalizedStatus = normalizeFollowStatus(followStatus);
 
-        TalentFollowRecord record = talentFollowService.createRecord(
+        TalentFollowRecord record = talentFollowApplicationService.createRecord(
                 activityId,
                 productId,
                 talentId,

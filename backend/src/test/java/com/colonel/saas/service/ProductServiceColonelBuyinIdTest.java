@@ -1,6 +1,7 @@
 package com.colonel.saas.service;
 
 import com.colonel.saas.domain.product.event.ProductDomainEventPublisher;
+import com.colonel.saas.domain.talent.application.TalentFollowApplicationService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -43,7 +44,7 @@ class ProductServiceColonelBuyinIdTest {
     @Mock
     private com.colonel.saas.mapper.ColonelsettlementActivityMapper colonelActivityMapper;
     @Mock
-    private TalentFollowService talentFollowService;
+    private TalentFollowApplicationService talentFollowService;
     @Mock
     private com.colonel.saas.gateway.douyin.DouyinActivityGateway douyinActivityGateway;
     @Mock

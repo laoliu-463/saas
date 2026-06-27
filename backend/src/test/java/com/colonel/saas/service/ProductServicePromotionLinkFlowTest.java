@@ -6,6 +6,7 @@ import com.colonel.saas.domain.product.application.CopyPromotionApplicationServi
 import com.colonel.saas.domain.product.application.port.DouyinConvertPort;
 import com.colonel.saas.domain.product.event.ProductDomainEventPublisher;
 import com.colonel.saas.domain.product.policy.ProductDisplayPolicy;
+import com.colonel.saas.domain.talent.application.TalentFollowApplicationService;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.entity.ProductOperationState;
 import com.colonel.saas.entity.ProductSnapshot;
@@ -55,7 +56,7 @@ class ProductServicePromotionLinkFlowTest {
     @Mock private PickSourceMappingService pickSourceMappingService;
     @Mock private ProductBizStatusService productBizStatusService;
     @Mock private ColonelsettlementActivityMapper colonelActivityMapper;
-    @Mock private TalentFollowService talentFollowService;
+    @Mock private TalentFollowApplicationService talentFollowService;
     @Mock private DouyinActivityGateway douyinActivityGateway;
     @Mock private PromotionLinkIdempotencyService promotionLinkIdempotencyService;
     @Mock private ConfigDomainFacade configDomainFacade;

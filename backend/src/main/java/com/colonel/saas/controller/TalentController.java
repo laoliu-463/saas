@@ -16,6 +16,7 @@ import com.colonel.saas.dto.talent.TalentOperateRequest;
 import com.colonel.saas.dto.talent.TalentPageQuery;
 import com.colonel.saas.dto.talent.TalentUpdateRequest;
 import com.colonel.saas.entity.Talent;
+import com.colonel.saas.domain.talent.application.TalentProfileApplicationService;
 import com.colonel.saas.domain.talent.application.TalentQueryApplicationService;
 import com.colonel.saas.job.TalentWeeklyRefreshJob;
 import com.colonel.saas.service.TalentService;
@@ -74,6 +75,9 @@ public class TalentController extends BaseController {
     /** 达人服务，负责达人增删改查、标签管理、收货地址维护、认领释放与黑名单等操作 */
     private final TalentService talentService;
 
+    /** 达人资料写侧应用层，负责资料、标签、补全和导入命令入口 */
+    private final TalentProfileApplicationService talentProfileApplicationService;
+
     /** 达人查询应用层，Batch3 读路径入口（可开关路由至 TalentDomainFacade） */
     private final TalentQueryApplicationService talentQueryApplicationService;
 
@@ -89,9 +93,11 @@ public class TalentController extends BaseController {
      */
     public TalentController(
             TalentService talentService,
+            TalentProfileApplicationService talentProfileApplicationService,
             TalentQueryApplicationService talentQueryApplicationService,
             TalentWeeklyRefreshJob talentWeeklyRefreshJob) {
         this.talentService = talentService;
+        this.talentProfileApplicationService = talentProfileApplicationService;
         this.talentQueryApplicationService = talentQueryApplicationService;
         this.talentWeeklyRefreshJob = talentWeeklyRefreshJob;
     }
@@ -204,7 +210,7 @@ public class TalentController extends BaseController {
                     content = @Content(examples = @ExampleObject(value = "{\"nickname\":\"达人A\",\"douyinUid\":\"test_talent_001\"}"))
             )
             @Valid @RequestBody TalentCreateRequest request) {
-        return ok(TalentVO.from(talentService.create(request.toTalent())));
+        return ok(TalentVO.from(talentProfileApplicationService.create(request.toTalent())));
     }
 
     /**
@@ -245,7 +251,7 @@ public class TalentController extends BaseController {
         // 第一步：校验操作权限
         talentQueryApplicationService.assertCanOperate(id, userId, deptId, roleCodes);
         // 第二步：更新达人资料
-        return ok(TalentVO.from(talentService.update(id, request.toUpdateTalent())));
+        return ok(TalentVO.from(talentProfileApplicationService.update(id, request.toUpdateTalent())));
     }
 
     /**
@@ -282,7 +288,7 @@ public class TalentController extends BaseController {
         talentQueryApplicationService.assertCanOperate(id, userId, deptId, roleCodes);
         // 第二步：提取标签列表并更新
         List<String> tags = body == null ? List.of() : body.get("tags");
-        return ok(talentService.updateTags(id, tags, userId));
+        return ok(talentProfileApplicationService.updateTags(id, tags, userId));
     }
 
     /**
@@ -398,7 +404,7 @@ public class TalentController extends BaseController {
         // 第一步：提取达人账号列表
         List<String> accounts = request == null ? List.of() : request.accounts();
         // 第二步：执行批量导入
-        return ok(talentService.batchImport(accounts, userId));
+        return ok(talentProfileApplicationService.batchImport(accounts, userId));
     }
 
     /**
@@ -417,7 +423,7 @@ public class TalentController extends BaseController {
     @Operation(summary = "获取达人预设标签库", description = "V2 预设标签，供渠道从列表中选择（最多 3 个）。")
     @GetMapping("/preset-tags")
     public ApiResult<List<String>> presetTags() {
-        return ok(talentService.listPresetTags());
+        return ok(talentProfileApplicationService.listPresetTags());
     }
 
     /**
@@ -451,7 +457,7 @@ public class TalentController extends BaseController {
         // 第一步：校验操作权限
         talentQueryApplicationService.assertCanOperate(id, userId, deptId, roleCodes);
         // 第二步：删除达人
-        talentService.delete(id);
+        talentProfileApplicationService.delete(id);
         return ok();
     }
 
@@ -616,7 +622,7 @@ public class TalentController extends BaseController {
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "roleCodes", required = false) List<String> roleCodes) {
         talentQueryApplicationService.assertCanOperate(talentId, userId, deptId, roleCodes);
-        return ok(TalentVO.from(talentService.refresh(talentId)));
+        return ok(TalentVO.from(talentProfileApplicationService.refresh(talentId)));
     }
 
     @Operation(summary = "手动触发每周刷新", description = "手动执行每周批量刷新任务，用于校验达人定时刷新链路。")
@@ -641,7 +647,7 @@ public class TalentController extends BaseController {
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "roleCodes", required = false) List<String> roleCodes) {
         talentQueryApplicationService.assertCanOperate(talentId, userId, deptId, roleCodes);
-        return ok(TalentVO.from(talentService.manualFill(talentId, request.toManualFillTalent())));
+        return ok(TalentVO.from(talentProfileApplicationService.manualFill(talentId, request.toManualFillTalent())));
     }
 
     @Operation(summary = "获取最新补全任务", description = "查询指定达人最近一次补全任务记录，用于排查补全链路。")

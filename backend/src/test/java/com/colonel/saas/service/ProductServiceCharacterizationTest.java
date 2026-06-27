@@ -6,6 +6,7 @@ import com.colonel.saas.domain.config.facade.ConfigDomainFacade;
 import com.colonel.saas.domain.product.application.CopyPromotionApplicationService;
 import com.colonel.saas.domain.product.event.ProductDomainEventPublisher;
 import com.colonel.saas.domain.product.policy.ProductDisplayPolicy;
+import com.colonel.saas.domain.talent.application.TalentFollowApplicationService;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.entity.ProductSnapshot;
 import com.colonel.saas.gateway.douyin.DouyinActivityGateway;
@@ -57,7 +58,7 @@ class ProductServiceCharacterizationTest {
     @Mock(strictness = org.mockito.Mock.Strictness.LENIENT) MerchantMapper merchantMapper;
     @Mock(strictness = org.mockito.Mock.Strictness.LENIENT) ProductBizStatusService productBizStatusService;
     @Mock(strictness = org.mockito.Mock.Strictness.LENIENT) ColonelsettlementActivityMapper colonelsettlementActivityMapper;
-    @Mock(strictness = org.mockito.Mock.Strictness.LENIENT) com.colonel.saas.service.TalentFollowService talentFollowService;
+    @Mock(strictness = org.mockito.Mock.Strictness.LENIENT) TalentFollowApplicationService talentFollowService;
     @Mock(strictness = org.mockito.Mock.Strictness.LENIENT) DouyinActivityGateway douyinActivityGateway;
     @Mock(strictness = org.mockito.Mock.Strictness.LENIENT) PromotionLinkIdempotencyService promotionLinkIdempotencyService;
     @Mock(strictness = org.mockito.Mock.Strictness.LENIENT) ConfigDomainFacade configDomainFacade;
