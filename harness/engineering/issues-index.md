@@ -1,7 +1,7 @@
 # GitHub Issues Index (Mirror)
 
 > 本文件是 GitHub Issues 的本地镜像，用于 Matt Pocock engineering skills 与 harness 任务路由。
-> 最后更新：2026-06-26（#29 关闭状态与补充治理证据同步后）
+> 最后更新：2026-06-27（#30 DDD100 基线重算完成后）
 
 ## 同步规则
 
@@ -14,7 +14,6 @@
 | # | Title | Labels | Link |
 | --- | --- | --- | --- |
 | 3 | PRD: DDD 渐进式迁移到 100%（DDD-MIGRATION-100） | ready-for-agent | https://github.com/laoliu-463/saas/issues/3 |
-| 30 | [DDD100-BASELINE] 当前 100% 迁移率与风险基线重算 | ready-for-agent | https://github.com/laoliu-463/saas/issues/30 |
 | 31 | [DDD100-GUARD] 架构护栏与跨域依赖扫描收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/31 |
 | 32 | [DDD100-METRIC] DDD 迁移率脚本与 evidence 指标固化 | ready-for-agent | https://github.com/laoliu-463/saas/issues/32 |
 | 33 | [DDD100-USER-DATASCOPE] 数据范围剩余消费点收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/33 |
@@ -79,6 +78,7 @@
 
 | # | Title | Closed Date | Evidence |
 | --- | --- | --- | --- |
+| 30 | [DDD100-BASELINE] 当前 100% 迁移率与风险基线重算 | 2026-06-27 | `harness/reports/ddd100-baseline-20260627.md`, business proxy 26.3% |
 | 24 | [Sprint-4M-W3] DDD-USER-MIGRATION-015 创建 AuthApplication | 2026-06-26 | `AuthServiceTest`, `AuthApplicationTest` |
 | 25 | [P1-URGENT] DDD-DATASCOPE-001 加 Feature Flag + 恢复 OrderController 旧 switch | 2026-06-26 | `8e299035`, DataScope/Order targeted tests |
 | 26 | [P1-URGENT] [PRODUCT-FIX-001] /product/manage/products 无 query 时 fallback 到 assigned[0] 导致数据归属错位 | 2026-06-25 | `product/manage/products` fallback fix |
@@ -89,9 +89,9 @@
 ## 当前判断
 
 - #3 是 DDD 迁移总 PRD，不能因单个切片完成而关闭。
-- #30-#89 是按 DDD-MIGRATION-100 的 100% 目标发布的 leaf issues。
+- #31-#89 是按 DDD-MIGRATION-100 的 100% 目标发布的剩余 open leaf issues；#30 已完成基线重算。
 - #29 已在 GitHub 关闭，本文件不再把它列为 open。
-- 本轮补充完成商品链 real-pre 红灯修复与订单/业绩运维入口边界迁移；完整 real-pre P0 仍因真实订单/寄样样本缺口为 `PENDING`，不得写成 P0 PASS。
+- #30 给出的 2026-06-27 口径是 raw `domain/` share 20.1%、业务迁移代理 26.3%；它是推进基线，不是 100% 完成证明。
 
 ## 常用命令
 

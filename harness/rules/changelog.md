@@ -7,6 +7,11 @@
 
 ## 最近版本摘要
 
+### v0.7.4 — 2026-06-27
+- DDD100 #30 基线重算：生产 Java raw `domain/` share 20.1%，业务迁移代理 26.3%。
+- 明确该指标是路径/命名代理，不是最终 DDD 完成证明；#31/#32 继续做架构护栏和指标脚本固化。
+- 证据：`harness/reports/ddd100-baseline-20260627.md`、`harness/reports/evidence-20260627-ddd100-baseline.md`。
+
 ### v0.7.3 — 2026-06-22
 - 新增 Jenkins real-pre CD 规范：固定 job、源码分支、Preflight、后端测试、前端构建、镜像标签、Compose 校验、real-pre 部署、健康检查、回滚和 evidence report。
 - 明确生产环境不由 `saas-real-pre-cd` 自动触碰，后续生产接入必须另建审批型 job。
