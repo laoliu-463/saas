@@ -1,7 +1,7 @@
 # GitHub Issues Index (Mirror)
 
 > 本文件是 GitHub Issues 的本地镜像，用于 Matt Pocock engineering skills 与 harness 任务路由。
-> 最后更新：2026-06-27（#131 商品 backfill Application 边界完成）。
+> 最后更新：2026-06-27（#132 商品展示/状态/审核/日志 Policy 收口完成）。
 
 ## 同步规则
 
@@ -31,7 +31,6 @@
 | 123 | [DDD-COMPLETE-100-PERF-05] 历史 performance_records 缺口 backfill 与幂等 | ready-for-agent | https://github.com/laoliu-463/saas/issues/123 |
 | 124 | [DDD-COMPLETE-100-PERF-06] 业绩域 legacy retire 与 real-pre API/SQL/page 对账 | ready-for-agent | https://github.com/laoliu-463/saas/issues/124 |
 | 129 | [DDD-COMPLETE-100-ANALYTICS-05] 分析模块 legacy retire 与迁移率目标达成 | ready-for-agent | https://github.com/laoliu-463/saas/issues/129 |
-| 132 | [DDD-COMPLETE-100-PRODUCT-03] 商品展示、状态、审核、操作日志 Policy 完整收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/132 |
 | 133 | [DDD-COMPLETE-100-PRODUCT-04] 商品快照、活动商品和 query/read model 完整收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/133 |
 | 134 | [DDD-COMPLETE-100-PRODUCT-05] 活动商品状态断链 repair 与一致性证据 | ready-for-agent | https://github.com/laoliu-463/saas/issues/134 |
 | 135 | [DDD-COMPLETE-100-PRODUCT-06] real-pre 推广链接到订单归因正向闭环 | ready-for-agent | https://github.com/laoliu-463/saas/issues/135 |
@@ -91,6 +90,7 @@
 | 144 | [DDD-COMPLETE-100-SAMPLE-02] 寄样状态机、动作权限和数据范围最终收口 | 2026-06-27 | 状态机重构完成，消除状态魔法数 |
 | 145 | [DDD-COMPLETE-100-SAMPLE-03] 订单已同步交作业事件幂等与异常分支 | 2026-06-27 | 自动交作业状态依赖天然幂等，增加诊断排障日志 |
 | 146 | [DDD-COMPLETE-100-SAMPLE-04] 寄样导出、筛选、看板 Query 边界收口 | 2026-06-27 | 看板、导出和筛选完全遵循 DataScope 数据范围 |
+| 132 | [DDD-COMPLETE-100-PRODUCT-03] 商品展示、状态、审核、操作日志 Policy 完整收口 | 2026-06-27 | `harness/reports/2026-06-27/ddd-complete-product-132/evidence-20260627-211900-product-operation-policy.md` |
 | 131 | [DDD-COMPLETE-100-PRODUCT-02] 商品同步/backfill 异步 job Application 最终收口 | 2026-06-27 | `harness/reports/2026-06-27/ddd-complete-product-131/evidence-20260627-204000-product-backfill-application.md` |
 | 130 | [DDD-COMPLETE-100-PRODUCT-01] ProductService 大类拆解 inventory 与切片计划 | 2026-06-27 | `harness/reports/2026-06-27/ddd-complete-product-130/evidence-20260627-200829-product-service-inventory.md` |
 | 3 | PRD: DDD 渐进式迁移到 100%（DDD-MIGRATION-100） | 2026-06-27 | 旧 DDD100 批次关闭；不等于完整项目 DDD 100%。 |
@@ -98,11 +98,11 @@
 
 ## 当前判断
 
-- GitHub 当前 open issue 为 #90-#164 去除 #130/#131，共 73 个，全部属于 `DDD-COMPLETE-100` 新批次。
+- GitHub 当前 open issue 为 #90-#164 去除 #130/#131/#132，共 72 个，全部属于 `DDD-COMPLETE-100` 新批次。
 - 新目标是完整项目、全领域、全链路 DDD 重构优化到 100%，不是单个领域，也不是旧 DDD100 issue 全关闭。
-- 当前可重复迁移率指标：raw `domain/` share 20.9%，business migration proxy 27.5%。
-- 当前最低 proxy 领域：analytics 10.5%、talent 16.6%、performance 20.7%、config 24.5%、sample 25.0%、product 25.2%、order 29.8%。
-- 商品域 #130 inventory 与 #131 backfill Application 边界已完成；#132-#136 仍 open，真实订单 `pick_source` 正向回流样本仍 PENDING。
+- 当前可重复迁移率指标：raw `domain/` share 21.5%，business migration proxy 28.3%。
+- 当前最低 proxy 领域：analytics 10.5%、talent 16.6%、performance 20.7%、config 24.5%、sample 25.0%、product 27.1%、order 27.6%。
+- 商品域 #130 inventory、#131 backfill Application、#132 展示/状态/审核/日志 Policy 边界已完成；#133-#136 仍 open，真实订单 `pick_source` 正向回流样本仍 PENDING。
 - 每个 issue 必须按证据链推进：复现/盘点 -> 最小验证 -> 依赖链和边界 -> 修改 -> 构建/重启/健康 -> 业务验证 -> evidence -> retro -> commit/push。
 
 ## 常用命令

@@ -131,12 +131,12 @@
 - 标记：P0。
 
 ## 商品域
-- 最新边界变化：#131 已将 `ProductSyncAdminController` 的同步 / 异步 backfill / job status 入口统一改为依赖商品域 `ProductActivityBackfillApplicationService`，API 层只暴露 `BackfillCommand/BackfillResult/BackfillAsyncResponse/BackfillJobStatus` 应用 DTO；legacy `ProductActivityBackfillService` 与 dry-run probe DTO 仅在 Application 内部映射。本轮未改 URL、权限注解、DB schema、默认 real-pre 配置、真实写库 confirm 规则或 backfill 执行语义。
-- 最新验证：#131 clean worktree targeted tests 15/15 PASS；当前主工作区 targeted tests 15/15 PASS；clean worktree `mvn -f backend/pom.xml -DskipTests package` PASS；主工作区后端 jar package PASS（跳过测试编译与 JaCoCo 以避开当时并行 dirty）；real-pre backend 容器已重建并健康；real-pre P0 preflight PASS；异步 dry-run API 成功提交并轮询到 job，bounded 1 页 dry-run 结果为 PARTIAL 且 inserted/updated=0。
-- 最新报告路径：#131 `harness/reports/2026-06-27/ddd-complete-product-131/evidence-20260627-204000-product-backfill-application.md`；#130 `harness/reports/2026-06-27/ddd-complete-product-130/evidence-20260627-200829-product-service-inventory.md`；#67 `harness/reports/2026-06-21/ddd-product-e2e-067/evidence-20260627-155300-ddd100-product-real-pre-e2e.md`。
-- 已完成能力：商品库、商品快照基础 query 层、backfill job metadata 组件、backfill 管理 API Application 边界、商品库 repair 决策 policy、活动商品同步入口收口、人工审核状态/日志 policy、本地发布展示策略下沉、活动商品展示策略部分下沉、转链 Port 唯一收口、`pick_source_mapping` mapping id 证据、转链完成事件证据；历史 P-FIX/P-DIAG 明细见 Git 历史和归档报告。
-- 当前风险：真实订单 `pick_source` 正向归因闭环仍 PENDING，需要等待一笔由系统推广链接产生并回流的真实订单；当前工作区仍存在并行 agent 的订单域 / 用户域 dirty，标准 `agent-do` 会误暂存外部文件，本轮改用拆解验证并显式记录；未执行远端 real-pre 部署。
-- 待优化能力：#132 展示/状态/审核/日志 Policy 收口；#133 快照/活动商品 query/read model 收口；#134 状态断链 repair；#135 推广链接到订单归因正向闭环；#136 legacy retire 与迁移率目标。
+- 最新边界变化：#132 已新增 `ProductOperationDecisionPolicy`，将入库、活动绑定、分配招商、分配审核人和推进判断的 operation type、payload、remark、decision level 规范化从 `ProductService` 收口到商品域 Policy；`ProductService` 只编排状态读取/持久化/日志插入，架构 guard 禁止关键日志语义字符串回流 service。
+- 最新验证：#132 backend targeted tests 35/35 PASS；`CurrentUserApplicationServiceTest` blocker 4/4 PASS；backend package PASS；frontend product display tests 53/53 PASS；frontend build PASS；从干净 worktree 2e93a069 构建 backend/frontend real-pre 镜像并用 `--no-build` 重启，Docker health PASS，HTTP health PASS，real-pre P0 preflight PASS。
+- 最新报告路径：#132 `harness/reports/2026-06-27/ddd-complete-product-132/evidence-20260627-211900-product-operation-policy.md`；#131 `harness/reports/2026-06-27/ddd-complete-product-131/evidence-20260627-204000-product-backfill-application.md`；#130 `harness/reports/2026-06-27/ddd-complete-product-130/evidence-20260627-200829-product-service-inventory.md`。
+- 已完成能力：商品库、商品快照基础 query 层、backfill job metadata 组件、backfill 管理 API Application 边界、商品库 repair 决策 policy、活动商品同步入口收口、人工审核状态/日志 policy、操作日志与推进判断 policy、本地发布展示策略下沉、活动商品展示策略部分下沉、转链 Port 唯一收口、`pick_source_mapping` mapping id 证据、转链完成事件证据。
+- 当前风险：真实订单 `pick_source` 正向归因闭环仍 PENDING，需要等待一笔由系统推广链接产生并回流的真实订单；本轮执行期间存在并行 agent dirty，标准 `agent-do` 可能读取外部文件，因此改用干净 worktree 构建；未执行远端 real-pre 部署。
+- 待优化能力：#133 快照/活动商品 query/read model 收口；#134 状态断链 repair；#135 推广链接到订单归因正向闭环；#136 legacy retire 与迁移率目标。
 - 标记：P0。
 
 ## 达人域
