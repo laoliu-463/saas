@@ -6,6 +6,7 @@ import {
   formatLibraryEntrySuccessMessage,
   formatTotalSalesWan,
   getLibraryDisplayTags,
+  hasDoubleCommission,
   isPromotionExpired,
   isPromotingAllianceStatus,
   mergeLibraryDisplayFields,
@@ -88,6 +89,13 @@ describe('product-library-display', () => {
       statusText: '推广中',
       promotionEndTime: '2020-01-01'
     })).toBe(false)
+  })
+
+  it('detects double commission from upstream cos type before manual tags', () => {
+    expect(hasDoubleCommission({ cosType: 1 })).toBe(true)
+    expect(hasDoubleCommission({ cos_type: '1' })).toBe(true)
+    expect(hasDoubleCommission({ cosType: 0 })).toBe(false)
+    expect(hasDoubleCommission({ doubleCommission: true })).toBe(true)
   })
 
   it('mergeLibraryDisplayFields stops inflating libraryVisible from approved status', () => {

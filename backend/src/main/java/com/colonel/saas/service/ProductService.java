@@ -729,7 +729,7 @@ public class ProductService {
         if (StringUtils.hasText(filter.handCard()) && !matchesHandCardFilter(state, filter.handCard())) {
             return false;
         }
-        if (StringUtils.hasText(filter.doubleCommission()) && !matchesSupplementBooleanOrProductTag(state, List.of("doubleCommission"), "双佣金", filter.doubleCommission())) {
+        if (StringUtils.hasText(filter.doubleCommission()) && !matchesDoubleCommissionFilter(snapshot, state, filter.doubleCommission())) {
             return false;
         }
         if (StringUtils.hasText(filter.notInLibrary()) && !matchesNotInLibraryFilter(state, filter.notInLibrary())) {
@@ -932,6 +932,16 @@ public class ProductService {
         boolean enabled = keys.stream().anyMatch(key -> Boolean.TRUE.equals(ProductAuditSupplementPayload.readBoolean(supplement, key)))
                 || readProductTags(state).contains(tag);
         return "1".equals(expected) ? enabled : !enabled;
+    }
+
+    private boolean matchesDoubleCommissionFilter(ProductSnapshot snapshot, ProductOperationState state, String expected) {
+        boolean enabled = isUpstreamDoubleCommission(snapshot)
+                || matchesSupplementBooleanOrProductTag(state, List.of("doubleCommission"), "双佣金", "1");
+        return "1".equals(expected) ? enabled : !enabled;
+    }
+
+    private boolean isUpstreamDoubleCommission(ProductSnapshot snapshot) {
+        return snapshot != null && Integer.valueOf(1).equals(snapshot.getCosType());
     }
 
     private boolean matchesProductTagCheckbox(ProductOperationState state, String tag, String expected) {
@@ -3986,6 +3996,29 @@ public class ProductService {
             }
         }
         return payload;
+    }
+
+    private void insertOperationLog(
+            String activityId,
+            String productId,
+            String beforeStatus,
+            String afterStatus,
+            UUID operatorId,
+            UUID operatorDeptId,
+            ProductOperationDecisionPolicy.OperationDecision decision) {
+        ProductOperationLog log = new ProductOperationLog();
+        log.setId(UUID.randomUUID());
+        log.setActivityId(activityId);
+        log.setProductId(productId);
+        log.setOperationType(decision.operationType());
+        log.setBeforeStatus(beforeStatus);
+        log.setAfterStatus(afterStatus);
+        log.setSuccess(true);
+        log.setOperatorId(operatorId);
+        log.setOperatorDeptId(operatorDeptId);
+        log.setOperationPayload(String.valueOf(decision.payload()));
+        log.setOperationRemark(decision.operationRemark());
+        operationLogMapper.insert(log);
     }
 
     private Map<String, OrderSummary> buildOrderSummaryMap(String activityId, Set<String> productIds) {

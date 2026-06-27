@@ -98,6 +98,18 @@ export function isPromotingAllianceStatus(item: any) {
   return text.includes('推广中')
 }
 
+export function hasDoubleCommission(item: any) {
+  const cosType = item?.cosType ?? item?.cos_type
+  if (cosType !== undefined && cosType !== null && cosType !== '') {
+    return Number(cosType) === 1
+  }
+  const cosTypeText = normalizeText(item?.cosTypeText ?? item?.cos_type_text)
+  return cosTypeText.includes('双佣金')
+    || Boolean(item?.doubleCommission || item?.dualCommission)
+    || item?.serviceFeeMode === 'DOUBLE'
+    || item?.promotionMode === 'DOUBLE'
+}
+
 /** 入库后能否进入共享商品库列表（不含同品去重等运行时竞争） */
 export function canDisplayInLibraryAfterEntry(item: any, now = new Date()) {
   if (Boolean(item?.manualDisabled)) return false

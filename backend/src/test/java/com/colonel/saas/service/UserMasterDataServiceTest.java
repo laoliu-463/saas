@@ -18,9 +18,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
-import java.util.HashMap;
+import java.util.Collection;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -34,8 +33,6 @@ import static org.mockito.Mockito.when;
  *
  * <p>DDD-COMPLETE-100-USER-06：测试对象从 UserMasterDataService 迁移到
  * UserMasterDataApplicationService（业务逻辑真实所在）。</p>
- *
- * <p>使用 LENIENT strictness 避免不必要的 stubbing 检查。</p>
  */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
@@ -59,11 +56,6 @@ class UserMasterDataServiceTest {
                 sysRoleMapper,
                 sysUserRoleMapper,
                 new CurrentUserPermissionPolicy());
-        // 全局默认 stub: 任意 role code → empty, 任意 role id → empty, 任意 user id → empty
-        when(sysRoleMapper.findByRoleCode(anyString())).thenReturn(Optional.empty());
-        when(sysUserRoleMapper.findByRoleId(any(UUID.class))).thenReturn(List.of());
-        when(sysUserMapper.selectBatchIds(any(List.class))).thenReturn(List.of());
-        when(sysUserMapper.selectList(any())).thenReturn(List.of());
     }
 
     // ========================== 正常返回 ==========================
@@ -72,11 +64,12 @@ class UserMasterDataServiceTest {
     void listChannels_shouldReturnOnlyActiveChannelUsersMatchingKeyword() {
         SysRole channelRole = role(RoleCodes.CHANNEL_STAFF);
         SysUser channelUser = user("channel_staff", "渠道专员", deptId, 1);
+        // 每个测试明确 stub 全部依赖
         when(sysRoleMapper.findByRoleCode(RoleCodes.CHANNEL_LEADER)).thenReturn(Optional.empty());
         when(sysRoleMapper.findByRoleCode(RoleCodes.CHANNEL_STAFF)).thenReturn(Optional.of(channelRole));
         when(sysUserRoleMapper.findByRoleId(channelRole.getId())).thenReturn(List.of(
                 userRole(channelUser.getId(), channelRole.getId())));
-        when(sysUserMapper.selectBatchIds(any(List.class))).thenReturn(List.of(channelUser));
+        when(sysUserMapper.selectBatchIds(any(Collection.class))).thenReturn(List.of(channelUser));
 
         List<UserOptionResponse> result = applicationService.listChannels(null, null);
 
@@ -93,7 +86,7 @@ class UserMasterDataServiceTest {
         when(sysRoleMapper.findByRoleCode(RoleCodes.BIZ_STAFF)).thenReturn(Optional.of(staffRole));
         when(sysUserRoleMapper.findByRoleId(leaderRole.getId())).thenReturn(List.of(userRole(leader.getId(), leaderRole.getId())));
         when(sysUserRoleMapper.findByRoleId(staffRole.getId())).thenReturn(List.of(userRole(staff.getId(), staffRole.getId())));
-        when(sysUserMapper.selectBatchIds(any(List.class))).thenReturn(List.of(leader, staff));
+        when(sysUserMapper.selectBatchIds(any(Collection.class))).thenReturn(List.of(leader, staff));
 
         List<UserOptionResponse> result = applicationService.listRecruiters(null, null);
 
@@ -110,7 +103,7 @@ class UserMasterDataServiceTest {
         when(sysUserRoleMapper.findByRoleId(channelRole.getId())).thenReturn(List.of(
                 userRole(u1.getId(), channelRole.getId()),
                 userRole(u2.getId(), channelRole.getId())));
-        when(sysUserMapper.selectBatchIds(any(List.class))).thenReturn(List.of(u1, u2));
+        when(sysUserMapper.selectBatchIds(any(Collection.class))).thenReturn(List.of(u1, u2));
 
         List<UserOptionResponse> result = applicationService.listChannels(null, 1);
 
@@ -126,7 +119,7 @@ class UserMasterDataServiceTest {
         when(sysUserRoleMapper.findByRoleId(channelRole.getId())).thenReturn(List.of(
                 userRole(active.getId(), channelRole.getId()),
                 userRole(deleted.getId(), channelRole.getId())));
-        when(sysUserMapper.selectBatchIds(any(List.class))).thenReturn(List.of(active, deleted));
+        when(sysUserMapper.selectBatchIds(any(Collection.class))).thenReturn(List.of(active, deleted));
 
         List<UserOptionResponse> result = applicationService.listChannels(null, null);
 
@@ -142,7 +135,7 @@ class UserMasterDataServiceTest {
         when(sysUserRoleMapper.findByRoleId(channelRole.getId())).thenReturn(List.of(
                 userRole(matchUser.getId(), channelRole.getId()),
                 userRole(otherUser.getId(), channelRole.getId())));
-        when(sysUserMapper.selectBatchIds(any(List.class))).thenReturn(List.of(matchUser, otherUser));
+        when(sysUserMapper.selectBatchIds(any(Collection.class))).thenReturn(List.of(matchUser, otherUser));
 
         List<UserOptionResponse> result = applicationService.listChannels("match", null);
 
@@ -168,7 +161,7 @@ class UserMasterDataServiceTest {
         when(sysRoleMapper.findByRoleCode(RoleCodes.CHANNEL_STAFF)).thenReturn(Optional.of(channelRole));
         when(sysUserRoleMapper.findByRoleId(channelRole.getId())).thenReturn(List.of(
                 userRole(u.getId(), channelRole.getId())));
-        when(sysUserMapper.selectBatchIds(any(List.class))).thenReturn(List.of(u));
+        when(sysUserMapper.selectBatchIds(any(Collection.class))).thenReturn(List.of(u));
 
         List<UserOptionResponse> result = applicationService.listChannels(null, null);
 
@@ -214,7 +207,7 @@ class UserMasterDataServiceTest {
         when(sysRoleMapper.findByRoleCode(RoleCodes.CHANNEL_STAFF)).thenReturn(Optional.of(channelRole));
         when(sysUserRoleMapper.findByRoleId(channelRole.getId())).thenReturn(List.of(
                 userRole(u.getId(), channelRole.getId())));
-        when(sysUserMapper.selectBatchIds(any(List.class))).thenReturn(List.of(u));
+        when(sysUserMapper.selectBatchIds(any(Collection.class))).thenReturn(List.of(u));
 
         List<UserOptionResponse> result = applicationService.listChannels(null, null);
 

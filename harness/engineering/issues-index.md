@@ -36,10 +36,6 @@
 | 118 | [DDD-COMPLETE-100-ORDER-06] 订单域 legacy service 退休与迁移率目标达成 | ready-for-agent | https://github.com/laoliu-463/saas/issues/118 |
 | 123 | [DDD-COMPLETE-100-PERF-05] 历史 performance_records 缺口 backfill 与幂等 | ready-for-agent | https://github.com/laoliu-463/saas/issues/123 |
 | 124 | [DDD-COMPLETE-100-PERF-06] 业绩域 legacy retire 与 real-pre API/SQL/page 对账 | ready-for-agent | https://github.com/laoliu-463/saas/issues/124 |
-| 125 | [DDD-COMPLETE-100-ANALYTICS-01] Dashboard 数据源与只读 Query 层完整收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/125 |
-| 126 | [DDD-COMPLETE-100-ANALYTICS-02] DataApplication 查询、导出和订单明细读模型收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/126 |
-| 127 | [DDD-COMPLETE-100-ANALYTICS-03] Dashboard 双轨 summary 与历史结算污染修复 | ready-for-agent | https://github.com/laoliu-463/saas/issues/127 |
-| 128 | [DDD-COMPLETE-100-ANALYTICS-04] 分析模块 admin/group/self E2E 与导出证据 | ready-for-agent | https://github.com/laoliu-463/saas/issues/128 |
 | 129 | [DDD-COMPLETE-100-ANALYTICS-05] 分析模块 legacy retire 与迁移率目标达成 | ready-for-agent | https://github.com/laoliu-463/saas/issues/129 |
 | 132 | [DDD-COMPLETE-100-PRODUCT-03] 商品展示、状态、审核、操作日志 Policy 完整收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/132 |
 | 133 | [DDD-COMPLETE-100-PRODUCT-04] 商品快照、活动商品和 query/read model 完整收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/133 |
@@ -79,6 +75,10 @@
 | 114 | [DDD-COMPLETE-100-ORDER-02] 订单查询 Query 层与数据范围最终收口 | 2026-06-27 | 门面瘦身，删除 380 行死代码 |
 | 115 | [DDD-COMPLETE-100-ORDER-03] 订单金额、退款事实、pick_source Policy 完整收口 | 2026-06-27 | 废除灰度分支，全量切换 Policy，补齐 expense |
 | 116 | [DDD-COMPLETE-100-ORDER-04] 订单事件 after-commit、Outbox 和幂等证据 | 2026-06-27 | 经过 afterCommit 事务和幂等审查 |
+| 125 | [DDD-COMPLETE-100-ANALYTICS-01] Dashboard 数据源与只读 Query 层完整收口 | 2026-06-27 | 读写分层完毕，优先从汇总表查询数据，支持影子对账 |
+| 126 | [DDD-COMPLETE-100-ANALYTICS-02] DataApplication 查询、导出和订单明细读模型收口 | 2026-06-27 | 支持多维过滤与下钻穿透，API对账与报表一致 |
+| 127 | [DDD-COMPLETE-100-ANALYTICS-03] Dashboard 双轨 summary 与历史结算污染修复 | 2026-06-27 | 展示两轨服务费及毛利收益字段，严格维持不变量 |
+| 128 | [DDD-COMPLETE-100-ANALYTICS-04] 分析模块 admin/group/self E2E 与导出证据 | 2026-06-27 | 满足不同角色下的 self/group/all 数据范围行级过滤 |
 | 119 | [DDD-COMPLETE-100-PERF-01] performance_records 生成边界完整收口 | 2026-06-27 | 写入与upsert边界梳理完毕，完全依赖订单事件驱动 |
 | 120 | [DDD-COMPLETE-100-PERF-02] 最终归属、提成和佣金策略模型化 | 2026-06-27 | 双轨公式模型化审计，结算轨不扣技术服务费，提成基数符合2026-06-06规则 |
 | 121 | [DDD-COMPLETE-100-PERF-03] 退款冲正、双轨金额和审计证据 | 2026-06-27 | countsTowardPerformance 冲正判定机制审查符合预期 |

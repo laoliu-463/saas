@@ -169,9 +169,21 @@ class DddProduct003ProductRoutingTest {
 
         assertThat(source)
                 .contains("ProductAuditDecisionPolicy")
+                .contains("ProductOperationDecisionPolicy")
                 .contains("productAuditDecisionPolicy.resolve")
+                .contains("productOperationDecisionPolicy.libraryEntry")
+                .contains("productOperationDecisionPolicy.bindActivity")
+                .contains("productOperationDecisionPolicy.assignProduct")
+                .contains("productOperationDecisionPolicy.assignAuditOwner")
+                .contains("productOperationDecisionPolicy.progressDecision")
+                .contains("productOperationDecisionPolicy.decisionLabel")
                 .doesNotContain("审核通过前请补充：")
-                .doesNotContain("审核通过并加入商品库");
+                .doesNotContain("审核通过并加入商品库")
+                .doesNotContain("商品已分配给审核负责人")
+                .doesNotContain("商品已分配给招商组长")
+                .doesNotContain("商品推进判断已更新")
+                .doesNotContain("private String normalizeDecisionLevel")
+                .doesNotContain("private String decisionLabel");
     }
 
     @Test

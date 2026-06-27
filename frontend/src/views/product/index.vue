@@ -279,6 +279,7 @@ import ExtendPromotionModal from './components/ExtendPromotionModal.vue'
 import {
   formatLibraryEntrySuccessMessage,
   getLibraryDisplayTags,
+  hasDoubleCommission,
   mergeLibraryDisplayFields,
   resolveProductLibraryDisplay,
   resolveProductLibraryReadiness,
@@ -587,9 +588,6 @@ const getServiceFeeLines = (item: any) => {
     `投放期：${campaign ? formatPercent(campaign) : '-'}`
   ].filter(Boolean)
 }
-
-const hasDoubleCommission = (item: any) =>
-  Boolean(item?.doubleCommission || item?.dualCommission || item?.serviceFeeMode === 'DOUBLE' || item?.promotionMode === 'DOUBLE')
 
 const ensureActivityId = async () => {
   if (isSharedLibraryMode.value) return ''
