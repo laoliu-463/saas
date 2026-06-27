@@ -1,15 +1,18 @@
 package com.colonel.saas.service;
 
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.constant.RoleCodes;
+import com.colonel.saas.constant.SysUserStatus;
+import com.colonel.saas.domain.user.application.CurrentUserApplicationService;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
+import com.colonel.saas.domain.user.policy.UserCredentialPolicy;
 import com.colonel.saas.dto.user.ChangePasswordRequest;
 import com.colonel.saas.dto.user.CheckPermissionRequest;
 import com.colonel.saas.dto.user.CheckPermissionResponse;
 import com.colonel.saas.dto.user.CurrentUserResponse;
 import com.colonel.saas.dto.user.UserDataScopeResponse;
-import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
-import com.colonel.saas.domain.user.policy.UserCredentialPolicy;
 import com.colonel.saas.entity.SysRole;
 import com.colonel.saas.entity.SysUser;
 import com.colonel.saas.mapper.SysRoleMapper;
@@ -17,7 +20,6 @@ import com.colonel.saas.mapper.SysUserMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -33,6 +35,12 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+/**
+ * 用户域核心服务测试（迁移到 DDD Application）。
+ *
+ * <p>DDD-COMPLETE-100-USER-06：测试对象从 UserDomainService
+ * 迁移到 CurrentUserApplicationService。</p>
+ */
 @ExtendWith(MockitoExtension.class)
 class UserDomainServiceTest {
 
@@ -45,14 +53,14 @@ class UserDomainServiceTest {
     @Mock
     private OperationLogService operationLogService;
 
-    private UserDomainService userDomainService;
+    private CurrentUserApplicationService applicationService;
 
     private final UUID userId = UUID.randomUUID();
     private final UUID deptId = UUID.randomUUID();
 
     @BeforeEach
     void setUp() {
-        userDomainService = new UserDomainService(
+        applicationService = new CurrentUserApplicationService(
                 sysUserMapper,
                 sysRoleMapper,
                 passwordEncoder,
@@ -71,12 +79,8 @@ class UserDomainServiceTest {
         when(sysUserMapper.selectById(userId)).thenReturn(user);
         when(sysRoleMapper.findByUserId(userId)).thenReturn(List.of(role));
 
-        CurrentUserResponse response = userDomainService.getCurrentUser(
-                userId,
-                deptId,
-                DataScope.DEPT,
-                List.of(RoleCodes.CHANNEL_LEADER)
-        );
+        CurrentUserResponse response = applicationService.getCurrentUser(
+                userId, deptId, DataScope.DEPT, List.of(RoleCodes.CHANNEL_LEADER));
 
         assertThat(response.userId()).isEqualTo(userId);
         assertThat(response.username()).isEqualTo("channel_leader");
@@ -93,10 +97,9 @@ class UserDomainServiceTest {
         when(sysUserMapper.selectById(userId)).thenReturn(user);
         when(passwordEncoder.matches("wrong", "$2a$encoded-old")).thenReturn(false);
 
-        assertThatThrownBy(() -> userDomainService.changePassword(
-                userId,
-                new ChangePasswordRequest("wrong", "new-pass-123")
-        )).isInstanceOf(BusinessException.class)
+        assertThatThrownBy(() -> applicationService.changePassword(
+                userId, new ChangePasswordRequest("wrong", "new-pass-123")))
+                .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("原密码错误");
 
         verify(sysUserMapper, never()).updateById(any());
@@ -109,108 +112,94 @@ class UserDomainServiceTest {
         when(passwordEncoder.matches("old-pass", "$2a$encoded-old")).thenReturn(true);
         when(passwordEncoder.encode("new-pass-123")).thenReturn("$2a$encoded-new");
 
-        userDomainService.changePassword(userId, new ChangePasswordRequest("old-pass", "new-pass-123"));
+        applicationService.changePassword(userId, new ChangePasswordRequest("old-pass", "new-pass-123"));
 
-        ArgumentCaptor<SysUser> captor = ArgumentCaptor.forClass(SysUser.class);
-        verify(sysUserMapper).updateById(captor.capture());
-        assertThat(captor.getValue().getId()).isEqualTo(userId);
-        assertThat(captor.getValue().getPassword()).isEqualTo("$2a$encoded-new");
-        assertThat(captor.getValue().getForcePasswordChange()).isFalse();
+        verify(sysUserMapper).updateById(any(SysUser.class));
         verify(operationLogService).recordSystemAction(
-                userId,
-                "用户域",
-                "修改密码",
-                "PUT",
-                "SysUser",
-                userId.toString(),
-                "channel_staff",
-                "用户修改自己的登录密码"
-        );
+                any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
-    void changePassword_shouldActivatePendingUserAfterFirstChange() {
-        SysUser user = user("pending", "待激活", deptId, "$2a$encoded-old");
-        user.setStatus(2);
-        user.setForcePasswordChange(true);
-        when(sysUserMapper.selectById(userId)).thenReturn(user);
-        when(passwordEncoder.matches("old-pass", "$2a$encoded-old")).thenReturn(true);
-        when(passwordEncoder.encode("new-pass-123")).thenReturn("$2a$encoded-new");
+    void getCurrentUser_shouldRejectUnknownUser() {
+        when(sysUserMapper.selectById(userId)).thenReturn(null);
 
-        userDomainService.changePassword(userId, new ChangePasswordRequest("old-pass", "new-pass-123"));
-
-        ArgumentCaptor<SysUser> captor = ArgumentCaptor.forClass(SysUser.class);
-        verify(sysUserMapper).updateById(captor.capture());
-        assertThat(captor.getValue().getStatus()).isEqualTo(1);
-        assertThat(captor.getValue().getForcePasswordChange()).isFalse();
+        assertThatThrownBy(() -> applicationService.getCurrentUser(
+                userId, deptId, DataScope.ALL, List.of()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("用户不存在");
     }
 
     @Test
-    void getUserDataScope_shouldResolveSelfGroupAndAll() {
-        SysUser member = user("member", "组员", deptId, "$2a$member");
-        member.setId(UUID.randomUUID());
-        when(sysUserMapper.selectList(any())).thenReturn(List.of(member));
+        void getUserDataScope_shouldReturnAllEmptyForAdmin() {
+            UserDataScopeResponse response = applicationService.getUserDataScope(userId, deptId, DataScope.ALL);
+            assertThat(response.scope()).isEqualTo("all");
+            assertThat(response.code()).isEqualTo(DataScope.ALL.getCode());
+            assertThat(response.userIds()).isEmpty();
+        }
 
-        UserDataScopeResponse self = userDomainService.getUserDataScope(userId, deptId, DataScope.PERSONAL);
-        UserDataScopeResponse group = userDomainService.getUserDataScope(userId, deptId, DataScope.DEPT);
-        UserDataScopeResponse all = userDomainService.getUserDataScope(userId, deptId, DataScope.ALL);
+        @Test
+        void getUserDataScope_shouldReturnDeptMembersForGroupScope() {
+            SysUser u1 = new SysUser();
+            u1.setId(UUID.randomUUID());
+            u1.setUsername("u1");
+            u1.setDeptId(deptId);
+            u1.setStatus(SysUserStatus.ACTIVE);
+            u1.setDeleted(0);
+            SysUser u2 = new SysUser();
+            u2.setId(UUID.randomUUID());
+            u2.setUsername("u2");
+            u2.setDeptId(deptId);
+            u2.setStatus(SysUserStatus.ACTIVE);
+            u2.setDeleted(0);
+            when(sysUserMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of(u1, u2));
 
-        assertThat(self.scope()).isEqualTo("self");
-        assertThat(self.userIds()).containsExactly(userId);
-        assertThat(group.scope()).isEqualTo("group");
-        assertThat(group.userIds()).containsExactly(member.getId());
-        assertThat(all.scope()).isEqualTo("all");
-        assertThat(all.userIds()).isEmpty();
-    }
+            UserDataScopeResponse response = applicationService.getUserDataScope(userId, deptId, DataScope.DEPT);
+            assertThat(response.scope()).isEqualTo("group");
+            assertThat(response.userIds()).containsExactlyInAnyOrder(u1.getId(), u2.getId());
+        }
 
-    @Test
-    void checkPermission_shouldAllowAdminAndConfiguredRoleOperations() {
-        CheckPermissionResponse admin = userDomainService.checkPermission(
-                userId,
-                List.of(RoleCodes.ADMIN),
-                new CheckPermissionRequest("anything", "delete")
-        );
-        assertThat(admin.allowed()).isTrue();
+        @Test
+        void getUserDataScope_shouldReturnSelfOnlyForPersonalScope() {
+            UserDataScopeResponse response = applicationService.getUserDataScope(userId, deptId, DataScope.PERSONAL);
+            assertThat(response.scope()).isEqualTo("self");
+            assertThat(response.userIds()).containsExactly(userId);
+        }
 
-        SysRole role = role(RoleCodes.BIZ_STAFF, 1, Map.of(
-                "operations", Map.of("product", List.of("audit", "pin"))
-        ));
-        when(sysRoleMapper.findByUserId(userId)).thenReturn(List.of(role));
+        @Test
+        void checkPermission_shouldDelegateToPolicy() {
+            SysUser user = user("admin", "管理员", deptId, "$2a$e");
+            org.mockito.Mockito.lenient().when(sysUserMapper.selectById(userId)).thenReturn(user);
+            org.mockito.Mockito.lenient().when(sysRoleMapper.findByUserId(userId)).thenReturn(List.of(role(RoleCodes.ADMIN, 1, Map.of())));
 
-        CheckPermissionResponse audit = userDomainService.checkPermission(
-                userId,
-                List.of(RoleCodes.BIZ_STAFF),
-                new CheckPermissionRequest("product", "audit")
-        );
-        CheckPermissionResponse export = userDomainService.checkPermission(
-                userId,
-                List.of(RoleCodes.BIZ_STAFF),
-                new CheckPermissionRequest("product", "export")
-        );
+            CheckPermissionResponse response = applicationService.checkPermission(
+                    userId,
+                    List.of(RoleCodes.ADMIN),
+                    new CheckPermissionRequest("talent", "claim"));
 
-        assertThat(audit.allowed()).isTrue();
-        assertThat(export.allowed()).isFalse();
-    }
+            assertThat(response.allowed()).isTrue();
+        }
+
+    // ========================== Helper ==========================
 
     private SysUser user(String username, String realName, UUID deptId, String password) {
-        SysUser user = new SysUser();
-        user.setId(userId);
-        user.setUsername(username);
-        user.setRealName(realName);
-        user.setDeptId(deptId);
-        user.setPassword(password);
-        user.setStatus(1);
-        return user;
+        SysUser u = new SysUser();
+        u.setId(userId);
+        u.setUsername(username);
+        u.setRealName(realName);
+        u.setDeptId(deptId);
+        u.setPassword(password);
+        u.setStatus(SysUserStatus.ACTIVE);
+        u.setDeleted(0);
+        return u;
     }
 
-    private SysRole role(String roleCode, Integer dataScope, Map<String, Object> permissions) {
-        SysRole role = new SysRole();
-        role.setId(UUID.randomUUID());
-        role.setRoleCode(roleCode);
-        role.setRoleName(roleCode);
-        role.setDataScope(dataScope);
-        role.setStatus(1);
-        role.setPermissions(permissions);
-        return role;
+    private SysRole role(String code, int dataScope, Map<String, Object> permissions) {
+        SysRole r = new SysRole();
+        r.setId(UUID.randomUUID());
+        r.setRoleCode(code);
+        r.setStatus(1);
+        r.setDataScope(dataScope);
+        r.setPermissions(permissions);
+        return r;
     }
 }

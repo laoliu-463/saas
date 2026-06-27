@@ -79,10 +79,12 @@ public class SampleLifecycleService {
         }
         UUID sampleOwnerId = resolveSampleOwnerForOrderCompletion(order);
         if (sampleOwnerId == null) {
+            log.debug("Sample homework auto-completion skipped: no sample owner resolved for orderId={}", order.getOrderId());
             return 0;
         }
         String talentUid = resolveTalentUid(order);
         if (!StringUtils.hasText(talentUid)) {
+            log.debug("Sample homework auto-completion skipped: no talentUid resolved for orderId={}", order.getOrderId());
             return 0;
         }
         List<UUID> requestIds = findPendingHomeworkRequestIds(
