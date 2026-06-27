@@ -1,9 +1,9 @@
 # Evidence: DDD-COMPLETE-100-PRODUCT-01
 
-时间：2026-06-27 20:08:29 +08:00  
-环境：local real-pre docs-only inventory  
-分支：`feature/ddd/DDD-VERIFY-001`  
-Issue：#130 `[DDD-COMPLETE-100-PRODUCT-01] ProductService 大类拆解 inventory 与切片计划`  
+时间：2026-06-27 20:08:29 +08:00
+环境：local real-pre docs-only inventory
+分支：`feature/ddd/DDD-VERIFY-001`
+Issue：#130 `[DDD-COMPLETE-100-PRODUCT-01] ProductService 大类拆解 inventory 与切片计划`
 Parent / Epic：#90 / #96
 
 ## 结论
