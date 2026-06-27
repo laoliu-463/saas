@@ -131,11 +131,11 @@
 - 标记：P0。
 
 ## 商品域
-- 最新边界变化：#61 已新增商品域 `ProductActivitySyncApplicationService`，定时同步、手动后台同步和 `refresh=true` 手动刷新入口改为经商品域 Application 调用；`ProductService.refreshActivitySnapshots` 内分页、落库、repair、事件发布、DB schema、默认 real-pre 配置和 Legacy 行为保持不变。
-- 最新验证：`ProductActivitySyncApplicationServiceTest,ProductActivitySyncJobTest,ProductActivityManualSyncServiceTest,ColonelActivityControllerTest` targeted PASS；`mvn -q -f backend/pom.xml -DskipTests compile` PASS；`agent-do.ps1 -Env real-pre -Scope backend -ContentMaintenance off` PASS，backend package、Docker rebuild/restart、health 与 real-pre P0 preflight 均通过。
-- 最新报告路径：`harness/reports/2026-06-21/ddd-product-sync-061/evidence-20260627-142000-ddd100-product-sync-application.md`；agent-do evidence/retro 同目录。
-- 已完成能力：商品库、活动商品同步入口收口、活动商品展示策略部分下沉、转链和 `pick_source_mapping` 主链路；历史 P-FIX/P-DIAG 明细见 Git 历史和归档报告。
-- 当前风险：真实同步/落库算法仍在 `ProductService`，#62-#67 继续拆展示、状态、快照、backfill、转链和 E2E；未执行远端 real-pre 部署。
+- 最新边界变化：#62 已将本地发布暂停/恢复的展示状态决策下沉到 `ProductDisplayPolicy.resolveLocalPublishControl`，`ProductService.updatePublishPaused` 只应用策略结果；#61 已新增 `ProductActivitySyncApplicationService`，同步入口经商品域 Application 调用。上述切片均未改变 API、DB schema、默认 real-pre 配置或 Legacy 行为。
+- 最新验证：#62 `ProductDisplayPolicyTest,ProductServiceFilterTest,DddSlimProduct001DisplayPolicyRoutingTest` targeted PASS；#61 同步入口 targeted PASS；两轮 `mvn -q -f backend/pom.xml -DskipTests compile` PASS；`agent-do.ps1 -Env real-pre -Scope backend -ContentMaintenance off` PASS，backend package、Docker rebuild/restart、health 与 real-pre P0 preflight 均通过。
+- 最新报告路径：#62 `harness/reports/2026-06-21/ddd-product-display-062/evidence-20260627-143000-ddd100-product-display-policy.md`；#61 `harness/reports/2026-06-21/ddd-product-sync-061/evidence-20260627-142000-ddd100-product-sync-application.md`。
+- 已完成能力：商品库、活动商品同步入口收口、本地发布展示策略下沉、活动商品展示策略部分下沉、转链和 `pick_source_mapping` 主链路；历史 P-FIX/P-DIAG 明细见 Git 历史和归档报告。
+- 当前风险：真实同步/落库算法及部分商品状态赋值仍在 `ProductService`，#63-#67 继续拆状态、快照、backfill、转链和 E2E；未执行远端 real-pre 部署。
 - 待优化能力：活动商品状态断链 repair、远端部署对齐、推广中商品自动入库、商品域 E2E。
 - 标记：P0。
 
