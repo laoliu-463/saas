@@ -140,6 +140,7 @@
 - 标记：P0。
 
 ## 达人域
+- 最新边界变化：#71 已完成第三方达人接口 evidence 复核，结论为 `BLOCKED` 而非真实响应 `PASS`：real-pre 中 `TALENT_PROFILE_PUBLIC_WEB_ENABLED=false`、`TALENT_PROFILE_HTTP_ENABLED=false`，HTTP endpoint/token/authorization 均缺失，`talent_profile_sync_log` 当前无记录；provider/controller targeted tests PASS，说明代码通道可测试但当前无法产生真实三方响应。报告：`harness/reports/2026-06-21/ddd-talent-gateway-071/evidence-20260627-163647-ddd100-talent-gateway-blocked.md`。
 - 最新边界变化：#70 已新增 `TalentAddressApplicationService`、`TalentShippingAddressDTO` 与 `TalentDomainFacade.findClaimShippingAddress`，`TalentController` 地址 GET/PUT 已经由地址 Application 承接；寄样创建后的地址回写继续通过 `TalentDomainFacade.writeBackClaimAddress`，读侧和写侧均通过达人域出口表达地址事实。本轮未改 API、DB schema、默认 real-pre 配置、权限前置或寄样状态机。报告：`harness/reports/2026-06-21/ddd-talent-address-070/evidence-20260627-163100-ddd100-talent-address-boundary.md`。
 - 最新边界变化：#69 已新增 `TalentProfileApplicationService` 和 `TalentFollowApplicationService`；`TalentController` 的资料、标签、手动补全、导入、删除和刷新命令入口已先经达人域 Application，`ProductService` 的达人跟进读写也改为消费达人域 Application。本轮未改 API、DB schema、默认 real-pre 配置、权限校验、地址边界或第三方接口。报告：`harness/reports/2026-06-21/ddd-talent-profile-069/evidence-20260627-162100-ddd100-talent-profile-application.md`。
 - 最新边界变化：#68 已完成达人域基线验证，覆盖 `TalentService` 认领、释放、保护期、过期释放、标签、地址、跟进、查询、Controller 路由和前端保护期冲突提示；本轮未改业务代码、API、DB schema、默认 real-pre 配置或真实数据。报告：`harness/reports/2026-06-21/ddd-talent-baseline-068/evidence-20260627-160500-ddd100-talent-baseline.md`。
@@ -147,8 +148,8 @@
 - 近期边界变化：`TalentService.blacklist/unblacklist`、`TalentService.page` 和 `TalentQueryService.detail` 已新增灰度开启的用户域 `DataScopePolicy` 路径；`TalentService.release` 管理员角色编码匹配、`TalentQueryService.assertCanOperate` 操作访问角色匹配已委托用户域 policy；达人归属覆盖已通过用户域 `loadUserOwnershipReferencesByIds` 校验目标负责人存在，不再读取完整用户 DTO，既有达人认领记录 `deptId` 写入行为不变。
 - 当前状态：达人资料、认领、保护期、标签、地址和跟进主链路已有基线证据；资料 / 标签 / 跟进命令入口已收口到达人域 Application；地址供寄样消费已有 Application/Facade 边界；real-pre 当前存在 37 个达人、36 条认领记录、25 条 active protected claim。
 - 已完成能力：达人列表 / 详情、认领 / 释放 / 保护期、资料 Application、标签 Application、跟进 Application、地址 Application/Facade 边界。
-- 待优化能力：第三方接口证据、`gender` 筛选缺口、权限负例和 real-pre follow/tag 正向样本补齐。
-- DDD 优化下一步：#71 第三方达人接口真实响应或 BLOCKED 证据。
+- 待优化能力：`gender` 筛选缺口、权限负例和 real-pre follow/tag 正向样本补齐；第三方达人真实响应需等待合法 endpoint/token/权限解除阻塞。
+- DDD 优化下一步：#72 达人数据范围、越权负例和 E2E。
 - 标记：P1。
 
 ## 寄样域
