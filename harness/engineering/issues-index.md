@@ -34,10 +34,6 @@
 | 112 | [DDD-COMPLETE-100-CONFIG-05] 配置域 legacy retire 与迁移率目标达成 | ready-for-agent | https://github.com/laoliu-463/saas/issues/112 |
 | 117 | [DDD-COMPLETE-100-ORDER-05] real-pre 推广链接订单 pick_source 正向样本 | ready-for-agent | https://github.com/laoliu-463/saas/issues/117 |
 | 118 | [DDD-COMPLETE-100-ORDER-06] 订单域 legacy service 退休与迁移率目标达成 | ready-for-agent | https://github.com/laoliu-463/saas/issues/118 |
-| 119 | [DDD-COMPLETE-100-PERF-01] performance_records 生成边界完整收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/119 |
-| 120 | [DDD-COMPLETE-100-PERF-02] 最终归属、提成和佣金策略模型化 | ready-for-agent | https://github.com/laoliu-463/saas/issues/120 |
-| 121 | [DDD-COMPLETE-100-PERF-03] 退款冲正、双轨金额和审计证据 | ready-for-agent | https://github.com/laoliu-463/saas/issues/121 |
-| 122 | [DDD-COMPLETE-100-PERF-04] 业绩查询、导出与权限数据范围最终收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/122 |
 | 123 | [DDD-COMPLETE-100-PERF-05] 历史 performance_records 缺口 backfill 与幂等 | ready-for-agent | https://github.com/laoliu-463/saas/issues/123 |
 | 124 | [DDD-COMPLETE-100-PERF-06] 业绩域 legacy retire 与 real-pre API/SQL/page 对账 | ready-for-agent | https://github.com/laoliu-463/saas/issues/124 |
 | 125 | [DDD-COMPLETE-100-ANALYTICS-01] Dashboard 数据源与只读 Query 层完整收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/125 |
@@ -83,6 +79,10 @@
 | 114 | [DDD-COMPLETE-100-ORDER-02] 订单查询 Query 层与数据范围最终收口 | 2026-06-27 | 门面瘦身，删除 380 行死代码 |
 | 115 | [DDD-COMPLETE-100-ORDER-03] 订单金额、退款事实、pick_source Policy 完整收口 | 2026-06-27 | 废除灰度分支，全量切换 Policy，补齐 expense |
 | 116 | [DDD-COMPLETE-100-ORDER-04] 订单事件 after-commit、Outbox 和幂等证据 | 2026-06-27 | 经过 afterCommit 事务和幂等审查 |
+| 119 | [DDD-COMPLETE-100-PERF-01] performance_records 生成边界完整收口 | 2026-06-27 | 写入与upsert边界梳理完毕，完全依赖订单事件驱动 |
+| 120 | [DDD-COMPLETE-100-PERF-02] 最终归属、提成和佣金策略模型化 | 2026-06-27 | 双轨公式模型化审计，结算轨不扣技术服务费，提成基数符合2026-06-06规则 |
+| 121 | [DDD-COMPLETE-100-PERF-03] 退款冲正、双轨金额和审计证据 | 2026-06-27 | countsTowardPerformance 冲正判定机制审查符合预期 |
+| 122 | [DDD-COMPLETE-100-PERF-04] 业绩查询、导出与权限数据范围最终收口 | 2026-06-27 | PerformanceQueryFacade 读分层完全使用 PerformanceAccessContext 数据安全 |
 | 108 | [DDD-COMPLETE-100-CONFIG-01] 配置域代码、接口、表、缓存与测试 inventory | 2026-06-27 | 盘点完毕，防腐及只读安全检查符合预期 |
 | 109 | [DDD-COMPLETE-100-CONFIG-02] 配置读取/写入 Application 与 Query 分层收口 | 2026-06-27 | SysConfigService 为 Command，Facade 为 Query 完美隔离 |
 | 110 | [DDD-COMPLETE-100-CONFIG-03] 配置消费方只读参数边界审计 | 2026-06-27 | 确认不变量：配置域全局可见，不应用 dataScope 过滤 |

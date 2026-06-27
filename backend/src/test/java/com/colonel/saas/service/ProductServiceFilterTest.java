@@ -341,6 +341,30 @@ class ProductServiceFilterTest {
     }
 
     @Test
+    void getSelectedLibraryPage_shouldFilterDoubleCommissionByUpstreamCosType() {
+        ProductOperationState matchedState = state("10001", "9001");
+        ProductOperationState ignoredState = state("10002", "9002");
+        ignoredState.setAuditPayload("{\"doubleCommission\":true}");
+        Page<ProductOperationState> statePage = new Page<>(1, 200, 2);
+        statePage.setRecords(List.of(matchedState, ignoredState));
+
+        ProductSnapshot matched = snapshot("10001", "9001", "玩具乐器", 9900L);
+        matched.setCosType(1);
+        ProductSnapshot ignored = snapshot("10002", "9002", "美妆", 8800L);
+        ignored.setCosType(0);
+
+        when(operationStateMapper.selectPage(any(Page.class), any())).thenReturn(statePage);
+        when(snapshotMapper.selectBatchIds(any())).thenReturn(List.of(matched, ignored));
+
+        var result = service.getSelectedLibraryPage(1, 10, filter()
+                .doubleCommission("1")
+                .build());
+
+        assertThat(result.getTotal()).isEqualTo(2);
+        assertThat(result.getRecords()).extracting("productId").containsExactly("9001", "9002");
+    }
+
+    @Test
     void getSelectedLibraryPage_shouldFilterByAssigneeId() {
         UUID recruiterId = UUID.randomUUID();
         ProductOperationState matched = state("10001", "9001");

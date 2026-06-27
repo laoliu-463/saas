@@ -48,6 +48,7 @@ import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.domain.user.facade.dto.UserOwnershipReference;
 import com.colonel.saas.domain.product.policy.ProductAuditDecisionPolicy;
 import com.colonel.saas.domain.product.policy.ProductAuditSupplementPayload;
+import com.colonel.saas.domain.product.policy.ProductOperationDecisionPolicy;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
@@ -170,6 +171,8 @@ public class ProductService {
     private final ProductDisplayPolicy productDisplayPolicy;
     /** 商品审核状态和日志语义策略（DDD100-PRODUCT-STATUS）。 */
     private final ProductAuditDecisionPolicy productAuditDecisionPolicy = new ProductAuditDecisionPolicy();
+    /** 商品操作日志与状态操作语义策略（DDD100-PRODUCT-STATUS）。 */
+    private final ProductOperationDecisionPolicy productOperationDecisionPolicy = new ProductOperationDecisionPolicy();
     /** 商品快照读侧查询服务（DDD100-PRODUCT-SNAPSHOT）。 */
     private final ProductSnapshotQueryService productSnapshotQueryService;
     /** 活动商品读侧视图组装器，避免 ProductService 承载展示 Map 细节。 */
@@ -2292,18 +2295,16 @@ public class ProductService {
             persistOperationState(state);
         }
 
-        ProductOperationLog log = new ProductOperationLog();
-        log.setActivityId(activityId);
-        log.setProductId(productId);
-        log.setBeforeStatus(currentStatus == null ? null : currentStatus.name());
-        log.setAfterStatus(state.getBizStatus());
-        log.setSuccess(true);
-        log.setOperationType("LIBRARY_ENTRY");
-        log.setOperatorId(operatorId);
-        log.setOperatorDeptId(operatorDeptId);
-        log.setOperationRemark("上游状态为推广中，已加入商品库");
-        log.setOperationPayload("{eventLabel=加入商品库, productTitle=" + safeText(snapshot.getTitle(), "活动商品") + "}");
-        operationLogMapper.insert(log);
+        ProductOperationDecisionPolicy.OperationDecision operationDecision =
+                productOperationDecisionPolicy.libraryEntry(snapshot.getTitle());
+        insertOperationLog(
+                activityId,
+                productId,
+                currentStatus == null ? null : currentStatus.name(),
+                state.getBizStatus(),
+                operatorId,
+                operatorDeptId,
+                operationDecision);
 
         Map<String, Object> detail = getActivityProductDetail(activityId, productId);
         detail.put("selectedToLibrary", true);
@@ -2332,23 +2333,16 @@ public class ProductService {
             persistOperationState(state);
         }
 
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("boundActivityId", state.getBoundActivityId());
-        payload.put("eventLabel", "商品活动绑定已更新");
-
-        ProductOperationLog log = new ProductOperationLog();
-        log.setId(UUID.randomUUID());
-        log.setActivityId(activityId);
-        log.setProductId(productId);
-        log.setOperationType("BIND_ACTIVITY");
-        log.setBeforeStatus(currentStatus.name());
-        log.setAfterStatus(currentStatus.name());
-        log.setSuccess(true);
-        log.setOperatorId(operatorId);
-        log.setOperatorDeptId(operatorDeptId);
-        log.setOperationPayload(String.valueOf(payload));
-        log.setOperationRemark("绑定活动成功");
-        operationLogMapper.insert(log);
+        ProductOperationDecisionPolicy.OperationDecision operationDecision =
+                productOperationDecisionPolicy.bindActivity(state.getBoundActivityId());
+        insertOperationLog(
+                activityId,
+                productId,
+                currentStatus.name(),
+                currentStatus.name(),
+                operatorId,
+                operatorDeptId,
+                operationDecision);
         return getActivityProductDetail(activityId, productId);
     }
 
@@ -2367,20 +2361,20 @@ public class ProductService {
         ensurePostAuditLibraryFlag(state, operatorId);
         requireSelectedToLibrary(state, "分配招商");
         UUID oldAssigneeId = state.getAssigneeId();
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("assigneeId", assigneeId);
-        payload.put("assigneeName", resolveUserDisplayName(assigneeId));
-        payload.put("operatorId", operatorId);
-        payload.put("operatorName", resolveUserDisplayName(operatorId));
-        payload.put("eventLabel", "商品已分配给招商组长");
+        ProductOperationDecisionPolicy.OperationDecision operationDecision =
+                productOperationDecisionPolicy.assignProduct(
+                        assigneeId,
+                        resolveUserDisplayName(assigneeId),
+                        operatorId,
+                        resolveUserDisplayName(operatorId));
         productBizStatusService.changeStatus(
                 state,
-                ProductBizStatus.ASSIGNED,
-                "ASSIGN",
+                operationDecision.targetStatus(),
+                operationDecision.operationType(),
                 operatorId,
                 operatorDeptId,
-                payload,
-                "分配招商成功",
+                operationDecision.payload(),
+                operationDecision.operationRemark(),
                 current -> current.setAssigneeId(assigneeId)
         );
         if (!java.util.Objects.equals(oldAssigneeId, assigneeId)) {
@@ -2407,9 +2401,13 @@ public class ProductService {
         ensureSnapshotExists(activityId, productId);
         ProductOperationState state = getOrInitOperationState(activityId, productId);
         ProductBizStatus currentStatus = productBizStatusService.readBizStatus(state);
-        if (currentStatus != ProductBizStatus.PENDING_AUDIT) {
-            throw BusinessException.stateInvalid("仅待审核商品可分配审核人");
-        }
+        ProductOperationDecisionPolicy.OperationDecision operationDecision =
+                productOperationDecisionPolicy.assignAuditOwner(
+                        currentStatus,
+                        assigneeId,
+                        resolveUserDisplayName(assigneeId),
+                        operatorId,
+                        resolveUserDisplayName(operatorId));
         state.setAssigneeId(assigneeId);
         state.setLastOperationAt(LocalDateTime.now());
         if (state.getId() == null) {
@@ -2419,22 +2417,16 @@ public class ProductService {
             persistOperationState(state);
         }
 
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("assigneeId", assigneeId);
-        payload.put("assigneeName", resolveUserDisplayName(assigneeId));
-        payload.put("operatorId", operatorId);
-        payload.put("operatorName", resolveUserDisplayName(operatorId));
-        payload.put("eventLabel", "商品已分配给审核负责人");
         productBizStatusService.logStatusChange(
                 activityId,
                 productId,
-                "ASSIGN_AUDIT",
+                operationDecision.operationType(),
                 currentStatus,
-                currentStatus,
+                operationDecision.targetStatus(),
                 operatorId,
                 operatorDeptId,
-                payload,
-                "分配审核人成功",
+                operationDecision.payload(),
+                operationDecision.operationRemark(),
                 true,
                 null
         );
@@ -2538,10 +2530,12 @@ public class ProductService {
             String reason,
             UUID operatorId,
             UUID operatorDeptId) {
-        String normalizedLevel = normalizeDecisionLevel(decisionLevel);
-        if (!StringUtils.hasText(reason)) {
-            throw BusinessException.param("推进判断原因不能为空");
-        }
+        ProductOperationDecisionPolicy.OperationDecision operationDecision =
+                productOperationDecisionPolicy.progressDecision(
+                        decisionLevel,
+                        reason,
+                        operatorId,
+                        resolveUserDisplayName(operatorId));
         ensureSnapshotExists(activityId, productId);
         ProductOperationState state = getOrInitOperationState(activityId, productId);
         requireSelectedToLibrary(state, "保存推进判断");
@@ -2553,25 +2547,14 @@ public class ProductService {
             persistOperationState(state);
         }
 
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("decisionLevel", normalizedLevel);
-        payload.put("decisionLabel", decisionLabel(normalizedLevel));
-        payload.put("operatorId", operatorId);
-        payload.put("operatorName", resolveUserDisplayName(operatorId));
-        payload.put("eventLabel", "商品推进判断已更新");
-
-        ProductOperationLog log = new ProductOperationLog();
-        log.setActivityId(activityId);
-        log.setProductId(productId);
-        log.setOperationType("DECISION");
-        log.setBeforeStatus(currentStatus.name());
-        log.setAfterStatus(currentStatus.name());
-        log.setSuccess(true);
-        log.setOperatorId(operatorId);
-        log.setOperatorDeptId(operatorDeptId);
-        log.setOperationPayload(String.valueOf(payload));
-        log.setOperationRemark(reason.trim());
-        operationLogMapper.insert(log);
+        insertOperationLog(
+                activityId,
+                productId,
+                currentStatus.name(),
+                currentStatus.name(),
+                operatorId,
+                operatorDeptId,
+                operationDecision);
 
         return getActivityProductDetail(activityId, productId);
     }
@@ -3951,7 +3934,7 @@ public class ProductService {
                             String level = payload.get("decisionLevel");
                             return new DecisionSummary(
                                     level,
-                                    payload.getOrDefault("decisionLabel", decisionLabel(level)),
+                                    payload.getOrDefault("decisionLabel", productOperationDecisionPolicy.decisionLabel(level)),
                                     normalizeFreeText(log.getOperationRemark()),
                                     log.getCreateTime() == null ? null : log.getCreateTime().toString()
                             );
@@ -3978,7 +3961,7 @@ public class ProductService {
         String level = payload.get("decisionLevel");
         return new DecisionSummary(
                 level,
-                payload.getOrDefault("decisionLabel", decisionLabel(level)),
+                payload.getOrDefault("decisionLabel", productOperationDecisionPolicy.decisionLabel(level)),
                 normalizeFreeText(log.getOperationRemark()),
                 log.getCreateTime() == null ? null : log.getCreateTime().toString()
         );
@@ -4003,27 +3986,6 @@ public class ProductService {
             }
         }
         return payload;
-    }
-
-    private String normalizeDecisionLevel(String decisionLevel) {
-        if (!StringUtils.hasText(decisionLevel)) {
-            throw BusinessException.param("推进判断不能为空");
-        }
-        String normalized = decisionLevel.trim().toUpperCase();
-        if (!Set.of("MAIN", "SECONDARY", "PAUSE", "DROP").contains(normalized)) {
-            throw BusinessException.param("未知推进判断：" + decisionLevel);
-        }
-        return normalized;
-    }
-
-    private String decisionLabel(String decisionLevel) {
-        return switch (decisionLevel) {
-            case "MAIN" -> "主推";
-            case "SECONDARY" -> "次推";
-            case "PAUSE" -> "暂缓";
-            case "DROP" -> "放弃";
-            default -> decisionLevel;
-        };
     }
 
     private Map<String, OrderSummary> buildOrderSummaryMap(String activityId, Set<String> productIds) {

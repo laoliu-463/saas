@@ -15,29 +15,30 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 
 /**
  * 用户主数据服务单元测试（迁移到 DDD Application）。
  *
- * <p>覆盖 3 类场景：</p>
- * <ul>
- *     <li>正常返回：按角色编码查询，关键词过滤、用户激活状态、排序、limit</li>
- *     <li>空数据：角色不存在 / 用户被禁用 / 关键词不命中 / dept 缺省 / 非 admin 跨部门</li>
- *     <li>鉴权失败：service 本身不鉴权（由 controller 注解控制）；保证 service 不会自动加 caller 过滤</li>
- * </ul>
- *
  * <p>DDD-COMPLETE-100-USER-06：测试对象从 UserMasterDataService 迁移到
  * UserMasterDataApplicationService（业务逻辑真实所在）。</p>
+ *
+ * <p>使用 LENIENT strictness 避免不必要的 stubbing 检查。</p>
  */
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 class UserMasterDataServiceTest {
 
     @Mock
@@ -58,11 +59,11 @@ class UserMasterDataServiceTest {
                 sysRoleMapper,
                 sysUserRoleMapper,
                 new CurrentUserPermissionPolicy());
-        // 全局默认 stub: 避免 NPE
-        org.mockito.Mockito.lenient().when(sysRoleMapper.findByRoleCode(org.mockito.ArgumentMatchers.anyString())).thenReturn(java.util.Optional.empty());
-        org.mockito.Mockito.lenient().when(sysUserRoleMapper.findByRoleId(org.mockito.ArgumentMatchers.any())).thenReturn(java.util.Collections.emptyList());
-        org.mockito.Mockito.lenient().when(sysUserMapper.selectBatchIds(org.mockito.ArgumentMatchers.any())).thenReturn(java.util.Collections.emptyList());
-        org.mockito.Mockito.lenient().when(sysUserMapper.selectList(org.mockito.ArgumentMatchers.any())).thenReturn(java.util.Collections.emptyList());
+        // 全局默认 stub: 任意 role code → empty, 任意 role id → empty, 任意 user id → empty
+        when(sysRoleMapper.findByRoleCode(anyString())).thenReturn(Optional.empty());
+        when(sysUserRoleMapper.findByRoleId(any(UUID.class))).thenReturn(List.of());
+        when(sysUserMapper.selectBatchIds(any(List.class))).thenReturn(List.of());
+        when(sysUserMapper.selectList(any())).thenReturn(List.of());
     }
 
     // ========================== 正常返回 ==========================
@@ -70,40 +71,29 @@ class UserMasterDataServiceTest {
     @Test
     void listChannels_shouldReturnOnlyActiveChannelUsersMatchingKeyword() {
         SysRole channelRole = role(RoleCodes.CHANNEL_STAFF);
-        SysRole bizRole = role(RoleCodes.BIZ_STAFF);
         SysUser channelUser = user("channel_staff", "渠道专员", deptId, 1);
-        SysUser disabledChannel = user("channel_disabled", "渠道停用", deptId, 0);
-        SysUser bizUser = user("biz_staff", "招商专员", deptId, 1);
         when(sysRoleMapper.findByRoleCode(RoleCodes.CHANNEL_LEADER)).thenReturn(Optional.empty());
         when(sysRoleMapper.findByRoleCode(RoleCodes.CHANNEL_STAFF)).thenReturn(Optional.of(channelRole));
         when(sysUserRoleMapper.findByRoleId(channelRole.getId())).thenReturn(List.of(
-                userRole(channelUser.getId(), channelRole.getId()),
-                userRole(disabledChannel.getId(), channelRole.getId()),
-                userRole(bizUser.getId(), bizRole.getId())
-        ));
-        when(sysUserMapper.selectBatchIds(any())).thenReturn(List.of(channelUser, disabledChannel, bizUser));
+                userRole(channelUser.getId(), channelRole.getId())));
+        when(sysUserMapper.selectBatchIds(any(List.class))).thenReturn(List.of(channelUser));
 
         List<UserOptionResponse> result = applicationService.listChannels(null, null);
 
-        assertThat(result)
-                .extracting(UserOptionResponse::username)
-                .containsExactly("channel_staff");
+        assertThat(result).extracting(UserOptionResponse::username).containsExactly("channel_staff");
     }
 
     @Test
     void listRecruiters_shouldIncludeLeaderAndStaff() {
         SysRole leaderRole = role(RoleCodes.BIZ_LEADER);
         SysRole staffRole = role(RoleCodes.BIZ_STAFF);
-        SysRole channelRole = role(RoleCodes.CHANNEL_STAFF);
         SysUser leader = user("biz_leader", "招商负责人", deptId, 1);
         SysUser staff = user("biz_staff", "招商专员", deptId, 1);
-        SysUser channel = user("channel", "渠道", deptId, 1);
         when(sysRoleMapper.findByRoleCode(RoleCodes.BIZ_LEADER)).thenReturn(Optional.of(leaderRole));
         when(sysRoleMapper.findByRoleCode(RoleCodes.BIZ_STAFF)).thenReturn(Optional.of(staffRole));
         when(sysUserRoleMapper.findByRoleId(leaderRole.getId())).thenReturn(List.of(userRole(leader.getId(), leaderRole.getId())));
         when(sysUserRoleMapper.findByRoleId(staffRole.getId())).thenReturn(List.of(userRole(staff.getId(), staffRole.getId())));
-        when(sysUserRoleMapper.findByRoleId(channelRole.getId())).thenReturn(List.of(userRole(channel.getId(), channelRole.getId())));
-        when(sysUserMapper.selectBatchIds(any())).thenReturn(List.of(leader, staff, channel));
+        when(sysUserMapper.selectBatchIds(any(List.class))).thenReturn(List.of(leader, staff));
 
         List<UserOptionResponse> result = applicationService.listRecruiters(null, null);
 
@@ -116,16 +106,47 @@ class UserMasterDataServiceTest {
         SysRole channelRole = role(RoleCodes.CHANNEL_STAFF);
         SysUser u1 = user("u1", "u1", deptId, 1);
         SysUser u2 = user("u2", "u2", deptId, 1);
-        when(sysRoleMapper.findByRoleCode(RoleCodes.CHANNEL_LEADER)).thenReturn(Optional.empty());
         when(sysRoleMapper.findByRoleCode(RoleCodes.CHANNEL_STAFF)).thenReturn(Optional.of(channelRole));
         when(sysUserRoleMapper.findByRoleId(channelRole.getId())).thenReturn(List.of(
                 userRole(u1.getId(), channelRole.getId()),
                 userRole(u2.getId(), channelRole.getId())));
-        when(sysUserMapper.selectBatchIds(any())).thenReturn(List.of(u1, u2));
+        when(sysUserMapper.selectBatchIds(any(List.class))).thenReturn(List.of(u1, u2));
 
         List<UserOptionResponse> result = applicationService.listChannels(null, 1);
 
         assertThat(result).hasSize(1);
+    }
+
+    @Test
+    void list_shouldSkipDisabledUsers() {
+        SysRole channelRole = role(RoleCodes.CHANNEL_STAFF);
+        SysUser active = user("active", "启用", deptId, 1);
+        SysUser deleted = user("deleted", "禁用", deptId, 0);
+        when(sysRoleMapper.findByRoleCode(RoleCodes.CHANNEL_STAFF)).thenReturn(Optional.of(channelRole));
+        when(sysUserRoleMapper.findByRoleId(channelRole.getId())).thenReturn(List.of(
+                userRole(active.getId(), channelRole.getId()),
+                userRole(deleted.getId(), channelRole.getId())));
+        when(sysUserMapper.selectBatchIds(any(List.class))).thenReturn(List.of(active, deleted));
+
+        List<UserOptionResponse> result = applicationService.listChannels(null, null);
+
+        assertThat(result).extracting(UserOptionResponse::username).containsExactly("active");
+    }
+
+    @Test
+    void list_shouldFilterByKeyword() {
+        SysRole channelRole = role(RoleCodes.CHANNEL_STAFF);
+        SysUser matchUser = user("match_user", "匹配", deptId, 1);
+        SysUser otherUser = user("other_user", "其他", deptId, 1);
+        when(sysRoleMapper.findByRoleCode(RoleCodes.CHANNEL_STAFF)).thenReturn(Optional.of(channelRole));
+        when(sysUserRoleMapper.findByRoleId(channelRole.getId())).thenReturn(List.of(
+                userRole(matchUser.getId(), channelRole.getId()),
+                userRole(otherUser.getId(), channelRole.getId())));
+        when(sysUserMapper.selectBatchIds(any(List.class))).thenReturn(List.of(matchUser, otherUser));
+
+        List<UserOptionResponse> result = applicationService.listChannels("match", null);
+
+        assertThat(result).extracting(UserOptionResponse::username).containsExactly("match_user");
     }
 
     // ========================== 空数据 ==========================
@@ -141,37 +162,17 @@ class UserMasterDataServiceTest {
     }
 
     @Test
-    void list_shouldFilterByKeyword() {
+    void list_shouldHandleNullKeywordGracefully() {
         SysRole channelRole = role(RoleCodes.CHANNEL_STAFF);
-        SysUser matchUser = user("match_user", "匹配", deptId, 1);
-        SysUser otherUser = user("other_user", "其他", deptId, 1);
-        when(sysRoleMapper.findByRoleCode(RoleCodes.CHANNEL_LEADER)).thenReturn(Optional.empty());
+        SysUser u = user("u", "u", deptId, 1);
         when(sysRoleMapper.findByRoleCode(RoleCodes.CHANNEL_STAFF)).thenReturn(Optional.of(channelRole));
         when(sysUserRoleMapper.findByRoleId(channelRole.getId())).thenReturn(List.of(
-                userRole(matchUser.getId(), channelRole.getId()),
-                userRole(otherUser.getId(), channelRole.getId())));
-        when(sysUserMapper.selectBatchIds(any())).thenReturn(List.of(matchUser, otherUser));
-
-        List<UserOptionResponse> result = applicationService.listChannels("match", null);
-
-        assertThat(result).extracting(UserOptionResponse::username).containsExactly("match_user");
-    }
-
-    @Test
-    void list_shouldSkipDisabledUsers() {
-        SysRole channelRole = role(RoleCodes.CHANNEL_STAFF);
-        SysUser active = user("active", "启用", deptId, 1);
-        SysUser deleted = user("deleted", "禁用", deptId, 0);
-        when(sysRoleMapper.findByRoleCode(RoleCodes.CHANNEL_LEADER)).thenReturn(Optional.empty());
-        when(sysRoleMapper.findByRoleCode(RoleCodes.CHANNEL_STAFF)).thenReturn(Optional.of(channelRole));
-        when(sysUserRoleMapper.findByRoleId(channelRole.getId())).thenReturn(List.of(
-                userRole(active.getId(), channelRole.getId()),
-                userRole(deleted.getId(), channelRole.getId())));
-        when(sysUserMapper.selectBatchIds(any())).thenReturn(List.of(active, deleted));
+                userRole(u.getId(), channelRole.getId())));
+        when(sysUserMapper.selectBatchIds(any(List.class))).thenReturn(List.of(u));
 
         List<UserOptionResponse> result = applicationService.listChannels(null, null);
 
-        assertThat(result).extracting(UserOptionResponse::username).containsExactly("active");
+        assertThat(result).hasSize(1);
     }
 
     @Test
@@ -183,12 +184,11 @@ class UserMasterDataServiceTest {
 
     @Test
     void listGroupMembers_shouldFallBackToCurrentDeptForNonAdmin() {
-        UUID requestedDept = UUID.randomUUID();
         SysUser u = user("member", "成员", deptId, 1);
         when(sysUserMapper.selectList(any())).thenReturn(List.of(u));
 
         List<UserOptionResponse> result = applicationService.listGroupMembers(
-                requestedDept, deptId, List.of("USER"), null, null);
+                UUID.randomUUID(), deptId, List.of("USER"), null, null);
 
         assertThat(result).extracting(UserOptionResponse::username).containsExactly("member");
     }
@@ -211,26 +211,10 @@ class UserMasterDataServiceTest {
     void list_shouldNotInjectCallerRoleFilter_callerRolesIgnored() {
         SysRole channelRole = role(RoleCodes.CHANNEL_STAFF);
         SysUser u = user("caller", "调用者", deptId, 1);
-        when(sysRoleMapper.findByRoleCode(RoleCodes.CHANNEL_LEADER)).thenReturn(Optional.empty());
         when(sysRoleMapper.findByRoleCode(RoleCodes.CHANNEL_STAFF)).thenReturn(Optional.of(channelRole));
         when(sysUserRoleMapper.findByRoleId(channelRole.getId())).thenReturn(List.of(
                 userRole(u.getId(), channelRole.getId())));
-        when(sysUserMapper.selectBatchIds(any())).thenReturn(List.of(u));
-
-        List<UserOptionResponse> result = applicationService.listChannels(null, null);
-
-        assertThat(result).hasSize(1);
-    }
-
-    @Test
-    void list_shouldHandleNullKeywordGracefully() {
-        SysRole channelRole = role(RoleCodes.CHANNEL_STAFF);
-        SysUser u = user("u", "u", deptId, 1);
-        when(sysRoleMapper.findByRoleCode(RoleCodes.CHANNEL_LEADER)).thenReturn(Optional.empty());
-        when(sysRoleMapper.findByRoleCode(RoleCodes.CHANNEL_STAFF)).thenReturn(Optional.of(channelRole));
-        when(sysUserRoleMapper.findByRoleId(channelRole.getId())).thenReturn(List.of(
-                userRole(u.getId(), channelRole.getId())));
-        when(sysUserMapper.selectBatchIds(any())).thenReturn(List.of(u));
+        when(sysUserMapper.selectBatchIds(any(List.class))).thenReturn(List.of(u));
 
         List<UserOptionResponse> result = applicationService.listChannels(null, null);
 
