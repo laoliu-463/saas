@@ -140,12 +140,13 @@
 - 标记：P0。
 
 ## 达人域
+- 最新边界变化：#68 已完成达人域基线验证，覆盖 `TalentService` 认领、释放、保护期、过期释放、标签、地址、跟进、查询、Controller 路由和前端保护期冲突提示；本轮未改业务代码、API、DB schema、默认 real-pre 配置或真实数据。报告：`harness/reports/2026-06-21/ddd-talent-baseline-068/evidence-20260627-160500-ddd100-talent-baseline.md`。
 - 最新边界变化：`TalentService.evaluateExclusive` 独家达人评估订单查询数据范围新增灰度开启的用户域 `DataScopePolicy` 路径，默认关闭仍走 Legacy PERSONAL user / DEPT dept 过滤；本轮未改独家评估公式、订单佣金读取、寄样次数统计、达人认领规则、黑名单、第三方接口或真实数据。报告：`harness/archive/by-date/report-packages/reports-20260622-ddd-datascope-afternoon-1430-1722.zip` 内 `evidence-20260622-151700.md`。
 - 近期边界变化：`TalentService.blacklist/unblacklist`、`TalentService.page` 和 `TalentQueryService.detail` 已新增灰度开启的用户域 `DataScopePolicy` 路径；`TalentService.release` 管理员角色编码匹配、`TalentQueryService.assertCanOperate` 操作访问角色匹配已委托用户域 policy；达人归属覆盖已通过用户域 `loadUserOwnershipReferencesByIds` 校验目标负责人存在，不再读取完整用户 DTO，既有达人认领记录 `deptId` 写入行为不变。
-- 当前状态：达人资料、标签、地址和跟进主链路已具备。
-- 已完成能力：达人列表 / 详情、标签、地址、跟进。
-- 待优化能力：认领、保护期、第三方接口证据、`gender` 筛选缺口和权限负例补齐。
-- DDD 优化下一步：T-1 盘点达人域代码、接口、表和测试。
+- 当前状态：达人资料、认领、保护期、标签、地址和跟进主链路已有基线证据；real-pre 当前存在 37 个达人、36 条认领记录、25 条 active protected claim。
+- 已完成能力：达人列表 / 详情、认领 / 释放 / 保护期、标签、地址、跟进。
+- 待优化能力：第三方接口证据、Application 收口、地址供寄样域消费边界、`gender` 筛选缺口、权限负例和 real-pre follow/tag 正向样本补齐。
+- DDD 优化下一步：#69 达人资料、标签、跟进 Application 收口。
 - 标记：P1。
 
 ## 寄样域
