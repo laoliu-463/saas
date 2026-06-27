@@ -31,23 +31,11 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * 系统用户 CRUD 应用服务 A（DDD-USER-MIGRATION-012，Issue #21）。
+ * 系统用户 CRUD 应用服务 A。
  *
- * <p>用户域 / 用户管理 —— {@code getById} 与 {@code create} 的 DDD 薄壳 facade。
- * 当前为过渡实现 —— 业务逻辑保留在 SysUserService 旧实现，
- * 本 ApplicationService 作为 DDD 入口（参考模板 SysDeptApplicationService）。
- * 后续可拆分为独立 Policy。</p>
- *
- * <p><b>行为 1:1 等价</b>于 SysUserService.getById + SysUserService.create
- * （被本测试类和 true-route 委托测试覆盖）。</p>
- *
- * <p><b>2 个 public 方法</b>：
- * <ul>
- *   <li>getById —— 单个查询（带数据权限校验）</li>
- *   <li>create —— 新建（事务性，校验用户名唯一 + 角色合法性 + 单一管理员保护）</li>
- * </ul>
- *
- * <p>所属业务领域：用户域 / 用户管理</p>
+ * <p>用户域 / 用户管理入口，承接 {@code getById} 与 {@code create} 两个用例。
+ * 兼容 {@code SysUserService} true-route 会委托到本应用服务；持久化访问必须通过
+ * {@link UserCrudMutationStore} 端口，不直接依赖 Mapper / Entity。</p>
  */
 @Service
 public class SysUserCRUDApplicationA {

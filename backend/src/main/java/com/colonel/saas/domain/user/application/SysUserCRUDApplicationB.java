@@ -25,10 +25,12 @@ import java.util.Objects;
 import java.util.UUID;
 
 /**
- * 系统用户 CRUD 应用服务 B（DDD-USER-MIGRATION-013，Issue #22）。
+ * 系统用户 CRUD 应用服务 B。
  *
- * <p>本切片只承接 update / delete / resetPassword 三个用例，
- * 暂不接入 Controller 或替换旧 Service 生产路径。</p>
+ * <p>用户域 / 用户管理入口，承接 {@code update}、{@code delete} 与
+ * {@code resetPassword} 三个用例。兼容 {@code SysUserService} true-route
+ * 会委托到本应用服务；持久化访问必须通过 {@link UserCrudMutationStore} 端口，
+ * 不直接依赖 Mapper / Entity。</p>
  */
 @Service
 public class SysUserCRUDApplicationB {

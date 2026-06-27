@@ -7,6 +7,11 @@
 
 ## 最近版本摘要
 
+### v0.7.8 — 2026-06-27
+- DDD100 #34 补齐 SysUser CRUD true-route 委托证据：`SysUserService` 的 getById/create/update/delete/resetPassword 必须委托用户域 `SysUserCRUDApplicationA/B`。
+- 修正 `SysUserCRUDApplicationA/B` 过期类注释，不再把已接入的生产路径描述为未接入。
+- 证据：`harness/reports/2026-06-21/ddd-user-crud-034/evidence-20260627-123000-sysuser-crud-application.md`。
+
 ### v0.7.7 — 2026-06-27
 - DDD100 #33 新增 DataScope 剩余消费点 guard：冻结非用户域直接 `DataScope` 判断，阻止新增 self/group/all 复制规则。
 - 现有消费点必须暴露用户域 `DataScopePolicy` 路径；Legacy 默认分支保留为灰度兼容债务，不写成已清零。
