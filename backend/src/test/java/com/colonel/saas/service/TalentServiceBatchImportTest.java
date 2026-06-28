@@ -5,6 +5,7 @@ import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.dto.talent.TalentBatchImportResult;
 import com.colonel.saas.domain.order.facade.OrderReadFacade;
 import com.colonel.saas.domain.sample.facade.SampleDomainFacade;
+import com.colonel.saas.domain.talent.application.TalentBatchImportApplicationService;
 import com.colonel.saas.domain.talent.application.TalentClaimApplicationService;
 import com.colonel.saas.domain.talent.application.TalentProfileApplicationService;
 import com.colonel.saas.entity.Talent;
@@ -82,6 +83,16 @@ class TalentServiceBatchImportTest {
                         crawlerTalentInfoService,
                         businessRuleConfigService,
                         false),
+                new TalentBatchImportApplicationService(
+                        talentMapper,
+                        new TalentProfileApplicationService(
+                                talentMapper,
+                                talentEnrichTaskMapper,
+                                talentEnrichOrchestrator,
+                                crawlerTalentInfoService,
+                                businessRuleConfigService,
+                                false),
+                        operationLogService),
                 new TalentClaimApplicationService(
                         talentClaimMapper,
                         talentMapper,

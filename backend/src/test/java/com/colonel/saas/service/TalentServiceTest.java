@@ -8,6 +8,7 @@ import com.colonel.saas.entity.CrawlerTalentInfo;
 import com.colonel.saas.entity.Talent;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.exception.ForbiddenException;
+import com.colonel.saas.domain.talent.application.TalentBatchImportApplicationService;
 import com.colonel.saas.domain.talent.application.TalentClaimApplicationService;
 import com.colonel.saas.domain.order.facade.OrderReadFacade;
 import com.colonel.saas.domain.sample.facade.SampleDomainFacade;
@@ -111,6 +112,7 @@ class TalentServiceTest {
                 configDomainFacade,
                 businessRuleConfigService,
                 newTalentProfileApplicationService(),
+                newTalentBatchImportApplicationService(),
                 newTalentClaimApplicationService(),
                 operationLogService,
                 userDomainFacade,
@@ -864,6 +866,7 @@ class TalentServiceTest {
                 configDomainFacade,
                 businessRuleConfigService,
                 newTalentProfileApplicationService(),
+                newTalentBatchImportApplicationService(),
                 newTalentClaimApplicationService(),
                 operationLogService,
                 userDomainFacade,
@@ -1358,6 +1361,7 @@ class TalentServiceTest {
                 configDomainFacade,
                 businessRuleConfigService,
                 newTalentProfileApplicationService(),
+                newTalentBatchImportApplicationService(),
                 newTalentClaimApplicationService(dataScopePolicy, properties),
                 operationLogService,
                 userDomainFacade,
@@ -1375,6 +1379,13 @@ class TalentServiceTest {
                 crawlerTalentInfoService,
                 businessRuleConfigService,
                 true);
+    }
+
+    private TalentBatchImportApplicationService newTalentBatchImportApplicationService() {
+        return new TalentBatchImportApplicationService(
+                talentMapper,
+                newTalentProfileApplicationService(),
+                operationLogService);
     }
 
     private TalentClaimApplicationService newTalentClaimApplicationService() {
