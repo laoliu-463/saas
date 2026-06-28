@@ -164,12 +164,12 @@
 - 标记：P0。
 
 ## 达人域
-- 最新边界变化：DDD-TALENT-PROFILE-WRITE 已将 `TalentService.create/manualFill/refresh` 资料写侧编排迁入 `TalentProfileApplicationService`，旧 `TalentService` 保留 thin delegation；达人预设标签启动器不再直接注入 `SystemConfigMapper`，改为通过配置域 `ConfigSeedFacade` 声明默认标签，由配置域负责缺失写入。验证：`TalentProfileApplicationServiceTest`、`TalentServiceBatchImportTest`、`TalentServiceTest`、`TalentPresetTagsBootstrapTest`、`LegacyConfigSeedFacadeTest`、`DddCrossDomainMapperGuardTest` PASS；报告：`harness/reports/evidence-20260628-190112.md`；retro：`harness/reports/retro-20260628-190149.md`。
+- 最新边界变化：DDD-TALENT-PROFILE-WRITE / DDD-TALENT-CLAIM-WRITE 已将 `TalentService.create/manualFill/refresh` 资料写侧编排迁入 `TalentProfileApplicationService`，将 `claim/release/overrideTalentAssignment` 认领写侧编排迁入 `TalentClaimApplicationService`，旧 `TalentService` 保留 thin delegation；达人预设标签启动器改为通过配置域 `ConfigSeedFacade` 声明默认标签。验证：targeted Maven 67 tests PASS（1 个维护型跳过）；`agent-do -Scope backend` PASS，backend package、Docker 重启、健康检查和 real-pre preflight 通过。报告：`harness/reports/evidence-20260628-191650.md`；retro：`harness/reports/retro-20260628-191710.md`。
 - 最新边界变化：`TalentService.evaluateExclusive` 独家达人评估订单查询数据范围新增灰度开启的用户域 `DataScopePolicy` 路径，默认关闭仍走 Legacy PERSONAL user / DEPT dept 过滤；本轮未改独家评估公式、订单佣金读取、寄样次数统计、达人认领规则、黑名单、第三方接口或真实数据。报告：`harness/archive/by-date/report-packages/reports-20260622-ddd-datascope-afternoon-1430-1722.zip` 内 `evidence-20260622-151700.md`。
 - 近期边界变化：`TalentService.blacklist/unblacklist`、`TalentService.page` 和 `TalentQueryService.detail` 已新增灰度开启的用户域 `DataScopePolicy` 路径；`TalentService.release` 管理员角色编码匹配、`TalentQueryService.assertCanOperate` 操作访问角色匹配已委托用户域 policy；达人归属覆盖已通过用户域 `loadUserOwnershipReferencesByIds` 校验目标负责人存在，不再读取完整用户 DTO，既有达人认领记录 `deptId` 写入行为不变。
 - 当前状态：达人资料、标签、地址和跟进主链路已具备。
 - 已完成能力：达人列表 / 详情、标签、地址、跟进。
-- 待优化能力：认领、保护期、第三方接口证据、`gender` 筛选缺口和权限负例补齐。
+- 待优化能力：认领 / 保护期运行态负例、第三方接口证据、`gender` 筛选缺口和权限负例补齐。
 - DDD 优化下一步：T-1 盘点达人域代码、接口、表和测试。
 - 标记：P1。
 
