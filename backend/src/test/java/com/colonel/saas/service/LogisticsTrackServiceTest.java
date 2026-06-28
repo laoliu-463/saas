@@ -10,8 +10,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class LogisticsTrackServiceTest {
@@ -43,5 +45,18 @@ class LogisticsTrackServiceTest {
     void refreshAndProgress_nullSample_skip() {
         service.refreshAndProgress(null);
         verify(sampleLogisticsSyncService, never()).syncOne(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    @DisplayName("批量刷新发货中寄样委托 SampleLogisticsSyncService")
+    void refreshShippingSamples_delegatesToSyncService() {
+        SampleLogisticsSyncService.SyncBatchSummary summary =
+                new SampleLogisticsSyncService.SyncBatchSummary(3, 2, 1, 0);
+        when(sampleLogisticsSyncService.refreshShippingSamples()).thenReturn(summary);
+
+        SampleLogisticsSyncService.SyncBatchSummary result = service.refreshShippingSamples();
+
+        assertThat(result).isSameAs(summary);
+        verify(sampleLogisticsSyncService).refreshShippingSamples();
     }
 }

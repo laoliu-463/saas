@@ -1,0 +1,40 @@
+{
+  "items": [
+    {
+      "path": "harness/reports/evidence-20260628-165104.md",
+      "action": "archive",
+      "category": "report-overflow",
+      "reason": "keep harness/reports under 50 files before DDD logistics track validation"
+    },
+    {
+      "path": "harness/reports/retro-20260628-165146.md",
+      "action": "archive",
+      "category": "report-overflow",
+      "reason": "keep harness/reports under 50 files before DDD logistics track validation"
+    },
+    {
+      "path": "harness/reports/content-retire-20260628-165359.md",
+      "action": "archive",
+      "category": "report-overflow",
+      "reason": "keep harness/reports under 50 files before DDD logistics track validation"
+    },
+    {
+      "path": "harness/reports/evidence-20260628-165359.md",
+      "action": "archive",
+      "category": "report-overflow",
+      "reason": "keep harness/reports under 50 files before DDD logistics track validation"
+    },
+    {
+      "path": "harness/reports/retro-20260628-165417.md",
+      "action": "archive",
+      "category": "report-overflow",
+      "reason": "keep harness/reports under 50 files before DDD logistics track validation"
+    },
+    {
+      "path": "harness/reports/content-retire-20260628-180614.md",
+      "action": "archive",
+      "category": "report-overflow",
+      "reason": "keep harness/reports under 50 files before DDD logistics track validation"
+    }
+  ]
+}

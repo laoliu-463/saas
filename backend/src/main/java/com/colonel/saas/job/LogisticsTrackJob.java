@@ -1,17 +1,14 @@
 package com.colonel.saas.job;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.colonel.saas.entity.SampleRequest;
-import com.colonel.saas.mapper.SampleRequestMapper;
 import com.colonel.saas.service.DistributedJobLockService;
 import com.colonel.saas.service.LogisticsTrackService;
+import com.colonel.saas.service.SampleLogisticsSyncService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
-import java.util.List;
 
 /**
  * 物流轨迹刷新定时任务。
@@ -22,8 +19,8 @@ import java.util.List;
  * <p>
  * 处理逻辑：
  * <ol>
- *   <li>查询所有状态为"发货中"（status=3）且快递单号和快递公司编码均非空的记录</li>
- *   <li>逐条调用 {@link LogisticsTrackService#refreshAndProgress(SampleRequest)} 刷新轨迹</li>
+ *   <li>调用寄样物流服务查询所有状态为"发货中"且快递单号和快递公司编码均非空的记录</li>
+ *   <li>由寄样物流服务逐条刷新轨迹</li>
  *   <li>若物流显示已签收，服务内部会自动将寄样状态推进到下一阶段</li>
  * </ol>
  * </p>
@@ -37,7 +34,7 @@ import java.util.List;
  * </ul>
  * </p>
  *
- * @see LogisticsTrackService#refreshAndProgress(SampleRequest)
+ * @see LogisticsTrackService#refreshShippingSamples()
  * @see JobLockKeys#LOGISTICS_TRACK
  */
 @Slf4j
@@ -46,13 +43,9 @@ public class LogisticsTrackJob {
 
     /** 分布式锁 TTL */
     private static final Duration LOCK_TTL = Duration.ofMinutes(30);
-    /** 寄样状态：发货中 */
-    private static final int STATUS_SHIPPING = 3;
 
     /** 物流轨迹刷新服务 */
     private final LogisticsTrackService logisticsTrackService;
-    /** 寄样申请 Mapper */
-    private final SampleRequestMapper sampleRequestMapper;
     /** 分布式锁服务 */
     private final DistributedJobLockService jobLockService;
     /** 是否启用此定时任务，默认禁用 */
@@ -60,11 +53,9 @@ public class LogisticsTrackJob {
 
     public LogisticsTrackJob(
             LogisticsTrackService logisticsTrackService,
-            SampleRequestMapper sampleRequestMapper,
             DistributedJobLockService jobLockService,
             @Value("${app.logistics.refresh-job-enabled:false}") boolean jobEnabled) {
         this.logisticsTrackService = logisticsTrackService;
-        this.sampleRequestMapper = sampleRequestMapper;
         this.jobLockService = jobLockService;
         this.jobEnabled = jobEnabled;
     }
@@ -87,29 +78,9 @@ public class LogisticsTrackJob {
             return;
         }
         try {
-            // 查询所有发货中且有快递信息的寄样记录
-            LambdaQueryWrapper<SampleRequest> wrapper = new LambdaQueryWrapper<>();
-            wrapper.eq(SampleRequest::getStatus, STATUS_SHIPPING)
-                    .isNotNull(SampleRequest::getTrackingNo)
-                    .ne(SampleRequest::getTrackingNo, "")
-                    .isNotNull(SampleRequest::getShipperCode)
-                    .ne(SampleRequest::getShipperCode, "");
-            List<SampleRequest> samples = sampleRequestMapper.selectList(wrapper);
-
-            log.info("LogisticsTrackJob processing {} shipping samples", samples.size());
-            int success = 0;
-            int fail = 0;
-            for (SampleRequest sample : samples) {
-                try {
-                    // 刷新单条记录的物流轨迹，可能自动推进状态
-                    logisticsTrackService.refreshAndProgress(sample);
-                    success++;
-                } catch (Exception ex) {
-                    fail++;
-                    log.error("LogisticsTrackJob failed for sample {}", sample.getRequestNo(), ex);
-                }
-            }
-            log.info("LogisticsTrackJob completed: success={}, fail={}", success, fail);
+            SampleLogisticsSyncService.SyncBatchSummary summary = logisticsTrackService.refreshShippingSamples();
+            log.info("LogisticsTrackJob completed: total={}, success={}, fail={}",
+                    summary.total(), summary.success(), summary.failed());
         } finally {
             jobLockService.release(JobLockKeys.LOGISTICS_TRACK);
         }

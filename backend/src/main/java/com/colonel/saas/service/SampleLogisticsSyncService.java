@@ -38,6 +38,7 @@ import java.util.UUID;
  * <ul>
  *     <li>单条寄样物流同步（{@link #syncOne}）</li>
  *     <li>按物流单号查找并同步（{@link #syncByTrackingNo}）</li>
+ *     <li>刷新所有发货中寄样物流（{@link #refreshShippingSamples}）</li>
  *     <li>批量轮询在途寄样并同步（{@link #syncPendingInTransit}）</li>
  *     <li>物流签收后自动推进寄样状态至待作业（{@link #handleLogisticsResult}）</li>
  *     <li>物流轨迹持久化与去重（基于 SHA-256 节点哈希）</li>
@@ -107,6 +108,36 @@ public class SampleLogisticsSyncService {
                     logisticsQueryGateway.providerName(), null, null, "NOT_FOUND", "寄样申请不存在");
         }
         return syncAndPersist(sample);
+    }
+
+    /**
+     * 刷新所有发货中寄样申请的物流状态。
+     * <p>用于旧物流轨迹刷新定时任务，查询条件保持为发货中、物流单号和快递公司编码均非空。</p>
+     *
+     * @return 批量同步汇总
+     */
+    public SyncBatchSummary refreshShippingSamples() {
+        LambdaQueryWrapper<SampleRequest> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(SampleRequest::getStatus, STATUS_SHIPPING)
+                .isNotNull(SampleRequest::getTrackingNo)
+                .ne(SampleRequest::getTrackingNo, "")
+                .isNotNull(SampleRequest::getShipperCode)
+                .ne(SampleRequest::getShipperCode, "");
+        List<SampleRequest> samples = sampleRequestMapper.selectList(wrapper);
+
+        log.info("LogisticsTrackJob processing {} shipping samples", samples.size());
+        int success = 0;
+        int failed = 0;
+        for (SampleRequest sample : samples) {
+            try {
+                syncAndPersistBatchItem(sample);
+                success++;
+            } catch (Exception ex) {
+                failed++;
+                log.error("LogisticsTrackJob failed for sample {}", sample.getRequestNo(), ex);
+            }
+        }
+        return new SyncBatchSummary(samples.size(), success, failed, 0);
     }
 
     /**

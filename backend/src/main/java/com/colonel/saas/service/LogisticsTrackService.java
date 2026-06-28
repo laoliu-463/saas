@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <ul>
  *   <li>提供 {@link #refreshAndProgress} 触发单条寄样单的物流刷新与状态推进</li>
+ *   <li>提供 {@link #refreshShippingSamples} 触发发货中寄样单批量刷新</li>
  * </ul>
  *
  * <p><b>业务领域：</b>寄样域 — 物流追踪</p>
@@ -47,5 +48,14 @@ public class LogisticsTrackService {
             return;
         }
         sampleLogisticsSyncService.syncOne(sample.getId());
+    }
+
+    /**
+     * 刷新所有发货中寄样单的物流状态。
+     *
+     * @return 批量同步汇总
+     */
+    public SampleLogisticsSyncService.SyncBatchSummary refreshShippingSamples() {
+        return sampleLogisticsSyncService.refreshShippingSamples();
     }
 }

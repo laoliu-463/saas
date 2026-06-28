@@ -8,7 +8,6 @@
 
 com.colonel.saas.gateway.douyin.contract.DouyinContractFixtureProvider|PickSourceMappingMapper
 com.colonel.saas.gateway.douyin.test.TestDouyinOrderGateway|PickSourceMappingMapper
-com.colonel.saas.job.LogisticsTrackJob|SampleRequestMapper
 com.colonel.saas.service.AttributionService|PickSourceMappingMapper
 com.colonel.saas.service.AttributionService|TalentClaimMapper
 com.colonel.saas.service.AttributionService|TalentMapper
