@@ -170,15 +170,15 @@
 - 当前状态：达人资料、批量导入、标签、地址和跟进主链路已具备。
 - 已完成能力：达人列表 / 详情、批量导入、标签、地址、跟进。
 - 待优化能力：认领 / 保护期运行态负例、第三方接口证据、`gender` 筛选缺口和权限负例补齐。
-- DDD 优化下一步：T-CLEAN-002 的 `TalentService` 跨域 Mapper 债务已清空；继续按剩余 16 条白名单处理归因、商品、数据域和测试网关跨域 Mapper 债务，保持认领 / 独家评估业务规则不变。
+- DDD 优化下一步：T-CLEAN-002 的 `TalentService` 跨域 Mapper 债务已清空；继续按剩余 15 条白名单处理归因、商品、数据域和测试网关跨域 Mapper 债务，保持认领 / 独家评估业务规则不变。
 - 标记：P1。
 
 ## 寄样域
-- 最新边界变化：`SampleDomainFacade` 新增达人维度寄样摘要与近 30 天寄样计数出口，`LegacySampleDomainFacade` 继续在寄样域内读取 `sample_request` 并保持原状态映射、`deleted = 0`、`talent_id` 与 `create_time >=` 统计口径，供达人域详情 / 列表富化及独家评估消费；本轮未改寄样申请 / 审核 / 物流 / 状态机 / 动作权限 / API 字段或真实数据。报告：`harness/reports/evidence-20260628-194334.md`；retro：`harness/reports/retro-20260628-194407.md`。上一变化：`SampleApplicationService.exportSamples` 新增默认关闭的用户域 `DataScopePolicy` 旁路。
+- 最新边界变化：DDD-SAMPLE-LOGISTICS-JOB-BOUNDARY 已将 `LogisticsTrackJob` 的发货中寄样单扫描从直接 `SampleRequestMapper` 改为委托 `LogisticsTrackService.refreshShippingSamples`，由寄样域 `SampleLogisticsSyncService.refreshShippingSamples` 保持原状态=发货中、物流单号和快递公司编码非空查询口径并逐条刷新；跨域 Mapper 白名单移除 `LogisticsTrackJob|SampleRequestMapper`，剩余 15 条。本轮未改寄样申请 / 审核 / 物流状态机 / 动作权限 / API 字段或真实数据。验证：targeted Maven 14 tests PASS（1 个维护型跳过）；`agent-do -Scope full` PASS，backend/frontend 构建、Docker 重启、健康检查和 real-pre P0 preflight 通过。报告：`harness/reports/evidence-20260628-212217.md`；retro：`harness/reports/retro-20260628-212327.md`；commit：`e1717140`。上一变化：`SampleDomainFacade` 新增达人维度寄样摘要与近 30 天寄样计数出口。
 - 最新边界变化：`SampleApplicationService.getSampleBoard` 新增默认关闭的用户域 `DataScopePolicy` 旁路；默认关闭继续走 Legacy `findPageWithScope` 与 mapper `@DataScope` 切面，开启后仅在 plain biz staff + PERSONAL 由用户域 policy 判定后切到寄样域审核人视角 `findPageForAuditor`。本轮未改寄样状态机、动作权限、Mapper SQL、VO 组装、接口契约、默认开关或真实数据。报告：`harness/archive/by-date/report-packages/reports-20260622-ddd-datascope-late/2026-06-22-sample-datascope/evidence-20260622-181901.md`；retro：`harness/archive/by-date/report-packages/reports-20260622-ddd-datascope-late/2026-06-22-sample-datascope/retro-20260622-181923.md`。
 - 最新边界变化：`SampleApplicationService.getSampleById` 及其复用的 `requireSample` 详情访问数据范围判断新增默认关闭的用户域 `DataScopePolicy` 旁路；默认关闭继续走 Legacy PERSONAL 发起人 / DEPT 归属部门判断，开启后只把 PERSONAL/DEPT/ALL 数据范围解释交给用户域，寄样域仍保留寄样单负责人、归属部门、全局访问角色、招商专员商品分配豁免和运营可见状态业务语义。本轮未改寄样状态机、动作权限、Mapper SQL、VO 组装、接口契约或真实数据。报告：`harness/archive/by-date/report-packages/reports-20260622-ddd-datascope-late/2026-06-22-sample-datascope/evidence-20260622-175931.md`；retro：`harness/archive/by-date/report-packages/reports-20260622-ddd-datascope-late/2026-06-22-sample-datascope/retro-20260622-175954.md`。
 - 上一边界变化：`SampleApplicationService.getSamplePage` 寄样列表读路径新增默认关闭的用户域 `DataScopePolicy` 旁路；默认关闭继续走 Legacy auditor 查询判断，开启后只把 PERSONAL/DEPT/ALL 数据范围解释交给用户域，寄样域仍保留“plain biz staff 才走审核人视角”的业务语义。本轮未改寄样状态机、列表筛选参数、Mapper SQL、VO 组装、接口契约或真实数据。报告：`harness/archive/by-date/report-packages/reports-20260622-ddd-datascope-late/2026-06-22-sample-datascope/evidence-20260622-173855.md`；retro：`harness/archive/by-date/report-packages/reports-20260622-ddd-datascope-late/2026-06-22-sample-datascope/retro-20260622-173923.md`。
-- 当前状态：申请、审批、发货和订单事件自动完成链路已具备。TALENT-ADDRESS-SAMPLE-DEFAULT 达人寄样地址默认保存已完成（2026-06-03）；2026-06-20 已补 `SampleController` 架构测试，防止 HTTP 入口重新直接导入持久化 Mapper；`SampleApplicationService` 已通过用户域归属引用读取创建人部门、通过用户显示标签读取状态日志/导出/详情/看板展示名，并通过寄样域 `SampleActionPermissionPolicy` 承载动作权限；该策略消费用户域 `CurrentUserPermissionPolicy.hasAnyRole` 匹配角色编码集合，不改变寄样状态机或历史数据；`SampleApplicationService.getSamplePage`、`getSampleById`、`getSampleBoard`、`exportSamples` 和 `SampleFilterOptionsService` 均已新增灰度开启的 `DataScopePolicy` 数据范围旁路，默认关闭保持 Legacy 行为；`SampleApplicationPortImpl` quick sample 入口和 `SampleLogisticsImportService` 物流导入入口已收口到 policy / 用户域角色解释；real-pre 仍依赖真实归因订单样本。
+- 当前状态：申请、审批、发货、物流刷新和订单事件自动完成链路已具备。TALENT-ADDRESS-SAMPLE-DEFAULT 达人寄样地址默认保存已完成（2026-06-03）；2026-06-20 已补 `SampleController` 架构测试，防止 HTTP 入口重新直接导入持久化 Mapper；`LogisticsTrackJob` 已退出寄样 Mapper 读取，仅保留调度 / 锁职责；`SampleApplicationService` 已通过用户域归属引用读取创建人部门、通过用户显示标签读取状态日志/导出/详情/看板展示名，并通过寄样域 `SampleActionPermissionPolicy` 承载动作权限；`SampleApplicationService.getSamplePage`、`getSampleById`、`getSampleBoard`、`exportSamples` 和 `SampleFilterOptionsService` 均已新增灰度开启的 `DataScopePolicy` 数据范围旁路，默认关闭保持 Legacy 行为；`SampleApplicationPortImpl` quick sample 入口和 `SampleLogisticsImportService` 物流导入入口已收口到 policy / 用户域角色解释；real-pre 仍依赖真实归因订单样本。
 - 已完成能力：寄样申请、审批、发货、状态日志、订单事件消费；**地址默认保存**（寄样成功后回写 `talent_claim`，下次选达人自动带入，修改后更新，历史快照不变，多渠道隔离）。
 - TALENT-ADDRESS-SAMPLE-DEFAULT 报告路径：`harness/reports/talent-address-sample-default-20260603-224000.md`。
 - DDD-USER-SAMPLE-APPLICATION-FACADE 报告路径：`harness/reports/2026-06-21/ddd-user/facade-next/evidence-20260621-142200-sample-application-facade.md`。
@@ -187,7 +187,7 @@
 - DDD-SAMPLE-ACTION-PERMISSION-POLICY 报告路径：`harness/reports/2026-06-21/ddd-user/permission-next/evidence-20260621-160300-sample-action-permission-policy.md`。
 - TALENT-ADDRESS-SAMPLE-DEFAULT 修改文件：`ProductQuickSampleService.java`、`SampleApplicationService.java`（后端回写）；`QuickSampleModal.vue`、`SampleCreateModal.vue`（前端加载+提交）；测试 4 文件 8 用例。
 - 待优化能力：状态机完整验证、交作业命中条件、重复消费幂等和真实样本证据补齐。
-- DDD 优化下一步：S-1 盘点寄样域代码、接口、表、状态机和测试。
+- DDD 优化下一步：寄样域本轮清掉 `LogisticsTrackJob|SampleRequestMapper`；继续按剩余 15 条白名单处理归因、商品、数据域和测试网关跨域 Mapper 债务，同时保留寄样状态机完整验证、交作业命中条件、重复消费幂等和真实样本证据补齐。
 - 标记：P0。
 
 ## Harness
