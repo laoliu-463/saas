@@ -20,16 +20,19 @@ import com.colonel.saas.entity.TalentClaim;
 import com.colonel.saas.mapper.TalentClaimMapper;
 import com.colonel.saas.mapper.TalentMapper;
 import com.colonel.saas.service.OperationLogService;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 /**
@@ -69,6 +72,7 @@ public class TalentClaimApplicationService {
     private final DataScopePolicy dataScopePolicy;
     private final OperationLogService operationLogService;
     private final DddRefactorProperties dddRefactorProperties;
+    private final RedisTemplate<String, Object> redisTemplate;
 
     public TalentClaimApplicationService(
             TalentClaimMapper talentClaimMapper,
@@ -79,7 +83,8 @@ public class TalentClaimApplicationService {
             CurrentUserPermissionPolicy currentUserPermissionPolicy,
             DataScopePolicy dataScopePolicy,
             OperationLogService operationLogService,
-            DddRefactorProperties dddRefactorProperties) {
+            DddRefactorProperties dddRefactorProperties,
+            RedisTemplate<String, Object> redisTemplate) {
         this.talentClaimMapper = talentClaimMapper;
         this.talentMapper = talentMapper;
         this.orderReadFacade = orderReadFacade;
@@ -89,6 +94,157 @@ public class TalentClaimApplicationService {
         this.dataScopePolicy = dataScopePolicy;
         this.operationLogService = operationLogService;
         this.dddRefactorProperties = dddRefactorProperties;
+        this.redisTemplate = redisTemplate;
+    }
+
+    /**
+     * 认领达人（含 Redis 分布式锁 + 保护期 + 状态机）。
+     * 1:1 等价 TalentService.claim(UUID, UUID, UUID) 57 行业务。
+     */
+    public Talent claim(UUID talentId, UUID userId, UUID deptId) {
+        TalentClaimPolicy.requireClaimUser(userId);
+        String lockKey = "talent:claim:lock:" + talentId;
+        String lockValue = userId.toString();
+        Boolean locked = redisTemplate.opsForValue().setIfAbsent(
+                Objects.requireNonNull(lockKey),
+                Objects.requireNonNull(lockValue),
+                10,
+                TimeUnit.SECONDS);
+        if (!Boolean.TRUE.equals(locked)) {
+            throw BusinessException.conflict("达人认领处理中，请稍后重试");
+        }
+        try {
+            Talent talent = getById(talentId);
+            int protectDays = getProtectDays();
+
+            TalentClaimPolicy.assertNotDuplicateActiveClaim(
+                    talentClaimMapper.findActiveByTalentAndUser(talentId, userId));
+
+            LocalDateTime now = LocalDateTime.now();
+            TalentClaim claim = findLatestClaimByTalentAndUser(talentId, userId);
+            boolean newClaim = claim == null;
+            if (newClaim) {
+                claim = new TalentClaim();
+                claim.setId(UUID.randomUUID());
+                claim.setTalentId(talentId);
+                claim.setTalentUid(talent.getDouyinUid());
+                claim.setUserId(userId);
+            }
+            claim.setDeptId(deptId);
+            claim.setClaimType(CLAIM_TYPE_MANUAL);
+            claim.setClaimedAt(now);
+            claim.setProtectedUntil(TalentClaimPolicy.protectedUntil(now, protectDays));
+            claim.setStatus(CLAIM_STATUS_ACTIVE);
+            if (newClaim) {
+                talentClaimMapper.insert(claim);
+            } else {
+                persistTalentClaim(claim);
+            }
+
+            talent.setOwnerId(userId);
+            talent.setClaimedAt(now);
+            persistTalent(talent);
+            operationLogService.recordSystemAction(
+                    userId,
+                    "达人管理",
+                    "认领达人",
+                    "POST",
+                    "talent",
+                    talentId.toString(),
+                    talent.getNickname(),
+                    String.format("认领达人: 负责人=%s", userId));
+            return talent;
+        } finally {
+            redisTemplate.delete(lockKey);
+        }
+    }
+
+    /**
+     * 释放达人认领（含权限校验 + owner snapshot）。
+     * 1:1 等价 TalentService.release(UUID, UUID, UUID, Collection) 27 行业务。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public Talent release(UUID talentId, UUID userId, UUID deptId, Collection<?> roleCodes) {
+        TalentClaimPolicy.requireClaimUser(userId);
+        getById(talentId);
+
+        List<TalentClaim> activeClaims = talentClaimMapper.findActiveByTalentId(talentId);
+        boolean isAdmin = currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.ADMIN);
+        TalentClaim releaseTarget = TalentClaimPolicy.selectReleaseTarget(activeClaims, userId, isAdmin);
+
+        releaseTarget.setStatus(CLAIM_STATUS_RELEASED);
+        releaseTarget.setProtectedUntil(LocalDateTime.now());
+        persistTalentClaim(releaseTarget);
+
+        Talent talent = getById(talentId);
+        List<TalentClaim> remainingActiveClaims = talentClaimMapper.findActiveByTalentId(talentId);
+        applyReleaseOwnerSnapshot(talent, remainingActiveClaims);
+        persistTalent(talent);
+        operationLogService.recordSystemAction(
+                userId,
+                "达人管理",
+                "释放达人",
+                "POST",
+                "talent",
+                talentId.toString(),
+                talent.getNickname(),
+                String.format("释放达人: 操作人=%s, 释放认领=%s", userId, releaseTarget.getId()));
+        return talent;
+    }
+
+    /**
+     * 归属覆盖（管理员强制重新分配）。
+     * 1:1 等价 TalentService.overrideTalentAssignment(UUID, UUID, String, UUID) 49 行业务。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public Talent overrideTalentAssignment(UUID talentId, UUID newUserId, String reason, UUID currentUserId) {
+        if (newUserId == null) {
+            throw BusinessException.param("新负责人ID不能为空");
+        }
+        UserOwnershipReference targetUser =
+                userDomainFacade.loadUserOwnershipReferencesByIds(List.of(newUserId)).get(newUserId);
+        if (targetUser == null) {
+            throw BusinessException.notFound("目标负责人不存在");
+        }
+        Talent talent = getById(talentId);
+
+        // Expire all active claims for this talent
+        List<TalentClaim> activeClaims = talentClaimMapper.findActiveByTalentId(talentId);
+        LocalDateTime now = LocalDateTime.now();
+        for (TalentClaim claim : activeClaims) {
+            claim.setStatus(CLAIM_STATUS_EXPIRED);
+            claim.setProtectedUntil(now);
+            persistTalentClaim(claim);
+        }
+
+        // Create a new manual claim for the new user
+        TalentClaim newClaim = new TalentClaim();
+        newClaim.setId(UUID.randomUUID());
+        newClaim.setTalentId(talentId);
+        newClaim.setTalentUid(talent.getDouyinUid());
+        newClaim.setUserId(newUserId);
+        newClaim.setDeptId(null);
+        newClaim.setClaimType(CLAIM_TYPE_MANUAL);
+        newClaim.setClaimedAt(now);
+        newClaim.setProtectedUntil(now.plusDays(getProtectDays()));
+        newClaim.setStatus(CLAIM_STATUS_ACTIVE);
+        talentClaimMapper.insert(newClaim);
+
+        talent.setOwnerId(newUserId);
+        talent.setClaimedAt(now);
+        persistTalent(talent);
+
+        operationLogService.recordSystemAction(
+                currentUserId,
+                "达人管理",
+                "归属覆盖",
+                "POST",
+                "talent",
+                talentId.toString(),
+                talent.getNickname(),
+                String.format("归属覆盖: 新负责人=%s, 原因=%s", newUserId, reason));
+
+        return talent;
     }
 
     /**
@@ -295,5 +451,77 @@ public class TalentClaimApplicationService {
         if (!allowed) {
             throw new ForbiddenException("无权操作该达人");
         }
+    }
+
+
+    /**
+     * 获取达人（含软删除校验）。
+     * 1:1 等价 TalentService.getById(UUID)。
+     */
+    public Talent getById(UUID id) {
+        Talent talent = talentMapper.selectById(id);
+        if (talent == null || (talent.getDeleted() != null && talent.getDeleted() == 1)) {
+            throw BusinessException.notFound("达人不存在");
+        }
+        return talent;
+    }
+
+    /**
+     * 持久化达人 (含乐观锁)。
+     * 1:1 等价 TalentService.persistTalent(Talent)。
+     */
+    private void persistTalent(Talent talent) {
+        OptimisticLockSupport.requireUpdated(talentMapper.updateById(talent));
+    }
+
+    /**
+     * 持久化达人认领 (含乐观锁)。
+     * 1:1 等价 TalentService.persistTalentClaim(TalentClaim)。
+     */
+    private void persistTalentClaim(TalentClaim claim) {
+        OptimisticLockSupport.requireUpdated(talentClaimMapper.updateById(claim));
+    }
+
+    /**
+     * 查找达人最新认领记录。
+     * 1:1 等价 TalentService.findLatestClaimByTalentAndUser(UUID, UUID)。
+     */
+    private TalentClaim findLatestClaimByTalentAndUser(UUID talentId, UUID userId) {
+        return talentClaimMapper.selectOne(new LambdaQueryWrapper<TalentClaim>()
+                .eq(TalentClaim::getTalentId, talentId)
+                .eq(TalentClaim::getUserId, userId)
+                .eq(TalentClaim::getDeleted, 0)
+                .orderByDesc(TalentClaim::getClaimedAt)
+                .last("limit 1"));
+    }
+
+    /**
+     * 应用释放后的 owner snapshot。
+     * 1:1 等价 TalentService.applyReleaseOwnerSnapshot(Talent, List)。
+     */
+    private void applyReleaseOwnerSnapshot(Talent talent, List<TalentClaim> activeClaims) {
+        List<TalentClaim> remainingClaims = activeClaims == null
+                ? List.of()
+                : activeClaims.stream()
+                        .filter(claim -> claim.getStatus() != null && claim.getStatus() == CLAIM_STATUS_ACTIVE)
+                        .sorted(Comparator.<TalentClaim, LocalDateTime>comparing(
+                                TalentClaim::getClaimedAt,
+                                Comparator.nullsLast(Comparator.reverseOrder())))
+                        .toList();
+        talent.setActiveClaimCount(remainingClaims.size());
+        if (remainingClaims.isEmpty()) {
+            talent.setOwnerId(null);
+            talent.setClaimedAt(null);
+            talent.setProtectedUntil(null);
+            return;
+        }
+        TalentClaim nextOwnerClaim = remainingClaims.get(0);
+        talent.setOwnerId(nextOwnerClaim.getUserId());
+        talent.setClaimedAt(nextOwnerClaim.getClaimedAt());
+        talent.setProtectedUntil(remainingClaims.stream()
+                .map(TalentClaim::getProtectedUntil)
+                .filter(Objects::nonNull)
+                .max(LocalDateTime::compareTo)
+                .orElse(nextOwnerClaim.getProtectedUntil()));
     }
 }

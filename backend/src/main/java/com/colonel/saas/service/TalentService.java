@@ -795,61 +795,7 @@ public class TalentService {
      */
     @Transactional(rollbackFor = Exception.class)
     public Talent claim(UUID talentId, UUID userId, UUID deptId) {
-        TalentClaimPolicy.requireClaimUser(userId);
-        String lockKey = "talent:claim:lock:" + talentId;
-        String lockValue = userId.toString();
-        Boolean locked = redisTemplate.opsForValue().setIfAbsent(
-                Objects.requireNonNull(lockKey),
-                Objects.requireNonNull(lockValue),
-                10,
-                TimeUnit.SECONDS);
-        if (!Boolean.TRUE.equals(locked)) {
-            throw BusinessException.conflict("达人认领处理中，请稍后重试");
-        }
-        try {
-            Talent talent = getById(talentId);
-            int protectDays = getProtectDays();
-
-            TalentClaimPolicy.assertNotDuplicateActiveClaim(
-                    talentClaimMapper.findActiveByTalentAndUser(talentId, userId));
-
-            LocalDateTime now = LocalDateTime.now();
-            TalentClaim claim = findLatestClaimByTalentAndUser(talentId, userId);
-            boolean newClaim = claim == null;
-            if (newClaim) {
-                claim = new TalentClaim();
-                claim.setId(UUID.randomUUID());
-                claim.setTalentId(talentId);
-                claim.setTalentUid(talent.getDouyinUid());
-                claim.setUserId(userId);
-            }
-            claim.setDeptId(deptId);
-            claim.setClaimType(CLAIM_TYPE_MANUAL);
-            claim.setClaimedAt(now);
-            claim.setProtectedUntil(TalentClaimPolicy.protectedUntil(now, protectDays));
-            claim.setStatus(CLAIM_STATUS_ACTIVE);
-            if (newClaim) {
-                talentClaimMapper.insert(claim);
-            } else {
-                persistTalentClaim(claim);
-            }
-
-            talent.setOwnerId(userId);
-            talent.setClaimedAt(now);
-            persistTalent(talent);
-            operationLogService.recordSystemAction(
-                    userId,
-                    "达人管理",
-                    "认领达人",
-                    "POST",
-                    "talent",
-                    talentId.toString(),
-                    talent.getNickname(),
-                    String.format("认领达人: 负责人=%s", userId));
-            return talent;
-        } finally {
-            redisTemplate.delete(lockKey);
-        }
+        return talentClaimApplicationService.claim(talentId, userId, deptId);
     }
 
     /**
@@ -875,31 +821,7 @@ public class TalentService {
      */
     @Transactional(rollbackFor = Exception.class)
     public Talent release(UUID talentId, UUID userId, UUID deptId, Collection<?> roleCodes) {
-        TalentClaimPolicy.requireClaimUser(userId);
-        getById(talentId);
-
-        List<TalentClaim> activeClaims = talentClaimMapper.findActiveByTalentId(talentId);
-        boolean isAdmin = currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.ADMIN);
-        TalentClaim releaseTarget = TalentClaimPolicy.selectReleaseTarget(activeClaims, userId, isAdmin);
-
-        releaseTarget.setStatus(CLAIM_STATUS_RELEASED);
-        releaseTarget.setProtectedUntil(LocalDateTime.now());
-        persistTalentClaim(releaseTarget);
-
-        Talent talent = getById(talentId);
-        List<TalentClaim> remainingActiveClaims = talentClaimMapper.findActiveByTalentId(talentId);
-        applyReleaseOwnerSnapshot(talent, remainingActiveClaims);
-        persistTalent(talent);
-        operationLogService.recordSystemAction(
-                userId,
-                "达人管理",
-                "释放达人",
-                "POST",
-                "talent",
-                talentId.toString(),
-                talent.getNickname(),
-                String.format("释放达人: 操作人=%s, 释放认领=%s", userId, releaseTarget.getId()));
-        return talent;
+        return talentClaimApplicationService.release(talentId, userId, deptId, roleCodes);
     }
 
     /**
@@ -924,53 +846,7 @@ public class TalentService {
      */
     @Transactional(rollbackFor = Exception.class)
     public Talent overrideTalentAssignment(UUID talentId, UUID newUserId, String reason, UUID currentUserId) {
-        if (newUserId == null) {
-            throw BusinessException.param("新负责人ID不能为空");
-        }
-        UserOwnershipReference targetUser =
-                userDomainFacade.loadUserOwnershipReferencesByIds(List.of(newUserId)).get(newUserId);
-        if (targetUser == null) {
-            throw BusinessException.notFound("目标负责人不存在");
-        }
-        Talent talent = getById(talentId);
-
-        // Expire all active claims for this talent
-        List<TalentClaim> activeClaims = talentClaimMapper.findActiveByTalentId(talentId);
-        LocalDateTime now = LocalDateTime.now();
-        for (TalentClaim claim : activeClaims) {
-            claim.setStatus(CLAIM_STATUS_EXPIRED);
-            claim.setProtectedUntil(now);
-            persistTalentClaim(claim);
-        }
-
-        // Create a new manual claim for the new user
-        TalentClaim newClaim = new TalentClaim();
-        newClaim.setId(UUID.randomUUID());
-        newClaim.setTalentId(talentId);
-        newClaim.setTalentUid(talent.getDouyinUid());
-        newClaim.setUserId(newUserId);
-        newClaim.setDeptId(null);
-        newClaim.setClaimType(CLAIM_TYPE_MANUAL);
-        newClaim.setClaimedAt(now);
-        newClaim.setProtectedUntil(now.plusDays(getProtectDays()));
-        newClaim.setStatus(CLAIM_STATUS_ACTIVE);
-        talentClaimMapper.insert(newClaim);
-
-        talent.setOwnerId(newUserId);
-        talent.setClaimedAt(now);
-        persistTalent(talent);
-
-        operationLogService.recordSystemAction(
-                currentUserId,
-                "达人管理",
-                "归属覆盖",
-                "POST",
-                "talent",
-                talentId.toString(),
-                talent.getNickname(),
-                String.format("归属覆盖: 新负责人=%s, 原因=%s", newUserId, reason));
-
-        return talent;
+        return talentClaimApplicationService.overrideTalentAssignment(talentId, newUserId, reason, currentUserId);
     }
 
     /**
