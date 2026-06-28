@@ -81,4 +81,17 @@ class CopyPromotionApplicationServiceTest {
                 .doesNotContain("com.colonel.saas.gateway.douyin.DouyinPromotionGateway")
                 .doesNotContain("@Lazy");
     }
+
+    @Test
+    void legacyProductService_shouldNotExposeCopyPromotionEntryPoint() throws Exception {
+        Path sourcePath = Path.of("src/main/java/com/colonel/saas/service/ProductService.java");
+        if (!Files.exists(sourcePath)) {
+            sourcePath = Path.of("backend/src/main/java/com/colonel/saas/service/ProductService.java");
+        }
+        String source = Files.readString(sourcePath);
+
+        assertThat(source)
+                .doesNotContain("generatePromotionLinkCopy(")
+                .doesNotContain("CopyPromotionApplicationService");
+    }
 }
