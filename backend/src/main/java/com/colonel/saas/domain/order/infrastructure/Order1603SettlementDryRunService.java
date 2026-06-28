@@ -1,5 +1,6 @@
-package com.colonel.saas.service;
+package com.colonel.saas.domain.order.infrastructure;
 
+import com.colonel.saas.domain.order.policy.OrderDualTrackAmountResolver;
 import com.colonel.saas.service.settlement.SettlementOrderGateway;
 import com.colonel.saas.service.settlement.SettlementOrderPage;
 import com.colonel.saas.service.settlement.SettlementOrderQuery;

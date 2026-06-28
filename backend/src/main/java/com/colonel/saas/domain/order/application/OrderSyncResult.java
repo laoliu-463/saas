@@ -1,6 +1,6 @@
 package com.colonel.saas.domain.order.application;
 
-import com.colonel.saas.service.OrderSyncService;
+import com.colonel.saas.domain.order.application.OrderSyncService;
 
 import java.util.ArrayList;
 import java.util.Collections;

@@ -23,7 +23,7 @@ import java.util.function.LongConsumer;
  * 订单域只落库接口返回的事实金额，不做业务推导（不计算服务费收益 / 提成 / 毛利）。
  * 对应订单域 V1.6 §2.4.2 双轨金额规范。</p>
  *
- * <p>迁移自 {@code com.colonel.saas.service.OrderDualTrackAmountResolver}。</p>
+ * <p>迁移自 {@code com.colonel.saas.domain.order.policy.OrderDualTrackAmountResolver}。</p>
  */
 public final class OrderAmountMapperPolicy {
 

@@ -1,5 +1,6 @@
 package com.colonel.saas.service;
 
+import com.colonel.saas.domain.config.application.SysConfigService;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.config.ConfigChangedEventFactory;
 import com.colonel.saas.config.ConfigDefinitionRegistry;

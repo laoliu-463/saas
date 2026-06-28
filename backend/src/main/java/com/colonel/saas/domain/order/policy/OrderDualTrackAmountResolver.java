@@ -1,4 +1,4 @@
-package com.colonel.saas.service;
+package com.colonel.saas.domain.order.policy;
 
 import com.colonel.saas.domain.order.policy.OrderAmountMapperPolicy;
 import org.springframework.util.StringUtils;

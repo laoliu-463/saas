@@ -1,5 +1,7 @@
 package com.colonel.saas.architecture;
 
+import com.colonel.saas.domain.order.application.OrderAttributionReplayService;
+import com.colonel.saas.domain.order.application.OrderSyncService;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;

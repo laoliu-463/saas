@@ -1,5 +1,6 @@
 package com.colonel.saas.service;
 
+import com.colonel.saas.domain.config.infrastructure.BusinessRuleConfigService;
 import com.colonel.saas.config.SystemConfigKeys;
 import com.colonel.saas.entity.SystemConfig;
 import com.colonel.saas.mapper.SystemConfigMapper;

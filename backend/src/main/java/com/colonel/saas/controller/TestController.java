@@ -5,7 +5,7 @@ import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.annotation.RequireRoles;
 import com.colonel.saas.config.OrderDerivedCacheKeys;
 import com.colonel.saas.constant.RoleCodes;
-import com.colonel.saas.service.OrderSyncService;
+import com.colonel.saas.domain.order.application.OrderSyncService;
 import com.colonel.saas.service.ShortTtlCacheService;
 import com.colonel.saas.testsupport.TestDataService;
 import io.swagger.v3.oas.annotations.Operation;

@@ -1,8 +1,8 @@
 package com.colonel.saas;
 
 import com.colonel.saas.service.DouyinWebhookSchemaBootstrap;
-import com.colonel.saas.service.OrderPaymentSchemaBootstrap;
-import com.colonel.saas.service.OrderSyncDedupSchemaBootstrap;
+import com.colonel.saas.domain.order.infrastructure.OrderPaymentSchemaBootstrap;
+import com.colonel.saas.domain.order.infrastructure.OrderSyncDedupSchemaBootstrap;
 import com.colonel.saas.service.TalentPresetTagsBootstrap;
 import com.colonel.saas.testsupport.TestDataService;
 import org.junit.jupiter.api.Test;

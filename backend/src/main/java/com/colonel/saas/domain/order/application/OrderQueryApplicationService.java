@@ -2,7 +2,7 @@ package com.colonel.saas.domain.order.application;
 
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.dto.order.OrderDetailResponse;
-import com.colonel.saas.service.OrderQueryService;
+import com.colonel.saas.domain.order.query.OrderQueryService;
 import org.springframework.stereotype.Service;
 
 import java.util.UUID;

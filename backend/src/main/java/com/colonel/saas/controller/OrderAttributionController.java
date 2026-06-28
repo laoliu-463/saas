@@ -9,7 +9,7 @@ import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.common.result.PageResult;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.entity.ColonelsettlementOrder;
-import com.colonel.saas.service.OrderAttributionService;
+import com.colonel.saas.domain.order.application.OrderAttributionService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;

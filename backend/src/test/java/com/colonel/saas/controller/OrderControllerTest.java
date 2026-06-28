@@ -1,5 +1,6 @@
 package com.colonel.saas.controller;
 
+import com.colonel.saas.domain.order.application.OrderService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
@@ -23,12 +24,12 @@ import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.service.DashboardService;
 import com.colonel.saas.service.OperationLogService;
-import com.colonel.saas.service.OrderAttributionReplayService;
-import com.colonel.saas.service.OrderQueryService;
-import com.colonel.saas.service.OrderSyncService;
-import com.colonel.saas.service.Order1603SettlementDryRunService;
-import com.colonel.saas.service.Order2704SettlementDryRunService;
-import com.colonel.saas.service.Order6468PaginationDryRunService;
+import com.colonel.saas.domain.order.application.OrderAttributionReplayService;
+import com.colonel.saas.domain.order.query.OrderQueryService;
+import com.colonel.saas.domain.order.application.OrderSyncService;
+import com.colonel.saas.domain.order.infrastructure.Order1603SettlementDryRunService;
+import com.colonel.saas.domain.order.infrastructure.Order2704SettlementDryRunService;
+import com.colonel.saas.domain.order.infrastructure.Order6468PaginationDryRunService;
 import com.colonel.saas.service.ShortTtlCacheService;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
@@ -91,10 +92,10 @@ class OrderControllerTest {
     @Mock
     private OrderDomainFacade orderDomainFacade;
     /**
-     * t2-orders 抽 service：OrderController 委托 {@link com.colonel.saas.service.OrderService}
+     * t2-orders 抽 service：OrderController 委托 {@link com.colonel.saas.domain.order.application.OrderService}
      * 做 wrapper 拼装。测试用真实 OrderService 实例 + mock mapper，wrapper 行为与生产一致。
      */
-    private com.colonel.saas.service.OrderService orderService;
+    private com.colonel.saas.domain.order.application.OrderService orderService;
 
     private ShortTtlCacheService shortTtlCacheService;
     private OrderController controller;
@@ -108,7 +109,7 @@ class OrderControllerTest {
         dddRefactorProperties = new DddRefactorProperties();
         DashboardService dashboardService = org.mockito.Mockito.mock(DashboardService.class);
         DataScopePolicy dataScopePolicy = new DataScopePolicy();
-        orderService = new com.colonel.saas.service.OrderService(
+        orderService = new com.colonel.saas.domain.order.application.OrderService(
                 orderMapper, dashboardService, productSnapshotMapper, productMapper, dataScopePolicy, dddRefactorProperties);
         shortTtlCacheService = new ShortTtlCacheService();
         controller = new OrderController(

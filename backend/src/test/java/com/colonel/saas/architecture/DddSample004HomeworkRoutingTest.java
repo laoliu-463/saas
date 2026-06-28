@@ -11,7 +11,7 @@ import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.mapper.OrderSyncDedupClaimMapper;
 import com.colonel.saas.service.MerchantService;
 import com.colonel.saas.service.OperationLogService;
-import com.colonel.saas.service.OrderSyncPersistenceService;
+import com.colonel.saas.domain.order.infrastructure.OrderSyncPersistenceService;
 import com.colonel.saas.service.PickSourceMappingService;
 import com.colonel.saas.service.SampleLifecycleService;
 import org.junit.jupiter.api.BeforeEach;

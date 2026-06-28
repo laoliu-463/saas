@@ -1,4 +1,4 @@
-package com.colonel.saas.service;
+package com.colonel.saas.domain.order.policy;
 
 /**
  * 订单业绩/提成口径策略工具类（对应需求 Y-06：取消/失效订单不计入业绩）。

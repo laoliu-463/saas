@@ -1,6 +1,7 @@
 package com.colonel.saas.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.colonel.saas.domain.order.application.OrderSyncService;
 import com.colonel.saas.entity.DouyinWebhookEvent;
 import com.colonel.saas.mapper.DouyinWebhookEventMapper;
 import com.fasterxml.jackson.core.type.TypeReference;

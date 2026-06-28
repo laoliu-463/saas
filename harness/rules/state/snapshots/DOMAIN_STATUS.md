@@ -87,10 +87,10 @@
 - 标记：P1。
 
 ## 订单域
-- 最新边界变化：`OrderAttributionService` 未归因分页与订单回流摘要数据范围过滤新增默认关闭的用户域 `DataScopePolicy` 旁路；默认关闭继续走 Legacy PERSONAL/DEPT `QueryWrapper.eq` 条件，开启后才调用 `DataScopePolicy.applyTo`。本轮未改订单事实、归因状态、同步、业绩事件、Mapper SQL、接口参数或历史数据。
-- 最新报告路径：`harness/reports/evidence-20260622-191140.md`；retro：`harness/reports/retro-20260622-191156.md`。
-- 当前状态：订单事实、退款事实、同步日志和归因输入已具备；P0-ORDER-001 PAY_RECENT 6h 补拉与同步日志增强已完成（2026-06-03，代码 + 运行态）；ORDER-P0-DUAL-SOURCE-SYNC 已在本地 real-pre 接入 1603 事实订单源并验证入库；ORDER-P0-DUAL-SOURCE-REMOTE-VERIFY 已完成远端部署验证，远端 commit 对齐 `77b723b6`，1603 入库与管理员可见通过；订单明细表字段对齐已完成本地 real-pre 验证（2026-06-04，commit `abf3f9eb`）；ORDER-DETAIL-TAB-FIX-001 已完成前端 16 列扩展与“渠道”文案统一（2026-06-05，commit `db934d99`）；ORDER-PERFORMANCE-EVENT-AFTER-COMMIT-FIX-001 已完成本地 real-pre 修复验证（2026-06-06），订单已同步事件改为事务提交后发布。
-- 已完成能力：订单同步（默认 1603 `INSTITUTE_SETTLEMENT` 结算口径 + PAY_RECENT 6h 30min 兜底回扫 + 1603 INSTITUTE_RECENT 24h 事实订单源）、订单入库、退款事实、归因输入保存、双轨独立 Redis 水位 + 独立锁、同步日志含 `api/mode/timeType/inserted/updated/attributed/unattributed/noPickSource/noMapping/failed` 维度。
+- 最新边界变化：#118 已将订单域 13 个 `Order*` legacy service 从 `com.colonel.saas.service` 迁入 `domain/order` 的 `application`、`query`、`infrastructure`、`policy` 子包；`service/Order*.java` 残留清零，订单同步、查询、归因回放、dry-run、schema bootstrap 和订单状态策略均归入订单域包。本轮未改订单事实、归因规则、同步窗口、业绩事件、Mapper SQL、接口参数或历史数据。
+- 最新报告路径：`harness/reports/2026-06-28/ddd-complete-order-118/evidence-20260628-111500-order-legacy-retire.md`；Harness latest evidence 由本轮 `agent-do` 生成。
+- 当前状态：订单事实、退款事实、同步日志和归因输入已具备；#118 后订单域 legacy service LOC 为 0，订单域 proxy 为 84.3%；P0-ORDER-001 PAY_RECENT 6h 补拉与同步日志增强已完成（2026-06-03，代码 + 运行态）；ORDER-P0-DUAL-SOURCE-SYNC 已在本地 real-pre 接入 1603 事实订单源并验证入库；ORDER-P0-DUAL-SOURCE-REMOTE-VERIFY 已完成远端部署验证，远端 commit 对齐 `77b723b6`，1603 入库与管理员可见通过；订单明细表字段对齐已完成本地 real-pre 验证（2026-06-04，commit `abf3f9eb`）；ORDER-DETAIL-TAB-FIX-001 已完成前端 16 列扩展与“渠道”文案统一（2026-06-05，commit `db934d99`）；ORDER-PERFORMANCE-EVENT-AFTER-COMMIT-FIX-001 已完成本地 real-pre 修复验证（2026-06-06），订单已同步事件改为事务提交后发布。
+- 已完成能力：订单同步（默认 1603 `INSTITUTE_SETTLEMENT` 结算口径 + PAY_RECENT 6h 30min 兜底回扫 + 1603 INSTITUTE_RECENT 24h 事实订单源）、订单入库、退款事实、归因输入保存、双轨独立 Redis 水位 + 独立锁、同步日志含 `api/mode/timeType/inserted/updated/attributed/unattributed/noPickSource/noMapping/failed` 维度；订单域旧 service 入口已退休到领域包，仍保留原行为契约与测试覆盖。
 - P0-ORDER-001 报告路径：`harness/reports/p0-order-001-real-order-visible-20260603-180450.md`、`harness/reports/p0-order-001-diagnosis-20260603-173500.md`、`harness/reports/p0-order-001-intake-20260603-172923.md`。
 - P0-ORDER-001 修改文件：`backend/src/main/java/com/colonel/saas/job/JobLockKeys.java`、`OrderSyncJob.java`、`backend/src/main/java/com/colonel/saas/service/OrderSyncService.java`、`backend/src/main/resources/application.yml`，新增/增强测试 3 个文件 13 用例。
 - P0-ORDER-001 运行态对账：本地 backend-real-pre 重启后 health=UP，scheduler-2 立即执行 INCREMENTAL（窗口 628s ≈ 10min+overlap），scheduler-4 立即执行 PAY_RECENT（窗口 21600s = 6h），两 Redis key `order:sync:last_time` + `order:sync:pay_recent_last_time` 共存独立。
@@ -101,7 +101,7 @@
 - ORDER-PERFORMANCE-EVENT-AFTER-COMMIT-FIX-001 证据：`harness/reports/order-performance-event-after-commit-fix-001-20260606-121000.md`；Harness evidence `harness/reports/evidence-20260606-120829.md`；real-pre preflight `runtime/qa/out/real-pre-preflight-20260606-120648/report.md`。本地后端全量测试 1730/0/0，`backend-real-pre` rebuild/recreate 后 healthy；SQL anti-join 显示历史缺口仍为 `missing_performance=15`。
 - 待优化能力：`pick_source` 返回样本与 mapping 命中后的渠道正向可见性验证；Dashboard summary 双轨聚合另开 `ANALYTICS-DUAL-TRACK-SUMMARY-FIX`；如需远端同步展示订单明细新表头，另起远端部署任务。
 - 当前风险：真实订单 PAY_RECENT 周期最坏 30 分钟可见延迟，如商务要求更短可调小 cron；抖音 update_time 上限延迟超 6h 时 PAY_RECENT 也会丢，6h 为当前观测经验值；1603 是否稳定返回 `settle_time` / `effective_*` / `flow_point` 仍需 raw probe + dry-run 取证；渠道可见性正向样本仍 PENDING；订单事件时序根因已修复本地 real-pre，但历史 `performance_records` 缺口仍需 backfill，当前本地 anti-join 为 15。
-- DDD 优化下一步：先执行 `ORDER-PERFORMANCE-BACKFILL-001` 清理历史缺口；有 `pick_source` 样本后做渠道可见性验证；之后进入 P0-SAMPLE-001 寄样流转，Dashboard summary 双轨单独处理；远端订单明细展示按部署需求单独执行。
+- DDD 优化下一步：#117 继续等待真实 `pick_source` 正向样本；`ORDER-PERFORMANCE-BACKFILL-001` 清理历史业绩缺口；订单 epic #93 仍需按跨域闭环证据最终 closeout，远端订单明细展示按部署需求单独执行。
 - 标记：P0。
 
 ## 业绩域

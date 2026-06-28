@@ -4,7 +4,7 @@ import com.colonel.saas.domain.order.application.OrderSyncApplicationService;
 import com.colonel.saas.domain.order.application.OrderSyncCommand;
 import com.colonel.saas.domain.order.application.OrderSyncExecutionContext;
 import com.colonel.saas.domain.order.application.OrderSyncResult;
-import com.colonel.saas.service.OrderSyncService;
+import com.colonel.saas.domain.order.application.OrderSyncService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;

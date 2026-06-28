@@ -1,4 +1,4 @@
-package com.colonel.saas.service;
+package com.colonel.saas.domain.order.query;
 
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.enums.DataScope;
@@ -6,6 +6,7 @@ import com.colonel.saas.common.exception.ForbiddenException;
 import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.dto.order.OrderDetailResponse;
+import com.colonel.saas.service.AttributionService;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;

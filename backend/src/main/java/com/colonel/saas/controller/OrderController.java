@@ -26,13 +26,13 @@ import com.colonel.saas.domain.order.query.OrderDetailAssembler;
 import com.colonel.saas.service.AttributionService;
 import com.colonel.saas.service.DashboardService;
 import com.colonel.saas.service.OperationLogService;
-import com.colonel.saas.service.OrderAttributionReplayService;
-import com.colonel.saas.service.Order1603SettlementDryRunService;
-import com.colonel.saas.service.Order2704SettlementDryRunService;
-import com.colonel.saas.service.Order6468PaginationDryRunService;
-import com.colonel.saas.service.OrderQueryService;
-import com.colonel.saas.service.OrderService;
-import com.colonel.saas.service.OrderSyncService;
+import com.colonel.saas.domain.order.application.OrderAttributionReplayService;
+import com.colonel.saas.domain.order.infrastructure.Order1603SettlementDryRunService;
+import com.colonel.saas.domain.order.infrastructure.Order2704SettlementDryRunService;
+import com.colonel.saas.domain.order.infrastructure.Order6468PaginationDryRunService;
+import com.colonel.saas.domain.order.query.OrderQueryService;
+import com.colonel.saas.domain.order.application.OrderService;
+import com.colonel.saas.domain.order.application.OrderSyncService;
 import com.colonel.saas.service.ShortTtlCacheService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -97,10 +97,10 @@ import java.util.UUID;
  * 部分写操作接口额外限定为 ADMIN 角色。数据范围（self / group / all）通过请求属性注入，
  * 在查询层自动拼接过滤条件。</p>
  *
- * @see com.colonel.saas.service.OrderSyncService 订单同步服务
- * @see com.colonel.saas.service.OrderQueryService 订单查询服务
+ * @see com.colonel.saas.domain.order.application.OrderSyncService 订单同步服务
+ * @see com.colonel.saas.domain.order.query.OrderQueryService 订单查询服务
  * @see com.colonel.saas.service.AttributionService 归因服务
- * @see com.colonel.saas.service.OrderAttributionReplayService 归因重算服务
+ * @see com.colonel.saas.domain.order.application.OrderAttributionReplayService 归因重算服务
  * @see com.colonel.saas.common.base.BaseController 基础控制器
  */
 @Tag(name = "订单管理", description = "订单同步、列表、统计、筛选项与详情查询接口。")

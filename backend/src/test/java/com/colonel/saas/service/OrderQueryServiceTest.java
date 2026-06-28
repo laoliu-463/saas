@@ -1,5 +1,6 @@
 package com.colonel.saas.service;
 
+import com.colonel.saas.domain.order.query.OrderQueryService;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.exception.ForbiddenException;
@@ -57,9 +58,9 @@ class OrderQueryServiceTest {
     }
 
     private Path orderQueryServiceSourcePath() {
-        Path sourcePath = Path.of("src/main/java/com/colonel/saas/service/OrderQueryService.java");
+        Path sourcePath = Path.of("src/main/java/com/colonel/saas/domain/order/query/OrderQueryService.java");
         if (!Files.exists(sourcePath)) {
-            sourcePath = Path.of("backend/src/main/java/com/colonel/saas/service/OrderQueryService.java");
+            sourcePath = Path.of("backend/src/main/java/com/colonel/saas/domain/order/query/OrderQueryService.java");
         }
         return sourcePath;
     }

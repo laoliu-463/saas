@@ -1,5 +1,6 @@
 package com.colonel.saas.service;
 
+import com.colonel.saas.domain.config.infrastructure.BusinessRuleConfigService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.dto.talent.TalentBatchImportResult;

@@ -2,7 +2,7 @@ package com.colonel.saas.domain.order.application;
 
 import com.colonel.saas.config.AppProperties;
 import com.colonel.saas.config.DddRefactorProperties;
-import com.colonel.saas.service.OrderSyncService;
+import com.colonel.saas.domain.order.application.OrderSyncService;
 import io.lettuce.core.RedisCommandExecutionException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.RedisConnectionFailureException;

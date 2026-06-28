@@ -1,4 +1,4 @@
-package com.colonel.saas.service;
+package com.colonel.saas.domain.order.application;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;

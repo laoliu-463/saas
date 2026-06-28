@@ -1,7 +1,7 @@
 # GitHub Issues Index (Mirror)
 
 > 本文件是 GitHub Issues 的本地镜像，用于 Matt Pocock engineering skills 与 harness 任务路由。
-> 最后更新：2026-06-27（#112 配置域 legacy retire 完成；#96/#135 因真实 pick_source 订单样本缺失保持 open）。
+> 最后更新：2026-06-28（#118 订单域 legacy service retire 完成；#96/#135 因真实 pick_source 订单样本缺失保持 open）。
 
 ## 同步规则
 
@@ -23,7 +23,6 @@
 | 100 | [DDD-COMPLETE-100-FRONTEND] 前端领域化完整收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/100 |
 | 101 | [DDD-COMPLETE-100-GOVERNANCE] 架构护栏、迁移率和最终 closeout 收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/101 |
 | 117 | [DDD-COMPLETE-100-ORDER-05] real-pre 推广链接订单 pick_source 正向样本 | ready-for-agent | https://github.com/laoliu-463/saas/issues/117 |
-| 118 | [DDD-COMPLETE-100-ORDER-06] 订单域 legacy service 退休与迁移率目标达成 | ready-for-agent | https://github.com/laoliu-463/saas/issues/118 |
 | 123 | [DDD-COMPLETE-100-PERF-05] 历史 performance_records 缺口 backfill 与幂等 | ready-for-agent | https://github.com/laoliu-463/saas/issues/123 |
 | 124 | [DDD-COMPLETE-100-PERF-06] 业绩域 legacy retire 与 real-pre API/SQL/page 对账 | ready-for-agent | https://github.com/laoliu-463/saas/issues/124 |
 | 129 | [DDD-COMPLETE-100-ANALYTICS-05] 分析模块 legacy retire 与迁移率目标达成 | ready-for-agent | https://github.com/laoliu-463/saas/issues/129 |
@@ -42,6 +41,7 @@
 
 | # | Title | Closed Date | Evidence |
 | --- | --- | --- | --- |
+| 118 | [DDD-COMPLETE-100-ORDER-06] 订单域 legacy service 退休与迁移率目标达成 | 2026-06-28 | `harness/reports/2026-06-28/ddd-complete-order-118/evidence-20260628-111500-order-legacy-retire.md` |
 | 112 | [DDD-COMPLETE-100-CONFIG-05] 配置域 legacy retire 与迁移率目标达成 | 2026-06-27 | `harness/reports/2026-06-27/ddd-complete-config-112/evidence-20260627-221700-config-legacy-retire.md` |
 | 113 | [DDD-COMPLETE-100-ORDER-01] 订单同步入口与 source strategy 完整收口 | 2026-06-27 | 本地编译且测试通过 |
 | 114 | [DDD-COMPLETE-100-ORDER-02] 订单查询 Query 层与数据范围最终收口 | 2026-06-27 | 门面瘦身，删除 380 行死代码 |
@@ -87,10 +87,10 @@
 
 ## 当前判断
 
-- GitHub 当前 open issue 为 24 个：#90、#92-#96、#98、#100-#101、#117-#118、#123-#124、#129、#135、#147-#148、#154-#159、#164，全部属于 `DDD-COMPLETE-100` 新批次。
+- GitHub 当前 open issue 为 23 个：#90、#92-#96、#98、#100-#101、#117、#123-#124、#129、#135、#147-#148、#154-#159、#164，全部属于 `DDD-COMPLETE-100` 新批次。
 - 新目标是完整项目、全领域、全链路 DDD 重构优化到 100%，不是单个领域，也不是旧 DDD100 issue 全关闭。
-- 当前可重复迁移率指标：raw `domain/` share 22.9%，business migration proxy 30.2%。
-- 当前最低 proxy 领域：analytics 10.5%、talent 16.7%、performance 20.7%、sample 25.0%、order 27.6%、product 30.8%、config 68.1%。
+- 当前可重复迁移率指标：raw `domain/` share 29.7%，business migration proxy 39.1%。
+- 当前最低 proxy 领域：analytics 10.5%、talent 16.7%、performance 20.7%、sample 25.0%、product 30.9%、config 68.1%、user 80.7%、order 84.3%。
 - 商品域 #130-#134/#136 已关闭；#135 与 epic #96 已因 real-pre `colonelsettlement_order.pick_source` 样本为 0 恢复 open。商品域当前结论为 `PARTIAL / BLOCKED_BY_SAMPLE`，不能写成 PASS。
 - 每个 issue 必须按证据链推进：复现/盘点 -> 最小验证 -> 依赖链和边界 -> 修改 -> 构建/重启/健康 -> 业务验证 -> evidence -> retro -> commit/push。
 

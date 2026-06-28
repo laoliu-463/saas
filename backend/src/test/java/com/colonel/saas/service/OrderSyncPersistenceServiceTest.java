@@ -1,5 +1,6 @@
 package com.colonel.saas.service;
 
+import com.colonel.saas.domain.order.infrastructure.OrderSyncPersistenceService;
 import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.domain.order.application.OrderAmountMappingRouter;
 import com.colonel.saas.domain.order.event.InProcessOrderDomainEventPublisher;

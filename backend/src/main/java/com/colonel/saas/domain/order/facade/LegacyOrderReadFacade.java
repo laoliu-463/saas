@@ -3,7 +3,7 @@ package com.colonel.saas.domain.order.facade;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
-import com.colonel.saas.service.OrderCommissionPolicy;
+import com.colonel.saas.domain.order.policy.OrderCommissionPolicy;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 

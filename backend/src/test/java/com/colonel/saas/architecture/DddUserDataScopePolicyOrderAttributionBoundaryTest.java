@@ -1,5 +1,6 @@
 package com.colonel.saas.architecture;
 
+import com.colonel.saas.domain.order.application.OrderAttributionService;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Files;

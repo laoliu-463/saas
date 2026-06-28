@@ -1,5 +1,6 @@
 package com.colonel.saas.service;
 
+import com.colonel.saas.domain.config.application.SysConfigService;
 import com.colonel.saas.config.ConfigDefinitionRegistry;
 import com.colonel.saas.config.RuleCenterSchemaRegistry;
 import com.colonel.saas.config.SystemConfigKeys;

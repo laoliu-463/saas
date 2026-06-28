@@ -9,7 +9,7 @@ import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
-import com.colonel.saas.service.OrderAttributionService;
+import com.colonel.saas.domain.order.application.OrderAttributionService;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

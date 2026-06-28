@@ -13,7 +13,7 @@ import com.colonel.saas.gateway.douyin.DouyinProductGateway;
 import com.colonel.saas.gateway.douyin.DouyinPromotionGateway;
 import com.colonel.saas.gateway.douyin.DouyinTokenGateway;
 import com.colonel.saas.service.DouyinWebhookEventService;
-import com.colonel.saas.service.OrderSyncPersistenceService;
+import com.colonel.saas.domain.order.infrastructure.OrderSyncPersistenceService;
 import com.colonel.saas.service.settlement.SettlementOrderGateway;
 import com.colonel.saas.service.settlement.SettlementOrderPage;
 import com.colonel.saas.service.settlement.SettlementOrderQuery;

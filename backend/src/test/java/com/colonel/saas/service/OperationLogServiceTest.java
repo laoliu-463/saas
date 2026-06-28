@@ -173,4 +173,26 @@ class OperationLogServiceTest {
         assertThat(dropped).isGreaterThanOrEqualTo(0);
         verify(jdbcTemplate, atLeast(1)).execute(anyString());
     }
+
+    @Test
+    void cleanupOldPartitions_shouldNormalizeRetentionDaysToAtLeastOne() {
+        // Boundary test: 验证 retentionDays 负数 / 0 被 Math.max 规范为 1
+        // (防止 cutoff = 未来月份, 误删所有历史分区)
+        doAnswer(invocation -> {
+            org.springframework.jdbc.core.RowCallbackHandler handler = invocation.getArgument(1);
+            java.sql.ResultSet empty = org.mockito.Mockito.mock(java.sql.ResultSet.class);
+            when(empty.getString("partition_name")).thenReturn("op_log_2026_01");
+            handler.processRow(empty);
+            return null;
+        }).when(jdbcTemplate).query(anyString(), any(org.springframework.jdbc.core.RowCallbackHandler.class));
+
+        // retentionDays = 0 应被规范为 1
+        int dropped = service.cleanupOldPartitions(0);
+        assertThat(dropped).isGreaterThanOrEqualTo(0);
+
+        // retentionDays = -30 也应被规范为 1
+        int droppedNeg = service.cleanupOldPartitions(-30);
+        assertThat(droppedNeg).isGreaterThanOrEqualTo(0);
+    }
+
 }

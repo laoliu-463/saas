@@ -1,4 +1,4 @@
-package com.colonel.saas.service;
+package com.colonel.saas.domain.order.infrastructure;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationArguments;

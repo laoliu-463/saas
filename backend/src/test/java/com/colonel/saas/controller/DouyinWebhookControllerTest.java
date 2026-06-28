@@ -6,7 +6,7 @@ import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.colonel.saas.mapper.DouyinWebhookEventMapper;
 import com.colonel.saas.service.DouyinWebhookEventService;
-import com.colonel.saas.service.OrderSyncService;
+import com.colonel.saas.domain.order.application.OrderSyncService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -31,19 +31,19 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ExtendWith(MockitoExtension.class)
 class DouyinWebhookControllerTest {
 
-    private static final String CLIENT_SECRET = "test-client-secret";
+    private static final String WEBHOOK_SIGNING_KEY = "example-signing-key";
 
     private MockMvc createMvc(boolean verifySign) {
         DouyinWebhookEventService eventService =
                 new DouyinWebhookEventService(mock(DouyinWebhookEventMapper.class), new ObjectMapper(), mock(OrderSyncService.class));
         DouyinWebhookController controller =
-                new DouyinWebhookController(new ObjectMapper(), eventService, CLIENT_SECRET, verifySign);
+                new DouyinWebhookController(new ObjectMapper(), eventService, WEBHOOK_SIGNING_KEY, verifySign);
         return MockMvcBuilders.standaloneSetup(controller).build();
     }
 
     private String sign(String body) throws NoSuchAlgorithmException, InvalidKeyException {
         Mac mac = Mac.getInstance("HmacSHA256");
-        mac.init(new SecretKeySpec(CLIENT_SECRET.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+        mac.init(new SecretKeySpec(WEBHOOK_SIGNING_KEY.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
         byte[] digest = mac.doFinal(body.getBytes(StandardCharsets.UTF_8));
         return bytesToHex(digest);
     }
@@ -207,7 +207,7 @@ class DouyinWebhookControllerTest {
             assertThat(logText)
                     .contains("event=doudian_alliance_colonelOpenEvent")
                     .contains("bodyLength=")
-                    .doesNotContain("13900000000", "very-secret-token", "very-secret-sign", "access_token", "sign=");
+                    .doesNotContain("13900000000", "example-token", "example-sign", "access_token", "sign=");
         } finally {
             logger.detachAppender(appender);
             logger.setLevel(originalLevel);
@@ -217,7 +217,7 @@ class DouyinWebhookControllerTest {
     @Test
     void colonelOpenEvent_invalidJson_logsMetadataWithoutRawSensitivePayload() throws Exception {
         MockMvc mockMvc = createMvc(false);
-        String body = "{bad-json, mobile=13900000000, access_token=very-secret-token, sign=very-secret-sign";
+        String body = "{bad-json, mobile=13900000000, access_token=example-token, sign=example-sign";
         Logger logger = (Logger) LoggerFactory.getLogger(DouyinWebhookController.class);
         Level originalLevel = logger.getLevel();
         ListAppender<ILoggingEvent> appender = new ListAppender<>();

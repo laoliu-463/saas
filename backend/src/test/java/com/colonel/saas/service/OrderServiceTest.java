@@ -1,5 +1,6 @@
 package com.colonel.saas.service;
 
+import com.colonel.saas.domain.order.application.OrderService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
@@ -87,9 +88,9 @@ class OrderServiceTest {
     }
 
     private Path orderServiceSourcePath() {
-        Path sourcePath = Path.of("src/main/java/com/colonel/saas/service/OrderService.java");
+        Path sourcePath = Path.of("src/main/java/com/colonel/saas/domain/order/application/OrderService.java");
         if (!Files.exists(sourcePath)) {
-            sourcePath = Path.of("backend/src/main/java/com/colonel/saas/service/OrderService.java");
+            sourcePath = Path.of("backend/src/main/java/com/colonel/saas/domain/order/application/OrderService.java");
         }
         return sourcePath;
     }

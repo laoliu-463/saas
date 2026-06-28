@@ -4,7 +4,7 @@ import com.colonel.saas.domain.order.application.OrderSyncApplicationService;
 import com.colonel.saas.domain.order.application.OrderSyncCommand;
 import com.colonel.saas.domain.order.application.OrderSyncExecutionContext;
 import com.colonel.saas.domain.order.application.OrderSyncResult;
-import com.colonel.saas.service.OrderSyncService;
+import com.colonel.saas.domain.order.application.OrderSyncService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
