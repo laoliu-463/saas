@@ -1,8 +1,11 @@
 package com.colonel.saas.domain.talent.application;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.BusinessException;
+import com.colonel.saas.common.exception.ForbiddenException;
+import com.colonel.saas.common.exception.OptimisticLockSupport;
 import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.domain.talent.policy.TalentClaimPolicy;
@@ -11,13 +14,16 @@ import com.colonel.saas.domain.user.facade.dto.UserOwnershipReference;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.domain.config.facade.ConfigDomainFacade;
+import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.Talent;
 import com.colonel.saas.entity.TalentClaim;
+import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.mapper.TalentClaimMapper;
 import com.colonel.saas.mapper.TalentMapper;
 import com.colonel.saas.service.OperationLogService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.Collection;
@@ -38,8 +44,8 @@ import java.util.stream.Collectors;
  * <ul>
  *   <li>{@code CLAIM_TYPE_MANUAL} = 1（人工认领）</li>
  *   <li>{@code CLAIM_STATUS_ACTIVE} = 1（生效中）</li>
- *   <li>{@code CLAIM_STATUS_RELEASED} = 2（已释放）</li>
- *   <li>{@code CLAIM_STATUS_EXPIRED} = 3（已过期）</li>
+ *   <li>{@code CLAIM_STATUS_EXPIRED} = 2（已过期）</li>
+ *   <li>{@code CLAIM_STATUS_RELEASED} = 3（已释放）</li>
  * </ul>
  *
  * <p>业务规则（保护期、去重、释放选择）通过 {@link TalentClaimPolicy} 复用。</p>
@@ -51,11 +57,13 @@ public class TalentClaimApplicationService {
 
     public static final int CLAIM_TYPE_MANUAL = 1;
     public static final int CLAIM_STATUS_ACTIVE = 1;
-    public static final int CLAIM_STATUS_RELEASED = 2;
-    public static final int CLAIM_STATUS_EXPIRED = 3;
+    public static final int CLAIM_STATUS_EXPIRED = 2;
+    public static final int CLAIM_STATUS_RELEASED = 3;
+    private static final long ORDER_BATCH_SIZE = 2000L;
 
     private final TalentClaimMapper talentClaimMapper;
     private final TalentMapper talentMapper;
+    private final ColonelsettlementOrderMapper orderMapper;
     private final ConfigDomainFacade configDomainFacade;
     private final UserDomainFacade userDomainFacade;
     private final CurrentUserPermissionPolicy currentUserPermissionPolicy;
@@ -66,6 +74,7 @@ public class TalentClaimApplicationService {
     public TalentClaimApplicationService(
             TalentClaimMapper talentClaimMapper,
             TalentMapper talentMapper,
+            ColonelsettlementOrderMapper orderMapper,
             ConfigDomainFacade configDomainFacade,
             UserDomainFacade userDomainFacade,
             CurrentUserPermissionPolicy currentUserPermissionPolicy,
@@ -74,6 +83,7 @@ public class TalentClaimApplicationService {
             DddRefactorProperties dddRefactorProperties) {
         this.talentClaimMapper = talentClaimMapper;
         this.talentMapper = talentMapper;
+        this.orderMapper = orderMapper;
         this.configDomainFacade = configDomainFacade;
         this.userDomainFacade = userDomainFacade;
         this.currentUserPermissionPolicy = currentUserPermissionPolicy;
@@ -112,16 +122,65 @@ public class TalentClaimApplicationService {
                 continue;
             }
             claim.setStatus(CLAIM_STATUS_EXPIRED);
-            talentClaimMapper.updateById(claim);
+            OptimisticLockSupport.requireUpdated(talentClaimMapper.updateById(claim));
         }
     }
 
     /**
      * 是否有订单产出（用于跳过有效认领）。
-     * 注：完整实现在 TalentService.hasOutputSinceClaim，本薄壳仅保留接口。
+     * 1:1 等价 TalentService.hasOutputSinceClaim(Talent, TalentClaim)。
      */
     private boolean hasOutputSinceClaim(Talent talent, TalentClaim claim) {
-        // 占位实现：完整业务在 TalentService，后续 Slice 3 增量迁移
+        if (talent == null || claim == null || !StringUtils.hasText(talent.getDouyinUid())) {
+            return false;
+        }
+        LocalDateTime since = claim.getClaimedAt() == null ? LocalDateTime.now().minusDays(getProtectDays()) : claim.getClaimedAt();
+        LambdaQueryWrapper<ColonelsettlementOrder> wrapper =
+                new LambdaQueryWrapper<ColonelsettlementOrder>()
+                        .ge(ColonelsettlementOrder::getCreateTime, since);
+        return loadOrdersInBatches(wrapper).stream()
+                .anyMatch(order -> matchesTalent(order, talent.getDouyinUid()));
+    }
+
+    /**
+     * 分批加载订单。
+     * 1:1 等价 TalentService.loadOrdersInBatches(LambdaQueryWrapper)。
+     */
+    private List<ColonelsettlementOrder> loadOrdersInBatches(LambdaQueryWrapper<ColonelsettlementOrder> wrapper) {
+        java.util.List<ColonelsettlementOrder> all = new java.util.ArrayList<>();
+        long pageNo = 1L;
+        boolean hasMore = true;
+        while (hasMore) {
+            Page<ColonelsettlementOrder> page = new Page<>(pageNo, ORDER_BATCH_SIZE);
+            Page<ColonelsettlementOrder> result = orderMapper.selectPage(page, wrapper);
+            if (result == null || result.getRecords() == null || result.getRecords().isEmpty()) {
+                break;
+            }
+            all.addAll(result.getRecords());
+            hasMore = pageNo < result.getPages();
+            pageNo++;
+        }
+        return all;
+    }
+
+    /**
+     * 匹配达人订单（按 douyinUid 或其他字段）。
+     * 1:1 等价 TalentService.matchesTalent(ColonelsettlementOrder, String)。
+     */
+    private boolean matchesTalent(ColonelsettlementOrder order, String talentDouyinUid) {
+        if (order == null || !StringUtils.hasText(talentDouyinUid)) {
+            return false;
+        }
+        if (order.getExtraData() != null) {
+            Object authorId = order.getExtraData().get("author_id");
+            if (authorId != null && talentDouyinUid.equals(String.valueOf(authorId))) {
+                return true;
+            }
+            Object talentUid = order.getExtraData().get("talent_uid");
+            if (talentUid != null && talentDouyinUid.equals(String.valueOf(talentUid))) {
+                return true;
+            }
+        }
         return false;
     }
 
@@ -130,5 +189,116 @@ public class TalentClaimApplicationService {
      */
     public int getProtectDays() {
         return configDomainFacade.getTalentClaimProtectDays();
+    }
+
+    /**
+     * 拉黑达人。
+     * 1:1 等价 TalentService.blacklist(UUID, String)。
+     */
+    public Talent blacklist(UUID talentId, String reason) {
+        return blacklist(talentId, reason, null, null, DataScope.ALL);
+    }
+
+    /**
+     * 拉黑达人（完整版本）。
+     * 1:1 等价 TalentService.blacklist(UUID, String, UUID, UUID, DataScope)。
+     */
+    public Talent blacklist(UUID talentId, String reason, UUID userId, UUID deptId, DataScope dataScope) {
+        Talent talent = talentMapper.selectById(talentId);
+        if (talent == null) {
+            throw BusinessException.notFound("达人不存在");
+        }
+        assertCanOperateBlacklist(talentId, userId, deptId, dataScope);
+        talent.setBlacklisted(true);
+        talent.setBlacklistReason(StringUtils.hasText(reason) ? reason.trim() : "手动拉黑");
+        OptimisticLockSupport.requireUpdated(talentMapper.updateById(talent));
+        return talent;
+    }
+
+    /**
+     * 取消拉黑达人。
+     * 1:1 等价 TalentService.unblacklist(UUID)。
+     */
+    public Talent unblacklist(UUID talentId) {
+        return unblacklist(talentId, null, null, DataScope.ALL);
+    }
+
+    /**
+     * 取消拉黑达人（完整版本）。
+     * 1:1 等价 TalentService.unblacklist(UUID, UUID, UUID, DataScope)。
+     */
+    public Talent unblacklist(UUID talentId, UUID userId, UUID deptId, DataScope dataScope) {
+        Talent talent = talentMapper.selectById(talentId);
+        if (talent == null) {
+            throw BusinessException.notFound("达人不存在");
+        }
+        assertCanOperateBlacklist(talentId, userId, deptId, dataScope);
+        talent.setBlacklisted(false);
+        talent.setBlacklistReason(null);
+        OptimisticLockSupport.requireUpdated(talentMapper.updateById(talent));
+        return talent;
+    }
+
+    private void assertCanOperateBlacklist(UUID talentId, UUID userId, UUID deptId, DataScope dataScope) {
+        if (dataScope == null || dataScope == DataScope.ALL) {
+            return;
+        }
+        List<TalentClaim> activeClaims = talentClaimMapper.findActiveByTalentId(talentId);
+        if (activeClaims.isEmpty()) {
+            return;
+        }
+        if (!dddRefactorProperties.getDataScopePolicy().isEnabled()) {
+            assertCanOperateBlacklistLegacy(activeClaims, userId, deptId, dataScope);
+            return;
+        }
+        assertCanOperateBlacklistWithPolicy(activeClaims, userId, deptId, dataScope);
+    }
+
+    private void assertCanOperateBlacklistLegacy(
+            List<TalentClaim> activeClaims,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope) {
+        if (dataScope == DataScope.PERSONAL) {
+            assertCanOperateBlacklistAllowed(hasActiveClaimForUser(activeClaims, userId));
+            return;
+        }
+        assertCanOperateBlacklistAllowed(hasActiveClaimForDept(activeClaims, deptId));
+    }
+
+    private void assertCanOperateBlacklistWithPolicy(
+            List<TalentClaim> activeClaims,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope) {
+        DataScopePolicy.ContextRequirement requirement =
+                dataScopePolicy.contextRequirement(userId, deptId, dataScope);
+        if (requirement != DataScopePolicy.ContextRequirement.SATISFIED) {
+            throw new ForbiddenException("无权操作该达人");
+        }
+        DataScopePolicy.Decision decision = dataScopePolicy.decide(userId, deptId, dataScope);
+        if (decision == DataScopePolicy.Decision.FILTER_USER) {
+            assertCanOperateBlacklistAllowed(hasActiveClaimForUser(activeClaims, userId));
+            return;
+        }
+        if (decision == DataScopePolicy.Decision.FILTER_DEPT) {
+            assertCanOperateBlacklistAllowed(hasActiveClaimForDept(activeClaims, deptId));
+        }
+    }
+
+    private boolean hasActiveClaimForUser(List<TalentClaim> activeClaims, UUID userId) {
+        return userId != null && activeClaims.stream()
+                .anyMatch(claim -> userId.equals(claim.getUserId()));
+    }
+
+    private boolean hasActiveClaimForDept(List<TalentClaim> activeClaims, UUID deptId) {
+        return deptId != null && activeClaims.stream()
+                .anyMatch(claim -> deptId.equals(claim.getDeptId()));
+    }
+
+    private void assertCanOperateBlacklistAllowed(boolean allowed) {
+        if (!allowed) {
+            throw new ForbiddenException("无权操作该达人");
+        }
     }
 }

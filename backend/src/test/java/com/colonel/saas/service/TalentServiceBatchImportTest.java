@@ -3,6 +3,8 @@ package com.colonel.saas.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.dto.talent.TalentBatchImportResult;
+import com.colonel.saas.domain.talent.application.TalentClaimApplicationService;
+import com.colonel.saas.domain.talent.application.TalentProfileApplicationService;
 import com.colonel.saas.entity.Talent;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.mapper.SampleRequestMapper;
@@ -72,6 +74,20 @@ class TalentServiceBatchImportTest {
                 false,
                 configDomainFacade,
                 businessRuleConfigService,
+                new TalentProfileApplicationService(
+                        talentMapper,
+                        talentEnrichTaskMapper,
+                        businessRuleConfigService),
+                new TalentClaimApplicationService(
+                        talentClaimMapper,
+                        talentMapper,
+                        orderMapper,
+                        configDomainFacade,
+                        userDomainFacade,
+                        new CurrentUserPermissionPolicy(),
+                        new DataScopePolicy(),
+                        operationLogService,
+                        new DddRefactorProperties()),
                 operationLogService,
                 userDomainFacade,
                 new CurrentUserPermissionPolicy(),

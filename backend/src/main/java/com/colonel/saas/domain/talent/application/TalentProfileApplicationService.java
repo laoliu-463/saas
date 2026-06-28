@@ -1,7 +1,7 @@
 package com.colonel.saas.domain.talent.application;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.colonel.saas.common.exception.BusinessException;
+import com.colonel.saas.common.exception.OptimisticLockSupport;
 import com.colonel.saas.domain.talent.policy.TalentTagPolicy;
 import com.colonel.saas.entity.Talent;
 import com.colonel.saas.entity.TalentEnrichTask;
@@ -85,17 +85,17 @@ public class TalentProfileApplicationService {
      * 更新达人标签（带 operator 版本）。
      * 1:1 等价 TalentService.updateTags(UUID, List<String>, UUID)。
      *
-     * <p>当前 Slice 1 占位实现：仅做存在性校验 + 标签归一化（Policy）。
-     * 完整业务（权限校验、数量限制、写库）后续 Slice 2 增量迁移。</p>
+     * <p>标签归一化与写库路径保持旧 TalentService 行为等价。</p>
      */
     public List<String> updateTags(UUID id, List<String> tags, UUID operatorId) {
-        // 校验存在
         Talent talent = talentMapper.selectById(id);
         if (talent == null) {
             throw BusinessException.notFound("达人不存在");
         }
-        // 归一化标签 (复用 Policy)
-        List<String> presets = businessRuleConfigService.getPresetTalentTags();
-        return TalentTagPolicy.normalize(tags, presets);
+        List<String> normalized = TalentTagPolicy.normalize(tags, businessRuleConfigService.getPresetTalentTags());
+        talent.setTags(normalized);
+        talent.setTagUpdatedBy(operatorId);
+        OptimisticLockSupport.requireUpdated(talentMapper.updateById(talent));
+        return normalized;
     }
 }

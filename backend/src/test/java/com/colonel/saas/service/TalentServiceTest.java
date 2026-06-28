@@ -8,7 +8,9 @@ import com.colonel.saas.entity.CrawlerTalentInfo;
 import com.colonel.saas.entity.Talent;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.exception.ForbiddenException;
+import com.colonel.saas.domain.talent.application.TalentClaimApplicationService;
 import com.colonel.saas.domain.user.facade.dto.UserOwnershipReference;
+import com.colonel.saas.domain.talent.application.TalentProfileApplicationService;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.entity.TalentClaim;
@@ -106,6 +108,8 @@ class TalentServiceTest {
                 true,
                 configDomainFacade,
                 businessRuleConfigService,
+                newTalentProfileApplicationService(),
+                newTalentClaimApplicationService(),
                 operationLogService,
                 userDomainFacade,
                 new CurrentUserPermissionPolicy(),
@@ -857,6 +861,8 @@ class TalentServiceTest {
                 false,
                 configDomainFacade,
                 businessRuleConfigService,
+                newTalentProfileApplicationService(),
+                newTalentClaimApplicationService(),
                 operationLogService,
                 userDomainFacade,
                 new CurrentUserPermissionPolicy(),
@@ -1333,12 +1339,40 @@ class TalentServiceTest {
                 true,
                 configDomainFacade,
                 businessRuleConfigService,
+                newTalentProfileApplicationService(),
+                newTalentClaimApplicationService(dataScopePolicy, properties),
                 operationLogService,
                 userDomainFacade,
                 new CurrentUserPermissionPolicy(),
                 dataScopePolicy,
                 properties
         );
+    }
+
+    private TalentProfileApplicationService newTalentProfileApplicationService() {
+        return new TalentProfileApplicationService(
+                talentMapper,
+                talentEnrichTaskMapper,
+                businessRuleConfigService);
+    }
+
+    private TalentClaimApplicationService newTalentClaimApplicationService() {
+        return newTalentClaimApplicationService(new DataScopePolicy(), new DddRefactorProperties());
+    }
+
+    private TalentClaimApplicationService newTalentClaimApplicationService(
+            DataScopePolicy dataScopePolicy,
+            DddRefactorProperties properties) {
+        return new TalentClaimApplicationService(
+                talentClaimMapper,
+                talentMapper,
+                orderMapper,
+                configDomainFacade,
+                userDomainFacade,
+                new CurrentUserPermissionPolicy(),
+                dataScopePolicy,
+                operationLogService,
+                properties);
     }
 
     private Path sourcePath(String backendRelativePath) {

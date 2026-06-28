@@ -1068,7 +1068,7 @@ public class TalentService {
      */
     @Transactional(rollbackFor = Exception.class)
     public Talent blacklist(UUID talentId, String reason) {
-        return blacklist(talentId, reason, null, null, DataScope.ALL);
+        return talentClaimApplicationService.blacklist(talentId, reason, null, null, DataScope.ALL);
     }
 
     /**
@@ -1087,12 +1087,7 @@ public class TalentService {
      */
     @Transactional(rollbackFor = Exception.class)
     public Talent blacklist(UUID talentId, String reason, UUID userId, UUID deptId, DataScope dataScope) {
-        Talent talent = getById(talentId);
-        assertCanOperateBlacklist(talentId, userId, deptId, dataScope);
-        talent.setBlacklisted(true);
-        talent.setBlacklistReason(StringUtils.hasText(reason) ? reason.trim() : "手动拉黑");
-        persistTalent(talent);
-        return talent;
+        return talentClaimApplicationService.blacklist(talentId, reason, userId, deptId, dataScope);
     }
 
     /**
@@ -1103,7 +1098,7 @@ public class TalentService {
      */
     @Transactional(rollbackFor = Exception.class)
     public Talent unblacklist(UUID talentId) {
-        return unblacklist(talentId, null, null, DataScope.ALL);
+        return talentClaimApplicationService.unblacklist(talentId, null, null, DataScope.ALL);
     }
 
     /**
@@ -1117,12 +1112,7 @@ public class TalentService {
      */
     @Transactional(rollbackFor = Exception.class)
     public Talent unblacklist(UUID talentId, UUID userId, UUID deptId, DataScope dataScope) {
-        Talent talent = getById(talentId);
-        assertCanOperateBlacklist(talentId, userId, deptId, dataScope);
-        talent.setBlacklisted(false);
-        talent.setBlacklistReason(null);
-        persistTalent(talent);
-        return talent;
+        return talentClaimApplicationService.unblacklist(talentId, userId, deptId, dataScope);
     }
 
     /**
