@@ -8,6 +8,7 @@ import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.exception.OptimisticLockSupport;
 import com.colonel.saas.common.exception.ForbiddenException;
+import com.colonel.saas.domain.talent.application.TalentBatchImportApplicationService;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.dto.talent.TalentBatchImportResult;
 import com.colonel.saas.entity.CrawlerTalentInfo;
@@ -143,6 +144,7 @@ public class TalentService {
     private final com.colonel.saas.domain.config.facade.ConfigDomainFacade configDomainFacade;
     private final BusinessRuleConfigService businessRuleConfigService;
     private final TalentProfileApplicationService talentProfileApplicationService;
+    private final TalentBatchImportApplicationService talentBatchImportApplicationService;
     private final TalentClaimApplicationService talentClaimApplicationService;
     /** 操作日志服务（用于认领/释放/归属覆盖等操作审计） */
     private final OperationLogService operationLogService;
@@ -188,6 +190,7 @@ public class TalentService {
             com.colonel.saas.domain.config.facade.ConfigDomainFacade configDomainFacade,
             BusinessRuleConfigService businessRuleConfigService,
             TalentProfileApplicationService talentProfileApplicationService,
+            TalentBatchImportApplicationService talentBatchImportApplicationService,
             TalentClaimApplicationService talentClaimApplicationService,
             OperationLogService operationLogService,
             UserDomainFacade userDomainFacade,
@@ -206,6 +209,7 @@ public class TalentService {
         this.configDomainFacade = configDomainFacade;
         this.businessRuleConfigService = businessRuleConfigService;
         this.talentProfileApplicationService = talentProfileApplicationService;
+        this.talentBatchImportApplicationService = talentBatchImportApplicationService;
         this.talentClaimApplicationService = talentClaimApplicationService;
         this.operationLogService = operationLogService;
         this.userDomainFacade = userDomainFacade;
@@ -638,64 +642,7 @@ public class TalentService {
      */
     @Transactional(rollbackFor = Exception.class)
     public TalentBatchImportResult batchImport(List<String> accounts, UUID operatorId) {
-        if (accounts == null || accounts.isEmpty()) {
-            return new TalentBatchImportResult(0, 0, 0, 0, List.of());
-        }
-        List<TalentBatchImportResult.TalentBatchImportItemResult> items = new ArrayList<>();
-        int created = 0;
-        int skipped = 0;
-        int failed = 0;
-        for (String rawAccount : accounts) {
-            String account = rawAccount == null ? null : rawAccount.trim();
-            if (!StringUtils.hasText(account)) {
-                failed++;
-                items.add(new TalentBatchImportResult.TalentBatchImportItemResult(
-                        rawAccount, "FAILED", null, "账号为空"));
-                continue;
-            }
-            try {
-                TalentInputParseResult parsed = TalentInputParser.parse(account);
-                if (!StringUtils.hasText(parsed.getDouyinUid())) {
-                    failed++;
-                    items.add(new TalentBatchImportResult.TalentBatchImportItemResult(
-                            account, "FAILED", null, "无法解析达人账号"));
-                    continue;
-                }
-                Talent existing = talentMapper.selectOne(new LambdaQueryWrapper<Talent>()
-                        .eq(Talent::getDouyinUid, parsed.getDouyinUid())
-                        .last("limit 1"));
-                if (existing != null) {
-                    skipped++;
-                    items.add(new TalentBatchImportResult.TalentBatchImportItemResult(
-                            account, "SKIPPED", existing.getId(), "达人已存在"));
-                    continue;
-                }
-                Talent request = new Talent();
-                request.setDouyinUid(parsed.getDouyinUid());
-                request.setDouyinNo(parsed.getDouyinNo());
-                request.setUid(parsed.getUid());
-                request.setSecUid(parsed.getSecUid());
-                request.setProfileUrl(parsed.getProfileUrl());
-                Talent saved = create(request);
-                created++;
-                items.add(new TalentBatchImportResult.TalentBatchImportItemResult(
-                        account, "CREATED", saved.getId(), null));
-                operationLogService.recordSystemAction(
-                        operatorId,
-                        "达人批量导入",
-                        "创建达人",
-                        "POST",
-                        "talent",
-                        saved.getId() == null ? account : saved.getId().toString(),
-                        saved.getNickname(),
-                        "batch_import_talents");
-            } catch (RuntimeException ex) {
-                failed++;
-                items.add(new TalentBatchImportResult.TalentBatchImportItemResult(
-                        account, "FAILED", null, ex.getMessage()));
-            }
-        }
-        return new TalentBatchImportResult(accounts.size(), created, skipped, failed, items);
+        return talentBatchImportApplicationService.batchImport(accounts, operatorId);
     }
 
     /**

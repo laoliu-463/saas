@@ -283,6 +283,33 @@ public class TalentClaimApplicationService {
     }
 
     /**
+     * 按达人 UID 延长所有生效认领的保护期。
+     * <p>承接订单同步事件的达人保护期重置副作用，保持原监听器口径：
+     * active claim、未删除、仅当新保护期晚于当前保护期时更新。</p>
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public int extendActiveClaimProtectionByTalentUid(String talentUid, LocalDateTime now) {
+        if (!StringUtils.hasText(talentUid) || now == null) {
+            return 0;
+        }
+        LocalDateTime newProtectedUntil = now.plusDays(getProtectDays());
+        List<TalentClaim> activeClaims = talentClaimMapper.selectList(
+                new LambdaQueryWrapper<TalentClaim>()
+                        .eq(TalentClaim::getTalentUid, talentUid.trim())
+                        .eq(TalentClaim::getStatus, CLAIM_STATUS_ACTIVE)
+                        .eq(TalentClaim::getDeleted, 0));
+        int updated = 0;
+        for (TalentClaim claim : activeClaims) {
+            if (newProtectedUntil.isAfter(claim.getProtectedUntil())) {
+                claim.setProtectedUntil(newProtectedUntil);
+                persistTalentClaim(claim);
+                updated++;
+            }
+        }
+        return updated;
+    }
+
+    /**
      * 是否有订单产出（用于跳过有效认领）。
      * 1:1 等价 TalentService.hasOutputSinceClaim(Talent, TalentClaim)。
      */
