@@ -107,6 +107,7 @@ import {
   normalizeSampleApplySource,
   type SampleSelectOption
 } from './sample-context';
+import { canSubmitSampleByRole } from './sample-permissions';
 
 const message = useMessage();
 const route = useRoute();
@@ -371,7 +372,7 @@ const chooseTalent = async (row: any) => {
 };
 
 const canSubmit = computed(() =>
-  !authStore.userInfo?.roleCodes?.includes('VISITOR') && !authStore.userInfo?.roleCodes?.includes('READONLY')
+  canSubmitSampleByRole(authStore.userInfo?.roleCodes || authStore.roleCodes)
 );
 
 const doSubmit = async () => {

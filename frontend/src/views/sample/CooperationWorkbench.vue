@@ -83,7 +83,7 @@
         </div>
         <n-space>
           <n-button v-if="canExportSamples" data-testid="sample-export" @click="handleExport">
-            {{ activeTab === 'PENDING_SHIP' ? '导出发货单' : '导出合作单' }}
+            {{ activeTab === SAMPLE_STATUS.PENDING_SHIP ? '导出发货单' : '导出合作单' }}
           </n-button>
           <n-button v-if="showShippingActions" type="primary" secondary data-testid="sample-logistics-import" @click="showLogisticsImport = true">
             批量导入物流单号
@@ -167,13 +167,25 @@ import {
 } from '../../api/sample'
 import PageHeader from '../../components/PageHeader.vue'
 import type { SampleItem } from '../../types'
-import { ROLE_CODES } from '../../constants/rbac'
 import { useAuthStore } from '../../stores/auth'
 import { createPaginationState, normalizePageSize } from '../../utils/pagination'
 import { useDelayedFlag } from '../../utils/delayedFlag'
 import { parseBatchShipRows, type BatchShipItem, type BatchShipRow } from '../../utils/shippingBatch'
 import { notifyApiFailure, notifyClientPermission } from '../../utils/requestError'
-import { canExportSamplesByRole, OPS_SHIPPING_TABS } from './sample-permissions'
+import {
+  ALL_SAMPLE_STATUS_TABS,
+  canApplySampleByRole,
+  canAuditSamplesByRole,
+  canExportSamplesByRole,
+  canShipSamplesByRole,
+  isBizStaffOnlyRole,
+  isChannelStaffOnlyRole,
+  isOpsStaffOnlyRole,
+  OPS_SHIPPING_TABS,
+  SAMPLE_STATUS,
+  sampleStatusLabel,
+  sampleStatusTagType
+} from './sample-permissions'
 import {
   buildCooperationSampleFilterParams,
   type CooperationWorkbenchFilters
@@ -190,34 +202,13 @@ const authStore = useAuthStore()
 const loading = ref(false)
 const tableLoading = useDelayedFlag(loading, 200)
 const EXPORT_ROW_LIMIT = 20000
-const ROLE = ROLE_CODES
 
-const ALL_TABS = [
-  { label: '全部', value: '' },
-  { label: '待审核', value: 'PENDING_AUDIT' },
-  { label: '待发货', value: 'PENDING_SHIP' },
-  { label: '快递中', value: 'SHIPPED' },
-  { label: '待交作业', value: 'PENDING_TASK' },
-  { label: '已完成', value: 'FINISHED' },
-  { label: '已拒绝', value: 'REJECTED' },
-  { label: '已关闭', value: 'CLOSED' }
-]
+const isOpsStaffOnly = computed(() => isOpsStaffOnlyRole(authStore.roleCodes, authStore.isAdmin))
+const isBizStaffOnly = computed(() => isBizStaffOnlyRole(authStore.roleCodes, authStore.isAdmin))
+const isChannelStaffOnly = computed(() => isChannelStaffOnlyRole(authStore.roleCodes, authStore.isAdmin))
 
-const isOpsStaffOnly = computed(() => {
-  const roles = authStore.roleCodes
-  return roles.includes(ROLE.OPS_STAFF) && !authStore.isAdmin
-})
-const isBizStaffOnly = computed(() => {
-  const roles = authStore.roleCodes
-  return roles.includes(ROLE.BIZ_STAFF) && !roles.includes(ROLE.BIZ_LEADER) && !authStore.isAdmin
-})
-const isChannelStaffOnly = computed(() => {
-  const roles = authStore.roleCodes
-  return roles.includes(ROLE.CHANNEL_STAFF) && !roles.includes(ROLE.CHANNEL_LEADER) && !authStore.isAdmin
-})
-
-const tabList = computed(() => (props.shippingOnly || isOpsStaffOnly.value ? OPS_SHIPPING_TABS : ALL_TABS))
-const activeTab = ref(props.shippingOnly || isOpsStaffOnly.value ? 'PENDING_SHIP' : '')
+const tabList = computed(() => (props.shippingOnly || isOpsStaffOnly.value ? OPS_SHIPPING_TABS : ALL_SAMPLE_STATUS_TABS))
+const activeTab = ref(props.shippingOnly || isOpsStaffOnly.value ? SAMPLE_STATUS.PENDING_SHIP : '')
 const data = ref<SampleItem[]>([])
 const checkedRowKeys = ref<Array<string | number>>([])
 const pagination = reactive(createPaginationState())
@@ -273,14 +264,13 @@ const pageDesc = computed(() => {
 })
 
 const canApplySample = computed(() => {
-  const roles = authStore.roleCodes
-  return roles.includes(ROLE.CHANNEL_LEADER) || roles.includes(ROLE.CHANNEL_STAFF)
+  return canApplySampleByRole(authStore.roleCodes)
 })
 const canExportSamples = computed(() => canExportSamplesByRole(authStore.roleCodes))
-const canBatchAudit = computed(() => authStore.isAdmin || authStore.roleCodes.includes(ROLE.BIZ_STAFF))
-const canShipSamples = computed(() => authStore.isAdmin || authStore.roleCodes.includes(ROLE.OPS_STAFF))
-const showBatchAuditActions = computed(() => canBatchAudit.value && activeTab.value === 'PENDING_AUDIT' && !props.shippingOnly)
-const showShippingActions = computed(() => canShipSamples.value && activeTab.value === 'PENDING_SHIP')
+const canBatchAudit = computed(() => canAuditSamplesByRole(authStore.roleCodes, authStore.isAdmin))
+const canShipSamples = computed(() => canShipSamplesByRole(authStore.roleCodes, authStore.isAdmin))
+const showBatchAuditActions = computed(() => canBatchAudit.value && activeTab.value === SAMPLE_STATUS.PENDING_AUDIT && !props.shippingOnly)
+const showShippingActions = computed(() => canShipSamples.value && activeTab.value === SAMPLE_STATUS.PENDING_SHIP)
 const selectedRequestNos = computed(() => checkedRowKeys.value.map((key) => String(key)).filter(Boolean))
 
 const batchColumns = [
@@ -547,17 +537,6 @@ function compactText(value?: string | number | null) {
   if (value == null || value === '') return '-'
   return String(value)
 }
-function statusType(status?: string) {
-  if (status === 'FINISHED') return 'success'
-  if (status === 'REJECTED') return 'error'
-  if (status === 'CLOSED') return 'default'
-  if (status === 'SHIPPED') return 'info'
-  if (status === 'PENDING_SHIP' || status === 'PENDING_AUDIT') return 'warning'
-  return 'primary'
-}
-function statusLabel(status?: string) {
-  return ALL_TABS.find((item) => item.value === status)?.label || status || '-'
-}
 function renderStack(lines: Array<string | number | null | undefined>, className = 'cell-stack') {
   return h('div', { class: className }, lines.filter((line) => line != null && line !== '').map((line) => h('span', String(line))))
 }
@@ -629,7 +608,7 @@ const columns = computed(() => [
     key: 'progress',
     width: 260,
     render: (row: SampleItem) => h('div', { class: 'cell-stack' }, [
-      h(NTag, { type: statusType(row.status) as any, size: 'small', bordered: false }, { default: () => statusLabel(row.status) }),
+      h(NTag, { type: sampleStatusTagType(row.status) as any, size: 'small', bordered: false }, { default: () => sampleStatusLabel(row.status) }),
       h('span', `物流：${compactText(row.shipperCode || row.logisticsCompany)} ${compactText(row.trackingNo)}`),
       h('span', `签收：${formatDateTime(row.signedAt || row.deliverTime)}`),
       h('span', `交作业：${compactText(row.homeworkTypeLabel)}`)

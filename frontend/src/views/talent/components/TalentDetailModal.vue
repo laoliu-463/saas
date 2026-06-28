@@ -220,10 +220,17 @@ import {
   type TalentDetailResponse
 } from '../../../api/talent'
 import { useAuthStore } from '../../../stores/auth'
-import { ROLE_CODES } from '../../../constants/rbac'
 import { resolveSafeAvatarUrl } from '../../../utils/media'
 import { buildTalentSampleContext } from '../../sample/sample-context'
-import { formatDateTime, formatFans, formatMoney, getPoolLabel, getPoolTagType } from '../constants'
+import {
+  canApplySampleFromTalentByRole,
+  formatDateTime,
+  formatFans,
+  formatMoney,
+  getPoolLabel,
+  getPoolTagType,
+  isChannelStaffOnlyTalentRole
+} from '../constants'
 
 const props = defineProps<{ show: boolean; talentId: string }>()
 const emit = defineEmits<{
@@ -249,17 +256,8 @@ const addressDraft = ref({
   recipientAddress: ''
 })
 const detail = ref<TalentDetailResponse | null>(null)
-const isChannelStaffOnly = computed(() => {
-  const roles = authStore.roleCodes
-  return roles.includes(ROLE_CODES.CHANNEL_STAFF)
-    && !roles.includes(ROLE_CODES.CHANNEL_LEADER)
-    && !authStore.isAdmin
-})
-const canApplySample = computed(() =>
-  authStore.isAdmin
-    || authStore.roleCodes.includes(ROLE_CODES.CHANNEL_LEADER)
-    || authStore.roleCodes.includes(ROLE_CODES.CHANNEL_STAFF)
-)
+const isChannelStaffOnly = computed(() => isChannelStaffOnlyTalentRole(authStore.roleCodes, authStore.isAdmin))
+const canApplySample = computed(() => canApplySampleFromTalentByRole(authStore.roleCodes, authStore.isAdmin))
 const canEditCollaboration = computed(() => canApplySample.value)
 
 const talentTags = computed(() =>

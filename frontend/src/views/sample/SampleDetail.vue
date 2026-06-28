@@ -19,10 +19,10 @@
               <div class="flow-label">{{ step.label }}</div>
             </div>
           </div>
-          <n-alert v-if="detail.status === 'FINISHED' && detail.completeTime" type="success" title="该寄样单已完成">
+          <n-alert v-if="detail.status === SAMPLE_STATUS.FINISHED && detail.completeTime" type="success" title="该寄样单已完成">
             完成时间：{{ formatDateTime(detail.completeTime) }}
           </n-alert>
-          <n-alert v-if="detail.status === 'REJECTED' && detail.rejectReason" type="error" title="该寄样申请已拒绝">
+          <n-alert v-if="detail.status === SAMPLE_STATUS.REJECTED && detail.rejectReason" type="error" title="该寄样申请已拒绝">
             原因：{{ detail.rejectReason }}
           </n-alert>
         </section>
@@ -125,22 +125,22 @@
           <h3 class="section-title">{{ isChannelStaffOnly ? '当前处理状态' : '可执行操作' }}</h3>
           <n-alert v-if="actionError" type="warning" :bordered="false" style="margin-bottom: 12px">{{ actionError }}</n-alert>
           <n-space>
-            <n-button v-if="canAudit && detail.status === 'PENDING_AUDIT'" type="success" @click="handleAction('APPROVED')">
+            <n-button v-if="canAudit && detail.status === SAMPLE_STATUS.PENDING_AUDIT" type="success" @click="handleAction('APPROVED')">
               审核通过
             </n-button>
-            <n-button v-if="canAudit && detail.status === 'PENDING_AUDIT'" type="error" @click="handleAction('REJECTED')">
+            <n-button v-if="canAudit && detail.status === SAMPLE_STATUS.PENDING_AUDIT" type="error" @click="handleAction(SAMPLE_STATUS.REJECTED)">
               拒绝
             </n-button>
-            <n-button v-if="canShip && detail.status === 'PENDING_SHIP'" type="primary" @click="handleAction('SHIPPED')">
+            <n-button v-if="canShip && detail.status === SAMPLE_STATUS.PENDING_SHIP" type="primary" @click="handleAction(SAMPLE_STATUS.SHIPPED)">
               发货
             </n-button>
-            <n-button v-if="canShip && detail.status === 'SHIPPED'" type="success" @click="handleAction('SIGNED')">
+            <n-button v-if="canShip && detail.status === SAMPLE_STATUS.SHIPPED" type="success" @click="handleAction(SAMPLE_STATUS.SIGNED)">
               签收
             </n-button>
-            <n-tag v-if="detail.status === 'PENDING_TASK'" type="warning" round>等待订单完成交作业</n-tag>
-            <n-tag v-if="isChannelStaffOnly && detail.status === 'PENDING_AUDIT'" type="info" round>等待招商审核</n-tag>
-            <n-tag v-if="isChannelStaffOnly && detail.status === 'PENDING_SHIP'" type="warning" round>等待运营发货</n-tag>
-            <n-tag v-if="isChannelStaffOnly && detail.status === 'SHIPPED'" type="info" round>已发货，等待签收</n-tag>
+            <n-tag v-if="detail.status === SAMPLE_STATUS.PENDING_TASK" type="warning" round>等待订单完成交作业</n-tag>
+            <n-tag v-if="isChannelStaffOnly && channelStaffWaitingHint(detail.status)" :type="channelStaffWaitingTagType(detail.status)" round>
+              {{ channelStaffWaitingHint(detail.status) }}
+            </n-tag>
           </n-space>
         </section>
 
@@ -151,9 +151,9 @@
               <div class="log-dot" />
               <div class="log-content">
                 <div class="log-action">
-                  <span v-if="log.fromStatus">{{ statusLabel(log.fromStatus) }}</span>
+                  <span v-if="log.fromStatus">{{ sampleStatusLabel(log.fromStatus) }}</span>
                   <span v-if="log.fromStatus" class="log-arrow">→</span>
-                  <span class="log-target">{{ statusLabel(log.toStatus) }}</span>
+                  <span class="log-target">{{ sampleStatusLabel(log.toStatus) }}</span>
                 </div>
                 <div class="log-meta">
                   <span>{{ log.operatorName || '-' }}</span>
@@ -185,10 +185,20 @@ import { NInput, useDialog, useMessage } from 'naive-ui'
 import { MODAL_WIDTH } from '../../constants/ui'
 import { actionSample, getSampleById, getSampleLogistics, getSampleStatusLogs, syncSampleLogistics } from '../../api/sample'
 import StatusTag from '../../components/StatusTag.vue'
-import { ROLE_CODES } from '../../constants/rbac'
 import { useAuthStore } from '../../stores/auth'
 import { handleApiFailure, notifyApiFailure } from '../../utils/requestError'
 import type { SampleItem } from '../../types'
+import {
+  buildSampleFlowSteps,
+  canAuditSamplesByRole,
+  canShipSamplesByRole,
+  channelStaffWaitingHint,
+  channelStaffWaitingTagType,
+  isChannelStaffOnlyRole,
+  isOpsStaffOnlyRole,
+  SAMPLE_STATUS,
+  sampleStatusLabel
+} from './sample-permissions'
 
 const props = withDefaults(defineProps<{ show?: boolean; sampleId?: string }>(), {
   show: true,
@@ -223,44 +233,12 @@ const isRouteMode = computed(() => Boolean(routeSampleId.value))
 const effectiveShow = computed(() => isRouteMode.value || props.show)
 const effectiveSampleId = computed(() => routeSampleId.value || props.sampleId)
 
-const canAudit = authStore.isAdmin || authStore.roleCodes.includes(ROLE_CODES.BIZ_STAFF)
-const canShip = authStore.isAdmin || authStore.roleCodes.includes(ROLE_CODES.OPS_STAFF)
-const isChannelStaffOnly = computed(() => {
-  const roles = authStore.roleCodes
-  return roles.includes(ROLE_CODES.CHANNEL_STAFF)
-    && !roles.includes(ROLE_CODES.CHANNEL_LEADER)
-    && !authStore.isAdmin
-})
+const canAudit = computed(() => canAuditSamplesByRole(authStore.roleCodes, authStore.isAdmin))
+const canShip = computed(() => canShipSamplesByRole(authStore.roleCodes, authStore.isAdmin))
+const isChannelStaffOnly = computed(() => isChannelStaffOnlyRole(authStore.roleCodes, authStore.isAdmin))
+const isOpsStaffOnly = computed(() => isOpsStaffOnlyRole(authStore.roleCodes, authStore.isAdmin))
 
-const isOpsStaffOnly = computed(() => {
-  const roles = authStore.roleCodes
-  return roles.includes(ROLE_CODES.OPS_STAFF) && !authStore.isAdmin
-})
-
-const stepOrder = ['PENDING_AUDIT', 'PENDING_SHIP', 'SHIPPED', 'PENDING_TASK', 'FINISHED']
-
-const flowSteps = computed(() => {
-  const currentIndex = stepOrder.indexOf(detail.value?.status || '')
-  return stepOrder.map((key, index) => ({
-    key,
-    label:
-      {
-        PENDING_AUDIT: '待审核',
-        PENDING_SHIP: '待发货',
-        SHIPPED: '快递中',
-        PENDING_TASK: '待交作业',
-        FINISHED: '已完成'
-      }[key] || key,
-    state:
-      detail.value?.status === 'REJECTED' || detail.value?.status === 'CLOSED'
-        ? 'muted'
-        : index < currentIndex
-          ? 'done'
-          : index === currentIndex
-            ? 'active'
-            : 'pending'
-  }))
-})
+const flowSteps = computed(() => buildSampleFlowSteps(detail.value?.status))
 
 const showEligibilitySection = computed(() =>
   !isOpsStaffOnly.value && Boolean(
@@ -288,22 +266,6 @@ function closeDetail() {
     return
   }
   emit('update:show', false)
-}
-
-const STATUS_LABELS: Record<string, string> = {
-  PENDING_AUDIT: '待审核',
-  PENDING_SHIP: '待发货',
-  SHIPPED: '快递中',
-  SIGNED: '已签收',
-  PENDING_TASK: '待交作业',
-  FINISHED: '已完成',
-  REJECTED: '已拒绝',
-  CLOSED: '已关闭'
-}
-
-function statusLabel(status?: string) {
-  if (!status) return '-'
-  return STATUS_LABELS[status] || status
 }
 
 async function loadLogistics() {
@@ -474,21 +436,21 @@ function askTrackingNo() {
 }
 
 async function handleAction(action: string) {
-  if (action === 'REJECTED') {
+  if (action === SAMPLE_STATUS.REJECTED) {
     const reason = await askReason()
     if (!reason) return
     await doActionSample({ action, reason })
     return
   }
 
-  if (action === 'SHIPPED') {
+  if (action === SAMPLE_STATUS.SHIPPED) {
     const trackingNo = await askTrackingNo()
     if (!trackingNo) return
     await doActionSample({ action, trackingNo })
     return
   }
 
-  if (action === 'SIGNED') {
+  if (action === SAMPLE_STATUS.SIGNED) {
     await doActionSample({ action })
     return
   }

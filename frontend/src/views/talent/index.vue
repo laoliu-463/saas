@@ -92,7 +92,6 @@ import { useRoute, useRouter } from 'vue-router'
 import PageEmpty from '../../components/PageEmpty.vue'
 import PageHeader from '../../components/PageHeader.vue'
 import { useAuthStore } from '../../stores/auth'
-import { ROLE_CODES, hasAnyRole } from '../../constants/rbac'
 import {
   blacklistTalent,
   claimTalent,
@@ -115,8 +114,11 @@ import {
   formatDateTime,
   formatFans,
   formatMoney,
+  canManageTalentBlacklistByRole,
+  canRefreshWeeklyTalentByRole,
   getPoolLabel,
   getPoolTagType,
+  isChannelStaffOnlyTalentRole,
   TALENT_VIEW_LABEL_MAP,
   getAccessibleTalentViewOptions
 } from './constants'
@@ -145,12 +147,9 @@ const {
 
 const pagination = reactive(createPaginationState())
 
-const isChannelStaffOnly = computed(() => {
-  const roles = authStore.roleCodes
-  return hasAnyRole(roles, [ROLE_CODES.CHANNEL_STAFF]) && !hasAnyRole(roles, [ROLE_CODES.CHANNEL_LEADER]) && !authStore.isAdmin
-})
-const canRefreshWeekly = computed(() => hasAnyRole(authStore.roleCodes, [ROLE_CODES.CHANNEL_LEADER]))
-const canManageBlacklist = computed(() => authStore.isAdmin || hasAnyRole(authStore.roleCodes, [ROLE_CODES.CHANNEL_LEADER]))
+const isChannelStaffOnly = computed(() => isChannelStaffOnlyTalentRole(authStore.roleCodes, authStore.isAdmin))
+const canRefreshWeekly = computed(() => canRefreshWeeklyTalentByRole(authStore.roleCodes))
+const canManageBlacklist = computed(() => canManageTalentBlacklistByRole(authStore.roleCodes, authStore.isAdmin))
 
 const pageTitle = computed(() => {
   if (isChannelStaffOnly.value && activeView.value === 'MY_TALENTS') {

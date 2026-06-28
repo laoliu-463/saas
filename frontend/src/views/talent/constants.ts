@@ -23,6 +23,24 @@ export function getAccessibleTalentViewOptions(
   return TALENT_VIEW_OPTIONS.filter((item) => CHANNEL_STAFF_TALENT_VIEWS.includes(item.value))
 }
 
+export function isChannelStaffOnlyTalentRole(roleCodes: readonly string[] = [], isAdmin = false) {
+  return hasAnyRole(roleCodes, [ROLE_CODES.CHANNEL_STAFF])
+    && !hasAnyRole(roleCodes, [ROLE_CODES.CHANNEL_LEADER])
+    && !isAdmin
+}
+
+export function canRefreshWeeklyTalentByRole(roleCodes: readonly string[] = []) {
+  return hasAnyRole(roleCodes, [ROLE_CODES.CHANNEL_LEADER])
+}
+
+export function canManageTalentBlacklistByRole(roleCodes: readonly string[] = [], isAdmin = false) {
+  return isAdmin || hasAnyRole(roleCodes, [ROLE_CODES.CHANNEL_LEADER])
+}
+
+export function canApplySampleFromTalentByRole(roleCodes: readonly string[] = [], isAdmin = false) {
+  return isAdmin || hasAnyRole(roleCodes, [ROLE_CODES.CHANNEL_LEADER, ROLE_CODES.CHANNEL_STAFF])
+}
+
 export const TALENT_VIEW_LABEL_MAP = TALENT_VIEW_OPTIONS.reduce<Record<string, string>>((acc, item) => {
   acc[item.value] = item.label
   return acc

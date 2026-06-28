@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { ROLE_CODES } from '../../constants/rbac'
-import { getAccessibleTalentViewOptions } from './constants'
+import {
+  canApplySampleFromTalentByRole,
+  canManageTalentBlacklistByRole,
+  canRefreshWeeklyTalentByRole,
+  getAccessibleTalentViewOptions,
+  isChannelStaffOnlyTalentRole
+} from './constants'
 
 describe('getAccessibleTalentViewOptions', () => {
   it('returns all views for channel leader', () => {
@@ -29,5 +35,18 @@ describe('getAccessibleTalentViewOptions', () => {
   it('limits channel staff to public and private pools', () => {
     const views = getAccessibleTalentViewOptions([ROLE_CODES.CHANNEL_STAFF])
     expect(views.map((item) => item.value)).toEqual(['TEAM_PUBLIC', 'MY_TALENTS'])
+  })
+
+  it('centralizes talent page role gates', () => {
+    expect(isChannelStaffOnlyTalentRole([ROLE_CODES.CHANNEL_STAFF])).toBe(true)
+    expect(isChannelStaffOnlyTalentRole([ROLE_CODES.CHANNEL_STAFF, ROLE_CODES.CHANNEL_LEADER])).toBe(false)
+    expect(canRefreshWeeklyTalentByRole([ROLE_CODES.CHANNEL_LEADER])).toBe(true)
+    expect(canRefreshWeeklyTalentByRole([ROLE_CODES.CHANNEL_STAFF])).toBe(false)
+    expect(canManageTalentBlacklistByRole([ROLE_CODES.CHANNEL_LEADER])).toBe(true)
+    expect(canManageTalentBlacklistByRole([ROLE_CODES.CHANNEL_STAFF])).toBe(false)
+    expect(canManageTalentBlacklistByRole([], true)).toBe(true)
+    expect(canApplySampleFromTalentByRole([ROLE_CODES.CHANNEL_STAFF])).toBe(true)
+    expect(canApplySampleFromTalentByRole([ROLE_CODES.BIZ_STAFF])).toBe(false)
+    expect(canApplySampleFromTalentByRole([], true)).toBe(true)
   })
 })
