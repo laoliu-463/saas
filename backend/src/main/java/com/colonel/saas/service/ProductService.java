@@ -8,9 +8,7 @@ import com.colonel.saas.common.enums.ProductBizStatus;
 import com.colonel.saas.common.result.PageResult;
 import com.colonel.saas.constant.ProductDisplayStatus;
 import com.colonel.saas.domain.product.event.ProductDomainEventPublisher;
-import com.colonel.saas.domain.product.application.dto.PromotionLinkCopyResult;
 import com.colonel.saas.domain.product.application.port.CopyPromotionSupportPort;
-import com.colonel.saas.domain.product.policy.CopyTextPolicy;
 import com.colonel.saas.domain.product.policy.ProductDisplayPolicy;
 import com.colonel.saas.domain.product.policy.ProductPinPolicy;
 import com.colonel.saas.dto.product.ProductFilterOptionItem;
@@ -233,55 +231,6 @@ public class ProductService implements CopyPromotionSupportPort {
         this.colonelPartnerSyncService = colonelPartnerSyncService;
         this.productDomainEventPublisher = productDomainEventPublisher;
         this.productDisplayPolicy = productDisplayPolicy;
-    }
-
-    /**
-     * Compatibility constructor for tests and legacy callers still passing the
-     * DDD-PRODUCT-004 application service during rollout.
-     */
-    public ProductService(
-            DouyinConvertPort douyinConvertPort,
-            DouyinProductGateway douyinProductGateway,
-            ProductSnapshotMapper snapshotMapper,
-            ProductOperationStateMapper operationStateMapper,
-            ProductOperationLogMapper operationLogMapper,
-            PromotionLinkMapper promotionLinkMapper,
-            ColonelsettlementOrderMapper orderMapper,
-            MerchantMapper merchantMapper,
-            UserDomainFacade userDomainFacade,
-            PickSourceMappingService pickSourceMappingService,
-            ProductBizStatusService productBizStatusService,
-            ColonelsettlementActivityMapper colonelActivityMapper,
-            TalentFollowService talentFollowService,
-            DouyinActivityGateway douyinActivityGateway,
-            PromotionLinkIdempotencyService promotionLinkIdempotencyService,
-            com.colonel.saas.domain.config.facade.ConfigDomainFacade configDomainFacade,
-            ProductDisplayRuleService productDisplayRuleService,
-            ColonelPartnerSyncService colonelPartnerSyncService,
-            ProductDomainEventPublisher productDomainEventPublisher,
-            ProductDisplayPolicy productDisplayPolicy,
-            com.colonel.saas.domain.product.application.CopyPromotionApplicationService ignoredCopyPromotionApplicationService) {
-        this(
-                douyinConvertPort,
-                douyinProductGateway,
-                snapshotMapper,
-                operationStateMapper,
-                operationLogMapper,
-                promotionLinkMapper,
-                orderMapper,
-                merchantMapper,
-                userDomainFacade,
-                pickSourceMappingService,
-                productBizStatusService,
-                colonelActivityMapper,
-                talentFollowService,
-                douyinActivityGateway,
-                promotionLinkIdempotencyService,
-                configDomainFacade,
-                productDisplayRuleService,
-                colonelPartnerSyncService,
-                productDomainEventPublisher,
-                productDisplayPolicy);
     }
 
     @Autowired(required = false)
@@ -3599,56 +3548,6 @@ public class ProductService implements CopyPromotionSupportPort {
             promotionLinkIdempotencyService.releaseInFlight(scopeKey);
             throw ex;
         }
-    }
-
-    @Transactional(rollbackFor = Exception.class)
-    public PromotionLinkCopyResult generatePromotionLinkCopy(
-            String activityId,
-            String productId,
-            UUID userId,
-            UUID deptId,
-            String externalUniqueId,
-            Integer promotionScene,
-            boolean needShortLink,
-            String scene,
-            String talentId,
-            String idempotencyKey) {
-        CopyPromotionSupportPort.Context ctx = prepareCopyPromotionContext(
-                activityId, productId, "复制推广简介");
-        if (!realPromotionWriteEnabled || !allowRealPromotionWrite) {
-            String text = CopyTextPolicy.render(
-                    configDomainFacade, ctx.snapshot(), ctx.state(), null);
-            return new PromotionLinkCopyResult(
-                    text,
-                    false,
-                    null,
-                    null,
-                    FALLBACK_REASON_REAL_PROMOTION_WRITE_DISABLED,
-                    realPromotionWriteEnabled,
-                    allowRealPromotionWrite);
-        }
-        CopyPromotionSupportPort.GeneratedPromotionLink result = generatePromotionLinkForCopy(
-                activityId,
-                productId,
-                userId,
-                deptId,
-                externalUniqueId,
-                promotionScene,
-                needShortLink,
-                scene,
-                talentId,
-                idempotencyKey);
-        String promotionLink = CopyTextPolicy.firstText(result.shortLink(), result.promoteLink());
-        String text = CopyTextPolicy.render(
-                configDomainFacade, ctx.snapshot(), ctx.state(), promotionLink);
-        return new PromotionLinkCopyResult(
-                text,
-                true,
-                promotionLink,
-                result.pickSource(),
-                null,
-                realPromotionWriteEnabled,
-                allowRealPromotionWrite);
     }
 
     /**
