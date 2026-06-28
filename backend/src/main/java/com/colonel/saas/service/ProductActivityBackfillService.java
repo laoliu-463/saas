@@ -2,6 +2,7 @@ package com.colonel.saas.service;
 
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.domain.product.application.ProductBackfillJobMetadata;
+import com.colonel.saas.domain.product.policy.ProductBackfillJobPolicy;
 import com.colonel.saas.entity.ColonelsettlementActivity;
 import com.colonel.saas.entity.ProductActivitySyncState;
 import com.colonel.saas.entity.ProductSyncJobLog;
@@ -35,6 +36,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicReference;
@@ -78,13 +81,15 @@ public class ProductActivityBackfillService {
     private static final int DEFAULT_DEADLOCK_RETRY_MAX = 3;
     /** 写锁 TTL（与最坏单 activity 写满时间匹配）。 */
     private static final Duration BACKFILL_LOCK_TTL = Duration.ofMinutes(30);
-    private static final String STOP_REASON_FAILED_LOCKED = "FAILED_LOCKED";
-    private static final String STOP_REASON_DEADLOCK_RETRY_EXHAUSTED = "DEADLOCK_RETRY_EXHAUSTED";
-    private static final String STOP_REASON_UPSTREAM_API_ERROR = "UPSTREAM_API_ERROR";
-    private static final String STOP_REASON_DB_ERROR = "DB_ERROR";
-    private static final String STOP_REASON_LOCK_ERROR = "LOCK_ERROR";
-    private static final String STOP_REASON_TIMEOUT_ERROR = "TIMEOUT_ERROR";
-    private static final String STOP_REASON_UNKNOWN_ERROR = "UNKNOWN_ERROR";
+    private static final String STOP_REASON_FAILED_LOCKED = ProductBackfillJobPolicy.STOP_REASON_FAILED_LOCKED;
+    private static final String STOP_REASON_DEADLOCK_RETRY_EXHAUSTED =
+            ProductBackfillJobPolicy.STOP_REASON_DEADLOCK_RETRY_EXHAUSTED;
+    private static final String STOP_REASON_UPSTREAM_API_ERROR =
+            ProductBackfillJobPolicy.STOP_REASON_UPSTREAM_API_ERROR;
+    private static final String STOP_REASON_DB_ERROR = ProductBackfillJobPolicy.STOP_REASON_DB_ERROR;
+    private static final String STOP_REASON_LOCK_ERROR = ProductBackfillJobPolicy.STOP_REASON_LOCK_ERROR;
+    private static final String STOP_REASON_TIMEOUT_ERROR = ProductBackfillJobPolicy.STOP_REASON_TIMEOUT_ERROR;
+    private static final String STOP_REASON_UNKNOWN_ERROR = ProductBackfillJobPolicy.STOP_REASON_UNKNOWN_ERROR;
 
     private final ProductSyncDryRunProbeService dryRunProbeService;
     private final ProductService productService;
@@ -98,6 +103,8 @@ public class ProductActivityBackfillService {
     private final Executor backfillExecutor;
     private final TransactionTemplate batchTransactionTemplate;
     private final ProductBackfillJobMetadata backfillJobMetadata = new ProductBackfillJobMetadata();
+    private final ProductBackfillJobPolicy backfillJobPolicy = new ProductBackfillJobPolicy();
+    private final ConcurrentMap<String, String> runningAsyncJobIds = new ConcurrentHashMap<>();
     @Value("${product.sync.activityProduct.fullBackfillEnabled:true}")
     private boolean fullBackfillEnabled = true;
     @Value("${product.sync.backfill.writeBatchSize:100}")
@@ -144,17 +151,35 @@ public class ProductActivityBackfillService {
 
     public BackfillResult backfill(BackfillRequest request, UUID requestedBy) {
         NormalizedRequest normalized = normalizeAndValidate(request);
-        String jobId = "product-backfill-" + UUID.randomUUID();
+        String jobId = backfillJobPolicy.newJobId(UUID.randomUUID());
         ProductSyncJobLog jobLog = startJob(jobId, normalized, requestedBy);
         return executeBackfillWorkflow(jobId, normalized, jobLog);
     }
 
     public BackfillAsyncResponse backfillAsync(BackfillRequest request, UUID requestedBy) {
         NormalizedRequest normalized = normalizeAndValidate(request);
-        String jobId = "product-backfill-" + UUID.randomUUID();
-        ProductSyncJobLog jobLog = startJob(jobId, normalized, requestedBy);
+        String idempotencyKey = backfillJobPolicy.asyncIdempotencyKey(toBackfillRequestIdentity(normalized, requestedBy));
+        String jobId = backfillJobPolicy.newJobId(UUID.randomUUID());
+        String existingJobId = runningAsyncJobIds.putIfAbsent(idempotencyKey, jobId);
+        if (existingJobId != null) {
+            log.info("ProductActivityBackfillService duplicate async request ignored, existingJobId={}", existingJobId);
+            return new BackfillAsyncResponse(existingJobId, ProductBackfillJobPolicy.STATUS_RUNNING);
+        }
+        ProductSyncJobLog jobLog;
         try {
-            CompletableFuture.runAsync(() -> executeBackfillWorkflow(jobId, normalized, jobLog),
+            jobLog = startJob(jobId, normalized, requestedBy);
+        } catch (RuntimeException ex) {
+            runningAsyncJobIds.remove(idempotencyKey, jobId);
+            throw ex;
+        }
+        try {
+            CompletableFuture.runAsync(() -> {
+                        try {
+                            executeBackfillWorkflow(jobId, normalized, jobLog);
+                        } finally {
+                            runningAsyncJobIds.remove(idempotencyKey, jobId);
+                        }
+                    },
                     backfillExecutor)
                     .exceptionally(ex -> {
                         // executeBackfillWorkflow 内部已 finishJob()，此处仅消费 Future 异常避免 unhandled 警告。
@@ -171,9 +196,10 @@ public class ProductActivityBackfillService {
                     ex,
                     null);
             finishJob(jobLog, failedResult(jobId, normalized, stopReason), "FAILED", errorMessage, 0, 0);
+            runningAsyncJobIds.remove(idempotencyKey, jobId);
             throw ex;
         }
-        return new BackfillAsyncResponse(jobId, "RUNNING");
+        return new BackfillAsyncResponse(jobId, ProductBackfillJobPolicy.STATUS_RUNNING);
     }
 
     public BackfillJobStatus getJobStatus(String jobId) {
@@ -221,7 +247,7 @@ public class ProductActivityBackfillService {
         try {
             if (normalized.dryRun()) {
                 BackfillResult dryRunResult = runDryRun(jobId, normalized, jobLog);
-                String status = statusFromCounts(dryRunResult.activitiesScanned(),
+                String status = backfillJobPolicy.statusFromCounts(dryRunResult.activitiesScanned(),
                         dryRunResult.activitiesSuccess(),
                         dryRunResult.activitiesIncomplete(),
                         dryRunResult.activitiesFailed());
@@ -389,7 +415,7 @@ public class ProductActivityBackfillService {
                     totalDeadlockRetryCount += activityRetry;
                     stopReasonStats.merge(stats.stoppedReason, 1L, Long::sum);
                     String activityErrorMessage = null;
-                    if (isFailedStopReason(stats.stoppedReason)) {
+                    if (backfillJobPolicy.isFailedStopReason(stats.stoppedReason)) {
                         String rawCause = StringUtils.hasText(stats.rawCause())
                                 ? stats.rawCause()
                                 : normalizeRawCause(stats.stoppedReason());
@@ -406,7 +432,7 @@ public class ProductActivityBackfillService {
                     }
                     if (stats.complete) {
                         success++;
-                    } else if (isFailedStopReason(stats.stoppedReason)) {
+                    } else if (backfillJobPolicy.isFailedStopReason(stats.stoppedReason)) {
                         failed++;
                     } else {
                         incomplete++;
@@ -472,7 +498,7 @@ public class ProductActivityBackfillService {
                     totalLockWaitCount,
                     totalDeadlockRetryCount,
                     unchanged);
-            String status = statusFromCounts(result.activitiesScanned(),
+            String status = backfillJobPolicy.statusFromCounts(result.activitiesScanned(),
                     result.activitiesSuccess(),
                     result.activitiesIncomplete(),
                     result.activitiesFailed());
@@ -1091,7 +1117,7 @@ public class ProductActivityBackfillService {
         state.setScope(scope);
         state.setLastAttemptAt(now);
         state.setLastSuccessAt(stats.complete ? now : null);
-        state.setLastStatus(statusForStopReason(stats.stoppedReason, stats.complete));
+        state.setLastStatus(backfillJobPolicy.statusForStopReason(stats.stoppedReason, stats.complete));
         state.setLastStopReason(stats.stoppedReason);
         state.setLastPage(0);
         state.setLastFetchedRows(stats.fetchedRows);
@@ -1099,7 +1125,7 @@ public class ProductActivityBackfillService {
         state.setLastInserted(stats.inserted);
         state.setLastUpdated(stats.updated);
         state.setLastSkipped(stats.skipped);
-        state.setLastFailed(isFailedStopReason(stats.stoppedReason) ? 1 : 0);
+        state.setLastFailed(backfillJobPolicy.isFailedStopReason(stats.stoppedReason) ? 1 : 0);
         state.setConsecutiveFailures(stats.complete ? 0 : 1);
         state.setLastErrorMessage(errorMessage);
         state.setCreateTime(now);
@@ -1272,56 +1298,6 @@ public class ProductActivityBackfillService {
                 0);
     }
 
-    private String statusFromCounts(int scanned, int success, int incomplete, int failed) {
-        if (scanned == 0 || failed >= scanned) {
-            return "FAILED";
-        }
-        if (failed > 0 || incomplete > 0 || success < scanned) {
-            return "PARTIAL";
-        }
-        return "SUCCESS";
-    }
-
-    private String statusForStopReason(String stopReason, boolean complete) {
-        if (complete) {
-            return "SUCCESS";
-        }
-        if (ActivityProductPaginationRunner.StopReason.MAX_PAGES_REACHED.name().equals(stopReason)) {
-            return "INCOMPLETE_MAX_PAGES";
-        }
-        if (ActivityProductPaginationRunner.StopReason.MAX_ROWS_REACHED.name().equals(stopReason)) {
-            return "INCOMPLETE_MAX_ROWS";
-        }
-        if (ActivityProductPaginationRunner.StopReason.API_ERROR.name().equals(stopReason)
-                || ActivityProductPaginationRunner.StopReason.INVALID_RESPONSE.name().equals(stopReason)) {
-            return "FAILED";
-        }
-        if (STOP_REASON_UPSTREAM_API_ERROR.equals(stopReason)
-                || STOP_REASON_DB_ERROR.equals(stopReason)
-                || STOP_REASON_LOCK_ERROR.equals(stopReason)
-                || STOP_REASON_TIMEOUT_ERROR.equals(stopReason)
-                || STOP_REASON_UNKNOWN_ERROR.equals(stopReason)) {
-            return "FAILED";
-        }
-        if (STOP_REASON_FAILED_LOCKED.equals(stopReason)
-                || STOP_REASON_DEADLOCK_RETRY_EXHAUSTED.equals(stopReason)) {
-            return "FAILED";
-        }
-        return "INCOMPLETE_CURSOR_ERROR";
-    }
-
-    private boolean isFailedStopReason(String stopReason) {
-        return ActivityProductPaginationRunner.StopReason.API_ERROR.name().equals(stopReason)
-                || ActivityProductPaginationRunner.StopReason.INVALID_RESPONSE.name().equals(stopReason)
-                || STOP_REASON_UPSTREAM_API_ERROR.equals(stopReason)
-                || STOP_REASON_DB_ERROR.equals(stopReason)
-                || STOP_REASON_LOCK_ERROR.equals(stopReason)
-                || STOP_REASON_TIMEOUT_ERROR.equals(stopReason)
-                || STOP_REASON_UNKNOWN_ERROR.equals(stopReason)
-                || STOP_REASON_FAILED_LOCKED.equals(stopReason)
-                || STOP_REASON_DEADLOCK_RETRY_EXHAUSTED.equals(stopReason);
-    }
-
     private NormalizedRequest normalize(BackfillRequest request) {
         BackfillRequest safe = request == null
                 ? new BackfillRequest(null, List.of(), null, null, null, null, true, false, null)
@@ -1367,6 +1343,22 @@ public class ProductActivityBackfillService {
     private int normalizePositive(Integer value, int defaultValue, int maxValue) {
         int normalized = value == null || value <= 0 ? defaultValue : value;
         return Math.min(Math.max(normalized, 1), maxValue);
+    }
+
+    private ProductBackfillJobPolicy.BackfillRequestIdentity toBackfillRequestIdentity(
+            NormalizedRequest request,
+            UUID requestedBy) {
+        return new ProductBackfillJobPolicy.BackfillRequestIdentity(
+                request.scope(),
+                request.activityIds(),
+                request.pageSize(),
+                request.maxActivities(),
+                request.maxPagesPerActivity(),
+                request.maxRowsPerActivity(),
+                request.dryRun(),
+                request.confirm(),
+                request.displayRefreshMode(),
+                requestedBy);
     }
 
     private String toJson(Object value) {

@@ -7,6 +7,11 @@
 
 ## 最近版本摘要
 
+### v0.8.2 — 2026-06-28
+- DDD-VERIFY-001 活动商品 backfill 幂等切片：新增 `ProductBackfillJobPolicy` 承接 jobId、任务状态与 stopReason 分类规则，`ProductActivityBackfillService.backfillAsync` 对同一请求运行中重复点击返回已有 RUNNING jobId，不再插入第二条 job log 或排第二个后台任务。
+- Targeted tests、Product 全集合、compile/package 和 real-pre backend health 通过；架构/全量仍为 5 个既有红线失败，本轮 evidence 结论为 PARTIAL。
+- 证据：`harness/reports/evidence-20260628-212301.md`；retro：`harness/reports/retro-20260628-212317.md`。
+
 ### v0.8.1 — 2026-06-28
 - DDD-VERIFY-001 活动商品视图切片：`ProductSnapshotQueryService` / `ActivityProductReadModelQueryService` 不再直接导入 MyBatis Mapper，读侧 SQL 下沉到 infrastructure adapters。
 - Product query Mapper 红线、query targeted tests、Product 全集合和 real-pre backend health 通过；架构/全量剩余 5 个既有红线失败，本轮 evidence 结论为 PARTIAL。

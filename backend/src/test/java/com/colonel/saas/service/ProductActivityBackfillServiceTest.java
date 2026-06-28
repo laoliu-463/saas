@@ -19,6 +19,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.SimpleTransactionStatus;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -276,6 +277,59 @@ class ProductActivityBackfillServiceTest {
         assertThat(result.deadlockRetryCount()).isEqualTo(1L);
         verify(douyinProductGateway, times(1)).queryActivityProducts(any());
         verify(productService, times(2)).upsertSnapshotsWithStats(eq("ACT-1"), any());
+    }
+
+    @Test
+    void backfillAsync_sameRunningRequestShouldReturnExistingJobWithoutStartingSecondJob() {
+        List<Runnable> queuedTasks = new ArrayList<>();
+        service = new ProductActivityBackfillService(
+                dryRunProbeService,
+                productService,
+                activityMapper,
+                snapshotMapper,
+                jobLogMapper,
+                syncStateMapper,
+                jobLockService,
+                productDisplayRuleService,
+                douyinProductGateway,
+                queuedTasks::add,
+                transactionManager);
+        when(dryRunProbeService.fullDryRun(any(), any()))
+                .thenReturn(fullDryRunResult());
+        ProductActivityBackfillService.BackfillRequest request =
+                new ProductActivityBackfillService.BackfillRequest(
+                        "CUSTOM_ACTIVITY_IDS",
+                        List.of("3859423"),
+                        20,
+                        50,
+                        1000,
+                        50_000,
+                        true,
+                        false,
+                        "DEFERRED");
+        UUID requestedBy = UUID.randomUUID();
+
+        ProductActivityBackfillService.BackfillAsyncResponse first =
+                service.backfillAsync(request, requestedBy);
+        ProductActivityBackfillService.BackfillAsyncResponse second =
+                service.backfillAsync(request, requestedBy);
+
+        assertThat(first.status()).isEqualTo("RUNNING");
+        assertThat(second.status()).isEqualTo("RUNNING");
+        assertThat(second.jobId()).isEqualTo(first.jobId());
+        assertThat(queuedTasks).hasSize(1);
+        verify(jobLogMapper, times(1)).insert(any(ProductSyncJobLog.class));
+        verify(dryRunProbeService, never()).fullDryRun(any(), any());
+
+        queuedTasks.get(0).run();
+        verify(dryRunProbeService, times(1)).fullDryRun(any(), any());
+
+        ProductActivityBackfillService.BackfillAsyncResponse third =
+                service.backfillAsync(request, requestedBy);
+
+        assertThat(third.status()).isEqualTo("RUNNING");
+        assertThat(queuedTasks).hasSize(2);
+        verify(jobLogMapper, times(2)).insert(any(ProductSyncJobLog.class));
     }
 
     private ProductActivityBackfillService.BackfillRequest realRequest(List<String> activityIds) {
