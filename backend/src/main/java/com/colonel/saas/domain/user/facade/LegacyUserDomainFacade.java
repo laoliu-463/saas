@@ -7,6 +7,7 @@ import com.colonel.saas.domain.user.port.DepartmentOptionLookup;
 import com.colonel.saas.domain.user.port.DepartmentOptionLookup.DepartmentEntry;
 import com.colonel.saas.domain.user.port.UserBasicLookup;
 import com.colonel.saas.domain.user.port.UserBasicLookup.BasicUser;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.dto.user.CheckPermissionRequest;
 import com.colonel.saas.dto.user.CurrentUserResponse;
 import com.colonel.saas.dto.user.UserDataScopeResponse;
@@ -34,16 +35,19 @@ public class LegacyUserDomainFacade implements UserDomainFacade {
     private final UserMasterDataService userMasterDataService;
     private final DepartmentOptionLookup departmentOptionLookup;
     private final UserBasicLookup userBasicLookup;
+    private final CurrentUserPermissionPolicy currentUserPermissionPolicy;
 
     public LegacyUserDomainFacade(
             UserDomainService userDomainService,
             UserMasterDataService userMasterDataService,
             DepartmentOptionLookup departmentOptionLookup,
-            UserBasicLookup userBasicLookup) {
+            UserBasicLookup userBasicLookup,
+            CurrentUserPermissionPolicy currentUserPermissionPolicy) {
         this.userDomainService = userDomainService;
         this.userMasterDataService = userMasterDataService;
         this.departmentOptionLookup = departmentOptionLookup;
         this.userBasicLookup = userBasicLookup;
+        this.currentUserPermissionPolicy = currentUserPermissionPolicy;
     }
 
     @Override
@@ -90,6 +94,16 @@ public class LegacyUserDomainFacade implements UserDomainFacade {
                 current.roleCodes(),
                 new CheckPermissionRequest(resource, action)
         ).allowed();
+    }
+
+    @Override
+    public boolean hasAnyRole(Object roleCodes, String... expectedRoles) {
+        return currentUserPermissionPolicy.hasAnyRole(roleCodes, expectedRoles);
+    }
+
+    @Override
+    public List<String> normalizeRoleCodes(Object roleCodes) {
+        return currentUserPermissionPolicy.normalizeRoleCodes(roleCodes);
     }
 
     private DepartmentOption toDepartmentOption(DepartmentEntry dept) {

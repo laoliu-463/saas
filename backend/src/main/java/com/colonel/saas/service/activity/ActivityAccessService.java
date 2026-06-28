@@ -2,7 +2,7 @@ package com.colonel.saas.service.activity;
 
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.constant.RoleCodes;
-import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
+import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.entity.ColonelsettlementActivity;
 import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
 import org.springframework.stereotype.Service;
@@ -25,13 +25,13 @@ public class ActivityAccessService {
     );
 
     private final ColonelsettlementActivityMapper activityMapper;
-    private final CurrentUserPermissionPolicy currentUserPermissionPolicy;
+    private final UserDomainFacade userDomainFacade;
 
     public ActivityAccessService(
             ColonelsettlementActivityMapper activityMapper,
-            CurrentUserPermissionPolicy currentUserPermissionPolicy) {
+            UserDomainFacade userDomainFacade) {
         this.activityMapper = activityMapper;
-        this.currentUserPermissionPolicy = currentUserPermissionPolicy;
+        this.userDomainFacade = userDomainFacade;
     }
 
     /**
@@ -73,15 +73,15 @@ public class ActivityAccessService {
     }
 
     public boolean isAdmin(Collection<String> roleCodes) {
-        return currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.ADMIN);
+        return userDomainFacade.hasAnyRole(roleCodes, RoleCodes.ADMIN);
     }
 
     public boolean isRecruiterRole(Collection<String> roleCodes) {
-        return currentUserPermissionPolicy.hasAnyRole(roleCodes, RECRUITER_ROLES.toArray(String[]::new));
+        return userDomainFacade.hasAnyRole(roleCodes, RECRUITER_ROLES.toArray(String[]::new));
     }
 
     public boolean isBizLeader(Collection<String> roleCodes) {
-        return currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.BIZ_LEADER);
+        return userDomainFacade.hasAnyRole(roleCodes, RoleCodes.BIZ_LEADER);
     }
 
     /**
@@ -116,6 +116,6 @@ public class ActivityAccessService {
     }
 
     public Collection<String> normalizeRoles(Object roleCodes) {
-        return currentUserPermissionPolicy.normalizeRoleCodes(roleCodes);
+        return userDomainFacade.normalizeRoleCodes(roleCodes);
     }
 }

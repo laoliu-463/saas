@@ -24,6 +24,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InOrder;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
+import org.mockito.invocation.InvocationOnMock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
@@ -41,6 +42,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
@@ -80,7 +82,12 @@ class ColonelActivityControllerTest {
 
     @BeforeEach
     void setUp() {
-        activityAccessService = new ActivityAccessService(colonelActivityMapper, new CurrentUserPermissionPolicy());
+        CurrentUserPermissionPolicy oracle = new CurrentUserPermissionPolicy();
+        lenient().when(userDomainFacade.hasAnyRole(any(), any(String[].class)))
+                .thenAnswer(invocation -> oracle.hasAnyRole(invocation.getArgument(0), expectedRoles(invocation)));
+        lenient().when(userDomainFacade.normalizeRoleCodes(any()))
+                .thenAnswer(invocation -> oracle.normalizeRoleCodes(invocation.getArgument(0)));
+        activityAccessService = new ActivityAccessService(colonelActivityMapper, userDomainFacade);
         controller = new ColonelActivityController(
                 douyinActivityGateway,
                 douyinProductGateway,
@@ -96,6 +103,18 @@ class ColonelActivityControllerTest {
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
+    }
+
+    private static String[] expectedRoles(InvocationOnMock invocation) {
+        Object[] arguments = invocation.getArguments();
+        if (arguments.length == 2 && arguments[1] instanceof String[] roles) {
+            return roles;
+        }
+        String[] roles = new String[Math.max(0, arguments.length - 1)];
+        for (int i = 1; i < arguments.length; i++) {
+            roles[i - 1] = (String) arguments[i];
+        }
+        return roles;
     }
 
     @Test

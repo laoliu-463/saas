@@ -53,6 +53,17 @@ public interface UserDomainFacade {
     boolean hasPermission(UUID userId, String resource, String action);
 
     /**
+     * 判断给定角色集合是否包含任一目标角色。
+     * 业务域只传入当前用户角色事实，不复制角色编码规范化规则。
+     */
+    boolean hasAnyRole(Object roleCodes, String... expectedRoles);
+
+    /**
+     * 规范化角色编码集合，供跨域入口复用用户域统一的 trim/lowercase/去重规则。
+     */
+    List<String> normalizeRoleCodes(Object roleCodes);
+
+    /**
      * 按用户 ID 查询真实姓名，不存在时返回 null（DDD-USER-002）。
      */
     String getUserName(UUID userId);
