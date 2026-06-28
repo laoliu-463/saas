@@ -13,7 +13,7 @@ class DddUserDataScopePolicyOrderAttributionBoundaryTest {
     @Test
     void orderAttributionService_shouldGateDataScopePolicyPathBehindFeatureFlag() throws Exception {
         String source = Files.readString(Path.of(
-                "src/main/java/com/colonel/saas/service/OrderAttributionService.java"));
+                "src/main/java/com/colonel/saas/domain/order/application/OrderAttributionService.java"));
 
         assertThat(source)
                 .contains("DataScopePolicy")
