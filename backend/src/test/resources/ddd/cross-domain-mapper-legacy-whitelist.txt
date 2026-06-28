@@ -21,7 +21,6 @@ com.colonel.saas.service.OrderService|ProductSnapshotMapper
 com.colonel.saas.service.ProductService|ColonelsettlementOrderMapper
 com.colonel.saas.service.ProductService|PromotionLinkMapper
 com.colonel.saas.service.TalentService|ColonelsettlementOrderMapper
-com.colonel.saas.service.TalentService|SampleRequestMapper
 com.colonel.saas.service.data.DataApplicationService|ColonelsettlementActivityMapper
 com.colonel.saas.service.data.DataApplicationService|ColonelsettlementOrderMapper
 com.colonel.saas.service.data.DataApplicationService|ExclusiveMerchantMapper

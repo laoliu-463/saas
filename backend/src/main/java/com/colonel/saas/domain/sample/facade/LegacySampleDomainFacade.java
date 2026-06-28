@@ -68,6 +68,20 @@ public class LegacySampleDomainFacade implements SampleDomainFacade {
     }
 
     @Override
+    public long countSamplesByTalentIdSince(UUID talentId, LocalDateTime since) {
+        if (talentId == null || since == null) {
+            return 0L;
+        }
+        Long count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(1) FROM sample_request " +
+                        "WHERE deleted = 0 AND talent_id = ? AND create_time >= ?",
+                Long.class,
+                talentId,
+                Timestamp.valueOf(since));
+        return count == null ? 0L : count;
+    }
+
+    @Override
     public List<TalentRecentSampleDTO> listRecentSamplesByTalentId(UUID talentId, int limit) {
         if (talentId == null || limit <= 0) {
             return List.of();

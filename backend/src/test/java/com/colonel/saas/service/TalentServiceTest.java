@@ -10,6 +10,7 @@ import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.exception.ForbiddenException;
 import com.colonel.saas.domain.talent.application.TalentClaimApplicationService;
 import com.colonel.saas.domain.order.facade.OrderReadFacade;
+import com.colonel.saas.domain.sample.facade.SampleDomainFacade;
 import com.colonel.saas.domain.user.facade.dto.UserOwnershipReference;
 import com.colonel.saas.domain.talent.application.TalentProfileApplicationService;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
@@ -17,7 +18,6 @@ import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.entity.TalentClaim;
 import com.colonel.saas.entity.TalentEnrichTask;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
-import com.colonel.saas.mapper.SampleRequestMapper;
 import com.colonel.saas.mapper.TalentClaimMapper;
 import com.colonel.saas.mapper.TalentEnrichTaskMapper;
 import com.colonel.saas.mapper.TalentMapper;
@@ -75,7 +75,7 @@ class TalentServiceTest {
     @Mock
     private ColonelsettlementOrderMapper orderMapper;
     @Mock
-    private SampleRequestMapper sampleRequestMapper;
+    private SampleDomainFacade sampleDomainFacade;
     @Mock
     private RedisTemplate<String, Object> redisTemplate;
     @Mock
@@ -105,7 +105,7 @@ class TalentServiceTest {
                 talentEnrichTaskMapper,
                 talentEnrichOrchestrator,
                 orderMapper,
-                sampleRequestMapper,
+                sampleDomainFacade,
                 redisTemplate,
                 crawlerTalentInfoService,
                 true,
@@ -858,7 +858,7 @@ class TalentServiceTest {
                 talentEnrichTaskMapper,
                 talentEnrichOrchestrator,
                 orderMapper,
-                sampleRequestMapper,
+                sampleDomainFacade,
                 redisTemplate,
                 crawlerTalentInfoService,
                 false,
@@ -991,7 +991,7 @@ class TalentServiceTest {
         Page<com.colonel.saas.entity.ColonelsettlementOrder> orderPage = new Page<>(1, 2000, 2);
         orderPage.setRecords(List.of(order1, order2));
         when(orderMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class))).thenReturn(orderPage);
-        when(sampleRequestMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(15L);
+        when(sampleDomainFacade.countSamplesByTalentIdSince(eq(talentId), any(LocalDateTime.class))).thenReturn(15L);
 
         TalentService.ExclusiveCheckResult result = talentService.evaluateExclusive(
                 talentId, DataScope.PERSONAL, UUID.randomUUID(), null);
@@ -1015,7 +1015,7 @@ class TalentServiceTest {
         Page<com.colonel.saas.entity.ColonelsettlementOrder> orderPage = new Page<>(1, 2000, 1);
         orderPage.setRecords(List.of(order));
         when(orderMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class))).thenReturn(orderPage);
-        when(sampleRequestMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(null);
+        when(sampleDomainFacade.countSamplesByTalentIdSince(eq(talentId), any(LocalDateTime.class))).thenReturn(0L);
 
         TalentService.ExclusiveCheckResult result = talentService.evaluateExclusive(talentId, DataScope.DEPT, null, deptId);
 
@@ -1039,7 +1039,7 @@ class TalentServiceTest {
         Page<com.colonel.saas.entity.ColonelsettlementOrder> orderPage = new Page<>(1, 2000, 0);
         orderPage.setRecords(List.of());
         when(orderMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class))).thenReturn(orderPage);
-        when(sampleRequestMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(0L);
+        when(sampleDomainFacade.countSamplesByTalentIdSince(eq(talentId), any(LocalDateTime.class))).thenReturn(0L);
 
         enabledService.evaluateExclusive(talentId, DataScope.PERSONAL, userId, null);
         enabledService.evaluateExclusive(talentId, DataScope.DEPT, null, deptId);
@@ -1334,7 +1334,7 @@ class TalentServiceTest {
                 talentEnrichTaskMapper,
                 talentEnrichOrchestrator,
                 orderMapper,
-                sampleRequestMapper,
+                sampleDomainFacade,
                 redisTemplate,
                 crawlerTalentInfoService,
                 true,

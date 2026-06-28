@@ -14,9 +14,9 @@ import com.colonel.saas.entity.CrawlerTalentInfo;
 import com.colonel.saas.entity.Talent;
 import com.colonel.saas.entity.TalentClaim;
 import com.colonel.saas.entity.TalentEnrichTask;
+import com.colonel.saas.domain.sample.facade.SampleDomainFacade;
 import com.colonel.saas.entity.SysUser;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
-import com.colonel.saas.mapper.SampleRequestMapper;
 import com.colonel.saas.mapper.TalentClaimMapper;
 import com.colonel.saas.mapper.TalentEnrichTaskMapper;
 import com.colonel.saas.domain.talent.policy.TalentAddressPolicy;
@@ -81,7 +81,7 @@ import java.util.stream.Collectors;
  *   <li>{@link TalentEnrichTaskMapper} — 补全任务记录</li>
  *   <li>{@link TalentEnrichOrchestrator} — 信息补全编排</li>
  *   <li>{@link ColonelsettlementOrderMapper} — 订单查询（用于独家评估和活跃度判断）</li>
- *   <li>{@link SampleRequestMapper} — 寄样查询（用于独家评估）</li>
+ *   <li>{@link SampleDomainFacade} — 寄样域只读门面（用于独家评估）</li>
  *   <li>{@link RedisTemplate} — 认领并发锁</li>
  *   <li>{@link CrawlerTalentInfoService} — 爬虫数据源</li>
  *   <li>{@link BusinessRuleConfigService} — 业务规则配置（保护期、标签预设等）</li>
@@ -131,8 +131,8 @@ public class TalentService {
     private final TalentEnrichOrchestrator talentEnrichOrchestrator;
     /** 结算订单 Mapper（用于独家评估和活跃度判断） */
     private final ColonelsettlementOrderMapper orderMapper;
-    /** 寄样请求 Mapper（用于独家评估月寄样次数） */
-    private final SampleRequestMapper sampleRequestMapper;
+    /** 寄样域只读门面（用于独家评估月寄样次数） */
+    private final SampleDomainFacade sampleDomainFacade;
     /** Redis 模板（用于认领并发分布式锁） */
     private final RedisTemplate<String, Object> redisTemplate;
     /** 爬虫达人信息服务（用于公开页面数据抓取） */
@@ -163,7 +163,7 @@ public class TalentService {
      * @param talentEnrichTaskMapper   达人信息补全任务 Mapper
      * @param talentEnrichOrchestrator 信息补全编排器
      * @param orderMapper              结算订单 Mapper
-     * @param sampleRequestMapper      寄样请求 Mapper
+     * @param sampleDomainFacade       寄样域只读门面
      * @param redisTemplate            Redis 模板（分布式锁）
      * @param crawlerTalentInfoService 爬虫达人信息服务
      * @param publicPageCrawlEnabled   是否启用公开页面爬虫（配置项 {@code talent.data.public-page-crawl-enabled}）
@@ -181,7 +181,7 @@ public class TalentService {
             TalentEnrichTaskMapper talentEnrichTaskMapper,
             TalentEnrichOrchestrator talentEnrichOrchestrator,
             ColonelsettlementOrderMapper orderMapper,
-            SampleRequestMapper sampleRequestMapper,
+            SampleDomainFacade sampleDomainFacade,
             RedisTemplate<String, Object> redisTemplate,
             CrawlerTalentInfoService crawlerTalentInfoService,
             @Value("${talent.data.public-page-crawl-enabled:false}") boolean publicPageCrawlEnabled,
@@ -199,7 +199,7 @@ public class TalentService {
         this.talentEnrichTaskMapper = talentEnrichTaskMapper;
         this.talentEnrichOrchestrator = talentEnrichOrchestrator;
         this.orderMapper = orderMapper;
-        this.sampleRequestMapper = sampleRequestMapper;
+        this.sampleDomainFacade = sampleDomainFacade;
         this.redisTemplate = redisTemplate;
         this.crawlerTalentInfoService = crawlerTalentInfoService;
         this.publicPageCrawlEnabled = publicPageCrawlEnabled;
@@ -1110,10 +1110,7 @@ public class TalentService {
             }
         }
         long serviceRatio = totalServiceFee == 0 ? 0 : (talentServiceFee * 100 / totalServiceFee);
-        Long sampleCount = sampleRequestMapper.selectCount(new LambdaQueryWrapper<com.colonel.saas.entity.SampleRequest>()
-                .eq(com.colonel.saas.entity.SampleRequest::getTalentId, talentId)
-                .ge(com.colonel.saas.entity.SampleRequest::getCreateTime, start));
-        long monthlySamples = sampleCount == null ? 0L : sampleCount;
+        long monthlySamples = sampleDomainFacade.countSamplesByTalentIdSince(talentId, start);
 
         boolean eligible = serviceRatio >= configDomainFacade.getExclusiveTalentFeeRatio().longValue()
                 && monthlySamples >= configDomainFacade.getExclusiveTalentMonthlySamples();

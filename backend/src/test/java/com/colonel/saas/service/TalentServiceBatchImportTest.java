@@ -4,11 +4,11 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.dto.talent.TalentBatchImportResult;
 import com.colonel.saas.domain.order.facade.OrderReadFacade;
+import com.colonel.saas.domain.sample.facade.SampleDomainFacade;
 import com.colonel.saas.domain.talent.application.TalentClaimApplicationService;
 import com.colonel.saas.domain.talent.application.TalentProfileApplicationService;
 import com.colonel.saas.entity.Talent;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
-import com.colonel.saas.mapper.SampleRequestMapper;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.domain.user.policy.DataScopePolicy;
@@ -46,7 +46,7 @@ class TalentServiceBatchImportTest {
     @Mock
     private ColonelsettlementOrderMapper orderMapper;
     @Mock
-    private SampleRequestMapper sampleRequestMapper;
+    private SampleDomainFacade sampleDomainFacade;
     @Mock
     private RedisTemplate<String, Object> redisTemplate;
     @Mock
@@ -72,7 +72,7 @@ class TalentServiceBatchImportTest {
                 talentEnrichTaskMapper,
                 talentEnrichOrchestrator,
                 orderMapper,
-                sampleRequestMapper,
+                sampleDomainFacade,
                 redisTemplate,
                 crawlerTalentInfoService,
                 false,

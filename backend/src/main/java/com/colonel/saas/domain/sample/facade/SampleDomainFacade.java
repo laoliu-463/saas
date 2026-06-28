@@ -2,6 +2,7 @@ package com.colonel.saas.domain.sample.facade;
 
 import com.colonel.saas.domain.sample.facade.dto.TalentRecentSampleDTO;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -20,6 +21,9 @@ public interface SampleDomainFacade {
 
     /** 按达人 ID 批量统计寄样申请数。 */
     Map<UUID, Long> countSamplesByTalentIds(Set<UUID> talentIds);
+
+    /** 统计指定达人在给定时间后的寄样申请数。 */
+    long countSamplesByTalentIdSince(UUID talentId, LocalDateTime since);
 
     /** 查询指定达人最近的寄样申请记录。 */
     List<TalentRecentSampleDTO> listRecentSamplesByTalentId(UUID talentId, int limit);

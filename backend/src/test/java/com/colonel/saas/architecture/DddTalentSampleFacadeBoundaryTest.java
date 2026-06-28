@@ -22,4 +22,17 @@ class DddTalentSampleFacadeBoundaryTest {
                 .contains("sampleDomainFacade.countSamplesByTalentIds")
                 .contains("sampleDomainFacade.listRecentSamplesByTalentId");
     }
+
+    @Test
+    void talentServiceShouldReadSampleCountsThroughSampleDomainFacade() throws Exception {
+        String source = Files.readString(Path.of(
+                "src/main/java/com/colonel/saas/service/TalentService.java"));
+
+        assertThat(source)
+                .doesNotContain("SampleRequestMapper")
+                .doesNotContain("sampleRequestMapper")
+                .doesNotContain("com.colonel.saas.entity.SampleRequest")
+                .contains("SampleDomainFacade")
+                .contains("sampleDomainFacade.countSamplesByTalentIdSince");
+    }
 }

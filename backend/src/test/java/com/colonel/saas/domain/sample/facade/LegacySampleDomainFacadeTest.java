@@ -68,6 +68,26 @@ class LegacySampleDomainFacadeTest {
     }
 
     @Test
+    void countSamplesByTalentIdSince_shouldKeepLegacyMonthlySampleScope() {
+        UUID talentId = UUID.randomUUID();
+        LocalDateTime since = LocalDateTime.of(2026, 6, 1, 0, 0);
+        when(jdbcTemplate.queryForObject(
+                argThat(sql -> sql != null
+                        && sql.contains("FROM sample_request")
+                        && sql.contains("deleted = 0")
+                        && sql.contains("talent_id = ?")
+                        && sql.contains("create_time >= ?")),
+                eq(Long.class),
+                eq(talentId),
+                eq(Timestamp.valueOf(since))))
+                .thenReturn(4L);
+
+        assertThat(facade.countSamplesByTalentIdSince(talentId, since)).isEqualTo(4L);
+        assertThat(facade.countSamplesByTalentIdSince(null, since)).isZero();
+        assertThat(facade.countSamplesByTalentIdSince(talentId, null)).isZero();
+    }
+
+    @Test
     void listRecentSamplesByTalentId_shouldPreserveLegacyStatusMapping() {
         UUID talentId = UUID.randomUUID();
         LocalDateTime now = LocalDateTime.now();
