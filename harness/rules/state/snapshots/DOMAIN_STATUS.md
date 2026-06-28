@@ -174,6 +174,9 @@
 - 标记：P0。
 
 ## 前端
+- 最新边界变化：#158 已完成权限与数据范围 UI 后端权威化证据审计；前端 route/menu/button/list 可见性消费后端登录/当前用户 payload 中的 `roleCodes`/`dataScope`，`UserProfile` 通过 `/users/current`、`/users/current/data-scope`、`/users/current/permissions/check` 展示用户域解析结果，业务接口的 HTTP/business `403` 统一进入全局/局部权限提示。结论限定为 UI advisory，不替代后端鉴权。
+- 最新验证：`npm run test -- src/router/guard.test.ts src/router/index.test.ts src/router/menuTree.test.ts src/router/navigation.test.ts src/utils/requestError.test.ts src/api/sys.test.ts src/views/profile/UserProfile.test.ts src/views/layout/Header.test.ts` PASS（8 files / 71 tests）；`agent-do -Env real-pre -Scope docs` 已执行，结论 `PARTIAL`，原因是 docs-only 路径按协议跳过构建、容器重启、HTTP 健康和业务 E2E，不得写成代码 PASS。
+- 最新报告路径：#158 `harness/reports/2026-06-28/ddd-complete-frontend-158/evidence-20260628-frontend-permission-authority.md`；harness evidence `harness/reports/evidence-20260628-141825.md`；retro `harness/reports/retro-20260628-141844.md`。
 - 最新边界变化：#157 已完成达人/寄样页面领域 API 对齐；达人页继续只调用内部 `api/talent`，寄样页继续只调用内部 `api/sample` 并在必要处消费 `api/talent` 收货地址/候选达人、`api/sys` 人员主数据；未发现前端直连抖音/抖店开放接口。
 - 最新实现：寄样页将状态 Tab、状态标签、状态流程展示、运营/招商/渠道角色入口和只读提交判断收口到 `sample-permissions.ts`；达人列表/详情将渠道专员视角、黑名单管理、周榜刷新和快速寄样入口收口到 `talent/constants.ts`。这些 helper 仅用于 UI 展示/入口可见性，不替代后端鉴权、数据范围或寄样状态机。
 - 最新验证：`git diff --check` PASS；`npm run test -- src/views/sample/sample-permissions.test.ts src/views/sample/cooperation-workbench-filters.test.ts src/views/sample/SampleCreateModal.test.ts src/views/sample/sample-context.test.ts src/views/talent/constants.test.ts src/views/talent/composables/useTalentFilters.test.ts src/views/talent/components/TalentDetailModal.security.test.ts` PASS（6 files / 46 tests）；`npm run build` PASS；`agent-do -Env real-pre -Scope full` PASS，backend/frontend Docker 已重建重启，`/api/system/health` 与 `/healthz` PASS，`npm run e2e:real-pre:p0:preflight` PASS。
@@ -187,8 +190,8 @@
 - 最新边界变化：#154 已完成前端 API client/store 领域边界 inventory；`frontend/src/api/*` 按商品/活动、订单、分析、达人、寄样、用户/认证、配置、抖音运维网关归类，`frontend/src/stores` 仅有 auth/app/permissionHint 三个全局 store，无 product/order/talent/sample 等领域 Pinia store。
 - 最新验证：code-review-graph 未覆盖前端节点，已回退源码扫描；`utils/request.ts` 统一 `baseURL=/api`，API modules 只调用内部后端路径；非 wrapper `fetch` 仅命中 `/api/system/env` 与 `/api/auth/logout`；`api/douyin.ts` 通过内部 `/douyin/**` gateway，不直连开放平台。
 - 最新报告路径：#154 `harness/reports/2026-06-28/ddd-complete-frontend-154/evidence-20260628-114717-frontend-api-store-inventory.md`。
-- 当前风险：前端仍有 UI 侧状态展示 helper（product/sample status display helpers）；这些 helper 只能作为 display/gating，不能成为后端业务状态机或权限事实。权限与数据范围 UI 后端权威化仍由 #158 深化。
-- DDD 优化下一步：#158 权限与数据范围 UI 后端权威化。
+- 当前风险：前端仍有 UI 侧状态展示 helper（product/sample status display helpers）；这些 helper 只能作为 display/gating，不能成为后端业务状态机或权限事实。动态逐按钮权限 API 未逐项接入，当前 V1 以 backend-issued roles + backend 403 响应作为 UI 权威证据。
+- DDD 优化下一步：#159 前端全领域 Playwright E2E evidence。
 - 标记：P1。
 
 ## Harness
