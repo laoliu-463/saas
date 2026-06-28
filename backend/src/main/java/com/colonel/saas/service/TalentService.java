@@ -108,7 +108,6 @@ public class TalentService {
     private static final int CLAIM_STATUS_RELEASED = 3;
     /** 认领类型：手动认领 */
     private static final int CLAIM_TYPE_MANUAL = 1;
-
     /** 补全任务状态：待处理 */
     private static final String ENRICH_TASK_STATUS_PENDING = "PENDING";
     /** 补全任务状态：执行中 */
@@ -435,92 +434,7 @@ public class TalentService {
      */
     @Transactional(rollbackFor = Exception.class)
     public Talent create(Talent request) {
-        if (!StringUtils.hasText(request.getDouyinUid())) {
-            String fallbackInput = StringUtils.hasText(request.getProfileUrl())
-                    ? request.getProfileUrl()
-                    : (StringUtils.hasText(request.getDouyinNo()) ? request.getDouyinNo()
-                    : (StringUtils.hasText(request.getUid()) ? request.getUid()
-                    : request.getSecUid()));
-            if (!StringUtils.hasText(fallbackInput)) {
-                throw BusinessException.param("达人抖音号或链接不能为空");
-            }
-            TalentInputParseResult parsed = TalentInputParser.parse(fallbackInput);
-            if (StringUtils.hasText(parsed.getDouyinUid())) {
-                request.setDouyinUid(parsed.getDouyinUid());
-            }
-            if (!StringUtils.hasText(request.getDouyinNo()) && StringUtils.hasText(parsed.getDouyinNo())) {
-                request.setDouyinNo(parsed.getDouyinNo());
-            }
-            if (!StringUtils.hasText(request.getUid()) && StringUtils.hasText(parsed.getUid())) {
-                request.setUid(parsed.getUid());
-            }
-            if (!StringUtils.hasText(request.getSecUid()) && StringUtils.hasText(parsed.getSecUid())) {
-                request.setSecUid(parsed.getSecUid());
-            }
-            if (!StringUtils.hasText(request.getProfileUrl()) && StringUtils.hasText(parsed.getProfileUrl())) {
-                request.setProfileUrl(parsed.getProfileUrl());
-            }
-        }
-        if (!StringUtils.hasText(request.getDouyinUid())) {
-            throw BusinessException.param("douyinUid 不能为空");
-        }
-        Talent existing = talentMapper.selectOne(new LambdaQueryWrapper<Talent>()
-                .eq(Talent::getDouyinUid, request.getDouyinUid())
-                .last("limit 1"));
-        if (existing != null) {
-            throw BusinessException.duplicate("达人 douyinUid 已存在");
-        }
-        request.setStatus(1);
-        if (StringUtils.hasText(request.getNickname())) {
-            request.setNickname(request.getNickname().trim());
-        }
-        if (StringUtils.hasText(request.getContactPhone())) {
-            request.setContactPhone(request.getContactPhone().trim());
-        }
-        if (StringUtils.hasText(request.getContactWechat())) {
-            request.setContactWechat(request.getContactWechat().trim());
-        }
-        if (StringUtils.hasText(request.getIntro())) {
-            request.setIntro(request.getIntro().trim());
-        }
-        if (!StringUtils.hasText(request.getDouyinAccount()) && StringUtils.hasText(request.getDouyinNo())) {
-            request.setDouyinAccount(request.getDouyinNo().trim());
-        }
-        if (!StringUtils.hasText(request.getTalentUid()) && StringUtils.hasText(request.getUid())) {
-            request.setTalentUid(request.getUid().trim());
-        }
-        if (request.getUnsupportedFields() == null || request.getUnsupportedFields().isEmpty()) {
-            request.setUnsupportedFields(List.of("talentLevel", "sales30d"));
-        }
-        request.setId(UUID.randomUUID());
-        talentMapper.insert(request);
-        boolean profilePrefilled = StringUtils.hasText(request.getDataSource()) && StringUtils.hasText(request.getSyncStatus());
-        if (profilePrefilled) {
-            request.setLastSyncTime(LocalDateTime.now());
-            persistTalent(request);
-            return request;
-        }
-        TalentEnrichTask task = createEnrichTask(request, ENRICH_TASK_STATUS_PENDING, null);
-        markEnrichTask(task, ENRICH_TASK_STATUS_RUNNING, null);
-        try {
-            TalentEnrichOrchestrator.OrchestrateResult orchestrateResult = talentEnrichOrchestrator.enrich(request, false);
-            enrichTalentInfo(request, false);
-            persistTalent(request);
-            if (orchestrateResult.updated()) {
-                markEnrichTask(task, ENRICH_TASK_STATUS_SUCCESS, null);
-            } else {
-                request.setEnrichStatus(ENRICH_TASK_STATUS_WAIT_MANUAL);
-                request.setLastEnrichTime(LocalDateTime.now());
-                persistTalent(request);
-                markEnrichTask(task, ENRICH_TASK_STATUS_WAIT_MANUAL, orchestrateResult.message());
-            }
-        } catch (RuntimeException ex) {
-            request.setEnrichStatus(ENRICH_TASK_STATUS_FAILED);
-            request.setLastEnrichTime(LocalDateTime.now());
-            persistTalent(request);
-            markEnrichTask(task, ENRICH_TASK_STATUS_FAILED, ex.getMessage());
-        }
-        return request;
+        return talentProfileApplicationService.create(request);
     }
 
     /**
@@ -1135,7 +1049,7 @@ public class TalentService {
     @Transactional(rollbackFor = Exception.class)
     public Talent refresh(UUID talentId) {
         Talent talent = getById(talentId);
-        TalentEnrichTask task = createEnrichTask(talent, ENRICH_TASK_STATUS_RUNNING, null);
+        TalentEnrichTask task = createEnrichTask(talent, "RUNNING", null);
         try {
             TalentEnrichOrchestrator.OrchestrateResult orchestrateResult = talentEnrichOrchestrator.enrich(talent, true);
             if (publicPageCrawlEnabled) {
@@ -1143,19 +1057,19 @@ public class TalentService {
             }
             persistTalent(talent);
             if (orchestrateResult.updated()) {
-                markEnrichTask(task, ENRICH_TASK_STATUS_SUCCESS, null);
+                markEnrichTask(task, "SUCCESS", null);
             } else {
-                talent.setEnrichStatus(ENRICH_TASK_STATUS_WAIT_MANUAL);
+                talent.setEnrichStatus("WAIT_MANUAL");
                 talent.setLastEnrichTime(LocalDateTime.now());
                 persistTalent(talent);
-                markEnrichTask(task, ENRICH_TASK_STATUS_WAIT_MANUAL, orchestrateResult.message());
+                markEnrichTask(task, "WAIT_MANUAL", orchestrateResult.message());
             }
             return talent;
         } catch (RuntimeException ex) {
-            talent.setEnrichStatus(ENRICH_TASK_STATUS_FAILED);
+            talent.setEnrichStatus("FAILED");
             talent.setLastEnrichTime(LocalDateTime.now());
             persistTalent(talent);
-            markEnrichTask(task, ENRICH_TASK_STATUS_FAILED, ex.getMessage());
+            markEnrichTask(task, "FAILED", ex.getMessage());
             return talent;
         }
     }
@@ -1208,7 +1122,7 @@ public class TalentService {
             talent.setIntro(request.getIntro().trim());
         }
         talent.setDataSource("MANUAL");
-        talent.setEnrichStatus(ENRICH_TASK_STATUS_SUCCESS);
+        talent.setEnrichStatus("SUCCESS");
         talent.setLastEnrichTime(LocalDateTime.now());
         persistTalent(talent);
         return talent;

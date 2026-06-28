@@ -1,46 +1,73 @@
 package com.colonel.saas.domain.talent.application;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.exception.OptimisticLockSupport;
 import com.colonel.saas.domain.talent.policy.TalentTagPolicy;
+import com.colonel.saas.entity.CrawlerTalentInfo;
 import com.colonel.saas.entity.Talent;
 import com.colonel.saas.entity.TalentEnrichTask;
 import com.colonel.saas.mapper.TalentEnrichTaskMapper;
 import com.colonel.saas.mapper.TalentMapper;
 import com.colonel.saas.service.BusinessRuleConfigService;
+import com.colonel.saas.service.CrawlerTalentInfoService;
+import com.colonel.saas.service.talent.TalentEnrichOrchestrator;
+import com.colonel.saas.service.talent.TalentInputParseResult;
+import com.colonel.saas.service.talent.TalentInputParser;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
 /**
- * 达人资料写侧应用层 (DDD-TALENT-04 Slice 1: thin slice).
+ * 达人资料写侧应用层 (DDD-TALENT-04 Slice 4).
  *
  * <p>本层承接 Controller 的资料、标签、手动补全和导入命令入口，
  * 自包含业务编排（旧 TalentService 同名方法迁入），保留 1:1 行为等价。
  * Legacy {@code TalentService} 保留为薄壳委派壳，不删除兜底路径。</p>
  *
- * <p>当前 Slice 1 范围：4 个最小 method（listPresetTags / getLatestEnrichTask /
- * delete / updateTags）。后续 Slice 2+ 增量迁移 create / update /
- * manualFill / refresh / batchImport 等大方法。</p>
+ * <p>当前 Slice 4 范围：{@code create(Talent)} + 6 个常量 + 4 个
+ * enrich helper（{@code createEnrichTask / markEnrichTask / persistTalent /
+ * enrichTalentInfo / resolveInputValue / resolveInputType}）。
+ * 1:1 等价 TalentService.create() 87 行业务编排。</p>
  *
  * <p><b>业务域：</b>达人域 — 资料管理</p>
  */
 @Service
 public class TalentProfileApplicationService {
 
+    // enrich task status constants (1:1 from TalentService)
+    static final String ENRICH_TASK_STATUS_PENDING = "PENDING";
+    static final String ENRICH_TASK_STATUS_RUNNING = "RUNNING";
+    static final String ENRICH_TASK_STATUS_SUCCESS = "SUCCESS";
+    static final String ENRICH_TASK_STATUS_FAILED = "FAILED";
+    static final String ENRICH_TASK_STATUS_WAIT_MANUAL = "WAIT_MANUAL";
+    static final String ENRICH_SOURCE_SYSTEM = "SYSTEM";
+
     private final TalentMapper talentMapper;
     private final TalentEnrichTaskMapper talentEnrichTaskMapper;
+    private final TalentEnrichOrchestrator talentEnrichOrchestrator;
+    private final CrawlerTalentInfoService crawlerTalentInfoService;
     private final BusinessRuleConfigService businessRuleConfigService;
+    private final boolean publicPageCrawlEnabled;
 
     public TalentProfileApplicationService(
             TalentMapper talentMapper,
             TalentEnrichTaskMapper talentEnrichTaskMapper,
-            BusinessRuleConfigService businessRuleConfigService) {
+            TalentEnrichOrchestrator talentEnrichOrchestrator,
+            CrawlerTalentInfoService crawlerTalentInfoService,
+            BusinessRuleConfigService businessRuleConfigService,
+            @Value("${talent.data.public-page-crawl-enabled:false}") boolean publicPageCrawlEnabled) {
         this.talentMapper = talentMapper;
         this.talentEnrichTaskMapper = talentEnrichTaskMapper;
+        this.talentEnrichOrchestrator = talentEnrichOrchestrator;
+        this.crawlerTalentInfoService = crawlerTalentInfoService;
         this.businessRuleConfigService = businessRuleConfigService;
+        this.publicPageCrawlEnabled = publicPageCrawlEnabled;
     }
 
     /**
@@ -65,7 +92,6 @@ public class TalentProfileApplicationService {
      */
     @Transactional(rollbackFor = Exception.class)
     public void delete(UUID id) {
-        // 校验存在
         Talent existing = talentMapper.selectById(id);
         if (existing == null) {
             throw BusinessException.notFound("达人不存在");
@@ -74,7 +100,7 @@ public class TalentProfileApplicationService {
     }
 
     /**
-     * 更新达人标签（无 operator 版本，调用 3 参版本）。
+     * 更新达人标签（无 operator 版本）。
      * 1:1 等价 TalentService.updateTags(UUID, List<String>)。
      */
     public List<String> updateTags(UUID id, List<String> tags) {
@@ -84,8 +110,6 @@ public class TalentProfileApplicationService {
     /**
      * 更新达人标签（带 operator 版本）。
      * 1:1 等价 TalentService.updateTags(UUID, List<String>, UUID)。
-     *
-     * <p>标签归一化与写库路径保持旧 TalentService 行为等价。</p>
      */
     public List<String> updateTags(UUID id, List<String> tags, UUID operatorId) {
         Talent talent = talentMapper.selectById(id);
@@ -97,5 +121,229 @@ public class TalentProfileApplicationService {
         talent.setTagUpdatedBy(operatorId);
         OptimisticLockSupport.requireUpdated(talentMapper.updateById(talent));
         return normalized;
+    }
+
+    /**
+     * 创建达人 (含抖音号解析/重复校验/enrich 编排)。
+     * 1:1 等价 TalentService.create(Talent) 87 行业务编排。
+     */
+    public Talent create(Talent request) {
+        if (!StringUtils.hasText(request.getDouyinUid())) {
+            String fallbackInput = StringUtils.hasText(request.getProfileUrl())
+                    ? request.getProfileUrl()
+                    : (StringUtils.hasText(request.getDouyinNo()) ? request.getDouyinNo()
+                    : (StringUtils.hasText(request.getUid()) ? request.getUid()
+                    : request.getSecUid()));
+            if (!StringUtils.hasText(fallbackInput)) {
+                throw BusinessException.param("达人抖音号或链接不能为空");
+            }
+            TalentInputParseResult parsed = TalentInputParser.parse(fallbackInput);
+            if (StringUtils.hasText(parsed.getDouyinUid())) {
+                request.setDouyinUid(parsed.getDouyinUid());
+            }
+            if (!StringUtils.hasText(request.getDouyinNo()) && StringUtils.hasText(parsed.getDouyinNo())) {
+                request.setDouyinNo(parsed.getDouyinNo());
+            }
+            if (!StringUtils.hasText(request.getUid()) && StringUtils.hasText(parsed.getUid())) {
+                request.setUid(parsed.getUid());
+            }
+            if (!StringUtils.hasText(request.getSecUid()) && StringUtils.hasText(parsed.getSecUid())) {
+                request.setSecUid(parsed.getSecUid());
+            }
+            if (!StringUtils.hasText(request.getProfileUrl()) && StringUtils.hasText(parsed.getProfileUrl())) {
+                request.setProfileUrl(parsed.getProfileUrl());
+            }
+        }
+        if (!StringUtils.hasText(request.getDouyinUid())) {
+            throw BusinessException.param("douyinUid 不能为空");
+        }
+        Talent existing = talentMapper.selectOne(new LambdaQueryWrapper<Talent>()
+                .eq(Talent::getDouyinUid, request.getDouyinUid())
+                .last("limit 1"));
+        if (existing != null) {
+            throw BusinessException.duplicate("达人 douyinUid 已存在");
+        }
+        request.setStatus(1);
+        if (StringUtils.hasText(request.getNickname())) {
+            request.setNickname(request.getNickname().trim());
+        }
+        if (StringUtils.hasText(request.getContactPhone())) {
+            request.setContactPhone(request.getContactPhone().trim());
+        }
+        if (StringUtils.hasText(request.getContactWechat())) {
+            request.setContactWechat(request.getContactWechat().trim());
+        }
+        if (StringUtils.hasText(request.getIntro())) {
+            request.setIntro(request.getIntro().trim());
+        }
+        if (!StringUtils.hasText(request.getDouyinAccount()) && StringUtils.hasText(request.getDouyinNo())) {
+            request.setDouyinAccount(request.getDouyinNo().trim());
+        }
+        if (!StringUtils.hasText(request.getTalentUid()) && StringUtils.hasText(request.getUid())) {
+            request.setTalentUid(request.getUid().trim());
+        }
+        if (request.getUnsupportedFields() == null || request.getUnsupportedFields().isEmpty()) {
+            request.setUnsupportedFields(List.of("talentLevel", "sales30d"));
+        }
+        request.setId(UUID.randomUUID());
+        talentMapper.insert(request);
+        boolean profilePrefilled = StringUtils.hasText(request.getDataSource()) && StringUtils.hasText(request.getSyncStatus());
+        if (profilePrefilled) {
+            request.setLastSyncTime(LocalDateTime.now());
+            persistTalent(request);
+            return request;
+        }
+        TalentEnrichTask task = createEnrichTask(request, ENRICH_TASK_STATUS_PENDING, null);
+        markEnrichTask(task, ENRICH_TASK_STATUS_RUNNING, null);
+        try {
+            TalentEnrichOrchestrator.OrchestrateResult orchestrateResult = talentEnrichOrchestrator.enrich(request, false);
+            enrichTalentInfo(request, false);
+            persistTalent(request);
+            if (orchestrateResult.updated()) {
+                markEnrichTask(task, ENRICH_TASK_STATUS_SUCCESS, null);
+            } else {
+                request.setEnrichStatus(ENRICH_TASK_STATUS_WAIT_MANUAL);
+                request.setLastEnrichTime(LocalDateTime.now());
+                persistTalent(request);
+                markEnrichTask(task, ENRICH_TASK_STATUS_WAIT_MANUAL, orchestrateResult.message());
+            }
+        } catch (RuntimeException ex) {
+            request.setEnrichStatus(ENRICH_TASK_STATUS_FAILED);
+            request.setLastEnrichTime(LocalDateTime.now());
+            persistTalent(request);
+            markEnrichTask(task, ENRICH_TASK_STATUS_FAILED, ex.getMessage());
+        }
+        return request;
+    }
+
+    /**
+     * 创建 enrich task。
+     * 1:1 等价 TalentService.createEnrichTask(Talent, String, String)。
+     */
+    private TalentEnrichTask createEnrichTask(Talent talent, String status, String errorMsg) {
+        if (talent == null || talent.getId() == null) {
+            return null;
+        }
+        TalentEnrichTask task = new TalentEnrichTask();
+        task.setTalentId(talent.getId());
+        task.setInputValue(resolveInputValue(talent));
+        task.setInputType(resolveInputType(talent));
+        task.setSourceType(ENRICH_SOURCE_SYSTEM);
+        task.setTaskStatus(status);
+        task.setRetryCount(0);
+        task.setErrorMsg(errorMsg);
+        task.setId(UUID.randomUUID());
+        talentEnrichTaskMapper.insert(task);
+        return task;
+    }
+
+    /**
+     * 更新 enrich task 状态。
+     * 1:1 等价 TalentService.markEnrichTask(TalentEnrichTask, String, String)。
+     */
+    private void markEnrichTask(TalentEnrichTask task, String status, String errorMsg) {
+        if (task == null || task.getId() == null) {
+            return;
+        }
+        TalentEnrichTask update = new TalentEnrichTask();
+        update.setId(task.getId());
+        update.setTaskStatus(status);
+        update.setErrorMsg(errorMsg);
+        update.setUpdateTime(LocalDateTime.now());
+        talentEnrichTaskMapper.updateById(update);
+    }
+
+    /**
+     * 持久化达人 (含乐观锁校验)。
+     * 1:1 等价 TalentService.persistTalent(Talent)。
+     */
+    private void persistTalent(Talent talent) {
+        OptimisticLockSupport.requireUpdated(talentMapper.updateById(talent));
+    }
+
+    /**
+     * 爬虫补全达人信息。
+     * 1:1 等价 TalentService.enrichTalentInfo(Talent, boolean)。
+     */
+    private void enrichTalentInfo(Talent talent, boolean forceCrawl) {
+        if (talent == null || !StringUtils.hasText(talent.getDouyinUid())) {
+            return;
+        }
+        String talentUid = talent.getDouyinUid().trim();
+
+        if (forceCrawl && publicPageCrawlEnabled) {
+            int success = crawlerTalentInfoService.crawlAndSave(List.of(talentUid));
+            if (success <= 0) {
+                talent.setCrawlStatus(2);
+                talent.setCrawlMessage("crawl failed");
+            }
+        }
+
+        CrawlerTalentInfo info = crawlerTalentInfoService.findByTalentId(talentUid);
+        if (info == null) {
+            return;
+        }
+
+        if (StringUtils.hasText(info.getNickname())) {
+            talent.setNickname(info.getNickname());
+        }
+        if (info.getFansCount() != null) {
+            talent.setFans(info.getFansCount());
+        }
+        if (StringUtils.hasText(info.getAvatarUrl())) {
+            talent.setAvatarUrl(info.getAvatarUrl());
+        }
+        if (StringUtils.hasText(info.getRegion())) {
+            talent.setIpLocation(info.getRegion());
+        }
+        talent.setLastCrawlAt(info.getLastCrawlTime() == null ? LocalDateTime.now() : info.getLastCrawlTime());
+        talent.setCrawlStatus(1);
+        talent.setCrawlMessage(null);
+    }
+
+    /**
+     * 解析 enrich task 的 input value。
+     * 1:1 等价 TalentService.resolveInputValue(Talent)。
+     */
+    private String resolveInputValue(Talent talent) {
+        if (StringUtils.hasText(talent.getProfileUrl())) {
+            return talent.getProfileUrl().trim();
+        }
+        if (StringUtils.hasText(talent.getDouyinNo())) {
+            return talent.getDouyinNo().trim();
+        }
+        if (StringUtils.hasText(talent.getUid())) {
+            return talent.getUid().trim();
+        }
+        if (StringUtils.hasText(talent.getSecUid())) {
+            return talent.getSecUid().trim();
+        }
+        if (StringUtils.hasText(talent.getDouyinUid())) {
+            return talent.getDouyinUid().trim();
+        }
+        return null;
+    }
+
+    /**
+     * 解析 enrich task 的 input type。
+     * 1:1 等价 TalentService.resolveInputType(Talent)。
+     */
+    private String resolveInputType(Talent talent) {
+        if (StringUtils.hasText(talent.getProfileUrl())) {
+            return "PROFILE_URL";
+        }
+        if (StringUtils.hasText(talent.getDouyinNo())) {
+            return "DOUYIN_NO";
+        }
+        if (StringUtils.hasText(talent.getUid())) {
+            return "UID";
+        }
+        if (StringUtils.hasText(talent.getSecUid())) {
+            return "SEC_UID";
+        }
+        if (StringUtils.hasText(talent.getDouyinUid())) {
+            return "DOUYIN_UID";
+        }
+        return "UNKNOWN";
     }
 }
