@@ -164,13 +164,13 @@
 - 标记：P0。
 
 ## 达人域
-- 最新边界变化：DDD-TALENT-SAMPLE-FACADE / T-CLEAN-002 已将 `TalentQueryService` 的达人寄样统计和最近寄样记录读取从直接 `SampleRequestMapper` / `sample_request` SQL 改为消费寄样域 `SampleDomainFacade.countSamplesByTalentIds` / `listRecentSamplesByTalentId`，将 `TalentService.evaluateExclusive` 近 30 天寄样次数统计改为消费 `SampleDomainFacade.countSamplesByTalentIdSince`，并将近 30 天订单读取改为消费 `OrderReadFacade.findOrdersSettledSince`；跨域 Mapper 白名单移除 `TalentQueryService|SampleRequestMapper`、`TalentService|SampleRequestMapper` 与 `TalentService|ColonelsettlementOrderMapper`，剩余 17 条。验证：targeted Maven 71 tests PASS（1 个维护型跳过）；`agent-do -Scope full` PASS，backend/frontend 构建、Docker 重启、健康检查和 real-pre P0 preflight 通过。报告：`harness/reports/evidence-20260628-200945.md`；retro：`harness/reports/retro-20260628-201018.md`。上一变化：DDD-TALENT-PROFILE-WRITE / DDD-TALENT-CLAIM-WRITE 已迁入资料写侧与认领写侧应用服务。
+- 最新边界变化：DDD-TALENT-SAMPLE-FACADE / T-CLEAN-002 已将 `TalentQueryService` 的寄样读、`TalentService.evaluateExclusive` 的寄样统计与订单读取分别改为消费 `SampleDomainFacade` / `OrderReadFacade`；`OrderSyncedEventListener` 的达人认领保护期写入已委托 `TalentClaimApplicationService.extendActiveClaimProtectionByTalentUid`，并行进入的 `TalentBatchImportApplicationService` 批量导入委派壳已通过后续验证。跨域 Mapper 白名单移除 `TalentQueryService|SampleRequestMapper`、`TalentService|SampleRequestMapper`、`TalentService|ColonelsettlementOrderMapper` 与 `OrderSyncedEventListener|TalentClaimMapper`，剩余 16 条。验证：targeted Maven 53 tests PASS + 9 tests PASS（1 个维护型跳过）；`agent-do -Scope full` PASS，backend/frontend 构建、Docker 重启、健康检查和 real-pre P0 preflight 通过。报告：`harness/reports/evidence-20260628-204445.md`；retro：`harness/reports/retro-20260628-204516.md`。上一变化：DDD-TALENT-PROFILE-WRITE / DDD-TALENT-CLAIM-WRITE 已迁入资料写侧与认领写侧应用服务。
 - 最新边界变化：`TalentService.evaluateExclusive` 独家达人评估订单查询数据范围新增灰度开启的用户域 `DataScopePolicy` 路径，默认关闭仍走 Legacy PERSONAL user / DEPT dept 过滤；本轮未改独家评估公式、订单佣金读取、寄样次数统计、达人认领规则、黑名单、第三方接口或真实数据。报告：`harness/archive/by-date/report-packages/reports-20260622-ddd-datascope-afternoon-1430-1722.zip` 内 `evidence-20260622-151700.md`。
 - 近期边界变化：`TalentService.blacklist/unblacklist`、`TalentService.page` 和 `TalentQueryService.detail` 已新增灰度开启的用户域 `DataScopePolicy` 路径；`TalentService.release` 管理员角色编码匹配、`TalentQueryService.assertCanOperate` 操作访问角色匹配已委托用户域 policy；达人归属覆盖已通过用户域 `loadUserOwnershipReferencesByIds` 校验目标负责人存在，不再读取完整用户 DTO，既有达人认领记录 `deptId` 写入行为不变。
-- 当前状态：达人资料、标签、地址和跟进主链路已具备。
-- 已完成能力：达人列表 / 详情、标签、地址、跟进。
+- 当前状态：达人资料、批量导入、标签、地址和跟进主链路已具备。
+- 已完成能力：达人列表 / 详情、批量导入、标签、地址、跟进。
 - 待优化能力：认领 / 保护期运行态负例、第三方接口证据、`gender` 筛选缺口和权限负例补齐。
-- DDD 优化下一步：T-CLEAN-002 的 `TalentService` 跨域 Mapper 债务已清空；继续按剩余 17 条白名单处理归因、监听器、商品和数据域跨域 Mapper 债务，保持认领 / 独家评估业务规则不变。
+- DDD 优化下一步：T-CLEAN-002 的 `TalentService` 跨域 Mapper 债务已清空；继续按剩余 16 条白名单处理归因、商品、数据域和测试网关跨域 Mapper 债务，保持认领 / 独家评估业务规则不变。
 - 标记：P1。
 
 ## 寄样域
