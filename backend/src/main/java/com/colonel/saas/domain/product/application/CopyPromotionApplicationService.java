@@ -2,15 +2,11 @@ package com.colonel.saas.domain.product.application;
 
 import com.colonel.saas.domain.config.facade.ConfigDomainFacade;
 import com.colonel.saas.domain.product.application.dto.PromotionLinkCopyResult;
+import com.colonel.saas.domain.product.application.port.CopyPromotionSupportPort;
 import com.colonel.saas.domain.product.policy.CopyTextPolicy;
-import com.colonel.saas.domain.product.port.DouyinConvertPort;
-import com.colonel.saas.entity.ProductOperationState;
-import com.colonel.saas.entity.ProductSnapshot;
-import com.colonel.saas.gateway.douyin.DouyinPromotionGateway;
-import com.colonel.saas.service.ProductService;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Lazy;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.UUID;
 
@@ -20,24 +16,25 @@ import java.util.UUID;
  * <p>把 {@code ProductService.generatePromotionLinkCopy} 的业务编排抽到本服务：
  * 状态前置校验 → 转链 Port 调用 → 复制文本渲染 → 返回结果。</p>
  *
- * <p>纯文本渲染由 {@link CopyTextPolicy} 完成；上游 SDK 由 {@link DouyinConvertPort} 抽象。
- * 实际快照/状态读取和转链执行仍由 {@link ProductService} 负责（避免重复实现和循环依赖）。</p>
+ * <p>纯文本渲染由 {@link CopyTextPolicy} 完成；商品上下文读取和转链执行通过
+ * {@link CopyPromotionSupportPort} 过渡，避免应用层直接依赖 legacy 大 Service。</p>
  */
 @Service
 public class CopyPromotionApplicationService {
 
     public static final String FALLBACK_REASON_REAL_PROMOTION_WRITE_DISABLED = "REAL_PROMOTION_WRITE_DISABLED";
 
-    private final ProductService productService;
-    private final DouyinConvertPort douyinConvertPort;
+    private final CopyPromotionSupportPort copyPromotionSupportPort;
     private final ConfigDomainFacade configDomainFacade;
+    @Value("${douyin.real.promotion-write-enabled:false}")
+    private boolean realPromotionWriteEnabled;
+    @Value("${douyin.real.allow-promotion-write:false}")
+    private boolean allowRealPromotionWrite;
 
     public CopyPromotionApplicationService(
-            @Autowired @Lazy ProductService productService,
-            DouyinConvertPort douyinConvertPort,
+            CopyPromotionSupportPort copyPromotionSupportPort,
             ConfigDomainFacade configDomainFacade) {
-        this.productService = productService;
-        this.douyinConvertPort = douyinConvertPort;
+        this.copyPromotionSupportPort = copyPromotionSupportPort;
         this.configDomainFacade = configDomainFacade;
     }
 
@@ -52,6 +49,34 @@ public class CopyPromotionApplicationService {
      *   <li>否则调转链 Port，组装含链接的复制文本</li>
      * </ol>
      */
+    @Transactional(rollbackFor = Exception.class)
+    public PromotionLinkCopyResult copyPromotion(
+            String activityId,
+            String productId,
+            UUID userId,
+            UUID deptId,
+            String externalUniqueId,
+            Integer promotionScene,
+            boolean needShortLink,
+            String scene,
+            String talentId,
+            String idempotencyKey) {
+        return copyPromotion(
+                activityId,
+                productId,
+                userId,
+                deptId,
+                externalUniqueId,
+                promotionScene,
+                needShortLink,
+                scene,
+                talentId,
+                idempotencyKey,
+                realPromotionWriteEnabled,
+                allowRealPromotionWrite);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
     public PromotionLinkCopyResult copyPromotion(
             String activityId,
             String productId,
@@ -66,7 +91,8 @@ public class CopyPromotionApplicationService {
             boolean realPromotionWriteEnabled,
             boolean allowRealPromotionWrite) {
 
-        Context ctx = productService.prepareCopyPromotionContext(activityId, productId, "复制推广简介");
+        CopyPromotionSupportPort.Context ctx = copyPromotionSupportPort.prepareCopyPromotionContext(
+                activityId, productId, "复制推广简介");
 
         if (!isRealPromotionWriteAllowed(realPromotionWriteEnabled, allowRealPromotionWrite)) {
             String text = CopyTextPolicy.render(
@@ -82,7 +108,7 @@ public class CopyPromotionApplicationService {
             );
         }
 
-        DouyinPromotionGateway.PromotionLinkResult result = productService.generatePromotionLinkInternal(
+        CopyPromotionSupportPort.GeneratedPromotionLink result = copyPromotionSupportPort.generatePromotionLinkForCopy(
                 activityId,
                 productId,
                 userId,
@@ -91,7 +117,8 @@ public class CopyPromotionApplicationService {
                 promotionScene,
                 needShortLink,
                 scene,
-                talentId);
+                talentId,
+                idempotencyKey);
         String promotionLink = CopyTextPolicy.firstText(result.shortLink(), result.promoteLink());
         String text = CopyTextPolicy.render(
                 configDomainFacade, ctx.snapshot(), ctx.state(), promotionLink);
@@ -108,11 +135,5 @@ public class CopyPromotionApplicationService {
 
     private static boolean isRealPromotionWriteAllowed(boolean enabled, boolean allowed) {
         return enabled && allowed;
-    }
-
-    /**
-     * 复制推广上下文（由 ProductService 在 prepareCopyPromotionContext 中装配）。
-     */
-    public record Context(ProductSnapshot snapshot, ProductOperationState state) {
     }
 }

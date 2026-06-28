@@ -2,16 +2,17 @@ package com.colonel.saas.domain.product.application;
 
 import com.colonel.saas.domain.config.facade.ConfigDomainFacade;
 import com.colonel.saas.domain.product.application.dto.PromotionLinkCopyResult;
-import com.colonel.saas.domain.product.port.DouyinConvertPort;
+import com.colonel.saas.domain.product.application.port.CopyPromotionSupportPort;
 import com.colonel.saas.entity.ProductOperationState;
 import com.colonel.saas.entity.ProductSnapshot;
-import com.colonel.saas.service.ProductService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -23,9 +24,7 @@ import static org.mockito.Mockito.when;
 class CopyPromotionApplicationServiceTest {
 
     @Mock
-    private ProductService productService;
-    @Mock
-    private DouyinConvertPort douyinConvertPort;
+    private CopyPromotionSupportPort copyPromotionSupportPort;
     @Mock
     private ConfigDomainFacade configDomainFacade;
 
@@ -34,13 +33,12 @@ class CopyPromotionApplicationServiceTest {
     @BeforeEach
     void setUp() {
         applicationService = new CopyPromotionApplicationService(
-                productService,
-                douyinConvertPort,
+                copyPromotionSupportPort,
                 configDomainFacade);
     }
 
     @Test
-    void copyPromotion_shouldDelegateProductService() {
+    void copyPromotion_shouldRenderFallbackTextWhenRealWriteDisabled() {
         UUID userId = UUID.randomUUID();
         UUID deptId = UUID.randomUUID();
 
@@ -49,8 +47,8 @@ class CopyPromotionApplicationServiceTest {
         snapshot.setTitle("测试商品");
         snapshot.setShopName("测试店铺");
         ProductOperationState state = new ProductOperationState();
-        var context = new CopyPromotionApplicationService.Context(snapshot, state);
-        when(productService.prepareCopyPromotionContext(any(), any(), any())).thenReturn(context);
+        var context = new CopyPromotionSupportPort.Context(snapshot, state);
+        when(copyPromotionSupportPort.prepareCopyPromotionContext(any(), any(), any())).thenReturn(context);
 
         PromotionLinkCopyResult result = applicationService.copyPromotion(
                 "ACT-1",
@@ -68,5 +66,19 @@ class CopyPromotionApplicationServiceTest {
 
         assertThat(result.copyText()).isNotNull();
         assertThat(result.realPromotionWriteEnabled()).isFalse();
+    }
+
+    @Test
+    void copyPromotionApplicationService_shouldNotDependOnLegacyProductServiceOrGateway() throws Exception {
+        Path sourcePath = Path.of("src/main/java/com/colonel/saas/domain/product/application/CopyPromotionApplicationService.java");
+        if (!Files.exists(sourcePath)) {
+            sourcePath = Path.of("backend/src/main/java/com/colonel/saas/domain/product/application/CopyPromotionApplicationService.java");
+        }
+        String source = Files.readString(sourcePath);
+
+        assertThat(source)
+                .doesNotContain("com.colonel.saas.service.ProductService")
+                .doesNotContain("com.colonel.saas.gateway.douyin.DouyinPromotionGateway")
+                .doesNotContain("@Lazy");
     }
 }

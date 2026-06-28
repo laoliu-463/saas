@@ -41,4 +41,10 @@ public interface OrderReadFacade {
             LocalDateTime createStart,
             LocalDateTime createEnd,
             int limit);
+
+    /** 按 createTime 起点分页读取订单事实。 */
+    OrderPage findOrdersCreatedSince(LocalDateTime createStart, long pageNo, long pageSize);
+
+    record OrderPage(List<ColonelsettlementOrder> records, long pages) {
+    }
 }

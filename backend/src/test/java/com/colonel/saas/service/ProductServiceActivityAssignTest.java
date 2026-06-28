@@ -42,8 +42,6 @@ class ProductServiceActivityAssignTest {
     @Mock private ProductDisplayRuleService productDisplayRuleService;
     @Mock private ColonelPartnerSyncService colonelPartnerSyncService;
     @Mock private com.colonel.saas.domain.product.event.ProductDomainEventPublisher productDomainEventPublisher;
-    @Mock private com.colonel.saas.domain.product.application.CopyPromotionApplicationService copyPromotionApplicationService;
-
     private ProductService productService;
 
     @BeforeEach
@@ -68,8 +66,7 @@ class ProductServiceActivityAssignTest {
                 productDisplayRuleService,
                 colonelPartnerSyncService,
                 productDomainEventPublisher,
-                new com.colonel.saas.domain.product.policy.ProductDisplayPolicy(),
-                copyPromotionApplicationService);
+                new com.colonel.saas.domain.product.policy.ProductDisplayPolicy());
     }
 
     @Test

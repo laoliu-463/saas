@@ -3,6 +3,7 @@ package com.colonel.saas.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.dto.talent.TalentBatchImportResult;
+import com.colonel.saas.domain.order.facade.OrderReadFacade;
 import com.colonel.saas.domain.talent.application.TalentClaimApplicationService;
 import com.colonel.saas.domain.talent.application.TalentProfileApplicationService;
 import com.colonel.saas.entity.Talent;
@@ -27,6 +28,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.when;
 
@@ -57,6 +59,8 @@ class TalentServiceBatchImportTest {
     private OperationLogService operationLogService;
     @Mock
     private UserDomainFacade userDomainFacade;
+    @Mock
+    private OrderReadFacade orderReadFacade;
 
     private TalentService talentService;
 
@@ -77,11 +81,14 @@ class TalentServiceBatchImportTest {
                 new TalentProfileApplicationService(
                         talentMapper,
                         talentEnrichTaskMapper,
-                        businessRuleConfigService),
+                        talentEnrichOrchestrator,
+                        crawlerTalentInfoService,
+                        businessRuleConfigService,
+                        false),
                 new TalentClaimApplicationService(
                         talentClaimMapper,
                         talentMapper,
-                        orderMapper,
+                        orderReadFacade,
                         configDomainFacade,
                         userDomainFacade,
                         new CurrentUserPermissionPolicy(),
@@ -122,7 +129,7 @@ class TalentServiceBatchImportTest {
             return 1;
         }).when(talentMapper).insert(any(Talent.class));
         when(talentMapper.updateById(any(Talent.class))).thenReturn(1);
-        when(talentEnrichOrchestrator.enrich(any(Talent.class), any(Boolean.class)))
+        when(talentEnrichOrchestrator.enrich(any(Talent.class), anyBoolean()))
                 .thenReturn(new TalentEnrichOrchestrator.OrchestrateResult(false, "wait manual", "TEST"));
 
         TalentBatchImportResult result = talentService.batchImport(List.of("987654321"), UUID.randomUUID());

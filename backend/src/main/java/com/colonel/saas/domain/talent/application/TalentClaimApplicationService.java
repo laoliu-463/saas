@@ -1,13 +1,13 @@
 package com.colonel.saas.domain.talent.application;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.exception.ForbiddenException;
 import com.colonel.saas.common.exception.OptimisticLockSupport;
 import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.constant.RoleCodes;
+import com.colonel.saas.domain.order.facade.OrderReadFacade;
 import com.colonel.saas.domain.talent.policy.TalentClaimPolicy;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.domain.user.facade.dto.UserOwnershipReference;
@@ -17,7 +17,6 @@ import com.colonel.saas.domain.config.facade.ConfigDomainFacade;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.Talent;
 import com.colonel.saas.entity.TalentClaim;
-import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.mapper.TalentClaimMapper;
 import com.colonel.saas.mapper.TalentMapper;
 import com.colonel.saas.service.OperationLogService;
@@ -63,7 +62,7 @@ public class TalentClaimApplicationService {
 
     private final TalentClaimMapper talentClaimMapper;
     private final TalentMapper talentMapper;
-    private final ColonelsettlementOrderMapper orderMapper;
+    private final OrderReadFacade orderReadFacade;
     private final ConfigDomainFacade configDomainFacade;
     private final UserDomainFacade userDomainFacade;
     private final CurrentUserPermissionPolicy currentUserPermissionPolicy;
@@ -74,7 +73,7 @@ public class TalentClaimApplicationService {
     public TalentClaimApplicationService(
             TalentClaimMapper talentClaimMapper,
             TalentMapper talentMapper,
-            ColonelsettlementOrderMapper orderMapper,
+            OrderReadFacade orderReadFacade,
             ConfigDomainFacade configDomainFacade,
             UserDomainFacade userDomainFacade,
             CurrentUserPermissionPolicy currentUserPermissionPolicy,
@@ -83,7 +82,7 @@ public class TalentClaimApplicationService {
             DddRefactorProperties dddRefactorProperties) {
         this.talentClaimMapper = talentClaimMapper;
         this.talentMapper = talentMapper;
-        this.orderMapper = orderMapper;
+        this.orderReadFacade = orderReadFacade;
         this.configDomainFacade = configDomainFacade;
         this.userDomainFacade = userDomainFacade;
         this.currentUserPermissionPolicy = currentUserPermissionPolicy;
@@ -135,10 +134,7 @@ public class TalentClaimApplicationService {
             return false;
         }
         LocalDateTime since = claim.getClaimedAt() == null ? LocalDateTime.now().minusDays(getProtectDays()) : claim.getClaimedAt();
-        LambdaQueryWrapper<ColonelsettlementOrder> wrapper =
-                new LambdaQueryWrapper<ColonelsettlementOrder>()
-                        .ge(ColonelsettlementOrder::getCreateTime, since);
-        return loadOrdersInBatches(wrapper).stream()
+        return loadOrdersCreatedSinceInBatches(since).stream()
                 .anyMatch(order -> matchesTalent(order, talent.getDouyinUid()));
     }
 
@@ -146,18 +142,17 @@ public class TalentClaimApplicationService {
      * 分批加载订单。
      * 1:1 等价 TalentService.loadOrdersInBatches(LambdaQueryWrapper)。
      */
-    private List<ColonelsettlementOrder> loadOrdersInBatches(LambdaQueryWrapper<ColonelsettlementOrder> wrapper) {
+    private List<ColonelsettlementOrder> loadOrdersCreatedSinceInBatches(LocalDateTime since) {
         java.util.List<ColonelsettlementOrder> all = new java.util.ArrayList<>();
         long pageNo = 1L;
         boolean hasMore = true;
         while (hasMore) {
-            Page<ColonelsettlementOrder> page = new Page<>(pageNo, ORDER_BATCH_SIZE);
-            Page<ColonelsettlementOrder> result = orderMapper.selectPage(page, wrapper);
-            if (result == null || result.getRecords() == null || result.getRecords().isEmpty()) {
+            OrderReadFacade.OrderPage result = orderReadFacade.findOrdersCreatedSince(since, pageNo, ORDER_BATCH_SIZE);
+            if (result == null || result.records() == null || result.records().isEmpty()) {
                 break;
             }
-            all.addAll(result.getRecords());
-            hasMore = pageNo < result.getPages();
+            all.addAll(result.records());
+            hasMore = pageNo < result.pages();
             pageNo++;
         }
         return all;

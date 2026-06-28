@@ -9,6 +9,7 @@ import com.colonel.saas.entity.Talent;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.exception.ForbiddenException;
 import com.colonel.saas.domain.talent.application.TalentClaimApplicationService;
+import com.colonel.saas.domain.order.facade.OrderReadFacade;
 import com.colonel.saas.domain.user.facade.dto.UserOwnershipReference;
 import com.colonel.saas.domain.talent.application.TalentProfileApplicationService;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
@@ -89,6 +90,8 @@ class TalentServiceTest {
     private OperationLogService operationLogService;
     @Mock
     private UserDomainFacade userDomainFacade;
+    @Mock
+    private OrderReadFacade orderReadFacade;
     @Mock
     private ValueOperations<String, Object> valueOperations;
 
@@ -925,9 +928,8 @@ class TalentServiceTest {
 
         when(talentClaimMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(expiredWindowClaim));
         when(talentMapper.selectBatchIds(any())).thenReturn(List.of(talent));
-        Page<com.colonel.saas.entity.ColonelsettlementOrder> orderPage = new Page<>(1, 2000, 1);
-        orderPage.setRecords(List.of(outputOrder));
-        when(orderMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class))).thenReturn(orderPage);
+        when(orderReadFacade.findOrdersCreatedSince(any(LocalDateTime.class), eq(1L), eq(2000L)))
+                .thenReturn(new OrderReadFacade.OrderPage(List.of(outputOrder), 1L));
 
         talentService.releaseExpiredClaims(LocalDateTime.now());
 
@@ -950,9 +952,8 @@ class TalentServiceTest {
 
         when(talentClaimMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(expiredWindowClaim));
         when(talentMapper.selectBatchIds(any())).thenReturn(List.of(talent));
-        Page<com.colonel.saas.entity.ColonelsettlementOrder> orderPage = new Page<>(1, 2000, 0);
-        orderPage.setRecords(List.of());
-        when(orderMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class))).thenReturn(orderPage);
+        when(orderReadFacade.findOrdersCreatedSince(any(LocalDateTime.class), eq(1L), eq(2000L)))
+                .thenReturn(new OrderReadFacade.OrderPage(List.of(), 0L));
 
         talentService.releaseExpiredClaims(LocalDateTime.now());
 
@@ -1353,7 +1354,10 @@ class TalentServiceTest {
         return new TalentProfileApplicationService(
                 talentMapper,
                 talentEnrichTaskMapper,
-                businessRuleConfigService);
+                talentEnrichOrchestrator,
+                crawlerTalentInfoService,
+                businessRuleConfigService,
+                true);
     }
 
     private TalentClaimApplicationService newTalentClaimApplicationService() {
@@ -1366,7 +1370,7 @@ class TalentServiceTest {
         return new TalentClaimApplicationService(
                 talentClaimMapper,
                 talentMapper,
-                orderMapper,
+                orderReadFacade,
                 configDomainFacade,
                 userDomainFacade,
                 new CurrentUserPermissionPolicy(),

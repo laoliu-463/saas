@@ -54,9 +54,6 @@ class ProductServiceColonelBuyinIdTest {
     private ColonelPartnerSyncService colonelPartnerSyncService;
     @Mock
     private ProductDomainEventPublisher productDomainEventPublisher;
-    @Mock
-    private com.colonel.saas.domain.product.application.CopyPromotionApplicationService copyPromotionApplicationService;
-
     private ProductService productService;
 
     @BeforeEach
@@ -81,8 +78,7 @@ class ProductServiceColonelBuyinIdTest {
                 productDisplayRuleService,
                 colonelPartnerSyncService,
                 productDomainEventPublisher,
-                new com.colonel.saas.domain.product.policy.ProductDisplayPolicy(),
-                copyPromotionApplicationService
+                new com.colonel.saas.domain.product.policy.ProductDisplayPolicy()
         );
     }
 

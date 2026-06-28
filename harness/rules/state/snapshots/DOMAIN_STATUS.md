@@ -30,6 +30,7 @@
 - `P2`：治理、清理、补文档或体验优化。
 
 ## 用户域
+- 最新小切片：DDD-USER-ACTIVITY-ACCESS-FACADE 已将 `ActivityAccessService` 的 admin / 招商角色 / 招商组长判断和角色编码规范化从直接注入 `CurrentUserPermissionPolicy` 改为消费 `UserDomainFacade.hasAnyRole` / `normalizeRoleCodes`；`LegacyUserDomainFacade` 新增对应出口并继续委托原用户域 policy，活动列表、活动商品、同步任务、分配筛选和活动可读性业务规则均未改动。验证：`ActivityAccessServiceTest`、`ColonelActivityControllerTest`、`LegacyUserDomainFacadeBoundaryTest`、`LegacyUserDomainFacadeTest` 共 46 用例 PASS；backend package PASS；real-pre backend 构建、重启、健康检查和 P0 preflight PASS。报告：`harness/reports/evidence-20260628-181337.md`。风险变化：活动域退出直接消费用户域角色 matcher；跨业务域 `PermissionChecker` / `DataScopeResolver` 消费方式仍未全量统一。
 - 最新小切片：DDD-USER-SAMPLE-EXPORT-DATASCOPE-POLICY 已将 `SampleApplicationService.exportSamples` 寄样导出 PERSONAL auditor 查询入口新增默认关闭旁路：`ddd.refactor.data-scope-policy.enabled=false` 时继续走 Legacy `findPageWithScope` / mapper `@DataScope` 导出；开启后委托用户域 `DataScopePolicy.contextRequirement` / `decide` 决定是否走寄样域审核人查询 `findPageForAuditor`。本轮不改导出 API、CSV 列、筛选参数、Mapper SQL、状态机、动作权限、默认开关或真实数据。报告：`harness/archive/by-date/report-packages/reports-20260622-ddd-datascope-late/2026-06-22-sample-datascope/evidence-20260622-184722.md`；retro：`harness/archive/by-date/report-packages/reports-20260622-ddd-datascope-late/2026-06-22-sample-datascope/retro-20260622-184904.md`。风险变化：导出红测先失败后转绿，targeted/组合测试 PASS，后端全量 `mvn test` PASS，`agent-do` backend PASS，real-pre preflight PASS。
 - 最新小切片：DDD-USER-SAMPLE-BOARD-DATASCOPE-POLICY 已将 `SampleApplicationService.getSampleBoard` 的 plain biz staff + PERSONAL 查询入口新增默认关闭旁路：`ddd.refactor.data-scope-policy.enabled=false` 时继续走 Legacy `findPageWithScope`；开启后委托用户域 `DataScopePolicy.contextRequirement` / `decide` 决定是否走寄样域审核人查询 `findPageForAuditor`。本轮不改 Mapper SQL、`@DataScope` 切面、接口契约、状态机、动作权限、默认开关或真实数据。报告：`harness/archive/by-date/report-packages/reports-20260622-ddd-datascope-late/2026-06-22-sample-datascope/evidence-20260622-181901.md`；retro：`harness/archive/by-date/report-packages/reports-20260622-ddd-datascope-late/2026-06-22-sample-datascope/retro-20260622-181923.md`。
 - 最新小切片：DDD-USER-SAMPLE-DETAIL-DATASCOPE-POLICY 已将 `SampleApplicationService.getSampleById` 复用的详情访问数据范围判断按灰度双路径收口：`ddd.refactor.data-scope-policy.enabled=false` 默认关闭时保留 Legacy PERSONAL 发起人 / DEPT 归属部门判断，开启后通过用户域 `DataScopePolicy.contextRequirement` / `decide` 解释 PERSONAL / DEPT / ALL，再由寄样域继续比较寄样单 `channelUserId` 或归属部门事实。全局寄样访问角色、招商专员商品分配豁免、运营可见状态、状态机、Mapper SQL、接口契约、默认开关和真实数据均未改变。报告：`harness/archive/by-date/report-packages/reports-20260622-ddd-datascope-late/2026-06-22-sample-datascope/evidence-20260622-175931.md`；retro：`harness/archive/by-date/report-packages/reports-20260622-ddd-datascope-late/2026-06-22-sample-datascope/retro-20260622-175954.md`。风险变化：红测先失败后转绿，详情权限定向测试 PASS，`SampleControllerTest` PASS，后端全量 `mvn test` PASS，`agent-do` backend PASS，real-pre preflight PASS。
@@ -87,6 +88,7 @@
 - 标记：P1。
 
 ## 订单域
+- 最新边界变化：ORDER-READ-FACADE-CREATED-SINCE 已在 `OrderReadFacade` 增加 `findOrdersCreatedSince` 分页读取订单事实；`TalentClaimApplicationService` 不再直接依赖 `ColonelsettlementOrderMapper` 查询达人认领后的订单，而是消费订单域门面。订单域仍只提供订单事实，不计算达人认领、业绩归属或提成。验证：`LegacyOrderReadFacadeTest`、`TalentServiceTest`、`TalentServiceBatchImportTest` PASS；DDD 架构守护组合 PASS。
 - 最新边界变化：ORDER-SYNC-EVENT-EXPENSE-001 已让 `OrderSyncedEvent` 携带 `estimateServiceFeeExpense` / `effectiveServiceFeeExpense` 订单金额事实，`OrderEventPayloadMapper` 从订单事实映射该载荷；订单域仍只发布事实，不计算业绩。上一变化：ORDER-AMOUNT-ROUTER-EXPENSE-001 已修复 policy 开关启用时丢失服务费支出的 adapter 漂移。
 - 最新边界变化：`OrderAttributionService` 未归因分页与订单回流摘要数据范围过滤新增默认关闭的用户域 `DataScopePolicy` 旁路；默认关闭继续走 Legacy PERSONAL/DEPT `QueryWrapper.eq` 条件，开启后才调用 `DataScopePolicy.applyTo`。本轮未改订单事实、归因状态、同步、业绩事件、Mapper SQL、接口参数或历史数据。
 - 最新报告路径：`harness/reports/evidence-20260626-140029.md`；retro：`harness/reports/retro-20260626-140058.md`。上一报告：`harness/reports/evidence-20260622-191140.md`。
@@ -133,6 +135,7 @@
 - 标记：P0。
 
 ## 商品域
+- 最新边界变化：DDD-PRODUCT-COPY-PROMOTION-PORT 已将活动商品转链复制入口从 `ColonelActivityProductController -> ProductService.generatePromotionLinkCopy` 改为 `ColonelActivityProductController -> CopyPromotionApplicationService.copyPromotion`；应用服务只依赖 `CopyPromotionSupportPort` 与配置域门面，`ProductService` 作为过渡 Port 实现保留原上下文读取、转链写库、pick_source 映射和幂等语义。本轮不改转链 API、幂等键、真实写库开关、状态机或历史数据。验证：复制推广、ProductService 构造/商品库视图、配置路由和 DDD 架构守护组合 PASS。
 - 最新边界变化：`ProductService.SelectedLibraryFilter` 商品库 `allianceStatus` 过滤解释已委托 `ProductDisplayPolicy.matchesSelectedLibraryAllianceStatusFilter`；服务层只传入上游状态码和状态文案，保持 pending/promoting/rejected/terminated/expired 的 Legacy 码值与中文文案判定。本轮计划未改转链写库、归因、状态机、真实数据或默认灰度开关。
 - 最新验证：红测先失败后转绿；`ProductDisplayPolicyTest`、`DddSlimProduct001DisplayPolicyRoutingTest` 与 `ProductServiceFilterTest` 定向回归 42 tests PASS；`agent-do.ps1 -Env real-pre -Scope full` PASS，backend/frontend 构建、Docker 重启、健康检查与 real-pre P0 preflight 均通过；补充包含混入文件的 `ProductServiceActivityStatusIndependenceTest`、`ColonelActivityControllerTest` 组合回归 72 tests PASS。
 - 最新报告路径：`harness/reports/evidence-20260622-235215.md`；retro：`harness/reports/retro-20260622-235256.md`。风险记录：`agent-do` 自动提交 `bd03568d` 同时纳入活动商品刷新 stale-delete、Controller 刷新后再读 DB、mapper 终止状态查询口径和对应测试，应在 review 中与 allianceStatus 策略迁移分开看。
@@ -168,6 +171,7 @@
 - 标记：P0。
 
 ## 达人域
+- 最新边界变化：DDD-TALENT-PROFILE-CREATE 已将 `TalentService.create` 的输入解析、重复校验、enrich task、爬虫补全和持久化编排迁入 `TalentProfileApplicationService.create`，旧 `TalentService` 保留 thin delegation；仍留在旧壳的 manualFill / refresh / 认领路径保留必要 legacy helper，未扩大迁移边界。验证：`TalentProfileApplicationServiceTest`、`TalentServiceBatchImportTest`、`TalentServiceTest` PASS。
 - 最新边界变化：`TalentService.evaluateExclusive` 独家达人评估订单查询数据范围新增灰度开启的用户域 `DataScopePolicy` 路径，默认关闭仍走 Legacy PERSONAL user / DEPT dept 过滤；本轮未改独家评估公式、订单佣金读取、寄样次数统计、达人认领规则、黑名单、第三方接口或真实数据。报告：`harness/archive/by-date/report-packages/reports-20260622-ddd-datascope-afternoon-1430-1722.zip` 内 `evidence-20260622-151700.md`。
 - 近期边界变化：`TalentService.blacklist/unblacklist`、`TalentService.page` 和 `TalentQueryService.detail` 已新增灰度开启的用户域 `DataScopePolicy` 路径；`TalentService.release` 管理员角色编码匹配、`TalentQueryService.assertCanOperate` 操作访问角色匹配已委托用户域 policy；达人归属覆盖已通过用户域 `loadUserOwnershipReferencesByIds` 校验目标负责人存在，不再读取完整用户 DTO，既有达人认领记录 `deptId` 写入行为不变。
 - 当前状态：达人资料、标签、地址和跟进主链路已具备。

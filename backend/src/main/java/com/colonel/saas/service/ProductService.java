@@ -8,7 +8,9 @@ import com.colonel.saas.common.enums.ProductBizStatus;
 import com.colonel.saas.common.result.PageResult;
 import com.colonel.saas.constant.ProductDisplayStatus;
 import com.colonel.saas.domain.product.event.ProductDomainEventPublisher;
-import com.colonel.saas.domain.product.application.CopyPromotionApplicationService;
+import com.colonel.saas.domain.product.application.dto.PromotionLinkCopyResult;
+import com.colonel.saas.domain.product.application.port.CopyPromotionSupportPort;
+import com.colonel.saas.domain.product.policy.CopyTextPolicy;
 import com.colonel.saas.domain.product.policy.ProductDisplayPolicy;
 import com.colonel.saas.domain.product.policy.ProductPinPolicy;
 import com.colonel.saas.dto.product.ProductFilterOptionItem;
@@ -103,7 +105,7 @@ import java.util.stream.Collectors;
  */
 @Slf4j
 @Service
-public class ProductService {
+public class ProductService implements CopyPromotionSupportPort {
 
     /** Jackson 全局序列化/反序列化器，用于审核补充信息等 JSON 字段处理 */
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
@@ -158,8 +160,6 @@ public class ProductService {
     private final DouyinActivityGateway douyinActivityGateway;
     /** 推广链接幂等服务，防止重复生成推广链接 */
     private final PromotionLinkIdempotencyService promotionLinkIdempotencyService;
-    /** 复制推广简介应用层（DDD-PRODUCT-004 委派目标） */
-    private final com.colonel.saas.domain.product.application.CopyPromotionApplicationService copyPromotionApplicationService;
     /** 配置域门面，读取推广模板与 pick_extra 规则（DDD-CONFIG-003） */
     private final com.colonel.saas.domain.config.facade.ConfigDomainFacade configDomainFacade;
     /** 商品展示规则服务，管理商品的展示/隐藏规则和置顶逻辑 */
@@ -191,6 +191,54 @@ public class ProductService {
     @Value("${product.sync.activityProduct.maxRowsPerActivity:50000}")
     private int productSyncActivityProductMaxRowsPerActivity;
 
+    @Autowired
+    public ProductService(
+            DouyinConvertPort douyinConvertPort,
+            DouyinProductGateway douyinProductGateway,
+            ProductSnapshotMapper snapshotMapper,
+            ProductOperationStateMapper operationStateMapper,
+            ProductOperationLogMapper operationLogMapper,
+            PromotionLinkMapper promotionLinkMapper,
+            ColonelsettlementOrderMapper orderMapper,
+            MerchantMapper merchantMapper,
+            UserDomainFacade userDomainFacade,
+            PickSourceMappingService pickSourceMappingService,
+            ProductBizStatusService productBizStatusService,
+            ColonelsettlementActivityMapper colonelActivityMapper,
+            TalentFollowService talentFollowService,
+            DouyinActivityGateway douyinActivityGateway,
+            PromotionLinkIdempotencyService promotionLinkIdempotencyService,
+            com.colonel.saas.domain.config.facade.ConfigDomainFacade configDomainFacade,
+            ProductDisplayRuleService productDisplayRuleService,
+            ColonelPartnerSyncService colonelPartnerSyncService,
+            ProductDomainEventPublisher productDomainEventPublisher,
+            ProductDisplayPolicy productDisplayPolicy) {
+        this.douyinConvertPort = douyinConvertPort;
+        this.douyinProductGateway = douyinProductGateway;
+        this.snapshotMapper = snapshotMapper;
+        this.operationStateMapper = operationStateMapper;
+        this.operationLogMapper = operationLogMapper;
+        this.promotionLinkMapper = promotionLinkMapper;
+        this.orderMapper = orderMapper;
+        this.merchantMapper = merchantMapper;
+        this.userDomainFacade = userDomainFacade;
+        this.pickSourceMappingService = pickSourceMappingService;
+        this.productBizStatusService = productBizStatusService;
+        this.colonelActivityMapper = colonelActivityMapper;
+        this.talentFollowService = talentFollowService;
+        this.douyinActivityGateway = douyinActivityGateway;
+        this.promotionLinkIdempotencyService = promotionLinkIdempotencyService;
+        this.configDomainFacade = configDomainFacade;
+        this.productDisplayRuleService = productDisplayRuleService;
+        this.colonelPartnerSyncService = colonelPartnerSyncService;
+        this.productDomainEventPublisher = productDomainEventPublisher;
+        this.productDisplayPolicy = productDisplayPolicy;
+    }
+
+    /**
+     * Compatibility constructor for tests and legacy callers still passing the
+     * DDD-PRODUCT-004 application service during rollout.
+     */
     public ProductService(
             DouyinConvertPort douyinConvertPort,
             DouyinProductGateway douyinProductGateway,
@@ -212,28 +260,28 @@ public class ProductService {
             ColonelPartnerSyncService colonelPartnerSyncService,
             ProductDomainEventPublisher productDomainEventPublisher,
             ProductDisplayPolicy productDisplayPolicy,
-            com.colonel.saas.domain.product.application.CopyPromotionApplicationService copyPromotionApplicationService) {
-        this.douyinConvertPort = douyinConvertPort;
-        this.douyinProductGateway = douyinProductGateway;
-        this.snapshotMapper = snapshotMapper;
-        this.operationStateMapper = operationStateMapper;
-        this.operationLogMapper = operationLogMapper;
-        this.promotionLinkMapper = promotionLinkMapper;
-        this.orderMapper = orderMapper;
-        this.merchantMapper = merchantMapper;
-        this.userDomainFacade = userDomainFacade;
-        this.pickSourceMappingService = pickSourceMappingService;
-        this.productBizStatusService = productBizStatusService;
-        this.colonelActivityMapper = colonelActivityMapper;
-        this.talentFollowService = talentFollowService;
-        this.douyinActivityGateway = douyinActivityGateway;
-        this.promotionLinkIdempotencyService = promotionLinkIdempotencyService;
-        this.configDomainFacade = configDomainFacade;
-        this.productDisplayRuleService = productDisplayRuleService;
-        this.colonelPartnerSyncService = colonelPartnerSyncService;
-        this.productDomainEventPublisher = productDomainEventPublisher;
-        this.productDisplayPolicy = productDisplayPolicy;
-        this.copyPromotionApplicationService = copyPromotionApplicationService;
+            com.colonel.saas.domain.product.application.CopyPromotionApplicationService ignoredCopyPromotionApplicationService) {
+        this(
+                douyinConvertPort,
+                douyinProductGateway,
+                snapshotMapper,
+                operationStateMapper,
+                operationLogMapper,
+                promotionLinkMapper,
+                orderMapper,
+                merchantMapper,
+                userDomainFacade,
+                pickSourceMappingService,
+                productBizStatusService,
+                colonelActivityMapper,
+                talentFollowService,
+                douyinActivityGateway,
+                promotionLinkIdempotencyService,
+                configDomainFacade,
+                productDisplayRuleService,
+                colonelPartnerSyncService,
+                productDomainEventPublisher,
+                productDisplayPolicy);
     }
 
     @Autowired(required = false)
@@ -3554,7 +3602,7 @@ public class ProductService {
     }
 
     @Transactional(rollbackFor = Exception.class)
-    public com.colonel.saas.domain.product.application.dto.PromotionLinkCopyResult generatePromotionLinkCopy(
+    public PromotionLinkCopyResult generatePromotionLinkCopy(
             String activityId,
             String productId,
             UUID userId,
@@ -3565,7 +3613,21 @@ public class ProductService {
             String scene,
             String talentId,
             String idempotencyKey) {
-        return copyPromotionApplicationService.copyPromotion(
+        CopyPromotionSupportPort.Context ctx = prepareCopyPromotionContext(
+                activityId, productId, "复制推广简介");
+        if (!realPromotionWriteEnabled || !allowRealPromotionWrite) {
+            String text = CopyTextPolicy.render(
+                    configDomainFacade, ctx.snapshot(), ctx.state(), null);
+            return new PromotionLinkCopyResult(
+                    text,
+                    false,
+                    null,
+                    null,
+                    FALLBACK_REASON_REAL_PROMOTION_WRITE_DISABLED,
+                    realPromotionWriteEnabled,
+                    allowRealPromotionWrite);
+        }
+        CopyPromotionSupportPort.GeneratedPromotionLink result = generatePromotionLinkForCopy(
                 activityId,
                 productId,
                 userId,
@@ -3575,10 +3637,18 @@ public class ProductService {
                 needShortLink,
                 scene,
                 talentId,
-                idempotencyKey,
+                idempotencyKey);
+        String promotionLink = CopyTextPolicy.firstText(result.shortLink(), result.promoteLink());
+        String text = CopyTextPolicy.render(
+                configDomainFacade, ctx.snapshot(), ctx.state(), promotionLink);
+        return new PromotionLinkCopyResult(
+                text,
+                true,
+                promotionLink,
+                result.pickSource(),
+                null,
                 realPromotionWriteEnabled,
-                allowRealPromotionWrite
-        );
+                allowRealPromotionWrite);
     }
 
     /**
@@ -3594,7 +3664,8 @@ public class ProductService {
      *
      * <p>校验失败的异常原样抛出，调用方无需额外处理（与原 {@code generatePromotionLinkCopy} 行为一致）。</p>
      */
-    public CopyPromotionApplicationService.Context prepareCopyPromotionContext(
+    @Override
+    public CopyPromotionSupportPort.Context prepareCopyPromotionContext(
             String activityId,
             String productId,
             String actionLabel) {
@@ -3611,7 +3682,36 @@ public class ProductService {
                 && !relinkExistingProduct) {
             throw BusinessException.stateInvalid("当前状态不允许执行PROMOTION_LINK，当前状态：" + beforeStatus.name());
         }
-        return new CopyPromotionApplicationService.Context(snapshot, state);
+        return new CopyPromotionSupportPort.Context(snapshot, state);
+    }
+
+    @Override
+    public CopyPromotionSupportPort.GeneratedPromotionLink generatePromotionLinkForCopy(
+            String activityId,
+            String productId,
+            UUID userId,
+            UUID deptId,
+            String externalUniqueId,
+            Integer promotionScene,
+            boolean needShortLink,
+            String scene,
+            String talentId,
+            String idempotencyKey) {
+        DouyinPromotionGateway.PromotionLinkResult result = generatePromotionLink(
+                activityId,
+                productId,
+                userId,
+                deptId,
+                externalUniqueId,
+                promotionScene,
+                needShortLink,
+                scene,
+                talentId,
+                idempotencyKey);
+        return new CopyPromotionSupportPort.GeneratedPromotionLink(
+                result.shortLink(),
+                result.promoteLink(),
+                result.pickSource());
     }
 
     public DouyinPromotionGateway.PromotionLinkResult generatePromotionLinkInternal(

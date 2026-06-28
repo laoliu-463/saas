@@ -19,6 +19,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
         "spring.devtools.restart.enabled=false",
         "spring.task.scheduling.enabled=false",
         "app.domain-event.dispatch-enabled=false",
+        "product.sync.activityProduct.manual-queue-drain-enabled=false",
         "douyin.webhook.replay.enabled=false",
         "app.test.seed-on-startup=false",
         "logging.level.org.springframework=INFO",

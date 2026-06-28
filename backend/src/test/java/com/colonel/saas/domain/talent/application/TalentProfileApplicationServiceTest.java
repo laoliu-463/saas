@@ -4,6 +4,8 @@ import com.colonel.saas.entity.Talent;
 import com.colonel.saas.mapper.TalentEnrichTaskMapper;
 import com.colonel.saas.mapper.TalentMapper;
 import com.colonel.saas.service.BusinessRuleConfigService;
+import com.colonel.saas.service.CrawlerTalentInfoService;
+import com.colonel.saas.service.talent.TalentEnrichOrchestrator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -30,6 +32,12 @@ class TalentProfileApplicationServiceTest {
     TalentEnrichTaskMapper talentEnrichTaskMapper;
 
     @Mock
+    TalentEnrichOrchestrator talentEnrichOrchestrator;
+
+    @Mock
+    CrawlerTalentInfoService crawlerTalentInfoService;
+
+    @Mock
     BusinessRuleConfigService businessRuleConfigService;
 
     private TalentProfileApplicationService service;
@@ -39,7 +47,10 @@ class TalentProfileApplicationServiceTest {
         service = new TalentProfileApplicationService(
                 talentMapper,
                 talentEnrichTaskMapper,
-                businessRuleConfigService);
+                talentEnrichOrchestrator,
+                crawlerTalentInfoService,
+                businessRuleConfigService,
+                false);
     }
 
     @Test

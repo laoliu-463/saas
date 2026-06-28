@@ -76,8 +76,6 @@ class ProductServiceActivityStatusIndependenceTest {
     @Mock private ProductDisplayRuleService productDisplayRuleService;
     @Mock private ColonelPartnerSyncService colonelPartnerSyncService;
     @Mock private com.colonel.saas.domain.product.event.ProductDomainEventPublisher productDomainEventPublisher;
-    @Mock private com.colonel.saas.domain.product.application.CopyPromotionApplicationService copyPromotionApplicationService;
-
     private ProductDisplayPolicy productDisplayPolicy;
     private ProductService productService;
 
@@ -105,8 +103,7 @@ class ProductServiceActivityStatusIndependenceTest {
                 productDisplayRuleService,
                 colonelPartnerSyncService,
                 productDomainEventPublisher,
-                productDisplayPolicy,
-                copyPromotionApplicationService);
+                productDisplayPolicy);
         when(snapshotMapper.upsert(any(ProductSnapshot.class))).thenReturn(1);
         when(operationStateMapper.updateById(any(ProductOperationState.class))).thenReturn(1);
         when(productDisplayRuleService.repairLibraryStateForActivity(any(), eq(false), anyInt()))

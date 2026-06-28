@@ -1,6 +1,7 @@
 package com.colonel.saas.domain.order.facade;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.service.OrderCommissionPolicy;
@@ -123,6 +124,22 @@ public class LegacyOrderReadFacade implements OrderReadFacade {
                 .isNull(ColonelsettlementOrder::getSettleTime)
                 .orderByDesc(ColonelsettlementOrder::getCreateTime)
                 .last("LIMIT " + safeLimit));
+    }
+
+    @Override
+    public OrderPage findOrdersCreatedSince(LocalDateTime createStart, long pageNo, long pageSize) {
+        if (createStart == null) {
+            return new OrderPage(List.of(), 0L);
+        }
+        long safePageNo = Math.max(1L, pageNo);
+        long safePageSize = Math.max(1L, Math.min(pageSize, MAX_LIMIT));
+        Page<ColonelsettlementOrder> page = new Page<>(safePageNo, safePageSize);
+        Page<ColonelsettlementOrder> result = orderMapper.selectPage(page, new LambdaQueryWrapper<ColonelsettlementOrder>()
+                .ge(ColonelsettlementOrder::getCreateTime, createStart));
+        if (result == null || result.getRecords() == null) {
+            return new OrderPage(List.of(), 0L);
+        }
+        return new OrderPage(result.getRecords(), result.getPages());
     }
 
     private static int normalizeLimit(int limit) {

@@ -60,8 +60,6 @@ class ProductServiceShopScoreTest {
     @Mock private ProductDisplayRuleService productDisplayRuleService;
     @Mock private ColonelPartnerSyncService colonelPartnerSyncService;
     @Mock private ProductDomainEventPublisher productDomainEventPublisher;
-    @Mock private com.colonel.saas.domain.product.application.CopyPromotionApplicationService copyPromotionApplicationService;
-
     private ProductService productService;
 
     @BeforeEach
@@ -86,8 +84,7 @@ class ProductServiceShopScoreTest {
                 productDisplayRuleService,
                 colonelPartnerSyncService,
                 productDomainEventPublisher,
-                new com.colonel.saas.domain.product.policy.ProductDisplayPolicy(),
-                copyPromotionApplicationService);
+                new com.colonel.saas.domain.product.policy.ProductDisplayPolicy());
         when(productBizStatusService.readBizStatus(any())).thenReturn(null);
         when(talentFollowService.listByProduct(any(), any())).thenReturn(List.of());
     }

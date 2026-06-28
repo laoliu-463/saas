@@ -64,8 +64,6 @@ class ProductServiceFilterTest {
     @Mock private ProductDisplayRuleService productDisplayRuleService;
     @Mock private ColonelPartnerSyncService colonelPartnerSyncService;
     @Mock private ProductDomainEventPublisher productDomainEventPublisher;
-    @Mock private com.colonel.saas.domain.product.application.CopyPromotionApplicationService copyPromotionApplicationService;
-
     private ProductService service;
 
     @BeforeEach
@@ -90,10 +88,13 @@ class ProductServiceFilterTest {
                 productDisplayRuleService,
                 colonelPartnerSyncService,
                 productDomainEventPublisher,
-                new com.colonel.saas.domain.product.policy.ProductDisplayPolicy(),
-                copyPromotionApplicationService
+                new com.colonel.saas.domain.product.policy.ProductDisplayPolicy()
         );
         lenient().when(productBizStatusService.readBizStatus(any())).thenReturn(ProductBizStatus.APPROVED);
+        lenient().when(snapshotMapper.selectSelectedLibraryPage(
+                any(), any(), any(), any(), any(), any(), any(), any(), any(), any(),
+                any(), any(), any(), any(), any(), any(), anyLong(), anyLong(), any()))
+                .thenReturn(null);
     }
 
     @Test
