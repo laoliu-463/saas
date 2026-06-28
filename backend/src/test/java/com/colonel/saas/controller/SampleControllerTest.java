@@ -166,7 +166,8 @@ class SampleControllerTest {
                 dddRefactorProperties);
         LegacySampleQueryService legacyQuery = new LegacySampleQueryService(applicationDelegate);
         LegacySampleCommandService legacyCommand = new LegacySampleCommandService(applicationDelegate);
-        LegacySampleDomainFacade sampleDomainFacade = new LegacySampleDomainFacade(sampleRequestMapper);
+        LegacySampleDomainFacade sampleDomainFacade =
+                new LegacySampleDomainFacade(sampleRequestMapper, mock(org.springframework.jdbc.core.JdbcTemplate.class));
         com.colonel.saas.domain.sample.application.SampleQueryApplicationService queryApplicationService =
                 new SampleQueryApplicationService(legacyQuery, sampleDomainFacade, dddRefactorProperties);
         com.colonel.saas.domain.sample.application.SampleCommandApplicationService commandApplicationService =

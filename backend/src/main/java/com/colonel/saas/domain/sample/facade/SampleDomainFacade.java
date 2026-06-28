@@ -1,5 +1,10 @@
 package com.colonel.saas.domain.sample.facade;
 
+import com.colonel.saas.domain.sample.facade.dto.TalentRecentSampleDTO;
+
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -12,4 +17,10 @@ public interface SampleDomainFacade {
 
     /** 寄样申请是否存在（按主键）。 */
     boolean existsById(UUID sampleRequestId);
+
+    /** 按达人 ID 批量统计寄样申请数。 */
+    Map<UUID, Long> countSamplesByTalentIds(Set<UUID> talentIds);
+
+    /** 查询指定达人最近的寄样申请记录。 */
+    List<TalentRecentSampleDTO> listRecentSamplesByTalentId(UUID talentId, int limit);
 }

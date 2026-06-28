@@ -12,10 +12,11 @@ import com.colonel.saas.dto.talent.TalentPageQuery;
 import com.colonel.saas.entity.Talent;
 import com.colonel.saas.entity.TalentClaim;
 import com.colonel.saas.entity.TalentEnrichTask;
+import com.colonel.saas.domain.sample.facade.SampleDomainFacade;
+import com.colonel.saas.domain.sample.facade.dto.TalentRecentSampleDTO;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.domain.user.policy.DataScopePolicy;
-import com.colonel.saas.mapper.SampleRequestMapper;
 import com.colonel.saas.mapper.TalentClaimMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -54,8 +55,8 @@ import java.util.stream.Collectors;
  *   <li>{@link TalentService} — 委托分页查询与单条查询</li>
  *   <li>{@link TalentClaimMapper} — 读取认领记录</li>
  *   <li>{@link UserDomainFacade} ：查询认领人显示标签</li>
- *   <li>{@link SampleRequestMapper} — 寄样请求数据访问</li>
- *   <li>{@link org.springframework.jdbc.core.JdbcTemplate} — 原生 SQL 聚合寄样/订单统计</li>
+ *   <li>{@link SampleDomainFacade} — 寄样域只读门面</li>
+ *   <li>{@link org.springframework.jdbc.core.JdbcTemplate} — 原生 SQL 聚合订单统计</li>
  * </ul>
  *
  * @see TalentService
@@ -78,9 +79,9 @@ public class TalentQueryService {
     /** 达人认领 Mapper，查询认领归属关系 */
     private final TalentClaimMapper talentClaimMapper;
     private final UserDomainFacade userDomainFacade;
-    /** 寄样请求 Mapper，提供寄样数据访问 */
-    private final SampleRequestMapper sampleRequestMapper;
-    /** Spring JdbcTemplate，用于原生 SQL 聚合查询（寄样统计、订单统计） */
+    /** 寄样域只读门面，提供达人维度寄样摘要 */
+    private final SampleDomainFacade sampleDomainFacade;
+    /** Spring JdbcTemplate，用于原生 SQL 聚合订单统计 */
     private final JdbcTemplate jdbcTemplate;
     /** 用户域权限策略，用于统一角色编码集合解析和匹配 */
     private final CurrentUserPermissionPolicy currentUserPermissionPolicy;
@@ -95,7 +96,7 @@ public class TalentQueryService {
      * @param talentService        达人服务（基础 CRUD 和分页查询）
      * @param talentClaimMapper    达人认领记录 Mapper
      * @param userDomainFacade     用户领域门面（查询认领人显示标签）
-     * @param sampleRequestMapper  寄样请求 Mapper（统计寄样次数）
+     * @param sampleDomainFacade   寄样域只读门面（统计寄样次数和最近寄样记录）
      * @param jdbcTemplate         JDBC 模板（原生 SQL 聚合查询）
      * @param currentUserPermissionPolicy 用户域权限策略（角色编码匹配）
      * @param dataScopePolicy      用户域数据范围策略
@@ -105,7 +106,7 @@ public class TalentQueryService {
             TalentService talentService,
             TalentClaimMapper talentClaimMapper,
             UserDomainFacade userDomainFacade,
-            SampleRequestMapper sampleRequestMapper,
+            SampleDomainFacade sampleDomainFacade,
             JdbcTemplate jdbcTemplate,
             CurrentUserPermissionPolicy currentUserPermissionPolicy,
             DataScopePolicy dataScopePolicy,
@@ -113,7 +114,7 @@ public class TalentQueryService {
         this.talentService = talentService;
         this.talentClaimMapper = talentClaimMapper;
         this.userDomainFacade = userDomainFacade;
-        this.sampleRequestMapper = sampleRequestMapper;
+        this.sampleDomainFacade = sampleDomainFacade;
         this.jdbcTemplate = jdbcTemplate;
         this.currentUserPermissionPolicy = currentUserPermissionPolicy;
         this.dataScopePolicy = dataScopePolicy;
@@ -605,8 +606,7 @@ public class TalentQueryService {
 
     /**
      * 批量加载达人寄样统计（talentId → 寄样次数）。
-     * <p>通过原生 SQL 按 talent_id 分组统计 sample_request 表记录数，
-     * 采用分批 IN 查询避免超长参数列表。</p>
+     * <p>通过寄样域门面读取，避免达人查询服务直接依赖寄样表结构。</p>
      *
      * @param talentIds 达人 ID 集合
      * @return 达人 ID 到寄样次数的映射
@@ -615,24 +615,7 @@ public class TalentQueryService {
         if (talentIds == null || talentIds.isEmpty()) {
             return Collections.emptyMap();
         }
-        Map<UUID, Long> result = new HashMap<>();
-        // 分批查询，避免 SQL IN 子句过长
-        for (List<UUID> batch : partition(talentIds, SQL_IN_BATCH_SIZE)) {
-            String placeholders = joinPlaceholders(batch.size());
-            List<Map<String, Object>> rows = jdbcTemplate.queryForList(
-                    "SELECT talent_id, COUNT(1) AS total FROM sample_request " +
-                            "WHERE deleted = 0 AND talent_id IS NOT NULL AND talent_id IN (" + placeholders + ") " +
-                            "GROUP BY talent_id",
-                    batch.toArray()
-            );
-            for (Map<String, Object> row : rows) {
-                UUID talentId = parseUuid(row.get("talent_id"));
-                if (talentId != null) {
-                    result.put(talentId, asLong(row.get("total")));
-                }
-            }
-        }
-        return result;
+        return sampleDomainFacade.countSamplesByTalentIds(talentIds);
     }
 
     /**
@@ -826,7 +809,7 @@ public class TalentQueryService {
 
     /**
      * 加载达人最近 20 条寄样记录。
-     * <p>通过原生 SQL 关联 sample_request 和 product 表查询，按创建时间降序。</p>
+     * <p>通过寄样域门面读取，达人域只负责组装详情响应。</p>
      *
      * @param talent 达人实体
      * @return 寄样记录列表
@@ -835,30 +818,16 @@ public class TalentQueryService {
         if (talent == null || talent.getId() == null) {
             return List.of();
         }
-        List<Map<String, Object>> rows = jdbcTemplate.queryForList("""
-                SELECT
-                    sr.id,
-                    sr.request_no,
-                    sr.status,
-                    sr.create_time,
-                    sr.complete_time,
-                    p.name AS product_name
-                FROM sample_request sr
-                LEFT JOIN product p ON p.id = sr.product_id
-                WHERE sr.deleted = 0
-                  AND sr.talent_id = ?
-                ORDER BY sr.create_time DESC
-                LIMIT 20
-                """, talent.getId());
+        List<TalentRecentSampleDTO> samples = sampleDomainFacade.listRecentSamplesByTalentId(talent.getId(), 20);
         List<TalentDetailResponse.SampleItem> items = new ArrayList<>();
-        for (Map<String, Object> row : rows) {
+        for (TalentRecentSampleDTO sample : samples) {
             TalentDetailResponse.SampleItem item = new TalentDetailResponse.SampleItem();
-            item.setSampleRequestId(firstNonBlank(asText(row.get("request_no")), uuidText(row.get("id"))));
-            item.setProductName(asText(row.get("product_name")));
-            item.setStatus(sampleStatusApi(asInteger(row.get("status"))));
-            item.setStatusText(sampleStatusText(item.getStatus()));
-            item.setCreateTime(toDateTime(row.get("create_time")));
-            item.setCompleteTime(toDateTime(row.get("complete_time")));
+            item.setSampleRequestId(sample.sampleRequestId());
+            item.setProductName(sample.productName());
+            item.setStatus(sample.status());
+            item.setStatusText(sample.statusText());
+            item.setCreateTime(sample.createTime());
+            item.setCompleteTime(sample.completeTime());
             items.add(item);
         }
         return items;
@@ -1416,51 +1385,6 @@ public class TalentQueryService {
         if (gpm < 500) return "100~500";
         if (gpm < 1000) return "500~1000";
         return "1000+";
-    }
-
-    /**
-     * 将寄样状态数字码转换为 API 枚举值。
-     * <p>映射关系：1→PENDING_AUDIT, 2→PENDING_SHIP, 3/4→SHIPPED, 5→PENDING_TASK, 6→FINISHED, 7→REJECTED, 8→CLOSED。</p>
-     *
-     * @param status 状态数字码
-     * @return API 枚举字符串，null 时返回 null
-     */
-    private String sampleStatusApi(Integer status) {
-        if (status == null) {
-            return null;
-        }
-        return switch (status) {
-            case 1 -> "PENDING_AUDIT";
-            case 2 -> "PENDING_SHIP";
-            case 3, 4 -> "SHIPPED";
-            case 5 -> "PENDING_TASK";
-            case 6 -> "FINISHED";
-            case 7 -> "REJECTED";
-            case 8 -> "CLOSED";
-            default -> String.valueOf(status);
-        };
-    }
-
-    /**
-     * 将寄样状态 API 枚举值转换为中文显示文本。
-     *
-     * @param status API 枚举字符串
-     * @return 中文显示文本，空值时返回 "-"
-     */
-    private String sampleStatusText(String status) {
-        if (!StringUtils.hasText(status)) {
-            return "-";
-        }
-        return switch (status) {
-            case "PENDING_AUDIT" -> "待审核";
-            case "PENDING_SHIP" -> "待发货";
-            case "SHIPPED" -> "快递中";
-            case "PENDING_TASK" -> "待交作业";
-            case "FINISHED" -> "已完成";
-            case "REJECTED" -> "已拒绝";
-            case "CLOSED" -> "已关闭";
-            default -> status;
-        };
     }
 
     /**
