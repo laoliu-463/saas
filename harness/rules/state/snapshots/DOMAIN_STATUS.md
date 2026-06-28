@@ -173,6 +173,14 @@
 - DDD 优化下一步：#78 幂等、异常分支、real-pre 样本证据。
 - 标记：P0。
 
+## 前端
+- 最新边界变化：#154 已完成前端 API client/store 领域边界 inventory；`frontend/src/api/*` 按商品/活动、订单、分析、达人、寄样、用户/认证、配置、抖音运维网关归类，`frontend/src/stores` 仅有 auth/app/permissionHint 三个全局 store，无 product/order/talent/sample 等领域 Pinia store。
+- 最新验证：code-review-graph 未覆盖前端节点，已回退源码扫描；`utils/request.ts` 统一 `baseURL=/api`，API modules 只调用内部后端路径；非 wrapper `fetch` 仅命中 `/api/system/env` 与 `/api/auth/logout`；`api/douyin.ts` 通过内部 `/douyin/**` gateway，不直连开放平台。
+- 最新报告路径：#154 `harness/reports/2026-06-28/ddd-complete-frontend-154/evidence-20260628-114717-frontend-api-store-inventory.md`。
+- 当前风险：前端仍有 UI 侧角色/状态展示与路由 helper（如 `constants/rbac.ts`、router meta roles、product/sample status display helpers），只能作为 UI gating/display；硬编码业务规则、权限权威化和页面领域 API 对齐需由 #155-#158 继续收口。
+- DDD 优化下一步：#155 清理前端硬编码业务规则、权限和状态机。
+- 标记：P1。
+
 ## Harness
 - 当前状态：GIT-HARNESS-001 工作区治理完成；DDD100 #30/#32 基线与迁移率脚本已固化，#31 架构红线 guard 已新增，#33 已冻结非用户域直接 DataScope 消费点。报告 `harness/reports/2026-06-21/ddd-user-datascope-033/evidence-20260627-121500-datascope-consumer-guard.md`。
 - 已完成能力：Completion Gate (G0-G4)、Session Exit Gate、Quality Ledger、Git Intake / Exit Gate、Dirty Classification (10 种分类)、Allowed Change Set、Staged Scope Gate、Commit / Push / Deploy Commit Gate、批次提交流程 (GIT-BATCH-N)、Unknown Dirty Policy、Rollback Policy。
