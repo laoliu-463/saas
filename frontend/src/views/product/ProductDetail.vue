@@ -451,7 +451,7 @@ import { DRAWER_WIDTH_PX } from '../../constants/ui';
 import ManualCopyDialog from '../../components/common/ManualCopyDialog.vue';
 import { convertActivityProductLink, getActivityProductDetail, getActivityProductOperationLogs, getActivityProductSkus, updateActivityProductDecision } from '../../api/activityProduct';
 import { useAuthStore } from '../../stores/auth';
-import { hasAccess } from '../../constants/rbac';
+import { ROLE_CODES, hasAccess } from '../../constants/rbac';
 import { copyProductBriefWithLink } from './product-copy';
 import { createEmptyManualCopyDialogState, resolveManualCopyDialogState } from './manual-copy';
 import { mergeLibraryDisplayFields, resolveProductLibraryDisplay, resolveProductLibraryReadiness } from './product-library-display';
@@ -487,12 +487,12 @@ const authStore = useAuthStore();
 
 const canDo = (action: string) => {
   const roles = authStore.roleCodes;
-  if (roles.includes('admin')) return true;
-  if (action === 'audit') return hasAccess(roles, ['biz_staff']);
-  if (action === 'assign') return hasAccess(roles, ['biz_leader']);
-  if (action === 'auditOwner') return hasAccess(roles, ['biz_leader']);
-  if (action === 'decision') return hasAccess(roles, ['biz_staff']);
-  if (action === 'promotion') return hasAccess(roles, ['channel_leader', 'channel_staff']);
+  if (authStore.isAdmin) return true;
+  if (action === 'audit') return hasAccess(roles, [ROLE_CODES.BIZ_STAFF]);
+  if (action === 'assign') return hasAccess(roles, [ROLE_CODES.BIZ_LEADER]);
+  if (action === 'auditOwner') return hasAccess(roles, [ROLE_CODES.BIZ_LEADER]);
+  if (action === 'decision') return hasAccess(roles, [ROLE_CODES.BIZ_STAFF]);
+  if (action === 'promotion') return hasAccess(roles, [ROLE_CODES.CHANNEL_LEADER, ROLE_CODES.CHANNEL_STAFF]);
   return true;
 };
 

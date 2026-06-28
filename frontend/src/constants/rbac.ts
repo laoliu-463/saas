@@ -3,20 +3,19 @@
  *
  * 职责：
  * - 定义系统角色代码常量（ROLE_CODES）
- * - 提供角色判断工具函数（isAdminRole、hasAccess）
+ * - 提供前端路由、菜单和按钮可见性的角色适配工具
  *
- * 角色层级：
+ * 边界：
+ * - 本模块只做 UI 可见性与历史 JWT 角色码兼容，不能替代后端鉴权。
+ * - 核心权限、数据范围和业务写操作仍以后端用户域 / 业务域校验为准。
+ *
+ * 角色代码：
  * - admin：系统管理员，拥有全部权限（超级管理员绕过）
  * - biz_leader：业务主管
  * - biz_staff：业务专员
  * - channel_leader：渠道主管
  * - channel_staff：渠道专员
  * - ops_staff：运维专员
- *
- * 权限规则：
- * - 未设置 requiredRoles 的路由/菜单默认允许所有角色访问
- * - admin 角色自动绕过所有角色限制（超级管理员特权）
- * - 非 admin 角色需要匹配 requiredRoles 中的至少一个
  */
 
 /** 系统角色代码常量，使用 as const 确保字面量类型 */
@@ -43,25 +42,59 @@ export const ROLE_NAME_MAP: Record<string, string> = {
 };
 
 /**
+ * 历史角色码兼容映射。
+ *
+ * 后端当前权威角色码见 docs/领域/用户域.md；这里仅兼容未刷新 JWT 或旧 localStorage。
+ */
+export const LEGACY_ROLE_CODE_MAP: Record<string, string> = {
+  zs_leader: ROLE_CODES.BIZ_LEADER,
+  zs_staff: ROLE_CODES.BIZ_STAFF,
+  // colonel_leader 已于 2026-05-30 合并至 biz_leader；保留到旧登录态自然过期。
+  colonel_leader: ROLE_CODES.BIZ_LEADER,
+  qd_leader: ROLE_CODES.CHANNEL_LEADER,
+  qd_staff: ROLE_CODES.CHANNEL_STAFF
+};
+
+const normalizeRoleCode = (roleCode: unknown): string => {
+  const code = String(roleCode ?? '').trim().toLowerCase();
+  return code ? LEGACY_ROLE_CODE_MAP[code] || code : '';
+};
+
+export const normalizeRoleCodes = (roleCodes: unknown): string[] => {
+  if (!Array.isArray(roleCodes)) return [];
+  return Array.from(new Set(roleCodes.map(normalizeRoleCode).filter(Boolean)));
+};
+
+/**
  * 判断角色列表中是否包含管理员角色
  *
  * @param roles - 当前用户的角色代码列表
  * @returns 是否为管理员
  */
-export const isAdminRole = (roles: string[] = []): boolean => roles.includes(ROLE_CODES.ADMIN);
+export const isAdminRole = (roles: readonly string[] = []): boolean =>
+  normalizeRoleCodes(roles).includes(ROLE_CODES.ADMIN);
+
+export const isLeaderRole = (roles: readonly string[] = []): boolean => {
+  const normalized = normalizeRoleCodes(roles);
+  return [ROLE_CODES.BIZ_LEADER, ROLE_CODES.CHANNEL_LEADER].some((role) => normalized.includes(role));
+};
+
+export const hasAnyRole = (roles: readonly string[] = [], allowedRoles: readonly string[] = []): boolean => {
+  const normalizedRoles = normalizeRoleCodes(roles);
+  const normalizedAllowedRoles = normalizeRoleCodes(allowedRoles);
+  return normalizedAllowedRoles.some((role) => normalizedRoles.includes(role));
+};
 
 /**
- * 判断当前用户是否有权访问指定资源
+ * 判断当前用户是否有权访问前端路由、菜单或按钮入口。
  *
  * @param roles - 当前用户的角色代码列表
  * @param requiredRoles - 资源要求的角色列表（可选，为空表示不限制）
  * @returns 是否有权限访问
  */
-export const hasAccess = (roles: string[] = [], requiredRoles?: string[]): boolean => {
-  // 未设置角色要求时，所有角色均可访问
-  if (!requiredRoles || requiredRoles.length === 0) return true;
-  // 管理员角色自动绕过所有限制
+export const hasAccess = (roles: readonly string[] = [], requiredRoles?: readonly string[]): boolean => {
+  const normalizedRequiredRoles = normalizeRoleCodes(requiredRoles || []);
+  if (normalizedRequiredRoles.length === 0) return true;
   if (isAdminRole(roles)) return true;
-  // 非管理员需要匹配 requiredRoles 中的至少一个角色
-  return requiredRoles.some((role) => roles.includes(role));
+  return hasAnyRole(roles, normalizedRequiredRoles);
 };

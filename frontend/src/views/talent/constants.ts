@@ -1,3 +1,5 @@
+import { ROLE_CODES, hasAnyRole } from '../../constants/rbac'
+
 export const TALENT_VIEW_OPTIONS = [
   { label: '团队公海', value: 'TEAM_PUBLIC' },
   { label: '我的达人', value: 'MY_TALENTS' },
@@ -15,7 +17,7 @@ export function getAccessibleTalentViewOptions(
   roleCodes: readonly string[],
   isAdmin = false
 ): Array<{ label: string; value: TalentViewValue }> {
-  if (isAdmin || roleCodes.includes('channel_leader')) {
+  if (isAdmin || hasAnyRole(roleCodes, [ROLE_CODES.CHANNEL_LEADER])) {
     return [...TALENT_VIEW_OPTIONS]
   }
   return TALENT_VIEW_OPTIONS.filter((item) => CHANNEL_STAFF_TALENT_VIEWS.includes(item.value))

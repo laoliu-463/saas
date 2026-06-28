@@ -196,7 +196,7 @@ const message = useMessage()
 const router = useRouter()
 const authStore = useAuthStore()
 const { activityDataSourceHint, activityAlertType } = useRuntimeEnvironment()
-const canAssignActivity = computed(() => authStore.isAdmin || authStore.roleCodes.includes('admin'))
+const canAssignActivity = computed(() => authStore.isAdmin)
 const isAdminUser = computed(() => canAssignActivity.value)
 const showRecruiterEmptyHint = computed(() => !isAdminUser.value && !loading.value && data.value.length === 0)
 
@@ -222,7 +222,7 @@ const assignmentFilterOptions = computed(() => resolveAssignmentFilterOptions(is
 const filters = reactive({
   activityId: '',
   activityName: '',
-  assignmentFilter: resolveDefaultAssignmentFilter(authStore.isAdmin || authStore.roleCodes.includes('admin')) as ActivityAssignmentFilter
+  assignmentFilter: resolveDefaultAssignmentFilter(authStore.isAdmin) as ActivityAssignmentFilter
 })
 
 const pagination = reactive({

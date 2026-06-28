@@ -21,6 +21,11 @@ describe('sample permissions', () => {
     expect(canExportSamplesByRole([ROLE_CODES.CHANNEL_STAFF])).toBe(false)
   })
 
+  it('normalizes legacy cached roles before checking export visibility', () => {
+    expect(canExportSamplesByRole(['zs_leader'])).toBe(true)
+    expect(canExportSamplesByRole(['qd_staff'])).toBe(false)
+  })
+
   it('hides audit-stage tabs from ops shipping views', () => {
     expect(OPS_HIDDEN_SAMPLE_STATUSES.has('PENDING_AUDIT')).toBe(true)
     expect(OPS_HIDDEN_SAMPLE_STATUSES.has('REJECTED')).toBe(true)

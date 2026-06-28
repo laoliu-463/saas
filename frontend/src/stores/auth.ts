@@ -1,26 +1,5 @@
 import { defineStore } from 'pinia';
-import { ROLE_CODES } from '../constants/rbac';
-
-const LEGACY_ROLE_MAP: Record<string, string> = {
-    zs_leader: ROLE_CODES.BIZ_LEADER,
-    zs_staff: ROLE_CODES.BIZ_STAFF,
-    // 仅兼容未刷新 JWT；colonel_leader 已合并至 biz_leader（2026-05-30）
-    colonel_leader: ROLE_CODES.BIZ_LEADER,
-    qd_leader: ROLE_CODES.CHANNEL_LEADER,
-    qd_staff: ROLE_CODES.CHANNEL_STAFF
-};
-
-const normalizeRoleCodes = (roleCodes: unknown): string[] => {
-    if (!Array.isArray(roleCodes)) return [];
-    return Array.from(
-        new Set(
-            roleCodes
-                .map((code) => String(code))
-                .map((code) => LEGACY_ROLE_MAP[code] || code)
-                .filter(Boolean)
-        )
-    );
-};
+import { isAdminRole, isLeaderRole, normalizeRoleCodes } from '../constants/rbac';
 
 const normalizeStoredToken = (token: unknown): string => {
     if (typeof token !== 'string') return '';
@@ -69,11 +48,8 @@ export const useAuthStore = defineStore('auth', {
     getters: {
         isLoggedIn: (state) => !!normalizeStoredToken(state.token),
         roleCodes: (state) => normalizeRoleCodes(state.userInfo?.roleCodes),
-        isAdmin: (state) => normalizeRoleCodes(state.userInfo?.roleCodes).includes(ROLE_CODES.ADMIN),
-        isLeader: (state) =>
-            [ROLE_CODES.BIZ_LEADER, ROLE_CODES.CHANNEL_LEADER].some((r) =>
-                normalizeRoleCodes(state.userInfo?.roleCodes).includes(r)
-            ),
+        isAdmin: (state) => isAdminRole(normalizeRoleCodes(state.userInfo?.roleCodes)),
+        isLeader: (state) => isLeaderRole(normalizeRoleCodes(state.userInfo?.roleCodes)),
         dataScope: (state) => state.userInfo?.dataScope
     },
     actions: {

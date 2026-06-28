@@ -86,7 +86,7 @@
     <ProductManageFilters
       :filters="filters"
       :loading="loading"
-      :show-assignee-filter="!authStore.roleCodes.includes('biz_staff') || authStore.roleCodes.includes('biz_leader') || authStore.isAdmin"
+      :show-assignee-filter="!isBizStaffOnly"
       :assigned-activity-options="assignedActivityOptions"
       :assigned-activity-options-loading="assignedActivityOptionsLoading"
       @update:filters="handleFiltersUpdate"
@@ -228,7 +228,7 @@ import { useRoute, useRouter } from 'vue-router'
 import PageHeader from '../../components/PageHeader.vue'
 import ManualCopyDialog from '../../components/common/ManualCopyDialog.vue'
 import { useAuthStore } from '../../stores/auth'
-import { hasAccess } from '../../constants/rbac'
+import { ROLE_CODES, hasAccess, hasAnyRole } from '../../constants/rbac'
 import {
   batchPinActivityProducts,
   batchPutActivityProductsIntoLibrary,
@@ -374,12 +374,12 @@ const forcedStatusMap: Record<ProductAction, string> = {
 
 const canDo = (action: string) => {
   const roles = authStore.roleCodes
-  if (roles.includes('admin')) return true
-  if (action === 'audit') return hasAccess(roles, ['biz_staff'])
-  if (action === 'assign') return hasAccess(roles, ['biz_leader'])
-  if (action === 'auditOwner') return hasAccess(roles, ['biz_leader'])
-  if (action === 'promotion') return hasAccess(roles, ['channel_leader', 'channel_staff'])
-  if (action === 'pin') return hasAccess(roles, ['biz_leader', 'biz_staff'])
+  if (authStore.isAdmin) return true
+  if (action === 'audit') return hasAccess(roles, [ROLE_CODES.BIZ_STAFF])
+  if (action === 'assign') return hasAccess(roles, [ROLE_CODES.BIZ_LEADER])
+  if (action === 'auditOwner') return hasAccess(roles, [ROLE_CODES.BIZ_LEADER])
+  if (action === 'promotion') return hasAccess(roles, [ROLE_CODES.CHANNEL_LEADER, ROLE_CODES.CHANNEL_STAFF])
+  if (action === 'pin') return hasAccess(roles, [ROLE_CODES.BIZ_LEADER, ROLE_CODES.BIZ_STAFF])
   if (action === 'libraryEntry') return false
   if (action === 'decision') return false
   return true
@@ -396,8 +396,8 @@ const isSharedLibraryMode = computed(() => route.path === '/product')
 const isActivityProductMode = computed(() => hasExplicitActivityRoute.value)
 const isProductManageProductsMode = computed(() => isProductManageProductsPath(route.path))
 const isPickLibraryMode = computed(() => isProductManageProductsMode.value || (!isSharedLibraryMode.value && !isActivityProductMode.value))
-const isBizLeader = computed(() => authStore.roleCodes.includes('biz_leader') || authStore.isAdmin)
-const isBizStaffOnly = computed(() => authStore.roleCodes.includes('biz_staff') && !isBizLeader.value)
+const isBizLeader = computed(() => hasAccess(authStore.roleCodes, [ROLE_CODES.BIZ_LEADER]))
+const isBizStaffOnly = computed(() => hasAnyRole(authStore.roleCodes, [ROLE_CODES.BIZ_STAFF]) && !isBizLeader.value)
 const showBatchSelection = computed(() => !isSharedLibraryMode.value)
 const productTableScrollX = computed(() =>
   showBatchSelection.value ? PRODUCT_TABLE_SCROLL_X_WITH_SELECTION : PRODUCT_TABLE_SCROLL_X
@@ -417,7 +417,7 @@ const syncRouteActivityIdToFilters = () => {
 }
 const showBatchToolbar = computed(() => showBatchSelection.value && (canBatchAssign.value || canBatchLibraryEntry.value || canBatchPin.value))
 const canBatchAssign = computed(() => canDo('assign'))
-const canBatchLibraryEntry = computed(() => hasAccess(authStore.roleCodes, ['biz_staff']))
+const canBatchLibraryEntry = computed(() => hasAccess(authStore.roleCodes, [ROLE_CODES.BIZ_STAFF]))
 const canBatchPin = computed(() => canDo('pin'))
 const selectedBatchProductIds = computed(() => normalizeBatchProductIds(checkedRowKeys.value))
 

@@ -174,11 +174,14 @@
 - 标记：P0。
 
 ## 前端
+- 最新边界变化：#155 已将前端历史角色码兼容从 `stores/auth.ts` 收口到 `constants/rbac.ts`，并明确该模块只负责路由、菜单和按钮 UI 可见性，不替代后端用户域鉴权；商品列表/详情、活动列表、达人页和寄样导出入口改为消费 `ROLE_CODES` / `hasAccess` / `hasAnyRole`，不再维护散落裸角色字符串。
+- 最新验证：`git diff --check` PASS；`npm run test -- src/constants/rbac.test.ts src/views/sample/sample-permissions.test.ts src/views/talent/constants.test.ts src/router/guard.test.ts src/router/navigation.test.ts src/views/product/ActivityList.test.ts` PASS（6 files / 40 tests）；`npm run build` PASS。
+- 最新报告路径：#155 `harness/reports/2026-06-28/ddd-complete-frontend-155/evidence-20260628-frontend-rbac-boundary-cleanup.md`。
 - 最新边界变化：#154 已完成前端 API client/store 领域边界 inventory；`frontend/src/api/*` 按商品/活动、订单、分析、达人、寄样、用户/认证、配置、抖音运维网关归类，`frontend/src/stores` 仅有 auth/app/permissionHint 三个全局 store，无 product/order/talent/sample 等领域 Pinia store。
 - 最新验证：code-review-graph 未覆盖前端节点，已回退源码扫描；`utils/request.ts` 统一 `baseURL=/api`，API modules 只调用内部后端路径；非 wrapper `fetch` 仅命中 `/api/system/env` 与 `/api/auth/logout`；`api/douyin.ts` 通过内部 `/douyin/**` gateway，不直连开放平台。
 - 最新报告路径：#154 `harness/reports/2026-06-28/ddd-complete-frontend-154/evidence-20260628-114717-frontend-api-store-inventory.md`。
-- 当前风险：前端仍有 UI 侧角色/状态展示与路由 helper（如 `constants/rbac.ts`、router meta roles、product/sample status display helpers），只能作为 UI gating/display；硬编码业务规则、权限权威化和页面领域 API 对齐需由 #155-#158 继续收口。
-- DDD 优化下一步：#155 清理前端硬编码业务规则、权限和状态机。
+- 当前风险：前端仍有 UI 侧状态展示 helper（product/sample status display helpers）和页面领域 API 对齐工作；这些 helper 只能作为 display/gating，不能成为后端业务状态机或权限事实。权限与数据范围 UI 后端权威化仍由 #158 深化。
+- DDD 优化下一步：#156 商品/订单/分析页面领域 API 对齐。
 - 标记：P1。
 
 ## Harness

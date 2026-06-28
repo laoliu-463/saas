@@ -4,7 +4,7 @@
  * 提供基于角色的寄样数据导出权限判断，以及运营角色的 Tab 可见性过滤。
  * 配合 ROLE_CODES 常量，控制不同角色在寄样列表中可看到的状态 Tab 以及是否允许导出。
  */
-import { ROLE_CODES } from '../../constants/rbac';
+import { ROLE_CODES, hasAccess } from '../../constants/rbac';
 
 /** 允许导出寄样数据的角色集合：管理员、业务组长、业务专员、运营专员、渠道组长 */
 const SAMPLE_EXPORT_ROLES = new Set<string>([
@@ -50,4 +50,4 @@ export const filterSampleTabsForOps = (tabs: SampleTabOption[]) =>
  * @returns 若拥有导出权限返回 true，否则返回 false
  */
 export const canExportSamplesByRole = (roles: string[] = []) =>
-  roles.some((role) => SAMPLE_EXPORT_ROLES.has(role));
+  hasAccess(roles, Array.from(SAMPLE_EXPORT_ROLES));

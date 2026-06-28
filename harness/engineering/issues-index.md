@@ -1,7 +1,7 @@
 # GitHub Issues Index (Mirror)
 
 > 本文件是 GitHub Issues 的本地镜像，用于 Matt Pocock engineering skills 与 harness 任务路由。
-> 最后更新：2026-06-28（#154 前端 API/store 领域边界 inventory 完成；#96/#135 因真实 pick_source 订单样本缺失保持 open）。
+> 最后更新：2026-06-28（#155 前端 RBAC UI 边界补强完成；#96/#135 因真实 pick_source 订单样本缺失保持 open）。
 
 ## 同步规则
 
@@ -29,7 +29,6 @@
 | 135 | [DDD-COMPLETE-100-PRODUCT-06] real-pre 推广链接到订单归因正向闭环 | ready-for-agent | https://github.com/laoliu-463/saas/issues/135 |
 | 147 | [DDD-COMPLETE-100-SAMPLE-05] real-pre 寄样全链路正向样本 | ready-for-agent | https://github.com/laoliu-463/saas/issues/147 |
 | 148 | [DDD-COMPLETE-100-SAMPLE-06] 寄样域 legacy retire 与迁移率目标达成 | ready-for-agent | https://github.com/laoliu-463/saas/issues/148 |
-| 155 | [DDD-COMPLETE-100-FRONTEND-02] 清理前端硬编码业务规则、权限和状态机 | ready-for-agent | https://github.com/laoliu-463/saas/issues/155 |
 | 156 | [DDD-COMPLETE-100-FRONTEND-03] 商品/订单/分析页面领域 API 对齐 | ready-for-agent | https://github.com/laoliu-463/saas/issues/156 |
 | 157 | [DDD-COMPLETE-100-FRONTEND-04] 达人/寄样页面领域 API 对齐 | ready-for-agent | https://github.com/laoliu-463/saas/issues/157 |
 | 158 | [DDD-COMPLETE-100-FRONTEND-05] 权限与数据范围 UI 后端权威化 | ready-for-agent | https://github.com/laoliu-463/saas/issues/158 |
@@ -40,6 +39,7 @@
 
 | # | Title | Closed Date | Evidence |
 | --- | --- | --- | --- |
+| 155 | [DDD-COMPLETE-100-FRONTEND-02] 清理前端硬编码业务规则、权限和状态机 | 2026-06-28 | `harness/reports/2026-06-28/ddd-complete-frontend-155/evidence-20260628-frontend-rbac-boundary-cleanup.md` |
 | 154 | [DDD-COMPLETE-100-FRONTEND-01] 前端 API client/store 领域边界 inventory | 2026-06-28 | `harness/reports/2026-06-28/ddd-complete-frontend-154/evidence-20260628-114717-frontend-api-store-inventory.md` |
 | 118 | [DDD-COMPLETE-100-ORDER-06] 订单域 legacy service 退休与迁移率目标达成 | 2026-06-28 | `harness/reports/2026-06-28/ddd-complete-order-118/evidence-20260628-111500-order-legacy-retire.md` |
 | 112 | [DDD-COMPLETE-100-CONFIG-05] 配置域 legacy retire 与迁移率目标达成 | 2026-06-27 | `harness/reports/2026-06-27/ddd-complete-config-112/evidence-20260627-221700-config-legacy-retire.md` |
@@ -87,7 +87,7 @@
 
 ## 当前判断
 
-- GitHub 当前 open issue 为 22 个：#90、#92-#96、#98、#100-#101、#117、#123-#124、#129、#135、#147-#148、#155-#159、#164，全部属于 `DDD-COMPLETE-100` 新批次。
+- GitHub 当前 open issue 为 21 个：#90、#92-#96、#98、#100-#101、#117、#123-#124、#129、#135、#147-#148、#156-#159、#164，全部属于 `DDD-COMPLETE-100` 新批次。
 - 新目标是完整项目、全领域、全链路 DDD 重构优化到 100%，不是单个领域，也不是旧 DDD100 issue 全关闭。
 - 当前可重复迁移率指标：raw `domain/` share 29.7%，business migration proxy 39.1%。
 - 当前最低 proxy 领域：analytics 10.5%、talent 16.7%、performance 20.7%、sample 25.0%、product 30.9%、config 68.1%、user 80.7%、order 84.3%。

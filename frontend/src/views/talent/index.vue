@@ -6,7 +6,7 @@
     >
       <template #actions>
         <n-button
-          v-if="authStore.roleCodes.includes('channel_leader')"
+          v-if="canRefreshWeekly"
           secondary
           :loading="weeklyRefreshing"
           data-testid="talent-weekly-refresh"
@@ -92,6 +92,7 @@ import { useRoute, useRouter } from 'vue-router'
 import PageEmpty from '../../components/PageEmpty.vue'
 import PageHeader from '../../components/PageHeader.vue'
 import { useAuthStore } from '../../stores/auth'
+import { ROLE_CODES, hasAnyRole } from '../../constants/rbac'
 import {
   blacklistTalent,
   claimTalent,
@@ -146,9 +147,10 @@ const pagination = reactive(createPaginationState())
 
 const isChannelStaffOnly = computed(() => {
   const roles = authStore.roleCodes
-  return roles.includes('channel_staff') && !roles.includes('channel_leader') && !authStore.isAdmin
+  return hasAnyRole(roles, [ROLE_CODES.CHANNEL_STAFF]) && !hasAnyRole(roles, [ROLE_CODES.CHANNEL_LEADER]) && !authStore.isAdmin
 })
-const canManageBlacklist = computed(() => authStore.isAdmin || authStore.roleCodes.includes('channel_leader'))
+const canRefreshWeekly = computed(() => hasAnyRole(authStore.roleCodes, [ROLE_CODES.CHANNEL_LEADER]))
+const canManageBlacklist = computed(() => authStore.isAdmin || hasAnyRole(authStore.roleCodes, [ROLE_CODES.CHANNEL_LEADER]))
 
 const pageTitle = computed(() => {
   if (isChannelStaffOnly.value && activeView.value === 'MY_TALENTS') {

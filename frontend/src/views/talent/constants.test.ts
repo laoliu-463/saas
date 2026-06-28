@@ -14,6 +14,12 @@ describe('getAccessibleTalentViewOptions', () => {
     ])
   })
 
+  it('keeps legacy channel leader cache compatible', () => {
+    const views = getAccessibleTalentViewOptions(['qd_leader'])
+    expect(views.map((item) => item.value)).toContain('TEAM_PRIVATE')
+    expect(views.map((item) => item.value)).toContain('BLACKLIST')
+  })
+
   it('returns all talent views for admin', () => {
     const views = getAccessibleTalentViewOptions([ROLE_CODES.ADMIN], true)
     expect(views.map((item) => item.value)).toContain('NATURAL_ORDERS')
