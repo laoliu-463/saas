@@ -135,8 +135,8 @@ HEAD：`16721547`（DDD-CLEAN full verification）→ working tree 含 PERF-001 
 
 ## 下一步优先（按当前口径）
 
-1. **P0** 当前红灯：收口 `TalentProfileApplicationServiceTest.updateTagsNormalizesAndPersistsTags` 与对应达人域 Slice。
-2. **P0** `DDD-GIT-INTAKE-001` - 分类当前 dirty / evidence / report 状态，未分类前不得写整体 DONE。
+1. **P0** 下一批任务前先归档 `harness/reports/`，当前 reports 已达 50/50 文件上限。
+2. **P0** `DDD-GIT-INTAKE-001` - 分类当前 branch / evidence / report 状态，未分类前不得写整体 DONE。
 3. **P0** 按 `DOMAIN_STATUS.md` 推进用户域 `DataScopeResolver` / `PermissionChecker` / `UserDomainFacade` 收口。
 4. **P0** 补 `DDD-VERIFY-001` final P0 验收、Maven baseline 和 real-pre 阻塞 / 通过证据。
 
