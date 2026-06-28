@@ -14,9 +14,9 @@ import com.colonel.saas.entity.CrawlerTalentInfo;
 import com.colonel.saas.entity.Talent;
 import com.colonel.saas.entity.TalentClaim;
 import com.colonel.saas.entity.TalentEnrichTask;
+import com.colonel.saas.domain.order.facade.OrderReadFacade;
 import com.colonel.saas.domain.sample.facade.SampleDomainFacade;
 import com.colonel.saas.entity.SysUser;
-import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.mapper.TalentClaimMapper;
 import com.colonel.saas.mapper.TalentEnrichTaskMapper;
 import com.colonel.saas.domain.talent.policy.TalentAddressPolicy;
@@ -80,7 +80,7 @@ import java.util.stream.Collectors;
  *   <li>{@link TalentClaimMapper} — 认领记录持久化</li>
  *   <li>{@link TalentEnrichTaskMapper} — 补全任务记录</li>
  *   <li>{@link TalentEnrichOrchestrator} — 信息补全编排</li>
- *   <li>{@link ColonelsettlementOrderMapper} — 订单查询（用于独家评估和活跃度判断）</li>
+ *   <li>{@link OrderReadFacade} — 订单域只读门面（用于独家评估和活跃度判断）</li>
  *   <li>{@link SampleDomainFacade} — 寄样域只读门面（用于独家评估）</li>
  *   <li>{@link RedisTemplate} — 认领并发锁</li>
  *   <li>{@link CrawlerTalentInfoService} — 爬虫数据源</li>
@@ -129,8 +129,8 @@ public class TalentService {
     private final TalentEnrichTaskMapper talentEnrichTaskMapper;
     /** 信息补全编排器，协调多数据源补全达人资料 */
     private final TalentEnrichOrchestrator talentEnrichOrchestrator;
-    /** 结算订单 Mapper（用于独家评估和活跃度判断） */
-    private final ColonelsettlementOrderMapper orderMapper;
+    /** 订单域只读门面（用于独家评估和活跃度判断） */
+    private final OrderReadFacade orderReadFacade;
     /** 寄样域只读门面（用于独家评估月寄样次数） */
     private final SampleDomainFacade sampleDomainFacade;
     /** Redis 模板（用于认领并发分布式锁） */
@@ -162,7 +162,7 @@ public class TalentService {
      * @param talentClaimMapper        达人认领记录 Mapper
      * @param talentEnrichTaskMapper   达人信息补全任务 Mapper
      * @param talentEnrichOrchestrator 信息补全编排器
-     * @param orderMapper              结算订单 Mapper
+     * @param orderReadFacade          订单域只读门面
      * @param sampleDomainFacade       寄样域只读门面
      * @param redisTemplate            Redis 模板（分布式锁）
      * @param crawlerTalentInfoService 爬虫达人信息服务
@@ -180,7 +180,7 @@ public class TalentService {
             TalentClaimMapper talentClaimMapper,
             TalentEnrichTaskMapper talentEnrichTaskMapper,
             TalentEnrichOrchestrator talentEnrichOrchestrator,
-            ColonelsettlementOrderMapper orderMapper,
+            OrderReadFacade orderReadFacade,
             SampleDomainFacade sampleDomainFacade,
             RedisTemplate<String, Object> redisTemplate,
             CrawlerTalentInfoService crawlerTalentInfoService,
@@ -198,7 +198,7 @@ public class TalentService {
         this.talentClaimMapper = talentClaimMapper;
         this.talentEnrichTaskMapper = talentEnrichTaskMapper;
         this.talentEnrichOrchestrator = talentEnrichOrchestrator;
-        this.orderMapper = orderMapper;
+        this.orderReadFacade = orderReadFacade;
         this.sampleDomainFacade = sampleDomainFacade;
         this.redisTemplate = redisTemplate;
         this.crawlerTalentInfoService = crawlerTalentInfoService;
@@ -1039,7 +1039,7 @@ public class TalentService {
      * <ol>
      *   <li>查询所有保护期已过（protectedUntil &lt; now）且状态为 ACTIVE 的认领记录</li>
      *   <li>批量加载关联达人数据</li>
-     *   <li>对每条过期认领，检查认领后是否有订单产出（{@link #hasOutputSinceClaim}）</li>
+     *   <li>委托达人认领应用服务检查认领后是否有订单产出</li>
      *   <li>有订单产出的认领自动续期，无产出的标记为 EXPIRED</li>
      * </ol>
      * </p>
@@ -1048,29 +1048,6 @@ public class TalentService {
      */
     public void releaseExpiredClaims(LocalDateTime now) {
         talentClaimApplicationService.releaseExpiredClaims(now);
-    }
-
-    /**
-     * 判断达人自认领以来是否有订单产出。
-     * <p>
-     * 通过查询认领时间之后的结算订单，检查 extraData 中的 author_id 或 talent_uid
-     * 是否匹配达人抖音号。用于过期认领续期判断——有订单产出的认领不自动过期。
-     * </p>
-     *
-     * @param talent 达人实体
-     * @param claim  认领记录
-     * @return 有订单产出返回 true，否则返回 false
-     */
-    private boolean hasOutputSinceClaim(Talent talent, TalentClaim claim) {
-        if (talent == null || claim == null || !StringUtils.hasText(talent.getDouyinUid())) {
-            return false;
-        }
-        LocalDateTime since = claim.getClaimedAt() == null ? LocalDateTime.now().minusDays(getProtectDays()) : claim.getClaimedAt();
-        LambdaQueryWrapper<com.colonel.saas.entity.ColonelsettlementOrder> wrapper =
-                new LambdaQueryWrapper<com.colonel.saas.entity.ColonelsettlementOrder>()
-                        .ge(com.colonel.saas.entity.ColonelsettlementOrder::getCreateTime, since);
-        return loadOrdersInBatches(wrapper).stream()
-                .anyMatch(order -> matchesTalent(order, talent.getDouyinUid()));
     }
 
     /**
@@ -1094,11 +1071,11 @@ public class TalentService {
     public ExclusiveCheckResult evaluateExclusive(UUID talentId, DataScope dataScope, UUID userId, UUID deptId) {
         Talent talent = getById(talentId);
         LocalDateTime start = LocalDateTime.now().minusDays(30);
-        LambdaQueryWrapper<com.colonel.saas.entity.ColonelsettlementOrder> wrapper =
-                new LambdaQueryWrapper<com.colonel.saas.entity.ColonelsettlementOrder>()
-                        .ge(com.colonel.saas.entity.ColonelsettlementOrder::getSettleTime, start);
-        applyExclusiveDataScope(wrapper, dataScope, userId, deptId);
-        List<com.colonel.saas.entity.ColonelsettlementOrder> monthOrders = loadOrdersInBatches(wrapper);
+        OrderScopeFilter orderScopeFilter = resolveExclusiveOrderScope(dataScope, userId, deptId);
+        List<com.colonel.saas.entity.ColonelsettlementOrder> monthOrders = loadOrdersSettledSinceInBatches(
+                start,
+                orderScopeFilter.userId(),
+                orderScopeFilter.deptId());
 
         long totalServiceFee = 0L;
         long talentServiceFee = 0L;
@@ -1117,48 +1094,36 @@ public class TalentService {
         return new ExclusiveCheckResult(eligible, serviceRatio, monthlySamples);
     }
 
-    private void applyExclusiveDataScope(
-            LambdaQueryWrapper<com.colonel.saas.entity.ColonelsettlementOrder> wrapper,
-            DataScope dataScope,
-            UUID userId,
-            UUID deptId) {
+    private OrderScopeFilter resolveExclusiveOrderScope(DataScope dataScope, UUID userId, UUID deptId) {
         if (!dddRefactorProperties.getDataScopePolicy().isEnabled()) {
-            applyExclusiveDataScopeLegacy(wrapper, dataScope, userId, deptId);
-            return;
+            return resolveExclusiveOrderScopeLegacy(dataScope, userId, deptId);
         }
-        applyExclusiveDataScopeWithPolicy(wrapper, dataScope, userId, deptId);
+        return resolveExclusiveOrderScopeWithPolicy(dataScope, userId, deptId);
     }
 
-    private void applyExclusiveDataScopeLegacy(
-            LambdaQueryWrapper<com.colonel.saas.entity.ColonelsettlementOrder> wrapper,
-            DataScope dataScope,
-            UUID userId,
-            UUID deptId) {
+    private OrderScopeFilter resolveExclusiveOrderScopeLegacy(DataScope dataScope, UUID userId, UUID deptId) {
         if (dataScope == DataScope.PERSONAL && userId != null) {
-            wrapper.eq(com.colonel.saas.entity.ColonelsettlementOrder::getUserId, userId);
+            return new OrderScopeFilter(userId, null);
         } else if (dataScope == DataScope.DEPT && deptId != null) {
-            wrapper.eq(com.colonel.saas.entity.ColonelsettlementOrder::getDeptId, deptId);
+            return new OrderScopeFilter(null, deptId);
         }
+        return OrderScopeFilter.unfiltered();
     }
 
-    private void applyExclusiveDataScopeWithPolicy(
-            LambdaQueryWrapper<com.colonel.saas.entity.ColonelsettlementOrder> wrapper,
-            DataScope dataScope,
-            UUID userId,
-            UUID deptId) {
+    private OrderScopeFilter resolveExclusiveOrderScopeWithPolicy(DataScope dataScope, UUID userId, UUID deptId) {
         DataScopePolicy.ContextRequirement requirement =
                 dataScopePolicy.contextRequirement(userId, deptId, dataScope);
         if (requirement != DataScopePolicy.ContextRequirement.SATISFIED) {
-            return;
+            return OrderScopeFilter.unfiltered();
         }
         DataScopePolicy.Decision decision = dataScopePolicy.decide(userId, deptId, dataScope);
         if (decision == DataScopePolicy.Decision.FILTER_USER) {
-            wrapper.eq(com.colonel.saas.entity.ColonelsettlementOrder::getUserId, userId);
-            return;
+            return new OrderScopeFilter(userId, null);
         }
         if (decision == DataScopePolicy.Decision.FILTER_DEPT) {
-            wrapper.eq(com.colonel.saas.entity.ColonelsettlementOrder::getDeptId, deptId);
+            return new OrderScopeFilter(null, deptId);
         }
+        return OrderScopeFilter.unfiltered();
     }
 
     /**
@@ -1168,27 +1133,38 @@ public class TalentService {
      * 自动翻页直到所有记录加载完毕。
      * </p>
      *
-     * @param wrapper 查询条件包装器
      * @return 全部匹配的订单列表
      */
-    private List<com.colonel.saas.entity.ColonelsettlementOrder> loadOrdersInBatches(
-            LambdaQueryWrapper<com.colonel.saas.entity.ColonelsettlementOrder> wrapper) {
+    private List<com.colonel.saas.entity.ColonelsettlementOrder> loadOrdersSettledSinceInBatches(
+            LocalDateTime settleStart,
+            UUID userId,
+            UUID deptId) {
         List<com.colonel.saas.entity.ColonelsettlementOrder> result = new java.util.ArrayList<>();
         long current = 1L;
         while (true) {
-            Page<com.colonel.saas.entity.ColonelsettlementOrder> page = new Page<>(current, ORDER_BATCH_SIZE);
-            IPage<com.colonel.saas.entity.ColonelsettlementOrder> batch = orderMapper.selectPage(page, wrapper);
-            List<com.colonel.saas.entity.ColonelsettlementOrder> records = batch.getRecords();
+            OrderReadFacade.OrderPage batch = orderReadFacade.findOrdersSettledSince(
+                    settleStart,
+                    userId,
+                    deptId,
+                    current,
+                    ORDER_BATCH_SIZE);
+            List<com.colonel.saas.entity.ColonelsettlementOrder> records = batch == null ? null : batch.records();
             if (records == null || records.isEmpty()) {
                 break;
             }
             result.addAll(records);
-            if (current >= batch.getPages()) {
+            if (current >= batch.pages()) {
                 break;
             }
             current++;
         }
         return result;
+    }
+
+    private record OrderScopeFilter(UUID userId, UUID deptId) {
+        private static OrderScopeFilter unfiltered() {
+            return new OrderScopeFilter(null, null);
+        }
     }
 
     /**

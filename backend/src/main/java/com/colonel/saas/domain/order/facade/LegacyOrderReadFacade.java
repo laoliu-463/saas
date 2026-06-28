@@ -11,6 +11,7 @@ import org.springframework.util.StringUtils;
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * {@link OrderReadFacade} 遗留实现：委派现有 {@link ColonelsettlementOrderMapper}，零行为变更。
@@ -136,6 +137,29 @@ public class LegacyOrderReadFacade implements OrderReadFacade {
         Page<ColonelsettlementOrder> page = new Page<>(safePageNo, safePageSize);
         Page<ColonelsettlementOrder> result = orderMapper.selectPage(page, new LambdaQueryWrapper<ColonelsettlementOrder>()
                 .ge(ColonelsettlementOrder::getCreateTime, createStart));
+        if (result == null || result.getRecords() == null) {
+            return new OrderPage(List.of(), 0L);
+        }
+        return new OrderPage(result.getRecords(), result.getPages());
+    }
+
+    @Override
+    public OrderPage findOrdersSettledSince(LocalDateTime settleStart, UUID userId, UUID deptId, long pageNo, long pageSize) {
+        if (settleStart == null) {
+            return new OrderPage(List.of(), 0L);
+        }
+        long safePageNo = Math.max(1L, pageNo);
+        long safePageSize = Math.max(1L, Math.min(pageSize, MAX_LIMIT));
+        Page<ColonelsettlementOrder> page = new Page<>(safePageNo, safePageSize);
+        LambdaQueryWrapper<ColonelsettlementOrder> wrapper = new LambdaQueryWrapper<ColonelsettlementOrder>()
+                .ge(ColonelsettlementOrder::getSettleTime, settleStart);
+        if (userId != null) {
+            wrapper.eq(ColonelsettlementOrder::getUserId, userId);
+        }
+        if (deptId != null) {
+            wrapper.eq(ColonelsettlementOrder::getDeptId, deptId);
+        }
+        Page<ColonelsettlementOrder> result = orderMapper.selectPage(page, wrapper);
         if (result == null || result.getRecords() == null) {
             return new OrderPage(List.of(), 0L);
         }

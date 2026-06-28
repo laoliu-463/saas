@@ -8,7 +8,6 @@ import com.colonel.saas.domain.sample.facade.SampleDomainFacade;
 import com.colonel.saas.domain.talent.application.TalentClaimApplicationService;
 import com.colonel.saas.domain.talent.application.TalentProfileApplicationService;
 import com.colonel.saas.entity.Talent;
-import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.domain.user.policy.DataScopePolicy;
@@ -44,8 +43,6 @@ class TalentServiceBatchImportTest {
     @Mock
     private TalentEnrichOrchestrator talentEnrichOrchestrator;
     @Mock
-    private ColonelsettlementOrderMapper orderMapper;
-    @Mock
     private SampleDomainFacade sampleDomainFacade;
     @Mock
     private RedisTemplate<String, Object> redisTemplate;
@@ -71,7 +68,7 @@ class TalentServiceBatchImportTest {
                 talentClaimMapper,
                 talentEnrichTaskMapper,
                 talentEnrichOrchestrator,
-                orderMapper,
+                orderReadFacade,
                 sampleDomainFacade,
                 redisTemplate,
                 crawlerTalentInfoService,

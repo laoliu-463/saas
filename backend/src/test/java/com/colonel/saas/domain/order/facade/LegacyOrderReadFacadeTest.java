@@ -1,5 +1,6 @@
 package com.colonel.saas.domain.order.facade;
 
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -10,6 +11,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -81,6 +83,26 @@ class LegacyOrderReadFacadeTest {
 
         assertThat(result).hasSize(1);
         verify(orderMapper).selectList(any());
+    }
+
+    @Test
+    void findOrdersSettledSince_shouldDelegateToMapperWithScopeFilters() {
+        ColonelsettlementOrder order = order("ORD-4");
+        Page<ColonelsettlementOrder> page = new Page<>(1, 2000, 1);
+        page.setRecords(List.of(order));
+        when(orderMapper.selectPage(any(), any())).thenReturn(page);
+
+        OrderReadFacade.OrderPage result = facade.findOrdersSettledSince(
+                LocalDateTime.of(2026, 6, 1, 0, 0),
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                1L,
+                99999L);
+
+        assertThat(result.records()).containsExactly(order);
+        assertThat(result.pages()).isEqualTo(1L);
+        verify(orderMapper).selectPage(any(), any());
+        assertThat(facade.findOrdersSettledSince(null, null, null, 1L, 2000L).records()).isEmpty();
     }
 
     private static ColonelsettlementOrder order(String orderId) {

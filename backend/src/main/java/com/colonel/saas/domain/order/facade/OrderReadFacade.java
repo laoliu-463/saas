@@ -5,6 +5,7 @@ import com.colonel.saas.entity.ColonelsettlementOrder;
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * 订单域内部读门面（DDD-CLEAN-003）。
@@ -44,6 +45,9 @@ public interface OrderReadFacade {
 
     /** 按 createTime 起点分页读取订单事实。 */
     OrderPage findOrdersCreatedSince(LocalDateTime createStart, long pageNo, long pageSize);
+
+    /** 按 settleTime 起点分页读取订单事实，可选按用户或部门过滤。 */
+    OrderPage findOrdersSettledSince(LocalDateTime settleStart, UUID userId, UUID deptId, long pageNo, long pageSize);
 
     record OrderPage(List<ColonelsettlementOrder> records, long pages) {
     }

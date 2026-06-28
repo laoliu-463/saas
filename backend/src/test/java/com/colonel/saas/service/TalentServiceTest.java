@@ -17,7 +17,6 @@ import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.entity.TalentClaim;
 import com.colonel.saas.entity.TalentEnrichTask;
-import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.mapper.TalentClaimMapper;
 import com.colonel.saas.mapper.TalentEnrichTaskMapper;
 import com.colonel.saas.mapper.TalentMapper;
@@ -53,6 +52,8 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
@@ -72,8 +73,6 @@ class TalentServiceTest {
     private TalentClaimMapper talentClaimMapper;
     @Mock
     private TalentEnrichTaskMapper talentEnrichTaskMapper;
-    @Mock
-    private ColonelsettlementOrderMapper orderMapper;
     @Mock
     private SampleDomainFacade sampleDomainFacade;
     @Mock
@@ -104,7 +103,7 @@ class TalentServiceTest {
                 talentClaimMapper,
                 talentEnrichTaskMapper,
                 talentEnrichOrchestrator,
-                orderMapper,
+                orderReadFacade,
                 sampleDomainFacade,
                 redisTemplate,
                 crawlerTalentInfoService,
@@ -239,8 +238,8 @@ class TalentServiceTest {
 
         assertThat(source)
                 .contains("dddRefactorProperties.getDataScopePolicy().isEnabled()")
-                .contains("applyExclusiveDataScopeLegacy")
-                .contains("applyExclusiveDataScopeWithPolicy")
+                .contains("resolveExclusiveOrderScopeLegacy")
+                .contains("resolveExclusiveOrderScopeWithPolicy")
                 .contains("dataScopePolicy.contextRequirement")
                 .contains("dataScopePolicy.decide");
     }
@@ -857,7 +856,7 @@ class TalentServiceTest {
                 talentClaimMapper,
                 talentEnrichTaskMapper,
                 talentEnrichOrchestrator,
-                orderMapper,
+                orderReadFacade,
                 sampleDomainFacade,
                 redisTemplate,
                 crawlerTalentInfoService,
@@ -988,13 +987,18 @@ class TalentServiceTest {
         order2.setExtraData(Map.of("author_id", "dy_other"));
 
         when(talentMapper.selectById(talentId)).thenReturn(talent);
-        Page<com.colonel.saas.entity.ColonelsettlementOrder> orderPage = new Page<>(1, 2000, 2);
-        orderPage.setRecords(List.of(order1, order2));
-        when(orderMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class))).thenReturn(orderPage);
+        UUID userId = UUID.randomUUID();
+        when(orderReadFacade.findOrdersSettledSince(
+                any(LocalDateTime.class),
+                eq(userId),
+                isNull(),
+                eq(1L),
+                eq(2000L)))
+                .thenReturn(new OrderReadFacade.OrderPage(List.of(order1, order2), 1L));
         when(sampleDomainFacade.countSamplesByTalentIdSince(eq(talentId), any(LocalDateTime.class))).thenReturn(15L);
 
         TalentService.ExclusiveCheckResult result = talentService.evaluateExclusive(
-                talentId, DataScope.PERSONAL, UUID.randomUUID(), null);
+                talentId, DataScope.PERSONAL, userId, null);
 
         assertThat(result.eligible()).isTrue();
         assertThat(result.serviceFeeRatio()).isEqualTo(70L);
@@ -1012,9 +1016,13 @@ class TalentServiceTest {
 
         com.colonel.saas.entity.ColonelsettlementOrder order = new com.colonel.saas.entity.ColonelsettlementOrder();
         order.setExtraData(Map.of("talent_uid", "dy_zero"));
-        Page<com.colonel.saas.entity.ColonelsettlementOrder> orderPage = new Page<>(1, 2000, 1);
-        orderPage.setRecords(List.of(order));
-        when(orderMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class))).thenReturn(orderPage);
+        when(orderReadFacade.findOrdersSettledSince(
+                any(LocalDateTime.class),
+                isNull(),
+                eq(deptId),
+                eq(1L),
+                eq(2000L)))
+                .thenReturn(new OrderReadFacade.OrderPage(List.of(order), 1L));
         when(sampleDomainFacade.countSamplesByTalentIdSince(eq(talentId), any(LocalDateTime.class))).thenReturn(0L);
 
         TalentService.ExclusiveCheckResult result = talentService.evaluateExclusive(talentId, DataScope.DEPT, null, deptId);
@@ -1036,9 +1044,13 @@ class TalentServiceTest {
         talent.setDeleted(0);
 
         when(talentMapper.selectById(talentId)).thenReturn(talent);
-        Page<com.colonel.saas.entity.ColonelsettlementOrder> orderPage = new Page<>(1, 2000, 0);
-        orderPage.setRecords(List.of());
-        when(orderMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class))).thenReturn(orderPage);
+        when(orderReadFacade.findOrdersSettledSince(
+                any(LocalDateTime.class),
+                nullable(UUID.class),
+                nullable(UUID.class),
+                anyLong(),
+                eq(2000L)))
+                .thenReturn(new OrderReadFacade.OrderPage(List.of(), 0L));
         when(sampleDomainFacade.countSamplesByTalentIdSince(eq(talentId), any(LocalDateTime.class))).thenReturn(0L);
 
         enabledService.evaluateExclusive(talentId, DataScope.PERSONAL, userId, null);
@@ -1051,7 +1063,12 @@ class TalentServiceTest {
         verify(dataScopePolicy).decide(null, deptId, DataScope.DEPT);
         verify(dataScopePolicy).contextRequirement(null, null, DataScope.PERSONAL);
         verify(dataScopePolicy, never()).decide(null, null, DataScope.PERSONAL);
-        verify(orderMapper, times(3)).selectPage(any(Page.class), any(LambdaQueryWrapper.class));
+        verify(orderReadFacade, times(3)).findOrdersSettledSince(
+                any(LocalDateTime.class),
+                nullable(UUID.class),
+                nullable(UUID.class),
+                eq(1L),
+                eq(2000L));
     }
 
     @Test
@@ -1333,7 +1350,7 @@ class TalentServiceTest {
                 talentClaimMapper,
                 talentEnrichTaskMapper,
                 talentEnrichOrchestrator,
-                orderMapper,
+                orderReadFacade,
                 sampleDomainFacade,
                 redisTemplate,
                 crawlerTalentInfoService,
