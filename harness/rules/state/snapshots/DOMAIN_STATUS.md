@@ -174,14 +174,17 @@
 - 标记：P0。
 
 ## 前端
+- 最新边界变化：#156 已完成商品/订单/分析页面 API 对齐审计，覆盖 orders/dashboard/data/ops/product/sample/talent/system/profile 九个 view domains；talent/dashboard/profile 为单域 clean，orders/system 为平台模块引用，data/ops 为聚合视图，product/sample 的 talent/sys/douyin/data 引用均有业务或平台依据。
+- 最新验证：#156 `Scope=docs` 审计脚本支持多行 import 解析，未发现前端页面直接组装跨域业务事实；GitHub #156 已关闭。
+- 最新报告路径：#156 `harness/reports/2026-06-21/ddd100-frontend-03-156/evidence-20260628-135154-product-order-analytics-api-alignment-pass.md`。
 - 最新边界变化：#155 已将前端历史角色码兼容从 `stores/auth.ts` 收口到 `constants/rbac.ts`，并明确该模块只负责路由、菜单和按钮 UI 可见性，不替代后端用户域鉴权；商品列表/详情、活动列表、达人页和寄样导出入口改为消费 `ROLE_CODES` / `hasAccess` / `hasAnyRole`，不再维护散落裸角色字符串。
 - 最新验证：`git diff --check` PASS；`npm run test -- src/constants/rbac.test.ts src/views/sample/sample-permissions.test.ts src/views/talent/constants.test.ts src/router/guard.test.ts src/router/navigation.test.ts src/views/product/ActivityList.test.ts` PASS（6 files / 40 tests）；`npm run build` PASS。
 - 最新报告路径：#155 `harness/reports/2026-06-28/ddd-complete-frontend-155/evidence-20260628-frontend-rbac-boundary-cleanup.md`。
 - 最新边界变化：#154 已完成前端 API client/store 领域边界 inventory；`frontend/src/api/*` 按商品/活动、订单、分析、达人、寄样、用户/认证、配置、抖音运维网关归类，`frontend/src/stores` 仅有 auth/app/permissionHint 三个全局 store，无 product/order/talent/sample 等领域 Pinia store。
 - 最新验证：code-review-graph 未覆盖前端节点，已回退源码扫描；`utils/request.ts` 统一 `baseURL=/api`，API modules 只调用内部后端路径；非 wrapper `fetch` 仅命中 `/api/system/env` 与 `/api/auth/logout`；`api/douyin.ts` 通过内部 `/douyin/**` gateway，不直连开放平台。
 - 最新报告路径：#154 `harness/reports/2026-06-28/ddd-complete-frontend-154/evidence-20260628-114717-frontend-api-store-inventory.md`。
-- 当前风险：前端仍有 UI 侧状态展示 helper（product/sample status display helpers）和页面领域 API 对齐工作；这些 helper 只能作为 display/gating，不能成为后端业务状态机或权限事实。权限与数据范围 UI 后端权威化仍由 #158 深化。
-- DDD 优化下一步：#156 商品/订单/分析页面领域 API 对齐。
+- 当前风险：前端仍有 UI 侧状态展示 helper（product/sample status display helpers）和达人/寄样页面领域 API 对齐工作；这些 helper 只能作为 display/gating，不能成为后端业务状态机或权限事实。权限与数据范围 UI 后端权威化仍由 #158 深化。
+- DDD 优化下一步：#157 达人/寄样页面领域 API 对齐。
 - 标记：P1。
 
 ## Harness
