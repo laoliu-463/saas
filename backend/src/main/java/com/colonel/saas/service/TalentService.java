@@ -22,6 +22,7 @@ import com.colonel.saas.mapper.TalentEnrichTaskMapper;
 import com.colonel.saas.domain.talent.policy.TalentAddressPolicy;
 import com.colonel.saas.domain.talent.policy.TalentClaimPolicy;
 import com.colonel.saas.domain.talent.policy.TalentTagPolicy;
+import com.colonel.saas.domain.talent.application.TalentProfileApplicationService;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.domain.user.facade.dto.UserOwnershipReference;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
@@ -141,6 +142,7 @@ public class TalentService {
     /** 业务规则配置服务（保护期、独家阈值、预设标签等） */
     private final com.colonel.saas.domain.config.facade.ConfigDomainFacade configDomainFacade;
     private final BusinessRuleConfigService businessRuleConfigService;
+    private final TalentProfileApplicationService talentProfileApplicationService;
     /** 操作日志服务（用于认领/释放/归属覆盖等操作审计） */
     private final OperationLogService operationLogService;
     /** 系统用户 Mapper（用于归属覆盖时校验目标负责人） */
@@ -184,6 +186,7 @@ public class TalentService {
             @Value("${talent.data.public-page-crawl-enabled:false}") boolean publicPageCrawlEnabled,
             com.colonel.saas.domain.config.facade.ConfigDomainFacade configDomainFacade,
             BusinessRuleConfigService businessRuleConfigService,
+            TalentProfileApplicationService talentProfileApplicationService,
             OperationLogService operationLogService,
             UserDomainFacade userDomainFacade,
             CurrentUserPermissionPolicy currentUserPermissionPolicy,
@@ -200,6 +203,7 @@ public class TalentService {
         this.publicPageCrawlEnabled = publicPageCrawlEnabled;
         this.configDomainFacade = configDomainFacade;
         this.businessRuleConfigService = businessRuleConfigService;
+        this.talentProfileApplicationService = talentProfileApplicationService;
         this.operationLogService = operationLogService;
         this.userDomainFacade = userDomainFacade;
         this.currentUserPermissionPolicy = currentUserPermissionPolicy;
@@ -782,7 +786,7 @@ public class TalentService {
      * @return 系统预设的达人标签列表
      */
     public List<String> listPresetTags() {
-        return businessRuleConfigService.getPresetTalentTags();
+        return talentProfileApplicationService.listPresetTags();
     }
 
     /**
@@ -847,8 +851,7 @@ public class TalentService {
      */
     @Transactional(rollbackFor = Exception.class)
     public void delete(UUID id) {
-        getById(id);
-        talentMapper.deleteById(id);
+        talentProfileApplicationService.delete(id);
     }
 
     /**
@@ -1224,7 +1227,7 @@ public class TalentService {
      * @return 最新的补全任务记录，无记录时返回 null
      */
     public TalentEnrichTask getLatestEnrichTask(UUID talentId) {
-        return talentEnrichTaskMapper.findLatestByTalentId(talentId);
+        return talentProfileApplicationService.getLatestEnrichTask(talentId);
     }
 
     /**
