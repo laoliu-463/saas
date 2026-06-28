@@ -22,6 +22,7 @@ import com.colonel.saas.mapper.TalentEnrichTaskMapper;
 import com.colonel.saas.domain.talent.policy.TalentAddressPolicy;
 import com.colonel.saas.domain.talent.policy.TalentClaimPolicy;
 import com.colonel.saas.domain.talent.policy.TalentTagPolicy;
+import com.colonel.saas.domain.talent.application.TalentClaimApplicationService;
 import com.colonel.saas.domain.talent.application.TalentProfileApplicationService;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.domain.user.facade.dto.UserOwnershipReference;
@@ -143,6 +144,7 @@ public class TalentService {
     private final com.colonel.saas.domain.config.facade.ConfigDomainFacade configDomainFacade;
     private final BusinessRuleConfigService businessRuleConfigService;
     private final TalentProfileApplicationService talentProfileApplicationService;
+    private final TalentClaimApplicationService talentClaimApplicationService;
     /** 操作日志服务（用于认领/释放/归属覆盖等操作审计） */
     private final OperationLogService operationLogService;
     /** 系统用户 Mapper（用于归属覆盖时校验目标负责人） */
@@ -187,6 +189,7 @@ public class TalentService {
             com.colonel.saas.domain.config.facade.ConfigDomainFacade configDomainFacade,
             BusinessRuleConfigService businessRuleConfigService,
             TalentProfileApplicationService talentProfileApplicationService,
+            TalentClaimApplicationService talentClaimApplicationService,
             OperationLogService operationLogService,
             UserDomainFacade userDomainFacade,
             CurrentUserPermissionPolicy currentUserPermissionPolicy,
@@ -204,6 +207,7 @@ public class TalentService {
         this.configDomainFacade = configDomainFacade;
         this.businessRuleConfigService = businessRuleConfigService;
         this.talentProfileApplicationService = talentProfileApplicationService;
+        this.talentClaimApplicationService = talentClaimApplicationService;
         this.operationLogService = operationLogService;
         this.userDomainFacade = userDomainFacade;
         this.currentUserPermissionPolicy = currentUserPermissionPolicy;
@@ -1263,31 +1267,7 @@ public class TalentService {
      * @param now 当前时间（用于判断保护期是否过期），为 null 时直接返回
      */
     public void releaseExpiredClaims(LocalDateTime now) {
-        if (now == null) {
-            return;
-        }
-        List<TalentClaim> activeClaims = talentClaimMapper.selectList(new LambdaQueryWrapper<TalentClaim>()
-                .eq(TalentClaim::getStatus, CLAIM_STATUS_ACTIVE)
-                .eq(TalentClaim::getDeleted, 0)
-                .lt(TalentClaim::getProtectedUntil, now));
-        if (activeClaims.isEmpty()) {
-            return;
-        }
-        Set<UUID> talentIds = activeClaims.stream()
-                .map(TalentClaim::getTalentId)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toSet());
-        Map<UUID, Talent> talentMap = talentMapper.selectBatchIds(talentIds).stream()
-                .filter(Objects::nonNull)
-                .collect(Collectors.toMap(Talent::getId, talent -> talent, (left, right) -> left));
-        for (TalentClaim claim : activeClaims) {
-            Talent talent = talentMap.get(claim.getTalentId());
-            if (talent != null && hasOutputSinceClaim(talent, claim)) {
-                continue;
-            }
-            claim.setStatus(CLAIM_STATUS_EXPIRED);
-            persistTalentClaim(claim);
-        }
+        talentClaimApplicationService.releaseExpiredClaims(now);
     }
 
     /**
