@@ -1376,7 +1376,8 @@ class TalentServiceTest {
                 new CurrentUserPermissionPolicy(),
                 dataScopePolicy,
                 operationLogService,
-                properties);
+                properties,
+                redisTemplate);
     }
 
     private Path sourcePath(String backendRelativePath) {

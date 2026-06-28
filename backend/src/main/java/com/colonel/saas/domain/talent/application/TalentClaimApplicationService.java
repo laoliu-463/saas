@@ -101,6 +101,7 @@ public class TalentClaimApplicationService {
      * 认领达人（含 Redis 分布式锁 + 保护期 + 状态机）。
      * 1:1 等价 TalentService.claim(UUID, UUID, UUID) 57 行业务。
      */
+    @Transactional(rollbackFor = Exception.class)
     public Talent claim(UUID talentId, UUID userId, UUID deptId) {
         TalentClaimPolicy.requireClaimUser(userId);
         String lockKey = "talent:claim:lock:" + talentId;
