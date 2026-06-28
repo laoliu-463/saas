@@ -160,17 +160,19 @@ describe('ProductLibrary infinite scroll', () => {
     vi.unstubAllGlobals()
   })
 
-  function createLayoutScrollHarness() {
+  function createLayoutScrollHarness(options: { clientWidth?: number; clientHeight?: number } = {}) {
+    const clientWidth = options.clientWidth ?? 1280
+    const clientHeight = options.clientHeight ?? 900
     const scrollRoot = document.createElement('div')
     scrollRoot.className = 'n-layout-scroll-container'
     scrollRoot.style.overflowY = 'auto'
     Object.defineProperty(scrollRoot, 'clientHeight', {
       configurable: true,
-      value: 900
+      value: clientHeight
     })
     Object.defineProperty(scrollRoot, 'clientWidth', {
       configurable: true,
-      value: 1280
+      value: clientWidth
     })
     Object.defineProperty(scrollRoot, 'scrollHeight', {
       configurable: true,
@@ -184,10 +186,10 @@ describe('ProductLibrary infinite scroll', () => {
     scrollRoot.getBoundingClientRect = () => ({
       top: 0,
       left: 0,
-      bottom: 900,
-      right: 1280,
-      width: 1280,
-      height: 900,
+      bottom: clientHeight,
+      right: clientWidth,
+      width: clientWidth,
+      height: clientHeight,
       x: 0,
       y: 0,
       toJSON: () => ({})
@@ -403,6 +405,42 @@ describe('ProductLibrary infinite scroll', () => {
     expect(wrapper.text()).toContain('已加载 200 件')
     expect(wrapper.findAll('[data-testid="product-card"]').length).toBeLessThan(200)
     expect(wrapper.text()).toContain('已全部加载')
+  })
+
+  it('keeps four virtual columns after measuring a narrower desktop product grid', async () => {
+    vi.mocked(getProducts).mockResolvedValueOnce({
+      data: {
+        records: buildRows(1, 150),
+        total: 150,
+        page: 1,
+        size: 150,
+        hasMore: false,
+        nextCursor: null
+      }
+    } as any)
+
+    const { scrollRoot, mountPoint } = createLayoutScrollHarness({ clientWidth: 1280 })
+    const wrapper = mountLibrary({ attachTo: mountPoint })
+    await flushPromises()
+
+    const grid = wrapper.get('[data-testid="product-grid"]').element as HTMLElement
+    grid.getBoundingClientRect = () => ({
+      top: 0,
+      left: 0,
+      bottom: 20000,
+      right: 1054,
+      width: 1054,
+      height: 20000,
+      x: 0,
+      y: 0,
+      toJSON: () => ({})
+    } as DOMRect)
+
+    scrollRoot.dispatchEvent(new Event('scroll'))
+    await waitForScheduledViewportUpdate()
+
+    const virtualWindow = wrapper.get('[data-testid="product-grid-virtual-window"]').element as HTMLElement
+    expect(virtualWindow.style.gridTemplateColumns).toBe('repeat(4, minmax(0, 1fr))')
   })
 
   it('updates the virtual window when the layout scroll container scrolls', async () => {

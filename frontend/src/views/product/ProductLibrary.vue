@@ -190,7 +190,7 @@ import { tryCopyText } from '../../utils/clipboard'
 
 const PRODUCT_LIBRARY_REQUEST_BATCH_SIZE = 100
 const PRODUCT_LIBRARY_BACKEND_MAX_LIMIT = 500
-const PRODUCT_LIBRARY_CARD_WIDTH = 252
+const PRODUCT_LIBRARY_CARD_MIN_TRACK_WIDTH = 230
 const PRODUCT_LIBRARY_CARD_HEIGHT = 415
 const PRODUCT_LIBRARY_GRID_GAP = 16
 const PRODUCT_LIBRARY_ROW_HEIGHT = PRODUCT_LIBRARY_CARD_HEIGHT + PRODUCT_LIBRARY_GRID_GAP
@@ -441,10 +441,13 @@ const scheduleProductGridViewportUpdate = () => {
 
 const productGridColumnCount = computed(() => {
   const width = productGridWidth.value || viewportWidth.value
-  if (width >= 1600) return 5
-  if (width >= 1280) return 4
   if (width <= 720) return 1
-  return Math.max(1, Math.floor((width + PRODUCT_LIBRARY_GRID_GAP) / (PRODUCT_LIBRARY_CARD_WIDTH + PRODUCT_LIBRARY_GRID_GAP)))
+  const maxColumns = (viewportWidth.value || width) >= 1600 ? 5 : 4
+  const fitColumns = Math.max(
+    1,
+    Math.floor((width + PRODUCT_LIBRARY_GRID_GAP) / (PRODUCT_LIBRARY_CARD_MIN_TRACK_WIDTH + PRODUCT_LIBRARY_GRID_GAP))
+  )
+  return Math.min(maxColumns, fitColumns)
 })
 
 const mobileProductGrid = computed(() => viewportWidth.value <= 720 || coarsePointerGrid.value)
@@ -994,7 +997,7 @@ onBeforeUnmount(() => {
 
 .product-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(252px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
   gap: 16px;
   align-items: start;
   justify-items: center;

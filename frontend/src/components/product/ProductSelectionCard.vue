@@ -460,9 +460,11 @@ const copyField = async (text: string | undefined, label: string) => {
    ============================================================ */
 .selection-card {
   position: relative;
-  width: 252px;
+  width: min(252px, 100%);
+  max-width: 252px;
   height: 415px;
   min-height: 415px;
+  box-sizing: border-box;
   container-type: inline-size;
   background: #fff;
   border-radius: 12px;
