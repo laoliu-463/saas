@@ -164,7 +164,7 @@
 - 标记：P0。
 
 ## 达人域
-- 最新边界变化：DDD-TALENT-PROFILE-CREATE 已将 `TalentService.create` 的输入解析、重复校验、enrich task、爬虫补全和持久化编排迁入 `TalentProfileApplicationService.create`，旧 `TalentService` 保留 thin delegation；仍留在旧壳的 manualFill / refresh / 认领路径保留必要 legacy helper，未扩大迁移边界。验证：`TalentProfileApplicationServiceTest`、`TalentServiceBatchImportTest`、`TalentServiceTest` PASS。
+- 最新边界变化：DDD-TALENT-PROFILE-WRITE 已将 `TalentService.create/manualFill/refresh` 资料写侧编排迁入 `TalentProfileApplicationService`，旧 `TalentService` 保留 thin delegation；达人预设标签启动器不再直接注入 `SystemConfigMapper`，改为通过配置域 `ConfigSeedFacade` 声明默认标签，由配置域负责缺失写入。验证：`TalentProfileApplicationServiceTest`、`TalentServiceBatchImportTest`、`TalentServiceTest`、`TalentPresetTagsBootstrapTest`、`LegacyConfigSeedFacadeTest`、`DddCrossDomainMapperGuardTest` PASS；报告：`harness/reports/evidence-20260628-190112.md`；retro：`harness/reports/retro-20260628-190149.md`。
 - 最新边界变化：`TalentService.evaluateExclusive` 独家达人评估订单查询数据范围新增灰度开启的用户域 `DataScopePolicy` 路径，默认关闭仍走 Legacy PERSONAL user / DEPT dept 过滤；本轮未改独家评估公式、订单佣金读取、寄样次数统计、达人认领规则、黑名单、第三方接口或真实数据。报告：`harness/archive/by-date/report-packages/reports-20260622-ddd-datascope-afternoon-1430-1722.zip` 内 `evidence-20260622-151700.md`。
 - 近期边界变化：`TalentService.blacklist/unblacklist`、`TalentService.page` 和 `TalentQueryService.detail` 已新增灰度开启的用户域 `DataScopePolicy` 路径；`TalentService.release` 管理员角色编码匹配、`TalentQueryService.assertCanOperate` 操作访问角色匹配已委托用户域 policy；达人归属覆盖已通过用户域 `loadUserOwnershipReferencesByIds` 校验目标负责人存在，不再读取完整用户 DTO，既有达人认领记录 `deptId` 写入行为不变。
 - 当前状态：达人资料、标签、地址和跟进主链路已具备。
