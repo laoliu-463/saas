@@ -1,9 +1,7 @@
 package com.colonel.saas.service;
 
 import com.colonel.saas.config.SystemConfigKeys;
-import com.colonel.saas.entity.SystemConfig;
-import com.colonel.saas.mapper.SystemConfigMapper;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.colonel.saas.domain.config.facade.ConfigSeedFacade;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
@@ -11,7 +9,6 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
-import java.util.UUID;
 
 /**
  * 达人预设标签库初始化引导。
@@ -29,8 +26,7 @@ import java.util.UUID;
  * <p><b>业务域：</b>达人域 — 预设标签初始化</p>
  * <p><b>协作关系：</b></p>
  * <ul>
- *     <li>{@link SystemConfigMapper} — 系统配置数据访问</li>
- *     <li>{@link ObjectMapper} — JSON 序列化</li>
+ *     <li>{@link ConfigSeedFacade} — 配置域种子数据门面</li>
  * </ul>
  *
  * @see SystemConfigKeys#PRESET_TALENT_TAGS
@@ -58,14 +54,11 @@ public class TalentPresetTagsBootstrap implements ApplicationRunner {
             "价格敏感",
             "需要复盘");
 
-    /** 系统配置数据访问 Mapper */
-    private final SystemConfigMapper systemConfigMapper;
-    /** JSON 序列化工具 */
-    private final ObjectMapper objectMapper;
+    /** 配置域种子数据门面 */
+    private final ConfigSeedFacade configSeedFacade;
 
-    public TalentPresetTagsBootstrap(SystemConfigMapper systemConfigMapper, ObjectMapper objectMapper) {
-        this.systemConfigMapper = systemConfigMapper;
-        this.objectMapper = objectMapper;
+    public TalentPresetTagsBootstrap(ConfigSeedFacade configSeedFacade) {
+        this.configSeedFacade = configSeedFacade;
     }
 
     /**
@@ -81,21 +74,14 @@ public class TalentPresetTagsBootstrap implements ApplicationRunner {
      * @throws Exception JSON 序列化或数据库操作异常
      */
     @Override
-    public void run(ApplicationArguments args) throws Exception {
-        // 第一步：检查预设标签配置是否已存在
-        if (systemConfigMapper.findByConfigKey(SystemConfigKeys.PRESET_TALENT_TAGS).isPresent()) {
-            return;
+    public void run(ApplicationArguments args) {
+        boolean created = configSeedFacade.createJsonConfigIfMissing(
+                SystemConfigKeys.PRESET_TALENT_TAGS,
+                DEFAULT_PRESET_TAGS,
+                "talent",
+                "达人预设标签库");
+        if (created) {
+            log.info("Initialized preset talent tags ({} items)", DEFAULT_PRESET_TAGS.size());
         }
-        // 第二步：构建系统配置实体并写入默认标签
-        SystemConfig config = new SystemConfig();
-        config.setId(UUID.randomUUID());
-        config.setConfigKey(SystemConfigKeys.PRESET_TALENT_TAGS);
-        config.setConfigValue(objectMapper.writeValueAsString(DEFAULT_PRESET_TAGS));
-        config.setConfigType("json");
-        config.setConfigGroup("talent");
-        config.setConfigName("达人预设标签库");
-        config.setStatus(1);
-        systemConfigMapper.insert(config);
-        log.info("Initialized preset talent tags ({} items)", DEFAULT_PRESET_TAGS.size());
     }
 }

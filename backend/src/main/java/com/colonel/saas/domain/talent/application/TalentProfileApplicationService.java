@@ -30,10 +30,10 @@ import java.util.UUID;
  * 自包含业务编排（旧 TalentService 同名方法迁入），保留 1:1 行为等价。
  * Legacy {@code TalentService} 保留为薄壳委派壳，不删除兜底路径。</p>
  *
- * <p>当前 Slice 4 范围：{@code create(Talent)} + 6 个常量 + 4 个
+ * <p>当前 Slice 4 范围：{@code create/manualFill/refresh(Talent)} + 6 个常量 + 4 个
  * enrich helper（{@code createEnrichTask / markEnrichTask / persistTalent /
  * enrichTalentInfo / resolveInputValue / resolveInputType}）。
- * 1:1 等价 TalentService.create() 87 行业务编排。</p>
+ * 1:1 等价 TalentService 资料写侧编排。</p>
  *
  * <p><b>业务域：</b>达人域 — 资料管理</p>
  */
@@ -111,6 +111,7 @@ public class TalentProfileApplicationService {
      * 更新达人标签（带 operator 版本）。
      * 1:1 等价 TalentService.updateTags(UUID, List<String>, UUID)。
      */
+    @Transactional(rollbackFor = Exception.class)
     public List<String> updateTags(UUID id, List<String> tags, UUID operatorId) {
         Talent talent = talentMapper.selectById(id);
         if (talent == null) {
@@ -124,9 +125,98 @@ public class TalentProfileApplicationService {
     }
 
     /**
+     * 获取达人（含软删除校验）。
+     * 1:1 等价 TalentService.getById(UUID)。
+     */
+    public Talent getById(UUID id) {
+        Talent talent = talentMapper.selectById(id);
+        if (talent == null || (talent.getDeleted() != null && talent.getDeleted() == 1)) {
+            throw BusinessException.notFound("达人不存在");
+        }
+        return talent;
+    }
+
+    /**
+     * 手动补全达人信息。
+     * 1:1 等价 TalentService.manualFill(UUID, Talent) 38 行业务。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public Talent manualFill(UUID talentId, Talent request) {
+        Talent talent = getById(talentId);
+        if (StringUtils.hasText(request.getNickname())) {
+            talent.setNickname(request.getNickname().trim());
+        }
+        if (StringUtils.hasText(request.getAvatarUrl())) {
+            talent.setAvatarUrl(request.getAvatarUrl().trim());
+        }
+        if (request.getFans() != null) {
+            talent.setFans(request.getFans());
+        }
+        if (request.getLikesCount() != null) {
+            talent.setLikesCount(request.getLikesCount());
+        }
+        if (request.getFollowingCount() != null) {
+            talent.setFollowingCount(request.getFollowingCount());
+        }
+        if (request.getWorksCount() != null) {
+            talent.setWorksCount(request.getWorksCount());
+        }
+        if (StringUtils.hasText(request.getIpLocation())) {
+            talent.setIpLocation(request.getIpLocation().trim());
+        }
+        if (StringUtils.hasText(request.getContactPhone())) {
+            talent.setContactPhone(request.getContactPhone().trim());
+        }
+        if (StringUtils.hasText(request.getContactWechat())) {
+            talent.setContactWechat(request.getContactWechat().trim());
+        }
+        if (StringUtils.hasText(request.getIntro())) {
+            talent.setIntro(request.getIntro().trim());
+        }
+        talent.setDataSource("MANUAL");
+        talent.setEnrichStatus("SUCCESS");
+        talent.setLastEnrichTime(LocalDateTime.now());
+        persistTalent(talent);
+        return talent;
+    }
+
+    /**
+     * 刷新达人信息（含 orchestrate + crawl）。
+     * 1:1 等价 TalentService.refresh(UUID) 26 行业务。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public Talent refresh(UUID talentId) {
+        Talent talent = getById(talentId);
+        TalentEnrichTask task = createEnrichTask(talent, "RUNNING", null);
+        try {
+            TalentEnrichOrchestrator.OrchestrateResult orchestrateResult = talentEnrichOrchestrator.enrich(talent, true);
+            if (publicPageCrawlEnabled) {
+                enrichTalentInfo(talent, true);
+            }
+            persistTalent(talent);
+            if (orchestrateResult.updated()) {
+                markEnrichTask(task, "SUCCESS", null);
+            } else {
+                talent.setEnrichStatus("WAIT_MANUAL");
+                talent.setLastEnrichTime(LocalDateTime.now());
+                persistTalent(talent);
+                markEnrichTask(task, "WAIT_MANUAL", orchestrateResult.message());
+            }
+            return talent;
+        } catch (RuntimeException ex) {
+            talent.setEnrichStatus("FAILED");
+            talent.setLastEnrichTime(LocalDateTime.now());
+            persistTalent(talent);
+            markEnrichTask(task, "FAILED", ex.getMessage());
+            return talent;
+        }
+    }
+
+    /**
      * 创建达人 (含抖音号解析/重复校验/enrich 编排)。
      * 1:1 等价 TalentService.create(Talent) 87 行业务编排。
      */
+    @Transactional(rollbackFor = Exception.class)
     public Talent create(Talent request) {
         if (!StringUtils.hasText(request.getDouyinUid())) {
             String fallbackInput = StringUtils.hasText(request.getProfileUrl())
