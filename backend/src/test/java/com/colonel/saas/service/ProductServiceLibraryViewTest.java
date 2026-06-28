@@ -37,6 +37,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -116,6 +117,43 @@ class ProductServiceLibraryViewTest {
             MapperBuilderAssistant assistant = new MapperBuilderAssistant(configuration, "");
             TableInfoHelper.initTableInfo(assistant, entityClass);
         }
+    }
+
+    @Test
+    void getSelectedLibraryPage_shouldBatchLoadActivityNameAndProtectionMetadata() {
+        String firstActivityId = "ACT-LIB-META-1";
+        String secondActivityId = "ACT-LIB-META-2";
+
+        ProductOperationState firstState = state(firstActivityId, "P-LIB-META-1");
+        ProductOperationState secondState = state(secondActivityId, "P-LIB-META-2");
+        Page<ProductOperationState> statePage = new Page<>(1, 50);
+        statePage.setRecords(List.of(firstState, secondState));
+        statePage.setTotal(2);
+        when(operationStateMapper.selectPage(any(), any())).thenReturn(statePage);
+
+        ProductSnapshot firstSnapshot = snapshot(firstActivityId, "P-LIB-META-1", "第一件商品");
+        ProductSnapshot secondSnapshot = snapshot(secondActivityId, "P-LIB-META-2", "第二件商品");
+        when(snapshotMapper.selectBatchIds(anyList())).thenReturn(List.of(firstSnapshot, secondSnapshot));
+
+        ColonelsettlementActivity firstActivity = new ColonelsettlementActivity();
+        firstActivity.setActivityId(firstActivityId);
+        firstActivity.setName("第一场活动");
+        firstActivity.setMonthsOfProtection(3);
+        ColonelsettlementActivity secondActivity = new ColonelsettlementActivity();
+        secondActivity.setActivityId(secondActivityId);
+        secondActivity.setName("第二场活动");
+        secondActivity.setMonthsOfProtection(6);
+        when(colonelActivityMapper.selectNamesByActivityIds(anyList())).thenReturn(List.of(firstActivity, secondActivity));
+
+        IPage<Product> result = productService.getSelectedLibraryPage(
+                1, 20, ProductService.SelectedLibraryFilter.empty());
+
+        assertThat(result.getRecords())
+                .extracting(Product::getActivityName)
+                .containsExactlyInAnyOrder("第一场活动", "第二场活动");
+        assertThat(firstSnapshot.getMonthsOfProtection()).isEqualTo(3);
+        assertThat(secondSnapshot.getMonthsOfProtection()).isEqualTo(6);
+        verify(colonelActivityMapper, never()).selectByActivityId(any());
     }
 
     @Test
@@ -292,5 +330,28 @@ class ProductServiceLibraryViewTest {
 
     private static UUID buildSnapshotId(String activityId, String productId) {
         return UUID.nameUUIDFromBytes((activityId + ":" + productId).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    }
+
+    private static ProductOperationState state(String activityId, String productId) {
+        ProductOperationState state = new ProductOperationState();
+        state.setActivityId(activityId);
+        state.setProductId(productId);
+        state.setSelectedToLibrary(true);
+        state.setDisplayStatus("DISPLAYING");
+        state.setAuditStatus(2);
+        state.setManualDisabled(false);
+        return state;
+    }
+
+    private static ProductSnapshot snapshot(String activityId, String productId, String title) {
+        ProductSnapshot snapshot = new ProductSnapshot();
+        snapshot.setActivityId(activityId);
+        snapshot.setProductId(productId);
+        snapshot.setTitle(title);
+        snapshot.setStatus(1);
+        snapshot.setStatusText("推广中");
+        snapshot.setSales(0L);
+        snapshot.setId(buildSnapshotId(activityId, productId));
+        return snapshot;
     }
 }

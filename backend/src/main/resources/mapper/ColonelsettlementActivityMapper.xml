@@ -256,7 +256,8 @@
     <select id="selectNamesByActivityIds" resultType="com.colonel.saas.entity.ColonelsettlementActivity">
         SELECT
             activity_id AS activityId,
-            activity_name AS name
+            activity_name AS name,
+            months_of_protection AS monthsOfProtection
         FROM colonel_activity
         WHERE deleted = 0
           AND activity_id IN

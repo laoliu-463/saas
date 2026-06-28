@@ -11,6 +11,7 @@ import com.colonel.saas.domain.product.event.ProductDomainEventPublisher;
 import com.colonel.saas.domain.product.application.CopyPromotionApplicationService;
 import com.colonel.saas.domain.product.policy.ActivityProductPagePolicy;
 import com.colonel.saas.domain.product.policy.ProductDisplayPolicy;
+import com.colonel.saas.domain.product.policy.ProductLibrarySortPolicy;
 import com.colonel.saas.domain.product.policy.ProductPinPolicy;
 import com.colonel.saas.dto.product.ProductFilterOptionItem;
 import com.colonel.saas.dto.product.ProductFilterOptionsDTO;
@@ -164,6 +165,8 @@ public class ProductService {
     private final ProductDomainEventPublisher productDomainEventPublisher;
     /** 商品库展示优先级策略（DDD-PRODUCT-002，不含置顶） */
     private final ProductDisplayPolicy productDisplayPolicy;
+    /** 商品库排序策略（置顶 / 投流 / 佣金 / 入库时间）。 */
+    private final ProductLibrarySortPolicy productLibrarySortPolicy;
     /** 商品审核状态和日志语义策略（DDD100-PRODUCT-STATUS）。 */
     private final ProductAuditDecisionPolicy productAuditDecisionPolicy = new ProductAuditDecisionPolicy();
     /** 商品操作日志与状态操作语义策略（DDD100-PRODUCT-STATUS）。 */
@@ -230,6 +233,7 @@ public class ProductService {
         this.colonelPartnerSyncService = colonelPartnerSyncService;
         this.productDomainEventPublisher = productDomainEventPublisher;
         this.productDisplayPolicy = productDisplayPolicy;
+        this.productLibrarySortPolicy = new ProductLibrarySortPolicy(productDisplayPolicy);
         this.copyPromotionApplicationService = copyPromotionApplicationService;
         this.productSnapshotQueryService = new com.colonel.saas.domain.product.query.ProductSnapshotQueryService(snapshotMapper);
         this.activityProductReadModelQueryService = new com.colonel.saas.domain.product.query.ActivityProductReadModelQueryService(
@@ -312,7 +316,7 @@ public class ProductService {
         }
 
         List<Product> allMatched = collectSelectedLibraryProducts(safeFilter);
-        sortSelectedLibraryProducts(allMatched, safeFilter.sortBy());
+        productLibrarySortPolicy.sort(allMatched, safeFilter.sortBy(), this::toLibrarySortKey);
 
         long total = allMatched.size();
         int fromIndex = (int) Math.min((currentPage - 1) * pageSize, total);
@@ -360,16 +364,16 @@ public class ProductService {
             if (stateBatch == null || stateBatch.isEmpty()) {
                 break;
             }
-            Map<String, ProductSnapshot> snapshotMap = loadSnapshotsForStateBatch(stateBatch);
+            Set<String> activityIds = stateBatch.stream()
+                    .map(ProductOperationState::getActivityId)
+                    .collect(Collectors.toCollection(LinkedHashSet::new));
+            Map<String, ActivityLibraryMetadata> activityMetadataMap = loadActivityLibraryMetadataMap(activityIds);
+            Map<String, ProductSnapshot> snapshotMap = loadSnapshotsForStateBatch(stateBatch, activityMetadataMap);
             Map<UUID, String> assigneeNameMap = loadUserDisplayNames(stateBatch.stream()
                     .map(ProductOperationState::getAssigneeId)
                     .filter(java.util.Objects::nonNull)
                     .collect(Collectors.toCollection(LinkedHashSet::new)));
-            // [V1 必做] 一次性查活动名映射，避免在循环里逐条查 colonel_activity。
-            // 活动 ID 集合是按当前分批 state 收集的，最坏情况 batchSize 条记录，1 次 SQL。
-            Map<String, String> activityNameMap = loadActivityNameMap(stateBatch.stream()
-                    .map(ProductOperationState::getActivityId)
-                    .collect(Collectors.toCollection(LinkedHashSet::new)));
+            Map<String, String> activityNameMap = toActivityNameMap(activityMetadataMap);
             for (ProductOperationState state : stateBatch) {
                 ProductSnapshot snapshot = snapshotMap.get(stateBatchKey(state.getActivityId(), state.getProductId()));
                 if (snapshot == null) {
@@ -391,75 +395,6 @@ public class ProductService {
             statePageNo++;
         }
         return matched;
-    }
-
-    private void sortSelectedLibraryProducts(List<Product> products, String sortBy) {
-        if (products == null || products.size() <= 1) {
-            return;
-        }
-        if ("latest".equals(sortBy)) {
-            products.sort(Comparator.comparing(
-                    Product::getSelectedAt,
-                    Comparator.nullsLast(Comparator.reverseOrder())));
-            return;
-        }
-        products.sort(this::compareLibraryProducts);
-    }
-
-    /**
-     * P-09 fix: 商品库展示优先级规则（优先级递减）：
-     * 1. 置顶商品优先（24h内）
-     * 2. 有推广链接（投流）优先
-     * 3. 高佣金（activityCosRatio 数值大的优先）
-     * 4. 晚上架优先（selectedAt 更晚的优先）
-     * 置顶商品内部再按上述 2-4 规则二次排序。
-     */
-    private int compareLibraryProducts(Product left, Product right) {
-        boolean leftPinned = isPinnedAndNotExpired(left);
-        boolean rightPinned = isPinnedAndNotExpired(right);
-        if (leftPinned != rightPinned) {
-            return leftPinned ? -1 : 1;
-        }
-
-        // 同为置顶或同为非置顶，按 2-4 规则二次排序
-        int sub = compareByPromotionCommissionTime(left, right);
-        if (sub != 0) {
-            return sub;
-        }
-
-        // 最后按 selectedAt 倒序（晚上架优先）
-        if (left.getSelectedAt() == null && right.getSelectedAt() == null) {
-            return 0;
-        }
-        if (left.getSelectedAt() == null) {
-            return 1;
-        }
-        if (right.getSelectedAt() == null) {
-            return -1;
-        }
-        return right.getSelectedAt().compareTo(left.getSelectedAt());
-    }
-
-    private boolean isPinnedAndNotExpired(Product p) {
-        return ProductPinPolicy.isPinnedForPresentation(
-                Boolean.TRUE.equals(p.getPinned()),
-                p.getPinnedUntil(),
-                LocalDateTime.now());
-    }
-
-    /**
-     * 投流优先 > 高佣金优先 > 晚上架优先。
-     */
-    private int compareByPromotionCommissionTime(Product left, Product right) {
-        return productDisplayPolicy.compareLibraryPresentation(
-                new ProductDisplayPolicy.LibraryPresentationKey(
-                        productDisplayPolicy.hasPromotionLink(left.getPromoteLink(), left.getShortLink()),
-                        left.getCosRatio(),
-                        left.getSelectedAt()),
-                new ProductDisplayPolicy.LibraryPresentationKey(
-                        productDisplayPolicy.hasPromotionLink(right.getPromoteLink(), right.getShortLink()),
-                        right.getCosRatio(),
-                        right.getSelectedAt()));
     }
 
     public PageResult<Map<String, Object>> getPromotionLinkHistory(String productId, long page, long size) {
@@ -497,6 +432,22 @@ public class ProductService {
     }
 
     private Map<String, ProductSnapshot> loadSnapshotsForStateBatch(List<ProductOperationState> stateBatch) {
+        return loadSnapshotsForStateBatch(stateBatch, null);
+    }
+
+    private ProductLibrarySortPolicy.LibrarySortKey toLibrarySortKey(Product product) {
+        return new ProductLibrarySortPolicy.LibrarySortKey(
+                Boolean.TRUE.equals(product.getPinned()),
+                product.getPinnedUntil(),
+                product.getPromoteLink(),
+                product.getShortLink(),
+                product.getCosRatio(),
+                product.getSelectedAt());
+    }
+
+    private Map<String, ProductSnapshot> loadSnapshotsForStateBatch(
+            List<ProductOperationState> stateBatch,
+            Map<String, ActivityLibraryMetadata> activityMetadataMap) {
         if (stateBatch == null || stateBatch.isEmpty()) {
             return Map.of();
         }
@@ -516,26 +467,12 @@ public class ProductService {
                         LinkedHashMap::new
                 ));
 
-        // 回填 colonel_activity.months_of_protection（非持久化字段）
-        Set<String> activityIds = result.values().stream()
-                .map(ProductSnapshot::getActivityId)
-                .filter(StringUtils::hasText)
-                .collect(Collectors.toSet());
-        if (!activityIds.isEmpty()) {
-            Map<String, Integer> protectionMap = new LinkedHashMap<>();
-            for (String activityId : activityIds) {
-                ColonelsettlementActivity activity = colonelActivityMapper.selectByActivityId(activityId);
-                if (activity != null && activity.getMonthsOfProtection() != null) {
-                    protectionMap.put(activityId, activity.getMonthsOfProtection());
-                }
-            }
-            result.values().forEach(snapshot -> {
-                Integer protection = protectionMap.get(snapshot.getActivityId());
-                if (protection != null) {
-                    snapshot.setMonthsOfProtection(protection);
-                }
-            });
-        }
+        Map<String, ActivityLibraryMetadata> metadataMap = activityMetadataMap == null
+                ? loadActivityLibraryMetadataMap(result.values().stream()
+                        .map(ProductSnapshot::getActivityId)
+                        .collect(Collectors.toCollection(LinkedHashSet::new)))
+                : activityMetadataMap;
+        applyActivityProtectionMetadata(result.values(), metadataMap);
         return result;
     }
 
@@ -575,15 +512,7 @@ public class ProductService {
         return displayLabels == null ? Map.of() : displayLabels;
     }
 
-    /**
-     * 批量加载活动 ID → 活动名映射（轻量查询，仅取 activity_id 和 activity_name）。
-     * <p>用于商品库视图构造时回填 {@code Product.activityName}，避免对每条商品单独查库。
-     * 上游 activityId 集合为空或全 null 时返回空 Map。</p>
-     *
-     * @param activityIds 抖店活动 ID 集合
-     * @return activityId → activityName 映射（去重后按 LinkedHashMap 保序）
-     */
-    private Map<String, String> loadActivityNameMap(Collection<String> activityIds) {
+    private Map<String, ActivityLibraryMetadata> loadActivityLibraryMetadataMap(Collection<String> activityIds) {
         if (activityIds == null || activityIds.isEmpty()) {
             return Map.of();
         }
@@ -598,10 +527,41 @@ public class ProductService {
                 .filter(activity -> activity.getActivityId() != null)
                 .collect(Collectors.toMap(
                         ColonelsettlementActivity::getActivityId,
-                        ColonelsettlementActivity::getName,
+                        activity -> new ActivityLibraryMetadata(activity.getName(), activity.getMonthsOfProtection()),
                         (left, right) -> left,
                         LinkedHashMap::new
                 ));
+    }
+
+    private Map<String, String> toActivityNameMap(Map<String, ActivityLibraryMetadata> metadataMap) {
+        if (metadataMap == null || metadataMap.isEmpty()) {
+            return Map.of();
+        }
+        return metadataMap.entrySet().stream()
+                .filter(entry -> StringUtils.hasText(entry.getValue().name()))
+                .collect(Collectors.toMap(
+                        Map.Entry::getKey,
+                        entry -> entry.getValue().name(),
+                        (left, right) -> left,
+                        LinkedHashMap::new
+                ));
+    }
+
+    private void applyActivityProtectionMetadata(
+            Collection<ProductSnapshot> snapshots,
+            Map<String, ActivityLibraryMetadata> metadataMap) {
+        if (snapshots == null || snapshots.isEmpty() || metadataMap == null || metadataMap.isEmpty()) {
+            return;
+        }
+        for (ProductSnapshot snapshot : snapshots) {
+            ActivityLibraryMetadata metadata = metadataMap.get(snapshot.getActivityId());
+            if (metadata != null && metadata.monthsOfProtection() != null) {
+                snapshot.setMonthsOfProtection(metadata.monthsOfProtection());
+            }
+        }
+    }
+
+    private record ActivityLibraryMetadata(String name, Integer monthsOfProtection) {
     }
 
     private String stateBatchKey(String activityId, String productId) {

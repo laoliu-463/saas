@@ -1,11 +1,16 @@
 # Harness Changelog（索引）
 
 > 任务 ID：HARNESS-DOC-GC-OPTIMIZE-002
-> 更新时间：2026-06-20
+> 更新时间：2026-06-28
 > 详细历史（含每版修改文件、行为变化、证据）：`archive/20260610/harness-changelog-full.md`
 > 治理政策：`rules/policies/retention-policy.md` 第 2 节（changelog 索引 ≤200 行）
 
 ## 最近版本摘要
+
+### v0.8.0 — 2026-06-28
+- DDD-VERIFY-001 商品库查询切片：`ProductService.getSelectedLibraryPage` 排序委托 `ProductLibrarySortPolicy`，活动名称 / 保护期元数据改批量加载。
+- Product targeted tests 与 real-pre backend health 通过；架构大集合仍有既有 DDD 红线失败，本轮 evidence 结论为 PARTIAL。
+- 证据：`harness/reports/evidence-20260628-194716.md`；retro：`harness/reports/retro-20260628-193025.md`。
 
 ### v0.7.9 — 2026-06-27
 - DDD100 #35 将组织成员变更下沉到 `UserGroupMembershipStore` 端口和 `SysUserGroupMembershipStoreAdapter`。
