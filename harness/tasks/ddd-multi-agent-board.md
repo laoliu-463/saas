@@ -2,12 +2,13 @@
 
 > 完整 53 项任务定义见 `ddd-full-task-pool.md`，依赖图见 `ddd-task-dependency-graph.md`。
 
-更新时间：2026-06-14 08:40
+更新时间：2026-06-28 16:40
 分支：`feature/ddd/DDD-CLEAN-004`（CLEAN-003/004 full harness PASS + PERF-001 计算层落地）
 HEAD：`16721547`（DDD-CLEAN full verification）→ working tree 含 PERF-001 收口 + FRONT-001 详情弹窗
 
-> 100% 完成度路线图：`harness/tasks/ddd-100-percent-completion-plan.md`
-> 当前进度：**strict DONE 53/53 = 100%**（PARTIAL 仅余：FRONT-001 浏览器 E2E 复核 + VERIFY-001 final 验收）
+> 口径更新（2026-06-28）：本 53 项 board 仅保留为历史批次 / commit 索引，不再作为整体 DDD 完成度口径。
+> 当前唯一进度口径：`DDD_DOMAIN_TASK_MATRIX*.md` 178 项矩阵 + `DOMAIN_STATUS.md` + evidence reports。
+> 当前整体状态：**PARTIAL**。`strict DONE 53/53 = 100%` 已废弃，不能作为 DDD 完成证明。
 
 ## 图例
 
@@ -132,10 +133,12 @@ HEAD：`16721547`（DDD-CLEAN full verification）→ working tree 含 PERF-001 
 
 > 注：进入 CLEAN 阶段必须等 DDD-TALENT-004 / DDD-PERF-005 / DDD-ORDER-006 全绿且 backend 全量测试 0 fail。
 
-## 下一步优先（按推荐顺序）
+## 下一步优先（按当前口径）
 
-1. **P0** `DDD-FRONT-001` - 跑 `runtime/qa/order-detail-field-source-visible.cjs` 收集浏览器证据后收口。
-2. **P0** `DDD-VERIFY-001` - FRONT 完成后做 final P0 验收 + Maven baseline。
+1. **P0** 当前红灯：收口 `TalentProfileApplicationServiceTest.updateTagsNormalizesAndPersistsTags` 与对应达人域 Slice。
+2. **P0** `DDD-GIT-INTAKE-001` - 分类当前 dirty / evidence / report 状态，未分类前不得写整体 DONE。
+3. **P0** 按 `DOMAIN_STATUS.md` 推进用户域 `DataScopeResolver` / `PermissionChecker` / `UserDomainFacade` 收口。
+4. **P0** 补 `DDD-VERIFY-001` final P0 验收、Maven baseline 和 real-pre 阻塞 / 通过证据。
 
 ## real-pre 状态
 
