@@ -7,6 +7,11 @@
 
 ## 最近版本摘要
 
+### v0.8.1 — 2026-06-28
+- DDD-VERIFY-001 活动商品视图切片：`ProductSnapshotQueryService` / `ActivityProductReadModelQueryService` 不再直接导入 MyBatis Mapper，读侧 SQL 下沉到 infrastructure adapters。
+- Product query Mapper 红线、query targeted tests、Product 全集合和 real-pre backend health 通过；架构/全量剩余 5 个既有红线失败，本轮 evidence 结论为 PARTIAL。
+- 证据：`harness/reports/evidence-20260628-202338.md`；retro：`harness/reports/retro-20260628-202356.md`。
+
 ### v0.8.0 — 2026-06-28
 - DDD-VERIFY-001 商品库查询切片：`ProductService.getSelectedLibraryPage` 排序委托 `ProductLibrarySortPolicy`，活动名称 / 保护期元数据改批量加载。
 - Product targeted tests 与 real-pre backend health 通过；架构大集合仍有既有 DDD 红线失败，本轮 evidence 结论为 PARTIAL。

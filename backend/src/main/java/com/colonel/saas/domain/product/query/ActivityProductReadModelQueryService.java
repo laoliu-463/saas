@@ -1,6 +1,5 @@
 package com.colonel.saas.domain.product.query;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.colonel.saas.common.enums.ProductBizStatus;
 import com.colonel.saas.domain.product.application.ActivityProductViewAssembler;
 import com.colonel.saas.domain.product.application.ActivityProductViewAssembler.DecisionSummary;
@@ -10,7 +9,6 @@ import com.colonel.saas.domain.product.policy.ProductAuditSupplementPayload;
 import com.colonel.saas.domain.product.policy.ProductDisplayPolicy;
 import com.colonel.saas.domain.product.policy.ProductOperationDecisionPolicy;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
-import com.colonel.saas.entity.ColonelsettlementActivity;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.Merchant;
 import com.colonel.saas.entity.ProductOperationLog;
@@ -18,12 +16,6 @@ import com.colonel.saas.entity.ProductOperationState;
 import com.colonel.saas.entity.ProductSnapshot;
 import com.colonel.saas.entity.PromotionLink;
 import com.colonel.saas.gateway.douyin.DouyinProductGateway;
-import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
-import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
-import com.colonel.saas.mapper.MerchantMapper;
-import com.colonel.saas.mapper.ProductOperationLogMapper;
-import com.colonel.saas.mapper.ProductOperationStateMapper;
-import com.colonel.saas.mapper.PromotionLinkMapper;
 import com.colonel.saas.service.ProductBizStatusService;
 import org.springframework.util.StringUtils;
 
@@ -46,34 +38,25 @@ import java.util.stream.Collectors;
  */
 public class ActivityProductReadModelQueryService {
 
-    private final ProductOperationStateMapper operationStateMapper;
-    private final ProductOperationLogMapper operationLogMapper;
-    private final PromotionLinkMapper promotionLinkMapper;
-    private final ColonelsettlementOrderMapper orderMapper;
-    private final MerchantMapper merchantMapper;
-    private final ColonelsettlementActivityMapper colonelActivityMapper;
+    private final ActivityProductReadModelRepository readModelRepository;
+    private final ActivityProductOrderReadRepository orderReadRepository;
+    private final ActivityProductPromotionReadRepository promotionReadRepository;
     private final UserDomainFacade userDomainFacade;
     private final ProductBizStatusService productBizStatusService;
     private final ProductOperationDecisionPolicy productOperationDecisionPolicy;
     private final ActivityProductViewAssembler activityProductViewAssembler;
 
     public ActivityProductReadModelQueryService(
-            ProductOperationStateMapper operationStateMapper,
-            ProductOperationLogMapper operationLogMapper,
-            PromotionLinkMapper promotionLinkMapper,
-            ColonelsettlementOrderMapper orderMapper,
-            MerchantMapper merchantMapper,
-            ColonelsettlementActivityMapper colonelActivityMapper,
+            ActivityProductReadModelRepository readModelRepository,
+            ActivityProductOrderReadRepository orderReadRepository,
+            ActivityProductPromotionReadRepository promotionReadRepository,
             UserDomainFacade userDomainFacade,
             ProductBizStatusService productBizStatusService,
             ProductDisplayPolicy productDisplayPolicy,
             ProductOperationDecisionPolicy productOperationDecisionPolicy) {
-        this.operationStateMapper = operationStateMapper;
-        this.operationLogMapper = operationLogMapper;
-        this.promotionLinkMapper = promotionLinkMapper;
-        this.orderMapper = orderMapper;
-        this.merchantMapper = merchantMapper;
-        this.colonelActivityMapper = colonelActivityMapper;
+        this.readModelRepository = readModelRepository;
+        this.orderReadRepository = orderReadRepository;
+        this.promotionReadRepository = promotionReadRepository;
         this.userDomainFacade = userDomainFacade;
         this.productBizStatusService = productBizStatusService;
         this.productOperationDecisionPolicy = productOperationDecisionPolicy;
@@ -93,10 +76,7 @@ public class ActivityProductReadModelQueryService {
                 .map(item -> String.valueOf(item.productId()))
                 .collect(Collectors.toCollection(HashSet::new));
 
-        Map<String, ProductOperationState> stateMap = operationStateMapper.selectList(
-                        new LambdaQueryWrapper<ProductOperationState>()
-                                .eq(ProductOperationState::getActivityId, String.valueOf(result.activityId()))
-                                .in(ProductOperationState::getProductId, productIds))
+        Map<String, ProductOperationState> stateMap = readModelRepository.findStates(String.valueOf(result.activityId()), productIds)
                 .stream()
                 .collect(Collectors.toMap(ProductOperationState::getProductId, Function.identity(), (left, right) -> left));
         Map<UUID, String> assigneeNameMap = loadUserDisplayNames(stateMap.values().stream()
@@ -141,10 +121,7 @@ public class ActivityProductReadModelQueryService {
         Set<String> productIds = snapshots.stream()
                 .map(ProductSnapshot::getProductId)
                 .collect(Collectors.toCollection(HashSet::new));
-        Map<String, ProductOperationState> stateMap = operationStateMapper.selectList(
-                        new LambdaQueryWrapper<ProductOperationState>()
-                                .eq(ProductOperationState::getActivityId, activityId)
-                                .in(ProductOperationState::getProductId, productIds))
+        Map<String, ProductOperationState> stateMap = readModelRepository.findStates(activityId, productIds)
                 .stream()
                 .collect(Collectors.toMap(ProductOperationState::getProductId, Function.identity(), (left, right) -> left));
         Map<String, DecisionSummary> decisionSummaryMap = buildDecisionSummaryMap(activityId, productIds);
@@ -259,11 +236,7 @@ public class ActivityProductReadModelQueryService {
         if (!StringUtils.hasText(activityId) || productIds == null || productIds.isEmpty()) {
             return Map.of();
         }
-        return operationLogMapper.selectList(new LambdaQueryWrapper<ProductOperationLog>()
-                        .eq(ProductOperationLog::getActivityId, activityId)
-                        .eq(ProductOperationLog::getOperationType, "DECISION")
-                        .in(ProductOperationLog::getProductId, productIds)
-                        .orderByDesc(ProductOperationLog::getCreateTime))
+        return readModelRepository.findDecisionLogs(activityId, productIds)
                 .stream()
                 .collect(Collectors.toMap(
                         ProductOperationLog::getProductId,
@@ -286,12 +259,7 @@ public class ActivityProductReadModelQueryService {
         if (!StringUtils.hasText(activityId) || !StringUtils.hasText(productId)) {
             return null;
         }
-        ProductOperationLog log = operationLogMapper.selectOne(new LambdaQueryWrapper<ProductOperationLog>()
-                .eq(ProductOperationLog::getActivityId, activityId)
-                .eq(ProductOperationLog::getProductId, productId)
-                .eq(ProductOperationLog::getOperationType, "DECISION")
-                .orderByDesc(ProductOperationLog::getCreateTime)
-                .last("limit 1"));
+        ProductOperationLog log = readModelRepository.findLatestDecisionLog(activityId, productId);
         if (log == null) {
             return null;
         }
@@ -330,10 +298,7 @@ public class ActivityProductReadModelQueryService {
         if (!StringUtils.hasText(activityId) || productIds == null || productIds.isEmpty()) {
             return Map.of();
         }
-        List<ColonelsettlementOrder> orders = orderMapper.selectList(new LambdaQueryWrapper<ColonelsettlementOrder>()
-                .eq(ColonelsettlementOrder::getActivityId, activityId)
-                .in(ColonelsettlementOrder::getProductId, productIds)
-                .orderByDesc(ColonelsettlementOrder::getCreateTime));
+        List<ColonelsettlementOrder> orders = orderReadRepository.findOrders(activityId, productIds);
         if (orders == null || orders.isEmpty()) {
             return Map.of();
         }
@@ -359,10 +324,7 @@ public class ActivityProductReadModelQueryService {
         if (!StringUtils.hasText(activityId) || !StringUtils.hasText(productId)) {
             return null;
         }
-        List<ColonelsettlementOrder> orders = orderMapper.selectList(new LambdaQueryWrapper<ColonelsettlementOrder>()
-                .eq(ColonelsettlementOrder::getActivityId, activityId)
-                .eq(ColonelsettlementOrder::getProductId, productId)
-                .orderByDesc(ColonelsettlementOrder::getCreateTime));
+        List<ColonelsettlementOrder> orders = orderReadRepository.findOrders(activityId, productId);
         if (orders == null || orders.isEmpty()) {
             return null;
         }
@@ -392,10 +354,7 @@ public class ActivityProductReadModelQueryService {
         if (!StringUtils.hasText(activityId) || productIds == null || productIds.isEmpty()) {
             return Map.of();
         }
-        List<PromotionLink> links = promotionLinkMapper.selectList(new LambdaQueryWrapper<PromotionLink>()
-                .eq(PromotionLink::getActivityId, activityId)
-                .in(PromotionLink::getProductId, productIds)
-                .orderByDesc(PromotionLink::getCreatedAt));
+        List<PromotionLink> links = promotionReadRepository.findPromotionLinks(activityId, productIds);
         if (links == null || links.isEmpty()) {
             return Map.of();
         }
@@ -420,10 +379,7 @@ public class ActivityProductReadModelQueryService {
         if (!StringUtils.hasText(activityId) || !StringUtils.hasText(productId)) {
             return null;
         }
-        List<PromotionLink> links = promotionLinkMapper.selectList(new LambdaQueryWrapper<PromotionLink>()
-                .eq(PromotionLink::getActivityId, activityId)
-                .eq(PromotionLink::getProductId, productId)
-                .orderByDesc(PromotionLink::getCreatedAt));
+        List<PromotionLink> links = promotionReadRepository.findPromotionLinks(activityId, productId);
         if (links == null || links.isEmpty()) {
             return null;
         }
@@ -466,8 +422,11 @@ public class ActivityProductReadModelQueryService {
         if (validShopIds.isEmpty()) {
             return Map.of();
         }
-        return merchantMapper.selectList(new LambdaQueryWrapper<Merchant>()
-                        .in(Merchant::getShopId, validShopIds))
+        List<Merchant> merchants = readModelRepository.findMerchants(validShopIds);
+        if (merchants == null || merchants.isEmpty()) {
+            return Map.of();
+        }
+        return merchants
                 .stream()
                 .filter(merchant -> merchant.getShopId() != null)
                 .collect(Collectors.toMap(
@@ -489,14 +448,11 @@ public class ActivityProductReadModelQueryService {
         if (shopId == null || shopId <= 0) {
             return null;
         }
-        return merchantMapper.selectOne(new LambdaQueryWrapper<Merchant>()
-                .eq(Merchant::getShopId, shopId)
-                .last("limit 1"));
+        return readModelRepository.findMerchant(shopId);
     }
 
     private String findActivityName(String activityId) {
-        ColonelsettlementActivity activity = colonelActivityMapper.selectByActivityId(activityId);
-        return activity == null ? null : activity.getName();
+        return readModelRepository.findActivityName(activityId);
     }
 
     private Map<UUID, String> loadUserDisplayNames(Set<UUID> userIds) {

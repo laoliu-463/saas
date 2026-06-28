@@ -7,8 +7,12 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.common.enums.ProductBizStatus;
 import com.colonel.saas.common.result.PageResult;
 import com.colonel.saas.constant.ProductDisplayStatus;
+import com.colonel.saas.domain.order.infrastructure.ActivityProductOrderMapperReadRepository;
+import com.colonel.saas.domain.order.infrastructure.ActivityProductPromotionLinkMapperReadRepository;
 import com.colonel.saas.domain.product.event.ProductDomainEventPublisher;
 import com.colonel.saas.domain.product.application.CopyPromotionApplicationService;
+import com.colonel.saas.domain.product.infrastructure.ActivityProductReadModelMapperRepository;
+import com.colonel.saas.domain.product.infrastructure.ProductSnapshotMapperQueryRepository;
 import com.colonel.saas.domain.product.policy.ActivityProductPagePolicy;
 import com.colonel.saas.domain.product.policy.ProductDisplayPolicy;
 import com.colonel.saas.domain.product.policy.ProductLibrarySortPolicy;
@@ -235,14 +239,16 @@ public class ProductService {
         this.productDisplayPolicy = productDisplayPolicy;
         this.productLibrarySortPolicy = new ProductLibrarySortPolicy(productDisplayPolicy);
         this.copyPromotionApplicationService = copyPromotionApplicationService;
-        this.productSnapshotQueryService = new com.colonel.saas.domain.product.query.ProductSnapshotQueryService(snapshotMapper);
+        this.productSnapshotQueryService = new com.colonel.saas.domain.product.query.ProductSnapshotQueryService(
+                new ProductSnapshotMapperQueryRepository(snapshotMapper));
         this.activityProductReadModelQueryService = new com.colonel.saas.domain.product.query.ActivityProductReadModelQueryService(
-                operationStateMapper,
-                operationLogMapper,
-                promotionLinkMapper,
-                orderMapper,
-                merchantMapper,
-                colonelActivityMapper,
+                new ActivityProductReadModelMapperRepository(
+                        operationStateMapper,
+                        operationLogMapper,
+                        merchantMapper,
+                        colonelActivityMapper),
+                new ActivityProductOrderMapperReadRepository(orderMapper),
+                new ActivityProductPromotionLinkMapperReadRepository(promotionLinkMapper),
                 userDomainFacade,
                 productBizStatusService,
                 productDisplayPolicy,

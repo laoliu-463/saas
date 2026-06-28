@@ -132,6 +132,9 @@
 - 标记：P0。
 
 ## 商品域
+- 最新小切片：DDD-VERIFY-001-PRODUCT-QUERY-PORT-SLICE 已把 `ProductSnapshotQueryService` 与 `ActivityProductReadModelQueryService` 的 MyBatis Mapper / `LambdaQueryWrapper` 访问下沉到 infrastructure adapters；商品 query 服务改为依赖 `ProductSnapshotQueryRepository`、`ActivityProductReadModelRepository`、`ActivityProductOrderReadRepository`、`ActivityProductPromotionReadRepository`。本轮不改 API 路径、请求 / 响应字段、SQL 条件、DB schema、排序、状态机或金额口径。
+- 最新验证：`mvn -DskipTests compile` PASS，`mvn -DskipTests package` PASS，query targeted + product query Mapper redline 7 tests PASS，`mvn test -Dtest='*Product*Test'` PASS（323 tests），real-pre backend 重启后 health=UP。`mvn test -Dtest='*Architecture*Test,*Ddd*Test,*Guard*Test,*Contract*Test'` 仍有剩余红线失败 5 项；后端全量 `mvn test` 跑完 2711 tests，同 5 项失败，不能写 PASS。
+- 最新报告路径：本轮 `harness/reports/evidence-20260628-202338.md`；retro `harness/reports/retro-20260628-202356.md`；报告目录清理将两个旧 content-retire 报告归档到 `harness/archive/reports-overflow-20260628-ddd-product-query-slice/`。
 - 最新小切片：DDD-VERIFY-001-PRODUCT-LIBRARY-SLICE 已将 `ProductService.getSelectedLibraryPage` 的商品库排序委托给 `ProductLibrarySortPolicy`，并把活动名称 / `monthsOfProtection` 回填改为按 activityId 批量读取，避免商品库视图批内循环 `selectByActivityId`。本轮不改 API 路径、请求 / 响应字段、DB schema、排序语义、活动保护期语义或真实数据。
 - 最新验证：`mvn -DskipTests compile` PASS，`mvn -DskipTests package` PASS，`mvn test -Dtest='ProductLibrarySortPolicyTest,ProductServiceLibraryViewTest'` PASS，`mvn test -Dtest='*Product*Test'` PASS（323 tests），real-pre backend 重启后 health=UP。`mvn test -Dtest='*Architecture*Test,*Ddd*Test,*Guard*Test,*Contract*Test'` 仍有既有红线失败 6 项；后端全量 `mvn test` 跑完 2711 tests，但同 6 项失败，不能写 PASS。
 - 最新报告路径：本轮 `harness/reports/evidence-20260628-194716.md`；retro `harness/reports/retro-20260628-193025.md`；报告目录清理将两个旧 content-retire 报告归档到 `harness/archive/reports-overflow-20260628-ddd-product-slice/`。
@@ -139,7 +142,7 @@
 - 最新验证：当前迁移率探针显示 raw domain share 22.2%、business migration proxy 29.2%、product proxy 30.8%；#133 `ActivityProductReadModelQueryServiceTest` 3/3 PASS；#132 backend targeted tests 35/35 PASS；frontend product display tests 53/53 PASS；real-pre backend/frontend health 与 P0 preflight 已有 PASS evidence。2026-06-27 只读 SQL 显示推广中活动商品 repair 一致性为 18201/18201、未修复 0；`pick_source_mapping` 有 13 条有效映射，其中 5 条带 product/activity 上下文，但 `colonelsettlement_order.pick_source` 订单数为 0。
 - 最新报告路径：#96 `harness/reports/2026-06-27/ddd-complete-product-096/evidence-20260627-220900-product-domain-closeout.md`；#133 `harness/reports/evidence-20260627-215952.md`；#132 `harness/reports/2026-06-27/ddd-complete-product-132/evidence-20260627-211900-product-operation-policy.md`；#131 `harness/reports/2026-06-27/ddd-complete-product-131/evidence-20260627-204000-product-backfill-application.md`；#130 `harness/reports/2026-06-27/ddd-complete-product-130/evidence-20260627-200829-product-service-inventory.md`。
 - 已完成能力：商品库、商品快照与活动商品 query/read model、backfill job metadata、backfill 管理 API Application、商品库 repair 决策 policy、活动商品同步入口、人工审核状态/日志 policy、操作日志与推进判断 policy、本地发布展示策略、活动商品展示策略、转链 Port、`pick_source_mapping` mapping id 证据、转链完成事件证据。
-- 当前风险：#135 仍缺至少 1 条真实 `colonelsettlement_order.pick_source` 回流订单并命中有效 `pick_source_mapping` 的正向样本；#96 不能关闭为 PASS。架构大集合还暴露既有 product query 直接导入 Mapper、跨域 Mapper 白名单和非用户域 DataScope 债务，后续必须删除债务而不是新增白名单。相关订单域长期观察仍由 #117 跟踪，但 #135 作为商品域子任务仍必须保持 open。
+- 当前风险：#135 仍缺至少 1 条真实 `colonelsettlement_order.pick_source` 回流订单并命中有效 `pick_source_mapping` 的正向样本；#96 不能关闭为 PASS。product query 直接导入 Mapper 红线已清除；架构大集合仍暴露既有 order 跨域 Mapper、order policy Spring 依赖、非用户域 DataScope 和过期 whitelist 债务，后续必须删除债务而不是新增白名单。相关订单域长期观察仍由 #117 跟踪，但 #135 作为商品域子任务仍必须保持 open。
 - 待优化能力：#135 真实推广链接订单样本；之后才能重新 closeout #96。后续还需衔接订单 #117、业绩 #123/#124、前端 #154-#159 等跨域剩余 issue。
 - 标记：P0。
 

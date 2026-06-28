@@ -1,11 +1,8 @@
 package com.colonel.saas.domain.product.query;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.entity.ProductSnapshot;
-import com.colonel.saas.mapper.ProductSnapshotMapper;
 
 import java.util.UUID;
 
@@ -14,28 +11,21 @@ import java.util.UUID;
  */
 public class ProductSnapshotQueryService {
 
-    private final ProductSnapshotMapper snapshotMapper;
+    private final ProductSnapshotQueryRepository snapshotRepository;
 
-    public ProductSnapshotQueryService(ProductSnapshotMapper snapshotMapper) {
-        this.snapshotMapper = snapshotMapper;
+    public ProductSnapshotQueryService(ProductSnapshotQueryRepository snapshotRepository) {
+        this.snapshotRepository = snapshotRepository;
     }
 
     public IPage<ProductSnapshot> pageLatest(long page, long size, Integer status) {
-        Page<ProductSnapshot> query = new Page<>(Math.max(page, 1), Math.max(size, 1));
-        LambdaQueryWrapper<ProductSnapshot> wrapper = new LambdaQueryWrapper<ProductSnapshot>()
-                .orderByDesc(ProductSnapshot::getSyncTime)
-                .orderByDesc(ProductSnapshot::getCreateTime);
-        if (status != null) {
-            wrapper.eq(ProductSnapshot::getStatus, status);
-        }
-        return snapshotMapper.selectPage(query, wrapper);
+        return snapshotRepository.pageLatest(Math.max(page, 1), Math.max(size, 1), status);
     }
 
     public ProductSnapshot findById(UUID id) {
         if (id == null) {
             return null;
         }
-        return snapshotMapper.selectById(id);
+        return snapshotRepository.findById(id);
     }
 
     public ProductSnapshot requireById(UUID id) {
@@ -47,10 +37,7 @@ public class ProductSnapshotQueryService {
     }
 
     public ProductSnapshot findActivityProduct(String activityId, String productId) {
-        return snapshotMapper.selectOne(new LambdaQueryWrapper<ProductSnapshot>()
-                .eq(ProductSnapshot::getActivityId, activityId)
-                .eq(ProductSnapshot::getProductId, productId)
-                .last("limit 1"));
+        return snapshotRepository.findActivityProduct(activityId, productId);
     }
 
     public ProductSnapshot requireActivityProduct(String activityId, String productId) {

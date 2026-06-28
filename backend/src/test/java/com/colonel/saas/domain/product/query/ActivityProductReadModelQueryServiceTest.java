@@ -5,7 +5,6 @@ import com.colonel.saas.constant.ProductDisplayStatus;
 import com.colonel.saas.domain.product.policy.ProductDisplayPolicy;
 import com.colonel.saas.domain.product.policy.ProductOperationDecisionPolicy;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
-import com.colonel.saas.entity.ColonelsettlementActivity;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.Merchant;
 import com.colonel.saas.entity.ProductOperationLog;
@@ -13,16 +12,11 @@ import com.colonel.saas.entity.ProductOperationState;
 import com.colonel.saas.entity.ProductSnapshot;
 import com.colonel.saas.entity.PromotionLink;
 import com.colonel.saas.gateway.douyin.DouyinProductGateway;
-import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
-import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
-import com.colonel.saas.mapper.MerchantMapper;
-import com.colonel.saas.mapper.ProductOperationLogMapper;
-import com.colonel.saas.mapper.ProductOperationStateMapper;
-import com.colonel.saas.mapper.PromotionLinkMapper;
 import com.colonel.saas.service.ProductBizStatusService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentMatchers;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
@@ -36,18 +30,16 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
 class ActivityProductReadModelQueryServiceTest {
 
-    @Mock private ProductOperationStateMapper operationStateMapper;
-    @Mock private ProductOperationLogMapper operationLogMapper;
-    @Mock private PromotionLinkMapper promotionLinkMapper;
-    @Mock private ColonelsettlementOrderMapper orderMapper;
-    @Mock private MerchantMapper merchantMapper;
-    @Mock private ColonelsettlementActivityMapper colonelActivityMapper;
+    @Mock private ActivityProductReadModelRepository readModelRepository;
+    @Mock private ActivityProductOrderReadRepository orderReadRepository;
+    @Mock private ActivityProductPromotionReadRepository promotionReadRepository;
     @Mock private UserDomainFacade userDomainFacade;
     @Mock private ProductBizStatusService productBizStatusService;
 
@@ -56,12 +48,9 @@ class ActivityProductReadModelQueryServiceTest {
     @BeforeEach
     void setUp() {
         service = new ActivityProductReadModelQueryService(
-                operationStateMapper,
-                operationLogMapper,
-                promotionLinkMapper,
-                orderMapper,
-                merchantMapper,
-                colonelActivityMapper,
+                readModelRepository,
+                orderReadRepository,
+                promotionReadRepository,
                 userDomainFacade,
                 productBizStatusService,
                 new ProductDisplayPolicy(),
@@ -79,9 +68,11 @@ class ActivityProductReadModelQueryServiceTest {
         state.setAuditStatus(2);
         state.setDisplayStatus(ProductDisplayStatus.DISPLAYING.name());
 
-        when(operationStateMapper.selectList(any())).thenReturn(List.of(state));
+        when(readModelRepository.findStates(eq(activityId), ArgumentMatchers.<java.util.Set<String>>any()))
+                .thenReturn(List.of(state));
         when(userDomainFacade.loadUserDisplayLabelsByIds(any())).thenReturn(Map.of(assigneeId, "招商负责人"));
-        when(operationLogMapper.selectList(any())).thenReturn(List.of(decisionLog(activityId, productId, "A")));
+        when(readModelRepository.findDecisionLogs(eq(activityId), ArgumentMatchers.<java.util.Set<String>>any()))
+                .thenReturn(List.of(decisionLog(activityId, productId, "A")));
         when(productBizStatusService.readBizStatus(state)).thenReturn(ProductBizStatus.APPROVED);
 
         Map<String, Object> view = service.buildRemoteListView(new DouyinProductGateway.ActivityProductListResult(
@@ -111,14 +102,18 @@ class ActivityProductReadModelQueryServiceTest {
         ProductOperationState state = state(activityId, productId);
         state.setPromoteLink("https://promote.test/9002");
 
-        when(operationStateMapper.selectList(any())).thenReturn(List.of(state));
-        when(operationLogMapper.selectList(any())).thenReturn(List.of(decisionLog(activityId, productId, "B")));
-        when(orderMapper.selectList(any())).thenReturn(List.of(
+        when(readModelRepository.findStates(eq(activityId), ArgumentMatchers.<java.util.Set<String>>any()))
+                .thenReturn(List.of(state));
+        when(readModelRepository.findDecisionLogs(eq(activityId), ArgumentMatchers.<java.util.Set<String>>any()))
+                .thenReturn(List.of(decisionLog(activityId, productId, "B")));
+        when(orderReadRepository.findOrders(eq(activityId), ArgumentMatchers.<java.util.Set<String>>any())).thenReturn(List.of(
                 order(activityId, productId, "ATTRIBUTED", 10000L, 1200L, LocalDateTime.parse("2026-06-01T10:00:00")),
                 order(activityId, productId, "PENDING", 20000L, 2400L, LocalDateTime.parse("2026-06-02T10:00:00"))));
-        when(promotionLinkMapper.selectList(any())).thenReturn(List.of(link(activityId, productId)));
-        when(merchantMapper.selectList(any())).thenReturn(List.of(merchant(snapshot.getShopId())));
-        when(colonelActivityMapper.selectByActivityId(activityId)).thenReturn(activity(activityId));
+        when(promotionReadRepository.findPromotionLinks(eq(activityId), ArgumentMatchers.<java.util.Set<String>>any()))
+                .thenReturn(List.of(link(activityId, productId)));
+        when(readModelRepository.findMerchants(ArgumentMatchers.<java.util.Set<Long>>any()))
+                .thenReturn(List.of(merchant(snapshot.getShopId())));
+        when(readModelRepository.findActivityName(activityId)).thenReturn("夏季活动");
         when(productBizStatusService.readBizStatus(state)).thenReturn(ProductBizStatus.LINKED);
 
         List<Map<String, Object>> items = service.buildSnapshotItems(activityId, List.of(snapshot));
@@ -150,11 +145,14 @@ class ActivityProductReadModelQueryServiceTest {
         state.setExternalUniqueId("ext-9003");
         state.setLastOperationAt(LocalDateTime.parse("2026-06-03T10:00:00"));
 
-        when(operationLogMapper.selectOne(any())).thenReturn(decisionLog(activityId, productId, "A"));
-        when(orderMapper.selectList(any())).thenReturn(List.of(order(activityId, productId, "ATTRIBUTED", 10000L, 1200L, null)));
-        when(promotionLinkMapper.selectList(any())).thenReturn(List.of(link(activityId, productId)));
-        when(merchantMapper.selectOne(any())).thenReturn(merchant(snapshot.getShopId()));
-        when(colonelActivityMapper.selectByActivityId(activityId)).thenReturn(activity(activityId));
+        when(readModelRepository.findLatestDecisionLog(activityId, productId))
+                .thenReturn(decisionLog(activityId, productId, "A"));
+        when(orderReadRepository.findOrders(activityId, productId))
+                .thenReturn(List.of(order(activityId, productId, "ATTRIBUTED", 10000L, 1200L, null)));
+        when(promotionReadRepository.findPromotionLinks(activityId, productId))
+                .thenReturn(List.of(link(activityId, productId)));
+        when(readModelRepository.findMerchant(snapshot.getShopId())).thenReturn(merchant(snapshot.getShopId()));
+        when(readModelRepository.findActivityName(activityId)).thenReturn("夏季活动");
         when(productBizStatusService.readBizStatus(state)).thenReturn(ProductBizStatus.APPROVED);
 
         Map<String, Object> detail = service.buildDetailBase(activityId, productId, snapshot, state);
@@ -302,10 +300,4 @@ class ActivityProductReadModelQueryServiceTest {
         return merchant;
     }
 
-    private ColonelsettlementActivity activity(String activityId) {
-        ColonelsettlementActivity activity = new ColonelsettlementActivity();
-        activity.setActivityId(activityId);
-        activity.setName("夏季活动");
-        return activity;
-    }
 }
