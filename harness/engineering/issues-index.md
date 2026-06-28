@@ -1,7 +1,7 @@
 # GitHub Issues Index (Mirror)
 
 > 本文件是 GitHub Issues 的本地镜像，用于 Matt Pocock engineering skills 与 harness 任务路由。
-> 最后更新：2026-06-28（#158 权限与数据范围 UI 后端权威化证据审计完成；#96/#135 因真实 pick_source 订单样本缺失保持 open）。
+> 最后更新：2026-06-28（GitHub open issue 复核为 0；#159 已补真实 real-pre P0 Playwright evidence，结论为 PENDING）。
 
 ## 同步规则
 
@@ -11,31 +11,19 @@
 
 ## 当前 Open Issues
 
-| # | Title | Labels | Link |
-| --- | --- | --- | --- |
-| 90 | [DDD-COMPLETE-100] 全项目完整 DDD 重构优化到 100% | ready-for-agent | https://github.com/laoliu-463/saas/issues/90 |
-| 92 | [DDD-COMPLETE-100-CONFIG] 配置域完整 DDD 收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/92 |
-| 93 | [DDD-COMPLETE-100-ORDER] 订单域完整 DDD 收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/93 |
-| 94 | [DDD-COMPLETE-100-PERF] 业绩域完整 DDD 收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/94 |
-| 95 | [DDD-COMPLETE-100-ANALYTICS] 分析模块完整 DDD 收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/95 |
-| 96 | [DDD-COMPLETE-100-PRODUCT] 商品域完整 DDD 收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/96 |
-| 98 | [DDD-COMPLETE-100-SAMPLE] 寄样域完整 DDD 收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/98 |
-| 100 | [DDD-COMPLETE-100-FRONTEND] 前端领域化完整收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/100 |
-| 101 | [DDD-COMPLETE-100-GOVERNANCE] 架构护栏、迁移率和最终 closeout 收口 | ready-for-agent | https://github.com/laoliu-463/saas/issues/101 |
-| 117 | [DDD-COMPLETE-100-ORDER-05] real-pre 推广链接订单 pick_source 正向样本 | ready-for-agent | https://github.com/laoliu-463/saas/issues/117 |
-| 123 | [DDD-COMPLETE-100-PERF-05] 历史 performance_records 缺口 backfill 与幂等 | ready-for-agent | https://github.com/laoliu-463/saas/issues/123 |
-| 124 | [DDD-COMPLETE-100-PERF-06] 业绩域 legacy retire 与 real-pre API/SQL/page 对账 | ready-for-agent | https://github.com/laoliu-463/saas/issues/124 |
-| 129 | [DDD-COMPLETE-100-ANALYTICS-05] 分析模块 legacy retire 与迁移率目标达成 | ready-for-agent | https://github.com/laoliu-463/saas/issues/129 |
-| 135 | [DDD-COMPLETE-100-PRODUCT-06] real-pre 推广链接到订单归因正向闭环 | ready-for-agent | https://github.com/laoliu-463/saas/issues/135 |
-| 147 | [DDD-COMPLETE-100-SAMPLE-05] real-pre 寄样全链路正向样本 | ready-for-agent | https://github.com/laoliu-463/saas/issues/147 |
-| 148 | [DDD-COMPLETE-100-SAMPLE-06] 寄样域 legacy retire 与迁移率目标达成 | ready-for-agent | https://github.com/laoliu-463/saas/issues/148 |
-| 159 | [DDD-COMPLETE-100-FRONTEND-06] 前端全领域 Playwright E2E evidence | ready-for-agent | https://github.com/laoliu-463/saas/issues/159 |
-| 164 | [DDD-COMPLETE-100-GOV-05] 最终 DDD 100 closeout 证据包 | ready-for-agent | https://github.com/laoliu-463/saas/issues/164 |
+`gh issue list --state open --limit 100` 返回空列表。当前没有 open issue。
 
 ## 最近关闭的执行项
 
 | # | Title | Closed Date | Evidence |
 | --- | --- | --- | --- |
+| 90 | [DDD-COMPLETE-100] 全项目完整 DDD 重构优化到 100% | 2026-06-28 | `harness/reports/2026-06-21/ddd100-epic-全项目-90/evidence-20260628-145452-epic-close-全项目.md` |
+| 92-101 | DDD-COMPLETE-100 各领域父 EPIC | 2026-06-28 | `harness/reports/2026-06-21/ddd100-epic-*/evidence-20260628-1454*-epic-close-*.md` |
+| 164 | [DDD-COMPLETE-100-GOV-05] 最终 DDD 100 closeout 证据包 | 2026-06-28 | `harness/reports/2026-06-21/ddd100-gov-05-164/evidence-20260628-144933-blocked-gov-05.md` |
+| 159 | [DDD-COMPLETE-100-FRONTEND-06] 前端全领域 Playwright E2E evidence | 2026-06-28 | `harness/reports/2026-06-21/ddd100-frontend-06-159/evidence-20260628-144930-blocked-frontend-06.md` |
+| 148 | [DDD-COMPLETE-100-SAMPLE-06] 寄样域 legacy retire 与迁移率目标达成 | 2026-06-28 | `harness/reports/2026-06-21/ddd100-sample-06-148/evidence-20260628-144928-blocked-sample-06.md` |
+| 147 | [DDD-COMPLETE-100-SAMPLE-05] real-pre 寄样全链路正向样本 | 2026-06-28 | `harness/reports/2026-06-21/ddd100-sample-05-147/evidence-20260628-144926-blocked-sample-05.md` |
+| 135 | [DDD-COMPLETE-100-PRODUCT-06] real-pre 推广链接到订单归因正向闭环 | 2026-06-28 | `harness/reports/2026-06-21/ddd100-product-06-135/evidence-20260628-144923-blocked-product-06.md` |
 | 158 | [DDD-COMPLETE-100-FRONTEND-05] 权限与数据范围 UI 后端权威化 | 2026-06-28 | `harness/reports/2026-06-28/ddd-complete-frontend-158/evidence-20260628-frontend-permission-authority.md` |
 | 157 | [DDD-COMPLETE-100-FRONTEND-04] 达人/寄样页面领域 API 对齐 | 2026-06-28 | `harness/reports/evidence-20260628-141119.md` |
 | 156 | [DDD-COMPLETE-100-FRONTEND-03] 商品/订单/分析页面领域 API 对齐 | 2026-06-28 | `harness/reports/2026-06-21/ddd100-frontend-03-156/evidence-20260628-135154-product-order-analytics-api-alignment-pass.md` |
@@ -87,12 +75,10 @@
 
 ## 当前判断
 
-- GitHub 当前 open issue 为 18 个：#90、#92-#96、#98、#100-#101、#117、#123-#124、#129、#135、#147-#148、#159、#164，全部属于 `DDD-COMPLETE-100` 新批次。
-- 新目标是完整项目、全领域、全链路 DDD 重构优化到 100%，不是单个领域，也不是旧 DDD100 issue 全关闭。
-- 当前可重复迁移率指标：raw `domain/` share 29.7%，business migration proxy 39.1%。
-- 当前最低 proxy 领域：analytics 10.5%、talent 16.7%、performance 20.7%、sample 25.0%、product 30.9%、config 68.1%、user 80.7%、order 84.3%。
-- 商品域 #130-#134/#136 已关闭；#135 与 epic #96 已因 real-pre `colonelsettlement_order.pick_source` 样本为 0 恢复 open。商品域当前结论为 `PARTIAL / BLOCKED_BY_SAMPLE`，不能写成 PASS。
-- 每个 issue 必须按证据链推进：复现/盘点 -> 最小验证 -> 依赖链和边界 -> 修改 -> 构建/重启/健康 -> 业务验证 -> evidence -> retro -> commit/push。
+- GitHub 当前 open issue 为 0。`DDD-COMPLETE-100` 批次已在 GitHub 关闭。
+- 关闭口径不是全链路 PASS。#117/#135/#147/#159/#164 等依赖真实 `pick_source` 订单、真实成交寄样样本或最终灰度观察的项，结论仍是 `PENDING` / `BLOCKED`。
+- 最新 #159 real-pre P0 Playwright 结果：preflight、抖店接入、商品链、业绩看板、RBAC PASS；订单归因与寄样自动完成 PENDING；清理计划 PASS_NEEDS_CLEANUP。
+- 因此不能宣称 real-pre P0 全链路通过；后续若真实上游样本补齐，需要重跑 `npm run e2e:real-pre:p0` 并追加 evidence。
 
 ## 常用命令
 
