@@ -5,6 +5,7 @@ import {
   activityProductStageToOfficialStatus,
   buildActivityProductStatusStages,
   countActivityProductStatusGroups,
+  formatActivityProductLoadedSummary,
   isActivityProductStageMatch,
   resolveActivityProductOfficialStatusView
 } from './activity-product-status-display'
@@ -48,6 +49,12 @@ describe('activity-product-status-display', () => {
     expect(activityProductStageToAllianceStatus('all')).toBeNull()
     expect(activityProductStageToOfficialStatus('terminated')).toBe('TERMINATED')
     expect(activityProductStageToOfficialStatus('all')).toBeNull()
+  })
+
+  it('formats loaded count with backend total when available', () => {
+    expect(formatActivityProductLoadedSummary(20, 45)).toBe('已加载 20 / 共 45 个商品')
+    expect(formatActivityProductLoadedSummary(0, 0)).toBe('已加载 0 / 共 0 个商品')
+    expect(formatActivityProductLoadedSummary(8, null)).toBe('已加载 8 个商品')
   })
 
   it('matches rows by upstream status stage and exposes display labels', () => {

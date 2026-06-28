@@ -118,6 +118,16 @@ export function countActivityProductStatusGroups(rows: ProductManageRow[]): Acti
   return counts
 }
 
+export function formatActivityProductLoadedSummary(loaded: number, total: number | null | undefined): string {
+  const safeLoaded = Number.isFinite(loaded) ? Math.max(Math.floor(loaded), 0) : 0
+  if (total === null || total === undefined) {
+    return `已加载 ${safeLoaded} 个商品`
+  }
+
+  const safeTotal = Number.isFinite(total) ? Math.max(Math.floor(total), 0) : 0
+  return `已加载 ${safeLoaded} / 共 ${safeTotal} 个商品`
+}
+
 export function buildActivityProductStatusStages(rows: ProductManageRow[]): ActivityProductStatusStage[] {
   const counts = countActivityProductStatusGroups(rows)
   return STAGE_ORDER.map((key) => {

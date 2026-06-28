@@ -43,7 +43,7 @@
         <div>
           <div class="activity-workbench-title">活动商品推进</div>
           <div class="activity-workbench-subtitle">
-            已加载 {{ activityStats.total }} 个商品；推广中 {{ activityStats.promoting }} 个，待审核 {{ activityStats.pendingReview }} 个，未通过/终止/到期 {{ blockedUpstreamStatusCount }} 个。
+            {{ activityProductLoadedSummary }}；推广中 {{ activityStats.promoting }} 个，待审核 {{ activityStats.pendingReview }} 个，未通过/终止/到期 {{ blockedUpstreamStatusCount }} 个。
           </div>
         </div>
         <div class="activity-workbench-actions">
@@ -290,6 +290,7 @@ import {
   activityProductStageToOfficialStatus,
   buildActivityProductStatusStages,
   countActivityProductStatusGroups,
+  formatActivityProductLoadedSummary,
   isActivityProductStageMatch,
   resolveActivityProductOfficialStatusView,
   type ActivityProductStatusStageKey
@@ -332,6 +333,7 @@ let slowLoadingTimer: ReturnType<typeof setTimeout> | null = null
 const products = ref<any[]>([])
 const nextCursor = ref('')
 const hasMore = ref(false)
+const activityProductTotal = ref<number | null>(null)
 const promotionLoadingIds = ref<Set<string>>(new Set())
 const pinLoadingIds = ref<Set<string>>(new Set())
 const checkedRowKeys = ref<string[]>([])
@@ -457,6 +459,10 @@ const emptyDescription = computed(() => {
 })
 
 const activityStats = computed(() => countActivityProductStatusGroups(products.value))
+
+const activityProductLoadedSummary = computed(() =>
+  formatActivityProductLoadedSummary(products.value.length, activityProductTotal.value)
+)
 
 const blockedUpstreamStatusCount = computed(() =>
   activityStats.value.rejected + activityStats.value.terminated + activityStats.value.expired
@@ -696,6 +702,12 @@ const buildActivityProductsQuery = (reset: boolean, forceRemote: boolean) => ({
 const applyActivityProductsPage = (data: any, reset: boolean) => {
   const items = applyFilters((Array.isArray(data.items) ? data.items : []).map(normalizeItem))
   products.value = reset ? items : products.value.concat(items)
+  const total = Number(data.total)
+  if (Number.isFinite(total)) {
+    activityProductTotal.value = Math.max(Math.floor(total), 0)
+  } else if (reset) {
+    activityProductTotal.value = null
+  }
   nextCursor.value = String(data.nextCursor || '')
   hasMore.value = Boolean(data.hasMore || data.nextCursor)
 }
@@ -730,6 +742,7 @@ const fetchProducts = async (reset: boolean, forceRemote = false, overrideActivi
     }
 
     if (isSharedLibraryMode.value) {
+      activityProductTotal.value = null
       const page = reset ? 1 : Math.floor(products.value.length / PRODUCT_LIST_PAGE_SIZE) + 1
       const res: any = await getProducts(buildProductLibraryQueryParams(filters.value, {
         page,
@@ -770,11 +783,13 @@ const fetchProducts = async (reset: boolean, forceRemote = false, overrideActivi
     // 商品管理页必须按活动商品实际数据展示；没有可解析活动时只展示空态，不回退商品库口径。
     if (isPickLibraryMode.value) {
       products.value = reset ? [] : products.value
+      activityProductTotal.value = null
       hasMore.value = false
       nextCursor.value = ''
       return true
     }
 
+    activityProductTotal.value = null
     const page = reset ? 1 : Math.floor(products.value.length / PRODUCT_LIST_PAGE_SIZE) + 1
     const res: any = await getProductPickPage({ page, size: PRODUCT_LIST_PAGE_SIZE })
     const data = res?.data || {}
@@ -799,12 +814,14 @@ const fetchProducts = async (reset: boolean, forceRemote = false, overrideActivi
   } catch (error: any) {
     if (hasExplicitActivityRoute.value && !forceRemote) {
       products.value = []
+      activityProductTotal.value = null
       nextCursor.value = ''
       hasMore.value = false
     } else {
       notifyApiFailure(error, message, { fallbackMessage: '商品查询失败' })
       if (reset) {
         products.value = []
+        activityProductTotal.value = null
         nextCursor.value = ''
         hasMore.value = false
       }
@@ -1683,6 +1700,7 @@ watch(
   () => [route.path, route.params.activityId, route.query.activityId, route.query.recruitActivityId],
   async () => {
     nextCursor.value = ''
+    activityProductTotal.value = null
     syncRouteActivityIdToFilters()
     await refreshProducts()
   }

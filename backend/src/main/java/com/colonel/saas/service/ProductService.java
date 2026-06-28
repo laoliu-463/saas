@@ -9,6 +9,7 @@ import com.colonel.saas.common.result.PageResult;
 import com.colonel.saas.constant.ProductDisplayStatus;
 import com.colonel.saas.domain.product.event.ProductDomainEventPublisher;
 import com.colonel.saas.domain.product.application.CopyPromotionApplicationService;
+import com.colonel.saas.domain.product.policy.ActivityProductPagePolicy;
 import com.colonel.saas.domain.product.policy.ProductDisplayPolicy;
 import com.colonel.saas.domain.product.policy.ProductPinPolicy;
 import com.colonel.saas.dto.product.ProductFilterOptionItem;
@@ -2007,7 +2008,7 @@ public class ProductService {
             String sortBy,
             String goodsTags,
             String productTags) {
-        int pageSize = Math.min(Math.max(count == null ? 20 : count, 1), 20);
+        int pageSize = ActivityProductPagePolicy.normalizePageSize(count);
         int offset = parseCursor(cursor);
         BizStatusFilter bizStatusFilter = resolveBizStatusFilter(activityId, bizStatus);
         if (bizStatusFilter.isEmptyFilter()) {
@@ -2058,7 +2059,7 @@ public class ProductService {
             items = activityProductReadModelQueryService.buildSnapshotItems(activityId, snapshots);
             sortActivityProductItems(items, normalizedSortBy);
             nextOffset = offset + snapshots.size();
-            hasMore = total != null && nextOffset < total;
+            hasMore = ActivityProductPagePolicy.hasMore(total, nextOffset);
         } else {
             // Use SQL-level sort + pagination instead of loading all records into memory.
             // This avoids O(n) memory + sort for large activity product lists (e.g. 700+ snapshots).
@@ -2086,15 +2087,14 @@ public class ProductService {
             // SQL already sorted; only in-memory pinned re-sort needed (rare, lightweight).
             sortActivityProductItems(items, normalizedSortBy);
             nextOffset = offset + snapshots.size();
-            // If we got a full page, there are more results.
-            hasMore = snapshots.size() == pageSize;
+            hasMore = ActivityProductPagePolicy.hasMore(total, nextOffset);
         }
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("activityId", activityId);
         result.put("institutionId", 0);
-        result.put("total", total == null ? items.size() : total);
-        result.put("nextCursor", hasMore ? String.valueOf(nextOffset) : "");
+        result.put("total", ActivityProductPagePolicy.responseTotal(total, items.size()));
+        result.put("nextCursor", ActivityProductPagePolicy.nextCursor(total, nextOffset));
         result.put("hasMore", hasMore);
         result.put("items", items);
         return result;
@@ -3670,14 +3670,7 @@ public class ProductService {
     }
 
     private int parseCursor(String cursor) {
-        if (!StringUtils.hasText(cursor)) {
-            return 0;
-        }
-        try {
-            return Math.max(Integer.parseInt(cursor.trim()), 0);
-        } catch (Exception e) {
-            return 0;
-        }
+        return ActivityProductPagePolicy.parseCursor(cursor);
     }
 
     private BizStatusFilter resolveBizStatusFilter(String activityId, String bizStatus) {
