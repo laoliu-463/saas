@@ -1,9 +1,8 @@
 package com.colonel.saas.gateway.douyin.test;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.colonel.saas.entity.PickSourceMapping;
+import com.colonel.saas.domain.product.facade.dto.PickSourceMappingReadDTO;
 import com.colonel.saas.gateway.douyin.DouyinOrderGateway;
-import com.colonel.saas.mapper.PickSourceMappingMapper;
+import com.colonel.saas.service.PickSourceMappingService;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
@@ -19,7 +18,7 @@ import java.util.Map;
  * <p>
  * 实现 {@link DouyinOrderGateway} 接口，在 {@code douyin.test.enabled=true} 时替代真实的
  * 抖店订单网关，为 test 环境提供不依赖真实抖店 API 的 Mock 订单数据。
- * 该适配器会从数据库读取最新的 {@link PickSourceMapping} 记录，生成与真实转链数据关联的
+ * 该适配器会通过 {@link PickSourceMappingService} 读取最新转链映射，生成与真实转链数据关联的
  * Mock 订单，用于验证订单归因（attribution）和 Webhook 同步流程。
  * </p>
  *
@@ -31,26 +30,26 @@ import java.util.Map;
  *
  * <p>架构角色：Gateway 测试适配器（Test Double），所属领域：订单域。
  * 与真实网关的关系：实现同一 {@link DouyinOrderGateway} 接口，通过 {@code douyin.test.enabled}
- * 属性切换。不同于纯内存 Mock，该适配器会查询 {@code PickSourceMappingMapper} 获取真实转链数据，
+ * 属性切换。不同于纯内存 Mock，该适配器会通过 {@code PickSourceMappingService} 获取真实转链数据，
  * 使 Mock 订单的 pick_source / talent_id 等字段与数据库中的转链记录一致。</p>
  *
  * @see DouyinOrderGateway
- * @see PickSourceMapping
+ * @see PickSourceMappingService
  */
 @Component
 @ConditionalOnProperty(name = "douyin.test.enabled", havingValue = "true")
 public class TestDouyinOrderGateway implements DouyinOrderGateway {
 
-    /** 转链映射 Mapper，用于查询最新的 PickSourceMapping 记录以生成关联的 Mock 订单 */
-    private final PickSourceMappingMapper pickSourceMappingMapper;
+    /** 转链映射服务，用于查询最新映射记录以生成关联的 Mock 订单 */
+    private final PickSourceMappingService pickSourceMappingService;
 
     /**
-     * 构造函数，注入 PickSourceMappingMapper。
+     * 构造函数，注入转链映射服务。
      *
-     * @param pickSourceMappingMapper 转链映射数据库访问对象
+     * @param pickSourceMappingService 转链映射服务
      */
-    public TestDouyinOrderGateway(PickSourceMappingMapper pickSourceMappingMapper) {
-        this.pickSourceMappingMapper = pickSourceMappingMapper;
+    public TestDouyinOrderGateway(PickSourceMappingService pickSourceMappingService) {
+        this.pickSourceMappingService = pickSourceMappingService;
     }
 
     /**
@@ -71,12 +70,7 @@ public class TestDouyinOrderGateway implements DouyinOrderGateway {
         List<DouyinOrderItem> orders = new ArrayList<>();
 
         // 第一步：查询最新有效转链映射，用于生成关联的 Mock 订单数据
-        PickSourceMapping latestMapping = pickSourceMappingMapper.selectOne(
-                new LambdaQueryWrapper<PickSourceMapping>()
-                        .eq(PickSourceMapping::getStatus, 1)
-                        .orderByDesc(PickSourceMapping::getUpdateTime)
-                        .last("limit 1")
-        );
+        PickSourceMappingReadDTO latestMapping = latestActiveMapping();
 
         // 基准时间：使用请求中的 startTime，未提供则取当前时间前推 1 小时
         long baseTime = request.startTime() > 0 ? request.startTime() : Instant.now().getEpochSecond() - 3600;
@@ -85,21 +79,21 @@ public class TestDouyinOrderGateway implements DouyinOrderGateway {
         if (latestMapping != null) {
             Map<String, Object> raw = new LinkedHashMap<>();
             raw.put("product_name", "主演示商品-已转链出单");
-            raw.put("colonel_activity_id", latestMapping.getActivityId());
-            raw.put("pick_source", latestMapping.getPickSource());
-            raw.put("pick_extra", latestMapping.getPickExtra());
+            raw.put("colonel_activity_id", latestMapping.activityId());
+            raw.put("pick_source", latestMapping.pickSource());
+            raw.put("pick_extra", latestMapping.pickExtra());
             raw.put("merchant_id", "M_001");
-            raw.put("talent_uid", latestMapping.getTalentId());
-            raw.put("author_id", latestMapping.getTalentId());
+            raw.put("talent_uid", latestMapping.talentId());
+            raw.put("author_id", latestMapping.talentId());
             orders.add(new DouyinOrderItem(
-                    "MOCK_ORD_ATTR_" + latestMapping.getShortId(),
-                    latestMapping.getProductId(),
-                    latestMapping.getProductId(),
+                    "MOCK_ORD_ATTR_" + latestMapping.shortId(),
+                    latestMapping.productId(),
+                    latestMapping.productId(),
                     "800001",
                     "主演示商家-归因成功",
-                    latestMapping.getTalentId(),
-                    latestMapping.getTalentName(),
-                    latestMapping.getPickSource(),
+                    latestMapping.talentId(),
+                    latestMapping.talentName(),
+                    latestMapping.pickSource(),
                     9900L,
                     1200L,
                     1,
@@ -119,7 +113,7 @@ public class TestDouyinOrderGateway implements DouyinOrderGateway {
         orders.add(new DouyinOrderItem(
                 "MOCK_ORD_UNATTR_1",
                 "EXT_P2",
-                latestMapping != null ? latestMapping.getProductId() : "1002",
+                latestMapping != null ? latestMapping.productId() : "1002",
                 "800002",
                 "排查演示商家-映射缺失",
                 "T_002",
@@ -141,7 +135,7 @@ public class TestDouyinOrderGateway implements DouyinOrderGateway {
         orders.add(new DouyinOrderItem(
                 "MOCK_ORD_UNATTR_2",
                 "EXT_P3",
-                latestMapping != null ? latestMapping.getProductId() : "1003",
+                latestMapping != null ? latestMapping.productId() : "1003",
                 "800003",
                 "排查演示商家-未带推广参数",
                 "T_003",
@@ -198,12 +192,7 @@ public class TestDouyinOrderGateway implements DouyinOrderGateway {
         }
 
         // 第二步：查询最新有效转链映射
-        PickSourceMapping latestMapping = pickSourceMappingMapper.selectOne(
-                new LambdaQueryWrapper<PickSourceMapping>()
-                        .eq(PickSourceMapping::getStatus, 1)
-                        .orderByDesc(PickSourceMapping::getUpdateTime)
-                        .last("limit 1")
-        );
+        PickSourceMappingReadDTO latestMapping = latestActiveMapping();
         long baseTime = Instant.now().getEpochSecond() - 300L;
         List<DouyinOrderItem> orders = new ArrayList<>();
         int index = 0;
@@ -213,21 +202,21 @@ public class TestDouyinOrderGateway implements DouyinOrderGateway {
             raw.put("merchant_id", "M_WEBHOOK");
             raw.put("order_id", orderId);
             if (latestMapping != null) {
-                raw.put("colonel_activity_id", latestMapping.getActivityId());
-                raw.put("pick_source", latestMapping.getPickSource());
-                raw.put("pick_extra", latestMapping.getPickExtra());
-                raw.put("talent_uid", latestMapping.getTalentId());
-                raw.put("author_id", latestMapping.getTalentId());
+                raw.put("colonel_activity_id", latestMapping.activityId());
+                raw.put("pick_source", latestMapping.pickSource());
+                raw.put("pick_extra", latestMapping.pickExtra());
+                raw.put("talent_uid", latestMapping.talentId());
+                raw.put("author_id", latestMapping.talentId());
             }
             orders.add(new DouyinOrderItem(
                     orderId,
-                    latestMapping == null ? "EXT_WEBHOOK_" + index : latestMapping.getProductId(),
-                    latestMapping == null ? "WEBHOOK_PRODUCT_" + index : latestMapping.getProductId(),
+                    latestMapping == null ? "EXT_WEBHOOK_" + index : latestMapping.productId(),
+                    latestMapping == null ? "WEBHOOK_PRODUCT_" + index : latestMapping.productId(),
                     "800900",
                     "Webhook测试商家",
-                    latestMapping == null ? "T_WEBHOOK" : latestMapping.getTalentId(),
-                    latestMapping == null ? "Webhook达人" : latestMapping.getTalentName(),
-                    latestMapping == null ? null : latestMapping.getPickSource(),
+                    latestMapping == null ? "T_WEBHOOK" : latestMapping.talentId(),
+                    latestMapping == null ? "Webhook达人" : latestMapping.talentName(),
+                    latestMapping == null ? null : latestMapping.pickSource(),
                     9900L,
                     1200L,
                     1,
@@ -238,6 +227,10 @@ public class TestDouyinOrderGateway implements DouyinOrderGateway {
             index++;
         }
         return new OrderListResult(orders, false, "0", Map.of("test", true, "order_ids", normalized));
+    }
+
+    private PickSourceMappingReadDTO latestActiveMapping() {
+        return pickSourceMappingService.findLatestActiveMapping();
     }
 
     /**

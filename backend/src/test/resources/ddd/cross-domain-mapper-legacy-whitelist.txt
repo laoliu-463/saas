@@ -6,8 +6,6 @@
 # DDD-USER-003: ColonelActivityController migrated to UserDomainFacade
 # DDD-USER-003: OrderController dept options migrated to UserDomainFacade
 
-com.colonel.saas.gateway.douyin.contract.DouyinContractFixtureProvider|PickSourceMappingMapper
-com.colonel.saas.gateway.douyin.test.TestDouyinOrderGateway|PickSourceMappingMapper
 com.colonel.saas.service.AttributionService|PickSourceMappingMapper
 com.colonel.saas.service.AttributionService|TalentClaimMapper
 com.colonel.saas.service.AttributionService|TalentMapper

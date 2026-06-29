@@ -1,11 +1,11 @@
 package com.colonel.saas.gateway.douyin.contract;
 
-import com.colonel.saas.entity.PickSourceMapping;
+import com.colonel.saas.domain.product.facade.dto.PickSourceMappingReadDTO;
 import com.colonel.saas.gateway.douyin.DouyinActivityGateway;
 import com.colonel.saas.gateway.douyin.DouyinOrderGateway;
 import com.colonel.saas.gateway.douyin.DouyinProductGateway;
 import com.colonel.saas.gateway.douyin.DouyinPromotionGateway;
-import com.colonel.saas.mapper.PickSourceMappingMapper;
+import com.colonel.saas.service.PickSourceMappingService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -18,20 +18,19 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class DouyinContractFixtureProviderTest {
 
     @Mock
-    private PickSourceMappingMapper pickSourceMappingMapper;
+    private PickSourceMappingService pickSourceMappingService;
 
     private DouyinContractFixtureProvider provider;
 
     @BeforeEach
     void setUp() {
-        provider = new DouyinContractFixtureProvider(pickSourceMappingMapper);
+        provider = new DouyinContractFixtureProvider(pickSourceMappingService);
     }
 
     @Test
@@ -293,7 +292,7 @@ class DouyinContractFixtureProviderTest {
 
     @Test
     void buildOrderListResult_shouldIncludeLatestMappingWhenAvailable() {
-        when(pickSourceMappingMapper.selectOne(any())).thenReturn(activeMapping());
+        when(pickSourceMappingService.findLatestActiveMapping()).thenReturn(activeMapping());
 
         DouyinOrderGateway.OrderListResult result = provider.buildOrderListResult(
                 new DouyinOrderGateway.DouyinOrderQueryRequest(1000L, 2000L, 20, null)
@@ -312,7 +311,7 @@ class DouyinContractFixtureProviderTest {
 
     @Test
     void buildOrderListResult_shouldStillReturnUnattributedOrdersWithoutMapping() {
-        when(pickSourceMappingMapper.selectOne(any())).thenReturn(null);
+        when(pickSourceMappingService.findLatestActiveMapping()).thenReturn(null);
 
         DouyinOrderGateway.OrderListResult result = provider.buildOrderListResult(
                 new DouyinOrderGateway.DouyinOrderQueryRequest(0L, 0L, 20, null)
@@ -325,7 +324,7 @@ class DouyinContractFixtureProviderTest {
 
     @Test
     void buildOrderSettlementResponse_shouldSerializeOrderRowsAndParseTimes() {
-        when(pickSourceMappingMapper.selectOne(any())).thenReturn(activeMapping());
+        when(pickSourceMappingService.findLatestActiveMapping()).thenReturn(activeMapping());
 
         Map<String, Object> response = provider.buildOrderSettlementResponse(
                 " app-z ",
@@ -355,16 +354,14 @@ class DouyinContractFixtureProviderTest {
         return (List<Map<String, Object>>) value;
     }
 
-    private PickSourceMapping activeMapping() {
-        PickSourceMapping mapping = new PickSourceMapping();
-        mapping.setStatus(1);
-        mapping.setActivityId("20260428001");
-        mapping.setProductId("910001");
-        mapping.setTalentId("talent-contract");
-        mapping.setTalentName("契约达人");
-        mapping.setShortId("SHORT001");
-        mapping.setPickSource("pick_source_001");
-        mapping.setUpdateTime(java.time.LocalDateTime.now());
-        return mapping;
+    private PickSourceMappingReadDTO activeMapping() {
+        return new PickSourceMappingReadDTO(
+                "SHORT001",
+                "910001",
+                "20260428001",
+                "pick_source_001",
+                null,
+                "talent-contract",
+                "契约达人");
     }
 }

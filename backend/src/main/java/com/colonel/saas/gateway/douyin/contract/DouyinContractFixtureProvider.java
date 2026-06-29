@@ -1,13 +1,12 @@
 package com.colonel.saas.gateway.douyin.contract;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.colonel.saas.entity.PickSourceMapping;
+import com.colonel.saas.domain.product.facade.dto.PickSourceMappingReadDTO;
 import com.colonel.saas.gateway.douyin.DouyinTokenGateway;
 import com.colonel.saas.gateway.douyin.DouyinActivityGateway;
 import com.colonel.saas.gateway.douyin.DouyinOrderGateway;
 import com.colonel.saas.gateway.douyin.DouyinProductGateway;
 import com.colonel.saas.gateway.douyin.DouyinPromotionGateway;
-import com.colonel.saas.mapper.PickSourceMappingMapper;
+import com.colonel.saas.service.PickSourceMappingService;
 import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
@@ -73,16 +72,16 @@ public class DouyinContractFixtureProvider {
     /** 日期时间格式化器，用于将 epoch 秒数转为可读字符串 */
     private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
-    /** PickSourceMapping 数据访问层，用于查询最新的活跃映射以构造订单夹具数据 */
-    private final PickSourceMappingMapper pickSourceMappingMapper;
+    /** pick_source 映射服务，用于查询最新的活跃映射以构造订单夹具数据 */
+    private final PickSourceMappingService pickSourceMappingService;
 
     /**
      * 构造函数。
      *
-     * @param pickSourceMappingMapper PickSourceMapping Mapper，用于查询最新活跃映射
+     * @param pickSourceMappingService pick_source 映射服务，用于查询最新活跃映射
      */
-    public DouyinContractFixtureProvider(PickSourceMappingMapper pickSourceMappingMapper) {
-        this.pickSourceMappingMapper = pickSourceMappingMapper;
+    public DouyinContractFixtureProvider(PickSourceMappingService pickSourceMappingService) {
+        this.pickSourceMappingService = pickSourceMappingService;
     }
 
     /**
@@ -130,7 +129,8 @@ public class DouyinContractFixtureProvider {
     public DouyinTokenGateway.TokenPayload buildTokenPayload(String appId, String refreshTokenHint) {
         String finalAppId = hasText(appId) ? appId.trim() : DEFAULT_APP_KEY;
         String suffix = finalAppId.length() <= 6 ? finalAppId : finalAppId.substring(finalAppId.length() - 6);
-        String accessToken = "contract_access_" + suffix + "_" + Instant.now().getEpochSecond();
+        String accessToken = String.join("_", "contract", "access", suffix,
+                String.valueOf(Instant.now().getEpochSecond()));
         String refreshToken = hasText(refreshTokenHint)
                 ? refreshTokenHint.trim()
                 : "contract_refresh_" + suffix;
@@ -516,28 +516,28 @@ public class DouyinContractFixtureProvider {
      */
     public DouyinOrderGateway.OrderListResult buildOrderListResult(DouyinOrderGateway.DouyinOrderQueryRequest request) {
         List<DouyinOrderGateway.DouyinOrderItem> orders = new ArrayList<>();
-        PickSourceMapping latestMapping = latestActiveMapping();
+        PickSourceMappingReadDTO latestMapping = latestActiveMapping();
         long baseTime = request.startTime() > 0 ? request.startTime() : Instant.now().getEpochSecond() - 3600;
 
         if (latestMapping != null) {
             Map<String, Object> raw = new LinkedHashMap<>();
             raw.put("product_name", "契约联调商品-已归因");
-            raw.put("colonel_activity_id", latestMapping.getActivityId());
-            raw.put("pick_source", latestMapping.getPickSource());
-            raw.put("pick_extra", latestMapping.getShortId());
+            raw.put("colonel_activity_id", latestMapping.activityId());
+            raw.put("pick_source", latestMapping.pickSource());
+            raw.put("pick_extra", latestMapping.shortId());
             raw.put("merchant_id", DEFAULT_SHOP_ID);
             raw.put("shop_id", DEFAULT_SHOP_ID);
-            raw.put("talent_uid", hasText(latestMapping.getTalentId()) ? latestMapping.getTalentId() : DEFAULT_AUTH_ID);
-            raw.put("author_id", hasText(latestMapping.getTalentId()) ? latestMapping.getTalentId() : DEFAULT_AUTH_ID);
+            raw.put("talent_uid", hasText(latestMapping.talentId()) ? latestMapping.talentId() : DEFAULT_AUTH_ID);
+            raw.put("author_id", hasText(latestMapping.talentId()) ? latestMapping.talentId() : DEFAULT_AUTH_ID);
             orders.add(new DouyinOrderGateway.DouyinOrderItem(
-                    "CONTRACT_ORD_ATTR_" + latestMapping.getShortId(),
-                    latestMapping.getProductId(),
-                    latestMapping.getProductId(),
+                    "CONTRACT_ORD_ATTR_" + latestMapping.shortId(),
+                    latestMapping.productId(),
+                    latestMapping.productId(),
                     DEFAULT_SHOP_ID,
                     DEFAULT_SHOP_NAME,
-                    latestMapping.getTalentId(),
-                    latestMapping.getTalentName(),
-                    latestMapping.getPickSource(),
+                    latestMapping.talentId(),
+                    latestMapping.talentName(),
+                    latestMapping.pickSource(),
                     3990L,
                     399L,
                     1,
@@ -1014,11 +1014,8 @@ public class DouyinContractFixtureProvider {
      *
      * @return 最新的活跃 PickSourceMapping，无记录时返回 null
      */
-    private PickSourceMapping latestActiveMapping() {
-        return pickSourceMappingMapper.selectOne(new LambdaQueryWrapper<PickSourceMapping>()
-                .eq(PickSourceMapping::getStatus, 1)
-                .orderByDesc(PickSourceMapping::getUpdateTime)
-                .last("limit 1"));
+    private PickSourceMappingReadDTO latestActiveMapping() {
+        return pickSourceMappingService.findLatestActiveMapping();
     }
 
     /**

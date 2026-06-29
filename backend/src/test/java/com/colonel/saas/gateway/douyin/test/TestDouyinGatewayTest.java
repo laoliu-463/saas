@@ -1,14 +1,13 @@
 package com.colonel.saas.gateway.douyin.test;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.colonel.saas.douyin.api.ActivityApi;
-import com.colonel.saas.entity.PickSourceMapping;
+import com.colonel.saas.domain.product.facade.dto.PickSourceMappingReadDTO;
 import com.colonel.saas.gateway.douyin.DouyinActivityGateway;
 import com.colonel.saas.gateway.douyin.DouyinOrderGateway;
 import com.colonel.saas.gateway.douyin.DouyinProductGateway;
 import com.colonel.saas.gateway.douyin.DouyinPromotionGateway;
 import com.colonel.saas.gateway.douyin.DouyinTokenGateway;
-import com.colonel.saas.mapper.PickSourceMappingMapper;
+import com.colonel.saas.service.PickSourceMappingService;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -16,7 +15,6 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -352,10 +350,10 @@ class TestDouyinGatewayTest {
 
     @Test
     void orderGatewayBuildsMockSettlementWindowsAndWebhookOrders() {
-        PickSourceMappingMapper mapper = mock(PickSourceMappingMapper.class);
-        PickSourceMapping latest = pickSourceMapping();
-        when(mapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(latest);
-        TestDouyinOrderGateway gateway = new TestDouyinOrderGateway(mapper);
+        PickSourceMappingService pickSourceMappingService = mock(PickSourceMappingService.class);
+        PickSourceMappingReadDTO latest = pickSourceMapping();
+        when(pickSourceMappingService.findLatestActiveMapping()).thenReturn(latest);
+        TestDouyinOrderGateway gateway = new TestDouyinOrderGateway(pickSourceMappingService);
 
         DouyinOrderGateway.OrderListResult settlement = gateway.listSettlement(
                 new DouyinOrderGateway.DouyinOrderQueryRequest(1000L, 2000L, 100, null)
@@ -400,9 +398,9 @@ class TestDouyinGatewayTest {
 
     @Test
     void orderGatewayFallsBackWhenNoLatestPickSourceMappingExists() {
-        PickSourceMappingMapper mapper = mock(PickSourceMappingMapper.class);
-        when(mapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
-        TestDouyinOrderGateway gateway = new TestDouyinOrderGateway(mapper);
+        PickSourceMappingService pickSourceMappingService = mock(PickSourceMappingService.class);
+        when(pickSourceMappingService.findLatestActiveMapping()).thenReturn(null);
+        TestDouyinOrderGateway gateway = new TestDouyinOrderGateway(pickSourceMappingService);
 
         DouyinOrderGateway.OrderListResult settlement = gateway.listSettlement(
                 new DouyinOrderGateway.DouyinOrderQueryRequest(0L, 0L, 100, null)
@@ -483,17 +481,15 @@ class TestDouyinGatewayTest {
         );
     }
 
-    private PickSourceMapping pickSourceMapping() {
-        PickSourceMapping mapping = new PickSourceMapping();
-        mapping.setShortId("SHORT1");
-        mapping.setProductId("P1");
-        mapping.setActivityId("A1");
-        mapping.setPickSource("PS1");
-        mapping.setPickExtra("PE1");
-        mapping.setTalentId("T1");
-        mapping.setTalentName("Talent One");
-        mapping.setStatus(1);
-        return mapping;
+    private PickSourceMappingReadDTO pickSourceMapping() {
+        return new PickSourceMappingReadDTO(
+                "SHORT1",
+                "P1",
+                "A1",
+                "PS1",
+                "PE1",
+                "T1",
+                "Talent One");
     }
 
     @SuppressWarnings("unchecked")

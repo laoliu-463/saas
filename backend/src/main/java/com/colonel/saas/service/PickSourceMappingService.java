@@ -2,6 +2,7 @@ package com.colonel.saas.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.colonel.saas.common.exception.OptimisticLockSupport;
+import com.colonel.saas.domain.product.facade.dto.PickSourceMappingReadDTO;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.PickSourceMapping;
 import com.colonel.saas.mapper.PickSourceMappingMapper;
@@ -57,6 +58,19 @@ public class PickSourceMappingService {
             @Value("${pick.source.valid-months:3}") int validMonths) {
         this.pickSourceMappingMapper = pickSourceMappingMapper;
         this.validMonths = validMonths;
+    }
+
+    /**
+     * 查询最新活跃转链映射。
+     *
+     * <p>保留原网关夹具读取口径：{@code status=1}，按 {@code update_time} 倒序取第一条。</p>
+     */
+    public PickSourceMappingReadDTO findLatestActiveMapping() {
+        PickSourceMapping mapping = pickSourceMappingMapper.selectOne(new LambdaQueryWrapper<PickSourceMapping>()
+                .eq(PickSourceMapping::getStatus, 1)
+                .orderByDesc(PickSourceMapping::getUpdateTime)
+                .last("limit 1"));
+        return toReadDTO(mapping);
     }
 
     /**
@@ -891,6 +905,20 @@ public class PickSourceMappingService {
                 .map(PickSourceMapping::getProductId)
                 .filter(StringUtils::hasText)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
+    }
+
+    private PickSourceMappingReadDTO toReadDTO(PickSourceMapping mapping) {
+        if (mapping == null) {
+            return null;
+        }
+        return new PickSourceMappingReadDTO(
+                mapping.getShortId(),
+                mapping.getProductId(),
+                mapping.getActivityId(),
+                mapping.getPickSource(),
+                mapping.getPickExtra(),
+                mapping.getTalentId(),
+                mapping.getTalentName());
     }
 
     /**
