@@ -3,7 +3,9 @@ package com.colonel.saas.domain.product.facade;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.colonel.saas.common.exception.ValidateException;
+import com.colonel.saas.domain.product.facade.dto.ProductOrderDisplayDTO;
 import com.colonel.saas.domain.product.facade.dto.ProductReadDTO;
+import com.colonel.saas.domain.product.facade.dto.ProductSnapshotOrderDisplayDTO;
 import com.colonel.saas.domain.product.facade.dto.ProductSnapshotReadDTO;
 import com.colonel.saas.entity.ColonelsettlementActivity;
 import com.colonel.saas.entity.Product;
@@ -197,6 +199,70 @@ public class LegacyProductDomainFacade implements ProductDomainFacade {
     }
 
     @Override
+    public List<ProductSnapshotOrderDisplayDTO> loadOrderDisplaySnapshots(
+            Collection<String> productIds,
+            Collection<String> activityIds) {
+        List<String> distinctProductIds = normalizeTextIds(productIds);
+        if (distinctProductIds.isEmpty()) {
+            return List.of();
+        }
+        List<String> distinctActivityIds = normalizeTextIds(activityIds);
+        LambdaQueryWrapper<ProductSnapshot> wrapper = new LambdaQueryWrapper<>();
+        wrapper.in(ProductSnapshot::getProductId, distinctProductIds)
+                .in(!distinctActivityIds.isEmpty(), ProductSnapshot::getActivityId, distinctActivityIds)
+                .select(
+                        ProductSnapshot::getActivityId,
+                        ProductSnapshot::getProductId,
+                        ProductSnapshot::getTitle,
+                        ProductSnapshot::getCover,
+                        ProductSnapshot::getShopName,
+                        ProductSnapshot::getActivityCosRatio,
+                        ProductSnapshot::getActivityCosRatioText,
+                        ProductSnapshot::getAdServiceRatio,
+                        ProductSnapshot::getActivityAdCosRatio,
+                        ProductSnapshot::getSyncTime
+                )
+                .orderByDesc(ProductSnapshot::getSyncTime);
+        List<ProductSnapshot> snapshots = productSnapshotMapper.selectList(wrapper);
+        if (snapshots == null || snapshots.isEmpty()) {
+            return List.of();
+        }
+        return snapshots.stream()
+                .filter(Objects::nonNull)
+                .map(LegacyProductDomainFacade::toOrderDisplaySnapshot)
+                .toList();
+    }
+
+    @Override
+    public List<ProductOrderDisplayDTO> loadOrderDisplayProducts(Collection<String> productIds) {
+        List<String> distinctProductIds = normalizeTextIds(productIds);
+        if (distinctProductIds.isEmpty()) {
+            return List.of();
+        }
+        LambdaQueryWrapper<Product> wrapper = new LambdaQueryWrapper<>();
+        wrapper.and(nested -> nested
+                        .in(Product::getProductId, distinctProductIds)
+                        .or()
+                        .in(Product::getOuterProductId, distinctProductIds))
+                .select(
+                        Product::getProductId,
+                        Product::getOuterProductId,
+                        Product::getName,
+                        Product::getCover,
+                        Product::getCosRatio,
+                        Product::getServiceRatio
+                );
+        List<Product> products = productMapper.selectList(wrapper);
+        if (products == null || products.isEmpty()) {
+            return List.of();
+        }
+        return products.stream()
+                .filter(Objects::nonNull)
+                .map(LegacyProductDomainFacade::toOrderDisplayProduct)
+                .toList();
+    }
+
+    @Override
     public UUID findProductSnapshotAssigneeId(UUID productId) {
         if (productId == null) {
             return null;
@@ -326,5 +392,40 @@ public class LegacyProductDomainFacade implements ProductDomainFacade {
                 snapshot.getPriceText(),
                 snapshot.getStatus(),
                 snapshot.getDetailUrl());
+    }
+
+    private static ProductSnapshotOrderDisplayDTO toOrderDisplaySnapshot(ProductSnapshot snapshot) {
+        return new ProductSnapshotOrderDisplayDTO(
+                snapshot.getActivityId(),
+                snapshot.getProductId(),
+                snapshot.getTitle(),
+                snapshot.getCover(),
+                snapshot.getShopName(),
+                snapshot.getActivityCosRatio(),
+                snapshot.getActivityCosRatioText(),
+                snapshot.getAdServiceRatio(),
+                snapshot.getActivityAdCosRatio(),
+                snapshot.getSyncTime());
+    }
+
+    private static ProductOrderDisplayDTO toOrderDisplayProduct(Product product) {
+        return new ProductOrderDisplayDTO(
+                product.getProductId(),
+                product.getOuterProductId(),
+                product.getName(),
+                product.getCover(),
+                product.getCosRatio(),
+                product.getServiceRatio());
+    }
+
+    private static List<String> normalizeTextIds(Collection<String> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return List.of();
+        }
+        return ids.stream()
+                .filter(StringUtils::hasText)
+                .map(String::trim)
+                .distinct()
+                .toList();
     }
 }

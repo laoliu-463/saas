@@ -5,13 +5,12 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.common.enums.DataScope;
+import com.colonel.saas.domain.product.facade.ProductDomainFacade;
+import com.colonel.saas.domain.product.facade.dto.ProductOrderDisplayDTO;
+import com.colonel.saas.domain.product.facade.dto.ProductSnapshotOrderDisplayDTO;
 import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.entity.ColonelsettlementOrder;
-import com.colonel.saas.entity.Product;
-import com.colonel.saas.entity.ProductSnapshot;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
-import com.colonel.saas.mapper.ProductMapper;
-import com.colonel.saas.mapper.ProductSnapshotMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -61,8 +60,7 @@ public class OrderService {
 
     private final ColonelsettlementOrderMapper orderMapper;
     private final DashboardService dashboardService;
-    private final ProductSnapshotMapper productSnapshotMapper;
-    private final ProductMapper productMapper;
+    private final ProductDomainFacade productDomainFacade;
 
     /**
      * 数据范围策略（DDD-USER-DATASCOPE-004）：委托 {@link DataScopePolicy}
@@ -84,14 +82,12 @@ public class OrderService {
     public OrderService(
             ColonelsettlementOrderMapper orderMapper,
             DashboardService dashboardService,
-            ProductSnapshotMapper productSnapshotMapper,
-            ProductMapper productMapper,
+            ProductDomainFacade productDomainFacade,
             DataScopePolicy dataScopePolicy,
             com.colonel.saas.config.DddRefactorProperties dddRefactorProperties) {
         this.orderMapper = orderMapper;
         this.dashboardService = dashboardService;
-        this.productSnapshotMapper = productSnapshotMapper;
-        this.productMapper = productMapper;
+        this.productDomainFacade = productDomainFacade;
         this.dataScopePolicy = dataScopePolicy;
         this.dddRefactorProperties = dddRefactorProperties;
     }
@@ -691,7 +687,7 @@ public class OrderService {
             List<ColonelsettlementOrder> orders,
             Map<String, DisplayProductInfo> orderInfoByOrderId) {
         SnapshotLookups snapshotLookups = loadSnapshotLookups(orders);
-        Map<String, Product> productById = loadProductsByOrderProductId(orders);
+        Map<String, ProductOrderDisplayDTO> productById = loadProductsByOrderProductId(orders);
 
         for (ColonelsettlementOrder order : orders) {
             if (order == null) {
@@ -700,7 +696,7 @@ public class OrderService {
             DisplayProductInfo displayInfo = StringUtils.hasText(order.getOrderId())
                     ? orderInfoByOrderId.get(order.getOrderId())
                     : null;
-            Product product = StringUtils.hasText(order.getProductId())
+            ProductOrderDisplayDTO product = StringUtils.hasText(order.getProductId())
                     ? productById.get(order.getProductId())
                     : null;
             applyDisplayProductInfo(order, displayInfo);
@@ -743,7 +739,7 @@ public class OrderService {
     }
 
     private SnapshotLookups loadSnapshotLookups(List<ColonelsettlementOrder> orders) {
-        if (productSnapshotMapper == null) {
+        if (productDomainFacade == null) {
             return SnapshotLookups.empty();
         }
         Set<String> productIds = orders.stream()
@@ -759,42 +755,27 @@ public class OrderService {
                 .map(ColonelsettlementOrder::getActivityId)
                 .filter(StringUtils::hasText)
                 .collect(java.util.stream.Collectors.toSet());
-        LambdaQueryWrapper<ProductSnapshot> wrapper = new LambdaQueryWrapper<>();
-        wrapper.in(ProductSnapshot::getProductId, productIds)
-                .in(!activityIds.isEmpty(), ProductSnapshot::getActivityId, activityIds)
-                .select(
-                        ProductSnapshot::getActivityId,
-                        ProductSnapshot::getProductId,
-                        ProductSnapshot::getTitle,
-                        ProductSnapshot::getCover,
-                        ProductSnapshot::getShopName,
-                        ProductSnapshot::getActivityCosRatio,
-                        ProductSnapshot::getActivityCosRatioText,
-                        ProductSnapshot::getAdServiceRatio,
-                        ProductSnapshot::getActivityAdCosRatio,
-                        ProductSnapshot::getSyncTime
-                )
-                .orderByDesc(ProductSnapshot::getSyncTime);
-        List<ProductSnapshot> snapshots = productSnapshotMapper.selectList(wrapper);
+        List<ProductSnapshotOrderDisplayDTO> snapshots =
+                productDomainFacade.loadOrderDisplaySnapshots(productIds, activityIds);
         if (snapshots == null || snapshots.isEmpty()) {
             return SnapshotLookups.empty();
         }
-        Map<ProductSnapshotKey, ProductSnapshot> byPair = new HashMap<>();
-        Map<String, ProductSnapshot> byProductId = new HashMap<>();
-        for (ProductSnapshot snapshot : snapshots) {
-            if (snapshot == null || !StringUtils.hasText(snapshot.getProductId())) {
+        Map<ProductSnapshotKey, ProductSnapshotOrderDisplayDTO> byPair = new HashMap<>();
+        Map<String, ProductSnapshotOrderDisplayDTO> byProductId = new HashMap<>();
+        for (ProductSnapshotOrderDisplayDTO snapshot : snapshots) {
+            if (snapshot == null || !StringUtils.hasText(snapshot.productId())) {
                 continue;
             }
-            if (StringUtils.hasText(snapshot.getActivityId())) {
-                byPair.putIfAbsent(new ProductSnapshotKey(snapshot.getActivityId(), snapshot.getProductId()), snapshot);
+            if (StringUtils.hasText(snapshot.activityId())) {
+                byPair.putIfAbsent(new ProductSnapshotKey(snapshot.activityId(), snapshot.productId()), snapshot);
             }
-            byProductId.putIfAbsent(snapshot.getProductId(), snapshot);
+            byProductId.putIfAbsent(snapshot.productId(), snapshot);
         }
         return new SnapshotLookups(byPair, byProductId);
     }
 
-    private Map<String, Product> loadProductsByOrderProductId(List<ColonelsettlementOrder> orders) {
-        if (productMapper == null) {
+    private Map<String, ProductOrderDisplayDTO> loadProductsByOrderProductId(List<ColonelsettlementOrder> orders) {
+        if (productDomainFacade == null) {
             return Map.of();
         }
         Set<String> productIds = orders.stream()
@@ -805,33 +786,20 @@ public class OrderService {
         if (productIds.isEmpty()) {
             return Map.of();
         }
-        LambdaQueryWrapper<Product> wrapper = new LambdaQueryWrapper<>();
-        wrapper.and(nested -> nested
-                        .in(Product::getProductId, productIds)
-                        .or()
-                        .in(Product::getOuterProductId, productIds))
-                .select(
-                        Product::getProductId,
-                        Product::getOuterProductId,
-                        Product::getName,
-                        Product::getCover,
-                        Product::getCosRatio,
-                        Product::getServiceRatio
-                );
-        List<Product> products = productMapper.selectList(wrapper);
+        List<ProductOrderDisplayDTO> products = productDomainFacade.loadOrderDisplayProducts(productIds);
         if (products == null || products.isEmpty()) {
             return Map.of();
         }
-        Map<String, Product> result = new HashMap<>();
-        for (Product product : products) {
+        Map<String, ProductOrderDisplayDTO> result = new HashMap<>();
+        for (ProductOrderDisplayDTO product : products) {
             if (product == null) {
                 continue;
             }
-            if (StringUtils.hasText(product.getProductId())) {
-                result.putIfAbsent(product.getProductId(), product);
+            if (StringUtils.hasText(product.productId())) {
+                result.putIfAbsent(product.productId(), product);
             }
-            if (StringUtils.hasText(product.getOuterProductId())) {
-                result.putIfAbsent(product.getOuterProductId(), product);
+            if (StringUtils.hasText(product.outerProductId())) {
+                result.putIfAbsent(product.outerProductId(), product);
             }
         }
         return result;
@@ -957,18 +925,18 @@ public class OrderService {
         }
     }
 
-    private void applyProductSnapshot(ColonelsettlementOrder order, ProductSnapshot snapshot) {
+    private void applyProductSnapshot(ColonelsettlementOrder order, ProductSnapshotOrderDisplayDTO snapshot) {
         if (order == null || snapshot == null) {
             return;
         }
-        if (!StringUtils.hasText(order.getProductPic()) && StringUtils.hasText(snapshot.getCover())) {
-            order.setProductPic(snapshot.getCover());
+        if (!StringUtils.hasText(order.getProductPic()) && StringUtils.hasText(snapshot.cover())) {
+            order.setProductPic(snapshot.cover());
         }
-        if (!StringUtils.hasText(order.getProductTitle()) && StringUtils.hasText(snapshot.getTitle())) {
-            order.setProductTitle(snapshot.getTitle());
+        if (!StringUtils.hasText(order.getProductTitle()) && StringUtils.hasText(snapshot.title())) {
+            order.setProductTitle(snapshot.title());
         }
-        if (!StringUtils.hasText(order.getShopName()) && StringUtils.hasText(snapshot.getShopName())) {
-            order.setShopName(snapshot.getShopName());
+        if (!StringUtils.hasText(order.getShopName()) && StringUtils.hasText(snapshot.shopName())) {
+            order.setShopName(snapshot.shopName());
         }
         if (order.getCommissionRate() == null) {
             order.setCommissionRate(resolveSnapshotCommissionRate(snapshot));
@@ -978,24 +946,24 @@ public class OrderService {
         }
     }
 
-    private void applyProduct(ColonelsettlementOrder order, Product product) {
+    private void applyProduct(ColonelsettlementOrder order, ProductOrderDisplayDTO product) {
         if (order == null || product == null) {
             return;
         }
-        if (!StringUtils.hasText(order.getProductPic()) && StringUtils.hasText(product.getCover())) {
-            order.setProductPic(product.getCover());
+        if (!StringUtils.hasText(order.getProductPic()) && StringUtils.hasText(product.cover())) {
+            order.setProductPic(product.cover());
         }
-        if (!StringUtils.hasText(order.getProductTitle()) && StringUtils.hasText(product.getName())) {
-            order.setProductTitle(product.getName());
+        if (!StringUtils.hasText(order.getProductTitle()) && StringUtils.hasText(product.name())) {
+            order.setProductTitle(product.name());
         }
-        if (!StringUtils.hasText(order.getProductName()) && StringUtils.hasText(product.getName())) {
-            order.setProductName(product.getName());
+        if (!StringUtils.hasText(order.getProductName()) && StringUtils.hasText(product.name())) {
+            order.setProductName(product.name());
         }
         if (order.getCommissionRate() == null) {
-            order.setCommissionRate(normalizePercentRate(product.getCosRatio()));
+            order.setCommissionRate(normalizePercentRate(product.cosRatio()));
         }
         if (order.getServiceFeeRate() == null) {
-            order.setServiceFeeRate(normalizePercentRate(product.getServiceRatio()));
+            order.setServiceFeeRate(normalizePercentRate(product.serviceRatio()));
         }
     }
 
@@ -1023,20 +991,20 @@ public class OrderService {
         }
     }
 
-    private BigDecimal resolveSnapshotCommissionRate(ProductSnapshot snapshot) {
-        BigDecimal fromText = parsePercentText(snapshot.getActivityCosRatioText());
+    private BigDecimal resolveSnapshotCommissionRate(ProductSnapshotOrderDisplayDTO snapshot) {
+        BigDecimal fromText = parsePercentText(snapshot.activityCosRatioText());
         if (positive(fromText)) {
             return fromText;
         }
-        return normalizeBasisPointRate(snapshot.getActivityCosRatio());
+        return normalizeBasisPointRate(snapshot.activityCosRatio());
     }
 
-    private BigDecimal resolveSnapshotServiceFeeRate(ProductSnapshot snapshot) {
-        BigDecimal fromText = parsePercentText(snapshot.getAdServiceRatio());
+    private BigDecimal resolveSnapshotServiceFeeRate(ProductSnapshotOrderDisplayDTO snapshot) {
+        BigDecimal fromText = parsePercentText(snapshot.adServiceRatio());
         if (positive(fromText)) {
             return fromText;
         }
-        return normalizeBasisPointRate(snapshot.getActivityAdCosRatio());
+        return normalizeBasisPointRate(snapshot.activityAdCosRatio());
     }
 
     private BigDecimal normalizeBasisPointRate(Long raw) {
@@ -1086,19 +1054,19 @@ public class OrderService {
     }
 
     private record SnapshotLookups(
-            Map<ProductSnapshotKey, ProductSnapshot> byPair,
-            Map<String, ProductSnapshot> byProductId) {
+            Map<ProductSnapshotKey, ProductSnapshotOrderDisplayDTO> byPair,
+            Map<String, ProductSnapshotOrderDisplayDTO> byProductId) {
 
         static SnapshotLookups empty() {
             return new SnapshotLookups(Map.of(), Map.of());
         }
 
-        ProductSnapshot find(String activityId, String productId) {
+        ProductSnapshotOrderDisplayDTO find(String activityId, String productId) {
             if (!StringUtils.hasText(productId)) {
                 return null;
             }
             if (StringUtils.hasText(activityId)) {
-                ProductSnapshot byExactPair = byPair.get(new ProductSnapshotKey(activityId, productId));
+                ProductSnapshotOrderDisplayDTO byExactPair = byPair.get(new ProductSnapshotKey(activityId, productId));
                 if (byExactPair != null) {
                     return byExactPair;
                 }

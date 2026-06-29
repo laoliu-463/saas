@@ -7,12 +7,11 @@ import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.handler.UUIDTypeHandler;
 import com.colonel.saas.entity.ColonelsettlementOrder;
+import com.colonel.saas.domain.product.facade.ProductDomainFacade;
+import com.colonel.saas.domain.product.facade.dto.ProductOrderDisplayDTO;
+import com.colonel.saas.domain.product.facade.dto.ProductSnapshotOrderDisplayDTO;
 import com.colonel.saas.domain.user.policy.DataScopePolicy;
-import com.colonel.saas.entity.Product;
-import com.colonel.saas.entity.ProductSnapshot;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
-import com.colonel.saas.mapper.ProductMapper;
-import com.colonel.saas.mapper.ProductSnapshotMapper;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -53,17 +52,13 @@ class OrderServiceTest {
     @Mock
     private DashboardService dashboardService;
     @Mock
-    private ProductSnapshotMapper productSnapshotMapper;
-    @Mock
-    private ProductMapper productMapper;
+    private ProductDomainFacade productDomainFacade;
     private OrderService service;
 
     @BeforeEach
     void setUp() {
-        initTableInfo(ProductSnapshot.class);
-        initTableInfo(Product.class);
         initTableInfo(ColonelsettlementOrder.class);
-        service = new OrderService(orderMapper, dashboardService, productSnapshotMapper, productMapper, new DataScopePolicy(), new com.colonel.saas.config.DddRefactorProperties());
+        service = new OrderService(orderMapper, dashboardService, productDomainFacade, new DataScopePolicy(), new com.colonel.saas.config.DddRefactorProperties());
     }
 
     private void initTableInfo(Class<?> entityClass) {
@@ -456,8 +451,7 @@ class OrderServiceTest {
         return new OrderService(
                 orderMapper,
                 dashboardService,
-                productSnapshotMapper,
-                productMapper,
+                productDomainFacade,
                 new DataScopePolicy(),
                 properties);
     }
@@ -551,16 +545,20 @@ class OrderServiceTest {
                 "serviceFeeRate", new BigDecimal("2")
         )));
 
-        ProductSnapshot snapshot = new ProductSnapshot();
-        snapshot.setActivityId("A-1");
-        snapshot.setProductId("P-1");
-        snapshot.setTitle("快照商品标题");
-        snapshot.setShopName("快照店铺");
-        snapshot.setCover("https://cdn.example.com/snapshot.jpg");
-        snapshot.setActivityCosRatio(1400L);
-        snapshot.setAdServiceRatio("1%");
-        when(productSnapshotMapper.selectList(any())).thenReturn(List.of(snapshot));
-        when(productMapper.selectList(any())).thenReturn(List.of());
+        when(productDomainFacade.loadOrderDisplaySnapshots(any(), any())).thenReturn(List.of(
+                new ProductSnapshotOrderDisplayDTO(
+                        "A-1",
+                        "P-1",
+                        "快照商品标题",
+                        "https://cdn.example.com/snapshot.jpg",
+                        "快照店铺",
+                        1400L,
+                        null,
+                        "1%",
+                        null,
+                        LocalDateTime.now())
+        ));
+        when(productDomainFacade.loadOrderDisplayProducts(any())).thenReturn(List.of());
 
         service.enrichOrderProductInfo(List.of(order));
 
@@ -598,7 +596,7 @@ class OrderServiceTest {
     void enrichOrderList_emptyListShouldNotLoadDisplayInfo() {
         service.enrichOrderList(List.of());
 
-        verifyNoInteractions(orderMapper, productSnapshotMapper, productMapper);
+        verifyNoInteractions(orderMapper, productDomainFacade);
     }
 
     @Test
@@ -644,12 +642,19 @@ class OrderServiceTest {
         order.setActivityId("A-SNAPSHOT");
 
         when(orderMapper.listDisplayProductInfoByOrderIds(any())).thenReturn(List.of());
-        ProductSnapshot snapshot = new ProductSnapshot();
-        snapshot.setActivityId("A-SNAPSHOT");
-        snapshot.setProductId("P-SNAPSHOT");
-        snapshot.setTitle("快照标题");
-        snapshot.setCover("https://cdn.example.com/snapshot.jpg");
-        when(productSnapshotMapper.selectList(any())).thenReturn(List.of(snapshot));
+        when(productDomainFacade.loadOrderDisplaySnapshots(any(), any())).thenReturn(List.of(
+                new ProductSnapshotOrderDisplayDTO(
+                        "A-SNAPSHOT",
+                        "P-SNAPSHOT",
+                        "快照标题",
+                        "https://cdn.example.com/snapshot.jpg",
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        LocalDateTime.now())
+        ));
 
         service.enrichOrderList(List.of(order));
 
@@ -665,12 +670,16 @@ class OrderServiceTest {
         order.setProductId("P-PRODUCT");
 
         when(orderMapper.listDisplayProductInfoByOrderIds(any())).thenReturn(List.of());
-        when(productSnapshotMapper.selectList(any())).thenReturn(List.of());
-        Product product = new Product();
-        product.setProductId("P-PRODUCT");
-        product.setName("商品标题");
-        product.setCover("https://cdn.example.com/product.jpg");
-        when(productMapper.selectList(any())).thenReturn(List.of(product));
+        when(productDomainFacade.loadOrderDisplaySnapshots(any(), any())).thenReturn(List.of());
+        when(productDomainFacade.loadOrderDisplayProducts(any())).thenReturn(List.of(
+                new ProductOrderDisplayDTO(
+                        "P-PRODUCT",
+                        null,
+                        "商品标题",
+                        "https://cdn.example.com/product.jpg",
+                        null,
+                        null)
+        ));
 
         service.enrichOrderList(List.of(order));
 

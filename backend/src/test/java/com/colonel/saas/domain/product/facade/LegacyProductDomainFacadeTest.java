@@ -1,6 +1,11 @@
 package com.colonel.saas.domain.product.facade;
 
+import com.baomidou.mybatisplus.core.MybatisConfiguration;
+import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
+import com.colonel.saas.common.handler.UUIDTypeHandler;
 import com.colonel.saas.domain.product.facade.dto.ProductReadDTO;
+import com.colonel.saas.domain.product.facade.dto.ProductOrderDisplayDTO;
+import com.colonel.saas.domain.product.facade.dto.ProductSnapshotOrderDisplayDTO;
 import com.colonel.saas.domain.product.facade.dto.ProductSnapshotReadDTO;
 import com.colonel.saas.entity.Product;
 import com.colonel.saas.entity.ProductSnapshot;
@@ -11,9 +16,12 @@ import com.colonel.saas.mapper.ProductSnapshotMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
@@ -38,11 +46,22 @@ class LegacyProductDomainFacadeTest {
 
     @BeforeEach
     void setUp() {
+        initTableInfo(Product.class);
+        initTableInfo(ProductSnapshot.class);
         facade = new LegacyProductDomainFacade(
                 productMapper,
                 productSnapshotMapper,
                 productOperationStateMapper,
                 colonelsettlementActivityMapper);
+    }
+
+    private void initTableInfo(Class<?> entityClass) {
+        if (TableInfoHelper.getTableInfo(entityClass) == null) {
+            MybatisConfiguration configuration = new MybatisConfiguration();
+            configuration.getTypeHandlerRegistry().register(UUID.class, UUIDTypeHandler.class);
+            MapperBuilderAssistant assistant = new MapperBuilderAssistant(configuration, "");
+            TableInfoHelper.initTableInfo(assistant, entityClass);
+        }
     }
 
     @Test
@@ -158,5 +177,62 @@ class LegacyProductDomainFacadeTest {
     @Test
     void loadProductNamesByIds_nullCollectionReturnsEmptyMap() {
         assertThat(facade.loadProductNamesByIds(null)).isEmpty();
+    }
+
+    @Test
+    void loadOrderDisplaySnapshots_shouldMapOrderDisplayFields() {
+        LocalDateTime syncTime = LocalDateTime.of(2026, 6, 29, 10, 30);
+        ProductSnapshot snapshot = new ProductSnapshot();
+        snapshot.setActivityId("ACT-ORDER");
+        snapshot.setProductId("P-ORDER");
+        snapshot.setTitle("订单快照标题");
+        snapshot.setCover("https://cdn.example.com/snapshot.jpg");
+        snapshot.setShopName("订单店铺");
+        snapshot.setActivityCosRatio(1200L);
+        snapshot.setActivityCosRatioText("12%");
+        snapshot.setAdServiceRatio("1.5%");
+        snapshot.setActivityAdCosRatio(150L);
+        snapshot.setSyncTime(syncTime);
+        when(productSnapshotMapper.selectList(any())).thenReturn(List.of(snapshot));
+
+        List<ProductSnapshotOrderDisplayDTO> snapshots =
+                facade.loadOrderDisplaySnapshots(List.of(" P-ORDER ", "P-ORDER"), List.of("ACT-ORDER"));
+
+        assertThat(snapshots).hasSize(1);
+        ProductSnapshotOrderDisplayDTO dto = snapshots.get(0);
+        assertThat(dto.activityId()).isEqualTo("ACT-ORDER");
+        assertThat(dto.productId()).isEqualTo("P-ORDER");
+        assertThat(dto.title()).isEqualTo("订单快照标题");
+        assertThat(dto.cover()).isEqualTo("https://cdn.example.com/snapshot.jpg");
+        assertThat(dto.shopName()).isEqualTo("订单店铺");
+        assertThat(dto.activityCosRatio()).isEqualTo(1200L);
+        assertThat(dto.activityCosRatioText()).isEqualTo("12%");
+        assertThat(dto.adServiceRatio()).isEqualTo("1.5%");
+        assertThat(dto.activityAdCosRatio()).isEqualTo(150L);
+        assertThat(dto.syncTime()).isEqualTo(syncTime);
+    }
+
+    @Test
+    void loadOrderDisplayProducts_shouldMapProductAndOuterIds() {
+        Product product = new Product();
+        product.setProductId("P-MAIN");
+        product.setOuterProductId("P-OUTER");
+        product.setName("订单商品");
+        product.setCover("https://cdn.example.com/product.jpg");
+        product.setCosRatio(new BigDecimal("18.50"));
+        product.setServiceRatio(new BigDecimal("1.20"));
+        when(productMapper.selectList(any())).thenReturn(List.of(product));
+
+        List<ProductOrderDisplayDTO> products =
+                facade.loadOrderDisplayProducts(List.of("P-MAIN", "P-OUTER"));
+
+        assertThat(products).hasSize(1);
+        ProductOrderDisplayDTO dto = products.get(0);
+        assertThat(dto.productId()).isEqualTo("P-MAIN");
+        assertThat(dto.outerProductId()).isEqualTo("P-OUTER");
+        assertThat(dto.name()).isEqualTo("订单商品");
+        assertThat(dto.cover()).isEqualTo("https://cdn.example.com/product.jpg");
+        assertThat(dto.cosRatio()).isEqualByComparingTo("18.50");
+        assertThat(dto.serviceRatio()).isEqualByComparingTo("1.20");
     }
 }

@@ -10,8 +10,6 @@ com.colonel.saas.service.AttributionService|PickSourceMappingMapper
 com.colonel.saas.service.AttributionService|TalentClaimMapper
 com.colonel.saas.service.AttributionService|TalentMapper
 com.colonel.saas.service.DashboardService|ColonelsettlementOrderMapper
-com.colonel.saas.service.OrderService|ProductMapper
-com.colonel.saas.service.OrderService|ProductSnapshotMapper
 # DDD-CLEAN-003: performance domain migrated to OrderReadFacade
 # DDD-CLEAN-002: sample domain migrated to ProductDomainFacade / TalentDomainFacade
 com.colonel.saas.service.ProductService|ColonelsettlementOrderMapper

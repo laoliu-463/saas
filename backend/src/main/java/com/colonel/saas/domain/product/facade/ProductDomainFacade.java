@@ -1,9 +1,12 @@
 package com.colonel.saas.domain.product.facade;
 
+import com.colonel.saas.domain.product.facade.dto.ProductOrderDisplayDTO;
 import com.colonel.saas.domain.product.facade.dto.ProductReadDTO;
+import com.colonel.saas.domain.product.facade.dto.ProductSnapshotOrderDisplayDTO;
 import com.colonel.saas.domain.product.facade.dto.ProductSnapshotReadDTO;
 
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -47,6 +50,14 @@ public interface ProductDomainFacade {
 
     /** 批量加载商品读模型，返回 productId → 商品。 */
     Map<UUID, ProductReadDTO> loadProductsByIds(Collection<UUID> ids);
+
+    /** 订单列表展示补全：按活动/商品维度读取商品快照。 */
+    List<ProductSnapshotOrderDisplayDTO> loadOrderDisplaySnapshots(
+            Collection<String> productIds,
+            Collection<String> activityIds);
+
+    /** 订单列表展示补全：按订单商品 ID 读取商品主数据，匹配 product_id 或 outer_product_id。 */
+    List<ProductOrderDisplayDTO> loadOrderDisplayProducts(Collection<String> productIds);
 
     /** 通过商品快照解析招商负责人。 */
     UUID findProductSnapshotAssigneeId(UUID productId);

@@ -12,13 +12,10 @@ import com.colonel.saas.common.handler.UUIDTypeHandler;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.dto.order.OrderDetailResponse;
 import com.colonel.saas.entity.ColonelsettlementOrder;
-import com.colonel.saas.entity.Product;
-import com.colonel.saas.entity.ProductSnapshot;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
-import com.colonel.saas.mapper.ProductMapper;
-import com.colonel.saas.mapper.ProductSnapshotMapper;
 import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.domain.order.facade.OrderDomainFacade;
+import com.colonel.saas.domain.product.facade.ProductDomainFacade;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.service.DashboardService;
@@ -90,9 +87,7 @@ class OrderControllerTest {
     @Mock
     private Order2704SettlementDryRunService order2704SettlementDryRunService;
     @Mock
-    private ProductSnapshotMapper productSnapshotMapper;
-    @Mock
-    private ProductMapper productMapper;
+    private ProductDomainFacade productDomainFacade;
     private DddRefactorProperties dddRefactorProperties;
     @Mock
     private OrderDomainFacade orderDomainFacade;
@@ -109,13 +104,11 @@ class OrderControllerTest {
     @BeforeEach
     void setUp() {
         initTableInfo(ColonelsettlementOrder.class);
-        initTableInfo(ProductSnapshot.class);
-        initTableInfo(Product.class);
         dddRefactorProperties = new DddRefactorProperties();
         DashboardService dashboardService = org.mockito.Mockito.mock(DashboardService.class);
         DataScopePolicy dataScopePolicy = new DataScopePolicy();
         orderService = new com.colonel.saas.service.OrderService(
-                orderMapper, dashboardService, productSnapshotMapper, productMapper, dataScopePolicy, dddRefactorProperties);
+                orderMapper, dashboardService, productDomainFacade, dataScopePolicy, dddRefactorProperties);
         shortTtlCacheService = new ShortTtlCacheService();
         controller = new OrderController(
                 orderSyncService,
