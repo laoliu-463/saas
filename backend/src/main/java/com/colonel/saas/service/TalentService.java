@@ -10,6 +10,7 @@ import com.colonel.saas.common.exception.OptimisticLockSupport;
 import com.colonel.saas.common.exception.ForbiddenException;
 import com.colonel.saas.domain.talent.application.TalentBatchImportApplicationService;
 import com.colonel.saas.domain.talent.application.TalentEnrichmentApplicationService;
+import com.colonel.saas.domain.talent.application.TalentPageApplicationService;
 import com.colonel.saas.domain.talent.application.TalentPoolApplicationService;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.dto.talent.TalentBatchImportResult;
@@ -149,6 +150,7 @@ public class TalentService {
     private final TalentBatchImportApplicationService talentBatchImportApplicationService;
     private final TalentPoolApplicationService talentPoolApplicationService;
     private final TalentEnrichmentApplicationService talentEnrichmentApplicationService;
+    private final TalentPageApplicationService talentPageApplicationService;
     private final TalentClaimApplicationService talentClaimApplicationService;
     /** 操作日志服务（用于认领/释放/归属覆盖等操作审计） */
     private final OperationLogService operationLogService;
@@ -197,6 +199,7 @@ public class TalentService {
             TalentBatchImportApplicationService talentBatchImportApplicationService,
             TalentPoolApplicationService talentPoolApplicationService,
             TalentEnrichmentApplicationService talentEnrichmentApplicationService,
+            TalentPageApplicationService talentPageApplicationService,
             TalentClaimApplicationService talentClaimApplicationService,
             OperationLogService operationLogService,
             UserDomainFacade userDomainFacade,
@@ -218,6 +221,7 @@ public class TalentService {
         this.talentBatchImportApplicationService = talentBatchImportApplicationService;
         this.talentPoolApplicationService = talentPoolApplicationService;
         this.talentEnrichmentApplicationService = talentEnrichmentApplicationService;
+        this.talentPageApplicationService = talentPageApplicationService;
         this.talentClaimApplicationService = talentClaimApplicationService;
         this.operationLogService = operationLogService;
         this.userDomainFacade = userDomainFacade;
@@ -296,31 +300,7 @@ public class TalentService {
                               DataScope dataScope,
                               UUID userId,
                               UUID deptId) {
-        LambdaQueryWrapper<Talent> wrapper = new LambdaQueryWrapper<Talent>()
-                .eq(Talent::getDeleted, 0)
-                .orderByDesc(Talent::getCreateTime);
-        if (StringUtils.hasText(keyword)) {
-            wrapper.and(w -> w.like(Talent::getNickname, keyword)
-                    .or().like(Talent::getDouyinUid, keyword)
-                    .or().like(Talent::getDouyinNo, keyword)
-                    .or().like(Talent::getUid, keyword)
-                    .or().like(Talent::getSecUid, keyword));
-        }
-        if (StringUtils.hasText(region)) {
-            wrapper.like(Talent::getIpLocation, region);
-        }
-        if (minFans != null) {
-            wrapper.ge(Talent::getFans, minFans);
-        }
-        if (maxFans != null) {
-            wrapper.le(Talent::getFans, maxFans);
-        }
-
-        boolean hasScopedClaims = applyPageDataScope(wrapper, dataScope, userId, deptId);
-        if (!hasScopedClaims) {
-            return new Page<>(page, size, 0L);
-        }
-        return talentMapper.selectPage(new Page<>(page, size), wrapper);
+        return talentPageApplicationService.page(page, size, keyword, region, minFans, maxFans, dataScope, userId, deptId);
     }
 
     private boolean applyPageDataScope(

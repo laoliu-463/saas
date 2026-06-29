@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.common.enums.ProductBizStatus;
 import com.colonel.saas.constant.ProductDisplayStatus;
 import com.colonel.saas.domain.order.facade.OrderReadFacade;
+import com.colonel.saas.domain.order.facade.PromotionLinkRecordFacade;
 import com.colonel.saas.entity.ProductOperationState;
 import com.colonel.saas.entity.ProductSnapshot;
 import com.colonel.saas.gateway.douyin.DouyinActivityGateway;
@@ -14,7 +15,6 @@ import com.colonel.saas.mapper.MerchantMapper;
 import com.colonel.saas.mapper.ProductOperationLogMapper;
 import com.colonel.saas.mapper.ProductOperationStateMapper;
 import com.colonel.saas.mapper.ProductSnapshotMapper;
-import com.colonel.saas.mapper.PromotionLinkMapper;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.domain.product.event.ProductDomainEventPublisher;
 import org.junit.jupiter.api.BeforeEach;
@@ -51,7 +51,7 @@ class ProductServiceFilterTest {
     @Mock private ProductSnapshotMapper snapshotMapper;
     @Mock private ProductOperationStateMapper operationStateMapper;
     @Mock private ProductOperationLogMapper operationLogMapper;
-    @Mock private PromotionLinkMapper promotionLinkMapper;
+    @Mock private PromotionLinkRecordFacade promotionLinkRecordFacade;
     @Mock private OrderReadFacade orderReadFacade;
     @Mock private MerchantMapper merchantMapper;
     @Mock private UserDomainFacade userDomainFacade;
@@ -74,7 +74,7 @@ class ProductServiceFilterTest {
                 snapshotMapper,
                 operationStateMapper,
                 operationLogMapper,
-                promotionLinkMapper,
+                promotionLinkRecordFacade,
                 orderReadFacade,
                 merchantMapper,
                 userDomainFacade,
@@ -696,7 +696,6 @@ class ProductServiceFilterTest {
         when(snapshotMapper.selectPage(any(Page.class), any())).thenReturn(snapshotPage);
         when(operationStateMapper.selectList(any())).thenReturn(List.of());
         when(operationLogMapper.selectList(any())).thenReturn(List.of());
-        when(promotionLinkMapper.selectList(any())).thenReturn(List.of());
 
         var result = service.buildActivityProductListViewFromDb(
                 "100018", 20, null, null, null, null, " LATEST ", null, null);
@@ -746,7 +745,6 @@ class ProductServiceFilterTest {
                 .thenReturn(List.of(highCommission, promoted));
         when(operationStateMapper.selectList(any())).thenReturn(List.of(promotedState, highCommissionState));
         when(operationLogMapper.selectList(any())).thenReturn(List.of());
-        when(promotionLinkMapper.selectList(any())).thenReturn(List.of());
 
         var result = service.buildActivityProductListViewFromDb(
                 "100018", 20, null, null, null, null, null, null, null);

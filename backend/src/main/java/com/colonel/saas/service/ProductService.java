@@ -28,6 +28,7 @@ import com.colonel.saas.entity.ProductSnapshot;
 import com.colonel.saas.entity.TalentFollowRecord;
 import com.colonel.saas.entity.PromotionLink;
 import com.colonel.saas.domain.order.facade.OrderReadFacade;
+import com.colonel.saas.domain.order.facade.PromotionLinkRecordFacade;
 import com.colonel.saas.gateway.douyin.DouyinActivityGateway;
 import com.colonel.saas.gateway.douyin.DouyinProductGateway;
 import com.colonel.saas.domain.product.application.port.DouyinConvertPort;
@@ -37,7 +38,6 @@ import com.colonel.saas.mapper.MerchantMapper;
 import com.colonel.saas.mapper.ProductOperationLogMapper;
 import com.colonel.saas.mapper.ProductOperationStateMapper;
 import com.colonel.saas.mapper.ProductSnapshotMapper;
-import com.colonel.saas.mapper.PromotionLinkMapper;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.domain.user.facade.dto.UserOwnershipReference;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -137,8 +137,8 @@ public class ProductService implements CopyPromotionSupportPort {
     private final ProductOperationStateMapper operationStateMapper;
     /** 商品操作日志持久层，记录审核、分配、决策等操作审计 */
     private final ProductOperationLogMapper operationLogMapper;
-    /** 推广链接持久层，存储生成的推广链接及短链 */
-    private final PromotionLinkMapper promotionLinkMapper;
+    /** 推广链接事实门面，存储和读取生成的推广链接及短链 */
+    private final PromotionLinkRecordFacade promotionLinkRecordFacade;
     /** 订单域只读门面，用于活动商品订单摘要与团长商品范围。 */
     private final OrderReadFacade orderReadFacade;
     /** 商户持久层，用于查询商家名称等信息 */
@@ -195,7 +195,7 @@ public class ProductService implements CopyPromotionSupportPort {
             ProductSnapshotMapper snapshotMapper,
             ProductOperationStateMapper operationStateMapper,
             ProductOperationLogMapper operationLogMapper,
-            PromotionLinkMapper promotionLinkMapper,
+            PromotionLinkRecordFacade promotionLinkRecordFacade,
             OrderReadFacade orderReadFacade,
             MerchantMapper merchantMapper,
             UserDomainFacade userDomainFacade,
@@ -215,7 +215,7 @@ public class ProductService implements CopyPromotionSupportPort {
         this.snapshotMapper = snapshotMapper;
         this.operationStateMapper = operationStateMapper;
         this.operationLogMapper = operationLogMapper;
-        this.promotionLinkMapper = promotionLinkMapper;
+        this.promotionLinkRecordFacade = promotionLinkRecordFacade;
         this.orderReadFacade = orderReadFacade;
         this.merchantMapper = merchantMapper;
         this.userDomainFacade = userDomainFacade;
@@ -766,14 +766,12 @@ public class ProductService implements CopyPromotionSupportPort {
         PageResult<Map<String, Object>> result = new PageResult<>();
         result.setPage(currentPage);
         result.setSize(pageSize);
-        if (!StringUtils.hasText(productId)) {
+        if (!StringUtils.hasText(productId) || promotionLinkRecordFacade == null) {
             result.setTotal(0);
             result.setRecords(List.of());
             return result;
         }
-        List<PromotionLink> links = promotionLinkMapper.selectList(new LambdaQueryWrapper<PromotionLink>()
-                .eq(PromotionLink::getProductId, productId)
-                .orderByDesc(PromotionLink::getCreatedAt));
+        List<PromotionLink> links = promotionLinkRecordFacade.findByProductId(productId);
         if (links == null || links.isEmpty()) {
             result.setTotal(0);
             result.setRecords(List.of());
@@ -3682,7 +3680,7 @@ public class ProductService implements CopyPromotionSupportPort {
             link.setOperatorName(operatorName);
             link.setCreatedAt(LocalDateTime.now());
             link.setUpdatedAt(LocalDateTime.now());
-            promotionLinkMapper.insert(link);
+            promotionLinkRecordFacade.save(link);
 
             // 2. 保存 PickSourceMapping (用于订单归因反查)
             if (nativeColonelBuyin.resolved()) {
@@ -5071,10 +5069,10 @@ public class ProductService implements CopyPromotionSupportPort {
         if (!StringUtils.hasText(activityId) || productIds == null || productIds.isEmpty()) {
             return Map.of();
         }
-        List<PromotionLink> links = promotionLinkMapper.selectList(new LambdaQueryWrapper<PromotionLink>()
-                .eq(PromotionLink::getActivityId, activityId)
-                .in(PromotionLink::getProductId, productIds)
-                .orderByDesc(PromotionLink::getCreatedAt));
+        if (promotionLinkRecordFacade == null) {
+            return Map.of();
+        }
+        List<PromotionLink> links = promotionLinkRecordFacade.findByActivityAndProductIds(activityId, productIds);
         if (links == null || links.isEmpty()) {
             return Map.of();
         }
@@ -5117,10 +5115,10 @@ public class ProductService implements CopyPromotionSupportPort {
         if (!StringUtils.hasText(activityId) || !StringUtils.hasText(productId)) {
             return null;
         }
-        List<PromotionLink> links = promotionLinkMapper.selectList(new LambdaQueryWrapper<PromotionLink>()
-                .eq(PromotionLink::getActivityId, activityId)
-                .eq(PromotionLink::getProductId, productId)
-                .orderByDesc(PromotionLink::getCreatedAt));
+        if (promotionLinkRecordFacade == null) {
+            return null;
+        }
+        List<PromotionLink> links = promotionLinkRecordFacade.findByActivityAndProductId(activityId, productId);
         if (links == null || links.isEmpty()) {
             return null;
         }

@@ -1,6 +1,7 @@
 package com.colonel.saas.service;
 
 import com.colonel.saas.domain.order.facade.OrderReadFacade;
+import com.colonel.saas.domain.order.facade.PromotionLinkRecordFacade;
 import com.colonel.saas.domain.product.event.ProductDomainEventPublisher;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -30,7 +31,7 @@ class ProductServiceColonelBuyinIdTest {
     @Mock
     private com.colonel.saas.mapper.ProductOperationLogMapper operationLogMapper;
     @Mock
-    private com.colonel.saas.mapper.PromotionLinkMapper promotionLinkMapper;
+    private PromotionLinkRecordFacade promotionLinkRecordFacade;
     @Mock
     private OrderReadFacade orderReadFacade;
     @Mock
@@ -65,7 +66,7 @@ class ProductServiceColonelBuyinIdTest {
                 snapshotMapper,
                 operationStateMapper,
                 operationLogMapper,
-                promotionLinkMapper,
+                promotionLinkRecordFacade,
                 orderReadFacade,
                 merchantMapper,
                 userDomainFacade,
