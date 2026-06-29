@@ -7,6 +7,11 @@
 
 ## 最近版本摘要
 
+### v0.8.4 — 2026-06-29
+- DDD-VERIFY-001 活动商品 backfill status query 切片：新增 `ProductBackfillJobStatusQueryService`、读侧 repository/view/snapshot 与 MyBatis adapter，`ProductActivityBackfillApplicationService.getJobStatus` 改走商品 query 读模型；legacy backfill service 删除 status 投影组装。
+- RED/GREEN targeted tests、Product 全集合、compile/package 和 real-pre backend health 通过；架构测试仍为 5 个既有 order/user 红线失败，全量测试保留本地 `postgres` DNS 阻塞记录，本轮 evidence 结论为 PARTIAL。
+- 证据：`harness/reports/evidence-20260629-120953.md`；retro：`harness/reports/retro-20260629-121010.md`。
+
 ### v0.8.3 — 2026-06-29
 - DDD-VERIFY-001 活动商品 backfill 持久化幂等切片：async 请求将 `asyncIdempotencyKey` 写入 job metadata，并在排队前查询 `product_sync_job_log` 中已有 RUNNING job，跨服务实例 / 重启窗口内重复点击返回已有 jobId。
 - Targeted tests、Product 全集合、compile/package 和 real-pre backend health 通过；架构测试仍为 5 个既有 order/user 红线失败，全量 `mvn test` 304 秒超时且暴露本地 `postgres` DNS 依赖，本轮 evidence 结论为 PARTIAL。

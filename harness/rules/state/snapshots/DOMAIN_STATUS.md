@@ -132,6 +132,9 @@
 - 标记：P0。
 
 ## 商品域
+- 最新小切片：DDD-VERIFY-001-PRODUCT-BACKFILL-STATUS-QUERY-SLICE 已新增 `ProductBackfillJobStatusQueryService`、status snapshot/view/repository 与 `ProductBackfillJobStatusMapperRepository`，`ProductActivityBackfillApplicationService.getJobStatus` 改走商品 query 读模型；legacy `ProductActivityBackfillService` 删除 status 查询投影组装。本轮不改 API 路径、请求 / 响应字段、DB schema、状态枚举、confirm / dryRun 边界、锁 key 或真实数据。
+- 最新验证：RED `ProductBackfillJobStatusQueryServiceTest` 先因 query service/repository/snapshot 缺失失败；GREEN targeted 6 tests PASS，`mvn -DskipTests compile` PASS，`mvn -DskipTests package` PASS，`mvn test -Dtest='*Product*Test'` PASS（333 tests），real-pre backend 重启后 health=UP。架构测试仍为既有 5 个 order/user 红线失败；全量测试沿用同会话本地 `postgres` DNS 阻塞记录，未写 PASS。
+- 最新报告路径：本轮 `harness/reports/evidence-20260629-120953.md`；retro `harness/reports/retro-20260629-121010.md`；报告目录清理将 2 个旧 report 归档到 `harness/archive/reports-overflow-20260629-ddd-product-backfill-status-query/`；下一步：继续活动商品同步失败追踪 / 日志上下文收口，标记 P0。
 - 最新小切片：DDD-VERIFY-001-PRODUCT-BACKFILL-PERSISTENT-IDEMPOTENCY-SLICE 已将 async backfill 幂等 key 写入 job metadata，并在排队前按 `product_sync_job_log` 已有 RUNNING job 查询复用 jobId；覆盖服务实例重启 / 进程内缓存丢失后的重复点击窗口。本轮不改 API 路径、请求 / 响应字段、DB schema、confirm / dryRun 边界、锁 key、分批拉取 / 分批写库逻辑或真实数据。
 - 最新验证：RED metadata/service parity tests 先因缺少 metadata overload 与 mapper 查询失败；GREEN targeted 12 tests PASS，`mvn -DskipTests compile` PASS，`mvn -DskipTests package` PASS，`mvn test -Dtest='*Product*Test'` PASS（330 tests），real-pre backend 重启后 health=UP。架构测试仍为既有 5 个 order/user 红线失败；全量 `mvn test` 304 秒超时并暴露本地 `postgres` DNS 依赖。
 - 最新报告路径：本轮 `harness/reports/evidence-20260629-115357.md`；retro `harness/reports/retro-20260629-115133.md`；报告目录清理将 2 个旧 report 和 1 个不完整 evidence 归档到 `harness/archive/reports-overflow-20260629-ddd-product-backfill-persistent-idempotency/`；下一步：继续活动商品同步 job status 查询语义和失败追踪收口，标记 P0。

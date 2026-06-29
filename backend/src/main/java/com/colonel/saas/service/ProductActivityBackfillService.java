@@ -208,44 +208,6 @@ public class ProductActivityBackfillService {
         return new BackfillAsyncResponse(jobId, ProductBackfillJobPolicy.STATUS_RUNNING);
     }
 
-    public BackfillJobStatus getJobStatus(String jobId) {
-        if (!StringUtils.hasText(jobId)) {
-            throw BusinessException.param("jobId 不能为空");
-        }
-        ProductSyncJobLog job = jobLogMapper.selectLatestByJobId(jobId.trim());
-        if (job == null) {
-            throw BusinessException.notFound("未找到对应的 backfill job");
-        }
-        Map<String, Object> requestMeta = readRequestMetadata(job.getRequestParamsJson());
-        return new BackfillJobStatus(
-                job.getJobId(),
-                job.getStatus(),
-                Boolean.TRUE.equals(job.getDryRun()),
-                job.getScope(),
-                valueOrZero(job.getActivitiesScanned()),
-                valueOrZero(job.getActivitiesSuccess()),
-                valueOrZero(job.getActivitiesIncomplete()),
-                valueOrZero(job.getActivitiesFailed()),
-                valueOrZero(job.getApiFetchedRows()),
-                valueOrZero(job.getApiDistinctProductIds()),
-                readMetadataLong(requestMeta, "dbRowsBefore"),
-                readMetadataLong(requestMeta, "estimatedGapRows"),
-                valueOrZero(job.getInserted()),
-                valueOrZero(job.getUpdated()),
-                valueOrZero(job.getSkipped()),
-                valueOrZero(job.getFailed()),
-                readStopReasonStats(job.getStopReasonStatsJson()),
-                requestMeta.get("currentActivityId") == null || !StringUtils.hasText(requestMeta.get("currentActivityId").toString())
-                        ? null
-                        : String.valueOf(requestMeta.get("currentActivityId")),
-                requestMeta.get("lastProgressAt") == null ? null : requestMeta.get("lastProgressAt").toString(),
-                readMetadataLong(requestMeta, "lockWaitCount"),
-                readMetadataLong(requestMeta, "deadlockRetryCount"),
-                0,
-                job.getStartedAt() == null ? null : job.getStartedAt().toString(),
-                job.getFinishedAt() == null ? null : job.getFinishedAt().toString());
-    }
-
     private BackfillResult executeBackfillWorkflow(
             String jobId,
             NormalizedRequest normalized,
@@ -1219,34 +1181,6 @@ public class ProductActivityBackfillService {
         return log;
     }
 
-    private Map<String, Object> readRequestMetadata(String requestParamsJson) {
-        return backfillJobMetadata.read(requestParamsJson);
-    }
-
-    private Map<String, Long> readStopReasonStats(String stopReasonStatsJson) {
-        if (!StringUtils.hasText(stopReasonStatsJson)) {
-            return Map.of();
-        }
-        try {
-            @SuppressWarnings("unchecked")
-            Map<String, Number> raw = OBJECT_MAPPER.readValue(stopReasonStatsJson, Map.class);
-            Map<String, Long> converted = new LinkedHashMap<>();
-            for (Map.Entry<String, Number> entry : raw.entrySet()) {
-                if (entry.getKey() == null || entry.getValue() == null) {
-                    continue;
-                }
-                converted.put(entry.getKey(), entry.getValue().longValue());
-            }
-            return converted;
-        } catch (JsonProcessingException ex) {
-            return Map.of();
-        }
-    }
-
-    private long readMetadataLong(Map<String, Object> metadata, String key) {
-        return backfillJobMetadata.longValue(metadata, key);
-    }
-
     private int valueOrZero(Integer value) {
         return value == null ? 0 : value;
     }
@@ -1477,33 +1411,6 @@ public class ProductActivityBackfillService {
     public record BackfillAsyncResponse(
             String jobId,
             String status) {
-    }
-
-    public record BackfillJobStatus(
-            String jobId,
-            String status,
-            boolean dryRun,
-            String scope,
-            int activitiesScanned,
-            int activitiesSuccess,
-            int activitiesIncomplete,
-            int activitiesFailed,
-            long apiFetchedRows,
-            long apiDistinctProductIds,
-            long dbRowsBefore,
-            long estimatedGapRows,
-            int inserted,
-            int updated,
-            int skipped,
-            int failed,
-            Map<String, Long> stopReasonStats,
-            String currentActivityId,
-            String lastProgressAt,
-            long lockWaitCount,
-            long deadlockRetryCount,
-            int unchanged,
-            String startedAt,
-            String finishedAt) {
     }
 
     private record NormalizedRequest(

@@ -1,5 +1,7 @@
 package com.colonel.saas.domain.product.application;
 
+import com.colonel.saas.domain.product.query.ProductBackfillJobStatusQueryService;
+import com.colonel.saas.domain.product.query.ProductBackfillJobStatusView;
 import com.colonel.saas.service.ActivityProductPaginationRunner;
 import com.colonel.saas.service.ProductActivityBackfillService;
 import com.colonel.saas.service.ProductSyncDryRunProbeService;
@@ -26,11 +28,14 @@ class ProductActivityBackfillApplicationServiceTest {
     @Mock
     private ProductActivityBackfillService backfillService;
 
+    @Mock
+    private ProductBackfillJobStatusQueryService jobStatusQueryService;
+
     private ProductActivityBackfillApplicationService applicationService;
 
     @BeforeEach
     void setUp() {
-        applicationService = new ProductActivityBackfillApplicationService(backfillService);
+        applicationService = new ProductActivityBackfillApplicationService(backfillService, jobStatusQueryService);
     }
 
     @Test
@@ -129,9 +134,9 @@ class ProductActivityBackfillApplicationServiceTest {
     }
 
     @Test
-    void getJobStatus_shouldMapLegacyStatusToApplicationStatus() {
-        ProductActivityBackfillService.BackfillJobStatus legacyStatus =
-                new ProductActivityBackfillService.BackfillJobStatus(
+    void getJobStatus_shouldMapQueryStatusToApplicationStatus() {
+        ProductBackfillJobStatusView queryStatus =
+                new ProductBackfillJobStatusView(
                         "job-1",
                         "RUNNING",
                         true,
@@ -156,7 +161,7 @@ class ProductActivityBackfillApplicationServiceTest {
                         4,
                         "2026-06-27T15:19:00",
                         null);
-        when(backfillService.getJobStatus("job-1")).thenReturn(legacyStatus);
+        when(jobStatusQueryService.getJobStatus("job-1")).thenReturn(queryStatus);
 
         ProductActivityBackfillApplicationService.BackfillJobStatus status =
                 applicationService.getJobStatus("job-1");
@@ -167,7 +172,7 @@ class ProductActivityBackfillApplicationServiceTest {
         assertThat(status.lockWaitCount()).isEqualTo(2);
         assertThat(status.deadlockRetryCount()).isEqualTo(3);
         assertThat(status.unchanged()).isEqualTo(4);
-        verify(backfillService).getJobStatus("job-1");
+        verify(jobStatusQueryService).getJobStatus("job-1");
     }
 
     private ProductActivityBackfillApplicationService.BackfillCommand command() {

@@ -1,5 +1,7 @@
 package com.colonel.saas.domain.product.application;
 
+import com.colonel.saas.domain.product.query.ProductBackfillJobStatusQueryService;
+import com.colonel.saas.domain.product.query.ProductBackfillJobStatusView;
 import com.colonel.saas.service.ActivityProductPaginationRunner;
 import com.colonel.saas.service.ProductActivityBackfillService;
 import com.colonel.saas.service.ProductSyncDryRunProbeService;
@@ -18,9 +20,13 @@ import java.util.UUID;
 public class ProductActivityBackfillApplicationService {
 
     private final ProductActivityBackfillService backfillService;
+    private final ProductBackfillJobStatusQueryService jobStatusQueryService;
 
-    public ProductActivityBackfillApplicationService(ProductActivityBackfillService backfillService) {
+    public ProductActivityBackfillApplicationService(
+            ProductActivityBackfillService backfillService,
+            ProductBackfillJobStatusQueryService jobStatusQueryService) {
         this.backfillService = backfillService;
+        this.jobStatusQueryService = jobStatusQueryService;
     }
 
     public BackfillResult backfill(BackfillCommand command, UUID requestedBy) {
@@ -34,7 +40,7 @@ public class ProductActivityBackfillApplicationService {
     }
 
     public BackfillJobStatus getJobStatus(String jobId) {
-        return BackfillJobStatus.from(backfillService.getJobStatus(jobId));
+        return BackfillJobStatus.from(jobStatusQueryService.getJobStatus(jobId));
     }
 
     private ProductActivityBackfillService.BackfillRequest toLegacyRequest(BackfillCommand command) {
@@ -141,7 +147,7 @@ public class ProductActivityBackfillApplicationService {
             String startedAt,
             String finishedAt) {
 
-        private static BackfillJobStatus from(ProductActivityBackfillService.BackfillJobStatus status) {
+        private static BackfillJobStatus from(ProductBackfillJobStatusView status) {
             return new BackfillJobStatus(
                     status.jobId(),
                     status.status(),
