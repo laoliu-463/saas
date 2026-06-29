@@ -298,48 +298,8 @@ public class TalentService {
     }
 
     
-    private boolean applyPageDataScopeLegacy(
-            LambdaQueryWrapper<Talent> wrapper,
-            DataScope dataScope,
-            UUID userId,
-            UUID deptId) {
-        if (dataScope == DataScope.PERSONAL && userId != null) {
-            return applyClaimedTalentFilter(
-                    wrapper,
-                    talentClaimMapper.findActiveByUserId(userId));
-        }
-        if (dataScope == DataScope.DEPT && deptId != null) {
-            return applyClaimedTalentFilter(
-                    wrapper,
-                    talentClaimMapper.findActiveByDeptId(deptId));
-        }
-        return true;
-    }
-
-    private boolean applyPageDataScopeWithPolicy(
-            LambdaQueryWrapper<Talent> wrapper,
-            DataScope dataScope,
-            UUID userId,
-            UUID deptId) {
-        DataScopePolicy.ContextRequirement requirement =
-                dataScopePolicy.contextRequirement(userId, deptId, dataScope);
-        if (requirement != DataScopePolicy.ContextRequirement.SATISFIED) {
-            return true;
-        }
-        DataScopePolicy.Decision decision = dataScopePolicy.decide(userId, deptId, dataScope);
-        if (decision == DataScopePolicy.Decision.FILTER_USER) {
-            return applyClaimedTalentFilter(
-                    wrapper,
-                    talentClaimMapper.findActiveByUserId(userId));
-        }
-        if (decision == DataScopePolicy.Decision.FILTER_DEPT) {
-            return applyClaimedTalentFilter(
-                    wrapper,
-                    talentClaimMapper.findActiveByDeptId(deptId));
-        }
-        return true;
-    }
-
+    
+    
     private boolean applyClaimedTalentFilter(
             LambdaQueryWrapper<Talent> wrapper,
             List<TalentClaim> claims) {
@@ -826,31 +786,8 @@ public class TalentService {
     }
 
     
-    private OrderScopeFilter resolveExclusiveOrderScopeLegacy(DataScope dataScope, UUID userId, UUID deptId) {
-        if (dataScope == DataScope.PERSONAL && userId != null) {
-            return new OrderScopeFilter(userId, null);
-        } else if (dataScope == DataScope.DEPT && deptId != null) {
-            return new OrderScopeFilter(null, deptId);
-        }
-        return OrderScopeFilter.unfiltered();
-    }
-
-    private OrderScopeFilter resolveExclusiveOrderScopeWithPolicy(DataScope dataScope, UUID userId, UUID deptId) {
-        DataScopePolicy.ContextRequirement requirement =
-                dataScopePolicy.contextRequirement(userId, deptId, dataScope);
-        if (requirement != DataScopePolicy.ContextRequirement.SATISFIED) {
-            return OrderScopeFilter.unfiltered();
-        }
-        DataScopePolicy.Decision decision = dataScopePolicy.decide(userId, deptId, dataScope);
-        if (decision == DataScopePolicy.Decision.FILTER_USER) {
-            return new OrderScopeFilter(userId, null);
-        }
-        if (decision == DataScopePolicy.Decision.FILTER_DEPT) {
-            return new OrderScopeFilter(null, deptId);
-        }
-        return OrderScopeFilter.unfiltered();
-    }
-
+    
+    
     /**
      * 分批加载结算订单数据。
      * <p>
@@ -978,63 +915,6 @@ public class TalentService {
             throw new ForbiddenException("无权操作该达人");
         }
     }
-    /**
-     * 解析达人信息补全的输入值。
-     * <p>
-     * 按优先级选择：profileUrl &gt; douyinNo &gt; uid &gt; secUid &gt; douyinUid。
-     * </p>
-     *
-     * @param talent 达人实体
-     * @return 解析出的输入值（已 trim），全部为空时返回 null
-     */
-    private String resolveInputValue(Talent talent) {
-        if (StringUtils.hasText(talent.getProfileUrl())) {
-            return talent.getProfileUrl().trim();
-        }
-        if (StringUtils.hasText(talent.getDouyinNo())) {
-            return talent.getDouyinNo().trim();
-        }
-        if (StringUtils.hasText(talent.getUid())) {
-            return talent.getUid().trim();
-        }
-        if (StringUtils.hasText(talent.getSecUid())) {
-            return talent.getSecUid().trim();
-        }
-        if (StringUtils.hasText(talent.getDouyinUid())) {
-            return talent.getDouyinUid().trim();
-        }
-        return null;
-    }
-
-    /**
-     * 解析达人信息补全的输入类型。
-     * <p>
-     * 与 {@link #resolveInputValue(Talent)} 对应，返回输入值的类型标识：
-     * PROFILE_URL / DOUYIN_NO / UID / SEC_UID / DOUYIN_UID / UNKNOWN。
-     * </p>
-     *
-     * @param talent 达人实体
-     * @return 输入类型标识
-     */
-    private String resolveInputType(Talent talent) {
-        if (StringUtils.hasText(talent.getProfileUrl())) {
-            return "PROFILE_URL";
-        }
-        if (StringUtils.hasText(talent.getDouyinNo())) {
-            return "DOUYIN_NO";
-        }
-        if (StringUtils.hasText(talent.getUid())) {
-            return "UID";
-        }
-        if (StringUtils.hasText(talent.getSecUid())) {
-            return "SEC_UID";
-        }
-        if (StringUtils.hasText(talent.getDouyinUid())) {
-            return "DOUYIN_UID";
-        }
-        return "UNKNOWN";
-    }
-
     /**
      * 持久化达人实体（乐观锁更新）。
      * <p>
