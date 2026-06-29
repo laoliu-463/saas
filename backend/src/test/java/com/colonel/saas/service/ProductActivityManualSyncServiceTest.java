@@ -1,12 +1,10 @@
 package com.colonel.saas.service;
 
 import com.colonel.saas.domain.product.application.ProductActivitySyncApplicationService;
-import com.colonel.saas.gateway.douyin.DouyinProductGateway;
 import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -34,7 +32,7 @@ class ProductActivityManualSyncServiceTest {
 
     @BeforeEach
     void setUp() {
-        when(productActivitySyncApplicationService.refreshActivitySnapshots(any()))
+        when(productActivitySyncApplicationService.refreshManualActivitySnapshots(any(), any(), any()))
                 .thenReturn(new ProductActivitySyncApplicationService.ActivityProductRefreshResult(3, 1, 1, 2, 0));
     }
 
@@ -51,11 +49,7 @@ class ProductActivityManualSyncServiceTest {
         assertThat(result.activityId()).isEqualTo("ACT-1");
         assertThat(result.syncStatus()).isEqualTo("ACCEPTED");
         verify(colonelActivityService).syncActivitySummaryFromUpstream("ACT-1", null);
-        ArgumentCaptor<DouyinProductGateway.ActivityProductQueryRequest> captor =
-                ArgumentCaptor.forClass(DouyinProductGateway.ActivityProductQueryRequest.class);
-        verify(productActivitySyncApplicationService).refreshActivitySnapshots(captor.capture());
-        assertThat(captor.getValue().activityId()).isEqualTo("ACT-1");
-        assertThat(captor.getValue().count()).isEqualTo(20);
+        verify(productActivitySyncApplicationService).refreshManualActivitySnapshots("ACT-1", null, 20);
         verify(activityMapper).touchLastSyncAt(eq("ACT-1"), any(LocalDateTime.class));
     }
 
@@ -84,7 +78,7 @@ class ProductActivityManualSyncServiceTest {
 
     @Test
     void trigger_shouldNotTouchLastSyncAtWhenRefreshIsIncomplete() {
-        when(productActivitySyncApplicationService.refreshActivitySnapshots(any()))
+        when(productActivitySyncApplicationService.refreshManualActivitySnapshots(any(), any(), any()))
                 .thenReturn(new ProductActivitySyncApplicationService.ActivityProductRefreshResult(
                         2_000,
                         1,

@@ -7,6 +7,11 @@
 
 ## 最近版本摘要
 
+### v0.8.10 — 2026-06-29
+- DDD-VERIFY-001 活动商品手动同步请求边界切片：`ProductActivityManualSyncService` 不再直接构造 `DouyinProductGateway.ActivityProductQueryRequest`，仅保留活动 ID 归一化、运行中去重、异步编排、活动摘要同步和完成时间更新；手动同步请求字段与 pageSize 归一化迁入 `ProductActivitySyncApplicationService` 并复用 `ActivityProductPagePolicy`。API、DB schema、权限、状态值、异步语义、真实同步入口均不变。
+- RED/GREEN application/manual sync parity 与 Product routing 架构测试 46 tests PASS；`mvn -DskipTests compile`、`mvn -f backend/pom.xml -DskipTests package`、Product 全集合 348 tests、real-pre backend rebuild/restart/health PASS；安全业务探针 POST 手动同步接口无 token 返回 401，未触发真实同步或 backfill；架构集合 185 tests / 5 failures / 1 skipped，全量 `mvn test` 2736 tests / 5 failures / 3 skipped，失败仍为既有 order/user 架构红线，本轮 evidence 结论为 PARTIAL。
+- 证据：`harness/reports/evidence-20260629-163218.md`；latest：`harness/reports/latest-evidence-20260629.md`；retro：`harness/reports/retro-20260629-163228.md`。
+
 ### v0.8.9 — 2026-06-29
 - DDD-VERIFY-001 活动商品 backfill known total 语义切片：`ProductActivityBackfillService` 对 `CUSTOM_ACTIVITY_IDS` backfill 在 job start metadata 中写入已知 `activitiesTotal` 与 `activitiesProcessed`，并让 dry-run progress metadata 同步该总数；非自定义范围不猜测总数。API、DB schema、状态枚举、confirm/dryRun、锁 key 和真实同步入口均不变。
 - RED/GREEN custom dry-run parity 12 tests、backfill 组合 36 tests、Product 全集合 346 tests、compile/package 和 real-pre backend/frontend health 通过；安全业务烟测仅访问 job status 未授权接口返回 401，未触发真实 backfill；全量 `mvn test` 2734 tests / 5 failures / 3 skipped，失败仍为既有 order/user 架构红线，本轮 evidence 结论为 PARTIAL。

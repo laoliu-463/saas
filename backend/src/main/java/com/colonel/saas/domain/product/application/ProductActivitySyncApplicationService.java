@@ -1,5 +1,6 @@
 package com.colonel.saas.domain.product.application;
 
+import com.colonel.saas.domain.product.policy.ActivityProductPagePolicy;
 import com.colonel.saas.gateway.douyin.DouyinProductGateway;
 import com.colonel.saas.service.ProductService;
 import org.springframework.stereotype.Service;
@@ -22,12 +23,42 @@ public class ProductActivitySyncApplicationService {
         return ActivityProductRefreshResult.from(productService.refreshActivitySnapshots(request));
     }
 
+    public ActivityProductRefreshResult refreshManualActivitySnapshots(
+            String activityId,
+            String appId,
+            Integer configuredPageSize) {
+        return refreshActivitySnapshots(buildManualSyncRequest(activityId, appId, configuredPageSize));
+    }
+
     public ActivityProductRefreshResult refreshActivitySnapshots(
             DouyinProductGateway.ActivityProductQueryRequest request,
             int maxPagesPerActivity,
             int maxRowsPerActivity) {
         return ActivityProductRefreshResult.from(
                 productService.refreshActivitySnapshots(request, maxPagesPerActivity, maxRowsPerActivity));
+    }
+
+    private DouyinProductGateway.ActivityProductQueryRequest buildManualSyncRequest(
+            String activityId,
+            String appId,
+            Integer configuredPageSize) {
+        String normalizedActivityId = activityId == null ? "" : activityId.trim();
+        Integer requestedPageSize = configuredPageSize == null || configuredPageSize <= 0
+                ? ActivityProductPagePolicy.DEFAULT_PAGE_SIZE
+                : configuredPageSize;
+        return new DouyinProductGateway.ActivityProductQueryRequest(
+                appId,
+                normalizedActivityId,
+                4L,
+                1L,
+                ActivityProductPagePolicy.normalizePageSize(requestedPageSize),
+                null,
+                null,
+                null,
+                null,
+                1L,
+                null,
+                null);
     }
 
     public record ActivityProductRefreshResult(

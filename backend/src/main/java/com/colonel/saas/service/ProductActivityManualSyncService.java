@@ -1,7 +1,6 @@
 package com.colonel.saas.service;
 
 import com.colonel.saas.domain.product.application.ProductActivitySyncApplicationService;
-import com.colonel.saas.gateway.douyin.DouyinProductGateway;
 import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -22,15 +21,13 @@ import java.util.concurrent.Executor;
 @Service
 public class ProductActivityManualSyncService {
 
-    private static final int DEFAULT_PAGE_SIZE = 20;
-
     private final ProductActivitySyncApplicationService productActivitySyncApplicationService;
     private final ColonelsettlementActivityService colonelActivityService;
     private final ColonelsettlementActivityMapper activityMapper;
     private final Executor syncExecutor;
     private final Set<String> runningActivityIds = ConcurrentHashMap.newKeySet();
     @Value("${product.sync.activityProduct.pageSize:20}")
-    private int pageSize;
+    private int pageSize = 20;
 
     public ProductActivityManualSyncService(
             ProductActivitySyncApplicationService productActivitySyncApplicationService,
@@ -64,7 +61,7 @@ public class ProductActivityManualSyncService {
         try {
             colonelActivityService.syncActivitySummaryFromUpstream(activityId, appId);
             ProductActivitySyncApplicationService.ActivityProductRefreshResult result =
-                    productActivitySyncApplicationService.refreshActivitySnapshots(buildQueryRequest(activityId, appId));
+                    productActivitySyncApplicationService.refreshManualActivitySnapshots(activityId, appId, pageSize);
             if (result.complete()) {
                 activityMapper.touchLastSyncAt(activityId, LocalDateTime.now());
             }
@@ -86,26 +83,6 @@ public class ProductActivityManualSyncService {
         } finally {
             runningActivityIds.remove(activityId);
         }
-    }
-
-    private DouyinProductGateway.ActivityProductQueryRequest buildQueryRequest(String activityId, String appId) {
-        return new DouyinProductGateway.ActivityProductQueryRequest(
-                appId,
-                activityId,
-                4L,
-                1L,
-                normalizedPageSize(),
-                null,
-                null,
-                null,
-                null,
-                1L,
-                null,
-                null);
-    }
-
-    private int normalizedPageSize() {
-        return Math.min(Math.max(pageSize <= 0 ? DEFAULT_PAGE_SIZE : pageSize, 1), 20);
     }
 
     public record SyncTriggerResult(String activityId, String syncStatus) {
