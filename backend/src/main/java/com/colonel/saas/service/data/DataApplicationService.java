@@ -14,7 +14,13 @@ import com.colonel.saas.common.result.PageResult;
 import com.colonel.saas.common.time.AppZone;
 import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.constant.RoleCodes;
+import com.colonel.saas.domain.order.facade.DataOrderQueryFacade;
+import com.colonel.saas.domain.performance.facade.ExclusiveMerchantReadFacade;
 import com.colonel.saas.domain.performance.facade.OrderPerformanceQueryFacade;
+import com.colonel.saas.domain.product.facade.ProductActivityReadFacade;
+import com.colonel.saas.domain.talent.facade.ExclusiveTalentReadFacade;
+import com.colonel.saas.domain.user.facade.UserDomainFacade;
+import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.dto.performance.OrderPerformanceBatchResponse;
 import com.colonel.saas.dto.performance.OrderPerformanceDTO;
 import com.colonel.saas.entity.ColonelsettlementActivity;
@@ -23,12 +29,6 @@ import com.colonel.saas.entity.ExclusiveMerchant;
 import com.colonel.saas.entity.ExclusiveTalent;
 import com.colonel.saas.entity.SysUser;
 import com.colonel.saas.vo.data.OrderDetailVO;
-import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
-import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
-import com.colonel.saas.mapper.ExclusiveMerchantMapper;
-import com.colonel.saas.mapper.ExclusiveTalentMapper;
-import com.colonel.saas.domain.user.facade.UserDomainFacade;
-import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.service.CommissionService;
 import com.colonel.saas.service.PerformanceMetricsQueryService;
 import com.colonel.saas.service.ShortTtlCacheService;
@@ -108,7 +108,7 @@ import java.util.UUID;
  * @see com.colonel.saas.service.CommissionService 提成计算服务
  * @see com.colonel.saas.service.PerformanceMetricsQueryService 业绩指标聚合查询
  * @see com.colonel.saas.service.ShortTtlCacheService 短 TTL 缓存服务
- * @see com.colonel.saas.mapper.ColonelsettlementOrderMapper 订单 Mapper
+ * @see DataOrderQueryFacade 订单事实只读门面
  * @see com.colonel.saas.common.enums.DataScope 数据范围枚举
  */
 public class DataApplicationService extends BaseController {
@@ -142,20 +142,20 @@ public class DataApplicationService extends BaseController {
     /** 上游订单时间字符串常见格式。 */
     private static final DateTimeFormatter UPSTREAM_DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
-    /** 订单 Mapper，负责订单表的基础查询与分页（含数据范围过滤） */
-    private final ColonelsettlementOrderMapper orderMapper;
+    /** 订单事实只读门面，负责订单表的基础查询与分页（含数据范围过滤） */
+    private final DataOrderQueryFacade dataOrderQueryFacade;
 
     /** 提成计算服务，负责按活动桶计算团长/渠道/达人三方提成 */
     private final CommissionService commissionService;
 
-    /** 独家达人 Mapper，负责独家达人监控数据查询 */
-    private final ExclusiveTalentMapper exclusiveTalentMapper;
+    /** 达人域只读门面，负责独家达人监控数据查询 */
+    private final ExclusiveTalentReadFacade exclusiveTalentReadFacade;
 
-    /** 独家商家 Mapper，负责独家商家监控数据查询 */
-    private final ExclusiveMerchantMapper exclusiveMerchantMapper;
+    /** 业绩域只读门面，负责独家商家监控数据查询 */
+    private final ExclusiveMerchantReadFacade exclusiveMerchantReadFacade;
 
-    /** 活动 Mapper，负责活动列表导出查询 */
-    private final ColonelsettlementActivityMapper activityMapper;
+    /** 商品域活动只读门面，负责活动名称与活动列表导出查询 */
+    private final ProductActivityReadFacade productActivityReadFacade;
 
     /** 短 TTL 缓存服务，用于指标缓存与筛选项缓存 */
     private final ShortTtlCacheService shortTtlCacheService;
@@ -179,22 +179,22 @@ public class DataApplicationService extends BaseController {
     private final DddRefactorProperties dddRefactorProperties;
 
     /**
-     * 构造注入所有依赖服务与 Mapper。
+     * 构造注入所有依赖服务与只读门面。
      *
-     * @param orderMapper                    订单 Mapper
+     * @param dataOrderQueryFacade           订单事实只读门面
      * @param commissionService              提成计算服务
-     * @param exclusiveTalentMapper          独家达人 Mapper
-     * @param exclusiveMerchantMapper        独家商家 Mapper
-     * @param activityMapper                 活动 Mapper
+     * @param exclusiveTalentReadFacade      独家达人只读门面
+     * @param exclusiveMerchantReadFacade    独家商家只读门面
+     * @param productActivityReadFacade      活动只读门面
      * @param shortTtlCacheService           短 TTL 缓存服务
      * @param performanceMetricsQueryService 业绩指标聚合查询服务
      */
     public DataApplicationService(
-            ColonelsettlementOrderMapper orderMapper,
+            DataOrderQueryFacade dataOrderQueryFacade,
             CommissionService commissionService,
-            ExclusiveTalentMapper exclusiveTalentMapper,
-            ExclusiveMerchantMapper exclusiveMerchantMapper,
-            ColonelsettlementActivityMapper activityMapper,
+            ExclusiveTalentReadFacade exclusiveTalentReadFacade,
+            ExclusiveMerchantReadFacade exclusiveMerchantReadFacade,
+            ProductActivityReadFacade productActivityReadFacade,
             ShortTtlCacheService shortTtlCacheService,
             PerformanceMetricsQueryService performanceMetricsQueryService,
             OrderPerformanceQueryFacade orderPerformanceQueryFacade,
@@ -202,11 +202,11 @@ public class DataApplicationService extends BaseController {
             DataScopePolicy dataScopePolicy,
             DddRefactorProperties dddRefactorProperties,
             JdbcTemplate jdbcTemplate) {
-        this.orderMapper = orderMapper;
+        this.dataOrderQueryFacade = dataOrderQueryFacade;
         this.commissionService = commissionService;
-        this.exclusiveTalentMapper = exclusiveTalentMapper;
-        this.exclusiveMerchantMapper = exclusiveMerchantMapper;
-        this.activityMapper = activityMapper;
+        this.exclusiveTalentReadFacade = exclusiveTalentReadFacade;
+        this.exclusiveMerchantReadFacade = exclusiveMerchantReadFacade;
+        this.productActivityReadFacade = productActivityReadFacade;
         this.shortTtlCacheService = shortTtlCacheService;
         this.performanceMetricsQueryService = performanceMetricsQueryService;
         this.orderPerformanceQueryFacade = orderPerformanceQueryFacade;
@@ -305,7 +305,7 @@ public class DataApplicationService extends BaseController {
                 dataScope);
 
         // 第三步：执行分页查询，数据范围已在 wrapper 中显式追加
-        IPage<ColonelsettlementOrder> orderPage = orderMapper.findPageWithScope(new Page<>(page, size), wrapper);
+        IPage<ColonelsettlementOrder> orderPage = dataOrderQueryFacade.findPageWithScope(new Page<>(page, size), wrapper);
 
         // 第四步：将实体列表转换为 OrderVO，保留分页元信息
         Page<OrderVO> voPage = new Page<>(orderPage.getCurrent(), orderPage.getSize(), orderPage.getTotal());
@@ -430,7 +430,7 @@ public class DataApplicationService extends BaseController {
         applyOrderDetailExtraFilters(wrapper, true, activityName, effectivePartnerId, partnerName, channelName, effectiveRecruiterName);
         applyDeptIdFilters(wrapper, true, parseUuidCsv(recruiterDeptIds), parseUuidCsv(channelDeptIds));
 
-        IPage<ColonelsettlementOrder> orderPage = orderMapper.findPageWithScope(new Page<>(page, size), wrapper);
+        IPage<ColonelsettlementOrder> orderPage = dataOrderQueryFacade.findPageWithScope(new Page<>(page, size), wrapper);
         List<ColonelsettlementOrder> orders = orderPage.getRecords();
 
         if (orders.isEmpty()) {
@@ -497,7 +497,7 @@ public class DataApplicationService extends BaseController {
         if (activityIds.isEmpty()) {
             return Map.of();
         }
-        List<ColonelsettlementActivity> activities = activityMapper.selectNamesByActivityIds(activityIds);
+        List<ColonelsettlementActivity> activities = productActivityReadFacade.selectNamesByActivityIds(activityIds);
         Map<String, String> map = new LinkedHashMap<>();
         for (ColonelsettlementActivity a : activities) {
             if (a.getActivityId() != null && a.getName() != null) {
@@ -1025,7 +1025,7 @@ public class DataApplicationService extends BaseController {
                 .ge(timeColumn, todayStart)
                 .lt(timeColumn, tomorrowStart)
                 .groupBy("colonel_activity_id");
-        List<Map<String, Object>> commissionRows = orderMapper.selectMaps(commissionWrapper);
+        List<Map<String, Object>> commissionRows = dataOrderQueryFacade.selectMaps(commissionWrapper);
         long displayTechServiceFeeCent = commissionRows.stream()
                 .mapToLong(row -> asLong(row, "tech_service_fee"))
                 .sum();
@@ -1053,7 +1053,7 @@ public class DataApplicationService extends BaseController {
                 .ge(timeColumn, weekStart)
                 .lt(timeColumn, tomorrowStart)
                 .groupBy(String.format("DATE(%s)", timeColumn));
-        Map<LocalDate, Map<String, Object>> trendMap = orderMapper.selectMaps(trendWrapper).stream()
+        Map<LocalDate, Map<String, Object>> trendMap = dataOrderQueryFacade.selectMaps(trendWrapper).stream()
                 .collect(java.util.stream.Collectors.toMap(
                         row -> LocalDate.parse(asString(row, "settle_date")),
                         row -> row
@@ -1173,7 +1173,7 @@ public class DataApplicationService extends BaseController {
 
         long current = 1L;
         while (true) {
-            IPage<ColonelsettlementOrder> pageResult = orderMapper.findPageWithScope(new Page<>(current, EXPORT_BATCH_SIZE), wrapper);
+            IPage<ColonelsettlementOrder> pageResult = dataOrderQueryFacade.findPageWithScope(new Page<>(current, EXPORT_BATCH_SIZE), wrapper);
             List<ColonelsettlementOrder> orders = pageResult.getRecords();
             if (orders == null || orders.isEmpty()) {
                 break;
@@ -1269,7 +1269,7 @@ public class DataApplicationService extends BaseController {
 
         long current = 1L;
         while (true) {
-            IPage<ColonelsettlementOrder> pageResult = orderMapper.findPageWithScope(new Page<>(current, EXPORT_BATCH_SIZE), wrapper);
+            IPage<ColonelsettlementOrder> pageResult = dataOrderQueryFacade.findPageWithScope(new Page<>(current, EXPORT_BATCH_SIZE), wrapper);
             List<ColonelsettlementOrder> orders = pageResult.getRecords();
             if (orders == null || orders.isEmpty()) {
                 break;
@@ -1340,7 +1340,7 @@ public class DataApplicationService extends BaseController {
         }
         applyTalentDataScope(wrapper, userId, deptId, dataScope);
         wrapper.orderByDesc(ExclusiveTalent::getCreateTime);
-        IPage<ExclusiveTalent> result = exclusiveTalentMapper.selectPage(new Page<>(page, size), wrapper);
+        IPage<ExclusiveTalent> result = exclusiveTalentReadFacade.selectPage(new Page<>(page, size), wrapper);
         return okPage(result.convert(ExclusiveTalentStatusVO::from));
     }
 
@@ -1369,7 +1369,7 @@ public class DataApplicationService extends BaseController {
         }
         applyMerchantDataScope(wrapper, userId, deptId, dataScope);
         wrapper.orderByDesc(ExclusiveMerchant::getCreateTime);
-        IPage<ExclusiveMerchant> result = exclusiveMerchantMapper.selectPage(new Page<>(page, size), wrapper);
+        IPage<ExclusiveMerchant> result = exclusiveMerchantReadFacade.selectPage(new Page<>(page, size), wrapper);
         return okPage(result.convert(ExclusiveMerchantStatusVO::from));
     }
 
@@ -1392,7 +1392,7 @@ public class DataApplicationService extends BaseController {
         LocalDateTime now = LocalDateTime.now();
         while (true) {
             long offset = (current - 1) * EXPORT_BATCH_SIZE;
-            List<ColonelsettlementActivity> rows = activityMapper.selectExportPage(
+            List<ColonelsettlementActivity> rows = productActivityReadFacade.selectExportPage(
                     offset,
                     EXPORT_BATCH_SIZE,
                     StringUtils.hasText(activityName) ? activityName.trim() : null,
@@ -1690,7 +1690,7 @@ public class DataApplicationService extends BaseController {
     }
 
     private Map<String, Object> getSingleAggregate(QueryWrapper<ColonelsettlementOrder> wrapper) {
-        List<Map<String, Object>> rows = orderMapper.selectMaps(wrapper);
+        List<Map<String, Object>> rows = dataOrderQueryFacade.selectMaps(wrapper);
         if (rows == null || rows.isEmpty()) {
             return Map.of();
         }
@@ -1760,7 +1760,7 @@ public class DataApplicationService extends BaseController {
         if (daily) {
             wrapper.groupBy(dayExpr).orderByDesc(dayExpr);
         }
-        List<Map<String, Object>> rows = orderMapper.selectMaps(wrapper);
+        List<Map<String, Object>> rows = dataOrderQueryFacade.selectMaps(wrapper);
         return rows == null ? List.of() : rows;
     }
 
@@ -1927,7 +1927,7 @@ public class DataApplicationService extends BaseController {
         } else {
             wrapper.groupBy("colonel_activity_id", "product_id", recruiterExpr);
         }
-        List<Map<String, Object>> rows = orderMapper.selectMaps(wrapper);
+        List<Map<String, Object>> rows = dataOrderQueryFacade.selectMaps(wrapper);
         return rows == null ? List.of() : rows;
     }
 

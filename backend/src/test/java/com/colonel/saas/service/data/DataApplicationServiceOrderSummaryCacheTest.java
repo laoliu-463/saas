@@ -1,13 +1,13 @@
 package com.colonel.saas.service.data;
 
-import com.baomidou.mybatisplus.core.conditions.Wrapper;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.config.DddRefactorProperties;
+import com.colonel.saas.domain.order.facade.DataOrderQueryFacade;
+import com.colonel.saas.domain.performance.facade.ExclusiveMerchantReadFacade;
 import com.colonel.saas.domain.performance.facade.OrderPerformanceQueryFacade;
-import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
-import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
-import com.colonel.saas.mapper.ExclusiveMerchantMapper;
-import com.colonel.saas.mapper.ExclusiveTalentMapper;
+import com.colonel.saas.domain.product.facade.ProductActivityReadFacade;
+import com.colonel.saas.domain.talent.facade.ExclusiveTalentReadFacade;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.service.CommissionService;
@@ -51,11 +51,11 @@ import static org.mockito.Mockito.verify;
 @MockitoSettings(strictness = Strictness.LENIENT)
 class DataApplicationServiceOrderSummaryCacheTest {
 
-    @Mock private ColonelsettlementOrderMapper orderMapper;
+    @Mock private DataOrderQueryFacade dataOrderQueryFacade;
     @Mock private CommissionService commissionService;
-    @Mock private ExclusiveTalentMapper exclusiveTalentMapper;
-    @Mock private ExclusiveMerchantMapper exclusiveMerchantMapper;
-    @Mock private ColonelsettlementActivityMapper activityMapper;
+    @Mock private ExclusiveTalentReadFacade exclusiveTalentReadFacade;
+    @Mock private ExclusiveMerchantReadFacade exclusiveMerchantReadFacade;
+    @Mock private ProductActivityReadFacade productActivityReadFacade;
     @Mock private PerformanceMetricsQueryService performanceMetricsQueryService;
     @Mock private OrderPerformanceQueryFacade orderPerformanceQueryFacade;
     @Mock private UserDomainFacade userDomainFacade;
@@ -69,11 +69,11 @@ class DataApplicationServiceOrderSummaryCacheTest {
     void setUp() {
         realCache = new ShortTtlCacheService();
         service = new DataApplicationService(
-                orderMapper,
+                dataOrderQueryFacade,
                 commissionService,
-                exclusiveTalentMapper,
-                exclusiveMerchantMapper,
-                activityMapper,
+                exclusiveTalentReadFacade,
+                exclusiveMerchantReadFacade,
+                productActivityReadFacade,
                 realCache,
                 performanceMetricsQueryService,
                 orderPerformanceQueryFacade,
@@ -97,7 +97,7 @@ class DataApplicationServiceOrderSummaryCacheTest {
         }
 
         // supplier 整体只调 1 次 → 4 次 selectMaps(2×aggregates + 2×commission buckets)
-        verify(orderMapper, times(4)).selectMaps(any(Wrapper.class));
+        verify(dataOrderQueryFacade, times(4)).selectMaps(any(QueryWrapper.class));
         verify(commissionService, times(1)).calculateByActivityBuckets(any());
     }
 
@@ -121,7 +121,7 @@ class DataApplicationServiceOrderSummaryCacheTest {
                 userId, null, DataScope.ALL);
 
         // status 不同 → 两次 supplier × 4 次 selectMaps = 8 次
-        verify(orderMapper, times(8)).selectMaps(any(Wrapper.class));
+        verify(dataOrderQueryFacade, times(8)).selectMaps(any(QueryWrapper.class));
     }
 
     @Test
@@ -145,7 +145,7 @@ class DataApplicationServiceOrderSummaryCacheTest {
                 userId, deptId, DataScope.ALL);
 
         // dataScope 不同 → 两次 supplier × 4 次 selectMaps = 8 次
-        verify(orderMapper, times(8)).selectMaps(any(Wrapper.class));
+        verify(dataOrderQueryFacade, times(8)).selectMaps(any(QueryWrapper.class));
     }
 
     @Test
@@ -154,8 +154,8 @@ class DataApplicationServiceOrderSummaryCacheTest {
         // 用一个会把 Duration.ZERO 当作"每次过期"的真实 cache 包装
         ShortTtlCacheService zeroTtlCache = new ZeroTtlShortTtlCacheService();
         DataApplicationService zeroService = new DataApplicationService(
-                orderMapper, commissionService, exclusiveTalentMapper,
-                exclusiveMerchantMapper, activityMapper, zeroTtlCache,
+                dataOrderQueryFacade, commissionService, exclusiveTalentReadFacade,
+                exclusiveMerchantReadFacade, productActivityReadFacade, zeroTtlCache,
                 performanceMetricsQueryService, orderPerformanceQueryFacade, userDomainFacade,
                 new DataScopePolicy(), new DddRefactorProperties(), jdbcTemplate);
 
@@ -170,7 +170,7 @@ class DataApplicationServiceOrderSummaryCacheTest {
         }
 
         // 5 次 supplier × 4 次 selectMaps 内部 = 20 次
-        verify(orderMapper, times(20)).selectMaps(any(Wrapper.class));
+        verify(dataOrderQueryFacade, times(20)).selectMaps(any(QueryWrapper.class));
     }
 
     @Test

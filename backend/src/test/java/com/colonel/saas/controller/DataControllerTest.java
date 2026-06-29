@@ -15,10 +15,10 @@ import com.colonel.saas.entity.ColonelsettlementActivity;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.ExclusiveMerchant;
 import com.colonel.saas.entity.ExclusiveTalent;
-import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
-import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
-import com.colonel.saas.mapper.ExclusiveMerchantMapper;
-import com.colonel.saas.mapper.ExclusiveTalentMapper;
+import com.colonel.saas.domain.product.facade.ProductActivityReadFacade;
+import com.colonel.saas.domain.order.facade.DataOrderQueryFacade;
+import com.colonel.saas.domain.performance.facade.ExclusiveMerchantReadFacade;
+import com.colonel.saas.domain.talent.facade.ExclusiveTalentReadFacade;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.vo.data.OrderDetailVO;
@@ -59,15 +59,15 @@ import static org.mockito.Mockito.when;
 class DataControllerTest {
 
     @Mock
-    private ColonelsettlementOrderMapper orderMapper;
+    private DataOrderQueryFacade dataOrderQueryFacade;
     @Mock
     private CommissionService commissionService;
     @Mock
-    private ExclusiveTalentMapper exclusiveTalentMapper;
+    private ExclusiveTalentReadFacade exclusiveTalentReadFacade;
     @Mock
-    private ExclusiveMerchantMapper exclusiveMerchantMapper;
+    private ExclusiveMerchantReadFacade exclusiveMerchantReadFacade;
     @Mock
-    private ColonelsettlementActivityMapper activityMapper;
+    private ProductActivityReadFacade productActivityReadFacade;
     @Mock
     private PerformanceMetricsQueryService performanceMetricsQueryService;
     @Mock
@@ -91,11 +91,11 @@ class DataControllerTest {
         dataScopePolicy = spy(new DataScopePolicy());
         dddRefactorProperties = new DddRefactorProperties();
         dataController = new DataController(
-                orderMapper,
+                dataOrderQueryFacade,
                 commissionService,
-                exclusiveTalentMapper,
-                exclusiveMerchantMapper,
-                activityMapper,
+                exclusiveTalentReadFacade,
+                exclusiveMerchantReadFacade,
+                productActivityReadFacade,
                 new ShortTtlCacheService(),
                 performanceMetricsQueryService,
                 orderPerformanceQueryFacade,
@@ -113,7 +113,7 @@ class DataControllerTest {
     @Test
     void getOrderPage_shouldUseCreateTimeRangeByDefault() {
         IPage<ColonelsettlementOrder> empty = new Page<>(1, 10);
-        when(orderMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(empty);
+        when(dataOrderQueryFacade.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(empty);
 
         dataController.getOrderPage(
                 1,
@@ -135,7 +135,7 @@ class DataControllerTest {
         );
 
         ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
-        verify(orderMapper).findPageWithScope(any(Page.class), wrapperCaptor.capture());
+        verify(dataOrderQueryFacade).findPageWithScope(any(Page.class), wrapperCaptor.capture());
         String segment = wrapperCaptor.getValue().getSqlSegment();
         assertThat(segment).contains("co.create_time");
         assertThat(segment).doesNotContain("co.settle_time");
@@ -144,7 +144,7 @@ class DataControllerTest {
     @Test
     void getOrderPage_withSettleTimeField_shouldUseSettleTimeRange() {
         IPage<ColonelsettlementOrder> empty = new Page<>(1, 10);
-        when(orderMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(empty);
+        when(dataOrderQueryFacade.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(empty);
 
         dataController.getOrderPage(
                 1,
@@ -166,7 +166,7 @@ class DataControllerTest {
         );
 
         ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
-        verify(orderMapper).findPageWithScope(any(Page.class), wrapperCaptor.capture());
+        verify(dataOrderQueryFacade).findPageWithScope(any(Page.class), wrapperCaptor.capture());
         String segment = wrapperCaptor.getValue().getSqlSegment();
         assertThat(segment).contains("co.settle_time");
         assertThat(segment).doesNotContain("co.create_time");
@@ -185,7 +185,7 @@ class DataControllerTest {
         order.setSettleTime(settleTime);
         Page<ColonelsettlementOrder> page = new Page<>(1, 10, 1);
         page.setRecords(List.of(order));
-        when(orderMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(page);
+        when(dataOrderQueryFacade.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(page);
 
         var response = dataController.getOrderPage(
                 1,
@@ -221,7 +221,7 @@ class DataControllerTest {
                         3L, 9000L, 900L, 90L, 0L, 50L, 810L, 81L, 162L, 567L));
         when(performanceMetricsQueryService.trendByDay(any(), any(), any(), any(), any(), any()))
                 .thenReturn(List.of(new PerformanceMetricsQueryService.TrendPoint(LocalDate.now().toString(), 3L, 9000L)));
-        when(orderMapper.selectMaps(any(QueryWrapper.class)))
+        when(dataOrderQueryFacade.selectMaps(any(QueryWrapper.class)))
                 .thenReturn(List.of(Map.of("order_count", 1L)));
 
         var response = dataController.getMetrics(UUID.randomUUID(), null, DataScope.ALL);
@@ -248,7 +248,7 @@ class DataControllerTest {
                 });
         when(performanceMetricsQueryService.trendByDay(any(), any(), any(), any(), any(), any()))
                 .thenReturn(List.of(new PerformanceMetricsQueryService.TrendPoint(LocalDate.now().toString(), 1L, 10000L)));
-        when(orderMapper.selectMaps(any(QueryWrapper.class)))
+        when(dataOrderQueryFacade.selectMaps(any(QueryWrapper.class)))
                 .thenReturn(List.of(Map.of("order_count", 0L)));
 
         var response = dataController.getMetrics(UUID.randomUUID(), null, DataScope.ALL);
@@ -263,7 +263,7 @@ class DataControllerTest {
     @Test
     void getMetrics_returnsMetricsWithTrendData() {
         UUID userId = UUID.randomUUID();
-        when(orderMapper.selectMaps(any(QueryWrapper.class)))
+        when(dataOrderQueryFacade.selectMaps(any(QueryWrapper.class)))
                 .thenReturn(List.of(Map.of("order_count", 0L)))
                 .thenReturn(List.of(Map.of(
                         "refund_order_count", 1L,
@@ -317,7 +317,7 @@ class DataControllerTest {
         assertThat(response.getData().getEstimate().getRefundOrderAmount()).isEqualByComparingTo("45.00");
         assertThat(response.getData().getEstimate().getRefundServiceFee()).isEqualByComparingTo("2.20");
         ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
-        verify(orderMapper, times(10)).selectMaps(wrapperCaptor.capture());
+        verify(dataOrderQueryFacade, times(10)).selectMaps(wrapperCaptor.capture());
         assertThat(wrapperCaptor.getAllValues().get(1).getSqlSelect())
                 .contains("refund_order_count")
                 .contains("THEN settle_amount ELSE 0")
@@ -344,7 +344,7 @@ class DataControllerTest {
     void getMetrics_withAllScope_shouldShareCacheAcrossUsers() {
         UUID firstUser = UUID.randomUUID();
         UUID secondUser = UUID.randomUUID();
-        when(orderMapper.selectMaps(any(QueryWrapper.class)))
+        when(dataOrderQueryFacade.selectMaps(any(QueryWrapper.class)))
                 .thenReturn(List.of(Map.of("order_count", 0L)))
                 .thenReturn(List.of(Map.of("refund_order_count", 0L, "refund_order_amount_cent", 0L, "refund_service_fee_cent", 0L)))
                 .thenReturn(List.of(Map.of("order_count", 0L, "order_amount_cent", 0L)))
@@ -364,14 +364,14 @@ class DataControllerTest {
 
         assertThat(first.getCode()).isEqualTo(200);
         assertThat(second.getCode()).isEqualTo(200);
-        verify(orderMapper, times(10)).selectMaps(any(QueryWrapper.class));
+        verify(dataOrderQueryFacade, times(10)).selectMaps(any(QueryWrapper.class));
         verify(commissionService, times(2)).calculateByActivityBuckets(any());
     }
 
     @Test
     void getMetrics_withDataScopePersonal_addsUserFilter() {
         UUID userId = UUID.randomUUID();
-        when(orderMapper.selectMaps(any(QueryWrapper.class)))
+        when(dataOrderQueryFacade.selectMaps(any(QueryWrapper.class)))
                 .thenReturn(List.of(Map.of("order_count", 0L, "order_amount_cent", 0L)))
                 .thenReturn(List.of())
                 .thenReturn(List.of());
@@ -383,7 +383,7 @@ class DataControllerTest {
 
         assertThat(response.getCode()).isEqualTo(200);
         ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
-        verify(orderMapper, times(10)).selectMaps(wrapperCaptor.capture());
+        verify(dataOrderQueryFacade, times(10)).selectMaps(wrapperCaptor.capture());
         assertThat(wrapperCaptor.getAllValues())
                 .allSatisfy(wrapper -> assertThat(wrapper.getSqlSegment()).contains("user_id"));
         verify(dataScopePolicy, never()).contextRequirement(any(), any(), any());
@@ -394,7 +394,7 @@ class DataControllerTest {
     void getMetrics_withDataScopeDept_addsDeptFilter() {
         UUID userId = UUID.randomUUID();
         UUID deptId = UUID.randomUUID();
-        when(orderMapper.selectMaps(any(QueryWrapper.class)))
+        when(dataOrderQueryFacade.selectMaps(any(QueryWrapper.class)))
                 .thenReturn(List.of(Map.of("order_count", 0L, "order_amount_cent", 0L)))
                 .thenReturn(List.of())
                 .thenReturn(List.of());
@@ -406,7 +406,7 @@ class DataControllerTest {
 
         assertThat(response.getCode()).isEqualTo(200);
         ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
-        verify(orderMapper, times(10)).selectMaps(wrapperCaptor.capture());
+        verify(dataOrderQueryFacade, times(10)).selectMaps(wrapperCaptor.capture());
         assertThat(wrapperCaptor.getAllValues())
                 .allSatisfy(wrapper -> assertThat(wrapper.getSqlSegment()).contains("dept_id"));
         verify(dataScopePolicy, never()).contextRequirement(any(), any(), any());
@@ -418,7 +418,7 @@ class DataControllerTest {
         dddRefactorProperties.getDataScopePolicy().setEnabled(true);
         UUID userId = UUID.randomUUID();
         UUID deptId = UUID.randomUUID();
-        when(orderMapper.selectMaps(any(QueryWrapper.class)))
+        when(dataOrderQueryFacade.selectMaps(any(QueryWrapper.class)))
                 .thenReturn(List.of(Map.of("order_count", 0L, "order_amount_cent", 0L)))
                 .thenReturn(List.of())
                 .thenReturn(List.of());
@@ -440,7 +440,7 @@ class DataControllerTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("缺少用户上下文");
 
-        verify(orderMapper, never()).selectMaps(any(QueryWrapper.class));
+        verify(dataOrderQueryFacade, never()).selectMaps(any(QueryWrapper.class));
         verify(dataScopePolicy, never()).contextRequirement(any(), any(), any());
         verify(dataScopePolicy, never()).applyTo(any(QueryWrapper.class), any(), any(), any(), anyString(), anyString());
     }
@@ -451,14 +451,14 @@ class DataControllerTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("缺少部门上下文");
 
-        verify(orderMapper, never()).selectMaps(any(QueryWrapper.class));
+        verify(dataOrderQueryFacade, never()).selectMaps(any(QueryWrapper.class));
         verify(dataScopePolicy, never()).contextRequirement(any(), any(), any());
         verify(dataScopePolicy, never()).applyTo(any(QueryWrapper.class), any(), any(), any(), anyString(), anyString());
     }
 
     @Test
     void getMetrics_shouldUseSqlAggregatesInsteadOfLoadingPagedOrders() {
-        when(orderMapper.selectMaps(any(QueryWrapper.class)))
+        when(dataOrderQueryFacade.selectMaps(any(QueryWrapper.class)))
                 .thenReturn(List.of(Map.of("order_count", 0L, "order_amount_cent", 0L)))
                 .thenReturn(List.of())
                 .thenReturn(List.of());
@@ -469,12 +469,12 @@ class DataControllerTest {
         var response = dataController.getMetrics(UUID.randomUUID(), UUID.randomUUID(), DataScope.ALL);
 
         assertThat(response.getCode()).isEqualTo(200);
-        verify(orderMapper, never()).selectPage(any(Page.class), any());
+        verify(dataOrderQueryFacade, never()).findPageWithScope(any(Page.class), any(QueryWrapper.class));
     }
 
     @Test
     void getMetrics_withNoScopeAndSettleAlias_handlesEmptyAndInvalidAggregates() {
-        when(orderMapper.selectMaps(any(QueryWrapper.class)))
+        when(dataOrderQueryFacade.selectMaps(any(QueryWrapper.class)))
                 .thenReturn(null)
                 .thenReturn(List.of(Map.of(
                         "refund_order_count", "not-a-number",
@@ -524,7 +524,7 @@ class DataControllerTest {
         assertThat(response.getData().getSettle().getRefundOrderAmount()).isEqualByComparingTo("0.00");
         assertThat(response.getData().getSettle().getTrend7d().get(6).getOrderCount()).isZero();
         ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
-        verify(orderMapper, times(10)).selectMaps(wrapperCaptor.capture());
+        verify(dataOrderQueryFacade, times(10)).selectMaps(wrapperCaptor.capture());
         assertThat(wrapperCaptor.getAllValues().get(0).getSqlSegment()).contains("settle_time");
     }
 
@@ -534,7 +534,7 @@ class DataControllerTest {
         ExclusiveTalent record = new ExclusiveTalent();
         record.setTalentUid("talent-001");
         page.setRecords(List.of(record));
-        when(exclusiveTalentMapper.selectPage(any(Page.class), any())).thenReturn(page);
+        when(exclusiveTalentReadFacade.selectPage(any(Page.class), any())).thenReturn(page);
 
         var response = dataController.getExclusiveTalentStatus(
                 1,
@@ -556,7 +556,7 @@ class DataControllerTest {
     @Test
     void getExclusiveTalentStatus_withPersonalScope_addsUserFilter() {
         Page<ExclusiveTalent> page = new Page<>(1, 10, 0);
-        when(exclusiveTalentMapper.selectPage(any(Page.class), any())).thenReturn(page);
+        when(exclusiveTalentReadFacade.selectPage(any(Page.class), any())).thenReturn(page);
 
         var response = dataController.getExclusiveTalentStatus(
                 1,
@@ -570,7 +570,7 @@ class DataControllerTest {
         );
 
         assertThat(response.getCode()).isEqualTo(200);
-        verify(exclusiveTalentMapper).selectPage(any(Page.class), any());
+        verify(exclusiveTalentReadFacade).selectPage(any(Page.class), any());
     }
 
     @Test
@@ -579,7 +579,7 @@ class DataControllerTest {
         ExclusiveTalent record = new ExclusiveTalent();
         record.setTalentUid("talent-001");
         page.setRecords(List.of(record));
-        when(exclusiveTalentMapper.selectPage(any(Page.class), any())).thenReturn(page);
+        when(exclusiveTalentReadFacade.selectPage(any(Page.class), any())).thenReturn(page);
 
         var response = dataController.getExclusiveTalentStatus(
                 1,
@@ -607,7 +607,7 @@ class DataControllerTest {
         ExclusiveMerchant record = new ExclusiveMerchant();
         record.setMerchantName("商家A");
         page.setRecords(List.of(record));
-        when(exclusiveMerchantMapper.selectPage(any(Page.class), any())).thenReturn(page);
+        when(exclusiveMerchantReadFacade.selectPage(any(Page.class), any())).thenReturn(page);
 
         var response = dataController.getExclusiveMerchantStatus(
                 1,
@@ -629,7 +629,7 @@ class DataControllerTest {
     @Test
     void getExclusiveMerchantStatus_withDeptScope_addsDeptFilter() {
         Page<ExclusiveMerchant> page = new Page<>(1, 10, 0);
-        when(exclusiveMerchantMapper.selectPage(any(Page.class), any())).thenReturn(page);
+        when(exclusiveMerchantReadFacade.selectPage(any(Page.class), any())).thenReturn(page);
 
         var response = dataController.getExclusiveMerchantStatus(
                 1,
@@ -643,7 +643,7 @@ class DataControllerTest {
         );
 
         assertThat(response.getCode()).isEqualTo(200);
-        verify(exclusiveMerchantMapper).selectPage(any(Page.class), any());
+        verify(exclusiveMerchantReadFacade).selectPage(any(Page.class), any());
     }
 
     @Test
@@ -652,7 +652,7 @@ class DataControllerTest {
         ExclusiveMerchant record = new ExclusiveMerchant();
         record.setMerchantName("商家A");
         page.setRecords(List.of(record));
-        when(exclusiveMerchantMapper.selectPage(any(Page.class), any())).thenReturn(page);
+        when(exclusiveMerchantReadFacade.selectPage(any(Page.class), any())).thenReturn(page);
 
         var response = dataController.getExclusiveMerchantStatus(
                 1,
@@ -677,14 +677,14 @@ class DataControllerTest {
     @Test
     void getOrderPage_withStatusFilter_addsStatusCondition() {
         IPage<ColonelsettlementOrder> empty = new Page<>(1, 10);
-        when(orderMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(empty);
+        when(dataOrderQueryFacade.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(empty);
 
         dataController.getOrderPage(1, 10, null, "SHIPPED", null, null, null, null, null, null,
                 null, null, null,
                 UUID.randomUUID(), UUID.randomUUID(), DataScope.ALL);
 
         ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
-        verify(orderMapper).findPageWithScope(any(Page.class), wrapperCaptor.capture());
+        verify(dataOrderQueryFacade).findPageWithScope(any(Page.class), wrapperCaptor.capture());
         String segment = wrapperCaptor.getValue().getSqlSegment();
         assertThat(segment).contains("co.order_status");
     }
@@ -692,14 +692,14 @@ class DataControllerTest {
     @Test
     void getOrderPage_withOrderIdFilter_addsOrderIdCondition() {
         IPage<ColonelsettlementOrder> empty = new Page<>(1, 10);
-        when(orderMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(empty);
+        when(dataOrderQueryFacade.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(empty);
 
         dataController.getOrderPage(1, 10, "MOCK_GEN_ATTR", null, null, null, null, null, null, null,
                 null, null, null,
                 UUID.randomUUID(), UUID.randomUUID(), DataScope.ALL);
 
         ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
-        verify(orderMapper).findPageWithScope(any(Page.class), wrapperCaptor.capture());
+        verify(dataOrderQueryFacade).findPageWithScope(any(Page.class), wrapperCaptor.capture());
         String segment = wrapperCaptor.getValue().getSqlSegment();
         assertThat(segment).contains("co.order_id");
     }
@@ -727,13 +727,13 @@ class DataControllerTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("缺少部门上下文");
 
-        verify(orderMapper, never()).findPageWithScope(any(Page.class), any(QueryWrapper.class));
+        verify(dataOrderQueryFacade, never()).findPageWithScope(any(Page.class), any(QueryWrapper.class));
     }
 
     @Test
     void getOrderPage_withTalentAndMerchantFilter_addsConditions() {
         IPage<ColonelsettlementOrder> empty = new Page<>(1, 10);
-        when(orderMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(empty);
+        when(dataOrderQueryFacade.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(empty);
         UUID talentId = UUID.randomUUID();
 
         dataController.getOrderPage(
@@ -756,7 +756,7 @@ class DataControllerTest {
         );
 
         ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
-        verify(orderMapper).findPageWithScope(any(Page.class), wrapperCaptor.capture());
+        verify(dataOrderQueryFacade).findPageWithScope(any(Page.class), wrapperCaptor.capture());
         String segment = wrapperCaptor.getValue().getSqlSegment();
         assertThat(segment).contains("co.talent_id");
         assertThat(segment).contains("merchant_id");
@@ -765,7 +765,7 @@ class DataControllerTest {
     @Test
     void getOrderSummary_returnsTotalsAndDailyRowsWithSupportedFilters() {
         UUID recruiterId = UUID.randomUUID();
-        when(orderMapper.selectMaps(any(QueryWrapper.class)))
+        when(dataOrderQueryFacade.selectMaps(any(QueryWrapper.class)))
                 .thenReturn(List.of(Map.ofEntries(
                         Map.entry("order_count", 2L),
                         Map.entry("talent_promoter_count", 1L),
@@ -852,7 +852,7 @@ class DataControllerTest {
         assertThat(response.getData().getRecords().get(0).getDate()).isEqualTo("2026-05-25");
 
         ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
-        verify(orderMapper, times(4)).selectMaps(wrapperCaptor.capture());
+        verify(dataOrderQueryFacade, times(4)).selectMaps(wrapperCaptor.capture());
         assertThat(wrapperCaptor.getAllValues().get(0).getSqlSelect())
                 .contains("refund_service_fee_cent")
                 .contains("estimate_service_fee")
@@ -871,7 +871,7 @@ class DataControllerTest {
 
     @Test
     void getOrderSummary_withEmptyResult_returnsZeroSummary() {
-        when(orderMapper.selectMaps(any(QueryWrapper.class)))
+        when(dataOrderQueryFacade.selectMaps(any(QueryWrapper.class)))
                 .thenReturn(List.of())
                 .thenReturn(List.of())
                 .thenReturn(List.of())
@@ -907,12 +907,12 @@ class DataControllerTest {
         assertThat(response.getData().getTotal().getProductAverageServiceFeeRate()).isEqualByComparingTo("0.00");
         assertThat(response.getData().getTotal().getServiceFeeIncome()).isEqualByComparingTo("0.00");
         assertThat(response.getData().getRecords()).isEmpty();
-        verify(orderMapper, times(4)).selectMaps(any(QueryWrapper.class));
+        verify(dataOrderQueryFacade, times(4)).selectMaps(any(QueryWrapper.class));
     }
 
     @Test
     void getOrderSummary_shouldExcludeDeletedOrdersLikeOrderPage() {
-        when(orderMapper.selectMaps(any(QueryWrapper.class)))
+        when(dataOrderQueryFacade.selectMaps(any(QueryWrapper.class)))
                 .thenReturn(List.of())
                 .thenReturn(List.of())
                 .thenReturn(List.of())
@@ -940,14 +940,14 @@ class DataControllerTest {
         );
 
         ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
-        verify(orderMapper, times(4)).selectMaps(wrapperCaptor.capture());
+        verify(dataOrderQueryFacade, times(4)).selectMaps(wrapperCaptor.capture());
         assertThat(wrapperCaptor.getAllValues())
                 .allSatisfy(wrapper -> assertThat(wrapper.getSqlSegment()).contains("deleted"));
     }
 
     @Test
     void getOrderSummary_withSettleTimeField_usesEffectiveTrackColumns() {
-        when(orderMapper.selectMaps(any(QueryWrapper.class)))
+        when(dataOrderQueryFacade.selectMaps(any(QueryWrapper.class)))
                 .thenReturn(List.of(Map.of(
                         "order_count", 1L,
                         "talent_promoter_count", 1L,
@@ -1003,7 +1003,7 @@ class DataControllerTest {
         assertThat(response.getData().getTotal().getGrossProfit()).isEqualByComparingTo("3.23");
 
         ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
-        verify(orderMapper, times(4)).selectMaps(wrapperCaptor.capture());
+        verify(dataOrderQueryFacade, times(4)).selectMaps(wrapperCaptor.capture());
         QueryWrapper<ColonelsettlementOrder> aggregateWrapper = wrapperCaptor.getAllValues().get(0);
         assertThat(aggregateWrapper.getSqlSegment()).contains("settle_time");
         assertThat(aggregateWrapper.getSqlSelect()).contains("settle_amount");
@@ -1043,13 +1043,13 @@ class DataControllerTest {
         ))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("非法时间字段");
-        verify(orderMapper, never()).selectMaps(any());
+        verify(dataOrderQueryFacade, never()).selectMaps(any());
     }
 
     @Test
     void exportOrders_withPersonalScope_appliesUserFilter() throws Exception {
         Page<ColonelsettlementOrder> empty = new Page<>(1, 10);
-        when(orderMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(empty);
+        when(dataOrderQueryFacade.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(empty);
         UUID userId = UUID.randomUUID();
 
         dataController.exportOrders(
@@ -1067,7 +1067,7 @@ class DataControllerTest {
         );
 
         ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
-        verify(orderMapper).findPageWithScope(any(Page.class), wrapperCaptor.capture());
+        verify(dataOrderQueryFacade).findPageWithScope(any(Page.class), wrapperCaptor.capture());
         String segment = wrapperCaptor.getValue().getSqlSegment();
         assertThat(segment).contains("co.user_id");
     }
@@ -1075,7 +1075,7 @@ class DataControllerTest {
     @Test
     void exportOrders_withOrderIdFilter_appliesSameFilterAsPage() throws Exception {
         Page<ColonelsettlementOrder> empty = new Page<>(1, 10);
-        when(orderMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(empty);
+        when(dataOrderQueryFacade.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(empty);
 
         dataController.exportOrders(
                 "ORDER-7788",
@@ -1092,7 +1092,7 @@ class DataControllerTest {
         );
 
         ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
-        verify(orderMapper).findPageWithScope(any(Page.class), wrapperCaptor.capture());
+        verify(dataOrderQueryFacade).findPageWithScope(any(Page.class), wrapperCaptor.capture());
         String segment = wrapperCaptor.getValue().getSqlSegment();
         assertThat(segment).contains("co.order_id");
     }
@@ -1111,7 +1111,7 @@ class DataControllerTest {
 
         Page<ColonelsettlementOrder> page = new Page<>(1, 2000, 1);
         page.setRecords(List.of(order));
-        when(orderMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(page);
+        when(dataOrderQueryFacade.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(page);
 
         MockHttpServletResponse response = new MockHttpServletResponse();
         dataController.exportOrders(
@@ -1129,7 +1129,7 @@ class DataControllerTest {
         );
 
         ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
-        verify(orderMapper).findPageWithScope(any(Page.class), wrapperCaptor.capture());
+        verify(dataOrderQueryFacade).findPageWithScope(any(Page.class), wrapperCaptor.capture());
         String segment = wrapperCaptor.getValue().getSqlSegment();
         assertThat(segment).contains("co.settle_time", "co.order_status", "co.talent_id", "merchant_id");
         String csv = response.getContentAsString();
@@ -1155,7 +1155,7 @@ class DataControllerTest {
                 new MockHttpServletResponse()
         )).hasMessageContaining("非法订单状态");
 
-        verify(orderMapper, never()).findPageWithScope(any(Page.class), any(QueryWrapper.class));
+        verify(dataOrderQueryFacade, never()).findPageWithScope(any(Page.class), any(QueryWrapper.class));
     }
 
     @Test
@@ -1181,7 +1181,7 @@ class DataControllerTest {
         Page<ColonelsettlementOrder> secondPage = new Page<>(2, 2000, 2001);
         secondPage.setRecords(List.of(second));
 
-        when(orderMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class)))
+        when(dataOrderQueryFacade.findPageWithScope(any(Page.class), any(QueryWrapper.class)))
                 .thenReturn(firstPage)
                 .thenReturn(secondPage);
 
@@ -1215,7 +1215,7 @@ class DataControllerTest {
         activity.setStartTime(java.time.LocalDateTime.of(2026, 5, 1, 10, 0));
         activity.setEndTime(java.time.LocalDateTime.of(2026, 5, 31, 23, 59));
         activity.setStatus(1);
-        when(activityMapper.selectExportPage(any(Long.class), any(Long.class), any(), any())).thenReturn(List.of(activity));
+        when(productActivityReadFacade.selectExportPage(any(Long.class), any(Long.class), any(), any())).thenReturn(List.of(activity));
 
         MockHttpServletResponse response = new MockHttpServletResponse();
         dataController.exportActivities(
@@ -1249,7 +1249,7 @@ class DataControllerTest {
         ended.setEndTime(LocalDateTime.of(2026, 4, 30, 23, 59));
         ended.setStatus(0);
 
-        when(activityMapper.selectExportPage(any(Long.class), any(Long.class), any(), any()))
+        when(productActivityReadFacade.selectExportPage(any(Long.class), any(Long.class), any(), any()))
                 .thenReturn(fullPage)
                 .thenReturn(List.of(ended));
 
@@ -1262,8 +1262,8 @@ class DataControllerTest {
                 response
         );
 
-        verify(activityMapper).selectExportPage(org.mockito.ArgumentMatchers.eq(0L), any(Long.class), org.mockito.ArgumentMatchers.isNull(), any());
-        verify(activityMapper).selectExportPage(org.mockito.ArgumentMatchers.eq(2000L), any(Long.class), org.mockito.ArgumentMatchers.isNull(), any());
+        verify(productActivityReadFacade).selectExportPage(org.mockito.ArgumentMatchers.eq(0L), any(Long.class), org.mockito.ArgumentMatchers.isNull(), any());
+        verify(productActivityReadFacade).selectExportPage(org.mockito.ArgumentMatchers.eq(2000L), any(Long.class), org.mockito.ArgumentMatchers.isNull(), any());
         String csv = response.getContentAsString();
         assertThat(csv).contains("ACT-END");
         assertThat(csv).contains("\"活动,\"\"B\"\"\"");
@@ -1342,7 +1342,7 @@ class DataControllerTest {
     @Test
     void getOrderDetailPage_shouldReturnEmptyWhenNoOrders() {
         IPage<ColonelsettlementOrder> empty = new Page<>(1, 20);
-        when(orderMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(empty);
+        when(dataOrderQueryFacade.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(empty);
 
         var result = dataController.getOrderDetailPage(
                 1, 20, null, null, null, null, null, null, null, null,
@@ -1356,7 +1356,7 @@ class DataControllerTest {
     @Test
     void getOrderDetailPage_shouldApplyDetailSpecificFilters() {
         IPage<ColonelsettlementOrder> empty = new Page<>(1, 20);
-        when(orderMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(empty);
+        when(dataOrderQueryFacade.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(empty);
 
         dataController.getOrderDetailPage(
                 1, 20, null, null, null, "legacy-partner-ignored",
@@ -1366,7 +1366,7 @@ class DataControllerTest {
                 UUID.randomUUID(), null, DataScope.ALL);
 
         ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
-        verify(orderMapper).findPageWithScope(any(Page.class), wrapperCaptor.capture());
+        verify(dataOrderQueryFacade).findPageWithScope(any(Page.class), wrapperCaptor.capture());
         String segment = wrapperCaptor.getValue().getSqlSegment();
         assertThat(segment).contains("merchant_id");
         assertThat(segment).contains("colonel_activity");
@@ -1405,7 +1405,7 @@ class DataControllerTest {
         Page<ColonelsettlementOrder> orderPage = new Page<>(1, 20);
         orderPage.setRecords(List.of(order));
         orderPage.setTotal(1);
-        when(orderMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(orderPage);
+        when(dataOrderQueryFacade.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(orderPage);
 
         OrderPerformanceDTO perf = new OrderPerformanceDTO();
         perf.setOrderId("ORD001");
@@ -1429,7 +1429,7 @@ class DataControllerTest {
         ColonelsettlementActivity activity = new ColonelsettlementActivity();
         activity.setActivityId("ACT001");
         activity.setName("Test Activity");
-        when(activityMapper.selectNamesByActivityIds(any())).thenReturn(List.of(activity));
+        when(productActivityReadFacade.selectNamesByActivityIds(any())).thenReturn(List.of(activity));
 
         when(userDomainFacade.loadUserDisplayNamesByIds(any()))
                 .thenReturn(Map.of(channelUserId, "ChannelZhang", recruiterUserId, "RecruiterLi"));
@@ -1486,11 +1486,11 @@ class DataControllerTest {
         Page<ColonelsettlementOrder> orderPage = new Page<>(1, 20);
         orderPage.setRecords(List.of(order));
         orderPage.setTotal(1);
-        when(orderMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(orderPage);
+        when(dataOrderQueryFacade.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(orderPage);
         OrderPerformanceBatchResponse emptyPerfResponse = new OrderPerformanceBatchResponse();
         emptyPerfResponse.setItems(List.of());
         when(orderPerformanceQueryFacade.batchGetOrderPerformance(eq(List.of("ORD002")), any())).thenReturn(emptyPerfResponse);
-        org.mockito.Mockito.lenient().when(activityMapper.selectNamesByActivityIds(any())).thenReturn(List.of());
+        org.mockito.Mockito.lenient().when(productActivityReadFacade.selectNamesByActivityIds(any())).thenReturn(List.of());
 
         var result = dataController.getOrderDetailPage(
                 1, 20, null, null, null, null, null, null, null, null,
@@ -1528,11 +1528,11 @@ class DataControllerTest {
         orderPage.setRecords(List.of(order));
         orderPage.setTotal(1);
         orderPage.setPages(1);
-        when(orderMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(orderPage);
+        when(dataOrderQueryFacade.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(orderPage);
         OrderPerformanceBatchResponse emptyPerfResponse = new OrderPerformanceBatchResponse();
         emptyPerfResponse.setItems(List.of());
         when(orderPerformanceQueryFacade.batchGetOrderPerformance(any(), any())).thenReturn(emptyPerfResponse);
-        org.mockito.Mockito.lenient().when(activityMapper.selectNamesByActivityIds(any())).thenReturn(List.of());
+        org.mockito.Mockito.lenient().when(productActivityReadFacade.selectNamesByActivityIds(any())).thenReturn(List.of());
 
         MockHttpServletResponse response = new MockHttpServletResponse();
         dataController.exportOrderDetail(
