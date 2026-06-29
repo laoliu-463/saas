@@ -1,6 +1,5 @@
 package com.colonel.saas.job;
 
-import com.colonel.saas.gateway.douyin.DouyinProductGateway;
 import com.colonel.saas.domain.product.application.ProductActivitySyncApplicationService;
 import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
 import com.colonel.saas.service.DistributedJobLockService;
@@ -45,7 +44,7 @@ class ProductActivitySyncJobTest {
                 .thenReturn(true);
         lenient().when(jobLockService.tryAcquire(eq(JobLockKeys.PRODUCT_ACTIVITY_SYNC), any(Duration.class)))
                 .thenReturn(true);
-        lenient().when(productActivitySyncApplicationService.refreshActivitySnapshots(any()))
+        lenient().when(productActivitySyncApplicationService.refreshScheduledActivitySnapshots(any(), any()))
                 .thenReturn(new ProductActivitySyncApplicationService.ActivityProductRefreshResult(3, 1, 1, 2, 0));
     }
 
@@ -78,7 +77,7 @@ class ProductActivitySyncJobTest {
         job.syncAll();
 
         verify(activityMapper, never()).selectActiveActivityIds(anyInt(), any(LocalDateTime.class));
-        verify(productActivitySyncApplicationService, times(2)).refreshActivitySnapshots(any());
+        verify(productActivitySyncApplicationService, times(2)).refreshScheduledActivitySnapshots(any(), any());
         verify(activityMapper).touchLastSyncAt(eq("ACT-1"), any(LocalDateTime.class));
         verify(activityMapper).touchLastSyncAt(eq("ACT-2"), any(LocalDateTime.class));
         verify(jobLockService).release(JobLockKeys.PRODUCT_ACTIVITY_SYNC);
@@ -88,13 +87,13 @@ class ProductActivitySyncJobTest {
     @Test
     void syncAll_shouldContinueWhenSingleActivityFails() {
         ProductActivitySyncJob job = job(true, "ACT-1,ACT-2");
-        when(productActivitySyncApplicationService.refreshActivitySnapshots(any()))
+        when(productActivitySyncApplicationService.refreshScheduledActivitySnapshots(any(), any()))
                 .thenThrow(new RuntimeException("upstream down"))
                 .thenReturn(new ProductActivitySyncApplicationService.ActivityProductRefreshResult(5, 2, 2, 3, 0));
 
         job.syncAll();
 
-        verify(productActivitySyncApplicationService, times(2)).refreshActivitySnapshots(any());
+        verify(productActivitySyncApplicationService, times(2)).refreshScheduledActivitySnapshots(any(), any());
         verify(activityMapper, never()).touchLastSyncAt(eq("ACT-1"), any(LocalDateTime.class));
         verify(activityMapper).touchLastSyncAt(eq("ACT-2"), any(LocalDateTime.class));
         verify(jobLockService).release(JobLockKeys.PRODUCT_ACTIVITY_SYNC);
@@ -104,7 +103,7 @@ class ProductActivitySyncJobTest {
     @Test
     void syncAll_shouldNotTouchLastSyncAtWhenActivityIncomplete() {
         ProductActivitySyncJob job = job(true, "ACT-1");
-        when(productActivitySyncApplicationService.refreshActivitySnapshots(any()))
+        when(productActivitySyncApplicationService.refreshScheduledActivitySnapshots(any(), any()))
                 .thenReturn(new ProductActivitySyncApplicationService.ActivityProductRefreshResult(
                         2_000,
                         1,
@@ -134,14 +133,13 @@ class ProductActivitySyncJobTest {
 
         job.syncAll();
 
-        ArgumentCaptor<DouyinProductGateway.ActivityProductQueryRequest> captor =
-                ArgumentCaptor.forClass(DouyinProductGateway.ActivityProductQueryRequest.class);
-        verify(productActivitySyncApplicationService, times(2)).refreshActivitySnapshots(captor.capture());
-        assertThat(captor.getAllValues())
-                .extracting(DouyinProductGateway.ActivityProductQueryRequest::activityId)
+        ArgumentCaptor<String> activityCaptor = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<Integer> pageSizeCaptor = ArgumentCaptor.forClass(Integer.class);
+        verify(productActivitySyncApplicationService, times(2))
+                .refreshScheduledActivitySnapshots(activityCaptor.capture(), pageSizeCaptor.capture());
+        assertThat(activityCaptor.getAllValues())
                 .containsExactly("ACT-10", "ACT-20");
-        assertThat(captor.getAllValues())
-                .extracting(DouyinProductGateway.ActivityProductQueryRequest::count)
+        assertThat(pageSizeCaptor.getAllValues())
                 .containsExactly(20, 20);
         verify(activityMapper).touchLastSyncAt(eq("ACT-10"), any(LocalDateTime.class));
         verify(activityMapper).touchLastSyncAt(eq("ACT-20"), any(LocalDateTime.class));

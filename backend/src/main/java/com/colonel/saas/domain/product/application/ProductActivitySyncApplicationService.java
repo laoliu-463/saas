@@ -30,6 +30,12 @@ public class ProductActivitySyncApplicationService {
         return refreshActivitySnapshots(buildManualSyncRequest(activityId, appId, configuredPageSize));
     }
 
+    public ActivityProductRefreshResult refreshScheduledActivitySnapshots(
+            String activityId,
+            Integer configuredPageSize) {
+        return refreshActivitySnapshots(buildScheduledSyncRequest(activityId, configuredPageSize));
+    }
+
     public ActivityProductRefreshResult refreshActivitySnapshots(
             DouyinProductGateway.ActivityProductQueryRequest request,
             int maxPagesPerActivity,
@@ -42,10 +48,23 @@ public class ProductActivitySyncApplicationService {
             String activityId,
             String appId,
             Integer configuredPageSize) {
-        String normalizedActivityId = activityId == null ? "" : activityId.trim();
         Integer requestedPageSize = configuredPageSize == null || configuredPageSize <= 0
                 ? ActivityProductPagePolicy.DEFAULT_PAGE_SIZE
                 : configuredPageSize;
+        return buildActivityProductSyncRequest(appId, activityId, requestedPageSize);
+    }
+
+    private DouyinProductGateway.ActivityProductQueryRequest buildScheduledSyncRequest(
+            String activityId,
+            Integer configuredPageSize) {
+        return buildActivityProductSyncRequest(null, activityId, configuredPageSize);
+    }
+
+    private DouyinProductGateway.ActivityProductQueryRequest buildActivityProductSyncRequest(
+            String appId,
+            String activityId,
+            Integer requestedPageSize) {
+        String normalizedActivityId = activityId == null ? "" : activityId.trim();
         return new DouyinProductGateway.ActivityProductQueryRequest(
                 appId,
                 normalizedActivityId,

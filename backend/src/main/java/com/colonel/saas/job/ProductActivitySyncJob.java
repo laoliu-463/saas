@@ -1,7 +1,6 @@
 package com.colonel.saas.job;
 
 import com.colonel.saas.domain.product.application.ProductActivitySyncApplicationService;
-import com.colonel.saas.gateway.douyin.DouyinProductGateway;
 import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
 import com.colonel.saas.service.DistributedJobLockService;
 import lombok.extern.slf4j.Slf4j;
@@ -28,7 +27,6 @@ public class ProductActivitySyncJob {
     private static final Duration LOCK_TTL = Duration.ofMinutes(30);
     private static final int QPS_GUARD_SLEEP_MS = 2000;
     private static final int MIN_BATCH_SIZE = 1;
-    private static final int MAX_PAGE_SIZE = 20;
     private static final int MAX_ACTIVITIES_PER_RUN = 200;
 
     private final ProductActivitySyncApplicationService productActivitySyncApplicationService;
@@ -110,7 +108,7 @@ public class ProductActivitySyncJob {
                 }
                 try {
                     ProductActivitySyncApplicationService.ActivityProductRefreshResult result =
-                            productActivitySyncApplicationService.refreshActivitySnapshots(buildQueryRequest(activityId));
+                            productActivitySyncApplicationService.refreshScheduledActivitySnapshots(activityId, pageSize);
                     if (result.complete()) {
                         activityMapper.touchLastSyncAt(activityId, LocalDateTime.now());
                         ok++;
@@ -159,30 +157,10 @@ public class ProductActivitySyncJob {
                 LocalDateTime.now().minusMinutes(30));
     }
 
-    private DouyinProductGateway.ActivityProductQueryRequest buildQueryRequest(String activityId) {
-        return new DouyinProductGateway.ActivityProductQueryRequest(
-                null,
-                activityId,
-                4L,
-                1L,
-                normalizedPageSize(),
-                null,
-                null,
-                null,
-                null,
-                1L,
-                null,
-                null);
-    }
-
     private int normalizedMaxActivitiesPerRun() {
         int fallback = batchSize > 0 ? batchSize : 20;
         int configured = maxActivitiesPerRun > 0 ? maxActivitiesPerRun : fallback;
         return Math.min(Math.max(configured, MIN_BATCH_SIZE), MAX_ACTIVITIES_PER_RUN);
-    }
-
-    private int normalizedPageSize() {
-        return Math.min(Math.max(pageSize, MIN_BATCH_SIZE), MAX_PAGE_SIZE);
     }
 
     private int normalizedBatchSize() {

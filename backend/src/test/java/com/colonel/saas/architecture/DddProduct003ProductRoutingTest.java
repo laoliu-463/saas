@@ -276,6 +276,24 @@ class DddProduct003ProductRoutingTest {
     }
 
     @Test
+    @DisplayName("活动商品定时同步请求构造委托商品域应用入口")
+    void productActivityScheduledSync_shouldDelegateRequestBuildingToProductApplicationBoundary() throws Exception {
+        String jobSource = readSource("com/colonel/saas/job/ProductActivitySyncJob.java");
+        String applicationSource = readSource(
+                "com/colonel/saas/domain/product/application/ProductActivitySyncApplicationService.java");
+
+        assertThat(jobSource)
+                .contains("ProductActivitySyncApplicationService")
+                .contains("refreshScheduledActivitySnapshots")
+                .doesNotContain("DouyinProductGateway")
+                .doesNotContain("buildQueryRequest")
+                .doesNotContain("normalizedPageSize");
+        assertThat(applicationSource)
+                .contains("refreshScheduledActivitySnapshots")
+                .contains("ActivityProductPagePolicy");
+    }
+
+    @Test
     @DisplayName("商品转链 Port、mapping 和事件边界唯一收口")
     void productPromotion_shouldUseSingleApplicationPortAndCompletedEvent() throws Exception {
         String productServiceSource = readSource("com/colonel/saas/service/ProductService.java");
