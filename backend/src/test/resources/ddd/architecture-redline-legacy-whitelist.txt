@@ -4,7 +4,6 @@
 
 src/main/java/com/colonel/saas/controller/AdminDouyinQuickSampleController.java|com.colonel.saas.gateway.douyin.DouyinQuickSampleGateway
 src/main/java/com/colonel/saas/controller/ColonelActivityController.java|com.colonel.saas.gateway.douyin.DouyinActivityGateway
-src/main/java/com/colonel/saas/controller/ColonelActivityController.java|com.colonel.saas.gateway.douyin.DouyinProductGateway
 src/main/java/com/colonel/saas/controller/ColonelActivityProductController.java|com.colonel.saas.gateway.douyin.DouyinPromotionGateway
 src/main/java/com/colonel/saas/controller/ColonelsettlementActivityController.java|com.colonel.saas.gateway.douyin.DouyinActivityGateway
 src/main/java/com/colonel/saas/controller/DouyinController.java|com.colonel.saas.gateway.douyin.DouyinActivityGateway

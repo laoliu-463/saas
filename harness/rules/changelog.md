@@ -7,6 +7,11 @@
 
 ## 最近版本摘要
 
+### v0.8.12 — 2026-06-29
+- DDD-VERIFY-001 活动商品 `refresh=true` 列表同步边界切片：`ColonelActivityController` 不再直接构造 `DouyinProductGateway.ActivityProductQueryRequest`，请求字段、刷新后本地列表读取和 `syncStats` 六字段组装迁入 `ProductActivitySyncApplicationService.refreshActivityProductList`；Controller 保留权限校验、活动摘要同步和异常映射。API 路径、请求/响应字段、DB schema、权限、状态值和真实刷新入口均不变。
+- RED/GREEN application/controller/routing parity 38 tests PASS；`mvn -DskipTests compile`、`mvn -f backend/pom.xml -DskipTests package`、Product 全集合 352 tests、real-pre backend rebuild/restart/health PASS；安全业务探针 GET 活动商品 refresh 接口无 token 返回 401，未触发真实同步或 backfill；架构集合 187 tests / 5 failures / 1 skipped，全量 `mvn test` 2740 tests / 5 failures / 3 skipped，失败仍为既有 order/user 架构红线，本轮 evidence 结论为 PARTIAL。
+- 证据：`harness/reports/evidence-20260629-172842.md`；latest：`harness/reports/latest-evidence-20260629.md`；retro：`harness/reports/retro-20260629-172901.md`。
+
 ### v0.8.11 — 2026-06-29
 - DDD-VERIFY-001 活动商品定时同步请求边界切片：`ProductActivitySyncJob` 不再直接构造 `DouyinProductGateway.ActivityProductQueryRequest`，定时同步请求字段和 pageSize 归一化迁入 `ProductActivitySyncApplicationService.refreshScheduledActivitySnapshots` 并复用 `ActivityProductPagePolicy`。定时任务锁、活动 ID 查询、循环同步、日志、`touchLastSyncAt`、API、DB schema、权限、状态值和真实同步入口均不变。
 - RED/GREEN application/job/routing parity 48 tests PASS；`mvn -DskipTests compile`、`mvn -f backend/pom.xml -DskipTests package`、Product 全集合 350 tests、real-pre backend rebuild/restart/health PASS；安全业务探针 POST 手动同步接口无 token 返回 401，未触发真实同步或 backfill；架构集合 186 tests / 5 failures / 1 skipped，全量 `mvn test` 2738 tests / 5 failures / 3 skipped，失败仍为既有 order/user 架构红线，本轮 evidence 结论为 PARTIAL。

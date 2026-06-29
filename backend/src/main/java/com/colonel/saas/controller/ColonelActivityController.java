@@ -12,7 +12,6 @@ import com.colonel.saas.douyin.DouyinApiException;
 import com.colonel.saas.entity.ColonelsettlementActivity;
 import com.colonel.saas.entity.SysUser;
 import com.colonel.saas.gateway.douyin.DouyinActivityGateway;
-import com.colonel.saas.gateway.douyin.DouyinProductGateway;
 import com.colonel.saas.domain.product.application.ProductActivitySyncApplicationService;
 import com.colonel.saas.domain.product.policy.ProductDisplayPolicy;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
@@ -61,7 +60,6 @@ public class ColonelActivityController extends BaseController {
     private static final String ACTIVITY_LIST_CACHE_PREFIX = "activities:list:";
 
     private final DouyinActivityGateway douyinActivityGateway;
-    private final DouyinProductGateway douyinProductGateway;
     private final ProductService productService;
     private final ShortTtlCacheService shortTtlCacheService;
     private final SysUserService sysUserService;
@@ -74,7 +72,6 @@ public class ColonelActivityController extends BaseController {
 
     public ColonelActivityController(
             DouyinActivityGateway douyinActivityGateway,
-            DouyinProductGateway douyinProductGateway,
             ProductService productService,
             ShortTtlCacheService shortTtlCacheService,
             SysUserService sysUserService,
@@ -85,7 +82,6 @@ public class ColonelActivityController extends BaseController {
             ActivityAccessService activityAccessService,
             ProductDisplayPolicy productDisplayPolicy) {
         this.douyinActivityGateway = douyinActivityGateway;
-        this.douyinProductGateway = douyinProductGateway;
         this.productService = productService;
         this.shortTtlCacheService = shortTtlCacheService;
         this.sysUserService = sysUserService;
@@ -221,24 +217,25 @@ public class ColonelActivityController extends BaseController {
             // 3) refresh=false 且 DB 无快照 → 返回 needSync=true + DATA_NOT_READY 提示
             //    **永不在线调抖音** —— 这是 504 根因
             if (Boolean.TRUE.equals(refresh)) {
-                DouyinProductGateway.ActivityProductQueryRequest queryRequest =
-                        new DouyinProductGateway.ActivityProductQueryRequest(
-                                appId, activityId, searchType, sortType, count, cooperationInfo, cooperationType,
-                                productInfo, status, retrieveMode, cursor, page);
                 colonelActivityService.syncActivitySummaryFromUpstream(activityId, appId);
-                ProductActivitySyncApplicationService.ActivityProductRefreshResult refreshResult =
-                        productActivitySyncApplicationService.refreshActivitySnapshots(queryRequest);
-                Map<String, Object> payload = productService.buildActivityProductListViewFromDb(
-                        activityId, count, cursor, productInfo, bizStatus, status, sortBy, goodsTags, productTags);
-                Map<String, Object> syncStats = new LinkedHashMap<>();
-                syncStats.put("syncedProductCount", refreshResult.syncedProductCount());
-                syncStats.put("libraryEntryCount", refreshResult.libraryEntryCount());
-                syncStats.put("createdCount", refreshResult.createdCount());
-                syncStats.put("updatedCount", refreshResult.updatedCount());
-                syncStats.put("skippedCount", refreshResult.skippedCount());
-                syncStats.put("autoLibraryEligible", refreshResult.libraryEntryCount() > 0);
-                payload.put("syncStats", syncStats);
-                return ok(payload);
+                return ok(productActivitySyncApplicationService.refreshActivityProductList(
+                        new ProductActivitySyncApplicationService.ActivityProductListRefreshCommand(
+                                activityId,
+                                searchType,
+                                sortType,
+                                count,
+                                cooperationInfo,
+                                cooperationType,
+                                productInfo,
+                                bizStatus,
+                                status,
+                                retrieveMode,
+                                cursor,
+                                page,
+                                appId,
+                                sortBy,
+                                goodsTags,
+                                productTags)));
             }
             if (productService.hasActivitySnapshots(activityId)) {
                 return ok(productService.buildActivityProductListViewFromDb(

@@ -294,6 +294,28 @@ class DddProduct003ProductRoutingTest {
     }
 
     @Test
+    @DisplayName("活动商品 refresh=true 列表同步由商品域应用入口构造请求和同步统计")
+    void activityProductRefreshList_shouldRouteGatewayRequestAndSyncStatsThroughProductApplicationBoundary()
+            throws Exception {
+        String controllerSource = readSource("com/colonel/saas/controller/ColonelActivityController.java");
+        String applicationSource = readSource(
+                "com/colonel/saas/domain/product/application/ProductActivitySyncApplicationService.java");
+
+        assertThat(controllerSource)
+                .contains("ProductActivitySyncApplicationService")
+                .contains("refreshActivityProductList")
+                .doesNotContain("DouyinProductGateway")
+                .doesNotContain("ActivityProductQueryRequest queryRequest")
+                .doesNotContain("refreshActivitySnapshots(queryRequest)")
+                .doesNotContain("syncStats.put");
+        assertThat(applicationSource)
+                .contains("ActivityProductListRefreshCommand")
+                .contains("refreshActivityProductList")
+                .contains("buildActivityProductListRefreshRequest")
+                .contains("syncStats.put");
+    }
+
+    @Test
     @DisplayName("商品转链 Port、mapping 和事件边界唯一收口")
     void productPromotion_shouldUseSingleApplicationPortAndCompletedEvent() throws Exception {
         String productServiceSource = readSource("com/colonel/saas/service/ProductService.java");

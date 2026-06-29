@@ -6,7 +6,6 @@ import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.douyin.DouyinApiException;
 import com.colonel.saas.gateway.douyin.DouyinActivityGateway;
-import com.colonel.saas.gateway.douyin.DouyinProductGateway;
 import com.colonel.saas.auth.service.SysUserService;
 import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
 import com.colonel.saas.domain.product.application.ProductActivitySyncApplicationService;
@@ -22,7 +21,7 @@ import org.springframework.http.MediaType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InOrder;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
@@ -42,7 +41,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -59,8 +57,6 @@ class ColonelActivityControllerTest {
 
     @Mock
     private DouyinActivityGateway douyinActivityGateway;
-    @Mock
-    private DouyinProductGateway douyinProductGateway;
     @Mock
     private ProductService productService;
     @Mock
@@ -85,7 +81,6 @@ class ColonelActivityControllerTest {
         activityAccessService = new ActivityAccessService(colonelActivityMapper, new CurrentUserPermissionPolicy());
         controller = new ColonelActivityController(
                 douyinActivityGateway,
-                douyinProductGateway,
                 productService,
                 new ShortTtlCacheService(),
                 sysUserService,
@@ -133,7 +128,6 @@ class ColonelActivityControllerTest {
         ShortTtlCacheService cacheService = mock(ShortTtlCacheService.class);
         ColonelActivityController localController = new ColonelActivityController(
                 douyinActivityGateway,
-                douyinProductGateway,
                 productService,
                 cacheService,
                 sysUserService,
@@ -392,8 +386,8 @@ class ColonelActivityControllerTest {
 
         verify(productService).hasActivitySnapshots("100018");
         verify(productService).buildActivityProductListViewFromDb("100018", 20, null, null, null, null, null, null, null);
-        // 关键断言：DB 有快照时绝不调抖音
-        verify(douyinProductGateway, never()).queryActivityProducts(any());
+        // 关键断言：DB 有快照时绝不触发刷新入口
+        verify(productActivitySyncApplicationService, never()).refreshActivityProductList(any());
     }
 
     @Test
@@ -417,8 +411,8 @@ class ColonelActivityControllerTest {
                 .andExpect(jsonPath("$.data.items").isArray())
                 .andExpect(jsonPath("$.data.items").isEmpty());
 
-        // 关键断言：默认 refresh=false 时绝不调抖音
-        verify(douyinProductGateway, never()).queryActivityProducts(any());
+        // 关键断言：默认 refresh=false 时绝不触发刷新入口
+        verify(productActivitySyncApplicationService, never()).refreshActivityProductList(any());
         verify(productService, never()).upsertSnapshots(any(), any());
     }
 
@@ -447,7 +441,7 @@ class ColonelActivityControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.items[0].title").value("本地快照商品"));
 
-        verify(douyinProductGateway, never()).queryActivityProducts(any());
+        verify(productActivitySyncApplicationService, never()).refreshActivityProductList(any());
         verify(productService, never()).upsertSnapshots(eq("100018"), any());
     }
 
@@ -463,44 +457,11 @@ class ColonelActivityControllerTest {
         verify(productService, never()).hasActivitySnapshots("100018");
         verify(productService, never()).buildActivityProductListViewFromDb(
                 any(), any(), any(), any(), any(), any(), any(), any(), any());
-        verify(douyinProductGateway, never()).queryActivityProducts(any());
+        verify(productActivitySyncApplicationService, never()).refreshActivityProductList(any());
     }
 
     @Test
     void listProducts_refreshTrueShouldBypassExistingSnapshotsAndRefreshFromGateway() throws Exception {
-        DouyinProductGateway.ActivityProductItem item = new DouyinProductGateway.ActivityProductItem(
-                9002L,
-                "防晒霜",
-                "https://img.test/product-9002.jpg",
-                8900L,
-                "89.00",
-                30L,
-                2670L,
-                30L,
-                "30%",
-                1,
-                "普通佣金",
-                "6%",
-                12L,
-                true,
-                true,
-                129L,
-                7002L,
-                "真实店铺",
-                "4.8",
-                1,
-                "推广中",
-                "美妆",
-                "1001",
-                "满减券",
-                "2026-05-01 00:00:00",
-                "2026-05-31 23:59:59",
-                "2026-05-01 00:00:00",
-                "2026-05-31 23:59:59",
-                "https://detail.test/products/9002",
-                null,
-                Map.of()
-        );
         Map<String, Object> itemView = new LinkedHashMap<>();
         itemView.put("productId", 9002L);
         itemView.put("title", "防晒霜");
@@ -512,14 +473,16 @@ class ColonelActivityControllerTest {
         listView.put("total", 1);
         listView.put("nextCursor", "fresh-cursor");
         listView.put("items", List.of(itemView));
+        listView.put("syncStats", Map.of(
+                "libraryEntryCount", 1,
+                "autoLibraryEligible", true));
 
-        when(productService.buildActivityProductListViewFromDb("100018", 20, null, null, null, null, null, null, null)).thenReturn(listView);
-        when(productActivitySyncApplicationService.refreshActivitySnapshots(any())).thenReturn(
-                new ProductActivitySyncApplicationService.ActivityProductRefreshResult(1, 1, 1, 0, 0));
+        when(productActivitySyncApplicationService.refreshActivityProductList(any())).thenReturn(listView);
 
         mockMvc.perform(get("/colonel/activities/{activityId}/products", "100018")
                         .param("count", "20")
                         .param("refresh", "true")
+                        .param("appId", "APP-1")
                         .requestAttr("roleCodes", List.of(RoleCodes.ADMIN)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
@@ -530,14 +493,20 @@ class ColonelActivityControllerTest {
                 .andExpect(jsonPath("$.data.syncStats.autoLibraryEligible").value(true));
 
         verify(productService, never()).hasActivitySnapshots("100018");
-        verify(colonelActivityService).syncActivitySummaryFromUpstream(eq("100018"), eq(null));
-        verify(productActivitySyncApplicationService).refreshActivitySnapshots(any());
-        verify(douyinProductGateway, never()).queryActivityProducts(any());
+        verify(colonelActivityService).syncActivitySummaryFromUpstream(eq("100018"), eq("APP-1"));
+        ArgumentCaptor<ProductActivitySyncApplicationService.ActivityProductListRefreshCommand> commandCaptor =
+                ArgumentCaptor.forClass(ProductActivitySyncApplicationService.ActivityProductListRefreshCommand.class);
+        verify(productActivitySyncApplicationService).refreshActivityProductList(commandCaptor.capture());
+        assertThat(commandCaptor.getValue().activityId()).isEqualTo("100018");
+        assertThat(commandCaptor.getValue().searchType()).isEqualTo(4L);
+        assertThat(commandCaptor.getValue().sortType()).isEqualTo(1L);
+        assertThat(commandCaptor.getValue().count()).isEqualTo(20);
+        assertThat(commandCaptor.getValue().cooperationType()).isEqualTo(0);
+        assertThat(commandCaptor.getValue().retrieveMode()).isEqualTo(1L);
+        assertThat(commandCaptor.getValue().appId()).isEqualTo("APP-1");
         verify(productService, never()).upsertSnapshots(eq("100018"), any());
-        verify(productService).buildActivityProductListViewFromDb("100018", 20, null, null, null, null, null, null, null);
-        InOrder inOrder = inOrder(productActivitySyncApplicationService, productService);
-        inOrder.verify(productActivitySyncApplicationService).refreshActivitySnapshots(any());
-        inOrder.verify(productService).buildActivityProductListViewFromDb("100018", 20, null, null, null, null, null, null, null);
+        verify(productService, never()).buildActivityProductListViewFromDb(
+                any(), any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -574,19 +543,14 @@ class ColonelActivityControllerTest {
         );
 
         for (ErrorCase item : cases) {
-            DouyinProductGateway productGateway = mock(DouyinProductGateway.class);
             ProductService localProductService = mock(ProductService.class);
             ProductActivitySyncApplicationService localProductActivitySyncApplicationService =
                     mock(ProductActivitySyncApplicationService.class);
-            when(localProductService.hasActivitySnapshots("100018")).thenReturn(false);
-            when(localProductService.buildActivityProductListViewFromDb(eq("100018"), any(), any(), any(), any(), any(), any(), any(), any()))
-                    .thenReturn(Map.of("items", List.of(), "total", 0));
-            // refresh=true 路径调用的是 refreshActivitySnapshots（不是 queryActivityProducts）
-            when(localProductActivitySyncApplicationService.refreshActivitySnapshots(any()))
+            // refresh=true 路径由 product application 触发上游刷新并向 Controller 透出 DouyinApiException
+            when(localProductActivitySyncApplicationService.refreshActivityProductList(any()))
                     .thenThrow(item.exception());
             ColonelActivityController errorController = new ColonelActivityController(
                     douyinActivityGateway,
-                    productGateway,
                     localProductService,
                     new ShortTtlCacheService(),
                     sysUserService,
@@ -597,7 +561,7 @@ class ColonelActivityControllerTest {
                     activityAccessService,
                     new ProductDisplayPolicy());
 
-            // refresh=true：触发 syncActivitySummaryFromUpstream + refreshActivitySnapshots
+            // refresh=true：触发 syncActivitySummaryFromUpstream + refreshActivityProductList
             assertThatThrownBy(() -> errorController.listProducts(
                     "100018",
                     4L,

@@ -8,6 +8,10 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -117,5 +121,82 @@ class ProductActivitySyncApplicationServiceTest {
         assertThat(captor.getValue().page()).isNull();
         assertThat(result.syncedProductCount()).isEqualTo(7);
         assertThat(result.libraryEntryCount()).isEqualTo(2);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void refreshActivityProductList_shouldBuildLegacyRefreshRequestAndAppendSyncStats() throws Exception {
+        ProductActivitySyncApplicationService applicationService =
+                new ProductActivitySyncApplicationService(productService);
+        when(productService.refreshActivitySnapshots(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new ProductService.ActivityProductRefreshResult(6, 2, 1, 5, 0));
+        Map<String, Object> listView = new LinkedHashMap<>();
+        listView.put("items", List.of(Map.of("productId", 9002L)));
+        listView.put("total", 1L);
+        when(productService.buildActivityProductListViewFromDb(
+                "100018",
+                20,
+                "cursor-1",
+                "防晒",
+                "APPROVED",
+                1,
+                "commissionDesc",
+                "tag-a",
+                "tag-b"))
+                .thenReturn(listView);
+
+        ProductActivitySyncApplicationService.ActivityProductListRefreshCommand command =
+                new ProductActivitySyncApplicationService.ActivityProductListRefreshCommand(
+                        "100018",
+                        4L,
+                        1L,
+                        20,
+                        "coop",
+                        2,
+                        "防晒",
+                        "APPROVED",
+                        1,
+                        1L,
+                        "cursor-1",
+                        3L,
+                        "APP-1",
+                        "commissionDesc",
+                        "tag-a",
+                        "tag-b");
+
+        Map<String, Object> result = applicationService.refreshActivityProductList(command);
+
+        ArgumentCaptor<DouyinProductGateway.ActivityProductQueryRequest> captor =
+                ArgumentCaptor.forClass(DouyinProductGateway.ActivityProductQueryRequest.class);
+        verify(productService).refreshActivitySnapshots(captor.capture());
+        assertThat(captor.getValue().appId()).isEqualTo("APP-1");
+        assertThat(captor.getValue().activityId()).isEqualTo("100018");
+        assertThat(captor.getValue().searchType()).isEqualTo(4L);
+        assertThat(captor.getValue().sortType()).isEqualTo(1L);
+        assertThat(captor.getValue().count()).isEqualTo(20);
+        assertThat(captor.getValue().cooperationInfo()).isEqualTo("coop");
+        assertThat(captor.getValue().cooperationType()).isEqualTo(2);
+        assertThat(captor.getValue().productInfo()).isEqualTo("防晒");
+        assertThat(captor.getValue().status()).isEqualTo(1);
+        assertThat(captor.getValue().retrieveMode()).isEqualTo(1L);
+        assertThat(captor.getValue().cursor()).isEqualTo("cursor-1");
+        assertThat(captor.getValue().page()).isEqualTo(3L);
+        verify(productService).buildActivityProductListViewFromDb(
+                "100018", 20, "cursor-1", "防晒", "APPROVED", 1, "commissionDesc", "tag-a", "tag-b");
+        assertThat(result).isSameAs(listView);
+        assertThat((Map<String, Object>) result.get("syncStats"))
+                .containsOnlyKeys(
+                        "syncedProductCount",
+                        "libraryEntryCount",
+                        "createdCount",
+                        "updatedCount",
+                        "skippedCount",
+                        "autoLibraryEligible")
+                .containsEntry("syncedProductCount", 6)
+                .containsEntry("libraryEntryCount", 2)
+                .containsEntry("createdCount", 1)
+                .containsEntry("updatedCount", 5)
+                .containsEntry("skippedCount", 0)
+                .containsEntry("autoLibraryEligible", true);
     }
 }

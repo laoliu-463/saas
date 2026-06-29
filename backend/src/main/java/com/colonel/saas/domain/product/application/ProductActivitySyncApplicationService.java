@@ -5,6 +5,9 @@ import com.colonel.saas.gateway.douyin.DouyinProductGateway;
 import com.colonel.saas.service.ProductService;
 import org.springframework.stereotype.Service;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 /**
  * 商品域活动商品同步应用入口。
  *
@@ -36,6 +39,23 @@ public class ProductActivitySyncApplicationService {
         return refreshActivitySnapshots(buildScheduledSyncRequest(activityId, configuredPageSize));
     }
 
+    public Map<String, Object> refreshActivityProductList(ActivityProductListRefreshCommand command) {
+        ActivityProductRefreshResult refreshResult =
+                refreshActivitySnapshots(buildActivityProductListRefreshRequest(command));
+        Map<String, Object> payload = productService.buildActivityProductListViewFromDb(
+                command.activityId(),
+                command.count(),
+                command.cursor(),
+                command.productInfo(),
+                command.bizStatus(),
+                command.status(),
+                command.sortBy(),
+                command.goodsTags(),
+                command.productTags());
+        payload.put("syncStats", buildSyncStats(refreshResult));
+        return payload;
+    }
+
     public ActivityProductRefreshResult refreshActivitySnapshots(
             DouyinProductGateway.ActivityProductQueryRequest request,
             int maxPagesPerActivity,
@@ -60,6 +80,34 @@ public class ProductActivitySyncApplicationService {
         return buildActivityProductSyncRequest(null, activityId, configuredPageSize);
     }
 
+    private DouyinProductGateway.ActivityProductQueryRequest buildActivityProductListRefreshRequest(
+            ActivityProductListRefreshCommand command) {
+        return new DouyinProductGateway.ActivityProductQueryRequest(
+                command.appId(),
+                command.activityId(),
+                command.searchType(),
+                command.sortType(),
+                command.count(),
+                command.cooperationInfo(),
+                command.cooperationType(),
+                command.productInfo(),
+                command.status(),
+                command.retrieveMode(),
+                command.cursor(),
+                command.page());
+    }
+
+    private Map<String, Object> buildSyncStats(ActivityProductRefreshResult refreshResult) {
+        Map<String, Object> syncStats = new LinkedHashMap<>();
+        syncStats.put("syncedProductCount", refreshResult.syncedProductCount());
+        syncStats.put("libraryEntryCount", refreshResult.libraryEntryCount());
+        syncStats.put("createdCount", refreshResult.createdCount());
+        syncStats.put("updatedCount", refreshResult.updatedCount());
+        syncStats.put("skippedCount", refreshResult.skippedCount());
+        syncStats.put("autoLibraryEligible", refreshResult.libraryEntryCount() > 0);
+        return syncStats;
+    }
+
     private DouyinProductGateway.ActivityProductQueryRequest buildActivityProductSyncRequest(
             String appId,
             String activityId,
@@ -78,6 +126,25 @@ public class ProductActivitySyncApplicationService {
                 1L,
                 null,
                 null);
+    }
+
+    public record ActivityProductListRefreshCommand(
+            String activityId,
+            Long searchType,
+            Long sortType,
+            Integer count,
+            String cooperationInfo,
+            Integer cooperationType,
+            String productInfo,
+            String bizStatus,
+            Integer status,
+            Long retrieveMode,
+            String cursor,
+            Long page,
+            String appId,
+            String sortBy,
+            String goodsTags,
+            String productTags) {
     }
 
     public record ActivityProductRefreshResult(
