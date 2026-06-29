@@ -21,6 +21,10 @@
 - `P0`：影响 V1 主链路、权限、归因、业绩、寄样或 real-pre 验收。
 - `P1`：影响领域边界、回归风险或主要运维效率。
 - `P2`：治理、清理、补文档或体验优化。
+## DDD 全局收口基线（2026-06-29）
+- 跨域 Mapper 治理：DONE / 100%；`cross-domain-mapper-legacy-whitelist.txt` 无有效 Mapper 条目，当前 DDD guard subset PASS。
+- DDD 架构守卫：基本 DONE；全域 DDD 收口：PARTIAL。178 张任务卡未形成逐卡 DONE 证据，不能写 100%。
+- 进度口径：若必须估算，整体完成度不应高于 70%-75%；证据矩阵见 `docs/ddd-completion-evidence-matrix.md`。
 
 ## 用户域
 - 最新小切片：DDD-USER-ACTIVITY-ACCESS-FACADE 已将 `ActivityAccessService` 的 admin / 招商角色 / 招商组长判断和角色编码规范化从直接注入 `CurrentUserPermissionPolicy` 改为消费 `UserDomainFacade.hasAnyRole` / `normalizeRoleCodes`；`LegacyUserDomainFacade` 新增对应出口并继续委托原用户域 policy，活动列表、活动商品、同步任务、分配筛选和活动可读性业务规则均未改动。验证：`ActivityAccessServiceTest`、`ColonelActivityControllerTest`、`LegacyUserDomainFacadeBoundaryTest`、`LegacyUserDomainFacadeTest` 共 46 用例 PASS；backend package PASS；real-pre backend 构建、重启、健康检查和 P0 preflight PASS。报告：`harness/reports/evidence-20260628-181337.md`。风险变化：活动域退出直接消费用户域角色 matcher；跨业务域 `PermissionChecker` / `DataScopeResolver` 消费方式仍未全量统一。
