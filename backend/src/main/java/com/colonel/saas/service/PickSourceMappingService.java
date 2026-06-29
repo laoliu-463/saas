@@ -2,6 +2,7 @@ package com.colonel.saas.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.colonel.saas.common.exception.OptimisticLockSupport;
+import com.colonel.saas.domain.product.facade.dto.PickSourceAttributionMappingDTO;
 import com.colonel.saas.domain.product.facade.dto.PickSourceMappingReadDTO;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.PickSourceMapping;
@@ -71,6 +72,76 @@ public class PickSourceMappingService {
                 .orderByDesc(PickSourceMapping::getUpdateTime)
                 .last("limit 1"));
         return toReadDTO(mapping);
+    }
+
+    /**
+     * 订单归因：按 pick_source / pick_extra 读取活跃映射。
+     *
+     * <p>保持原归因查询顺序：pickSource 精确匹配 -> pickExtra 精确匹配 -> pickExtra 后 20 位 shortId 匹配。</p>
+     */
+    public PickSourceAttributionMappingDTO findActiveAttributionMapping(String pickSource, String pickExtra) {
+        if (StringUtils.hasText(pickSource)) {
+            PickSourceMapping byPickSource = pickSourceMappingMapper.selectOne(new LambdaQueryWrapper<PickSourceMapping>()
+                    .eq(PickSourceMapping::getPickSource, pickSource)
+                    .eq(PickSourceMapping::getStatus, 1)
+                    .last("limit 1"));
+            if (byPickSource != null) {
+                return toAttributionDTO(byPickSource);
+            }
+        }
+        if (StringUtils.hasText(pickExtra)) {
+            PickSourceMapping byPickExtra = pickSourceMappingMapper.selectOne(new LambdaQueryWrapper<PickSourceMapping>()
+                    .eq(PickSourceMapping::getPickExtra, pickExtra)
+                    .eq(PickSourceMapping::getStatus, 1)
+                    .last("limit 1"));
+            if (byPickExtra != null) {
+                return toAttributionDTO(byPickExtra);
+            }
+            String normalized = pickExtra.length() > 20 ? pickExtra.substring(pickExtra.length() - 20) : pickExtra;
+            PickSourceMapping byShortId = pickSourceMappingMapper.selectOne(new LambdaQueryWrapper<PickSourceMapping>()
+                    .eq(PickSourceMapping::getShortId, normalized)
+                    .eq(PickSourceMapping::getStatus, 1)
+                    .last("limit 1"));
+            if (byShortId != null) {
+                return toAttributionDTO(byShortId);
+            }
+        }
+        return null;
+    }
+
+    /** 订单归因：原生团长精确映射。 */
+    public List<PickSourceAttributionMappingDTO> findNativeAttributionMappings(
+            String colonelBuyinId,
+            String activityId,
+            String productId) {
+        return toAttributionDTOs(pickSourceMappingMapper.selectList(new LambdaQueryWrapper<PickSourceMapping>()
+                .eq(PickSourceMapping::getColonelBuyinId, colonelBuyinId)
+                .eq(PickSourceMapping::getActivityId, activityId)
+                .eq(PickSourceMapping::getProductId, productId)
+                .eq(PickSourceMapping::getSourceType, SOURCE_TYPE_NATIVE)
+                .eq(PickSourceMapping::getStatus, 1)
+                .orderByDesc(PickSourceMapping::getUpdateTime)));
+    }
+
+    /** 订单归因：活动商品维度原生映射回退。 */
+    public List<PickSourceAttributionMappingDTO> findNativeAttributionMappingsByActivityProduct(
+            String activityId,
+            String productId) {
+        return toAttributionDTOs(pickSourceMappingMapper.selectList(new LambdaQueryWrapper<PickSourceMapping>()
+                .eq(PickSourceMapping::getActivityId, activityId)
+                .eq(PickSourceMapping::getProductId, productId)
+                .eq(PickSourceMapping::getSourceType, SOURCE_TYPE_NATIVE)
+                .eq(PickSourceMapping::getStatus, 1)
+                .orderByDesc(PickSourceMapping::getUpdateTime)));
+    }
+
+    /** 订单归因：仅按团长 buyin_id 的原生映射通用回退。 */
+    public List<PickSourceAttributionMappingDTO> findNativeAttributionMappingsByColonelBuyinId(String colonelBuyinId) {
+        return toAttributionDTOs(pickSourceMappingMapper.selectList(new LambdaQueryWrapper<PickSourceMapping>()
+                .eq(PickSourceMapping::getColonelBuyinId, colonelBuyinId)
+                .eq(PickSourceMapping::getSourceType, SOURCE_TYPE_NATIVE)
+                .eq(PickSourceMapping::getStatus, 1)
+                .orderByDesc(PickSourceMapping::getUpdateTime)));
     }
 
     /**
@@ -919,6 +990,31 @@ public class PickSourceMappingService {
                 mapping.getPickExtra(),
                 mapping.getTalentId(),
                 mapping.getTalentName());
+    }
+
+    private List<PickSourceAttributionMappingDTO> toAttributionDTOs(List<PickSourceMapping> mappings) {
+        if (mappings == null || mappings.isEmpty()) {
+            return List.of();
+        }
+        return mappings.stream()
+                .map(PickSourceMappingService::toAttributionDTO)
+                .filter(java.util.Objects::nonNull)
+                .toList();
+    }
+
+    private static PickSourceAttributionMappingDTO toAttributionDTO(PickSourceMapping mapping) {
+        if (mapping == null) {
+            return null;
+        }
+        return new PickSourceAttributionMappingDTO(
+                mapping.getUserId(),
+                mapping.getDeptId(),
+                mapping.getActivityId(),
+                mapping.getProductId(),
+                mapping.getColonelBuyinId(),
+                mapping.getSourceType(),
+                mapping.getCreateTime(),
+                mapping.getUpdateTime());
     }
 
     /**

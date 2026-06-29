@@ -31,6 +31,9 @@ public interface TalentDomainFacade {
     /** 渠道用户是否已有效认领指定达人。 */
     boolean hasActiveClaim(UUID talentId, UUID userId);
 
+    /** 订单归因保护：达人是否被其他用户有效认领。 */
+    boolean hasActiveClaimOwnerConflict(UUID talentId, UUID userId);
+
     /** 寄样创建成功后回写收件地址到有效认领记录。 */
     void writeBackClaimAddress(UUID channelUserId, UUID talentId, String recipientName, String recipientPhone, String recipientAddress);
 

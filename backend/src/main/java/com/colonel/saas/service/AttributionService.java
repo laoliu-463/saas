@@ -1,14 +1,12 @@
 package com.colonel.saas.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.colonel.saas.domain.product.facade.dto.PickSourceAttributionMappingDTO;
+import com.colonel.saas.domain.talent.facade.TalentDomainFacade;
+import com.colonel.saas.domain.talent.facade.dto.TalentReadDTO;
 import com.colonel.saas.entity.ColonelsettlementOrder;
-import com.colonel.saas.entity.PickSourceMapping;
 import com.colonel.saas.entity.ProductOperationState;
-import com.colonel.saas.entity.TalentClaim;
-import com.colonel.saas.mapper.PickSourceMappingMapper;
 import com.colonel.saas.mapper.ProductOperationStateMapper;
-import com.colonel.saas.mapper.TalentClaimMapper;
-import com.colonel.saas.mapper.TalentMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -16,7 +14,6 @@ import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -35,9 +32,9 @@ import java.util.UUID;
  *
  * <p>依赖服务/仓储：
  * <ul>
- *   <li>{@link PickSourceMappingMapper} —— 转链映射数据访问</li>
+ *   <li>{@link PickSourceMappingService} —— 转链映射只读查询</li>
  *   <li>{@link ProductOperationStateMapper} —— 商品操作状态，用于查找活动负责人</li>
- *   <li>{@link TalentMapper} / {@link TalentClaimMapper} —— 达人信息及认领冲突校验</li>
+ *   <li>{@link TalentDomainFacade} —— 达人信息及认领冲突校验</li>
  *   <li>{@link ExclusiveTalentService} —— 独家达人归属查询</li>
  *   <li>{@link ExclusiveMerchantService} —— 独家商家归属查询</li>
  * </ul>
@@ -72,44 +69,39 @@ public class AttributionService {
     /** 归属原因：达人已被其他人认领，存在归属冲突 */
     public static final String REASON_TALENT_CLAIM_OWNER_CONFLICT = "TALENT_CLAIM_OWNER_CONFLICT";
 
-    private final PickSourceMappingMapper pickSourceMappingMapper;
+    private final PickSourceMappingService pickSourceMappingService;
     private final ProductOperationStateMapper operationStateMapper;
-    private final TalentMapper talentMapper;
-    private final TalentClaimMapper talentClaimMapper;
+    private final TalentDomainFacade talentDomainFacade;
     private final ExclusiveTalentService exclusiveTalentService;
     private final ExclusiveMerchantService exclusiveMerchantService;
     private final boolean exclusiveEnabled;
 
     @Autowired
     public AttributionService(
-            PickSourceMappingMapper pickSourceMappingMapper,
+            PickSourceMappingService pickSourceMappingService,
             ProductOperationStateMapper operationStateMapper,
-            TalentMapper talentMapper,
-            TalentClaimMapper talentClaimMapper,
+            TalentDomainFacade talentDomainFacade,
             ExclusiveTalentService exclusiveTalentService,
             ExclusiveMerchantService exclusiveMerchantService,
             @Value("${exclusive.enabled:false}") boolean exclusiveEnabled) {
-        this.pickSourceMappingMapper = pickSourceMappingMapper;
+        this.pickSourceMappingService = pickSourceMappingService;
         this.operationStateMapper = operationStateMapper;
-        this.talentMapper = talentMapper;
-        this.talentClaimMapper = talentClaimMapper;
+        this.talentDomainFacade = talentDomainFacade;
         this.exclusiveTalentService = exclusiveTalentService;
         this.exclusiveMerchantService = exclusiveMerchantService;
         this.exclusiveEnabled = exclusiveEnabled;
     }
 
     public AttributionService(
-            PickSourceMappingMapper pickSourceMappingMapper,
+            PickSourceMappingService pickSourceMappingService,
             ProductOperationStateMapper operationStateMapper,
-            TalentMapper talentMapper,
-            TalentClaimMapper talentClaimMapper,
+            TalentDomainFacade talentDomainFacade,
             ExclusiveTalentService exclusiveTalentService,
             ExclusiveMerchantService exclusiveMerchantService) {
         this(
-                pickSourceMappingMapper,
+                pickSourceMappingService,
                 operationStateMapper,
-                talentMapper,
-                talentClaimMapper,
+                talentDomainFacade,
                 exclusiveTalentService,
                 exclusiveMerchantService,
                 false
@@ -226,15 +218,15 @@ public class AttributionService {
                     secondActivityId,
                     productId
             );
-            PickSourceMapping colonelMapping = colonelResolution.mapping();
-            if (colonelMapping != null && colonelMapping.getUserId() != null) {
+            PickSourceAttributionMappingDTO colonelMapping = colonelResolution.mapping();
+            if (colonelMapping != null && colonelMapping.userId() != null) {
                 return attributedWithClaimGuard(
-                        colonelMapping.getUserId(),
-                        colonelMapping.getDeptId(),
-                        colonelMapping.getUserId(),
+                        colonelMapping.userId(),
+                        colonelMapping.deptId(),
+                        colonelMapping.userId(),
                         talentId,
                         talentUid,
-                        firstNonBlank(colonelResolution.activityId(), colonelMapping.getActivityId(), activityId),
+                        firstNonBlank(colonelResolution.activityId(), colonelMapping.activityId(), activityId),
                         colonelUserId,
                         REASON_COLONEL_ORDER_INFO,
                         colonelResolution.trace()
@@ -244,7 +236,7 @@ public class AttributionService {
             if (!StringUtils.hasText(reason)) {
                 reason = REASON_COLONEL_MAPPING_NOT_FOUND;
             }
-            if (colonelMapping != null && colonelMapping.getUserId() == null) {
+            if (colonelMapping != null && colonelMapping.userId() == null) {
                 reason = REASON_CHANNEL_NOT_FOUND;
             }
             return AttributionResult.unattributed(
@@ -268,7 +260,7 @@ public class AttributionService {
                     NativeMappingTrace.none()
             );
         }
-        PickSourceMapping mapping = findPickSourceMapping(pickSource, pickExtra);
+        PickSourceAttributionMappingDTO mapping = findPickSourceMapping(pickSource, pickExtra);
         if (mapping == null) {
             return AttributionResult.unattributed(
                     talentId,
@@ -279,7 +271,7 @@ public class AttributionService {
                     NativeMappingTrace.none()
             );
         }
-        if (mapping.getUserId() == null) {
+        if (mapping.userId() == null) {
             return AttributionResult.unattributed(
                     talentId,
                     talentUid,
@@ -291,12 +283,12 @@ public class AttributionService {
         }
 
         return attributedWithClaimGuard(
-                mapping.getUserId(),
-                mapping.getDeptId(),
-                mapping.getUserId(),
+                mapping.userId(),
+                mapping.deptId(),
+                mapping.userId(),
                 talentId,
                 talentUid,
-                firstNonBlank(mapping.getActivityId(), activityId),
+                firstNonBlank(mapping.activityId(), activityId),
                 colonelUserId,
                 REASON_ATTRIBUTED,
                 NativeMappingTrace.none()
@@ -386,18 +378,7 @@ public class AttributionService {
      * @return true 表示存在冲突，归属应被阻止
      */
     private boolean hasTalentClaimOwnerConflict(UUID talentId, UUID userId) {
-        if (talentId == null || userId == null) {
-            return false;
-        }
-        List<TalentClaim> activeClaims = talentClaimMapper.findActiveByTalentId(talentId);
-        if (activeClaims == null || activeClaims.isEmpty()) {
-            return false;
-        }
-        List<UUID> activeClaimUserIds = activeClaims.stream()
-                .map(TalentClaim::getUserId)
-                .filter(Objects::nonNull)
-                .toList();
-        return !activeClaimUserIds.isEmpty() && activeClaimUserIds.stream().noneMatch(userId::equals);
+        return talentDomainFacade != null && talentDomainFacade.hasActiveClaimOwnerConflict(talentId, userId);
     }
 
     /**
@@ -467,13 +448,7 @@ public class AttributionService {
         }
         if (StringUtils.hasText(activityId) && StringUtils.hasText(productId)) {
             NativeColonelMappingResolution exactNative = singleMappingWithReason(
-                    pickSourceMappingMapper.selectList(new LambdaQueryWrapper<PickSourceMapping>()
-                            .eq(PickSourceMapping::getColonelBuyinId, colonelsBuyinId)
-                            .eq(PickSourceMapping::getActivityId, activityId)
-                            .eq(PickSourceMapping::getProductId, productId)
-                            .eq(PickSourceMapping::getSourceType, PickSourceMappingService.SOURCE_TYPE_NATIVE)
-                            .eq(PickSourceMapping::getStatus, 1)
-                            .orderByDesc(PickSourceMapping::getUpdateTime)),
+                    pickSourceMappingService.findNativeAttributionMappings(colonelsBuyinId, activityId, productId),
                     activityId,
                     false,
                     true
@@ -483,23 +458,18 @@ public class AttributionService {
             }
 
             NativeColonelMappingResolution exactActivityProduct = singleMappingWithReason(
-                    pickSourceMappingMapper.selectList(new LambdaQueryWrapper<PickSourceMapping>()
-                            .eq(PickSourceMapping::getActivityId, activityId)
-                            .eq(PickSourceMapping::getProductId, productId)
-                            .eq(PickSourceMapping::getSourceType, PickSourceMappingService.SOURCE_TYPE_NATIVE)
-                            .eq(PickSourceMapping::getStatus, 1)
-                            .orderByDesc(PickSourceMapping::getUpdateTime)),
+                    pickSourceMappingService.findNativeAttributionMappingsByActivityProduct(activityId, productId),
                     activityId,
                     true,
                     false
             );
             if (exactActivityProduct.mapping() != null || REASON_COLONEL_MAPPING_AMBIGUOUS.equals(exactActivityProduct.reason())) {
-                PickSourceMapping mapping = exactActivityProduct.mapping();
-                if (mapping != null && !colonelsBuyinId.equals(mapping.getColonelBuyinId())) {
+                PickSourceAttributionMappingDTO mapping = exactActivityProduct.mapping();
+                if (mapping != null && !colonelsBuyinId.equals(mapping.colonelBuyinId())) {
                     return new NativeColonelMappingResolution(
                             mapping,
                             exactActivityProduct.reason(),
-                            firstNonBlank(activityId, mapping.getActivityId()),
+                            firstNonBlank(activityId, mapping.activityId()),
                             exactActivityProduct.trace().withColonelBuyinIdMismatch(true)
                     );
                 }
@@ -512,23 +482,19 @@ public class AttributionService {
         }
 
         return singleMappingWithReason(
-                pickSourceMappingMapper.selectList(new LambdaQueryWrapper<PickSourceMapping>()
-                        .eq(PickSourceMapping::getColonelBuyinId, colonelsBuyinId)
-                        .eq(PickSourceMapping::getSourceType, PickSourceMappingService.SOURCE_TYPE_NATIVE)
-                        .eq(PickSourceMapping::getStatus, 1)
-                        .orderByDesc(PickSourceMapping::getUpdateTime)),
+                pickSourceMappingService.findNativeAttributionMappingsByColonelBuyinId(colonelsBuyinId),
                 activityId,
                 false,
                 true
         );
     }
 
-    protected PickSourceMapping findPickSourceMappingByShortId(String colonelsBuyinId) {
+    protected PickSourceAttributionMappingDTO findPickSourceMappingByShortId(String colonelsBuyinId) {
         return resolveNativeColonelOrderMapping(colonelsBuyinId, null, null, true).mapping();
     }
 
     private NativeColonelMappingResolution singleMappingWithReason(
-            List<PickSourceMapping> mappings,
+            List<PickSourceAttributionMappingDTO> mappings,
             String activityId,
             boolean fallbackActivityProduct,
             boolean nativeKeyMatched) {
@@ -536,15 +502,15 @@ public class AttributionService {
             return new NativeColonelMappingResolution(null, REASON_COLONEL_MAPPING_NOT_FOUND, activityId, NativeMappingTrace.none());
         }
         if (mappings.size() == 1) {
-            PickSourceMapping mapping = mappings.get(0);
+            PickSourceAttributionMappingDTO mapping = mappings.get(0);
             NativeMappingTrace trace = new NativeMappingTrace(
                     nativeKeyMatched || fallbackActivityProduct,
                     false,
                     false,
                     fallbackActivityProduct,
-                    mapping == null ? null : mapping.getCreateTime()
+                    mapping == null ? null : mapping.createTime()
             );
-            return new NativeColonelMappingResolution(mapping, REASON_COLONEL_ORDER_INFO, firstNonBlank(activityId, mapping.getActivityId()), trace);
+            return new NativeColonelMappingResolution(mapping, REASON_COLONEL_ORDER_INFO, firstNonBlank(activityId, mapping.activityId()), trace);
         }
         return new NativeColonelMappingResolution(
                 null,
@@ -562,34 +528,8 @@ public class AttributionService {
      * @param pickExtra  转链附加信息
      * @return 匹配的映射记录，未找到返回 null
      */
-    protected PickSourceMapping findPickSourceMapping(String pickSource, String pickExtra) {
-        if (StringUtils.hasText(pickSource)) {
-            PickSourceMapping byPickSource = pickSourceMappingMapper.selectOne(new LambdaQueryWrapper<PickSourceMapping>()
-                    .eq(PickSourceMapping::getPickSource, pickSource)
-                    .eq(PickSourceMapping::getStatus, 1)
-                    .last("limit 1"));
-            if (byPickSource != null) {
-                return byPickSource;
-            }
-        }
-        if (StringUtils.hasText(pickExtra)) {
-            PickSourceMapping byPickExtra = pickSourceMappingMapper.selectOne(new LambdaQueryWrapper<PickSourceMapping>()
-                    .eq(PickSourceMapping::getPickExtra, pickExtra)
-                    .eq(PickSourceMapping::getStatus, 1)
-                    .last("limit 1"));
-            if (byPickExtra != null) {
-                return byPickExtra;
-            }
-            String normalized = pickExtra.length() > 20 ? pickExtra.substring(pickExtra.length() - 20) : pickExtra;
-            PickSourceMapping byShortId = pickSourceMappingMapper.selectOne(new LambdaQueryWrapper<PickSourceMapping>()
-                    .eq(PickSourceMapping::getShortId, normalized)
-                    .eq(PickSourceMapping::getStatus, 1)
-                    .last("limit 1"));
-            if (byShortId != null) {
-                return byShortId;
-            }
-        }
-        return null;
+    protected PickSourceAttributionMappingDTO findPickSourceMapping(String pickSource, String pickExtra) {
+        return pickSourceMappingService.findActiveAttributionMapping(pickSource, pickExtra);
     }
 
     private String asString(Object raw) {
@@ -609,11 +549,8 @@ public class AttributionService {
         if (!StringUtils.hasText(talentUid)) {
             return null;
         }
-        com.colonel.saas.entity.Talent talent = talentMapper.selectOne(new LambdaQueryWrapper<com.colonel.saas.entity.Talent>()
-                .eq(com.colonel.saas.entity.Talent::getDouyinUid, talentUid)
-                .eq(com.colonel.saas.entity.Talent::getDeleted, 0)
-                .last("limit 1"));
-        return talent == null ? null : talent.getId();
+        TalentReadDTO talent = talentDomainFacade == null ? null : talentDomainFacade.findByDouyinUid(talentUid);
+        return talent == null ? null : talent.id();
     }
 
     private String firstNonBlank(String... values) {
@@ -634,7 +571,7 @@ public class AttributionService {
 
     /** 原生团长映射解析结果 */
     public record NativeColonelMappingResolution(
-            PickSourceMapping mapping,
+            PickSourceAttributionMappingDTO mapping,
             String reason,
             String activityId,
             NativeMappingTrace trace) {

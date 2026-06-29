@@ -112,6 +112,22 @@ public class LegacyTalentDomainFacade implements TalentDomainFacade {
     }
 
     @Override
+    public boolean hasActiveClaimOwnerConflict(UUID talentId, UUID userId) {
+        if (talentId == null || userId == null) {
+            return false;
+        }
+        List<TalentClaim> activeClaims = talentClaimMapper.findActiveByTalentId(talentId);
+        if (activeClaims == null || activeClaims.isEmpty()) {
+            return false;
+        }
+        List<UUID> activeClaimUserIds = activeClaims.stream()
+                .map(TalentClaim::getUserId)
+                .filter(Objects::nonNull)
+                .toList();
+        return !activeClaimUserIds.isEmpty() && activeClaimUserIds.stream().noneMatch(userId::equals);
+    }
+
+    @Override
     public void writeBackClaimAddress(
             UUID channelUserId,
             UUID talentId,

@@ -6,9 +6,6 @@
 # DDD-USER-003: ColonelActivityController migrated to UserDomainFacade
 # DDD-USER-003: OrderController dept options migrated to UserDomainFacade
 
-com.colonel.saas.service.AttributionService|PickSourceMappingMapper
-com.colonel.saas.service.AttributionService|TalentClaimMapper
-com.colonel.saas.service.AttributionService|TalentMapper
 com.colonel.saas.service.DashboardService|ColonelsettlementOrderMapper
 # DDD-CLEAN-003: performance domain migrated to OrderReadFacade
 # DDD-CLEAN-002: sample domain migrated to ProductDomainFacade / TalentDomainFacade

@@ -1,14 +1,11 @@
 package com.colonel.saas.service;
 
 import com.colonel.saas.entity.ColonelsettlementOrder;
-import com.colonel.saas.entity.PickSourceMapping;
 import com.colonel.saas.entity.ProductOperationState;
-import com.colonel.saas.entity.Talent;
-import com.colonel.saas.entity.TalentClaim;
-import com.colonel.saas.mapper.PickSourceMappingMapper;
+import com.colonel.saas.domain.product.facade.dto.PickSourceAttributionMappingDTO;
+import com.colonel.saas.domain.talent.facade.TalentDomainFacade;
+import com.colonel.saas.domain.talent.facade.dto.TalentReadDTO;
 import com.colonel.saas.mapper.ProductOperationStateMapper;
-import com.colonel.saas.mapper.TalentClaimMapper;
-import com.colonel.saas.mapper.TalentMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -31,13 +28,11 @@ import static org.mockito.Mockito.when;
 class AttributionServiceTest {
 
     @Mock
-    private PickSourceMappingMapper pickSourceMappingMapper;
+    private PickSourceMappingService pickSourceMappingService;
     @Mock
     private ProductOperationStateMapper productOperationStateMapper;
     @Mock
-    private TalentMapper talentMapper;
-    @Mock
-    private TalentClaimMapper talentClaimMapper;
+    private TalentDomainFacade talentDomainFacade;
     @Mock
     private ExclusiveTalentService exclusiveTalentService;
     @Mock
@@ -48,29 +43,47 @@ class AttributionServiceTest {
     @BeforeEach
     void setUp() {
         service = new AttributionService(
-                pickSourceMappingMapper,
+                pickSourceMappingService,
                 productOperationStateMapper,
-                talentMapper,
-                talentClaimMapper,
+                talentDomainFacade,
                 exclusiveTalentService,
                 exclusiveMerchantService,
                 false
         );
-        Talent talent = new Talent();
-        talent.setId(UUID.randomUUID());
-        lenient().when(talentMapper.selectOne(any())).thenReturn(talent);
+        lenient().when(talentDomainFacade.findByDouyinUid(any()))
+                .thenReturn(new TalentReadDTO(UUID.randomUUID(), "talent-uid", null, null, null, null, null, null, null, null));
     }
 
     private AttributionService attributionService(boolean exclusiveEnabled) {
         return new AttributionService(
-                pickSourceMappingMapper,
+                pickSourceMappingService,
                 productOperationStateMapper,
-                talentMapper,
-                talentClaimMapper,
+                talentDomainFacade,
                 exclusiveTalentService,
                 exclusiveMerchantService,
                 exclusiveEnabled
         );
+    }
+
+    private PickSourceAttributionMappingDTO mapping(UUID userId, UUID deptId) {
+        return new PickSourceAttributionMappingDTO(userId, deptId, null, null, null, null, null, null);
+    }
+
+    private PickSourceAttributionMappingDTO nativeMapping(
+            UUID userId,
+            UUID deptId,
+            String activityId,
+            String productId,
+            String colonelBuyinId) {
+        return new PickSourceAttributionMappingDTO(
+                userId,
+                deptId,
+                activityId,
+                productId,
+                colonelBuyinId,
+                PickSourceMappingService.SOURCE_TYPE_NATIVE,
+                null,
+                null);
     }
 
     @Test
@@ -94,7 +107,7 @@ class AttributionServiceTest {
         assertThat(result.deptId()).isEqualTo(merchantDept);
         assertThat(result.attributionStatus()).isEqualTo(AttributionService.STATUS_ATTRIBUTED);
         verify(exclusiveTalentService, never()).findActiveOwnerByTalentUid(any());
-        verify(pickSourceMappingMapper, never()).selectOne(any());
+        verify(pickSourceMappingService, never()).findActiveAttributionMapping(any(), any());
     }
 
     @Test
@@ -118,7 +131,7 @@ class AttributionServiceTest {
         assertThat(result.userId()).isEqualTo(talentOwner);
         assertThat(result.deptId()).isEqualTo(talentDept);
         assertThat(result.talentUid()).isEqualTo("t-2");
-        verify(pickSourceMappingMapper, never()).selectOne(any());
+        verify(pickSourceMappingService, never()).findActiveAttributionMapping(any(), any());
     }
 
     @Test
@@ -142,7 +155,7 @@ class AttributionServiceTest {
         assertThat(result.deptId()).isEqualTo(talentDept);
         assertThat(result.talentUid()).isEqualTo("7137334329718292775");
         assertThat(result.attributionStatus()).isEqualTo(AttributionService.STATUS_ATTRIBUTED);
-        verify(pickSourceMappingMapper, never()).selectOne(any());
+        verify(pickSourceMappingService, never()).findActiveAttributionMapping(any(), any());
     }
 
     @Test
@@ -150,12 +163,10 @@ class AttributionServiceTest {
         UUID exclusiveOwner = UUID.randomUUID();
         UUID mappingUser = UUID.randomUUID();
         UUID mappingDept = UUID.randomUUID();
-        PickSourceMapping mapping = new PickSourceMapping();
-        mapping.setUserId(mappingUser);
-        mapping.setDeptId(mappingDept);
+        PickSourceAttributionMappingDTO mapping = mapping(mappingUser, mappingDept);
         lenient().when(exclusiveMerchantService.findActiveOwnerByMerchantId("merchant-v1"))
                 .thenReturn(new AttributionService.ExclusiveOwner(exclusiveOwner, UUID.randomUUID()));
-        when(pickSourceMappingMapper.selectOne(any())).thenReturn(mapping);
+        when(pickSourceMappingService.findActiveAttributionMapping(any(), any())).thenReturn(mapping);
 
         ColonelsettlementOrder order = new ColonelsettlementOrder();
         order.setProductId("pid-v1");
@@ -180,11 +191,9 @@ class AttributionServiceTest {
         UUID colonelUserId = UUID.randomUUID();
         ProductOperationState state = new ProductOperationState();
         state.setAssigneeId(colonelUserId);
-        PickSourceMapping mapping = new PickSourceMapping();
-        mapping.setUserId(mappingUser);
-        mapping.setDeptId(mappingDept);
+        PickSourceAttributionMappingDTO mapping = nativeMapping(mappingUser, mappingDept, null, "pid-native", "7351155267604218149");
         when(productOperationStateMapper.selectOne(any())).thenReturn(state);
-        when(pickSourceMappingMapper.selectList(any())).thenReturn(List.of(mapping));
+        when(pickSourceMappingService.findNativeAttributionMappings(any(), any(), any())).thenReturn(List.of(mapping));
 
         ColonelsettlementOrder order = new ColonelsettlementOrder();
         order.setProductId("pid-native");
@@ -209,20 +218,17 @@ class AttributionServiceTest {
     @Test
     void resolveAttribution_shouldNotUseShortIdLookupForNativeColonelBuyinId() {
         UUID mappingUser = UUID.randomUUID();
-        PickSourceMapping mapping = new PickSourceMapping();
-        mapping.setUserId(mappingUser);
-        mapping.setDeptId(UUID.randomUUID());
-        when(pickSourceMappingMapper.selectList(any())).thenReturn(List.of(mapping));
+        PickSourceAttributionMappingDTO mapping = nativeMapping(mappingUser, UUID.randomUUID(), null, "pid-native", "7351155267604218149");
+        when(pickSourceMappingService.findNativeAttributionMappings(any(), any(), any())).thenReturn(List.of(mapping));
         AttributionService serviceRejectingShortIdLookup = new AttributionService(
-                pickSourceMappingMapper,
+                pickSourceMappingService,
                 productOperationStateMapper,
-                talentMapper,
-                talentClaimMapper,
+                talentDomainFacade,
                 exclusiveTalentService,
                 exclusiveMerchantService
         ) {
             @Override
-            protected PickSourceMapping findPickSourceMappingByShortId(String colonelsBuyinId) {
+            protected PickSourceAttributionMappingDTO findPickSourceMappingByShortId(String colonelsBuyinId) {
                 throw new AssertionError("colonel_buyin_id must not be queried through short_id");
             }
         };
@@ -261,12 +267,9 @@ class AttributionServiceTest {
     void resolveAttribution_shouldFallbackToActivityProductMappingForNativeOrder() {
         UUID mappingUser = UUID.randomUUID();
         UUID mappingDept = UUID.randomUUID();
-        PickSourceMapping mapping = new PickSourceMapping();
-        mapping.setUserId(mappingUser);
-        mapping.setDeptId(mappingDept);
-        when(pickSourceMappingMapper.selectList(any()))
-                .thenReturn(List.of())
-                .thenReturn(List.of(mapping));
+        PickSourceAttributionMappingDTO mapping = nativeMapping(mappingUser, mappingDept, null, "pid-native", "7351155267604218149");
+        when(pickSourceMappingService.findNativeAttributionMappings(any(), any(), any())).thenReturn(List.of());
+        when(pickSourceMappingService.findNativeAttributionMappingsByActivityProduct(any(), any())).thenReturn(List.of(mapping));
 
         ColonelsettlementOrder order = new ColonelsettlementOrder();
         order.setProductId("pid-native");
@@ -283,20 +286,17 @@ class AttributionServiceTest {
         assertThat(result.deptId()).isEqualTo(mappingDept);
         assertThat(result.activityId()).isEqualTo("3916506");
         assertThat(result.attributionRemark()).isEqualTo(AttributionService.REASON_COLONEL_ORDER_INFO);
-        verify(pickSourceMappingMapper, times(2)).selectList(any());
+        verify(pickSourceMappingService, times(1)).findNativeAttributionMappings(any(), any(), any());
+        verify(pickSourceMappingService, times(1)).findNativeAttributionMappingsByActivityProduct(any(), any());
     }
 
     @Test
     void resolveAttribution_shouldUseSecondColonelOrderInfoWhenPrimaryActivityMissing() {
         UUID mappingUser = UUID.randomUUID();
         UUID mappingDept = UUID.randomUUID();
-        PickSourceMapping secondMapping = new PickSourceMapping();
-        secondMapping.setUserId(mappingUser);
-        secondMapping.setDeptId(mappingDept);
-        secondMapping.setActivityId("3543332");
-        when(pickSourceMappingMapper.selectList(any()))
-                .thenReturn(List.of())
-                .thenReturn(List.of(secondMapping));
+        PickSourceAttributionMappingDTO secondMapping =
+                nativeMapping(mappingUser, mappingDept, "3543332", "3633722889687181734", "7351155267604218149");
+        when(pickSourceMappingService.findNativeAttributionMappings(any(), any(), any())).thenReturn(List.of(secondMapping));
 
         ColonelsettlementOrder order = new ColonelsettlementOrder();
         order.setProductId("3633722889687181734");
@@ -319,14 +319,8 @@ class AttributionServiceTest {
 
     @Test
     void resolveAttribution_shouldNotFallbackToGenericSeedWhenSecondActivityExistsButExactMappingMissing() {
-        UUID adminUser = UUID.randomUUID();
-        PickSourceMapping genericSeed = new PickSourceMapping();
-        genericSeed.setUserId(adminUser);
-        genericSeed.setScene("COLONEL_NATIVE");
-        when(pickSourceMappingMapper.selectList(any()))
-                .thenReturn(List.of())
-                .thenReturn(List.of())
-                .thenReturn(List.of(genericSeed));
+        when(pickSourceMappingService.findNativeAttributionMappings(any(), any(), any())).thenReturn(List.of());
+        when(pickSourceMappingService.findNativeAttributionMappingsByActivityProduct(any(), any())).thenReturn(List.of());
 
         ColonelsettlementOrder order = new ColonelsettlementOrder();
         order.setProductId("3633722889687181734");
@@ -343,16 +337,15 @@ class AttributionServiceTest {
         assertThat(result.attributionStatus()).isEqualTo(AttributionService.STATUS_UNATTRIBUTED);
         assertThat(result.attributionRemark()).isEqualTo(AttributionService.REASON_COLONEL_MAPPING_NOT_FOUND);
         assertThat(result.userId()).isNull();
+        verify(pickSourceMappingService, never()).findNativeAttributionMappingsByColonelBuyinId(any());
     }
 
     @Test
     void resolveAttribution_shouldNotFallbackWhenActivityProductMappingIsAmbiguous() {
-        PickSourceMapping first = new PickSourceMapping();
-        first.setUserId(UUID.randomUUID());
-        PickSourceMapping second = new PickSourceMapping();
-        second.setUserId(UUID.randomUUID());
-        when(pickSourceMappingMapper.selectList(any()))
-                .thenReturn(List.of())
+        PickSourceAttributionMappingDTO first = mapping(UUID.randomUUID(), UUID.randomUUID());
+        PickSourceAttributionMappingDTO second = mapping(UUID.randomUUID(), UUID.randomUUID());
+        when(pickSourceMappingService.findNativeAttributionMappings(any(), any(), any())).thenReturn(List.of());
+        when(pickSourceMappingService.findNativeAttributionMappingsByActivityProduct(any(), any()))
                 .thenReturn(List.of(first, second));
 
         ColonelsettlementOrder order = new ColonelsettlementOrder();
@@ -375,12 +368,10 @@ class AttributionServiceTest {
     void resolveAttribution_shouldFallbackToPickSourceMapping() {
         UUID mappingUser = UUID.randomUUID();
         UUID mappingDept = UUID.randomUUID();
-        PickSourceMapping mapping = new PickSourceMapping();
-        mapping.setUserId(mappingUser);
-        mapping.setDeptId(mappingDept);
+        PickSourceAttributionMappingDTO mapping = mapping(mappingUser, mappingDept);
         lenient().when(exclusiveMerchantService.findActiveOwnerByMerchantId(any())).thenReturn(null);
         lenient().when(exclusiveTalentService.findActiveOwnerByTalentUid(any())).thenReturn(null);
-        when(pickSourceMappingMapper.selectOne(any())).thenReturn(mapping);
+        when(pickSourceMappingService.findActiveAttributionMapping(any(), any())).thenReturn(mapping);
 
         ColonelsettlementOrder order = new ColonelsettlementOrder();
         order.setProductId("pid-3");
@@ -400,22 +391,14 @@ class AttributionServiceTest {
     void resolveAttribution_shouldRejectMappingWhenTalentClaimOwnerDiffers() {
         UUID talentId = UUID.randomUUID();
         UUID mappingUser = UUID.randomUUID();
-        UUID claimOwner = UUID.randomUUID();
-        Talent talent = new Talent();
-        talent.setId(talentId);
-        PickSourceMapping mapping = new PickSourceMapping();
-        mapping.setUserId(mappingUser);
-        mapping.setDeptId(UUID.randomUUID());
-        TalentClaim activeClaim = new TalentClaim();
-        activeClaim.setTalentId(talentId);
-        activeClaim.setUserId(claimOwner);
-        activeClaim.setStatus(1);
+        PickSourceAttributionMappingDTO mapping = mapping(mappingUser, UUID.randomUUID());
 
-        when(talentMapper.selectOne(any())).thenReturn(talent);
+        when(talentDomainFacade.findByDouyinUid("talent-claim-conflict"))
+                .thenReturn(new TalentReadDTO(talentId, "talent-claim-conflict", null, null, null, null, null, null, null, null));
         lenient().when(exclusiveMerchantService.findActiveOwnerByMerchantId(any())).thenReturn(null);
         lenient().when(exclusiveTalentService.findActiveOwnerByTalentUid(any())).thenReturn(null);
-        when(pickSourceMappingMapper.selectOne(any())).thenReturn(mapping);
-        when(talentClaimMapper.findActiveByTalentId(talentId)).thenReturn(List.of(activeClaim));
+        when(pickSourceMappingService.findActiveAttributionMapping(any(), any())).thenReturn(mapping);
+        when(talentDomainFacade.hasActiveClaimOwnerConflict(talentId, mappingUser)).thenReturn(true);
 
         ColonelsettlementOrder order = new ColonelsettlementOrder();
         order.setProductId("pid-claim-conflict");
@@ -438,21 +421,14 @@ class AttributionServiceTest {
         UUID talentId = UUID.randomUUID();
         UUID mappingUser = UUID.randomUUID();
         UUID mappingDept = UUID.randomUUID();
-        Talent talent = new Talent();
-        talent.setId(talentId);
-        PickSourceMapping mapping = new PickSourceMapping();
-        mapping.setUserId(mappingUser);
-        mapping.setDeptId(mappingDept);
-        TalentClaim activeClaim = new TalentClaim();
-        activeClaim.setTalentId(talentId);
-        activeClaim.setUserId(mappingUser);
-        activeClaim.setStatus(1);
+        PickSourceAttributionMappingDTO mapping = mapping(mappingUser, mappingDept);
 
-        when(talentMapper.selectOne(any())).thenReturn(talent);
+        when(talentDomainFacade.findByDouyinUid("talent-claim-match"))
+                .thenReturn(new TalentReadDTO(talentId, "talent-claim-match", null, null, null, null, null, null, null, null));
         lenient().when(exclusiveMerchantService.findActiveOwnerByMerchantId(any())).thenReturn(null);
         lenient().when(exclusiveTalentService.findActiveOwnerByTalentUid(any())).thenReturn(null);
-        when(pickSourceMappingMapper.selectOne(any())).thenReturn(mapping);
-        when(talentClaimMapper.findActiveByTalentId(talentId)).thenReturn(List.of(activeClaim));
+        when(pickSourceMappingService.findActiveAttributionMapping(any(), any())).thenReturn(mapping);
+        when(talentDomainFacade.hasActiveClaimOwnerConflict(talentId, mappingUser)).thenReturn(false);
 
         ColonelsettlementOrder order = new ColonelsettlementOrder();
         order.setProductId("pid-claim-match");
@@ -473,12 +449,10 @@ class AttributionServiceTest {
     void resolveAttribution_shouldPreferExactActivityProductWhenPickSourceIsReused() {
         UUID mappingUser = UUID.randomUUID();
         UUID mappingDept = UUID.randomUUID();
-        PickSourceMapping exact = new PickSourceMapping();
-        exact.setUserId(mappingUser);
-        exact.setDeptId(mappingDept);
+        PickSourceAttributionMappingDTO exact = mapping(mappingUser, mappingDept);
         lenient().when(exclusiveMerchantService.findActiveOwnerByMerchantId(any())).thenReturn(null);
         lenient().when(exclusiveTalentService.findActiveOwnerByTalentUid(any())).thenReturn(null);
-        when(pickSourceMappingMapper.selectOne(any())).thenReturn(exact);
+        when(pickSourceMappingService.findActiveAttributionMapping(any(), any())).thenReturn(exact);
 
         ColonelsettlementOrder order = new ColonelsettlementOrder();
         order.setProductId("pid-reused");
@@ -501,14 +475,10 @@ class AttributionServiceTest {
     void resolveAttribution_shouldPreferExactPickExtraBeforeLegacyShortIdFallback() {
         UUID mappingUser = UUID.randomUUID();
         UUID mappingDept = UUID.randomUUID();
-        PickSourceMapping mapping = new PickSourceMapping();
-        mapping.setUserId(mappingUser);
-        mapping.setDeptId(mappingDept);
+        PickSourceAttributionMappingDTO mapping = mapping(mappingUser, mappingDept);
         lenient().when(exclusiveMerchantService.findActiveOwnerByMerchantId(any())).thenReturn(null);
         lenient().when(exclusiveTalentService.findActiveOwnerByTalentUid(any())).thenReturn(null);
-        when(pickSourceMappingMapper.selectOne(any()))
-                .thenReturn(null)
-                .thenReturn(mapping);
+        when(pickSourceMappingService.findActiveAttributionMapping(any(), any())).thenReturn(mapping);
 
         ColonelsettlementOrder order = new ColonelsettlementOrder();
         order.setProductId("pid-3");
@@ -521,7 +491,7 @@ class AttributionServiceTest {
 
         assertThat(result.userId()).isEqualTo(mappingUser);
         assertThat(result.deptId()).isEqualTo(mappingDept);
-        verify(pickSourceMappingMapper, times(2)).selectOne(any());
+        verify(pickSourceMappingService, times(1)).findActiveAttributionMapping(any(), any());
     }
 
     @Test
@@ -529,13 +499,11 @@ class AttributionServiceTest {
         UUID colonelUserId = UUID.randomUUID();
         ProductOperationState state = new ProductOperationState();
         state.setAssigneeId(colonelUserId);
-        PickSourceMapping mapping = new PickSourceMapping();
-        mapping.setUserId(UUID.randomUUID());
-        mapping.setDeptId(UUID.randomUUID());
+        PickSourceAttributionMappingDTO mapping = mapping(UUID.randomUUID(), UUID.randomUUID());
         when(productOperationStateMapper.selectOne(any())).thenReturn(state);
         lenient().when(exclusiveMerchantService.findActiveOwnerByMerchantId(any())).thenReturn(null);
         lenient().when(exclusiveTalentService.findActiveOwnerByTalentUid(any())).thenReturn(null);
-        when(pickSourceMappingMapper.selectOne(any())).thenReturn(mapping);
+        when(pickSourceMappingService.findActiveAttributionMapping(any(), any())).thenReturn(mapping);
 
         ColonelsettlementOrder order = new ColonelsettlementOrder();
         order.setProductId("pid-4");
@@ -551,7 +519,7 @@ class AttributionServiceTest {
     void resolveAttribution_shouldReturnUnattributedWhenMappingMissing() {
         lenient().when(exclusiveMerchantService.findActiveOwnerByMerchantId(any())).thenReturn(null);
         lenient().when(exclusiveTalentService.findActiveOwnerByTalentUid(any())).thenReturn(null);
-        when(pickSourceMappingMapper.selectOne(any())).thenReturn(null);
+        when(pickSourceMappingService.findActiveAttributionMapping(any(), any())).thenReturn(null);
 
         ColonelsettlementOrder order = new ColonelsettlementOrder();
         order.setProductId("pid-5");
@@ -566,21 +534,14 @@ class AttributionServiceTest {
 
     @Test
     void resolveAttribution_shouldReturnAmbiguousWhenNativeKeyMapsToMultipleUsers() {
-        PickSourceMapping first = new PickSourceMapping();
-        first.setUserId(UUID.randomUUID());
-        first.setColonelBuyinId("7293293346398011698");
-        first.setActivityId("3859423");
-        first.setProductId("3816127512791089531");
-        first.setSourceType(PickSourceMappingService.SOURCE_TYPE_NATIVE);
-        PickSourceMapping second = new PickSourceMapping();
-        second.setUserId(UUID.randomUUID());
-        second.setColonelBuyinId("7293293346398011698");
-        second.setActivityId("3859423");
-        second.setProductId("3816127512791089531");
-        second.setSourceType(PickSourceMappingService.SOURCE_TYPE_NATIVE);
+        PickSourceAttributionMappingDTO first = nativeMapping(
+                UUID.randomUUID(), UUID.randomUUID(), "3859423", "3816127512791089531", "7293293346398011698");
+        PickSourceAttributionMappingDTO second = nativeMapping(
+                UUID.randomUUID(), UUID.randomUUID(), "3859423", "3816127512791089531", "7293293346398011698");
         lenient().when(exclusiveMerchantService.findActiveOwnerByMerchantId(any())).thenReturn(null);
         lenient().when(exclusiveTalentService.findActiveOwnerByTalentUid(any())).thenReturn(null);
-        when(pickSourceMappingMapper.selectList(any())).thenReturn(java.util.List.of(first, second));
+        when(pickSourceMappingService.findNativeAttributionMappings(any(), any(), any()))
+                .thenReturn(java.util.List.of(first, second));
 
         ColonelsettlementOrder order = new ColonelsettlementOrder();
         order.setProductId("3816127512791089531");
@@ -600,18 +561,19 @@ class AttributionServiceTest {
     void resolveAttribution_shouldUseActivityProductFallbackAndMarkBuyinMismatch() {
         UUID mappingUser = UUID.randomUUID();
         UUID mappingDept = UUID.randomUUID();
-        PickSourceMapping mapping = new PickSourceMapping();
-        mapping.setUserId(mappingUser);
-        mapping.setDeptId(mappingDept);
-        mapping.setColonelBuyinId("7351155267604218149");
-        mapping.setActivityId("3859423");
-        mapping.setProductId("3816127512791089531");
-        mapping.setSourceType(PickSourceMappingService.SOURCE_TYPE_NATIVE);
-        mapping.setCreateTime(java.time.LocalDateTime.of(2026, 5, 10, 6, 41, 19));
+        PickSourceAttributionMappingDTO mapping = new PickSourceAttributionMappingDTO(
+                mappingUser,
+                mappingDept,
+                "3859423",
+                "3816127512791089531",
+                "7351155267604218149",
+                PickSourceMappingService.SOURCE_TYPE_NATIVE,
+                java.time.LocalDateTime.of(2026, 5, 10, 6, 41, 19),
+                null);
         lenient().when(exclusiveMerchantService.findActiveOwnerByMerchantId(any())).thenReturn(null);
         lenient().when(exclusiveTalentService.findActiveOwnerByTalentUid(any())).thenReturn(null);
-        when(pickSourceMappingMapper.selectList(any()))
-                .thenReturn(java.util.List.of())
+        when(pickSourceMappingService.findNativeAttributionMappings(any(), any(), any())).thenReturn(java.util.List.of());
+        when(pickSourceMappingService.findNativeAttributionMappingsByActivityProduct(any(), any()))
                 .thenReturn(java.util.List.of(mapping));
 
         ColonelsettlementOrder order = new ColonelsettlementOrder();

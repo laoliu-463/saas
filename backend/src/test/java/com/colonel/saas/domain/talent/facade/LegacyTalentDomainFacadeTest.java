@@ -3,6 +3,7 @@ package com.colonel.saas.domain.talent.facade;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.colonel.saas.domain.talent.facade.dto.TalentReadDTO;
 import com.colonel.saas.entity.Talent;
+import com.colonel.saas.entity.TalentClaim;
 import com.colonel.saas.mapper.TalentClaimMapper;
 import com.colonel.saas.mapper.TalentMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -129,5 +130,31 @@ class LegacyTalentDomainFacadeTest {
     @Test
     void loadNicknamesByIds_nullCollectionReturnsEmptyMap() {
         assertThat(facade.loadNicknamesByIds(null)).isEmpty();
+    }
+
+    @Test
+    void hasActiveClaimOwnerConflict_shouldDetectDifferentOwner() {
+        UUID talentId = UUID.randomUUID();
+        UUID expectedOwner = UUID.randomUUID();
+        TalentClaim activeClaim = new TalentClaim();
+        activeClaim.setTalentId(talentId);
+        activeClaim.setUserId(UUID.randomUUID());
+        activeClaim.setStatus(1);
+        when(talentClaimMapper.findActiveByTalentId(talentId)).thenReturn(List.of(activeClaim));
+
+        assertThat(facade.hasActiveClaimOwnerConflict(talentId, expectedOwner)).isTrue();
+    }
+
+    @Test
+    void hasActiveClaimOwnerConflict_sameOwnerReturnsFalse() {
+        UUID talentId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        TalentClaim activeClaim = new TalentClaim();
+        activeClaim.setTalentId(talentId);
+        activeClaim.setUserId(ownerId);
+        activeClaim.setStatus(1);
+        when(talentClaimMapper.findActiveByTalentId(talentId)).thenReturn(List.of(activeClaim));
+
+        assertThat(facade.hasActiveClaimOwnerConflict(talentId, ownerId)).isFalse();
     }
 }
