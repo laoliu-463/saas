@@ -1,11 +1,16 @@
 # Harness Changelog（索引）
 
 > 任务 ID：HARNESS-DOC-GC-OPTIMIZE-002
-> 更新时间：2026-06-28
+> 更新时间：2026-06-29
 > 详细历史（含每版修改文件、行为变化、证据）：`archive/20260610/harness-changelog-full.md`
 > 治理政策：`rules/policies/retention-policy.md` 第 2 节（changelog 索引 ≤200 行）
 
 ## 最近版本摘要
+
+### v0.8.7 — 2026-06-29
+- DDD-VERIFY-001 活动商品 backfill checkpoint 持久化切片：`ProductActivityBackfillService` 在分页拉取第 N 页失败时，把最后成功页 `last_page`、下一页游标 `last_cursor`、已落库行数和上游异常摘要写入 `product_activity_sync_state`，API、DB schema、状态枚举、confirm/dryRun、锁 key 和真实同步入口均不变。
+- RED/GREEN page-2 failure parity test、backfill/job/policy 组合 30 tests、Product 全集合 343 tests、compile/package 和 real-pre backend/frontend health 通过；安全业务探针仅访问 job status 未授权接口并返回 401，未触发真实 backfill；架构测试和全量 `mvn test` 均仍为 5 个既有 order/user 红线失败（全量汇总 2731 tests / 5 failures / 3 skipped，命令包装器 420s 超时），本轮 evidence 结论为 PARTIAL。
+- 证据：`harness/reports/evidence-20260629-145259.md`；retro：`harness/reports/retro-20260629-145309.md`。
 
 ### v0.8.6 — 2026-06-29
 - DDD-VERIFY-001 活动商品 backfill retry 进度切片：`ProductBackfillJobMetadata` 新增 retry progress metadata，`ProductActivityBackfillService` 在 deadlock retry 发生时提前 flush `currentActivityId` 与 `deadlockRetryCount` 到 job log，最终 finish 语义不变。

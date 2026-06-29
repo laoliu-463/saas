@@ -160,6 +160,43 @@ class ProductActivityBackfillServiceTest {
     }
 
     @Test
+    void backfill_realRunPageTwoFailureShouldPersistLastSuccessfulPageCheckpoint() {
+        when(activityMapper.selectActivityIdsForProductSyncProbe(eq("CUSTOM"), anyInt(), any(), eq(List.of("ACT-1"))))
+                .thenReturn(List.of("ACT-1"));
+        when(snapshotMapper.countActiveRowsByActivityIds(List.of("ACT-1"))).thenReturn(0L);
+        when(jobLockService.tryAcquire(any(), any())).thenReturn(true);
+        when(productService.upsertSnapshotsWithStats(any(), any()))
+                .thenReturn(new ProductService.ActivitySnapshotUpsertStats(1, 0, 0, 1));
+        when(douyinProductGateway.queryActivityProducts(any()))
+                .thenReturn(new DouyinProductGateway.ActivityProductListResult(
+                        false,
+                        3859423L,
+                        1L,
+                        2L,
+                        "cursor-page-2",
+                        List.of(productItem(10L))))
+                .thenThrow(new RuntimeException("upstream 500 on page 2"));
+
+        ArgumentCaptor<ProductActivitySyncState> stateCaptor =
+                ArgumentCaptor.forClass(ProductActivitySyncState.class);
+
+        ProductActivityBackfillService.BackfillResult result = service.backfill(
+                realRequest(List.of("ACT-1")),
+                UUID.randomUUID());
+
+        assertThat(result.activitiesFailed()).isEqualTo(1);
+        verify(syncStateMapper).upsert(stateCaptor.capture());
+        ProductActivitySyncState state = stateCaptor.getValue();
+        assertThat(state.getLastStatus()).isEqualTo("FAILED");
+        assertThat(state.getLastStopReason()).isEqualTo("API_ERROR");
+        assertThat(state.getLastPage()).isEqualTo(1);
+        assertThat(state.getLastCursor()).isEqualTo("cursor-page-2");
+        assertThat(state.getLastFetchedRows()).isEqualTo(1L);
+        assertThat(state.getLastInserted()).isEqualTo(1);
+        assertThat(state.getLastErrorMessage()).contains("upstream 500 on page 2");
+    }
+
+    @Test
     void backfill_realRunShouldRequireConfirm() {
         assertThatThrownBy(() -> service.backfill(
                 new ProductActivityBackfillService.BackfillRequest(

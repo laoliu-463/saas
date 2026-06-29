@@ -392,7 +392,9 @@ public class ProductActivityBackfillService {
                                 null,
                                 null,
                                 rawCause,
-                                String.format("activity backfill failed: %s", rawCause));
+                                StringUtils.hasText(stats.failureMessage())
+                                        ? stats.failureMessage()
+                                        : String.format("activity backfill failed: %s", rawCause));
                         failureMessages.add(activityErrorMessage);
                     }
                     if (stats.complete) {
@@ -527,6 +529,9 @@ public class ProductActivityBackfillService {
                 batched.unchanged(),
                 result.stoppedReason(),
                 batched.rawCause(),
+                batched.failureMessage(),
+                result.pagesFetched(),
+                batched.lastCursor(),
                 0L,
                 batched.deadlockRetryCount());
     }
@@ -653,6 +658,7 @@ public class ProductActivityBackfillService {
                         pageResult.stillHasNextWhenStopped(),
                         pageResult.complete());
         String rawCause = null;
+        String failureMessage = null;
         if (ActivityProductPaginationRunner.StopReason.API_ERROR.equals(pageResult.stopReason())
                 || ActivityProductPaginationRunner.StopReason.INVALID_RESPONSE.equals(pageResult.stopReason())) {
             String warningsText = String.join(" | ", pageResult.warnings());
@@ -660,8 +666,17 @@ public class ProductActivityBackfillService {
             if (!StringUtils.hasText(rawCause) && StringUtils.hasText(warningsText)) {
                 rawCause = warningsText;
             }
+            if (StringUtils.hasText(warningsText)) {
+                failureMessage = "activity backfill failed: " + warningsText;
+            }
         }
-        return new BatchedBackfillResult(refreshResult, deadlockRetryCount[0], unchanged[0], rawCause);
+        return new BatchedBackfillResult(
+                refreshResult,
+                deadlockRetryCount[0],
+                unchanged[0],
+                rawCause,
+                failureMessage,
+                pageResult.lastCursor());
     }
 
     private BatchWriteResult executeBatchWithDeadlockRetry(
@@ -906,7 +921,8 @@ public class ProductActivityBackfillService {
         state.setLastSuccessAt(stats.complete ? now : null);
         state.setLastStatus(backfillJobPolicy.statusForStopReason(stats.stoppedReason, stats.complete));
         state.setLastStopReason(stats.stoppedReason);
-        state.setLastPage(0);
+        state.setLastCursor(stats.lastCursor);
+        state.setLastPage(stats.lastPage);
         state.setLastFetchedRows(stats.fetchedRows);
         state.setLastDistinctProductIds(stats.distinctProductIds);
         state.setLastInserted(stats.inserted);
@@ -929,6 +945,9 @@ public class ProductActivityBackfillService {
                 false, 0L, 0L, 0, 0, 0, 0,
                 stopReason,
                 normalizeRawCause(stopReason),
+                null,
+                0,
+                null,
                 0L,
                 0L);
         upsertActivityState(activityId, scope, failed, errorMessage);
@@ -1160,6 +1179,9 @@ public class ProductActivityBackfillService {
             int unchanged,
             String stoppedReason,
             String rawCause,
+            String failureMessage,
+            int lastPage,
+            String lastCursor,
             long lockWaitCount,
             long deadlockRetryCount) {
     }
@@ -1168,7 +1190,9 @@ public class ProductActivityBackfillService {
             ProductService.ActivityProductRefreshResult result,
             long deadlockRetryCount,
             int unchanged,
-            String rawCause) {
+            String rawCause,
+            String failureMessage,
+            String lastCursor) {
     }
 
     private record BatchWriteResult(
