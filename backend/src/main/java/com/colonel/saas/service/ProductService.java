@@ -20,7 +20,6 @@ import com.colonel.saas.common.exception.ForbiddenException;
 import com.colonel.saas.common.time.AppZone;
 import com.colonel.saas.douyin.DouyinApiException;
 import com.colonel.saas.entity.ColonelsettlementActivity;
-import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.Merchant;
 import com.colonel.saas.entity.Product;
 import com.colonel.saas.entity.ProductOperationLog;
@@ -28,12 +27,12 @@ import com.colonel.saas.entity.ProductOperationState;
 import com.colonel.saas.entity.ProductSnapshot;
 import com.colonel.saas.entity.TalentFollowRecord;
 import com.colonel.saas.entity.PromotionLink;
+import com.colonel.saas.domain.order.facade.OrderReadFacade;
 import com.colonel.saas.gateway.douyin.DouyinActivityGateway;
 import com.colonel.saas.gateway.douyin.DouyinProductGateway;
 import com.colonel.saas.domain.product.application.port.DouyinConvertPort;
 import com.colonel.saas.gateway.douyin.DouyinPromotionGateway;
 import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
-import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.mapper.MerchantMapper;
 import com.colonel.saas.mapper.ProductOperationLogMapper;
 import com.colonel.saas.mapper.ProductOperationStateMapper;
@@ -140,8 +139,8 @@ public class ProductService implements CopyPromotionSupportPort {
     private final ProductOperationLogMapper operationLogMapper;
     /** 推广链接持久层，存储生成的推广链接及短链 */
     private final PromotionLinkMapper promotionLinkMapper;
-    /** 团长结算订单持久层，用于查询订单汇总和 GMV 数据 */
-    private final ColonelsettlementOrderMapper orderMapper;
+    /** 订单域只读门面，用于活动商品订单摘要与团长商品范围。 */
+    private final OrderReadFacade orderReadFacade;
     /** 商户持久层，用于查询商家名称等信息 */
     private final MerchantMapper merchantMapper;
     /** 系统用户门面，用于查询操作人姓名（分配人、审核人等） */
@@ -197,7 +196,7 @@ public class ProductService implements CopyPromotionSupportPort {
             ProductOperationStateMapper operationStateMapper,
             ProductOperationLogMapper operationLogMapper,
             PromotionLinkMapper promotionLinkMapper,
-            ColonelsettlementOrderMapper orderMapper,
+            OrderReadFacade orderReadFacade,
             MerchantMapper merchantMapper,
             UserDomainFacade userDomainFacade,
             PickSourceMappingService pickSourceMappingService,
@@ -217,7 +216,7 @@ public class ProductService implements CopyPromotionSupportPort {
         this.operationStateMapper = operationStateMapper;
         this.operationLogMapper = operationLogMapper;
         this.promotionLinkMapper = promotionLinkMapper;
-        this.orderMapper = orderMapper;
+        this.orderReadFacade = orderReadFacade;
         this.merchantMapper = merchantMapper;
         this.userDomainFacade = userDomainFacade;
         this.pickSourceMappingService = pickSourceMappingService;
@@ -1066,18 +1065,7 @@ public class ProductService implements CopyPromotionSupportPort {
         if (buyinId == null) {
             return productIds;
         }
-        orderMapper.selectList(new LambdaQueryWrapper<ColonelsettlementOrder>()
-                        .select(ColonelsettlementOrder::getProductId)
-                        .eq(ColonelsettlementOrder::getDeleted, 0)
-                        .isNotNull(ColonelsettlementOrder::getProductId)
-                        .and(wrapper -> wrapper
-                                .eq(ColonelsettlementOrder::getColonelBuyinId, buyinId)
-                                .or()
-                                .eq(ColonelsettlementOrder::getSecondColonelBuyinId, buyinId)))
-                .stream()
-                .map(ColonelsettlementOrder::getProductId)
-                .filter(StringUtils::hasText)
-                .forEach(productIds::add);
+        productIds.addAll(orderReadFacade.findProductIdsByColonelBuyinId(buyinId));
         return productIds;
     }
 
@@ -3003,7 +2991,7 @@ public class ProductService implements CopyPromotionSupportPort {
                 .stream()
                 .collect(Collectors.toMap(ProductOperationState::getProductId, Function.identity(), (left, right) -> left));
         Map<String, DecisionSummary> decisionSummaryMap = buildDecisionSummaryMap(activityId, productIds);
-        Map<String, OrderSummary> orderSummaryMap = buildOrderSummaryMap(activityId, productIds);
+        Map<String, OrderReadFacade.ProductOrderSummary> orderSummaryMap = buildOrderSummaryMap(activityId, productIds);
         Map<String, PromotionSummary> promotionSummaryMap = buildPromotionSummaryMap(activityId, productIds);
         Map<UUID, String> assigneeNameMap = loadUserDisplayNames(stateMap.values().stream()
                 .map(ProductOperationState::getAssigneeId)
@@ -3101,7 +3089,7 @@ public class ProductService implements CopyPromotionSupportPort {
         ProductSnapshot snapshot = getSnapshot(activityId, productId);
         ProductOperationState state = getOperationState(activityId, productId);
         DecisionSummary decisionSummary = findDecisionSummary(activityId, productId);
-        OrderSummary orderSummary = findOrderSummary(activityId, productId);
+        OrderReadFacade.ProductOrderSummary orderSummary = findOrderSummary(activityId, productId);
         PromotionSummary promotionSummary = findPromotionSummary(activityId, productId);
         Merchant merchant = findMerchant(snapshot.getShopId());
         String activityName = colonelActivityMapper.selectByActivityId(activityId) == null
@@ -4617,7 +4605,7 @@ public class ProductService implements CopyPromotionSupportPort {
             ProductSnapshot snapshot,
             ProductOperationState state,
             DecisionSummary decisionSummary,
-            OrderSummary orderSummary,
+            OrderReadFacade.ProductOrderSummary orderSummary,
             PromotionSummary promotionSummary,
             Merchant merchant) {
         return toActivityProductView(snapshot, state, decisionSummary, orderSummary, promotionSummary, merchant, null, null);
@@ -4627,7 +4615,7 @@ public class ProductService implements CopyPromotionSupportPort {
             ProductSnapshot snapshot,
             ProductOperationState state,
             DecisionSummary decisionSummary,
-            OrderSummary orderSummary,
+            OrderReadFacade.ProductOrderSummary orderSummary,
             PromotionSummary promotionSummary,
             Merchant merchant,
             Map<UUID, String> assigneeNameMap,
@@ -5060,73 +5048,23 @@ public class ProductService implements CopyPromotionSupportPort {
         };
     }
 
-    private Map<String, OrderSummary> buildOrderSummaryMap(String activityId, Set<String> productIds) {
+    private Map<String, OrderReadFacade.ProductOrderSummary> buildOrderSummaryMap(String activityId, Set<String> productIds) {
         if (!StringUtils.hasText(activityId) || productIds == null || productIds.isEmpty()) {
             return Map.of();
         }
-        List<ColonelsettlementOrder> orders = orderMapper.selectList(new LambdaQueryWrapper<ColonelsettlementOrder>()
-                .eq(ColonelsettlementOrder::getActivityId, activityId)
-                .in(ColonelsettlementOrder::getProductId, productIds)
-                .orderByDesc(ColonelsettlementOrder::getCreateTime));
-        if (orders == null || orders.isEmpty()) {
+        if (orderReadFacade == null) {
             return Map.of();
         }
-
-        Map<String, MutableOrderSummary> mutableMap = new LinkedHashMap<>();
-        for (ColonelsettlementOrder order : orders) {
-            if (!StringUtils.hasText(order.getProductId())) {
-                continue;
-            }
-            MutableOrderSummary summary = mutableMap.computeIfAbsent(order.getProductId(), key -> new MutableOrderSummary());
-            summary.orderCount++;
-            if ("ATTRIBUTED".equalsIgnoreCase(order.getAttributionStatus())) {
-                summary.attributedCount++;
-            } else {
-                summary.unattributedCount++;
-            }
-            summary.gmvCent += safeLong(order.getOrderAmount());
-            summary.serviceFeeCent += safeLong(order.getSettleColonelCommission());
-            LocalDateTime candidateTime = order.getSettleTime() != null ? order.getSettleTime() : order.getCreateTime();
-            if (candidateTime != null && (summary.lastOrderTime == null || candidateTime.isAfter(summary.lastOrderTime))) {
-                summary.lastOrderTime = candidateTime;
-            }
-        }
-        return mutableMap.entrySet().stream()
-                .collect(Collectors.toMap(
-                        Map.Entry::getKey,
-                        entry -> entry.getValue().freeze(),
-                        (left, right) -> left,
-                        LinkedHashMap::new
-                ));
+        Map<String, OrderReadFacade.ProductOrderSummary> summaries =
+                orderReadFacade.summarizeProductOrdersByActivity(activityId, productIds);
+        return summaries == null ? Map.of() : summaries;
     }
 
-    private OrderSummary findOrderSummary(String activityId, String productId) {
+    private OrderReadFacade.ProductOrderSummary findOrderSummary(String activityId, String productId) {
         if (!StringUtils.hasText(activityId) || !StringUtils.hasText(productId)) {
             return null;
         }
-        List<ColonelsettlementOrder> orders = orderMapper.selectList(new LambdaQueryWrapper<ColonelsettlementOrder>()
-                .eq(ColonelsettlementOrder::getActivityId, activityId)
-                .eq(ColonelsettlementOrder::getProductId, productId)
-                .orderByDesc(ColonelsettlementOrder::getCreateTime));
-        if (orders == null || orders.isEmpty()) {
-            return null;
-        }
-        MutableOrderSummary summary = new MutableOrderSummary();
-        for (ColonelsettlementOrder order : orders) {
-            summary.orderCount++;
-            if ("ATTRIBUTED".equalsIgnoreCase(order.getAttributionStatus())) {
-                summary.attributedCount++;
-            } else {
-                summary.unattributedCount++;
-            }
-            summary.gmvCent += safeLong(order.getOrderAmount());
-            summary.serviceFeeCent += safeLong(order.getSettleColonelCommission());
-            LocalDateTime candidateTime = order.getSettleTime() != null ? order.getSettleTime() : order.getCreateTime();
-            if (candidateTime != null && (summary.lastOrderTime == null || candidateTime.isAfter(summary.lastOrderTime))) {
-                summary.lastOrderTime = candidateTime;
-            }
-        }
-        return summary.freeze();
+        return buildOrderSummaryMap(activityId, Set.of(productId)).get(productId);
     }
 
     private Map<String, PromotionSummary> buildPromotionSummaryMap(String activityId, Set<String> productIds) {
@@ -6044,10 +5982,6 @@ public class ProductService implements CopyPromotionSupportPort {
         return BigDecimal.valueOf(value).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
     }
 
-    private long safeLong(Long value) {
-        return value == null ? 0L : value;
-    }
-
     private Integer parseInteger(String raw) {
         if (!StringUtils.hasText(raw)) {
             return null;
@@ -6157,19 +6091,6 @@ public class ProductService implements CopyPromotionSupportPort {
         return value == null ? null : value.trim();
     }
 
-    private static final class MutableOrderSummary {
-        private long orderCount;
-        private long attributedCount;
-        private long unattributedCount;
-        private long gmvCent;
-        private long serviceFeeCent;
-        private LocalDateTime lastOrderTime;
-
-        private OrderSummary freeze() {
-            return new OrderSummary(orderCount, attributedCount, unattributedCount, gmvCent, serviceFeeCent, lastOrderTime);
-        }
-    }
-
     private static final class MutablePromotionSummary {
         private int linkCount;
         private LocalDateTime lastLinkTime;
@@ -6182,15 +6103,6 @@ public class ProductService implements CopyPromotionSupportPort {
             ));
             return new PromotionSummary(linkCount, lastLinkTime, List.copyOf(linkRecords));
         }
-    }
-
-    private record OrderSummary(
-            long orderCount,
-            long attributedCount,
-            long unattributedCount,
-            long gmvCent,
-            long serviceFeeCent,
-            LocalDateTime lastOrderTime) {
     }
 
     private record PromotionSummary(

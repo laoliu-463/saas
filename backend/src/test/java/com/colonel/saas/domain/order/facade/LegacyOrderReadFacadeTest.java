@@ -14,6 +14,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -119,6 +120,60 @@ class LegacyOrderReadFacadeTest {
         assertThat(result.pages()).isEqualTo(1L);
         verify(orderMapper).selectPage(any(), any());
         assertThat(facade.findOrdersSettledSince(null, null, null, 1L, 2000L).records()).isEmpty();
+    }
+
+    @Test
+    void findProductIdsByColonelBuyinId_shouldReturnNonBlankProductIds() {
+        ColonelsettlementOrder first = order("ORD-P1");
+        first.setProductId("P1");
+        ColonelsettlementOrder blank = order("ORD-BLANK");
+        blank.setProductId(" ");
+        ColonelsettlementOrder second = order("ORD-P2");
+        second.setProductId("P2");
+        when(orderMapper.selectList(any())).thenReturn(List.of(first, blank, second));
+
+        Set<String> result = facade.findProductIdsByColonelBuyinId(46128341673481000L);
+
+        assertThat(result).containsExactly("P1", "P2");
+        verify(orderMapper).selectList(any());
+        assertThat(facade.findProductIdsByColonelBuyinId(null)).isEmpty();
+    }
+
+    @Test
+    void summarizeProductOrdersByActivity_shouldAggregateProductOrderFacts() {
+        LocalDateTime older = LocalDateTime.of(2026, 6, 1, 10, 0);
+        LocalDateTime newer = LocalDateTime.of(2026, 6, 2, 10, 0);
+        ColonelsettlementOrder attributed = order("ORD-A");
+        attributed.setProductId("P1");
+        attributed.setAttributionStatus("ATTRIBUTED");
+        attributed.setOrderAmount(1000L);
+        attributed.setSettleColonelCommission(100L);
+        attributed.setCreateTime(older);
+        ColonelsettlementOrder unattributed = order("ORD-U");
+        unattributed.setProductId("P1");
+        unattributed.setAttributionStatus("UNATTRIBUTED");
+        unattributed.setOrderAmount(2000L);
+        unattributed.setSettleColonelCommission(200L);
+        unattributed.setSettleTime(newer);
+        ColonelsettlementOrder otherProduct = order("ORD-P2");
+        otherProduct.setProductId("P2");
+        otherProduct.setAttributionStatus("ATTRIBUTED");
+        otherProduct.setOrderAmount(3000L);
+        otherProduct.setSettleColonelCommission(300L);
+        when(orderMapper.selectList(any())).thenReturn(List.of(attributed, unattributed, otherProduct));
+
+        Map<String, OrderReadFacade.ProductOrderSummary> result =
+                facade.summarizeProductOrdersByActivity("ACT-1", List.of("P1", "P2"));
+
+        assertThat(result.get("P1").orderCount()).isEqualTo(2L);
+        assertThat(result.get("P1").attributedCount()).isEqualTo(1L);
+        assertThat(result.get("P1").unattributedCount()).isEqualTo(1L);
+        assertThat(result.get("P1").gmvCent()).isEqualTo(3000L);
+        assertThat(result.get("P1").serviceFeeCent()).isEqualTo(300L);
+        assertThat(result.get("P1").lastOrderTime()).isEqualTo(newer);
+        assertThat(result.get("P2").orderCount()).isEqualTo(1L);
+        verify(orderMapper).selectList(any());
+        assertThat(facade.summarizeProductOrdersByActivity(" ", List.of("P1"))).isEmpty();
     }
 
     @Test

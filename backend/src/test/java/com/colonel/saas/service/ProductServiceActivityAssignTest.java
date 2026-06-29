@@ -1,6 +1,7 @@
 package com.colonel.saas.service;
 
 import com.colonel.saas.entity.ColonelsettlementActivity;
+import com.colonel.saas.domain.order.facade.OrderReadFacade;
 import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
 import com.colonel.saas.mapper.ProductOperationStateMapper;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
@@ -29,7 +30,7 @@ class ProductServiceActivityAssignTest {
     @Mock private ProductOperationStateMapper operationStateMapper;
     @Mock private com.colonel.saas.mapper.ProductOperationLogMapper operationLogMapper;
     @Mock private com.colonel.saas.mapper.PromotionLinkMapper promotionLinkMapper;
-    @Mock private com.colonel.saas.mapper.ColonelsettlementOrderMapper orderMapper;
+    @Mock private OrderReadFacade orderReadFacade;
     @Mock private com.colonel.saas.mapper.MerchantMapper merchantMapper;
     @Mock private UserDomainFacade userDomainFacade;
     @Mock private PickSourceMappingService pickSourceMappingService;
@@ -53,7 +54,7 @@ class ProductServiceActivityAssignTest {
                 operationStateMapper,
                 operationLogMapper,
                 promotionLinkMapper,
-                orderMapper,
+                orderReadFacade,
                 merchantMapper,
                 userDomainFacade,
                 pickSourceMappingService,

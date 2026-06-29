@@ -8,7 +8,6 @@
 
 # DDD-CLEAN-003: performance domain migrated to OrderReadFacade
 # DDD-CLEAN-002: sample domain migrated to ProductDomainFacade / TalentDomainFacade
-com.colonel.saas.service.ProductService|ColonelsettlementOrderMapper
 com.colonel.saas.service.ProductService|PromotionLinkMapper
 com.colonel.saas.service.data.DataApplicationService|ColonelsettlementActivityMapper
 com.colonel.saas.service.data.DataApplicationService|ColonelsettlementOrderMapper

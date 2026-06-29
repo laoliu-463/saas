@@ -5,6 +5,7 @@ import com.colonel.saas.entity.ColonelsettlementOrder;
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -52,6 +53,14 @@ public interface OrderReadFacade {
 
     /** 按 settleTime 起点分页读取订单事实，可选按用户或部门过滤。 */
     OrderPage findOrdersSettledSince(LocalDateTime settleStart, UUID userId, UUID deptId, long pageNo, long pageSize);
+
+    /** 商品域团长筛选：按团长 buyin id 读取关联商品 ID。 */
+    Set<String> findProductIdsByColonelBuyinId(Long colonelBuyinId);
+
+    /** 商品域活动商品视图：按活动和商品集合读取订单事实摘要。 */
+    Map<String, ProductOrderSummary> summarizeProductOrdersByActivity(
+            String activityId,
+            Collection<String> productIds);
 
     /** Dashboard 订单归因计数与未归因原因，只读订单事实。 */
     DashboardAttributionSummary getDashboardAttributionSummary(
@@ -110,6 +119,15 @@ public interface OrderReadFacade {
             long orderCount,
             long orderAmountCent,
             long serviceFeeCent) {
+    }
+
+    record ProductOrderSummary(
+            long orderCount,
+            long attributedCount,
+            long unattributedCount,
+            long gmvCent,
+            long serviceFeeCent,
+            LocalDateTime lastOrderTime) {
     }
 
     record DashboardReasonCount(String reason, long count) {

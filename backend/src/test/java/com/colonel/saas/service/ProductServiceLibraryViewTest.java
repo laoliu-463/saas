@@ -10,9 +10,9 @@ import com.colonel.saas.entity.Product;
 import com.colonel.saas.entity.ProductOperationState;
 import com.colonel.saas.entity.ProductSnapshot;
 import com.colonel.saas.common.handler.UUIDTypeHandler;
+import com.colonel.saas.domain.order.facade.OrderReadFacade;
 import com.colonel.saas.gateway.douyin.DouyinProductGateway;
 import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
-import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.mapper.MerchantMapper;
 import com.colonel.saas.mapper.ProductOperationLogMapper;
 import com.colonel.saas.mapper.ProductOperationStateMapper;
@@ -62,7 +62,7 @@ class ProductServiceLibraryViewTest {
     @Mock private ProductOperationStateMapper operationStateMapper;
     @Mock private ProductOperationLogMapper operationLogMapper;
     @Mock private PromotionLinkMapper promotionLinkMapper;
-    @Mock private ColonelsettlementOrderMapper orderMapper;
+    @Mock private OrderReadFacade orderReadFacade;
     @Mock private MerchantMapper merchantMapper;
     @Mock private UserDomainFacade userDomainFacade;
     @Mock private PickSourceMappingService pickSourceMappingService;
@@ -87,7 +87,7 @@ class ProductServiceLibraryViewTest {
                 operationStateMapper,
                 operationLogMapper,
                 promotionLinkMapper,
-                orderMapper,
+                orderReadFacade,
                 merchantMapper,
                 userDomainFacade,
                 pickSourceMappingService,

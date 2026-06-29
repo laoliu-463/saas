@@ -7,6 +7,7 @@ import com.colonel.saas.common.enums.ProductBizStatus;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.handler.UUIDTypeHandler;
 import com.colonel.saas.constant.ProductDisplayStatus;
+import com.colonel.saas.domain.order.facade.OrderReadFacade;
 import com.colonel.saas.domain.product.policy.ProductDisplayPolicy;
 import com.colonel.saas.douyin.DouyinApiException;
 import com.colonel.saas.entity.ColonelsettlementActivity;
@@ -63,7 +64,7 @@ class ProductServiceActivityStatusIndependenceTest {
     @Mock private ProductOperationStateMapper operationStateMapper;
     @Mock private com.colonel.saas.mapper.ProductOperationLogMapper operationLogMapper;
     @Mock private com.colonel.saas.mapper.PromotionLinkMapper promotionLinkMapper;
-    @Mock private com.colonel.saas.mapper.ColonelsettlementOrderMapper orderMapper;
+    @Mock private OrderReadFacade orderReadFacade;
     @Mock private com.colonel.saas.mapper.MerchantMapper merchantMapper;
     @Mock private com.colonel.saas.domain.user.facade.UserDomainFacade userDomainFacade;
     @Mock private PickSourceMappingService pickSourceMappingService;
@@ -90,7 +91,7 @@ class ProductServiceActivityStatusIndependenceTest {
                 operationStateMapper,
                 operationLogMapper,
                 promotionLinkMapper,
-                orderMapper,
+                orderReadFacade,
                 merchantMapper,
                 userDomainFacade,
                 pickSourceMappingService,

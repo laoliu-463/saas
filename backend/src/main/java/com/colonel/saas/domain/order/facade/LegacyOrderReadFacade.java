@@ -12,6 +12,7 @@ import org.springframework.util.StringUtils;
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -197,6 +198,83 @@ public class LegacyOrderReadFacade implements OrderReadFacade {
     }
 
     @Override
+    public Set<String> findProductIdsByColonelBuyinId(Long colonelBuyinId) {
+        if (colonelBuyinId == null) {
+            return Set.of();
+        }
+        List<ColonelsettlementOrder> orders = orderMapper.selectList(new QueryWrapper<ColonelsettlementOrder>()
+                .select("product_id")
+                .eq("deleted", 0)
+                .isNotNull("product_id")
+                .and(wrapper -> wrapper
+                        .eq("colonel_buyin_id", colonelBuyinId)
+                        .or()
+                        .eq("second_colonel_buyin_id", colonelBuyinId)));
+        if (orders == null || orders.isEmpty()) {
+            return Set.of();
+        }
+        Set<String> productIds = new LinkedHashSet<>();
+        for (ColonelsettlementOrder order : orders) {
+            if (order != null && StringUtils.hasText(order.getProductId())) {
+                productIds.add(order.getProductId());
+            }
+        }
+        return productIds;
+    }
+
+    @Override
+    public Map<String, ProductOrderSummary> summarizeProductOrdersByActivity(
+            String activityId,
+            Collection<String> productIds) {
+        if (!StringUtils.hasText(activityId) || productIds == null || productIds.isEmpty()) {
+            return Map.of();
+        }
+        List<String> normalizedProductIds = productIds.stream()
+                .filter(StringUtils::hasText)
+                .map(String::trim)
+                .distinct()
+                .toList();
+        if (normalizedProductIds.isEmpty()) {
+            return Map.of();
+        }
+        List<ColonelsettlementOrder> orders = orderMapper.selectList(new LambdaQueryWrapper<ColonelsettlementOrder>()
+                .eq(ColonelsettlementOrder::getActivityId, activityId)
+                .in(ColonelsettlementOrder::getProductId, normalizedProductIds)
+                .orderByDesc(ColonelsettlementOrder::getCreateTime));
+        if (orders == null || orders.isEmpty()) {
+            return Map.of();
+        }
+
+        Map<String, MutableProductOrderSummary> mutableMap = new LinkedHashMap<>();
+        for (ColonelsettlementOrder order : orders) {
+            if (order == null || !StringUtils.hasText(order.getProductId())) {
+                continue;
+            }
+            MutableProductOrderSummary summary = mutableMap.computeIfAbsent(
+                    order.getProductId(),
+                    key -> new MutableProductOrderSummary());
+            summary.orderCount++;
+            if (STATUS_ATTRIBUTED.equalsIgnoreCase(order.getAttributionStatus())) {
+                summary.attributedCount++;
+            } else {
+                summary.unattributedCount++;
+            }
+            summary.gmvCent += safeLong(order.getOrderAmount());
+            summary.serviceFeeCent += safeLong(order.getSettleColonelCommission());
+            LocalDateTime candidateTime = order.getSettleTime() != null ? order.getSettleTime() : order.getCreateTime();
+            if (candidateTime != null && (summary.lastOrderTime == null || candidateTime.isAfter(summary.lastOrderTime))) {
+                summary.lastOrderTime = candidateTime;
+            }
+        }
+        return mutableMap.entrySet().stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        Map.Entry::getKey,
+                        entry -> entry.getValue().freeze(),
+                        (left, right) -> left,
+                        LinkedHashMap::new));
+    }
+
+    @Override
     public DashboardAttributionSummary getDashboardAttributionSummary(
             LocalDateTime settleStart,
             LocalDateTime settleEnd,
@@ -360,6 +438,25 @@ public class LegacyOrderReadFacade implements OrderReadFacade {
 
     private static String asString(Object val) {
         return val == null ? null : String.valueOf(val);
+    }
+
+    private static final class MutableProductOrderSummary {
+        private long orderCount;
+        private long attributedCount;
+        private long unattributedCount;
+        private long gmvCent;
+        private long serviceFeeCent;
+        private LocalDateTime lastOrderTime;
+
+        private ProductOrderSummary freeze() {
+            return new ProductOrderSummary(
+                    orderCount,
+                    attributedCount,
+                    unattributedCount,
+                    gmvCent,
+                    serviceFeeCent,
+                    lastOrderTime);
+        }
     }
 
     private static int normalizeLimit(int limit) {
