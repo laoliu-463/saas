@@ -9,7 +9,6 @@ import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.exception.OptimisticLockSupport;
 import com.colonel.saas.common.exception.ForbiddenException;
 import com.colonel.saas.domain.talent.application.TalentBatchImportApplicationService;
-import com.colonel.saas.domain.talent.application.ExclusiveTalentCheckApplicationService;
 import com.colonel.saas.domain.talent.application.TalentEnrichmentApplicationService;
 import com.colonel.saas.domain.talent.application.TalentPageApplicationService;
 import com.colonel.saas.domain.talent.application.TalentPoolApplicationService;
@@ -152,7 +151,6 @@ public class TalentService {
     private final TalentPoolApplicationService talentPoolApplicationService;
     private final TalentEnrichmentApplicationService talentEnrichmentApplicationService;
     private final TalentPageApplicationService talentPageApplicationService;
-    private final ExclusiveTalentCheckApplicationService exclusiveTalentCheckApplicationService;
     private final TalentClaimApplicationService talentClaimApplicationService;
     /** 操作日志服务（用于认领/释放/归属覆盖等操作审计） */
     private final OperationLogService operationLogService;
@@ -202,7 +200,6 @@ public class TalentService {
             TalentPoolApplicationService talentPoolApplicationService,
             TalentEnrichmentApplicationService talentEnrichmentApplicationService,
             TalentPageApplicationService talentPageApplicationService,
-            ExclusiveTalentCheckApplicationService exclusiveTalentCheckApplicationService,
             TalentClaimApplicationService talentClaimApplicationService,
             OperationLogService operationLogService,
             UserDomainFacade userDomainFacade,
@@ -225,7 +222,6 @@ public class TalentService {
         this.talentPoolApplicationService = talentPoolApplicationService;
         this.talentEnrichmentApplicationService = talentEnrichmentApplicationService;
         this.talentPageApplicationService = talentPageApplicationService;
-        this.exclusiveTalentCheckApplicationService = exclusiveTalentCheckApplicationService;
         this.talentClaimApplicationService = talentClaimApplicationService;
         this.operationLogService = operationLogService;
         this.userDomainFacade = userDomainFacade;
@@ -984,9 +980,29 @@ public class TalentService {
      * @return 独家评估结果（是否达标、佣金占比、月寄样次数）
      */
     public ExclusiveCheckResult evaluateExclusive(UUID talentId, DataScope dataScope, UUID userId, UUID deptId) {
-        com.colonel.saas.domain.talent.application.ExclusiveTalentCheckApplicationService.ExclusiveCheckResult r =
-                exclusiveTalentCheckApplicationService.evaluateExclusive(talentId, dataScope, userId, deptId);
-        return new ExclusiveCheckResult(r.eligible(), r.serviceFeeRatio(), r.monthlySamples());
+        Talent talent = getById(talentId);
+        LocalDateTime start = LocalDateTime.now().minusDays(30);
+        OrderScopeFilter orderScopeFilter = resolveExclusiveOrderScope(dataScope, userId, deptId);
+        List<com.colonel.saas.entity.ColonelsettlementOrder> monthOrders = loadOrdersSettledSinceInBatches(
+                start,
+                orderScopeFilter.userId(),
+                orderScopeFilter.deptId());
+
+        long totalServiceFee = 0L;
+        long talentServiceFee = 0L;
+        for (com.colonel.saas.entity.ColonelsettlementOrder order : monthOrders) {
+            long serviceFee = order.getSettleColonelCommission() == null ? 0L : order.getSettleColonelCommission();
+            totalServiceFee += serviceFee;
+            if (matchesTalent(order, talent.getDouyinUid())) {
+                talentServiceFee += serviceFee;
+            }
+        }
+        long serviceRatio = totalServiceFee == 0 ? 0 : (talentServiceFee * 100 / totalServiceFee);
+        long monthlySamples = sampleDomainFacade.countSamplesByTalentIdSince(talentId, start);
+
+        boolean eligible = serviceRatio >= configDomainFacade.getExclusiveTalentFeeRatio().longValue()
+                && monthlySamples >= configDomainFacade.getExclusiveTalentMonthlySamples();
+        return new ExclusiveCheckResult(eligible, serviceRatio, monthlySamples);
     }
 
     private OrderScopeFilter resolveExclusiveOrderScope(DataScope dataScope, UUID userId, UUID deptId) {

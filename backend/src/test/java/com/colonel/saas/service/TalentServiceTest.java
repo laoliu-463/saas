@@ -11,7 +11,6 @@ import com.colonel.saas.common.exception.ForbiddenException;
 import com.colonel.saas.domain.talent.application.TalentBatchImportApplicationService;
 import com.colonel.saas.domain.talent.application.TalentClaimApplicationService;
 import com.colonel.saas.domain.talent.application.TalentEnrichmentApplicationService;
-import com.colonel.saas.domain.talent.application.ExclusiveTalentCheckApplicationService;
 import com.colonel.saas.domain.talent.application.TalentPageApplicationService;
 import com.colonel.saas.domain.order.facade.OrderReadFacade;
 import com.colonel.saas.domain.sample.facade.SampleDomainFacade;
@@ -120,7 +119,6 @@ class TalentServiceTest {
                 newTalentPoolApplicationService(),
                 newTalentEnrichmentApplicationService(),
                 newTalentPageApplicationService(),
-                newExclusiveTalentCheckApplicationService(),
                 newTalentClaimApplicationService(),
                 operationLogService,
                 userDomainFacade,
@@ -878,7 +876,6 @@ class TalentServiceTest {
                 newTalentPoolApplicationService(),
                 newTalentEnrichmentApplicationService(),
                 newTalentPageApplicationService(),
-                newExclusiveTalentCheckApplicationService(),
                 newTalentClaimApplicationService(),
                 operationLogService,
                 userDomainFacade,
@@ -1377,7 +1374,6 @@ class TalentServiceTest {
                 newTalentPoolApplicationService(),
                 newTalentEnrichmentApplicationService(),
                 newTalentPageApplicationService(),
-                newExclusiveTalentCheckApplicationService(dataScopePolicy, properties),
                 newTalentClaimApplicationService(dataScopePolicy, properties),
                 operationLogService,
                 userDomainFacade,
@@ -1420,22 +1416,6 @@ class TalentServiceTest {
                 talentClaimMapper,
                 new DataScopePolicy(),
                 new DddRefactorProperties());
-    }
-
-    private ExclusiveTalentCheckApplicationService newExclusiveTalentCheckApplicationService() {
-        return newExclusiveTalentCheckApplicationService(new DataScopePolicy(), new DddRefactorProperties());
-    }
-
-    private ExclusiveTalentCheckApplicationService newExclusiveTalentCheckApplicationService(
-            DataScopePolicy dataScopePolicy,
-            DddRefactorProperties properties) {
-        return new ExclusiveTalentCheckApplicationService(
-                talentMapper,
-                orderReadFacade,
-                sampleDomainFacade,
-                configDomainFacade,
-                dataScopePolicy,
-                properties);
     }
 
     private TalentClaimApplicationService newTalentClaimApplicationService() {
