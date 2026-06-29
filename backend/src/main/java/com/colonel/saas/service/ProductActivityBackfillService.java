@@ -40,6 +40,7 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.LongConsumer;
 
 /**
  * 活动商品全量回补服务。
@@ -574,7 +575,27 @@ public class ProductActivityBackfillService {
                         int end = Math.min(sortedItems.size(), i + batchSize);
                         List<DouyinProductGateway.ActivityProductItem> batch = sortedItems.subList(i, end);
                         // 用独立小事务包住 snapshot upsert + operation state update。
-                        BatchWriteResult batchResult = executeBatchWithDeadlockRetry(activityId, batch);
+                        BatchWriteResult batchResult = executeBatchWithDeadlockRetry(
+                                activityId,
+                                batch,
+                                batchRetryCount -> {
+                                    ProductSyncJobLog current = jobLogRef.get();
+                                    if (current != null) {
+                                        long totalRetryCount = deadlockRetryCount[0] + batchRetryCount;
+                                        try {
+                                            jobLogRef.set(updateRetryProgressMetadata(
+                                                    current,
+                                                    activityId,
+                                                    totalRetryCount));
+                                        } catch (RuntimeException progressEx) {
+                                            log.warn(
+                                                    "ProductActivityBackfillService retry progress flush failed, activityId={}, deadlockRetryCount={}, message={}",
+                                                    activityId,
+                                                    totalRetryCount,
+                                                    progressEx.getMessage());
+                                        }
+                                    }
+                                });
                         ProductService.ActivitySnapshotUpsertStats stats = batchResult.stats();
                         deadlockRetryCount[0] += batchResult.deadlockRetryCount();
                         if (stats != null) {
@@ -645,7 +666,8 @@ public class ProductActivityBackfillService {
 
     private BatchWriteResult executeBatchWithDeadlockRetry(
             String activityId,
-            List<DouyinProductGateway.ActivityProductItem> batch) {
+            List<DouyinProductGateway.ActivityProductItem> batch,
+            LongConsumer onRetry) {
         int maxAttempts = Math.max(1, deadlockRetryMax + 1);
         long retryCount = 0L;
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -656,6 +678,9 @@ public class ProductActivityBackfillService {
             } catch (DataAccessException ex) {
                 if (isDeadlockLike(ex) && attempt < maxAttempts) {
                     retryCount++;
+                    if (onRetry != null) {
+                        onRetry.accept(retryCount);
+                    }
                     log.warn("ProductActivityBackfillService batch deadlock-like, activityId={}, attempt={}/{}, message={}",
                             activityId, attempt, maxAttempts, ex.getMessage());
                     sleepBackoff(attempt);
@@ -969,6 +994,20 @@ public class ProductActivityBackfillService {
         log.setRequestParamsJson(backfillJobMetadata.progress(
                 log.getRequestParamsJson(),
                 currentActivityId,
+                LocalDateTime.now()));
+        log.setUpdateTime(LocalDateTime.now());
+        jobLogMapper.updateById(log);
+        return log;
+    }
+
+    private ProductSyncJobLog updateRetryProgressMetadata(
+            ProductSyncJobLog log,
+            String currentActivityId,
+            long deadlockRetryCount) {
+        log.setRequestParamsJson(backfillJobMetadata.retryProgress(
+                log.getRequestParamsJson(),
+                currentActivityId,
+                deadlockRetryCount,
                 LocalDateTime.now()));
         log.setUpdateTime(LocalDateTime.now());
         jobLogMapper.updateById(log);

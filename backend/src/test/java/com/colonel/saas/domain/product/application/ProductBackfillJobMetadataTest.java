@@ -85,4 +85,23 @@ class ProductBackfillJobMetadataTest {
         assertThat(progress).isEqualTo(invalid);
         assertThat(metadata.read(progress)).isEmpty();
     }
+
+    @Test
+    void retryProgress_shouldRecordCurrentActivityAndDeadlockRetryCount() {
+        String started = metadata.started(
+                "{\"scope\":\"CUSTOM_ACTIVITY_IDS\"}",
+                LocalDateTime.parse("2026-06-29T12:30:00"));
+
+        String progress = metadata.retryProgress(
+                started,
+                "ACT-1",
+                2L,
+                LocalDateTime.parse("2026-06-29T12:31:00"));
+
+        assertThat(metadata.read(progress))
+                .containsEntry("scope", "CUSTOM_ACTIVITY_IDS")
+                .containsEntry("currentActivityId", "ACT-1")
+                .containsEntry("lastProgressAt", "2026-06-29T12:31")
+                .containsEntry("deadlockRetryCount", 2);
+    }
 }

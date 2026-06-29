@@ -21,6 +21,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.SimpleTransactionStatus;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -184,6 +185,80 @@ class ProductBackfillConcurrencyAndDeadlockTest {
 
         // 重试 1 次后成功：deadlockRetryCount>=1，且 productService.upsertSnapshotsWithStats 至少被调 2 次。
         assertThat(result.deadlockRetryCount()).isGreaterThanOrEqualTo(1L);
+        verify(productService, org.mockito.Mockito.atLeast(2)).upsertSnapshotsWithStats(any(), any());
+    }
+
+    @Test
+    void backfill_deadlockRetry_shouldFlushRetryProgressBeforeFinish() {
+        List<String> runningMetadataSnapshots = new ArrayList<>();
+        org.mockito.Mockito.doAnswer(invocation -> {
+            ProductSyncJobLog log = invocation.getArgument(0);
+            if (log.getFinishedAt() == null) {
+                runningMetadataSnapshots.add(log.getRequestParamsJson());
+            }
+            return 1;
+        }).when(jobLogMapper).updateById(any(ProductSyncJobLog.class));
+        DouyinProductGateway.ActivityProductItem item = newItem(3859423L);
+        when(jobLockService.tryAcquire(any(), any(Duration.class))).thenReturn(true);
+        when(activityMapper.selectActivityIdsForProductSyncProbe(any(), anyInt(), any(), any()))
+                .thenReturn(List.of("ACT-1"));
+        when(snapshotMapper.countActiveRowsByActivityIds(List.of("ACT-1"))).thenReturn(0L);
+        DeadlockLoserDataAccessException ddl = new DeadlockLoserDataAccessException(
+                "deadlock detected SQLSTATE 40P01", new RuntimeException("SQLSTATE 40P01"));
+        when(productService.upsertSnapshotsWithStats(any(), any()))
+                .thenThrow(ddl)
+                .thenReturn(new ProductService.ActivitySnapshotUpsertStats(1, 0, 0, 0));
+        when(douyinProductGateway.queryActivityProducts(any()))
+                .thenReturn(new DouyinProductGateway.ActivityProductListResult(
+                        false, 1L, 1L, 1L, null, List.of(item)));
+
+        ProductActivityBackfillService.BackfillResult result = service.backfill(
+                realRequest("ACT-1", "DEFERRED"),
+                UUID.randomUUID());
+
+        assertThat(result.deadlockRetryCount()).isEqualTo(1L);
+        assertThat(runningMetadataSnapshots)
+                .anySatisfy(json -> assertThat(json)
+                        .contains("\"currentActivityId\":\"ACT-1\"")
+                        .contains("\"deadlockRetryCount\":1"));
+    }
+
+    @Test
+    void backfill_deadlockRetryProgressFlushFailure_shouldNotAbortRetry() {
+        boolean[] retryProgressFailed = {false};
+        int[] jobLogUpdates = {0};
+        org.mockito.Mockito.doAnswer(invocation -> {
+            jobLogUpdates[0]++;
+            ProductSyncJobLog log = invocation.getArgument(0);
+            String metadata = log.getRequestParamsJson();
+            if (jobLogUpdates[0] == 2) {
+                assertThat(metadata).contains("\"deadlockRetryCount\"");
+                retryProgressFailed[0] = true;
+                throw new RuntimeException("metadata flush unavailable");
+            }
+            return 1;
+        }).when(jobLogMapper).updateById(any(ProductSyncJobLog.class));
+        DouyinProductGateway.ActivityProductItem item = newItem(3859423L);
+        when(jobLockService.tryAcquire(any(), any(Duration.class))).thenReturn(true);
+        when(activityMapper.selectActivityIdsForProductSyncProbe(any(), anyInt(), any(), any()))
+                .thenReturn(List.of("ACT-1"));
+        when(snapshotMapper.countActiveRowsByActivityIds(List.of("ACT-1"))).thenReturn(0L);
+        DeadlockLoserDataAccessException ddl = new DeadlockLoserDataAccessException(
+                "deadlock detected SQLSTATE 40P01", new RuntimeException("SQLSTATE 40P01"));
+        when(productService.upsertSnapshotsWithStats(any(), any()))
+                .thenThrow(ddl)
+                .thenReturn(new ProductService.ActivitySnapshotUpsertStats(1, 0, 0, 0));
+        when(douyinProductGateway.queryActivityProducts(any()))
+                .thenReturn(new DouyinProductGateway.ActivityProductListResult(
+                        false, 1L, 1L, 1L, null, List.of(item)));
+
+        ProductActivityBackfillService.BackfillResult result = service.backfill(
+                realRequest("ACT-1", "DEFERRED"),
+                UUID.randomUUID());
+
+        assertThat(retryProgressFailed[0]).isTrue();
+        assertThat(result.deadlockRetryCount()).isEqualTo(1L);
+        assertThat(result.activitiesSuccess()).isEqualTo(1);
         verify(productService, org.mockito.Mockito.atLeast(2)).upsertSnapshotsWithStats(any(), any());
     }
 

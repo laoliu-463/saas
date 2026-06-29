@@ -41,6 +41,17 @@ public class ProductBackfillJobMetadata {
                 "lastProgressAt", now.toString()));
     }
 
+    public String retryProgress(
+            String requestJson,
+            String currentActivityId,
+            long deadlockRetryCount,
+            LocalDateTime now) {
+        return merge(requestJson, Map.of(
+                "currentActivityId", currentActivityId == null ? "" : currentActivityId,
+                "lastProgressAt", now.toString(),
+                "deadlockRetryCount", Math.max(0L, deadlockRetryCount)));
+    }
+
     public String finished(String requestJson, FinishMetrics metrics, LocalDateTime now) {
         FinishMetrics safe = metrics == null ? new FinishMetrics(0L, 0L, 0L, 0L) : metrics;
         return merge(requestJson, Map.of(
