@@ -1546,14 +1546,16 @@ class TalentServiceTest {
         assertThat(ReflectionTestUtils.<String>invokeMethod(talentService, "resolveInputType", talent)).isEqualTo("UNKNOWN");
 
         com.colonel.saas.entity.ColonelsettlementOrder order = new com.colonel.saas.entity.ColonelsettlementOrder();
-        order.setExtraData(Map.of("author_id", "dy_match"));
-        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(talentService, "matchesTalent", order, "dy_match")).isTrue();
-        order.setExtraData(Map.of("talent_uid", "dy_match"));
-        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(talentService, "matchesTalent", order, "dy_match")).isTrue();
-        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(talentService, "matchesTalent", order, " ")).isFalse();
-        order.setExtraData(null);
-        assertThat(ReflectionTestUtils.<Boolean>invokeMethod(talentService, "matchesTalent", order, "dy_match")).isFalse();
-    }
+ // DDD-TALENT-04 Slice 13: matchesTalent moved to ExclusiveTalentCheckApplicationService
+ // Following test expectations now covered by ExclusiveTalentCheckApplicationService test.
+ // order.setExtraData(Map.of("author_id", "dy_match"));
+ // assertThat(ReflectionTestUtils.<Boolean>invokeMethod(talentService, "matchesTalent", order, "dy_match")).isTrue();
+ // order.setExtraData(Map.of("talent_uid", "dy_match"));
+ // assertThat(ReflectionTestUtils.<Boolean>invokeMethod(talentService, "matchesTalent", order, "dy_match")).isTrue();
+ // assertThat(ReflectionTestUtils.<Boolean>invokeMethod(talentService, "matchesTalent", order, " ")).isFalse();
+ // order.setExtraData(null);
+ // assertThat(ReflectionTestUtils.<Boolean>invokeMethod(talentService, "matchesTalent", order, "dy_match")).isFalse();
+ }
 
     private Talent talent(String douyinUid, Long fans) {
         Talent talent = new Talent();

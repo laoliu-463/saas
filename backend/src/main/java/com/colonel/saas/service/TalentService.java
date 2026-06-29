@@ -233,16 +233,6 @@ public class TalentService {
         this.dataScopePolicy = dataScopePolicy;
         this.dddRefactorProperties = dddRefactorProperties;
     }
-
-    /**
-     * 获取达人认领保护期天数。
-     *
-     * @return 保护期天数，由业务规则配置决定
-     */
-    private int getProtectDays() {
-        return configDomainFacade.getTalentClaimProtectDays();
-    }
-
     /**
      * 获取公开池达人列表。
      * <p>
@@ -307,17 +297,7 @@ public class TalentService {
         return talentPageApplicationService.page(page, size, keyword, region, minFans, maxFans, dataScope, userId, deptId);
     }
 
-    private boolean applyPageDataScope(
-            LambdaQueryWrapper<Talent> wrapper,
-            DataScope dataScope,
-            UUID userId,
-            UUID deptId) {
-        if (!dddRefactorProperties.getDataScopePolicy().isEnabled()) {
-            return applyPageDataScopeLegacy(wrapper, dataScope, userId, deptId);
-        }
-        return applyPageDataScopeWithPolicy(wrapper, dataScope, userId, deptId);
-    }
-
+    
     private boolean applyPageDataScopeLegacy(
             LambdaQueryWrapper<Talent> wrapper,
             DataScope dataScope,
@@ -596,28 +576,6 @@ public class TalentService {
         }
         return List.copyOf(unique);
     }
-
-    /**
-     * 将字符串 trim，空白字符串转为 null。
-     *
-     * @param value 原始字符串
-     * @return trim 后的字符串，空白时返回 null
-     */
-    private String trimToNull(String value) {
-        return StringUtils.hasText(value) ? value.trim() : null;
-    }
-
-    /**
-     * 返回第一个非空白字符串，否则返回兜底值。
-     *
-     * @param first    优先值
-     * @param fallback 兜底值
-     * @return first 非空白时返回 first，否则返回 fallback
-     */
-    private String firstNonBlank(String first, String fallback) {
-        return StringUtils.hasText(first) ? first : fallback;
-    }
-
     /**
      * 逻辑删除达人。
      *
@@ -867,13 +825,7 @@ public class TalentService {
         return new ExclusiveCheckResult(r.eligible(), r.serviceFeeRatio(), r.monthlySamples());
     }
 
-    private OrderScopeFilter resolveExclusiveOrderScope(DataScope dataScope, UUID userId, UUID deptId) {
-        if (!dddRefactorProperties.getDataScopePolicy().isEnabled()) {
-            return resolveExclusiveOrderScopeLegacy(dataScope, userId, deptId);
-        }
-        return resolveExclusiveOrderScopeWithPolicy(dataScope, userId, deptId);
-    }
-
+    
     private OrderScopeFilter resolveExclusiveOrderScopeLegacy(DataScope dataScope, UUID userId, UUID deptId) {
         if (dataScope == DataScope.PERSONAL && userId != null) {
             return new OrderScopeFilter(userId, null);
@@ -938,125 +890,7 @@ public class TalentService {
         private static OrderScopeFilter unfiltered() {
             return new OrderScopeFilter(null, null);
         }
-    }
-
-    /**
-     * 判断订单是否匹配指定达人。
-     * <p>
-     * 通过订单 extraData 中的 author_id 或 talent_uid 字段与达人抖音号比对。
-     * </p>
-     *
-     * @param order     结算订单
-     * @param douyinUid 达人抖音号
-     * @return 匹配返回 true，不匹配或数据缺失返回 false
-     */
-    private boolean matchesTalent(com.colonel.saas.entity.ColonelsettlementOrder order, String douyinUid) {
-        if (!StringUtils.hasText(douyinUid)) {
-            return false;
-        }
-        if (order.getExtraData() == null) {
-            return false;
-        }
-        Object authorId = order.getExtraData().get("author_id");
-        if (authorId != null && douyinUid.equals(String.valueOf(authorId))) {
-            return true;
-        }
-        Object talentUid = order.getExtraData().get("talent_uid");
-        return talentUid != null && douyinUid.equals(String.valueOf(talentUid));
-    }
-
-    /**
-     * 查找指定达人和用户的最新认领记录（含已过期/已释放）。
-     *
-     * @param talentId 达人 ID
-     * @param userId   用户 ID
-     * @return 最新认领记录（按 claimedAt 降序取第一条），无记录时返回 null
-     */
-    private TalentClaim findLatestClaimByTalentAndUser(UUID talentId, UUID userId) {
-        return talentClaimMapper.selectOne(new LambdaQueryWrapper<TalentClaim>()
-                .eq(TalentClaim::getTalentId, talentId)
-                .eq(TalentClaim::getUserId, userId)
-                .eq(TalentClaim::getDeleted, 0)
-                .orderByDesc(TalentClaim::getClaimedAt)
-                .last("limit 1"));
-    }
-
-    /**
-     * 获取所有已认领达人的 ID 集合。
-     * <p>
-     * 查询状态为 ACTIVE 且未逻辑删除的认领记录，提取达人 ID 用于公开池过滤。
-     * </p>
-     *
-     * @return 已认领达人 ID 集合，无认领记录时返回空集合
-     */
-    private Set<UUID> getClaimedTalentIds() {
-        List<TalentClaim> claims = talentClaimMapper.selectList(new LambdaQueryWrapper<TalentClaim>()
-                .eq(TalentClaim::getStatus, CLAIM_STATUS_ACTIVE)
-                .eq(TalentClaim::getDeleted, 0));
-        if (claims.isEmpty()) {
-            return Collections.emptySet();
-        }
-        Set<UUID> ids = new HashSet<>();
-        for (TalentClaim claim : claims) {
-            if (claim.getTalentId() != null) {
-                ids.add(claim.getTalentId());
-            }
-        }
-        return ids;
-    }
-
-    /**
-     * 通过爬虫数据补全达人资料。
-     * <p>
-     * 处理流程：
-     * <ol>
-     *   <li>若 forceCrawl 为 true 且启用了公开页面爬虫，执行 {@link CrawlerTalentInfoService#crawlAndSave}</li>
-     *   <li>从爬虫数据库查询达人信息（{@link CrawlerTalentInfoService#findByTalentId}）</li>
-     *   <li>将爬到的昵称、粉丝数、头像、地区等字段回填到达人实体</li>
-     *   <li>更新爬取状态和时间</li>
-     * </ol>
-     * </p>
-     *
-     * @param talent      达人实体（会被直接修改）
-     * @param forceCrawl  是否强制执行爬虫抓取
-     */
-    private void enrichTalentInfo(Talent talent, boolean forceCrawl) {
-        if (talent == null || !StringUtils.hasText(talent.getDouyinUid())) {
-            return;
-        }
-        String talentUid = talent.getDouyinUid().trim();
-
-        if (forceCrawl && publicPageCrawlEnabled) {
-            int success = crawlerTalentInfoService.crawlAndSave(List.of(talentUid));
-            if (success <= 0) {
-                talent.setCrawlStatus(2);
-                talent.setCrawlMessage("crawl failed");
-            }
-        }
-
-        CrawlerTalentInfo info = crawlerTalentInfoService.findByTalentId(talentUid);
-        if (info == null) {
-            return;
-        }
-
-        if (StringUtils.hasText(info.getNickname())) {
-            talent.setNickname(info.getNickname());
-        }
-        if (info.getFansCount() != null) {
-            talent.setFans(info.getFansCount());
-        }
-        if (StringUtils.hasText(info.getAvatarUrl())) {
-            talent.setAvatarUrl(info.getAvatarUrl());
-        }
-        if (StringUtils.hasText(info.getRegion())) {
-            talent.setIpLocation(info.getRegion());
-        }
-        talent.setLastCrawlAt(info.getLastCrawlTime() == null ? LocalDateTime.now() : info.getLastCrawlTime());
-        talent.setCrawlStatus(1);
-        talent.setCrawlMessage(null);
-    }
-
-    /**
+    }    /**
      * 判断当前用户是否有权释放指定认领记录。
      *
      * @param claim    认领记录
@@ -1065,43 +899,6 @@ public class TalentService {
      * @param isAdmin  是否管理员
      * @return 有权返回 true
      */
-    /**
-     * 释放认领后重新计算达人所属人快照。
-     * <p>
-     * 从剩余生效认领记录中选择最新认领者作为新的 ownerId，
-     * 同时更新 claimedAt、protectedUntil 和 activeClaimCount。
-     * 若无剩余认领记录，清空所有归属信息。
-     * </p>
-     *
-     * @param talent       达人实体（会被直接修改）
-     * @param activeClaims 剩余的有效认领记录
-     */
-    private void applyReleaseOwnerSnapshot(Talent talent, List<TalentClaim> activeClaims) {
-        List<TalentClaim> remainingClaims = activeClaims == null
-                ? List.of()
-                : activeClaims.stream()
-                        .filter(claim -> claim.getStatus() != null && claim.getStatus() == CLAIM_STATUS_ACTIVE)
-                        .sorted(Comparator.<TalentClaim, LocalDateTime>comparing(
-                                TalentClaim::getClaimedAt,
-                                Comparator.nullsLast(Comparator.reverseOrder())))
-                        .toList();
-        talent.setActiveClaimCount(remainingClaims.size());
-        if (remainingClaims.isEmpty()) {
-            talent.setOwnerId(null);
-            talent.setClaimedAt(null);
-            talent.setProtectedUntil(null);
-            return;
-        }
-        TalentClaim nextOwnerClaim = remainingClaims.get(0);
-        talent.setOwnerId(nextOwnerClaim.getUserId());
-        talent.setClaimedAt(nextOwnerClaim.getClaimedAt());
-        talent.setProtectedUntil(remainingClaims.stream()
-                .map(TalentClaim::getProtectedUntil)
-                .filter(Objects::nonNull)
-                .max(LocalDateTime::compareTo)
-                .orElse(nextOwnerClaim.getProtectedUntil()));
-    }
-
     /**
      * 校验当前用户是否有权操作达人黑名单。
      * <p>
@@ -1181,51 +978,6 @@ public class TalentService {
             throw new ForbiddenException("无权操作该达人");
         }
     }
-
-    /**
-     * 创建达人信息补全任务记录。
-     *
-     * @param talent   达人实体（为 null 或 ID 为 null 时返回 null）
-     * @param status   任务初始状态
-     * @param errorMsg 错误信息（可为 null）
-     * @return 创建的补全任务记录，达人无效时返回 null
-     */
-    private TalentEnrichTask createEnrichTask(Talent talent, String status, String errorMsg) {
-        if (talent == null || talent.getId() == null) {
-            return null;
-        }
-        TalentEnrichTask task = new TalentEnrichTask();
-        task.setTalentId(talent.getId());
-        task.setInputValue(resolveInputValue(talent));
-        task.setInputType(resolveInputType(talent));
-        task.setSourceType(ENRICH_SOURCE_SYSTEM);
-        task.setTaskStatus(status);
-        task.setRetryCount(0);
-        task.setErrorMsg(errorMsg);
-        task.setId(UUID.randomUUID());
-        talentEnrichTaskMapper.insert(task);
-        return task;
-    }
-
-    /**
-     * 更新补全任务状态。
-     *
-     * @param task     补全任务记录（为 null 或 ID 为 null 时跳过）
-     * @param status   新状态
-     * @param errorMsg 错误信息（可为 null）
-     */
-    private void markEnrichTask(TalentEnrichTask task, String status, String errorMsg) {
-        if (task == null || task.getId() == null) {
-            return;
-        }
-        TalentEnrichTask update = new TalentEnrichTask();
-        update.setId(task.getId());
-        update.setTaskStatus(status);
-        update.setErrorMsg(errorMsg);
-        update.setUpdateTime(LocalDateTime.now());
-        talentEnrichTaskMapper.updateById(update);
-    }
-
     /**
      * 解析达人信息补全的输入值。
      * <p>
@@ -1295,16 +1047,6 @@ public class TalentService {
     private void persistTalent(Talent talent) {
         OptimisticLockSupport.requireUpdated(talentMapper.updateById(talent));
     }
-
-    /**
-     * 持久化认领记录（乐观锁更新）。
-     *
-     * @param claim 认领记录
-     */
-    private void persistTalentClaim(TalentClaim claim) {
-        OptimisticLockSupport.requireUpdated(talentClaimMapper.updateById(claim));
-    }
-
     /**
      * 独家达人评估结果。
      *
