@@ -81,7 +81,7 @@
 - 标记：P1。
 
 ## 订单域
-- 最新边界变化：DDD-ATTRIBUTION-PICK-TALENT-BOUNDARY 已将 `AttributionService` 的 pick_source / 原生团长映射读取从直接 `PickSourceMappingMapper` 改为消费 `PickSourceMappingService` 归因只读 DTO，并将达人 UID 解析和有效认领冲突从直接 `TalentMapper` / `TalentClaimMapper` 改为消费 `TalentDomainFacade`。跨域 Mapper 白名单移除 `AttributionService|PickSourceMappingMapper`、`AttributionService|TalentMapper`、`AttributionService|TalentClaimMapper`，剩余 7 条。本轮未改归因优先级、原因码、订单同步、金额计算、商品状态机或真实数据。验证：targeted Maven PASS；`agent-do -Scope full` PASS。报告：`harness/reports/evidence-20260629-142251.md`；retro：`harness/reports/retro-20260629-142535.md`；commit：`672e4bc2`。
+- 最新边界变化：DDD-DASHBOARD-ORDER-READ-FACADE 已在 `OrderReadFacade` 增加 Dashboard 订单归因计数、未归因原因与无业绩汇总时的订单事实回退聚合出口；`DashboardService` 不再直接注入 `ColonelsettlementOrderMapper`，跨域 Mapper 白名单移除 `DashboardService|ColonelsettlementOrderMapper`，剩余 6 条。本轮未改订单事实、归因状态、业绩汇总公式、复杂诊断 SQL、活动商品下钻或真实数据。验证：targeted Maven PASS；`agent-do -Scope full` PASS。报告：`harness/reports/evidence-20260629-144645.md`；retro：`harness/reports/retro-20260629-144855.md`；commit：`25f77620`。
 - 最新边界变化：ORDER-READ-FACADE-CREATED-SINCE / SETTLED-SINCE 已在 `OrderReadFacade` 增加 `findOrdersCreatedSince` 与 `findOrdersSettledSince` 分页读取订单事实；`TalentClaimApplicationService` 和 `TalentService.evaluateExclusive` 不再直接依赖 `ColonelsettlementOrderMapper`，而是消费订单域门面。订单域仍只提供订单事实，不计算达人认领、业绩归属或提成。验证：targeted Maven 71 tests PASS（1 个维护型跳过）；`agent-do -Scope full` PASS。报告：`harness/reports/evidence-20260628-200945.md`；retro：`harness/reports/retro-20260628-201018.md`。
 - 最新边界变化：ORDER-SYNC-EVENT-EXPENSE-001 已让 `OrderSyncedEvent` 携带 `estimateServiceFeeExpense` / `effectiveServiceFeeExpense` 订单金额事实，`OrderEventPayloadMapper` 从订单事实映射该载荷；订单域仍只发布事实，不计算业绩。上一变化：ORDER-AMOUNT-ROUTER-EXPENSE-001 已修复 policy 开关启用时丢失服务费支出的 adapter 漂移。
 - 最新边界变化：`OrderAttributionService` 未归因分页与订单回流摘要数据范围过滤新增默认关闭的用户域 `DataScopePolicy` 旁路；默认关闭继续走 Legacy PERSONAL/DEPT `QueryWrapper.eq` 条件，开启后才调用 `DataScopePolicy.applyTo`。本轮未改订单事实、归因状态、同步、业绩事件、Mapper SQL、接口参数或历史数据。
@@ -116,16 +116,16 @@
 - 标记：P0。
 
 ## 分析模块
-- 最新边界变化：ORDER-SYNC-EVENT-EXPENSE-001 已让 `DashboardPerformanceSummaryService` 消费订单事件中的结算服务费支出，并通过业绩域 `PerformanceMoneyPolicy` 计算 `service_fee_net`，不再把 `effectiveServiceFee` 直接当服务费收益。上一变化：`DashboardService` 看板 summary 数据范围过滤已新增默认关闭旁路。
+- 最新边界变化：DDD-DASHBOARD-ORDER-READ-FACADE 已将 `DashboardService` 的订单总览、已归因 / 未归因计数、未归因原因和无业绩汇总时的渠道 / 招商排行聚合从直接 `ColonelsettlementOrderMapper` 改为消费订单域 `OrderReadFacade` 只读投影；复杂诊断 SQL 和活动商品下钻暂不扩大改动面。跨域 Mapper 白名单剩余 6 条。
 - 最新边界变化：`DataApplicationService` 的数据页订单明细、订单汇总、导出、核心指标和运营监控查询已新增默认关闭旁路；默认关闭保持 Legacy PERSONAL/DEPT 条件与缺上下文 fail-closed，开启后仅把 PERSONAL/DEPT/ALL 数据范围解释委托给用户域 `DataScopePolicy`。本轮只收口可见性，不改变订单事实、业绩补全、导出列、服务费双轨公式或历史数据。
 - 最新验证变化：新增 `DddAnalyticsReadOnlyBoundaryTest`，把分析模块只读边界变成后端架构测试：Dashboard/DataApplication/PerformanceMetrics 核心源文件不得写业务事实，不得调用订单同步、归因重算、业绩回填或寄样命令流；相关数据范围旁路组合测试 PASS。上一轮 real-pre Dashboard API/SQL 对账 evidence：`runtime/qa/out/real-pre-dashboard-reconcile-20260622-205417/`；harness evidence：`harness/reports/evidence-20260622-205724.md`。
 - 最新边界变化：`PerformanceMetricsQueryService` 汇总读侧数据范围过滤已具备默认关闭旁路；默认关闭保持 Legacy SQL 条件拼接，开启后仅把 PERSONAL/DEPT/ALL 数据范围解释委托给用户域。本轮不改变 dashboard 指标公式、排行 SQL、订单归因或业绩归属。
-- 最新报告路径：`harness/reports/evidence-20260626-140029.md`；retro：`harness/reports/retro-20260626-140058.md`。上一报告：`harness/reports/evidence-20260622-195231.md`。
-- 当前状态：dashboard、报表和只读汇总主链路已具备；数据平台订单页已保留汇总模块，并新增/收口订单明细 Tab 与 16 列订单级明细导出；ORDER-DETAIL-TAB-FIX-001 已补齐订单明细 Tab 前端 16 列展示、人民币金额格式与“渠道”文案统一；SERVICE-FEE-INCOME-FORMULA-CODE-001 已更新经营指标矩阵服务费收入 / 收益双轨公式口径与后端展示层单测；`DataApplicationService` 订单明细负责人展示已改为消费用户域 `loadUserDisplayNamesByIds`，分析模块不再为该展示读取完整用户 DTO。
+- 最新报告路径：`harness/reports/evidence-20260629-144645.md`；retro：`harness/reports/retro-20260629-144855.md`。上一报告：`harness/reports/evidence-20260626-140029.md`。
+- 当前状态：dashboard、报表和只读汇总主链路已具备；`DashboardService` summary 简单订单聚合已改为消费 `OrderReadFacade`，不再直接注入订单 Mapper；数据平台订单页已保留汇总模块，并新增/收口订单明细 Tab 与 16 列订单级明细导出；SERVICE-FEE-INCOME-FORMULA-CODE-001 已更新经营指标矩阵服务费收入 / 收益双轨公式口径与后端展示层单测；`DataApplicationService` 订单明细负责人展示已改为消费用户域 `loadUserDisplayNamesByIds`，分析模块不再为该展示读取完整用户 DTO。
 - 报告路径：DDD-USER-DATA-APPLICATION-FACADE `harness/reports/2026-06-21/ddd-user/evidence-20260621-132400-data-application-facade.md`。
 - 已完成能力：看板汇总、报表查询、导出能力。
-- 待优化能力：Dashboard summary 双轨聚合和历史结算轨污染仍需专项处理；继续补 dashboard E2E、导出验证和前端页面级服务费收入 / 收益双轨验收。
-- DDD 优化下一步：进入 A-11 dashboard E2E 与 A-12 导出验证；A-8/A-9/A-10/A-14 后续保持脚本和架构测试复跑。
+- 待优化能力：继续清理 `DataApplicationService` 对订单、活动商品、独家达人、独家商家 Mapper 的直接依赖；Dashboard summary 双轨聚合和历史结算轨污染仍需专项处理；继续补 dashboard E2E、导出验证和前端页面级服务费收入 / 收益双轨验收。
+- DDD 优化下一步：按剩余 6 条白名单继续处理商品域与数据分析域跨域 Mapper 债务；优先评估 `ProductService|ColonelsettlementOrderMapper` / `ProductService|PromotionLinkMapper` 与 `DataApplicationService` 四条分析读侧债务。
 - 标记：P0。
 
 ## 商品域
