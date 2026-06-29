@@ -9,6 +9,7 @@ import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.exception.OptimisticLockSupport;
 import com.colonel.saas.common.exception.ForbiddenException;
 import com.colonel.saas.domain.talent.application.TalentBatchImportApplicationService;
+import com.colonel.saas.domain.talent.application.TalentEnrichmentApplicationService;
 import com.colonel.saas.domain.talent.application.TalentPoolApplicationService;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.dto.talent.TalentBatchImportResult;
@@ -147,6 +148,7 @@ public class TalentService {
     private final TalentProfileApplicationService talentProfileApplicationService;
     private final TalentBatchImportApplicationService talentBatchImportApplicationService;
     private final TalentPoolApplicationService talentPoolApplicationService;
+    private final TalentEnrichmentApplicationService talentEnrichmentApplicationService;
     private final TalentClaimApplicationService talentClaimApplicationService;
     /** 操作日志服务（用于认领/释放/归属覆盖等操作审计） */
     private final OperationLogService operationLogService;
@@ -194,6 +196,7 @@ public class TalentService {
             TalentProfileApplicationService talentProfileApplicationService,
             TalentBatchImportApplicationService talentBatchImportApplicationService,
             TalentPoolApplicationService talentPoolApplicationService,
+            TalentEnrichmentApplicationService talentEnrichmentApplicationService,
             TalentClaimApplicationService talentClaimApplicationService,
             OperationLogService operationLogService,
             UserDomainFacade userDomainFacade,
@@ -214,6 +217,7 @@ public class TalentService {
         this.talentProfileApplicationService = talentProfileApplicationService;
         this.talentBatchImportApplicationService = talentBatchImportApplicationService;
         this.talentPoolApplicationService = talentPoolApplicationService;
+        this.talentEnrichmentApplicationService = talentEnrichmentApplicationService;
         this.talentClaimApplicationService = talentClaimApplicationService;
         this.operationLogService = operationLogService;
         this.userDomainFacade = userDomainFacade;
@@ -956,13 +960,7 @@ public class TalentService {
      * @return 活跃达人 ID 列表
      */
     public List<UUID> findActiveTalentIdsForRefresh() {
-        return talentMapper.selectList(new LambdaQueryWrapper<Talent>()
-                        .eq(Talent::getDeleted, 0)
-                        .eq(Talent::getStatus, 1))
-                .stream()
-                .map(Talent::getId)
-                .filter(Objects::nonNull)
-                .toList();
+        return talentEnrichmentApplicationService.findActiveTalentIdsForRefresh();
     }
 
     /**
