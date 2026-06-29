@@ -11,8 +11,10 @@ import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -24,6 +26,8 @@ public class LegacyOrderReadFacade implements OrderReadFacade {
 
     private static final int DEFAULT_LIMIT = 200;
     private static final int MAX_LIMIT = 2000;
+    private static final String STATUS_ATTRIBUTED = "ATTRIBUTED";
+    private static final String STATUS_UNATTRIBUTED = "UNATTRIBUTED";
 
     private final ColonelsettlementOrderMapper orderMapper;
 
@@ -190,6 +194,172 @@ public class LegacyOrderReadFacade implements OrderReadFacade {
             return new OrderPage(List.of(), 0L);
         }
         return new OrderPage(result.getRecords(), result.getPages());
+    }
+
+    @Override
+    public DashboardAttributionSummary getDashboardAttributionSummary(
+            LocalDateTime settleStart,
+            LocalDateTime settleEnd,
+            OrderVisibility visibility) {
+        QueryWrapper<ColonelsettlementOrder> attributedWrapper = new QueryWrapper<ColonelsettlementOrder>()
+                .eq("attribution_status", STATUS_ATTRIBUTED);
+        applyDashboardRange(attributedWrapper, settleStart, settleEnd);
+        applyDashboardVisibility(attributedWrapper, visibility);
+        long attributedCount = safeLong(orderMapper.selectCount(attributedWrapper));
+
+        QueryWrapper<ColonelsettlementOrder> unattributedWrapper = new QueryWrapper<ColonelsettlementOrder>()
+                .eq("attribution_status", STATUS_UNATTRIBUTED);
+        applyDashboardRange(unattributedWrapper, settleStart, settleEnd);
+        applyDashboardVisibility(unattributedWrapper, visibility);
+        long unattributedCount = safeLong(orderMapper.selectCount(unattributedWrapper));
+
+        QueryWrapper<ColonelsettlementOrder> reasonWrapper = new QueryWrapper<ColonelsettlementOrder>()
+                .select("attribution_remark as reason", "count(*) as count")
+                .eq("attribution_status", STATUS_UNATTRIBUTED)
+                .isNotNull("attribution_remark")
+                .groupBy("attribution_remark");
+        applyDashboardRange(reasonWrapper, settleStart, settleEnd);
+        applyDashboardVisibility(reasonWrapper, visibility);
+        List<DashboardReasonCount> reasons = orderMapper.selectMaps(reasonWrapper).stream()
+                .map(row -> new DashboardReasonCount(
+                        asString(readMapValue(row, "reason")),
+                        asLong(readMapValue(row, "count"))))
+                .sorted(Comparator.comparingLong(DashboardReasonCount::count).reversed())
+                .toList();
+
+        return new DashboardAttributionSummary(attributedCount, unattributedCount, reasons);
+    }
+
+    @Override
+    public DashboardFallbackSummary getDashboardFallbackSummary(
+            LocalDateTime settleStart,
+            LocalDateTime settleEnd,
+            OrderVisibility visibility) {
+        QueryWrapper<ColonelsettlementOrder> totalWrapper = new QueryWrapper<ColonelsettlementOrder>()
+                .select("count(*) as orderCount",
+                        "sum(order_amount) as orderAmount",
+                        "sum(settle_colonel_commission) as serviceFee");
+        applyDashboardRange(totalWrapper, settleStart, settleEnd);
+        applyDashboardVisibility(totalWrapper, visibility);
+        Map<String, Object> totalMap = orderMapper.selectMaps(totalWrapper).stream()
+                .findFirst()
+                .orElse(Map.of());
+
+        QueryWrapper<ColonelsettlementOrder> channelWrapper = new QueryWrapper<ColonelsettlementOrder>()
+                .select("channel_user_id as channelUserId",
+                        "channel_user_name as channelUserName",
+                        "count(*) as orderCount",
+                        "sum(order_amount) as orderAmount",
+                        "sum(settle_colonel_commission) as serviceFee")
+                .isNotNull("channel_user_id")
+                .eq("attribution_status", STATUS_ATTRIBUTED)
+                .groupBy("channel_user_id", "channel_user_name");
+        applyDashboardRange(channelWrapper, settleStart, settleEnd);
+        applyDashboardVisibility(channelWrapper, visibility);
+        List<DashboardPerformanceItem> channelPerformance = orderMapper.selectMaps(channelWrapper).stream()
+                .map(row -> toDashboardPerformanceItem(row, "channelUserId", "channelUserName"))
+                .sorted(Comparator.comparingLong(DashboardPerformanceItem::orderCount).reversed())
+                .limit(10)
+                .toList();
+
+        QueryWrapper<ColonelsettlementOrder> colonelWrapper = new QueryWrapper<ColonelsettlementOrder>()
+                .select("colonel_user_id as colonelUserId",
+                        "colonel_user_name as colonelUserName",
+                        "count(*) as orderCount",
+                        "sum(order_amount) as orderAmount",
+                        "sum(settle_colonel_commission) as serviceFee")
+                .isNotNull("colonel_user_id")
+                .eq("attribution_status", STATUS_ATTRIBUTED)
+                .groupBy("colonel_user_id", "colonel_user_name");
+        applyDashboardRange(colonelWrapper, settleStart, settleEnd);
+        applyDashboardVisibility(colonelWrapper, visibility);
+        List<DashboardPerformanceItem> colonelPerformance = orderMapper.selectMaps(colonelWrapper).stream()
+                .map(row -> toDashboardPerformanceItem(row, "colonelUserId", "colonelUserName"))
+                .sorted(Comparator.comparingLong(DashboardPerformanceItem::orderCount).reversed())
+                .limit(10)
+                .toList();
+
+        return new DashboardFallbackSummary(
+                asLong(readMapValue(totalMap, "orderCount")),
+                asLong(readMapValue(totalMap, "orderAmount")),
+                asLong(readMapValue(totalMap, "serviceFee")),
+                channelPerformance,
+                colonelPerformance);
+    }
+
+    private static DashboardPerformanceItem toDashboardPerformanceItem(
+            Map<String, Object> row,
+            String userIdKey,
+            String userNameKey) {
+        return new DashboardPerformanceItem(
+                asString(readMapValue(row, userIdKey)),
+                asString(readMapValue(row, userNameKey)),
+                asLong(readMapValue(row, "orderCount")),
+                asLong(readMapValue(row, "orderAmount")),
+                asLong(readMapValue(row, "serviceFee")));
+    }
+
+    private static void applyDashboardRange(
+            QueryWrapper<ColonelsettlementOrder> wrapper,
+            LocalDateTime settleStart,
+            LocalDateTime settleEnd) {
+        if (settleStart != null) {
+            wrapper.ge("settle_time", settleStart);
+        }
+        if (settleEnd != null) {
+            wrapper.le("settle_time", settleEnd);
+        }
+    }
+
+    private static void applyDashboardVisibility(
+            QueryWrapper<ColonelsettlementOrder> wrapper,
+            OrderVisibility visibility) {
+        OrderVisibility safeVisibility = visibility == null ? OrderVisibility.all() : visibility;
+        switch (safeVisibility.type()) {
+            case ALL -> {
+                // no filter
+            }
+            case USER -> {
+                if (safeVisibility.userId() == null) {
+                    wrapper.apply("1 = 0");
+                    return;
+                }
+                wrapper.eq("user_id", safeVisibility.userId());
+            }
+            case DEPT -> {
+                if (safeVisibility.deptId() == null) {
+                    wrapper.apply("1 = 0");
+                    return;
+                }
+                wrapper.eq("dept_id", safeVisibility.deptId());
+            }
+            case NONE -> wrapper.apply("1 = 0");
+        }
+    }
+
+    private static Object readMapValue(Map<String, Object> map, String key) {
+        if (map == null || key == null) {
+            return null;
+        }
+        if (map.containsKey(key)) {
+            return map.get(key);
+        }
+        return map.get(key.toLowerCase());
+    }
+
+    private static long asLong(Object val) {
+        if (val instanceof Number number) {
+            return number.longValue();
+        }
+        return 0L;
+    }
+
+    private static long safeLong(Long val) {
+        return val == null ? 0L : val;
+    }
+
+    private static String asString(Object val) {
+        return val == null ? null : String.valueOf(val);
     }
 
     private static int normalizeLimit(int limit) {

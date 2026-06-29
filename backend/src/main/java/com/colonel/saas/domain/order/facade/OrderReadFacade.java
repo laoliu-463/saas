@@ -53,6 +53,65 @@ public interface OrderReadFacade {
     /** 按 settleTime 起点分页读取订单事实，可选按用户或部门过滤。 */
     OrderPage findOrdersSettledSince(LocalDateTime settleStart, UUID userId, UUID deptId, long pageNo, long pageSize);
 
+    /** Dashboard 订单归因计数与未归因原因，只读订单事实。 */
+    DashboardAttributionSummary getDashboardAttributionSummary(
+            LocalDateTime settleStart,
+            LocalDateTime settleEnd,
+            OrderVisibility visibility);
+
+    /** Dashboard 在没有业绩汇总表时使用的订单事实回退聚合。 */
+    DashboardFallbackSummary getDashboardFallbackSummary(
+            LocalDateTime settleStart,
+            LocalDateTime settleEnd,
+            OrderVisibility visibility);
+
     record OrderPage(List<ColonelsettlementOrder> records, long pages) {
+    }
+
+    enum OrderVisibilityType {
+        ALL, USER, DEPT, NONE
+    }
+
+    record OrderVisibility(OrderVisibilityType type, UUID userId, UUID deptId) {
+        public static OrderVisibility all() {
+            return new OrderVisibility(OrderVisibilityType.ALL, null, null);
+        }
+
+        public static OrderVisibility user(UUID userId) {
+            return new OrderVisibility(OrderVisibilityType.USER, userId, null);
+        }
+
+        public static OrderVisibility dept(UUID deptId) {
+            return new OrderVisibility(OrderVisibilityType.DEPT, null, deptId);
+        }
+
+        public static OrderVisibility none() {
+            return new OrderVisibility(OrderVisibilityType.NONE, null, null);
+        }
+    }
+
+    record DashboardAttributionSummary(
+            long attributedOrderCount,
+            long unattributedOrderCount,
+            List<DashboardReasonCount> unattributedReasons) {
+    }
+
+    record DashboardFallbackSummary(
+            long orderCount,
+            long orderAmountCent,
+            long serviceFeeCent,
+            List<DashboardPerformanceItem> channelPerformance,
+            List<DashboardPerformanceItem> colonelPerformance) {
+    }
+
+    record DashboardPerformanceItem(
+            String userId,
+            String userName,
+            long orderCount,
+            long orderAmountCent,
+            long serviceFeeCent) {
+    }
+
+    record DashboardReasonCount(String reason, long count) {
     }
 }

@@ -1,21 +1,25 @@
 package com.colonel.saas.domain.order.facade;
 
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -115,6 +119,64 @@ class LegacyOrderReadFacadeTest {
         assertThat(result.pages()).isEqualTo(1L);
         verify(orderMapper).selectPage(any(), any());
         assertThat(facade.findOrdersSettledSince(null, null, null, 1L, 2000L).records()).isEmpty();
+    }
+
+    @Test
+    void dashboardAttributionSummary_shouldApplyVisibilityAndSortReasons() {
+        LocalDateTime start = LocalDateTime.of(2026, 6, 1, 0, 0);
+        LocalDateTime end = LocalDateTime.of(2026, 6, 30, 23, 59);
+        UUID userId = UUID.fromString("11111111-1111-1111-1111-111111111111");
+        when(orderMapper.selectCount(any())).thenReturn(6L).thenReturn(2L);
+        when(orderMapper.selectMaps(any())).thenReturn(List.of(
+                Map.of("reason", "B", "count", 1L),
+                Map.of("reason", "A", "count", 3L)));
+
+        OrderReadFacade.DashboardAttributionSummary result = facade.getDashboardAttributionSummary(
+                start,
+                end,
+                OrderReadFacade.OrderVisibility.user(userId));
+
+        assertThat(result.attributedOrderCount()).isEqualTo(6L);
+        assertThat(result.unattributedOrderCount()).isEqualTo(2L);
+        assertThat(result.unattributedReasons())
+                .extracting(OrderReadFacade.DashboardReasonCount::reason)
+                .containsExactly("A", "B");
+        ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> countCaptor = ArgumentCaptor.forClass(QueryWrapper.class);
+        verify(orderMapper, times(2)).selectCount(countCaptor.capture());
+        assertThat(countCaptor.getAllValues())
+                .allSatisfy(wrapper -> assertThat(wrapper.getSqlSegment())
+                        .contains("settle_time")
+                        .contains("user_id"));
+    }
+
+    @Test
+    void dashboardFallbackSummary_shouldReadTotalsAndLeaderboardFacts() {
+        when(orderMapper.selectMaps(any()))
+                .thenReturn(List.of(Map.of("ordercount", 8L, "orderamount", 90000L, "servicefee", 1800L)))
+                .thenReturn(List.of(Map.of(
+                        "channeluserid", "channel-1",
+                        "channelusername", "渠道A",
+                        "ordercount", 3L,
+                        "orderamount", 30000L,
+                        "servicefee", 600L)))
+                .thenReturn(List.of(Map.of(
+                        "coloneluserid", "colonel-1",
+                        "colonelusername", "招商A",
+                        "ordercount", 2L,
+                        "orderamount", 20000L,
+                        "servicefee", 400L)));
+
+        OrderReadFacade.DashboardFallbackSummary result = facade.getDashboardFallbackSummary(
+                null,
+                null,
+                OrderReadFacade.OrderVisibility.all());
+
+        assertThat(result.orderCount()).isEqualTo(8L);
+        assertThat(result.orderAmountCent()).isEqualTo(90000L);
+        assertThat(result.serviceFeeCent()).isEqualTo(1800L);
+        assertThat(result.channelPerformance().get(0).userName()).isEqualTo("渠道A");
+        assertThat(result.colonelPerformance().get(0).userName()).isEqualTo("招商A");
+        verify(orderMapper, times(3)).selectMaps(any());
     }
 
     private static ColonelsettlementOrder order(String orderId) {

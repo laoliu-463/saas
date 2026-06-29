@@ -21,8 +21,8 @@ class DddUserDataScopePolicyDashboardBoundaryTest {
                 .contains("dataScopePolicy")
                 .contains("appendScopeClauseLegacy")
                 .contains("appendScopeClauseWithPolicy")
-                .contains("applyScopeLegacy")
-                .contains("applyScopeWithPolicy")
+                .contains("buildOrderVisibility")
+                .contains("buildOrderVisibilityLegacy")
                 .doesNotContain("switch (dataScope)");
     }
 }

@@ -1,11 +1,9 @@
 package com.colonel.saas.service;
 
-import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.config.DddRefactorProperties;
+import com.colonel.saas.domain.order.facade.OrderReadFacade;
 import com.colonel.saas.domain.user.policy.DataScopePolicy;
-import com.colonel.saas.entity.ColonelsettlementOrder;
-import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import lombok.Data;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,7 +44,7 @@ import java.util.UUID;
  *
  * <p>依赖服务/仓储：
  * <ul>
- *   <li>{@link ColonelsettlementOrderMapper} —— 订单数据访问（MyBatis-Plus）</li>
+ *   <li>{@link OrderReadFacade} —— 订单事实只读聚合</li>
  *   <li>{@link JdbcTemplate} —— 复杂诊断 SQL 和活动-商品下钻 SQL 执行</li>
  *   <li>{@link PerformanceMetricsQueryService} —— 业绩汇总表数据源</li>
  *   <li>{@link AttributionService} —— 归因状态常量</li>
@@ -83,8 +81,8 @@ public class DashboardService {
     /** 活动-商品下钻默认每页条数 */
     private static final int DEFAULT_BREAKDOWN_LIMIT = 20;
 
-    /** 订单数据访问（MyBatis-Plus），用于简单聚合查询和范围/权限过滤 */
-    private final ColonelsettlementOrderMapper orderMapper;
+    /** 订单事实只读门面，用于 Dashboard 简单聚合和范围过滤 */
+    private final OrderReadFacade orderReadFacade;
     /** 原始 JDBC 模板，用于执行复杂诊断 SQL 和活动-商品下钻 SQL */
     private final JdbcTemplate jdbcTemplate;
     /** 业绩指标查询服务，用于判断是否可用汇总表以及从汇总表读取聚合数据 */
@@ -101,17 +99,17 @@ public class DashboardService {
     /**
      * 构造函数，通过依赖注入初始化服务。
      *
-     * @param orderMapper                结算订单 Mapper（MyBatis-Plus，简单聚合查询）
+     * @param orderReadFacade            订单事实只读门面（简单聚合查询）
      * @param jdbcTemplate               JDBC 模板（复杂诊断 SQL 和活动-商品下钻 SQL）
      * @param performanceMetricsQueryService 业绩指标查询服务（判断汇总表可用性）
      */
     public DashboardService(
-            ColonelsettlementOrderMapper orderMapper,
+            OrderReadFacade orderReadFacade,
             JdbcTemplate jdbcTemplate,
             PerformanceMetricsQueryService performanceMetricsQueryService,
             DataScopePolicy dataScopePolicy,
             DddRefactorProperties dddRefactorProperties) {
-        this.orderMapper = orderMapper;
+        this.orderReadFacade = orderReadFacade;
         this.jdbcTemplate = jdbcTemplate;
         this.performanceMetricsQueryService = performanceMetricsQueryService;
         this.dataScopePolicy = dataScopePolicy;
@@ -143,28 +141,11 @@ public class DashboardService {
      */
     public Summary getSummary(LocalDateTime startTime, LocalDateTime endTime, UUID userId, UUID deptId, DataScope dataScope) {
         boolean usePerformanceRecords = performanceMetricsQueryService.hasPerformanceRecords();
-        Map<String, Object> totalMap = Map.of();
-        if (!usePerformanceRecords) {
-            QueryWrapper<ColonelsettlementOrder> totalWrapper = new QueryWrapper<ColonelsettlementOrder>()
-                    .select("count(*) as orderCount", "sum(order_amount) as orderAmount", "sum(settle_colonel_commission) as serviceFee");
-            applyRange(totalWrapper, startTime, endTime);
-            applyScope(totalWrapper, userId, deptId, dataScope);
-            totalMap = orderMapper.selectMaps(totalWrapper).stream()
-                    .findFirst()
-                    .orElse(Map.of());
-        }
-
-        QueryWrapper<ColonelsettlementOrder> attributedWrapper = new QueryWrapper<ColonelsettlementOrder>()
-                .eq("attribution_status", AttributionService.STATUS_ATTRIBUTED);
-        applyRange(attributedWrapper, startTime, endTime);
-        applyScope(attributedWrapper, userId, deptId, dataScope);
-        Long attributedCount = orderMapper.selectCount(attributedWrapper);
-
-        QueryWrapper<ColonelsettlementOrder> unattributedWrapper = new QueryWrapper<ColonelsettlementOrder>()
-                .eq("attribution_status", AttributionService.STATUS_UNATTRIBUTED);
-        applyRange(unattributedWrapper, startTime, endTime);
-        applyScope(unattributedWrapper, userId, deptId, dataScope);
-        Long unattributedCount = orderMapper.selectCount(unattributedWrapper);
+        OrderReadFacade.OrderVisibility orderVisibility = buildOrderVisibility(userId, deptId, dataScope);
+        OrderReadFacade.DashboardAttributionSummary attributionSummary =
+                orderReadFacade.getDashboardAttributionSummary(startTime, endTime, orderVisibility);
+        Long attributedCount = attributionSummary.attributedOrderCount();
+        Long unattributedCount = attributionSummary.unattributedOrderCount();
 
         List<PerformanceItem> channelPerformance;
         List<PerformanceItem> colonelPerformance;
@@ -182,47 +163,17 @@ public class DashboardService {
             channelPerformance = toPerformanceItems(performanceSummary.channelPerformance(), true);
             colonelPerformance = toPerformanceItems(performanceSummary.colonelPerformance(), false);
         } else {
-            orderCount = asLong(totalMap.get("ordercount"));
-            orderAmount = asLong(totalMap.get("orderamount"));
-            serviceFee = asLong(totalMap.get("servicefee"));
-
-            QueryWrapper<ColonelsettlementOrder> channelWrapper = new QueryWrapper<ColonelsettlementOrder>()
-                    .select("channel_user_id as channelUserId", "channel_user_name as channelUserName", "count(*) as orderCount", "sum(order_amount) as orderAmount", "sum(settle_colonel_commission) as serviceFee")
-                    .isNotNull("channel_user_id")
-                    .eq("attribution_status", AttributionService.STATUS_ATTRIBUTED)
-                    .groupBy("channel_user_id", "channel_user_name");
-            applyRange(channelWrapper, startTime, endTime);
-            applyScope(channelWrapper, userId, deptId, dataScope);
-            channelPerformance = orderMapper.selectMaps(channelWrapper).stream()
-                    .map(this::toPerformanceItem)
-                    .sorted(Comparator.comparingLong(PerformanceItem::getOrderCount).reversed())
-                    .limit(10)
-                    .toList();
-
-            QueryWrapper<ColonelsettlementOrder> colonelWrapper = new QueryWrapper<ColonelsettlementOrder>()
-                    .select("colonel_user_id as colonelUserId", "colonel_user_name as colonelUserName", "count(*) as orderCount", "sum(order_amount) as orderAmount", "sum(settle_colonel_commission) as serviceFee")
-                    .isNotNull("colonel_user_id")
-                    .eq("attribution_status", AttributionService.STATUS_ATTRIBUTED)
-                    .groupBy("colonel_user_id", "colonel_user_name");
-            applyRange(colonelWrapper, startTime, endTime);
-            applyScope(colonelWrapper, userId, deptId, dataScope);
-            colonelPerformance = orderMapper.selectMaps(colonelWrapper).stream()
-                    .map(this::toPerformanceItem)
-                    .sorted(Comparator.comparingLong(PerformanceItem::getOrderCount).reversed())
-                    .limit(10)
-                    .toList();
+            OrderReadFacade.DashboardFallbackSummary fallbackSummary =
+                    orderReadFacade.getDashboardFallbackSummary(startTime, endTime, orderVisibility);
+            orderCount = fallbackSummary.orderCount();
+            orderAmount = fallbackSummary.orderAmountCent();
+            serviceFee = fallbackSummary.serviceFeeCent();
+            channelPerformance = toDashboardPerformanceItems(fallbackSummary.channelPerformance(), true);
+            colonelPerformance = toDashboardPerformanceItems(fallbackSummary.colonelPerformance(), false);
         }
 
-        QueryWrapper<ColonelsettlementOrder> reasonWrapper = new QueryWrapper<ColonelsettlementOrder>()
-                .select("attribution_remark as reason", "count(*) as count")
-                .eq("attribution_status", AttributionService.STATUS_UNATTRIBUTED)
-                .isNotNull("attribution_remark")
-                .groupBy("attribution_remark");
-        applyRange(reasonWrapper, startTime, endTime);
-        applyScope(reasonWrapper, userId, deptId, dataScope);
-        List<ReasonCountItem> unattributedReasons = orderMapper.selectMaps(reasonWrapper).stream()
+        List<ReasonCountItem> unattributedReasons = attributionSummary.unattributedReasons().stream()
                 .map(this::toReasonCountItem)
-                .sorted(Comparator.comparingLong(ReasonCountItem::getCount).reversed())
                 .toList();
 
         List<DiagnosticItem> diagnostics = loadDiagnostics(startTime, endTime, userId, deptId, dataScope);
@@ -749,25 +700,6 @@ public class DashboardService {
     }
 
     /**
-     * 将订单表聚合查询结果 Map 转换为 PerformanceItem。
-     * 用于回退模式（无业绩汇总表时）从订单表实时聚合的结果转换。
-     *
-     * @param map 查询结果行（key 为小写列名）
-     * @return 业绩排名项
-     */
-    private PerformanceItem toPerformanceItem(Map<String, Object> map) {
-        PerformanceItem item = new PerformanceItem();
-        item.setChannelUserId(asString(map.get("channeluserid")));
-        item.setChannelUserName(asString(map.get("channelusername")));
-        item.setColonelUserId(asString(map.get("coloneluserid")));
-        item.setColonelUserName(asString(map.get("colonelusername")));
-        item.setOrderCount(asLong(map.get("ordercount")));
-        item.setOrderAmount(asLong(map.get("orderamount")));
-        item.setServiceFee(asLong(map.get("servicefee")));
-        return item;
-    }
-
-    /**
      * 将业绩汇总服务返回的排行榜列表转换为 PerformanceItem 列表。
      * 根据 channel 参数决定映射渠道员或招商员字段。
      *
@@ -796,17 +728,38 @@ public class DashboardService {
                 .toList();
     }
 
+    private List<PerformanceItem> toDashboardPerformanceItems(
+            List<OrderReadFacade.DashboardPerformanceItem> items,
+            boolean channel) {
+        return items.stream()
+                .map(item -> {
+                    PerformanceItem performanceItem = new PerformanceItem();
+                    if (channel) {
+                        performanceItem.setChannelUserId(item.userId());
+                        performanceItem.setChannelUserName(item.userName());
+                    } else {
+                        performanceItem.setColonelUserId(item.userId());
+                        performanceItem.setColonelUserName(item.userName());
+                    }
+                    performanceItem.setOrderCount(item.orderCount());
+                    performanceItem.setOrderAmount(item.orderAmountCent());
+                    performanceItem.setServiceFee(item.serviceFeeCent());
+                    return performanceItem;
+                })
+                .toList();
+    }
+
     /**
      * 将未归因原因聚合查询结果 Map 转换为 ReasonCountItem。
      * 同时生成对应的下钻查询对象，方便前端跳转到具体未归因订单列表。
      *
-     * @param map 查询结果行
+     * @param reasonCount 订单域返回的未归因原因计数
      * @return 未归因原因统计项（含下钻查询）
      */
-    private ReasonCountItem toReasonCountItem(Map<String, Object> map) {
+    private ReasonCountItem toReasonCountItem(OrderReadFacade.DashboardReasonCount reasonCount) {
         ReasonCountItem item = new ReasonCountItem();
-        item.setReason(asString(map.get("reason")));
-        item.setCount(asLong(map.get("count")));
+        item.setReason(reasonCount.reason());
+        item.setCount(reasonCount.count());
         item.setDrillDownQuery(new DrillDownQuery(null, null, AttributionService.STATUS_UNATTRIBUTED, item.getReason(), null, "settleTime"));
         return item;
     }
@@ -884,78 +837,34 @@ public class DashboardService {
         };
     }
 
-    /**
-     * 向查询条件中追加结算时间范围过滤。
-     *
-     * @param wrapper   MyBatis-Plus 查询条件构造器
-     * @param startTime 结算开始时间（可选）
-     * @param endTime   结算结束时间（可选）
-     */
-    private void applyRange(QueryWrapper<ColonelsettlementOrder> wrapper, LocalDateTime startTime, LocalDateTime endTime) {
-        if (wrapper == null) {
-            return;
-        }
-        if (startTime != null) {
-            wrapper.ge("settle_time", startTime);
-        }
-        if (endTime != null) {
-            wrapper.le("settle_time", endTime);
-        }
-    }
-
-    /**
-     * 向查询条件中追加数据范围过滤。
-     * PERSONAL 按 user_id 过滤，DEPT 按 dept_id 过滤，ALL 不追加条件。
-     *
-     * @param wrapper    MyBatis-Plus 查询条件构造器
-     * @param userId     当前用户ID（PERSONAL 范围时使用）
-     * @param deptId     部门ID（DEPT 范围时使用）
-     * @param dataScope  数据范围枚举
-     */
-    private void applyScope(QueryWrapper<ColonelsettlementOrder> wrapper, UUID userId, UUID deptId, DataScope dataScope) {
-        if (wrapper == null || dataScope == null) {
-            return;
+    private OrderReadFacade.OrderVisibility buildOrderVisibility(UUID userId, UUID deptId, DataScope dataScope) {
+        if (dataScope == null) {
+            return OrderReadFacade.OrderVisibility.all();
         }
         if (!dddRefactorProperties.getDataScopePolicy().isEnabled()) {
-            applyScopeLegacy(wrapper, userId, deptId, dataScope);
-            return;
+            return buildOrderVisibilityLegacy(userId, deptId, dataScope);
         }
-        applyScopeWithPolicy(wrapper, userId, deptId, dataScope);
+        DataScopePolicy.Decision decision = dataScopePolicy.decide(userId, deptId, dataScope);
+        return switch (decision) {
+            case FILTER_USER -> OrderReadFacade.OrderVisibility.user(userId);
+            case FILTER_DEPT -> OrderReadFacade.OrderVisibility.dept(deptId);
+            case NO_FILTER -> dataScopePolicy.requiresFilter(dataScope)
+                    ? OrderReadFacade.OrderVisibility.none()
+                    : OrderReadFacade.OrderVisibility.all();
+        };
     }
 
-    private void applyScopeLegacy(
-            QueryWrapper<ColonelsettlementOrder> wrapper,
-            UUID userId,
-            UUID deptId,
-            DataScope dataScope) {
+    private OrderReadFacade.OrderVisibility buildOrderVisibilityLegacy(UUID userId, UUID deptId, DataScope dataScope) {
         if (dataScope == DataScope.PERSONAL && userId != null) {
-            wrapper.eq("user_id", userId);
-            return;
+            return OrderReadFacade.OrderVisibility.user(userId);
         }
         if (dataScope == DataScope.DEPT && deptId != null) {
-            wrapper.eq("dept_id", deptId);
-            return;
+            return OrderReadFacade.OrderVisibility.dept(deptId);
         }
         if (requiresRestrictedContext(dataScope)) {
-            wrapper.apply("1 = 0");
+            return OrderReadFacade.OrderVisibility.none();
         }
-    }
-
-    private void applyScopeWithPolicy(
-            QueryWrapper<ColonelsettlementOrder> wrapper,
-            UUID userId,
-            UUID deptId,
-            DataScope dataScope) {
-        DataScopePolicy.Decision decision = dataScopePolicy.decide(userId, deptId, dataScope);
-        switch (decision) {
-            case FILTER_USER -> wrapper.eq("user_id", userId);
-            case FILTER_DEPT -> wrapper.eq("dept_id", deptId);
-            case NO_FILTER -> {
-                if (dataScopePolicy.requiresFilter(dataScope)) {
-                    wrapper.apply("1 = 0");
-                }
-            }
-        }
+        return OrderReadFacade.OrderVisibility.all();
     }
 
     private boolean requiresRestrictedContext(DataScope dataScope) {

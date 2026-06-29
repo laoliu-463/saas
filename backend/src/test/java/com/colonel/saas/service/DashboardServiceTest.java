@@ -1,11 +1,9 @@
 package com.colonel.saas.service;
 
-import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.config.DddRefactorProperties;
+import com.colonel.saas.domain.order.facade.OrderReadFacade;
 import com.colonel.saas.domain.user.policy.DataScopePolicy;
-import com.colonel.saas.entity.ColonelsettlementOrder;
-import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -35,7 +33,7 @@ import static org.mockito.Mockito.when;
 class DashboardServiceTest {
 
     @Mock
-    private ColonelsettlementOrderMapper orderMapper;
+    private OrderReadFacade orderReadFacade;
     @Mock
     private JdbcTemplate jdbcTemplate;
     @Mock
@@ -50,7 +48,7 @@ class DashboardServiceTest {
         dataScopePolicy = spy(new DataScopePolicy());
         dddRefactorProperties = new DddRefactorProperties();
         service = new DashboardService(
-                orderMapper,
+                orderReadFacade,
                 jdbcTemplate,
                 performanceMetricsQueryService,
                 dataScopePolicy,
@@ -127,9 +125,8 @@ class DashboardServiceTest {
                                 "channel-1", "渠道A", 3L, 30000L, 600L)),
                         List.of(new PerformanceMetricsQueryService.PerformanceLeaderboardItem(
                                 "colonel-1", "招商A", 2L, 20000L, 400L))));
-        when(orderMapper.selectCount(any(QueryWrapper.class)))
-                .thenReturn(6L)
-                .thenReturn(2L);
+        when(orderReadFacade.getDashboardAttributionSummary(any(), any(), any()))
+                .thenReturn(new OrderReadFacade.DashboardAttributionSummary(6L, 2L, List.of()));
         mockJdbcSequences(List.of(), 0L, List.of());
 
         DashboardService.Summary summary = service.getSummary(null, null, null, null, DataScope.ALL);
@@ -165,9 +162,12 @@ class DashboardServiceTest {
         assertThat(item.getDrillDownQuery().productId()).isEqualTo("3810204346914832817");
         assertThat(item.getDrillDownQuery().timeField()).isEqualTo("settleTime");
 
-        ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = ArgumentCaptor.forClass(QueryWrapper.class);
-        verify(orderMapper, times(2)).selectCount(wrapperCaptor.capture());
-        assertThat(wrapperCaptor.getAllValues()).isNotEmpty();
+        ArgumentCaptor<OrderReadFacade.OrderVisibility> visibilityCaptor =
+                ArgumentCaptor.forClass(OrderReadFacade.OrderVisibility.class);
+        verify(orderReadFacade).getDashboardAttributionSummary(any(), any(), visibilityCaptor.capture());
+        verify(orderReadFacade).getDashboardFallbackSummary(any(), any(), visibilityCaptor.capture());
+        assertThat(visibilityCaptor.getAllValues())
+                .allMatch(visibility -> visibility.type() == OrderReadFacade.OrderVisibilityType.ALL);
     }
 
     @Test
@@ -259,10 +259,10 @@ class DashboardServiceTest {
 
     @Test
     void applyScope_shouldKeepFailClosedBehaviorWhenRestrictedContextIsMissing() {
-        QueryWrapper<ColonelsettlementOrder> wrapper = new QueryWrapper<>();
-        invokeApplyScope(wrapper, null, UUID.randomUUID(), DataScope.PERSONAL);
+        OrderReadFacade.OrderVisibility visibility =
+                invokeBuildOrderVisibility(null, UUID.randomUUID(), DataScope.PERSONAL);
 
-        assertThat(wrapper.getSqlSegment()).contains("1 = 0");
+        assertThat(visibility.type()).isEqualTo(OrderReadFacade.OrderVisibilityType.NONE);
         verify(dataScopePolicy, never()).decide(any(), any(), any());
         verify(dataScopePolicy, never()).requiresFilter(any());
     }
@@ -270,13 +270,13 @@ class DashboardServiceTest {
     @Test
     void applyScope_dataScopePolicyEnabledPathShouldDelegatePersonalScopeToUserPolicy() {
         dddRefactorProperties.getDataScopePolicy().setEnabled(true);
-        QueryWrapper<ColonelsettlementOrder> wrapper = new QueryWrapper<>();
         UUID userId = UUID.randomUUID();
         UUID deptId = UUID.randomUUID();
 
-        invokeApplyScope(wrapper, userId, deptId, DataScope.PERSONAL);
+        OrderReadFacade.OrderVisibility visibility = invokeBuildOrderVisibility(userId, deptId, DataScope.PERSONAL);
 
-        assertThat(wrapper.getSqlSegment()).contains("user_id");
+        assertThat(visibility.type()).isEqualTo(OrderReadFacade.OrderVisibilityType.USER);
+        assertThat(visibility.userId()).isEqualTo(userId);
         verify(dataScopePolicy).decide(userId, deptId, DataScope.PERSONAL);
     }
 
@@ -440,30 +440,33 @@ class DashboardServiceTest {
         }
     }
 
-    private void invokeApplyScope(
-            QueryWrapper<ColonelsettlementOrder> wrapper,
+    private OrderReadFacade.OrderVisibility invokeBuildOrderVisibility(
             UUID userId,
             UUID deptId,
             DataScope dataScope) {
         try {
             Method m = DashboardService.class.getDeclaredMethod(
-                    "applyScope", QueryWrapper.class, UUID.class, UUID.class, DataScope.class);
+                    "buildOrderVisibility", UUID.class, UUID.class, DataScope.class);
             m.setAccessible(true);
-            m.invoke(service, wrapper, userId, deptId, dataScope);
+            return (OrderReadFacade.OrderVisibility) m.invoke(service, userId, deptId, dataScope);
         } catch (ReflectiveOperationException ex) {
-            throw new AssertionError("Failed to invoke applyScope", ex);
+            throw new AssertionError("Failed to invoke buildOrderVisibility", ex);
         }
     }
 
     private void mockBaseOrderAggregates(long attributedCount, long unattributedCount) {
-        when(orderMapper.selectMaps(any(QueryWrapper.class)))
-                .thenReturn(List.of(Map.of("ordercount", attributedCount + unattributedCount, "orderamount", 120000L, "servicefee", 2300L)))
-                .thenReturn(List.of())
-                .thenReturn(List.of())
-                .thenReturn(List.of());
-        when(orderMapper.selectCount(any(QueryWrapper.class)))
-                .thenReturn(attributedCount)
-                .thenReturn(unattributedCount);
+        when(orderReadFacade.getDashboardAttributionSummary(any(), any(), any()))
+                .thenReturn(new OrderReadFacade.DashboardAttributionSummary(
+                        attributedCount,
+                        unattributedCount,
+                        List.of()));
+        when(orderReadFacade.getDashboardFallbackSummary(any(), any(), any()))
+                .thenReturn(new OrderReadFacade.DashboardFallbackSummary(
+                        attributedCount + unattributedCount,
+                        120000L,
+                        2300L,
+                        List.of(),
+                        List.of()));
     }
 
     private void mockJdbcSequences(List<Map<String, Object>> diagnostics, long total, List<Map<String, Object>> rows) {

@@ -199,21 +199,30 @@ class DashboardShadowCompareTest {
     void dashboardService_getSummary_works_whenShadowServiceIsNull() {
         // This tests that DashboardService works without shadow service injected
         // (the @Autowired(required=false) field remains null)
-        var orderMapper = mock(com.colonel.saas.mapper.ColonelsettlementOrderMapper.class);
+        var orderReadFacade = mock(com.colonel.saas.domain.order.facade.OrderReadFacade.class);
         var jdbc = mock(org.springframework.jdbc.core.JdbcTemplate.class);
         var perf = mock(PerformanceMetricsQueryService.class);
 
         when(perf.hasPerformanceRecords()).thenReturn(false);
-        when(orderMapper.selectMaps(any())).thenReturn(java.util.List.of(
-                java.util.Map.of("ordercount", 5L, "orderamount", 10000L, "servicefee", 200L)));
-        when(orderMapper.selectCount(any())).thenReturn(3L).thenReturn(2L);
+        when(orderReadFacade.getDashboardAttributionSummary(any(), any(), any()))
+                .thenReturn(new com.colonel.saas.domain.order.facade.OrderReadFacade.DashboardAttributionSummary(
+                        3L,
+                        2L,
+                        java.util.List.of()));
+        when(orderReadFacade.getDashboardFallbackSummary(any(), any(), any()))
+                .thenReturn(new com.colonel.saas.domain.order.facade.OrderReadFacade.DashboardFallbackSummary(
+                        5L,
+                        10000L,
+                        200L,
+                        java.util.List.of(),
+                        java.util.List.of()));
         when(jdbc.queryForList(any(), any(Object[].class)))
                 .thenReturn(java.util.List.of())
                 .thenReturn(java.util.List.of(java.util.Map.of("total_count", 0L)))
                 .thenReturn(java.util.List.of());
 
         var dashboardService = new DashboardService(
-                orderMapper,
+                orderReadFacade,
                 jdbc,
                 perf,
                 new com.colonel.saas.domain.user.policy.DataScopePolicy(),
