@@ -5,6 +5,7 @@ import com.colonel.saas.entity.ColonelsettlementOrder;
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -42,6 +43,9 @@ public interface OrderReadFacade {
             LocalDateTime createStart,
             LocalDateTime createEnd,
             int limit);
+
+    /** 按 settleTime 半开区间读取有效订单号，用于只读对账。 */
+    Set<String> findActiveOrderIdsBySettleTimeRange(LocalDateTime settleStart, LocalDateTime settleEnd);
 
     /** 按 createTime 起点分页读取订单事实。 */
     OrderPage findOrdersCreatedSince(LocalDateTime createStart, long pageNo, long pageSize);

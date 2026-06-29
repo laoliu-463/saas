@@ -1,8 +1,6 @@
 package com.colonel.saas.service;
 
-import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
-import com.colonel.saas.entity.ColonelsettlementOrder;
-import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
+import com.colonel.saas.domain.order.facade.OrderReadFacade;
 import com.colonel.saas.service.settlement.SettlementOrderGateway;
 import com.colonel.saas.service.settlement.SettlementOrderPage;
 import com.colonel.saas.service.settlement.SettlementOrderQuery;
@@ -46,13 +44,13 @@ public class Order2704SettlementDryRunService {
     };
 
     private final SettlementOrderGateway multiSettlementGateway;
-    private final ColonelsettlementOrderMapper orderMapper;
+    private final OrderReadFacade orderReadFacade;
 
     public Order2704SettlementDryRunService(
             @Qualifier("multiSettlementOrderFallbackGateway") SettlementOrderGateway multiSettlementGateway,
-            ColonelsettlementOrderMapper orderMapper) {
+            OrderReadFacade orderReadFacade) {
         this.multiSettlementGateway = multiSettlementGateway;
-        this.orderMapper = orderMapper;
+        this.orderReadFacade = orderReadFacade;
     }
 
     public DryRunResult dryRun(DryRunRequest request) {
@@ -232,28 +230,14 @@ public class Order2704SettlementDryRunService {
     }
 
     private Set<String> loadLocalOrderIds(DryRunRequest request, List<String> warnings) {
-        QueryWrapper<ColonelsettlementOrder> wrapper = new QueryWrapper<>();
-        wrapper.select("order_id")
-                .eq("deleted", 0)
-                .ge("settle_time", parseDateTime(request.startTime(), "startTime"))
-                .lt("settle_time", parseDateTime(request.endTime(), "endTime"));
-        List<ColonelsettlementOrder> rows;
         try {
-            rows = orderMapper.selectList(wrapper);
+            return orderReadFacade.findActiveOrderIdsBySettleTimeRange(
+                    parseDateTime(request.startTime(), "startTime"),
+                    parseDateTime(request.endTime(), "endTime"));
         } catch (RuntimeException ex) {
             warnings.add("local diff skipped: " + ex.getMessage());
             return Set.of();
         }
-        if (rows == null || rows.isEmpty()) {
-            return Set.of();
-        }
-        Set<String> result = new LinkedHashSet<>();
-        for (ColonelsettlementOrder row : rows) {
-            if (row != null && StringUtils.hasText(row.getOrderId())) {
-                result.add(row.getOrderId());
-            }
-        }
-        return result;
     }
 
     private List<String> difference(Set<String> source, Set<String> target, int limit) {

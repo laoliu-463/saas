@@ -20,6 +20,3 @@ com.colonel.saas.service.data.DataApplicationService|ColonelsettlementActivityMa
 com.colonel.saas.service.data.DataApplicationService|ColonelsettlementOrderMapper
 com.colonel.saas.service.data.DataApplicationService|ExclusiveMerchantMapper
 com.colonel.saas.service.data.DataApplicationService|ExclusiveTalentMapper
-# SETTLEMENT-EXPENSE-2026-06-12: 2704 dry-run probe is read-only; only used for local order diff in diff mode.
-# Replace with OrderDiffPort under DDD-SETTLEMENT when settlement sync moves to DDD facade layer.
-com.colonel.saas.service.Order2704SettlementDryRunService|ColonelsettlementOrderMapper

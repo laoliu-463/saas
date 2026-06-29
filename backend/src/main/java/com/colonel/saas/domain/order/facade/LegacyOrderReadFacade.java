@@ -1,6 +1,7 @@
 package com.colonel.saas.domain.order.facade;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
@@ -10,7 +11,9 @@ import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -125,6 +128,29 @@ public class LegacyOrderReadFacade implements OrderReadFacade {
                 .isNull(ColonelsettlementOrder::getSettleTime)
                 .orderByDesc(ColonelsettlementOrder::getCreateTime)
                 .last("LIMIT " + safeLimit));
+    }
+
+    @Override
+    public Set<String> findActiveOrderIdsBySettleTimeRange(LocalDateTime settleStart, LocalDateTime settleEnd) {
+        if (settleStart == null || settleEnd == null) {
+            return Set.of();
+        }
+        QueryWrapper<ColonelsettlementOrder> wrapper = new QueryWrapper<>();
+        wrapper.select("order_id")
+                .eq("deleted", 0)
+                .ge("settle_time", settleStart)
+                .lt("settle_time", settleEnd);
+        List<ColonelsettlementOrder> rows = orderMapper.selectList(wrapper);
+        if (rows == null || rows.isEmpty()) {
+            return Set.of();
+        }
+        Set<String> result = new LinkedHashSet<>();
+        for (ColonelsettlementOrder row : rows) {
+            if (row != null && StringUtils.hasText(row.getOrderId())) {
+                result.add(row.getOrderId());
+            }
+        }
+        return result;
     }
 
     @Override

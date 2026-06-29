@@ -1,7 +1,6 @@
 package com.colonel.saas.service;
 
-import com.colonel.saas.entity.ColonelsettlementOrder;
-import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
+import com.colonel.saas.domain.order.facade.OrderReadFacade;
 import com.colonel.saas.service.settlement.SettlementOrderGateway;
 import com.colonel.saas.service.settlement.SettlementOrderPage;
 import com.colonel.saas.service.settlement.SettlementOrderQuery;
@@ -16,10 +15,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -33,13 +32,13 @@ class Order2704SettlementDryRunServiceTest {
     private SettlementOrderGateway multiSettlementGateway;
 
     @Mock
-    private ColonelsettlementOrderMapper orderMapper;
+    private OrderReadFacade orderReadFacade;
 
     private Order2704SettlementDryRunService service;
 
     @BeforeEach
     void setUp() {
-        service = new Order2704SettlementDryRunService(multiSettlementGateway, orderMapper);
+        service = new Order2704SettlementDryRunService(multiSettlementGateway, orderReadFacade);
     }
 
     @Test
@@ -49,11 +48,8 @@ class Order2704SettlementDryRunServiceTest {
                         page(List.of(order("ORDER-1", 1000L, 20L, 2L, 3L)), "cursor-2", false),
                         page(List.of(order("ORDER-2", 2000L, 40L, 4L, 6L)), "0", false)
                 );
-        ColonelsettlementOrder localOnly = new ColonelsettlementOrder();
-        localOnly.setOrderId("ORDER-LOCAL");
-        ColonelsettlementOrder localMatched = new ColonelsettlementOrder();
-        localMatched.setOrderId("ORDER-1");
-        when(orderMapper.selectList(any())).thenReturn(List.of(localOnly, localMatched));
+        when(orderReadFacade.findActiveOrderIdsBySettleTimeRange(any(), any()))
+                .thenReturn(Set.of("ORDER-LOCAL", "ORDER-1"));
 
         Order2704SettlementDryRunService.DryRunResult result = service.dryRun(request());
 
@@ -79,9 +75,7 @@ class Order2704SettlementDryRunServiceTest {
         assertThat(captor.getAllValues().get(0).timeType()).isEqualTo("settle");
         assertThat(captor.getAllValues().get(0).writeEnabled()).isFalse();
         assertThat(captor.getAllValues().get(1).cursor()).isEqualTo("cursor-2");
-        verify(orderMapper, never()).insert(any());
-        verify(orderMapper, never()).insertIgnoreByOrderId(any());
-        verify(orderMapper, never()).updateSyncedById(any());
+        verify(orderReadFacade).findActiveOrderIdsBySettleTimeRange(any(), any());
     }
 
     @Test
@@ -91,7 +85,7 @@ class Order2704SettlementDryRunServiceTest {
                         page(List.of(order("ORDER-1", 1000L, 20L, 2L, 0L)), "cursor-2", false),
                         page(List.of(order("ORDER-2", 2000L, 40L, 4L, 0L)), "cursor-2", false)
                 );
-        when(orderMapper.selectList(any())).thenReturn(List.of());
+        when(orderReadFacade.findActiveOrderIdsBySettleTimeRange(any(), any())).thenReturn(Set.of());
 
         Order2704SettlementDryRunService.DryRunResult result = service.dryRun(request());
 

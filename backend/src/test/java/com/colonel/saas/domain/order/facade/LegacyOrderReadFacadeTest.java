@@ -86,6 +86,18 @@ class LegacyOrderReadFacadeTest {
     }
 
     @Test
+    void findActiveOrderIdsBySettleTimeRange_shouldReturnNonBlankOrderIds() {
+        ColonelsettlementOrder blank = order(" ");
+        when(orderMapper.selectList(any())).thenReturn(List.of(order("ORD-LOCAL"), blank, order("ORD-1")));
+
+        assertThat(facade.findActiveOrderIdsBySettleTimeRange(
+                LocalDateTime.of(2026, 6, 12, 0, 0),
+                LocalDateTime.of(2026, 6, 13, 0, 0)))
+                .containsExactly("ORD-LOCAL", "ORD-1");
+        verify(orderMapper).selectList(any());
+    }
+
+    @Test
     void findOrdersSettledSince_shouldDelegateToMapperWithScopeFilters() {
         ColonelsettlementOrder order = order("ORD-4");
         Page<ColonelsettlementOrder> page = new Page<>(1, 2000, 1);
