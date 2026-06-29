@@ -1,0 +1,24 @@
+{
+  "items": [
+    { "path": "harness/reports/retro-20260628-185113.md", "action": "archive", "category": "report-overflow", "reason": "keep harness/reports under 50 files before continuing DDD cross-domain mapper cleanup" },
+    { "path": "harness/reports/evidence-20260628-190112.md", "action": "archive", "category": "report-overflow", "reason": "keep harness/reports under 50 files before continuing DDD cross-domain mapper cleanup" },
+    { "path": "harness/reports/retro-20260628-190149.md", "action": "archive", "category": "report-overflow", "reason": "keep harness/reports under 50 files before continuing DDD cross-domain mapper cleanup" },
+    { "path": "harness/reports/evidence-20260628-190526.md", "action": "archive", "category": "report-overflow", "reason": "keep harness/reports under 50 files before continuing DDD cross-domain mapper cleanup" },
+    { "path": "harness/reports/retro-20260628-190546.md", "action": "archive", "category": "report-overflow", "reason": "keep harness/reports under 50 files before continuing DDD cross-domain mapper cleanup" },
+    { "path": "harness/reports/evidence-20260628-190620.md", "action": "archive", "category": "report-overflow", "reason": "keep harness/reports under 50 files before continuing DDD cross-domain mapper cleanup" },
+    { "path": "harness/reports/retro-20260628-190646.md", "action": "archive", "category": "report-overflow", "reason": "keep harness/reports under 50 files before continuing DDD cross-domain mapper cleanup" },
+    { "path": "harness/reports/evidence-20260628-191025.md", "action": "archive", "category": "report-overflow", "reason": "keep harness/reports under 50 files before continuing DDD cross-domain mapper cleanup" },
+    { "path": "harness/reports/retro-20260628-191048.md", "action": "archive", "category": "report-overflow", "reason": "keep harness/reports under 50 files before continuing DDD cross-domain mapper cleanup" },
+    { "path": "harness/reports/evidence-20260628-191650.md", "action": "archive", "category": "report-overflow", "reason": "keep harness/reports under 50 files before continuing DDD cross-domain mapper cleanup" },
+    { "path": "harness/reports/retro-20260628-191710.md", "action": "archive", "category": "report-overflow", "reason": "keep harness/reports under 50 files before continuing DDD cross-domain mapper cleanup" },
+    { "path": "harness/reports/content-retire-20260628-191809.md", "action": "archive", "category": "report-overflow", "reason": "keep harness/reports under 50 files before continuing DDD cross-domain mapper cleanup" },
+    { "path": "harness/reports/evidence-20260628-191809.md", "action": "archive", "category": "report-overflow", "reason": "keep harness/reports under 50 files before continuing DDD cross-domain mapper cleanup" },
+    { "path": "harness/reports/retro-20260628-191832.md", "action": "archive", "category": "report-overflow", "reason": "keep harness/reports under 50 files before continuing DDD cross-domain mapper cleanup" },
+    { "path": "harness/reports/content-retire-20260628-192922.md", "action": "archive", "category": "report-overflow", "reason": "keep harness/reports under 50 files before continuing DDD cross-domain mapper cleanup" },
+    { "path": "harness/reports/evidence-20260628-192922.md", "action": "archive", "category": "report-overflow", "reason": "keep harness/reports under 50 files before continuing DDD cross-domain mapper cleanup" },
+    { "path": "harness/reports/retro-20260628-193126.md", "action": "archive", "category": "report-overflow", "reason": "keep harness/reports under 50 files before continuing DDD cross-domain mapper cleanup" },
+    { "path": "harness/reports/evidence-20260628-194334.md", "action": "archive", "category": "report-overflow", "reason": "keep harness/reports under 50 files before continuing DDD cross-domain mapper cleanup" },
+    { "path": "harness/reports/retro-20260628-194407.md", "action": "archive", "category": "report-overflow", "reason": "keep harness/reports under 50 files before continuing DDD cross-domain mapper cleanup" },
+    { "path": "harness/reports/content-retire-20260628-195441.md", "action": "archive", "category": "report-overflow", "reason": "keep harness/reports under 50 files before continuing DDD cross-domain mapper cleanup" }
+  ]
+}
