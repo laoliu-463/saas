@@ -13,6 +13,7 @@ import com.colonel.saas.domain.talent.application.TalentClaimApplicationService;
 import com.colonel.saas.domain.order.facade.OrderReadFacade;
 import com.colonel.saas.domain.sample.facade.SampleDomainFacade;
 import com.colonel.saas.domain.user.facade.dto.UserOwnershipReference;
+import com.colonel.saas.domain.talent.application.TalentPoolApplicationService;
 import com.colonel.saas.domain.talent.application.TalentProfileApplicationService;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.domain.user.policy.DataScopePolicy;
@@ -113,6 +114,7 @@ class TalentServiceTest {
                 businessRuleConfigService,
                 newTalentProfileApplicationService(),
                 newTalentBatchImportApplicationService(),
+                newTalentPoolApplicationService(),
                 newTalentClaimApplicationService(),
                 operationLogService,
                 userDomainFacade,
@@ -867,6 +869,7 @@ class TalentServiceTest {
                 businessRuleConfigService,
                 newTalentProfileApplicationService(),
                 newTalentBatchImportApplicationService(),
+                newTalentPoolApplicationService(),
                 newTalentClaimApplicationService(),
                 operationLogService,
                 userDomainFacade,
@@ -1362,6 +1365,7 @@ class TalentServiceTest {
                 businessRuleConfigService,
                 newTalentProfileApplicationService(),
                 newTalentBatchImportApplicationService(),
+                newTalentPoolApplicationService(),
                 newTalentClaimApplicationService(dataScopePolicy, properties),
                 operationLogService,
                 userDomainFacade,
@@ -1386,6 +1390,10 @@ class TalentServiceTest {
                 talentMapper,
                 newTalentProfileApplicationService(),
                 operationLogService);
+    }
+
+    private TalentPoolApplicationService newTalentPoolApplicationService() {
+        return new TalentPoolApplicationService(talentMapper, talentClaimMapper);
     }
 
     private TalentClaimApplicationService newTalentClaimApplicationService() {

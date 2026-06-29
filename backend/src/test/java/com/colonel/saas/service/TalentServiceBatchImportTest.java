@@ -7,6 +7,7 @@ import com.colonel.saas.domain.order.facade.OrderReadFacade;
 import com.colonel.saas.domain.sample.facade.SampleDomainFacade;
 import com.colonel.saas.domain.talent.application.TalentBatchImportApplicationService;
 import com.colonel.saas.domain.talent.application.TalentClaimApplicationService;
+import com.colonel.saas.domain.talent.application.TalentPoolApplicationService;
 import com.colonel.saas.domain.talent.application.TalentProfileApplicationService;
 import com.colonel.saas.entity.Talent;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
@@ -93,6 +94,7 @@ class TalentServiceBatchImportTest {
                                 businessRuleConfigService,
                                 false),
                         operationLogService),
+                new TalentPoolApplicationService(talentMapper, talentClaimMapper),
                 new TalentClaimApplicationService(
                         talentClaimMapper,
                         talentMapper,
