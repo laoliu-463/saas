@@ -7,6 +7,11 @@
 
 ## 最近版本摘要
 
+### v0.8.3 — 2026-06-29
+- DDD-VERIFY-001 活动商品 backfill 持久化幂等切片：async 请求将 `asyncIdempotencyKey` 写入 job metadata，并在排队前查询 `product_sync_job_log` 中已有 RUNNING job，跨服务实例 / 重启窗口内重复点击返回已有 jobId。
+- Targeted tests、Product 全集合、compile/package 和 real-pre backend health 通过；架构测试仍为 5 个既有 order/user 红线失败，全量 `mvn test` 304 秒超时且暴露本地 `postgres` DNS 依赖，本轮 evidence 结论为 PARTIAL。
+- 证据：`harness/reports/evidence-20260629-115357.md`；retro：`harness/reports/retro-20260629-115133.md`。
+
 ### v0.8.2 — 2026-06-28
 - DDD-VERIFY-001 活动商品 backfill 幂等切片：新增 `ProductBackfillJobPolicy` 承接 jobId、任务状态与 stopReason 分类规则，`ProductActivityBackfillService.backfillAsync` 对同一请求运行中重复点击返回已有 RUNNING jobId，不再插入第二条 job log 或排第二个后台任务。
 - Targeted tests、Product 全集合、compile/package 和 real-pre backend health 通过；架构/全量仍为 5 个既有红线失败，本轮 evidence 结论为 PARTIAL。

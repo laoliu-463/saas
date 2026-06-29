@@ -45,6 +45,35 @@ class ProductBackfillJobMetadataTest {
     }
 
     @Test
+    void startedWithAsyncIdempotencyKey_shouldPreserveKeyThroughProgressAndFinished() {
+        LocalDateTime startedAt = LocalDateTime.of(2026, 6, 28, 21, 30);
+        String started = metadata.started(
+                "{\"scope\":\"CUSTOM_ACTIVITY_IDS\"}",
+                "async-key-1",
+                startedAt);
+
+        assertThat(metadata.read(started))
+                .containsEntry("scope", "CUSTOM_ACTIVITY_IDS")
+                .containsEntry("asyncIdempotencyKey", "async-key-1");
+
+        String progress = metadata.progress(
+                started,
+                "ACT-1",
+                startedAt.plusMinutes(1));
+        assertThat(metadata.read(progress))
+                .containsEntry("asyncIdempotencyKey", "async-key-1")
+                .containsEntry("currentActivityId", "ACT-1");
+
+        String finished = metadata.finished(
+                progress,
+                new ProductBackfillJobMetadata.FinishMetrics(1L, 2L, 3L, 4L),
+                startedAt.plusMinutes(2));
+        assertThat(metadata.read(finished))
+                .containsEntry("asyncIdempotencyKey", "async-key-1")
+                .containsEntry("currentActivityId", "");
+    }
+
+    @Test
     void progress_shouldKeepOriginalValueWhenMetadataJsonIsInvalid() {
         String invalid = "{not-json";
 

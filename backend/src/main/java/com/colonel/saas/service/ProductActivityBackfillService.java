@@ -159,6 +159,12 @@ public class ProductActivityBackfillService {
     public BackfillAsyncResponse backfillAsync(BackfillRequest request, UUID requestedBy) {
         NormalizedRequest normalized = normalizeAndValidate(request);
         String idempotencyKey = backfillJobPolicy.asyncIdempotencyKey(toBackfillRequestIdentity(normalized, requestedBy));
+        ProductSyncJobLog existingRunning = jobLogMapper.selectLatestRunningByAsyncIdempotencyKey(idempotencyKey);
+        if (existingRunning != null && StringUtils.hasText(existingRunning.getJobId())) {
+            log.info("ProductActivityBackfillService duplicate async request found in job log, existingJobId={}",
+                    existingRunning.getJobId());
+            return new BackfillAsyncResponse(existingRunning.getJobId(), ProductBackfillJobPolicy.STATUS_RUNNING);
+        }
         String jobId = backfillJobPolicy.newJobId(UUID.randomUUID());
         String existingJobId = runningAsyncJobIds.putIfAbsent(idempotencyKey, jobId);
         if (existingJobId != null) {
@@ -167,7 +173,7 @@ public class ProductActivityBackfillService {
         }
         ProductSyncJobLog jobLog;
         try {
-            jobLog = startJob(jobId, normalized, requestedBy);
+            jobLog = startJob(jobId, normalized, requestedBy, idempotencyKey);
         } catch (RuntimeException ex) {
             runningAsyncJobIds.remove(idempotencyKey, jobId);
             throw ex;
@@ -1148,6 +1154,14 @@ public class ProductActivityBackfillService {
     }
 
     private ProductSyncJobLog startJob(String jobId, NormalizedRequest request, UUID requestedBy) {
+        return startJob(jobId, request, requestedBy, null);
+    }
+
+    private ProductSyncJobLog startJob(
+            String jobId,
+            NormalizedRequest request,
+            UUID requestedBy,
+            String asyncIdempotencyKey) {
         ProductSyncJobLog log = new ProductSyncJobLog();
         LocalDateTime now = LocalDateTime.now();
         log.setId(UUID.randomUUID());
@@ -1157,7 +1171,7 @@ public class ProductActivityBackfillService {
         log.setDryRun(request.dryRun());
         log.setStatus("RUNNING");
         log.setRequestedBy(requestedBy);
-        log.setRequestParamsJson(backfillJobMetadata.started(toJson(request), now));
+        log.setRequestParamsJson(backfillJobMetadata.started(toJson(request), asyncIdempotencyKey, now));
         log.setStartedAt(now);
         log.setCreateTime(now);
         log.setUpdateTime(now);

@@ -55,4 +55,19 @@ public interface ProductSyncJobLogMapper extends BaseMapper<ProductSyncJobLog> {
             LIMIT 1
             """)
     ProductSyncJobLog selectLatestByJobId(@Param("jobId") String jobId);
+
+    /**
+     * 按 async 幂等 key 查找仍在运行的活动商品 backfill job。
+     */
+    @Select("""
+            SELECT * FROM product_sync_job_log
+            WHERE deleted = 0
+              AND job_type = 'sync_activity_product_full_backfill'
+              AND status = 'RUNNING'
+              AND request_params_json LIKE CONCAT('%\"asyncIdempotencyKey\":\"', #{asyncIdempotencyKey}, '\"%')
+            ORDER BY create_time DESC
+            LIMIT 1
+            """)
+    ProductSyncJobLog selectLatestRunningByAsyncIdempotencyKey(
+            @Param("asyncIdempotencyKey") String asyncIdempotencyKey);
 }

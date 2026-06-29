@@ -332,6 +332,48 @@ class ProductActivityBackfillServiceTest {
         verify(jobLogMapper, times(2)).insert(any(ProductSyncJobLog.class));
     }
 
+    @Test
+    void backfillAsync_existingRunningJobInLogShouldReturnExistingJobWithoutQueueingNewTask() {
+        List<Runnable> queuedTasks = new ArrayList<>();
+        service = new ProductActivityBackfillService(
+                dryRunProbeService,
+                productService,
+                activityMapper,
+                snapshotMapper,
+                jobLogMapper,
+                syncStateMapper,
+                jobLockService,
+                productDisplayRuleService,
+                douyinProductGateway,
+                queuedTasks::add,
+                transactionManager);
+        ProductSyncJobLog existing = new ProductSyncJobLog();
+        existing.setJobId("product-backfill-existing-running");
+        existing.setStatus("RUNNING");
+        when(jobLogMapper.selectLatestRunningByAsyncIdempotencyKey(any()))
+                .thenReturn(existing);
+
+        ProductActivityBackfillService.BackfillAsyncResponse response =
+                service.backfillAsync(
+                        new ProductActivityBackfillService.BackfillRequest(
+                                "CUSTOM_ACTIVITY_IDS",
+                                List.of("3859423"),
+                                20,
+                                50,
+                                1000,
+                                50_000,
+                                true,
+                                false,
+                                "DEFERRED"),
+                        UUID.randomUUID());
+
+        assertThat(response.jobId()).isEqualTo("product-backfill-existing-running");
+        assertThat(response.status()).isEqualTo("RUNNING");
+        assertThat(queuedTasks).isEmpty();
+        verify(jobLogMapper, never()).insert(any(ProductSyncJobLog.class));
+        verify(dryRunProbeService, never()).fullDryRun(any(), any());
+    }
+
     private ProductActivityBackfillService.BackfillRequest realRequest(List<String> activityIds) {
         return new ProductActivityBackfillService.BackfillRequest(
                 "CUSTOM_ACTIVITY_IDS",

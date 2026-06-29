@@ -27,6 +27,14 @@ public class ProductBackfillJobMetadata {
                 "estimatedGapRows", 0L));
     }
 
+    public String started(String requestJson, String asyncIdempotencyKey, LocalDateTime now) {
+        String started = started(requestJson, now);
+        if (asyncIdempotencyKey == null || asyncIdempotencyKey.isBlank()) {
+            return started;
+        }
+        return merge(started, Map.of("asyncIdempotencyKey", asyncIdempotencyKey));
+    }
+
     public String progress(String requestJson, String currentActivityId, LocalDateTime now) {
         return merge(requestJson, Map.of(
                 "currentActivityId", currentActivityId == null ? "" : currentActivityId,
