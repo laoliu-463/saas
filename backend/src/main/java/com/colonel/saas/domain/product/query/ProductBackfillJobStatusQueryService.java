@@ -37,7 +37,7 @@ public class ProductBackfillJobStatusQueryService {
                 snapshot.status(),
                 Boolean.TRUE.equals(snapshot.dryRun()),
                 snapshot.scope(),
-                intOrZero(snapshot.activitiesScanned()),
+                activityCount(snapshot.activitiesScanned(), requestMeta),
                 intOrZero(snapshot.activitiesSuccess()),
                 intOrZero(snapshot.activitiesIncomplete()),
                 intOrZero(snapshot.activitiesFailed()),
@@ -102,6 +102,18 @@ public class ProductBackfillJobStatusQueryService {
 
     private int intOrZero(Integer value) {
         return value == null ? 0 : value;
+    }
+
+    private int activityCount(Integer snapshotCount, Map<String, Object> requestMeta) {
+        int value = intOrZero(snapshotCount);
+        if (value > 0) {
+            return value;
+        }
+        long metadataTotal = metadata.longValue(requestMeta, "activitiesTotal");
+        if (metadataTotal <= 0L) {
+            return 0;
+        }
+        return metadataTotal > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) metadataTotal;
     }
 
     private long longOrZero(Long value) {

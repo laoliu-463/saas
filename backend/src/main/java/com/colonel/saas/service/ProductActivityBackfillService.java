@@ -345,8 +345,9 @@ public class ProductActivityBackfillService {
             List<String> sortedActivityIds = new ArrayList<>(activityIds);
             sortedActivityIds.sort(Comparator.naturalOrder());
 
-            for (String activityId : sortedActivityIds) {
-                jobLog = updateProgressMetadata(jobLog, activityId);
+            for (int index = 0; index < sortedActivityIds.size(); index++) {
+                String activityId = sortedActivityIds.get(index);
+                jobLog = updateProgressMetadata(jobLog, activityId, sortedActivityIds.size(), index);
                 String activityLockKey = JobLockKeys.productBackfillActivityLock(activityId);
                 if (!jobLockService.tryAcquire(activityLockKey, BACKFILL_LOCK_TTL)) {
                     totalLockWaitCount++;
@@ -1013,6 +1014,22 @@ public class ProductActivityBackfillService {
         log.setRequestParamsJson(backfillJobMetadata.progress(
                 log.getRequestParamsJson(),
                 currentActivityId,
+                LocalDateTime.now()));
+        log.setUpdateTime(LocalDateTime.now());
+        jobLogMapper.updateById(log);
+        return log;
+    }
+
+    private ProductSyncJobLog updateProgressMetadata(
+            ProductSyncJobLog log,
+            String currentActivityId,
+            int activitiesTotal,
+            int activitiesProcessed) {
+        log.setRequestParamsJson(backfillJobMetadata.progress(
+                log.getRequestParamsJson(),
+                currentActivityId,
+                activitiesTotal,
+                activitiesProcessed,
                 LocalDateTime.now()));
         log.setUpdateTime(LocalDateTime.now());
         jobLogMapper.updateById(log);

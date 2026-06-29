@@ -7,6 +7,11 @@
 
 ## 最近版本摘要
 
+### v0.8.8 — 2026-06-29
+- DDD-VERIFY-001 活动商品 backfill RUNNING 进度可见性切片：`ProductActivityBackfillService` 在真实 backfill 按活动排序执行时，把 `activitiesTotal` / `activitiesProcessed` 与 `currentActivityId` 写入 job metadata；`ProductBackfillJobStatusQueryService` 在 snapshot 计数未完成时用 metadata total 展示 `activitiesScanned`，API、DB schema、状态枚举、confirm/dryRun、锁 key 和真实同步入口均不变。
+- RED/GREEN progress/status parity 15 tests、backfill 组合 32 tests、Product 全集合 345 tests、compile/package 和 real-pre backend/frontend health 通过；全量 `mvn test` 2733 tests / 5 failures / 3 skipped，失败仍为既有 order/user 架构红线，本轮 evidence 结论为 PARTIAL。
+- 证据：`harness/reports/evidence-20260629-153211.md`；latest：`harness/reports/latest-evidence-20260629.md`；retro：`harness/reports/retro-20260629-153219.md`。
+
 ### v0.8.7 — 2026-06-29
 - DDD-VERIFY-001 活动商品 backfill checkpoint 持久化切片：`ProductActivityBackfillService` 在分页拉取第 N 页失败时，把最后成功页 `last_page`、下一页游标 `last_cursor`、已落库行数和上游异常摘要写入 `product_activity_sync_state`，API、DB schema、状态枚举、confirm/dryRun、锁 key 和真实同步入口均不变。
 - RED/GREEN page-2 failure parity test、backfill/job/policy 组合 30 tests、Product 全集合 343 tests、compile/package 和 real-pre backend/frontend health 通过；安全业务探针仅访问 job status 未授权接口并返回 401，未触发真实 backfill；架构测试和全量 `mvn test` 均仍为 5 个既有 order/user 红线失败（全量汇总 2731 tests / 5 failures / 3 skipped，命令包装器 420s 超时），本轮 evidence 结论为 PARTIAL。

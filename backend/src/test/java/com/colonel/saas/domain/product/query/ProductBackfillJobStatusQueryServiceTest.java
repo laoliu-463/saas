@@ -70,6 +70,36 @@ class ProductBackfillJobStatusQueryServiceTest {
     }
 
     @Test
+    void getJobStatus_shouldUseRunningMetadataTotalWhenSnapshotCountIsNotFinished() {
+        repository.result = Optional.of(new ProductBackfillJobStatusSnapshot(
+                "job-running",
+                "RUNNING",
+                false,
+                "CUSTOM_ACTIVITY_IDS",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                "{\"currentActivityId\":\"ACT-2\",\"activitiesTotal\":5,\"activitiesProcessed\":3,"
+                        + "\"lastProgressAt\":\"2026-06-29T15:00:00\"}",
+                null,
+                LocalDateTime.of(2026, 6, 29, 14, 59),
+                null));
+
+        ProductBackfillJobStatusView status = service.getJobStatus("job-running");
+
+        assertThat(status.activitiesScanned()).isEqualTo(5);
+        assertThat(status.currentActivityId()).isEqualTo("ACT-2");
+        assertThat(status.lastProgressAt()).isEqualTo("2026-06-29T15:00:00");
+    }
+
+    @Test
     void getJobStatus_shouldRejectBlankJobId() {
         assertThatThrownBy(() -> service.getJobStatus(" "))
                 .isInstanceOf(BusinessException.class)

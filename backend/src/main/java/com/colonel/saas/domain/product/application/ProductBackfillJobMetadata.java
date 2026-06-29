@@ -24,7 +24,9 @@ public class ProductBackfillJobMetadata {
                 "lockWaitCount", 0L,
                 "deadlockRetryCount", 0L,
                 "dbRowsBefore", 0L,
-                "estimatedGapRows", 0L));
+                "estimatedGapRows", 0L,
+                "activitiesTotal", 0,
+                "activitiesProcessed", 0));
     }
 
     public String started(String requestJson, String asyncIdempotencyKey, LocalDateTime now) {
@@ -39,6 +41,24 @@ public class ProductBackfillJobMetadata {
         return merge(requestJson, Map.of(
                 "currentActivityId", currentActivityId == null ? "" : currentActivityId,
                 "lastProgressAt", now.toString()));
+    }
+
+    public String progress(
+            String requestJson,
+            String currentActivityId,
+            int activitiesTotal,
+            int activitiesProcessed,
+            LocalDateTime now) {
+        int safeTotal = Math.max(0, activitiesTotal);
+        int safeProcessed = Math.max(0, activitiesProcessed);
+        if (safeTotal > 0) {
+            safeProcessed = Math.min(safeProcessed, safeTotal);
+        }
+        return merge(requestJson, Map.of(
+                "currentActivityId", currentActivityId == null ? "" : currentActivityId,
+                "lastProgressAt", now.toString(),
+                "activitiesTotal", safeTotal,
+                "activitiesProcessed", safeProcessed));
     }
 
     public String retryProgress(

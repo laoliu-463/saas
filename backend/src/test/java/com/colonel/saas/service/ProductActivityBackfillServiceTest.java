@@ -1,5 +1,7 @@
 package com.colonel.saas.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.entity.ProductActivitySyncState;
 import com.colonel.saas.entity.ProductSyncJobLog;
@@ -37,6 +39,8 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class ProductActivityBackfillServiceTest {
+
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     @Mock private ProductSyncDryRunProbeService dryRunProbeService;
     @Mock private ProductService productService;
@@ -194,6 +198,37 @@ class ProductActivityBackfillServiceTest {
         assertThat(state.getLastFetchedRows()).isEqualTo(1L);
         assertThat(state.getLastInserted()).isEqualTo(1);
         assertThat(state.getLastErrorMessage()).contains("upstream 500 on page 2");
+    }
+
+    @Test
+    void backfill_realRunProgressMetadataShouldRecordTotalAndProcessedActivities() throws Exception {
+        when(activityMapper.selectActivityIdsForProductSyncProbe(eq("CUSTOM"), anyInt(), any(), eq(List.of("ACT-2", "ACT-1"))))
+                .thenReturn(List.of("ACT-2", "ACT-1"));
+        when(snapshotMapper.countActiveRowsByActivityIds(List.of("ACT-2", "ACT-1"))).thenReturn(0L);
+        when(jobLockService.tryAcquire(any(), any())).thenReturn(true);
+        when(douyinProductGateway.queryActivityProducts(any()))
+                .thenReturn(new DouyinProductGateway.ActivityProductListResult(
+                        false,
+                        3859423L,
+                        1L,
+                        0L,
+                        null,
+                        List.of()));
+        List<String> jobMetadataUpdates = new ArrayList<>();
+        org.mockito.Mockito.doAnswer(invocation -> {
+            ProductSyncJobLog log = invocation.getArgument(0);
+            jobMetadataUpdates.add(log.getRequestParamsJson());
+            return 1;
+        }).when(jobLogMapper).updateById(any(ProductSyncJobLog.class));
+
+        service.backfill(realRequest(List.of("ACT-2", "ACT-1")), UUID.randomUUID());
+
+        JsonNode firstActivity = metadataForActivity(jobMetadataUpdates, "ACT-1");
+        assertThat(firstActivity.path("activitiesTotal").asInt()).isEqualTo(2);
+        assertThat(firstActivity.path("activitiesProcessed").asInt()).isZero();
+        JsonNode secondActivity = metadataForActivity(jobMetadataUpdates, "ACT-2");
+        assertThat(secondActivity.path("activitiesTotal").asInt()).isEqualTo(2);
+        assertThat(secondActivity.path("activitiesProcessed").asInt()).isEqualTo(1);
     }
 
     @Test
@@ -422,6 +457,16 @@ class ProductActivityBackfillServiceTest {
                 false,
                 true,
                 "DEFERRED");
+    }
+
+    private static JsonNode metadataForActivity(List<String> jobMetadataUpdates, String activityId) throws Exception {
+        for (String metadata : jobMetadataUpdates) {
+            JsonNode node = OBJECT_MAPPER.readTree(metadata);
+            if (activityId.equals(node.path("currentActivityId").asText())) {
+                return node;
+            }
+        }
+        throw new AssertionError("No metadata update found for activity " + activityId);
     }
 
     private DouyinProductGateway.ActivityProductItem productItem(long productId) {
