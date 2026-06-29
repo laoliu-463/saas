@@ -232,6 +232,74 @@ class ProductActivityBackfillServiceTest {
     }
 
     @Test
+    void backfill_customDryRunProgressMetadataShouldRecordTotalAndProcessedActivities() throws Exception {
+        List<String> insertedMetadata = new ArrayList<>();
+        List<String> jobMetadataUpdates = new ArrayList<>();
+        org.mockito.Mockito.doAnswer(invocation -> {
+            ProductSyncJobLog log = invocation.getArgument(0);
+            insertedMetadata.add(log.getRequestParamsJson());
+            return 1;
+        }).when(jobLogMapper).insert(any(ProductSyncJobLog.class));
+        org.mockito.Mockito.doAnswer(invocation -> {
+            ProductSyncJobLog log = invocation.getArgument(0);
+            jobMetadataUpdates.add(log.getRequestParamsJson());
+            return 1;
+        }).when(jobLogMapper).updateById(any(ProductSyncJobLog.class));
+        ProductSyncDryRunProbeService.ActivityDryRunResult first = dryRunActivity("ACT-1");
+        ProductSyncDryRunProbeService.ActivityDryRunResult second = dryRunActivity("ACT-2");
+        when(dryRunProbeService.fullDryRun(any(), any()))
+                .thenAnswer(invocation -> {
+                    @SuppressWarnings("unchecked")
+                    java.util.function.BiConsumer<Integer, ProductSyncDryRunProbeService.ActivityDryRunResult> callback =
+                            invocation.getArgument(1);
+                    callback.accept(1, first);
+                    callback.accept(2, second);
+                    return new ProductSyncDryRunProbeService.FullDryRunResult(
+                            true,
+                            "CUSTOM_ACTIVITY_IDS",
+                            2,
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                            2,
+                            0,
+                            0,
+                            Map.of("DONE_NO_MORE", 2L),
+                            List.of(first, second),
+                            List.of(first, second),
+                            List.of(),
+                            List.of(first, second));
+                });
+
+        service.backfill(
+                new ProductActivityBackfillService.BackfillRequest(
+                        "CUSTOM_ACTIVITY_IDS",
+                        List.of("ACT-1", "ACT-2"),
+                        20,
+                        50,
+                        1000,
+                        50_000,
+                        true,
+                        false,
+                        "DEFERRED"),
+                UUID.randomUUID());
+
+        JsonNode startMetadata = OBJECT_MAPPER.readTree(insertedMetadata.get(0));
+        assertThat(startMetadata.path("activitiesTotal").asInt()).isEqualTo(2);
+        assertThat(startMetadata.path("activitiesProcessed").asInt()).isZero();
+        JsonNode firstActivity = metadataForActivity(jobMetadataUpdates, "ACT-1");
+        assertThat(firstActivity.path("activitiesTotal").asInt()).isEqualTo(2);
+        assertThat(firstActivity.path("activitiesProcessed").asInt()).isZero();
+        JsonNode secondActivity = metadataForActivity(jobMetadataUpdates, "ACT-2");
+        assertThat(secondActivity.path("activitiesTotal").asInt()).isEqualTo(2);
+        assertThat(secondActivity.path("activitiesProcessed").asInt()).isEqualTo(1);
+    }
+
+    @Test
     void backfill_realRunShouldRequireConfirm() {
         assertThatThrownBy(() -> service.backfill(
                 new ProductActivityBackfillService.BackfillRequest(
@@ -467,6 +535,25 @@ class ProductActivityBackfillServiceTest {
             }
         }
         throw new AssertionError("No metadata update found for activity " + activityId);
+    }
+
+    private static ProductSyncDryRunProbeService.ActivityDryRunResult dryRunActivity(String activityId) {
+        return new ProductSyncDryRunProbeService.ActivityDryRunResult(
+                activityId,
+                true,
+                20,
+                1000,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                "DONE_NO_MORE",
+                false,
+                List.of(),
+                List.of());
     }
 
     private DouyinProductGateway.ActivityProductItem productItem(long productId) {

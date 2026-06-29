@@ -276,6 +276,7 @@ public class ProductActivityBackfillService {
 
     private BackfillResult runDryRun(String jobId, NormalizedRequest request, ProductSyncJobLog jobLog) {
         AtomicReference<ProductSyncJobLog> jobLogRef = new AtomicReference<>(jobLog);
+        int activitiesTotal = knownActivitiesTotal(request);
         ProductSyncDryRunProbeService.FullDryRunResult dryRun = dryRunProbeService.fullDryRun(
                 new ProductSyncDryRunProbeService.FullDryRunRequest(
                         request.scope(),
@@ -288,7 +289,15 @@ public class ProductActivityBackfillService {
                 (activityIndex, activityResult) -> {
                     ProductSyncJobLog current = jobLogRef.get();
                     if (current != null) {
-                        jobLogRef.set(updateProgressMetadata(current, activityResult.activityId()));
+                        if (activitiesTotal > 0) {
+                            jobLogRef.set(updateProgressMetadata(
+                                    current,
+                                    activityResult.activityId(),
+                                    activitiesTotal,
+                                    Math.max(0, activityIndex - 1)));
+                        } else {
+                            jobLogRef.set(updateProgressMetadata(current, activityResult.activityId()));
+                        }
                     }
                 });
         return new BackfillResult(
@@ -972,7 +981,12 @@ public class ProductActivityBackfillService {
         log.setDryRun(request.dryRun());
         log.setStatus("RUNNING");
         log.setRequestedBy(requestedBy);
-        log.setRequestParamsJson(backfillJobMetadata.started(toJson(request), asyncIdempotencyKey, now));
+        String requestParamsJson = backfillJobMetadata.started(toJson(request), asyncIdempotencyKey, now);
+        int activitiesTotal = knownActivitiesTotal(request);
+        if (activitiesTotal > 0) {
+            requestParamsJson = backfillJobMetadata.progress(requestParamsJson, "", activitiesTotal, 0, now);
+        }
+        log.setRequestParamsJson(requestParamsJson);
         log.setStartedAt(now);
         log.setCreateTime(now);
         log.setUpdateTime(now);
@@ -1056,6 +1070,13 @@ public class ProductActivityBackfillService {
 
     private long valueOrZero(Long value) {
         return value == null ? 0L : value;
+    }
+
+    private int knownActivitiesTotal(NormalizedRequest request) {
+        if (request == null || !"CUSTOM_ACTIVITY_IDS".equals(request.scope())) {
+            return 0;
+        }
+        return request.activityIds() == null ? 0 : request.activityIds().size();
     }
 
     private BackfillResult buildLockedResult(String jobId, NormalizedRequest request) {

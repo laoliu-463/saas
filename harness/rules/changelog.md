@@ -7,6 +7,11 @@
 
 ## 最近版本摘要
 
+### v0.8.9 — 2026-06-29
+- DDD-VERIFY-001 活动商品 backfill known total 语义切片：`ProductActivityBackfillService` 对 `CUSTOM_ACTIVITY_IDS` backfill 在 job start metadata 中写入已知 `activitiesTotal` 与 `activitiesProcessed`，并让 dry-run progress metadata 同步该总数；非自定义范围不猜测总数。API、DB schema、状态枚举、confirm/dryRun、锁 key 和真实同步入口均不变。
+- RED/GREEN custom dry-run parity 12 tests、backfill 组合 36 tests、Product 全集合 346 tests、compile/package 和 real-pre backend/frontend health 通过；安全业务烟测仅访问 job status 未授权接口返回 401，未触发真实 backfill；全量 `mvn test` 2734 tests / 5 failures / 3 skipped，失败仍为既有 order/user 架构红线，本轮 evidence 结论为 PARTIAL。
+- 证据：`harness/reports/evidence-20260629-160114.md`；latest：`harness/reports/latest-evidence-20260629.md`；retro：`harness/reports/retro-20260629-155955.md`。
+
 ### v0.8.8 — 2026-06-29
 - DDD-VERIFY-001 活动商品 backfill RUNNING 进度可见性切片：`ProductActivityBackfillService` 在真实 backfill 按活动排序执行时，把 `activitiesTotal` / `activitiesProcessed` 与 `currentActivityId` 写入 job metadata；`ProductBackfillJobStatusQueryService` 在 snapshot 计数未完成时用 metadata total 展示 `activitiesScanned`，API、DB schema、状态枚举、confirm/dryRun、锁 key 和真实同步入口均不变。
 - RED/GREEN progress/status parity 15 tests、backfill 组合 32 tests、Product 全集合 345 tests、compile/package 和 real-pre backend/frontend health 通过；全量 `mvn test` 2733 tests / 5 failures / 3 skipped，失败仍为既有 order/user 架构红线，本轮 evidence 结论为 PARTIAL。
