@@ -3,6 +3,7 @@ package com.colonel.saas.domain.talent.application;
 import com.colonel.saas.entity.CrawlerTalentInfo;
 import com.colonel.saas.entity.Talent;
 import com.colonel.saas.entity.TalentEnrichTask;
+import com.colonel.saas.mapper.TalentClaimMapper;
 import com.colonel.saas.mapper.TalentEnrichTaskMapper;
 import com.colonel.saas.mapper.TalentMapper;
 import com.colonel.saas.service.BusinessRuleConfigService;
@@ -32,6 +33,9 @@ class TalentProfileApplicationServiceTest {
     TalentMapper talentMapper;
 
     @Mock
+    TalentClaimMapper talentClaimMapper;
+
+    @Mock
     TalentEnrichTaskMapper talentEnrichTaskMapper;
 
     @Mock
@@ -49,6 +53,7 @@ class TalentProfileApplicationServiceTest {
     void setUp() {
         service = new TalentProfileApplicationService(
                 talentMapper,
+                talentClaimMapper,
                 talentEnrichTaskMapper,
                 talentEnrichOrchestrator,
                 crawlerTalentInfoService,
@@ -123,6 +128,7 @@ class TalentProfileApplicationServiceTest {
     void refreshUpdatesCrawlerFieldsAndMarksTaskSuccessWhenForceCrawlEnabled() {
         TalentProfileApplicationService crawlEnabledService = new TalentProfileApplicationService(
                 talentMapper,
+                talentClaimMapper,
                 talentEnrichTaskMapper,
                 talentEnrichOrchestrator,
                 crawlerTalentInfoService,

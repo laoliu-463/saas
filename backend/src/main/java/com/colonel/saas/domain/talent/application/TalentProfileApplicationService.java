@@ -7,6 +7,10 @@ import com.colonel.saas.domain.talent.policy.TalentTagPolicy;
 import com.colonel.saas.entity.CrawlerTalentInfo;
 import com.colonel.saas.entity.Talent;
 import com.colonel.saas.entity.TalentEnrichTask;
+import com.colonel.saas.common.exception.ForbiddenException;
+import com.colonel.saas.domain.talent.policy.TalentAddressPolicy;
+import com.colonel.saas.entity.TalentClaim;
+import com.colonel.saas.mapper.TalentClaimMapper;
 import com.colonel.saas.mapper.TalentEnrichTaskMapper;
 import com.colonel.saas.mapper.TalentMapper;
 import com.colonel.saas.service.BusinessRuleConfigService;
@@ -49,6 +53,7 @@ public class TalentProfileApplicationService {
     static final String ENRICH_SOURCE_SYSTEM = "SYSTEM";
 
     private final TalentMapper talentMapper;
+    private final TalentClaimMapper talentClaimMapper;
     private final TalentEnrichTaskMapper talentEnrichTaskMapper;
     private final TalentEnrichOrchestrator talentEnrichOrchestrator;
     private final CrawlerTalentInfoService crawlerTalentInfoService;
@@ -57,12 +62,14 @@ public class TalentProfileApplicationService {
 
     public TalentProfileApplicationService(
             TalentMapper talentMapper,
+            TalentClaimMapper talentClaimMapper,
             TalentEnrichTaskMapper talentEnrichTaskMapper,
             TalentEnrichOrchestrator talentEnrichOrchestrator,
             CrawlerTalentInfoService crawlerTalentInfoService,
             BusinessRuleConfigService businessRuleConfigService,
             @Value("${talent.data.public-page-crawl-enabled:false}") boolean publicPageCrawlEnabled) {
         this.talentMapper = talentMapper;
+        this.talentClaimMapper = talentClaimMapper;
         this.talentEnrichTaskMapper = talentEnrichTaskMapper;
         this.talentEnrichOrchestrator = talentEnrichOrchestrator;
         this.crawlerTalentInfoService = crawlerTalentInfoService;
@@ -307,6 +314,114 @@ public class TalentProfileApplicationService {
     }
 
     /**
+     * 更新达人资料（仅更新请求中非空字段）。
+     * 1:1 等价 TalentService.update(UUID, Talent) 24 行业务。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public Talent update(UUID id, Talent request) {
+        Talent talent = getById(id);
+        if (StringUtils.hasText(request.getNickname())) {
+            talent.setNickname(request.getNickname());
+        }
+        if (request.getFans() != null) {
+            talent.setFans(request.getFans());
+        }
+        if (StringUtils.hasText(request.getLevel())) {
+            talent.setLevel(request.getLevel());
+        }
+        if (request.getStatus() != null) {
+            talent.setStatus(request.getStatus());
+        }
+        if (StringUtils.hasText(request.getContactPhone())) {
+            talent.setContactPhone(request.getContactPhone().trim());
+        }
+        if (StringUtils.hasText(request.getContactWechat())) {
+            talent.setContactWechat(request.getContactWechat().trim());
+        }
+        if (StringUtils.hasText(request.getIntro())) {
+            talent.setIntro(request.getIntro().trim());
+        }
+        persistTalent(talent);
+        return talent;
+    }
+
+    /**
+     * 获取达人收货地址（带认领人校验）。
+     * 1:1 等价 TalentService.getShippingAddress(UUID, UUID) 17 行业务。
+     */
+    public Talent getShippingAddress(UUID id, UUID userId) {
+        Talent talent = getById(id);
+        if (userId == null) {
+            return talent;
+        }
+        TalentClaim claim = talentClaimMapper.findActiveByTalentAndUser(id, userId);
+        if (claim == null) {
+            // T-04 fix: 无认领时返回空地址，不再泄露 talent 主表旧数据
+            talent.setShippingRecipientName(null);
+            talent.setShippingRecipientPhone(null);
+            talent.setShippingRecipientAddress(null);
+            return talent;
+        }
+        // T-04 fix: 仅返回答领人地址，不使用 talent 主表兜底
+        talent.setShippingRecipientName(claim.getRecipientName());
+        talent.setShippingRecipientPhone(claim.getRecipientPhone());
+        talent.setShippingRecipientAddress(claim.getRecipientAddress());
+        return talent;
+    }
+
+    /**
+     * 更新达人收货地址（无 userId，仅写 talent 主表）。
+     * 1:1 等价 TalentService.updateShippingAddress(UUID, String, String, String) 8 行业务。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public Talent updateShippingAddress(
+            UUID id,
+            String recipientName,
+            String recipientPhone,
+            String recipientAddress) {
+        Talent talent = getById(id);
+        TalentAddressPolicy.NormalizedAddress addr = TalentAddressPolicy.normalize(
+                recipientName, recipientPhone, recipientAddress);
+        talent.setShippingRecipientName(addr.recipientName());
+        talent.setShippingRecipientPhone(addr.recipientPhone());
+        talent.setShippingRecipientAddress(addr.recipientAddress());
+        persistTalent(talent);
+        return talent;
+    }
+
+    /**
+     * 更新达人收货地址（带 userId 认领人校验）。
+     * 1:1 等价 TalentService.updateShippingAddress(UUID, UUID, String, String, String) 16 行业务。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public Talent updateShippingAddress(
+            UUID id,
+            UUID userId,
+            String recipientName,
+            String recipientPhone,
+            String recipientAddress) {
+        if (userId == null) {
+            return updateShippingAddress(id, recipientName, recipientPhone, recipientAddress);
+        }
+        Talent talent = getById(id);
+        TalentClaim claim = talentClaimMapper.findActiveByTalentAndUser(id, userId);
+        if (claim == null) {
+            throw new ForbiddenException("仅当前认领人可以维护达人收货地址");
+        }
+        // T-04 fix: 地址仅存于 claim 层，不写入 talent 主表，避免非认领人通过达人详情查见
+        TalentAddressPolicy.NormalizedAddress addr = TalentAddressPolicy.normalize(
+                recipientName, recipientPhone, recipientAddress);
+        claim.setRecipientName(addr.recipientName());
+        claim.setRecipientPhone(addr.recipientPhone());
+        claim.setRecipientAddress(addr.recipientAddress());
+        persistTalentClaim(claim);
+        talent.setShippingRecipientName(addr.recipientName());
+        talent.setShippingRecipientPhone(addr.recipientPhone());
+        talent.setShippingRecipientAddress(addr.recipientAddress());
+        return talent;
+    }
+
+    /**
      * 创建 enrich task。
      * 1:1 等价 TalentService.createEnrichTask(Talent, String, String)。
      */
@@ -349,6 +464,10 @@ public class TalentProfileApplicationService {
      */
     private void persistTalent(Talent talent) {
         OptimisticLockSupport.requireUpdated(talentMapper.updateById(talent));
+    }
+
+    private void persistTalentClaim(TalentClaim claim) {
+        OptimisticLockSupport.requireUpdated(talentClaimMapper.updateById(claim));
     }
 
     /**

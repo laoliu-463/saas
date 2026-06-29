@@ -873,7 +873,7 @@ class TalentServiceTest {
                 false,
                 configDomainFacade,
                 businessRuleConfigService,
-                newTalentProfileApplicationService(),
+                newTalentProfileApplicationService(false),
                 newTalentBatchImportApplicationService(),
                 newTalentPoolApplicationService(),
                 newTalentEnrichmentApplicationService(),
@@ -1388,13 +1388,18 @@ class TalentServiceTest {
     }
 
     private TalentProfileApplicationService newTalentProfileApplicationService() {
+        return newTalentProfileApplicationService(true);
+    }
+
+    private TalentProfileApplicationService newTalentProfileApplicationService(boolean publicPageCrawlEnabled) {
         return new TalentProfileApplicationService(
                 talentMapper,
+                talentClaimMapper,
                 talentEnrichTaskMapper,
                 talentEnrichOrchestrator,
                 crawlerTalentInfoService,
                 businessRuleConfigService,
-                true);
+                publicPageCrawlEnabled);
     }
 
     private TalentBatchImportApplicationService newTalentBatchImportApplicationService() {

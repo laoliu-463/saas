@@ -82,6 +82,7 @@ class TalentServiceBatchImportTest {
                 businessRuleConfigService,
                 new TalentProfileApplicationService(
                         talentMapper,
+                        talentClaimMapper,
                         talentEnrichTaskMapper,
                         talentEnrichOrchestrator,
                         crawlerTalentInfoService,
@@ -91,6 +92,7 @@ class TalentServiceBatchImportTest {
                         talentMapper,
                         new TalentProfileApplicationService(
                                 talentMapper,
+                                talentClaimMapper,
                                 talentEnrichTaskMapper,
                                 talentEnrichOrchestrator,
                                 crawlerTalentInfoService,
