@@ -7,6 +7,11 @@
 
 ## 最近版本摘要
 
+### v0.8.5 — 2026-06-29
+- DDD-VERIFY-001 活动商品 backfill 失败上下文切片：新增 `ProductBackfillFailurePolicy`，将 stopReason/rawCause 归一化、异常分类、失败消息和锁占用上下文格式化从 legacy service 下沉到商品域 policy；`ProductActivityBackfillService` 保留基础设施读取与私有异常适配。
+- RED/GREEN policy tests、backfill service/deadlock parity tests、Product 全集合、compile/package 和 real-pre health 通过；架构测试仍为 5 个既有 order/user 红线失败，全量测试保留本地 `postgres` DNS 阻塞记录，本轮 evidence 结论为 PARTIAL。
+- 证据：`harness/reports/evidence-20260629-122959.md`；retro：`harness/reports/retro-20260629-123021.md`。
+
 ### v0.8.4 — 2026-06-29
 - DDD-VERIFY-001 活动商品 backfill status query 切片：新增 `ProductBackfillJobStatusQueryService`、读侧 repository/view/snapshot 与 MyBatis adapter，`ProductActivityBackfillApplicationService.getJobStatus` 改走商品 query 读模型；legacy backfill service 删除 status 投影组装。
 - RED/GREEN targeted tests、Product 全集合、compile/package 和 real-pre backend health 通过；架构测试仍为 5 个既有 order/user 红线失败，全量测试保留本地 `postgres` DNS 阻塞记录，本轮 evidence 结论为 PARTIAL。

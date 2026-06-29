@@ -132,6 +132,9 @@
 - 标记：P0。
 
 ## 商品域
+- 最新小切片：DDD-VERIFY-001-PRODUCT-BACKFILL-FAILURE-CONTEXT-SLICE 已新增 `ProductBackfillFailurePolicy`，将活动商品 backfill stopReason/rawCause 归一化、异常分类、失败消息和锁占用上下文格式化从 `ProductActivityBackfillService` 下沉到商品域 policy；legacy service 仅保留锁 owner 读取、私有 batch 异常适配和流程编排。本轮不改 API 路径、请求 / 响应字段、DB schema、状态枚举、confirm / dryRun 边界、锁 key、分批拉取 / 分批写库逻辑或真实数据。
+- 最新验证：RED `ProductBackfillFailurePolicyTest` 先因 policy 缺失失败；GREEN policy tests 6 tests PASS，backfill service/deadlock parity 20 tests PASS，`mvn -DskipTests compile` PASS，`mvn -DskipTests package` PASS，`mvn test -Dtest='*Product*Test'` PASS（339 tests），real-pre backend/frontend health PASS；架构测试仍为既有 5 个 order/user 红线失败，全量测试沿用同会话本地 `postgres` DNS 阻塞记录，未写 PASS。
+- 最新报告路径：本轮 `harness/reports/evidence-20260629-122959.md`；retro `harness/reports/retro-20260629-123021.md`；报告目录清理将 2 个旧 report 归档到 `harness/archive/reports-overflow-20260629-ddd-product-backfill-failure-context/`；下一步：继续活动商品同步分批失败进度 flush / retry 可追踪性收口，标记 P0。
 - 最新小切片：DDD-VERIFY-001-PRODUCT-BACKFILL-STATUS-QUERY-SLICE 已新增 `ProductBackfillJobStatusQueryService`、status snapshot/view/repository 与 `ProductBackfillJobStatusMapperRepository`，`ProductActivityBackfillApplicationService.getJobStatus` 改走商品 query 读模型；legacy `ProductActivityBackfillService` 删除 status 查询投影组装。本轮不改 API 路径、请求 / 响应字段、DB schema、状态枚举、confirm / dryRun 边界、锁 key 或真实数据。
 - 最新验证：RED `ProductBackfillJobStatusQueryServiceTest` 先因 query service/repository/snapshot 缺失失败；GREEN targeted 6 tests PASS，`mvn -DskipTests compile` PASS，`mvn -DskipTests package` PASS，`mvn test -Dtest='*Product*Test'` PASS（333 tests），real-pre backend 重启后 health=UP。架构测试仍为既有 5 个 order/user 红线失败；全量测试沿用同会话本地 `postgres` DNS 阻塞记录，未写 PASS。
 - 最新报告路径：本轮 `harness/reports/evidence-20260629-120953.md`；retro `harness/reports/retro-20260629-121010.md`；报告目录清理将 2 个旧 report 归档到 `harness/archive/reports-overflow-20260629-ddd-product-backfill-status-query/`；下一步：继续活动商品同步失败追踪 / 日志上下文收口，标记 P0。

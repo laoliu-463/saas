@@ -2,6 +2,7 @@ package com.colonel.saas.service;
 
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.domain.product.application.ProductBackfillJobMetadata;
+import com.colonel.saas.domain.product.policy.ProductBackfillFailurePolicy;
 import com.colonel.saas.domain.product.policy.ProductBackfillJobPolicy;
 import com.colonel.saas.entity.ColonelsettlementActivity;
 import com.colonel.saas.entity.ProductActivitySyncState;
@@ -18,9 +19,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.dao.CannotAcquireLockException;
 import org.springframework.dao.DataAccessException;
-import org.springframework.dao.DeadlockLoserDataAccessException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
@@ -71,10 +70,6 @@ public class ProductActivityBackfillService {
     private static final int DEFAULT_MAX_ROWS = 50_000;
     private static final int MAX_ACTIVITIES = 200;
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    /** PostgreSQL deadlock_detected SQLState。 */
-    private static final String SQLSTATE_DEADLOCK = "40P01";
-    /** PostgreSQL lock_not_available SQLState。 */
-    private static final String SQLSTATE_LOCK_NOT_AVAILABLE = "55P03";
     /** 子事务默认 batch 大小。 */
     private static final int DEFAULT_WRITE_BATCH_SIZE = 100;
     /** 死锁重试默认次数。 */
@@ -104,6 +99,7 @@ public class ProductActivityBackfillService {
     private final TransactionTemplate batchTransactionTemplate;
     private final ProductBackfillJobMetadata backfillJobMetadata = new ProductBackfillJobMetadata();
     private final ProductBackfillJobPolicy backfillJobPolicy = new ProductBackfillJobPolicy();
+    private final ProductBackfillFailurePolicy backfillFailurePolicy = new ProductBackfillFailurePolicy();
     private final ConcurrentMap<String, String> runningAsyncJobIds = new ConcurrentHashMap<>();
     @Value("${product.sync.activityProduct.fullBackfillEnabled:true}")
     private boolean fullBackfillEnabled = true;
@@ -675,49 +671,19 @@ public class ProductActivityBackfillService {
     }
 
     private String stopReasonForException(Throwable ex) {
-        if (ex instanceof BackfillBatchWriteException batchEx && StringUtils.hasText(batchEx.stopReason())) {
-            return batchEx.stopReason();
-        }
-        if (isDeadlockLike(ex)) {
-            return STOP_REASON_DEADLOCK_RETRY_EXHAUSTED;
-        }
-        return ActivityProductPaginationRunner.StopReason.API_ERROR.name();
+        String explicitStopReason = ex instanceof BackfillBatchWriteException batchEx
+                && StringUtils.hasText(batchEx.stopReason())
+                ? batchEx.stopReason()
+                : null;
+        return backfillFailurePolicy.stopReasonForException(ex, explicitStopReason);
     }
 
     private String dominantStopReason(Map<String, Long> stopReasonStats) {
-        if (stopReasonStats == null || stopReasonStats.isEmpty()) {
-            return "";
-        }
-        for (Map.Entry<String, Long> entry : stopReasonStats.entrySet()) {
-            String reason = entry.getKey();
-            if (StringUtils.hasText(reason) && !"DONE_NO_MORE".equals(reason)) {
-                return reason;
-            }
-        }
-        return "";
+        return backfillFailurePolicy.dominantStopReason(stopReasonStats);
     }
 
     private String normalizeRawCause(String stopReason) {
-        if (!StringUtils.hasText(stopReason)) {
-            return STOP_REASON_UNKNOWN_ERROR;
-        }
-        if (STOP_REASON_UPSTREAM_API_ERROR.equals(stopReason)
-                || STOP_REASON_DB_ERROR.equals(stopReason)
-                || STOP_REASON_LOCK_ERROR.equals(stopReason)
-                || STOP_REASON_TIMEOUT_ERROR.equals(stopReason)
-                || STOP_REASON_UNKNOWN_ERROR.equals(stopReason)) {
-            return stopReason;
-        }
-        if (STOP_REASON_FAILED_LOCKED.equals(stopReason)) {
-            return STOP_REASON_LOCK_ERROR;
-        }
-        if (STOP_REASON_DEADLOCK_RETRY_EXHAUSTED.equals(stopReason)) {
-            return STOP_REASON_DB_ERROR;
-        }
-        return switch (stopReason) {
-            case "INVALID_RESPONSE", "API_ERROR" -> STOP_REASON_UPSTREAM_API_ERROR;
-            default -> STOP_REASON_UNKNOWN_ERROR;
-        };
+        return backfillFailurePolicy.normalizeRawCause(stopReason);
     }
 
     private String buildFailureErrorMessage(
@@ -727,7 +693,7 @@ public class ProductActivityBackfillService {
             String stopReason,
             Throwable ex,
             String lockInfo) {
-        return buildFailureErrorMessage(
+        return backfillFailurePolicy.buildFailureErrorMessage(
                 jobId,
                 activityId,
                 scope,
@@ -747,28 +713,15 @@ public class ProductActivityBackfillService {
             String lockInfo,
             String explicitRawCause,
             String explicitMessage) {
-        String rawCause = StringUtils.hasText(explicitRawCause)
-                ? explicitRawCause
-                : normalizeRawCause(stopReason);
-        String message = StringUtils.hasText(explicitMessage) ? explicitMessage : (ex == null ? "" : ex.getMessage());
-        String exceptionClass = ex == null ? "N/A" : ex.getClass().getName();
-        String rootCauseClass = ex == null ? "" : rootCauseClass(ex);
-        return String.format(
-                "type=%s; rawCause=%s; exceptionClass=%s; rootCauseClass=%s; jobId=%s; activityId=%s; scope=%s; stopReason=%s; rootCause=%s; sqlState=%s; lockInfo=%s; httpStatus=%s; sdkCode=%s; message=%s",
-                "FAILED",
-                rawCause,
-                exceptionClass,
-                rootCauseClass,
+        return backfillFailurePolicy.buildFailureErrorMessage(
                 jobId,
-                activityId == null ? "" : activityId,
-                scope == null ? "" : scope,
+                activityId,
+                scope,
                 stopReason,
-                rootCauseMessage(ex),
-                ex == null ? "" : sqlStateFromThrowable(ex),
-                lockInfo == null ? "" : lockInfo,
-                ex == null ? "" : httpStatusFromThrowable(ex),
-                ex == null ? "" : sdkCodeFromThrowable(ex),
-                message);
+                ex,
+                lockInfo,
+                explicitRawCause,
+                explicitMessage);
     }
 
     private String buildFailureErrorMessage(
@@ -779,7 +732,7 @@ public class ProductActivityBackfillService {
             Throwable ex,
             String explicitRawCause,
             String explicitMessage) {
-        return buildFailureErrorMessage(
+        return backfillFailurePolicy.buildFailureErrorMessage(
                 jobId,
                 activityId,
                 scope,
@@ -793,18 +746,23 @@ public class ProductActivityBackfillService {
     private String buildFailedLockErrorMessage(String jobId, String activityId, String lockScope, String lockKey,
                                               String extraMessage) {
         JobLockSnapshot ownerSnapshot = lockSnapshot(lockKey);
-        return String.format(
-                "type=FAILED_LOCKED; jobId=%s; activityId=%s; scope=%s; lockKey=%s; ownerJobId=%s; ownerActivityId=%s; ownerScope=%s; lockValue=%s; ttlSeconds=%d; acquiredAt=%s; message=%s",
+        ProductBackfillFailurePolicy.JobLockSnapshot policySnapshot = ownerSnapshot == null
+                ? null
+                : new ProductBackfillFailurePolicy.JobLockSnapshot(
+                ownerSnapshot.lockKey(),
+                ownerSnapshot.ownerJobId(),
+                ownerSnapshot.ownerActivityId(),
+                ownerSnapshot.scope(),
+                ownerSnapshot.ownerLockKey(),
+                ownerSnapshot.lockValue(),
+                ownerSnapshot.ttlSeconds(),
+                ownerSnapshot.acquiredAt());
+        return backfillFailurePolicy.buildFailedLockErrorMessage(
                 jobId,
-                activityId == null ? "" : activityId,
+                activityId,
                 lockScope,
                 lockKey,
-                ownerSnapshot == null ? "" : ownerSnapshot.ownerJobId(),
-                ownerSnapshot == null ? "" : ownerSnapshot.ownerActivityId(),
-                ownerSnapshot == null ? "" : ownerSnapshot.scope(),
-                ownerSnapshot == null ? "" : ownerSnapshot.lockValue(),
-                ownerSnapshot == null ? -1L : ownerSnapshot.ttlSeconds(),
-                ownerSnapshot == null ? "" : ownerSnapshot.acquiredAt(),
+                policySnapshot,
                 extraMessage);
     }
 
@@ -812,10 +770,6 @@ public class ProductActivityBackfillService {
         String value = jobLockService.currentLockValue(lockKey);
         long ttl = jobLockService.currentLockTtlSeconds(lockKey);
         return parseLockSnapshot(lockKey, value, ttl);
-    }
-
-    private JobLockSnapshot ownerLockSnapshot(String lockKey) {
-        return lockSnapshot(lockKey);
     }
 
     private JobLockSnapshot parseLockSnapshot(String lockKey, String value, long ttl) {
@@ -849,146 +803,6 @@ public class ProductActivityBackfillService {
             }
         }
         return "";
-    }
-
-    private String rawCauseForException(Throwable ex) {
-        if (isDeadlockLike(ex)) {
-            return STOP_REASON_DEADLOCK_RETRY_EXHAUSTED;
-        }
-        if (isLockError(ex)) {
-            return STOP_REASON_LOCK_ERROR;
-        }
-        if (isTimeoutError(ex)) {
-            return STOP_REASON_TIMEOUT_ERROR;
-        }
-        if (isDbException(ex)) {
-            return STOP_REASON_DB_ERROR;
-        }
-        return STOP_REASON_UPSTREAM_API_ERROR;
-    }
-
-    private boolean isLockError(Throwable ex) {
-        if (ex == null) {
-            return false;
-        }
-        Throwable cur = ex;
-        while (cur != null) {
-            if (cur instanceof CannotAcquireLockException) {
-                return true;
-            }
-            String msg = cur.getMessage();
-            if (msg != null && msg.toUpperCase().contains(SQLSTATE_LOCK_NOT_AVAILABLE)) {
-                return true;
-            }
-            cur = cur.getCause();
-        }
-        return false;
-    }
-
-    private boolean isDbException(Throwable ex) {
-        if (ex == null) {
-            return false;
-        }
-        Throwable cur = ex;
-        while (cur != null) {
-            if (cur instanceof DataAccessException) {
-                return true;
-            }
-            cur = cur.getCause();
-        }
-        return false;
-    }
-
-    private boolean isTimeoutError(Throwable ex) {
-        if (ex == null) {
-            return false;
-        }
-        Throwable cur = ex;
-        while (cur != null) {
-            String msg = cur.getMessage();
-            if (msg != null && (msg.contains("timeout") || msg.contains("Timeout") || msg.contains("TIMEOUT"))) {
-                return true;
-            }
-            cur = cur.getCause();
-        }
-        return false;
-    }
-
-    private String rootCauseMessage(Throwable ex) {
-        if (ex == null) {
-            return "";
-        }
-        Throwable cur = ex;
-        while (cur.getCause() != null) {
-            cur = cur.getCause();
-        }
-        return cur == null || cur.getMessage() == null ? "" : cur.getMessage();
-    }
-
-    private String rootCauseClass(Throwable ex) {
-        if (ex == null) {
-            return "";
-        }
-        Throwable cur = ex;
-        while (cur.getCause() != null) {
-            cur = cur.getCause();
-        }
-        return cur == null ? "" : cur.getClass().getName();
-    }
-
-    private String sqlStateFromThrowable(Throwable ex) {
-        Throwable cur = ex;
-        while (cur != null) {
-            String msg = cur.getMessage();
-            if (msg != null) {
-                String upper = msg.toUpperCase();
-                if (upper.contains(SQLSTATE_DEADLOCK) || upper.contains(SQLSTATE_LOCK_NOT_AVAILABLE)) {
-                    return upper.contains(SQLSTATE_DEADLOCK) ? SQLSTATE_DEADLOCK : SQLSTATE_LOCK_NOT_AVAILABLE;
-                }
-            }
-            cur = cur.getCause();
-        }
-        return "";
-    }
-
-    private String httpStatusFromThrowable(Throwable ex) {
-        Throwable cur = ex;
-        while (cur != null) {
-            String msg = cur.getMessage();
-            if (msg != null) {
-                int status = parseHttpStatus(msg);
-                if (status > 0) {
-                    return String.valueOf(status);
-                }
-            }
-            cur = cur.getCause();
-        }
-        return "";
-    }
-
-    private String sdkCodeFromThrowable(Throwable ex) {
-        Throwable cur = ex;
-        while (cur != null) {
-            String name = cur.getClass().getName();
-            if (name.contains("Sdk") || name.contains("SDK") || name.contains("Douyin")) {
-                return cur.getClass().getSimpleName();
-            }
-            cur = cur.getCause();
-        }
-        return "";
-    }
-
-    private int parseHttpStatus(String message) {
-        int idx = message.indexOf("HTTP ");
-        if (idx >= 0 && message.length() >= idx + 8) {
-            String digits = message.substring(idx + 5).replaceAll("[^0-9].*", "");
-            try {
-                return Integer.parseInt(digits);
-            } catch (NumberFormatException ignore) {
-                // ignore
-            }
-        }
-        return -1;
     }
 
     private String asText(Object value) {
@@ -1029,27 +843,7 @@ public class ProductActivityBackfillService {
     }
 
     private boolean isDeadlockLike(Throwable ex) {
-        Throwable cur = ex;
-        while (cur != null) {
-            if (cur instanceof DeadlockLoserDataAccessException) {
-                return true;
-            }
-            if (cur instanceof CannotAcquireLockException) {
-                return true;
-            }
-            String msg = cur.getMessage();
-            if (msg != null) {
-                String upper = msg.toUpperCase();
-                if (upper.contains(SQLSTATE_DEADLOCK) || upper.contains("DEADLOCK DETECTED")) {
-                    return true;
-                }
-                if (upper.contains(SQLSTATE_LOCK_NOT_AVAILABLE) || upper.contains("LOCK NOT AVAILABLE")) {
-                    return true;
-                }
-            }
-            cur = cur.getCause();
-        }
-        return false;
+        return backfillFailurePolicy.isDeadlockLike(ex);
     }
 
     private List<String> resolveActivityIds(NormalizedRequest request) {
