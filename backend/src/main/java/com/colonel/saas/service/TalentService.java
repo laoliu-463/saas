@@ -9,6 +9,7 @@ import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.exception.OptimisticLockSupport;
 import com.colonel.saas.common.exception.ForbiddenException;
 import com.colonel.saas.domain.talent.application.TalentBatchImportApplicationService;
+import com.colonel.saas.domain.talent.application.TalentPoolApplicationService;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.dto.talent.TalentBatchImportResult;
 import com.colonel.saas.entity.CrawlerTalentInfo;
@@ -145,6 +146,7 @@ public class TalentService {
     private final BusinessRuleConfigService businessRuleConfigService;
     private final TalentProfileApplicationService talentProfileApplicationService;
     private final TalentBatchImportApplicationService talentBatchImportApplicationService;
+    private final TalentPoolApplicationService talentPoolApplicationService;
     private final TalentClaimApplicationService talentClaimApplicationService;
     /** 操作日志服务（用于认领/释放/归属覆盖等操作审计） */
     private final OperationLogService operationLogService;
@@ -191,6 +193,7 @@ public class TalentService {
             BusinessRuleConfigService businessRuleConfigService,
             TalentProfileApplicationService talentProfileApplicationService,
             TalentBatchImportApplicationService talentBatchImportApplicationService,
+            TalentPoolApplicationService talentPoolApplicationService,
             TalentClaimApplicationService talentClaimApplicationService,
             OperationLogService operationLogService,
             UserDomainFacade userDomainFacade,
@@ -210,6 +213,7 @@ public class TalentService {
         this.businessRuleConfigService = businessRuleConfigService;
         this.talentProfileApplicationService = talentProfileApplicationService;
         this.talentBatchImportApplicationService = talentBatchImportApplicationService;
+        this.talentPoolApplicationService = talentPoolApplicationService;
         this.talentClaimApplicationService = talentClaimApplicationService;
         this.operationLogService = operationLogService;
         this.userDomainFacade = userDomainFacade;
@@ -238,18 +242,7 @@ public class TalentService {
      * @return 公开池达人列表（未被认领、未拉黑、按粉丝数降序）
      */
     public List<Talent> getPublicPool() {
-        Set<UUID> claimedTalentIds = getClaimedTalentIds();
-        return talentMapper.selectList(new LambdaQueryWrapper<Talent>()
-                        .eq(Talent::getDeleted, 0)
-                        .eq(Talent::getStatus, 1)
-                        .ne(Talent::getBlacklisted, true)
-                        .orderByDesc(Talent::getFans)
-                        .last("limit " + PUBLIC_POOL_LIMIT))
-                .stream()
-                .filter(talent -> !claimedTalentIds.contains(talent.getId()))
-                .sorted(Comparator.comparing(Talent::getFans, Comparator.nullsLast(Comparator.reverseOrder())))
-                .limit(PUBLIC_POOL_LIMIT)
-                .toList();
+        return talentPoolApplicationService.getPublicPool();
     }
 
     /**
@@ -263,14 +256,7 @@ public class TalentService {
      * @return 用户私有池达人列表，无认领记录时返回空列表
      */
     public List<Talent> getPrivatePool(UUID userId) {
-        List<TalentClaim> claims = talentClaimMapper.findActiveByUserId(userId);
-        if (claims.isEmpty()) {
-            return List.of();
-        }
-        Set<UUID> talentIds = claims.stream().map(TalentClaim::getTalentId).collect(Collectors.toSet());
-        return talentMapper.selectBatchIds(talentIds).stream()
-                .limit(PUBLIC_POOL_LIMIT)
-                .toList();
+        return talentPoolApplicationService.getPrivatePool(userId);
     }
 
     /**
