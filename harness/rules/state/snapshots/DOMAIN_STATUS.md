@@ -81,7 +81,7 @@
 - 标记：P1。
 
 ## 订单域
-- 最新边界变化：DDD-DASHBOARD-ORDER-READ-FACADE 已在 `OrderReadFacade` 增加 Dashboard 订单归因计数、未归因原因与无业绩汇总时的订单事实回退聚合出口；`DashboardService` 不再直接注入 `ColonelsettlementOrderMapper`，跨域 Mapper 白名单移除 `DashboardService|ColonelsettlementOrderMapper`，剩余 6 条。本轮未改订单事实、归因状态、业绩汇总公式、复杂诊断 SQL、活动商品下钻或真实数据。验证：targeted Maven PASS；`agent-do -Scope full` PASS。报告：`harness/reports/evidence-20260629-144645.md`；retro：`harness/reports/retro-20260629-144855.md`；commit：`25f77620`。
+- 最新边界变化：DDD-PRODUCT-ORDER-READ-FACADE 已在 `OrderReadFacade` 增加商品域专用订单只读出口：按团长 buyin id 读取商品 ID、按活动 + 商品集合返回订单摘要；`ProductService` 不再直接注入 `ColonelsettlementOrderMapper`，跨域 Mapper 白名单移除 `ProductService|ColonelsettlementOrderMapper`，剩余 5 条。本轮未改订单事实、归因状态、商品状态机、转链写库、pick_source 映射或真实数据。验证：targeted Maven PASS；`agent-do -Scope full` PASS。报告：`harness/reports/evidence-20260629-150648.md`；retro：`harness/reports/retro-20260629-150756.md`；commit：`fe0bcc2e`。
 - 最新边界变化：ORDER-READ-FACADE-CREATED-SINCE / SETTLED-SINCE 已在 `OrderReadFacade` 增加 `findOrdersCreatedSince` 与 `findOrdersSettledSince` 分页读取订单事实；`TalentClaimApplicationService` 和 `TalentService.evaluateExclusive` 不再直接依赖 `ColonelsettlementOrderMapper`，而是消费订单域门面。订单域仍只提供订单事实，不计算达人认领、业绩归属或提成。验证：targeted Maven 71 tests PASS（1 个维护型跳过）；`agent-do -Scope full` PASS。报告：`harness/reports/evidence-20260628-200945.md`；retro：`harness/reports/retro-20260628-201018.md`。
 - 最新边界变化：ORDER-SYNC-EVENT-EXPENSE-001 已让 `OrderSyncedEvent` 携带 `estimateServiceFeeExpense` / `effectiveServiceFeeExpense` 订单金额事实，`OrderEventPayloadMapper` 从订单事实映射该载荷；订单域仍只发布事实，不计算业绩。上一变化：ORDER-AMOUNT-ROUTER-EXPENSE-001 已修复 policy 开关启用时丢失服务费支出的 adapter 漂移。
 - 最新边界变化：`OrderAttributionService` 未归因分页与订单回流摘要数据范围过滤新增默认关闭的用户域 `DataScopePolicy` 旁路；默认关闭继续走 Legacy PERSONAL/DEPT `QueryWrapper.eq` 条件，开启后才调用 `DataScopePolicy.applyTo`。本轮未改订单事实、归因状态、同步、业绩事件、Mapper SQL、接口参数或历史数据。
@@ -116,20 +116,20 @@
 - 标记：P0。
 
 ## 分析模块
-- 最新边界变化：DDD-DASHBOARD-ORDER-READ-FACADE 已将 `DashboardService` 的订单总览、已归因 / 未归因计数、未归因原因和无业绩汇总时的渠道 / 招商排行聚合从直接 `ColonelsettlementOrderMapper` 改为消费订单域 `OrderReadFacade` 只读投影；复杂诊断 SQL 和活动商品下钻暂不扩大改动面。跨域 Mapper 白名单剩余 6 条。
+- 最新边界变化：DDD-DASHBOARD-ORDER-READ-FACADE 已将 `DashboardService` 的订单总览、已归因 / 未归因计数、未归因原因和无业绩汇总时的渠道 / 招商排行聚合从直接 `ColonelsettlementOrderMapper` 改为消费订单域 `OrderReadFacade` 只读投影；复杂诊断 SQL 和活动商品下钻暂不扩大改动面。跨域 Mapper 白名单剩余 5 条。
 - 最新边界变化：`DataApplicationService` 的数据页订单明细、订单汇总、导出、核心指标和运营监控查询已新增默认关闭旁路；默认关闭保持 Legacy PERSONAL/DEPT 条件与缺上下文 fail-closed，开启后仅把 PERSONAL/DEPT/ALL 数据范围解释委托给用户域 `DataScopePolicy`。本轮只收口可见性，不改变订单事实、业绩补全、导出列、服务费双轨公式或历史数据。
 - 最新验证变化：新增 `DddAnalyticsReadOnlyBoundaryTest`，把分析模块只读边界变成后端架构测试：Dashboard/DataApplication/PerformanceMetrics 核心源文件不得写业务事实，不得调用订单同步、归因重算、业绩回填或寄样命令流；相关数据范围旁路组合测试 PASS。上一轮 real-pre Dashboard API/SQL 对账 evidence：`runtime/qa/out/real-pre-dashboard-reconcile-20260622-205417/`；harness evidence：`harness/reports/evidence-20260622-205724.md`。
 - 最新边界变化：`PerformanceMetricsQueryService` 汇总读侧数据范围过滤已具备默认关闭旁路；默认关闭保持 Legacy SQL 条件拼接，开启后仅把 PERSONAL/DEPT/ALL 数据范围解释委托给用户域。本轮不改变 dashboard 指标公式、排行 SQL、订单归因或业绩归属。
-- 最新报告路径：`harness/reports/evidence-20260629-144645.md`；retro：`harness/reports/retro-20260629-144855.md`。上一报告：`harness/reports/evidence-20260626-140029.md`。
-- 当前状态：dashboard、报表和只读汇总主链路已具备；`DashboardService` summary 简单订单聚合已改为消费 `OrderReadFacade`，不再直接注入订单 Mapper；数据平台订单页已保留汇总模块，并新增/收口订单明细 Tab 与 16 列订单级明细导出；SERVICE-FEE-INCOME-FORMULA-CODE-001 已更新经营指标矩阵服务费收入 / 收益双轨公式口径与后端展示层单测；`DataApplicationService` 订单明细负责人展示已改为消费用户域 `loadUserDisplayNamesByIds`，分析模块不再为该展示读取完整用户 DTO。
+- 最新报告路径：`harness/reports/evidence-20260629-150648.md`；retro：`harness/reports/retro-20260629-150756.md`。上一报告：`harness/reports/evidence-20260629-144645.md`。
+- 当前状态：dashboard、报表和只读汇总主链路已具备；`DashboardService` summary 简单订单聚合已改为消费 `OrderReadFacade`，`ProductService` 活动商品订单摘要和团长商品范围也已改为消费 `OrderReadFacade`，两者均不再直接注入订单 Mapper；数据平台订单页已保留汇总模块，并新增/收口订单明细 Tab 与 16 列订单级明细导出；SERVICE-FEE-INCOME-FORMULA-CODE-001 已更新经营指标矩阵服务费收入 / 收益双轨公式口径与后端展示层单测；`DataApplicationService` 订单明细负责人展示已改为消费用户域 `loadUserDisplayNamesByIds`，分析模块不再为该展示读取完整用户 DTO。
 - 报告路径：DDD-USER-DATA-APPLICATION-FACADE `harness/reports/2026-06-21/ddd-user/evidence-20260621-132400-data-application-facade.md`。
 - 已完成能力：看板汇总、报表查询、导出能力。
-- 待优化能力：继续清理 `DataApplicationService` 对订单、活动商品、独家达人、独家商家 Mapper 的直接依赖；Dashboard summary 双轨聚合和历史结算轨污染仍需专项处理；继续补 dashboard E2E、导出验证和前端页面级服务费收入 / 收益双轨验收。
-- DDD 优化下一步：按剩余 6 条白名单继续处理商品域与数据分析域跨域 Mapper 债务；优先评估 `ProductService|ColonelsettlementOrderMapper` / `ProductService|PromotionLinkMapper` 与 `DataApplicationService` 四条分析读侧债务。
+- 待优化能力：继续清理 `ProductService` 对推广链接 Mapper 的直接依赖，以及 `DataApplicationService` 对订单、活动商品、独家达人、独家商家 Mapper 的直接依赖；Dashboard summary 双轨聚合和历史结算轨污染仍需专项处理；继续补 dashboard E2E、导出验证和前端页面级服务费收入 / 收益双轨验收。
+- DDD 优化下一步：按剩余 5 条白名单继续处理商品域与数据分析域跨域 Mapper 债务；优先评估 `ProductService|PromotionLinkMapper` 与 `DataApplicationService` 四条分析读侧债务。
 - 标记：P0。
 
 ## 商品域
-- 最新边界变化：DDD-PRODUCT-ORDER-DISPLAY-FACADE 已在 `ProductDomainFacade` 增加订单展示只读投影 `ProductSnapshotOrderDisplayDTO` / `ProductOrderDisplayDTO`，供订单域读取商品标题、封面、店铺和佣金/服务费展示字段；`LegacyProductDomainFacade` 内部继续委派产品 Mapper，跨域消费方不再直接注入产品 Mapper。后续归因域边界清理后跨域 Mapper 白名单剩余 7 条。本轮未改转链写库、pick_source 归因语义、商品状态机、真实数据或上游接口。验证：targeted Maven 90 tests PASS（1 skipped）；`agent-do -Scope full` PASS。报告：`harness/reports/evidence-20260629-123442.md`；retro：`harness/reports/retro-20260629-123524.md`；commit：`bd4fa7fb`。
+- 最新边界变化：DDD-PRODUCT-ORDER-READ-FACADE 已将 `ProductService` 的活动商品订单摘要、单商品订单摘要和团长 buyin id 商品范围读取从直接 `ColonelsettlementOrderMapper` 改为消费订单域 `OrderReadFacade`；商品域仍只组装活动商品视图，不计算订单归因、业绩归属或提成。跨域 Mapper 白名单剩余 5 条。本轮未改转链写库、pick_source 归因语义、商品状态机、真实数据或上游接口。验证：targeted Maven 75 tests PASS（1 skipped）；`agent-do -Scope full` PASS。报告：`harness/reports/evidence-20260629-150648.md`；retro：`harness/reports/retro-20260629-150756.md`；commit：`fe0bcc2e`。
 - 最新边界变化：DDD-PRODUCT-COPY-PROMOTION-PORT 已将活动商品转链复制入口从 `ColonelActivityProductController -> ProductService.generatePromotionLinkCopy` 改为 `ColonelActivityProductController -> CopyPromotionApplicationService.copyPromotion`；应用服务只依赖 `CopyPromotionSupportPort` 与配置域门面，`ProductService` 作为过渡 Port 实现保留原上下文读取、转链写库、pick_source 映射和幂等语义，并已补源码守护防止旧 `generatePromotionLinkCopy` public 入口与反向应用服务依赖回流。本轮不改转链 API、幂等键、真实写库开关、状态机或历史数据。验证：复制推广、ProductService 构造/商品库视图、配置路由和 DDD 架构守护组合 PASS。
 - 最新边界变化：`ProductService.SelectedLibraryFilter` 商品库 `allianceStatus` 过滤解释已委托 `ProductDisplayPolicy.matchesSelectedLibraryAllianceStatusFilter`；服务层只传入上游状态码和状态文案，保持 pending/promoting/rejected/terminated/expired 的 Legacy 码值与中文文案判定。本轮计划未改转链写库、归因、状态机、真实数据或默认灰度开关。
 - 最新验证：红测先失败后转绿；`ProductDisplayPolicyTest`、`DddSlimProduct001DisplayPolicyRoutingTest` 与 `ProductServiceFilterTest` 定向回归 42 tests PASS；`agent-do.ps1 -Env real-pre -Scope full` PASS，backend/frontend 构建、Docker 重启、健康检查与 real-pre P0 preflight 均通过；补充包含混入文件的 `ProductServiceActivityStatusIndependenceTest`、`ColonelActivityControllerTest` 组合回归 72 tests PASS。
