@@ -788,40 +788,6 @@ public class TalentService {
     
     
     
-    /**
-     * 分批加载结算订单数据。
-     * <p>
-     * 避免大量订单一次性加载导致内存溢出，每批 {@link #ORDER_BATCH_SIZE} 条，
-     * 自动翻页直到所有记录加载完毕。
-     * </p>
-     *
-     * @return 全部匹配的订单列表
-     */
-    private List<com.colonel.saas.entity.ColonelsettlementOrder> loadOrdersSettledSinceInBatches(
-            LocalDateTime settleStart,
-            UUID userId,
-            UUID deptId) {
-        List<com.colonel.saas.entity.ColonelsettlementOrder> result = new java.util.ArrayList<>();
-        long current = 1L;
-        while (true) {
-            OrderReadFacade.OrderPage batch = orderReadFacade.findOrdersSettledSince(
-                    settleStart,
-                    userId,
-                    deptId,
-                    current,
-                    ORDER_BATCH_SIZE);
-            List<com.colonel.saas.entity.ColonelsettlementOrder> records = batch == null ? null : batch.records();
-            if (records == null || records.isEmpty()) {
-                break;
-            }
-            result.addAll(records);
-            if (current >= batch.pages()) {
-                break;
-            }
-            current++;
-        }
-        return result;
-    }
 
     private record OrderScopeFilter(UUID userId, UUID deptId) {
         private static OrderScopeFilter unfiltered() {
