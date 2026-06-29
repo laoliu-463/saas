@@ -11,6 +11,7 @@ import com.colonel.saas.common.exception.ForbiddenException;
 import com.colonel.saas.domain.talent.application.TalentBatchImportApplicationService;
 import com.colonel.saas.domain.talent.application.TalentClaimApplicationService;
 import com.colonel.saas.domain.talent.application.TalentEnrichmentApplicationService;
+import com.colonel.saas.domain.talent.application.TalentPageApplicationService;
 import com.colonel.saas.domain.order.facade.OrderReadFacade;
 import com.colonel.saas.domain.sample.facade.SampleDomainFacade;
 import com.colonel.saas.domain.user.facade.dto.UserOwnershipReference;
@@ -117,6 +118,7 @@ class TalentServiceTest {
                 newTalentBatchImportApplicationService(),
                 newTalentPoolApplicationService(),
                 newTalentEnrichmentApplicationService(),
+                newTalentPageApplicationService(),
                 newTalentClaimApplicationService(),
                 operationLogService,
                 userDomainFacade,
@@ -873,6 +875,7 @@ class TalentServiceTest {
                 newTalentBatchImportApplicationService(),
                 newTalentPoolApplicationService(),
                 newTalentEnrichmentApplicationService(),
+                newTalentPageApplicationService(),
                 newTalentClaimApplicationService(),
                 operationLogService,
                 userDomainFacade,
@@ -1370,6 +1373,7 @@ class TalentServiceTest {
                 newTalentBatchImportApplicationService(),
                 newTalentPoolApplicationService(),
                 newTalentEnrichmentApplicationService(),
+                newTalentPageApplicationService(),
                 newTalentClaimApplicationService(dataScopePolicy, properties),
                 operationLogService,
                 userDomainFacade,
@@ -1404,6 +1408,14 @@ class TalentServiceTest {
 
     private TalentEnrichmentApplicationService newTalentEnrichmentApplicationService() {
         return new TalentEnrichmentApplicationService(talentMapper);
+    }
+
+    private TalentPageApplicationService newTalentPageApplicationService() {
+        return new TalentPageApplicationService(
+                talentMapper,
+                talentClaimMapper,
+                new DataScopePolicy(),
+                new DddRefactorProperties());
     }
 
     private TalentClaimApplicationService newTalentClaimApplicationService() {

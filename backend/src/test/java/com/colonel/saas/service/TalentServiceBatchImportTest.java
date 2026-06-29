@@ -8,6 +8,7 @@ import com.colonel.saas.domain.sample.facade.SampleDomainFacade;
 import com.colonel.saas.domain.talent.application.TalentBatchImportApplicationService;
 import com.colonel.saas.domain.talent.application.TalentClaimApplicationService;
 import com.colonel.saas.domain.talent.application.TalentEnrichmentApplicationService;
+import com.colonel.saas.domain.talent.application.TalentPageApplicationService;
 import com.colonel.saas.domain.talent.application.TalentPoolApplicationService;
 import com.colonel.saas.domain.talent.application.TalentProfileApplicationService;
 import com.colonel.saas.entity.Talent;
@@ -97,6 +98,7 @@ class TalentServiceBatchImportTest {
                         operationLogService),
                 new TalentPoolApplicationService(talentMapper, talentClaimMapper),
                 new TalentEnrichmentApplicationService(talentMapper),
+                new TalentPageApplicationService(talentMapper, talentClaimMapper, new DataScopePolicy(), new DddRefactorProperties()),
                 new TalentClaimApplicationService(
                         talentClaimMapper,
                         talentMapper,
