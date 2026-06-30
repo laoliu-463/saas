@@ -1496,14 +1496,16 @@ public class ProductService implements CopyPromotionSupportPort {
     }
 
     public AdminProductCounts getAdminCounts() {
+        com.colonel.saas.domain.product.application.ProductLibraryApplicationService.AdminProductCounts app =
+                productLibraryApplicationService.getAdminCounts();
         return new AdminProductCounts(
-                snapshotMapper.countActiveRows(),
-                operationStateMapper.countActiveRows(),
-                snapshotMapper.countDistinctProducts(),
-                operationStateMapper.countDisplayingRows(),
-                operationStateMapper.countPendingRows(),
-                operationStateMapper.countHiddenRows(),
-                snapshotMapper.countDistinctActivities());
+                app.snapshotTotal(),
+                app.relationTotal(),
+                app.distinctProductTotal(),
+                app.displayingTotal(),
+                app.pendingTotal(),
+                app.hiddenTotal(),
+                app.activityTotal());
     }
 
     public record AdminProductCounts(

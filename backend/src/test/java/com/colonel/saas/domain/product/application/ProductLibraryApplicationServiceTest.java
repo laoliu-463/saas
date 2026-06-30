@@ -1,6 +1,7 @@
 package com.colonel.saas.domain.product.application;
 
 import com.colonel.saas.mapper.ProductSnapshotMapper;
+import com.colonel.saas.mapper.ProductOperationStateMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -24,12 +25,14 @@ class ProductLibraryApplicationServiceTest {
 
     @Mock
     private ProductSnapshotMapper snapshotMapper;
+    @Mock
+    private ProductOperationStateMapper operationStateMapper;
 
     private ProductLibraryApplicationService applicationService;
 
     @BeforeEach
     void setUp() {
-        applicationService = new ProductLibraryApplicationService(snapshotMapper);
+        applicationService = new ProductLibraryApplicationService(snapshotMapper, operationStateMapper);
     }
 
     @Test
@@ -72,5 +75,47 @@ class ProductLibraryApplicationServiceTest {
 
         assertThat(applicationService.listLibraryCategories())
                 .containsExactly("Apple", "banana", "cherry");
+    }
+
+    @Test
+    void getAdminCounts_shouldAggregateSevenCounts() {
+        when(snapshotMapper.countActiveRows()).thenReturn(100L);
+        when(operationStateMapper.countActiveRows()).thenReturn(80L);
+        when(snapshotMapper.countDistinctProducts()).thenReturn(50L);
+        when(operationStateMapper.countDisplayingRows()).thenReturn(60L);
+        when(operationStateMapper.countPendingRows()).thenReturn(10L);
+        when(operationStateMapper.countHiddenRows()).thenReturn(5L);
+        when(snapshotMapper.countDistinctActivities()).thenReturn(7L);
+
+        ProductLibraryApplicationService.AdminProductCounts counts = applicationService.getAdminCounts();
+
+        assertThat(counts.snapshotTotal()).isEqualTo(100L);
+        assertThat(counts.relationTotal()).isEqualTo(80L);
+        assertThat(counts.distinctProductTotal()).isEqualTo(50L);
+        assertThat(counts.displayingTotal()).isEqualTo(60L);
+        assertThat(counts.pendingTotal()).isEqualTo(10L);
+        assertThat(counts.hiddenTotal()).isEqualTo(5L);
+        assertThat(counts.activityTotal()).isEqualTo(7L);
+    }
+
+    @Test
+    void getAdminCounts_shouldReturnZeroWhenAllMappersReturnZero() {
+        when(snapshotMapper.countActiveRows()).thenReturn(0L);
+        when(operationStateMapper.countActiveRows()).thenReturn(0L);
+        when(snapshotMapper.countDistinctProducts()).thenReturn(0L);
+        when(operationStateMapper.countDisplayingRows()).thenReturn(0L);
+        when(operationStateMapper.countPendingRows()).thenReturn(0L);
+        when(operationStateMapper.countHiddenRows()).thenReturn(0L);
+        when(snapshotMapper.countDistinctActivities()).thenReturn(0L);
+
+        ProductLibraryApplicationService.AdminProductCounts counts = applicationService.getAdminCounts();
+
+        assertThat(counts.snapshotTotal()).isZero();
+        assertThat(counts.relationTotal()).isZero();
+        assertThat(counts.distinctProductTotal()).isZero();
+        assertThat(counts.displayingTotal()).isZero();
+        assertThat(counts.pendingTotal()).isZero();
+        assertThat(counts.hiddenTotal()).isZero();
+        assertThat(counts.activityTotal()).isZero();
     }
 }
