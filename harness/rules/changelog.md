@@ -7,6 +7,11 @@
 
 ## 最近版本摘要
 
+### v0.8.14 — 2026-06-30
+- DDD-VERIFY-001 活动商品 backfill unchanged 状态切片：`ProductActivityBackfillService.finishJob` 将既有 `BackfillResult.unchanged` 写入 `request_params_json` metadata，`ProductBackfillJobStatusQueryService` 从 metadata 回显到既有 `unchanged` API 字段；不新增 DB 字段，不改 API 路径、请求/响应字段、状态枚举、confirm/dryRun、锁 key 或真实同步入口。
+- RED 先暴露 `FinishMetrics` 缺少 unchanged；GREEN targeted 28 tests、Product 全集合 359 tests、compile/package、real-pre restart/health PASS；安全业务探针 GET backfill job status 无 token 返回 401，未触发真实 backfill；架构集合 188 tests / 5 failures / 1 skipped，全量 `mvn test` 2745 tests / 5 failures / 3 skipped，失败仍为既有 order/user 架构红线，本轮 evidence 结论为 PARTIAL。
+- 证据：`harness/reports/evidence-20260630-125241.md`；latest：`harness/reports/latest-evidence-20260630.md`；retro：`harness/reports/retro-20260630-125241.md`。
+
 ### v0.8.13 — 2026-06-30
 - DDD-VERIFY-001 活动商品默认列表读模型边界切片：`ColonelActivityController.listProducts(refresh=false)` 不再直接调用 `ProductService.hasActivitySnapshots` / `buildActivityProductListViewFromDb`，本地快照列表读取与 `needSync + DATA_NOT_READY` 提示迁入 `ProductActivitySyncApplicationService.loadActivityProductList`；Controller 保留权限、参数透传和 `refresh=true` 既有应用层入口。API 路径、请求/响应字段、DB schema、权限、状态值和真实同步入口均不变。
 - RED/GREEN application/controller/routing parity 37 tests PASS；`mvn -DskipTests compile`、`mvn -q -DskipTests package`、Product 全集合 355 tests PASS；架构集合 188 tests / 5 failures / 1 skipped，失败仍为既有 order/user 架构红线；全量 `mvn test` 未产生完整 PASS。real-pre 初次 recreate 遇到 zombie PID，Docker 恢复后 `restart-compose.ps1` 与 `verify-local.ps1` PASS，安全业务探针 GET 默认列表无 token 返回 401，未触发真实同步或 backfill；本轮 evidence 结论为 PARTIAL。
@@ -187,13 +192,4 @@
 | v0.2.0 | 2026-04-15 | U-2（用户域第二版） |
 | v0.1.9 | 2026-04-08 | U-1（用户域第一版） |
 | v0.1.8 | 2026-04-01 | DDD 路线图引入 |
-| v0.1.7 | 2026-03-25 | CODEX 默认 real-pre 验证 |
-| v0.1.6 | 2026-03-18 | deploy-remote SQL guard |
-| v0.1.5 | 2026-03-10 | real-pre 默认环境 |
-| v0.1.4 | 2026-03-05 | git-push-safe UTF-8 |
-| v0.1.3 | 2026-02-28 | retire-content.ps1 脚本 |
-| v0.1.2 | 2026-02-20 | harness/doc 聚合 |
-| v0.1.1 | 2026-02-10 | 五子系统分层 |
-| v0.1.0 | 2026-01-30 | 初始化 |
-
 > 详细历史（含每版修改文件清单、行为变化、evidence 引用）见 `archive/20260610/harness-changelog-full.md`。

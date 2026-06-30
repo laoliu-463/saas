@@ -73,12 +73,13 @@ public class ProductBackfillJobMetadata {
     }
 
     public String finished(String requestJson, FinishMetrics metrics, LocalDateTime now) {
-        FinishMetrics safe = metrics == null ? new FinishMetrics(0L, 0L, 0L, 0L) : metrics;
+        FinishMetrics safe = metrics == null ? new FinishMetrics(0L, 0L, 0L, 0L, 0L) : metrics;
         return merge(requestJson, Map.of(
                 "lockWaitCount", safe.lockWaitCount(),
                 "deadlockRetryCount", safe.deadlockRetryCount(),
                 "dbRowsBefore", safe.dbRowsBefore(),
                 "estimatedGapRows", safe.estimatedGapRows(),
+                "unchanged", safe.unchanged(),
                 "currentActivityId", "",
                 "lastProgressAt", now.toString()));
     }
@@ -111,6 +112,14 @@ public class ProductBackfillJobMetadata {
         }
     }
 
+    public int intValue(Map<String, Object> metadata, String key) {
+        long value = longValue(metadata, key);
+        if (value <= 0L) {
+            return 0;
+        }
+        return value > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) value;
+    }
+
     private String merge(String original, Map<String, Object> updates) {
         if (original == null || original.isBlank()) {
             original = "{}";
@@ -130,6 +139,7 @@ public class ProductBackfillJobMetadata {
             long lockWaitCount,
             long deadlockRetryCount,
             long dbRowsBefore,
-            long estimatedGapRows) {
+            long estimatedGapRows,
+            long unchanged) {
     }
 }

@@ -32,7 +32,7 @@ class ProductBackfillJobMetadataTest {
         LocalDateTime finishedAt = startedAt.plusMinutes(2);
         String finished = metadata.finished(
                 progress,
-                new ProductBackfillJobMetadata.FinishMetrics(2L, 3L, 10L, 4L),
+                new ProductBackfillJobMetadata.FinishMetrics(2L, 3L, 10L, 4L, 0L),
                 finishedAt);
 
         Map<String, Object> finishedMap = metadata.read(finished);
@@ -66,11 +66,26 @@ class ProductBackfillJobMetadataTest {
 
         String finished = metadata.finished(
                 progress,
-                new ProductBackfillJobMetadata.FinishMetrics(1L, 2L, 3L, 4L),
+                new ProductBackfillJobMetadata.FinishMetrics(1L, 2L, 3L, 4L, 0L),
                 startedAt.plusMinutes(2));
         assertThat(metadata.read(finished))
                 .containsEntry("asyncIdempotencyKey", "async-key-1")
                 .containsEntry("currentActivityId", "");
+    }
+
+    @Test
+    void finished_shouldRecordUnchangedCountForStatusQueryWithoutSchemaChange() {
+        LocalDateTime finishedAt = LocalDateTime.of(2026, 6, 30, 10, 0);
+
+        String finished = metadata.finished(
+                "{\"scope\":\"CUSTOM_ACTIVITY_IDS\"}",
+                new ProductBackfillJobMetadata.FinishMetrics(2L, 3L, 10L, 4L, 7L),
+                finishedAt);
+
+        Map<String, Object> finishedMap = metadata.read(finished);
+        assertThat(metadata.longValue(finishedMap, "unchanged")).isEqualTo(7L);
+        assertThat(metadata.longValue(finishedMap, "lockWaitCount")).isEqualTo(2L);
+        assertThat(metadata.longValue(finishedMap, "deadlockRetryCount")).isEqualTo(3L);
     }
 
     @Test

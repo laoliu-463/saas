@@ -1,19 +1,19 @@
 # Latest Evidence
 
-See `harness/reports/evidence-20260630-122617.md`.
+See `harness/reports/evidence-20260630-125241.md`.
 
 ## Conclusion
 PARTIAL
 
 ## Blocking Evidence
-- Full `mvn test` did not produce a complete PASS result.
+- Full `mvn test` completed but has 5 existing architecture guard failures.
 - Architecture guard collection still has 5 known order/user failures.
 
 ## Code-Side Evidence
 - Compile PASS.
 - Package PASS.
-- Product targeted tests PASS.
-- Application/controller/routing parity tests PASS.
+- Backfill metadata/status targeted tests PASS.
+- Product tests PASS.
 - real-pre restart-compose PASS.
 - real-pre verify-local PASS.
-- Safe unauthenticated product list probe returned 401.
+- Safe unauthenticated backfill status probe returned 401.

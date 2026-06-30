@@ -1019,7 +1019,8 @@ public class ProductActivityBackfillService {
                         lockWaitCount,
                         deadlockRetryCount,
                         result.dbRowsBefore(),
-                        result.estimatedGapRows()),
+                        result.estimatedGapRows(),
+                        result.unchanged()),
                 LocalDateTime.now()));
         jobLogMapper.updateById(log);
     }

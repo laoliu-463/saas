@@ -54,7 +54,7 @@ public class ProductBackfillJobStatusQueryService {
                 requestMeta.get("lastProgressAt") == null ? null : requestMeta.get("lastProgressAt").toString(),
                 metadata.longValue(requestMeta, "lockWaitCount"),
                 metadata.longValue(requestMeta, "deadlockRetryCount"),
-                0,
+                metadata.intValue(requestMeta, "unchanged"),
                 snapshot.startedAt() == null ? null : snapshot.startedAt().toString(),
                 snapshot.finishedAt() == null ? null : snapshot.finishedAt().toString());
     }

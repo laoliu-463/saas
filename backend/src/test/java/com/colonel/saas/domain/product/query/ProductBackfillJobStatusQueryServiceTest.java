@@ -100,6 +100,35 @@ class ProductBackfillJobStatusQueryServiceTest {
     }
 
     @Test
+    void getJobStatus_shouldExposeUnchangedCountFromMetadataWithoutChangingApiShape() {
+        repository.result = Optional.of(new ProductBackfillJobStatusSnapshot(
+                "job-unchanged",
+                "SUCCESS",
+                false,
+                "CUSTOM_ACTIVITY_IDS",
+                1,
+                1,
+                0,
+                0,
+                20L,
+                20L,
+                2,
+                3,
+                0,
+                0,
+                "{\"unchanged\":7,\"lastProgressAt\":\"2026-06-30T10:00:00\"}",
+                null,
+                LocalDateTime.of(2026, 6, 30, 9, 59),
+                LocalDateTime.of(2026, 6, 30, 10, 0)));
+
+        ProductBackfillJobStatusView status = service.getJobStatus("job-unchanged");
+
+        assertThat(status.unchanged()).isEqualTo(7);
+        assertThat(status.inserted()).isEqualTo(2);
+        assertThat(status.updated()).isEqualTo(3);
+    }
+
+    @Test
     void getJobStatus_shouldRejectBlankJobId() {
         assertThatThrownBy(() -> service.getJobStatus(" "))
                 .isInstanceOf(BusinessException.class)
