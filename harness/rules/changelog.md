@@ -7,6 +7,11 @@
 
 ## 最近版本摘要
 
+### v0.8.17 — 2026-06-30
+- DDD-VERIFY-001 活动商品定时同步完成时间端口切片：复用 `ProductActivitySyncStatePort`，将 `ProductActivitySyncApplicationService.markManualActivitySyncCompleted` 泛化为 `markActivitySyncCompleted`，`ProductActivitySyncJob` 完成时不再直接调用 `ColonelsettlementActivityMapper.touchLastSyncAt`；定时任务活动 ID 查询、cron 配置、Redis 锁、API 路径、响应字段、DB schema 和真实同步入口均不变。
+- RED 先暴露缺少 `markActivitySyncCompleted`；GREEN targeted 32 tests、Product 全集合 362 tests、compile/package、real-pre restart/health PASS；安全业务探针 POST 手动同步无 token 返回 401，未触发真实同步；架构集合 189 tests / 5 failures / 1 skipped，全量 `mvn test` 2750 tests / 5 failures / 3 skipped，失败仍为既有 order/user 架构红线，本轮 evidence 结论为 PARTIAL。
+- 证据：`harness/reports/evidence-20260630-151133.md`；latest：`harness/reports/latest-evidence-20260630.md`；retro：`harness/reports/retro-20260630-151133.md`。
+
 ### v0.8.16 — 2026-06-30
 - DDD-VERIFY-001 活动商品手动同步完成时间端口切片：新增 `ProductActivitySyncStatePort` 与 MyBatis adapter 承接 `touchLastSyncAt`，`ProductActivitySyncApplicationService.markManualActivitySyncCompleted` 统一完成时间写入入口，`ProductActivityManualSyncService` 不再直接依赖 `ColonelsettlementActivityMapper`；API 路径、响应字段、异步执行、运行中幂等、DB schema、锁和真实同步入口均不变。
 - RED 先暴露缺少 product sync state port；GREEN targeted 27 tests、Product 全集合 362 tests、compile/package、real-pre restart/health PASS；安全业务探针 POST 手动同步无 token 返回 401，未触发真实同步；架构集合 189 tests / 5 failures / 1 skipped，全量 `mvn test` 2750 tests / 5 failures / 3 skipped，失败仍为既有 order/user 架构红线，本轮 evidence 结论为 PARTIAL。

@@ -285,10 +285,10 @@ class ProductActivitySyncApplicationServiceTest {
     }
 
     @Test
-    void markManualActivitySyncCompleted_shouldDelegateToStatePortWithCurrentTimestamp() {
+    void markActivitySyncCompleted_shouldDelegateToStatePortWithCurrentTimestamp() {
         ProductActivitySyncApplicationService applicationService = applicationService();
 
-        applicationService.markManualActivitySyncCompleted("ACT-1");
+        applicationService.markActivitySyncCompleted("ACT-1");
 
         ArgumentCaptor<LocalDateTime> completedAtCaptor = ArgumentCaptor.forClass(LocalDateTime.class);
         verify(productActivitySyncStatePort).markActivitySyncCompleted(

@@ -268,7 +268,7 @@ class DddProduct003ProductRoutingTest {
         assertThat(serviceSource)
                 .contains("ProductActivitySyncApplicationService")
                 .contains("refreshManualActivitySnapshots")
-                .contains("markManualActivitySyncCompleted")
+                .contains("markActivitySyncCompleted")
                 .doesNotContain("DouyinProductGateway")
                 .doesNotContain("ColonelsettlementActivityMapper")
                 .doesNotContain("touchLastSyncAt")
@@ -276,7 +276,7 @@ class DddProduct003ProductRoutingTest {
         assertThat(applicationSource)
                 .contains("refreshManualActivitySnapshots")
                 .contains("ProductActivitySyncStatePort")
-                .contains("markManualActivitySyncCompleted")
+                .contains("markActivitySyncCompleted")
                 .contains("ActivityProductPagePolicy");
     }
 
@@ -314,7 +314,9 @@ class DddProduct003ProductRoutingTest {
         assertThat(jobSource)
                 .contains("ProductActivitySyncApplicationService")
                 .contains("refreshScheduledActivitySnapshots")
+                .contains("markActivitySyncCompleted")
                 .doesNotContain("DouyinProductGateway")
+                .doesNotContain("touchLastSyncAt")
                 .doesNotContain("buildQueryRequest")
                 .doesNotContain("normalizedPageSize");
         assertThat(applicationSource)

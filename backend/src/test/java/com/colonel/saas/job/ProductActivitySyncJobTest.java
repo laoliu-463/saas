@@ -78,8 +78,8 @@ class ProductActivitySyncJobTest {
 
         verify(activityMapper, never()).selectActiveActivityIds(anyInt(), any(LocalDateTime.class));
         verify(productActivitySyncApplicationService, times(2)).refreshScheduledActivitySnapshots(any(), any());
-        verify(activityMapper).touchLastSyncAt(eq("ACT-1"), any(LocalDateTime.class));
-        verify(activityMapper).touchLastSyncAt(eq("ACT-2"), any(LocalDateTime.class));
+        verify(productActivitySyncApplicationService).markActivitySyncCompleted("ACT-1");
+        verify(productActivitySyncApplicationService).markActivitySyncCompleted("ACT-2");
         verify(jobLockService).release(JobLockKeys.PRODUCT_ACTIVITY_SYNC);
         verify(jobLockService).release(JobLockKeys.PRODUCT_BACKFILL_GLOBAL);
     }
@@ -94,14 +94,14 @@ class ProductActivitySyncJobTest {
         job.syncAll();
 
         verify(productActivitySyncApplicationService, times(2)).refreshScheduledActivitySnapshots(any(), any());
-        verify(activityMapper, never()).touchLastSyncAt(eq("ACT-1"), any(LocalDateTime.class));
-        verify(activityMapper).touchLastSyncAt(eq("ACT-2"), any(LocalDateTime.class));
+        verify(productActivitySyncApplicationService, never()).markActivitySyncCompleted("ACT-1");
+        verify(productActivitySyncApplicationService).markActivitySyncCompleted("ACT-2");
         verify(jobLockService).release(JobLockKeys.PRODUCT_ACTIVITY_SYNC);
         verify(jobLockService).release(JobLockKeys.PRODUCT_BACKFILL_GLOBAL);
     }
 
     @Test
-    void syncAll_shouldNotTouchLastSyncAtWhenActivityIncomplete() {
+    void syncAll_shouldNotMarkActivitySyncCompletedWhenActivityIncomplete() {
         ProductActivitySyncJob job = job(true, "ACT-1");
         when(productActivitySyncApplicationService.refreshScheduledActivitySnapshots(any(), any()))
                 .thenReturn(new ProductActivitySyncApplicationService.ActivityProductRefreshResult(
@@ -120,13 +120,13 @@ class ProductActivitySyncJobTest {
 
         job.syncAll();
 
-        verify(activityMapper, never()).touchLastSyncAt(eq("ACT-1"), any(LocalDateTime.class));
+        verify(productActivitySyncApplicationService, never()).markActivitySyncCompleted("ACT-1");
         verify(jobLockService).release(JobLockKeys.PRODUCT_ACTIVITY_SYNC);
         verify(jobLockService).release(JobLockKeys.PRODUCT_BACKFILL_GLOBAL);
     }
 
     @Test
-    void syncAll_shouldLoadActivitiesRefreshAndTouchLastSyncAt() {
+    void syncAll_shouldLoadActivitiesRefreshAndMarkActivitySyncCompleted() {
         ProductActivitySyncJob job = job(true, "");
         when(activityMapper.selectActiveActivityIds(eq(20), any(LocalDateTime.class)))
                 .thenReturn(List.of("ACT-10", "ACT-20"));
@@ -141,8 +141,8 @@ class ProductActivitySyncJobTest {
                 .containsExactly("ACT-10", "ACT-20");
         assertThat(pageSizeCaptor.getAllValues())
                 .containsExactly(20, 20);
-        verify(activityMapper).touchLastSyncAt(eq("ACT-10"), any(LocalDateTime.class));
-        verify(activityMapper).touchLastSyncAt(eq("ACT-20"), any(LocalDateTime.class));
+        verify(productActivitySyncApplicationService).markActivitySyncCompleted("ACT-10");
+        verify(productActivitySyncApplicationService).markActivitySyncCompleted("ACT-20");
         verify(jobLockService).release(JobLockKeys.PRODUCT_ACTIVITY_SYNC);
         verify(jobLockService).release(JobLockKeys.PRODUCT_BACKFILL_GLOBAL);
     }

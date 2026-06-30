@@ -70,7 +70,7 @@ public class ProductActivitySyncApplicationService {
         return payload;
     }
 
-    public void markManualActivitySyncCompleted(String activityId) {
+    public void markActivitySyncCompleted(String activityId) {
         productActivitySyncStatePort.markActivitySyncCompleted(activityId, LocalDateTime.now());
     }
 

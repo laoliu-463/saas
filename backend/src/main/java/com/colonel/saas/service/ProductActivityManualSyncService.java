@@ -59,7 +59,7 @@ public class ProductActivityManualSyncService {
             ProductActivitySyncApplicationService.ActivityProductRefreshResult result =
                     productActivitySyncApplicationService.refreshManualActivitySnapshots(activityId, appId, pageSize);
             if (result.complete()) {
-                productActivitySyncApplicationService.markManualActivitySyncCompleted(activityId);
+                productActivitySyncApplicationService.markActivitySyncCompleted(activityId);
             }
             log.info(
                     "ProductActivityManualSync completed, activityId={}, syncedProductCount={}, libraryEntryCount={}, createdCount={}, updatedCount={}, skippedCount={}, pagesFetched={}, fetchedRows={}, stoppedReason={}, stillHasNextWhenStopped={}, complete={}",

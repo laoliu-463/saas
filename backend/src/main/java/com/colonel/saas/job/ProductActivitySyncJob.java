@@ -110,7 +110,7 @@ public class ProductActivitySyncJob {
                     ProductActivitySyncApplicationService.ActivityProductRefreshResult result =
                             productActivitySyncApplicationService.refreshScheduledActivitySnapshots(activityId, pageSize);
                     if (result.complete()) {
-                        activityMapper.touchLastSyncAt(activityId, LocalDateTime.now());
+                        productActivitySyncApplicationService.markActivitySyncCompleted(activityId);
                         ok++;
                     } else {
                         fail++;

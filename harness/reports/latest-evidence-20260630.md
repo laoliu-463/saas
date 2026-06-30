@@ -1,6 +1,6 @@
 # Latest Evidence
 
-See `harness/reports/evidence-20260630-133715.md`.
+See `harness/reports/evidence-20260630-151133.md`.
 
 ## Conclusion
 PARTIAL
@@ -12,7 +12,7 @@ PARTIAL
 ## Code-Side Evidence
 - Compile PASS.
 - Package PASS.
-- Product manual sync completion state port targeted tests PASS.
+- Product scheduled sync completion state port targeted tests PASS.
 - Product tests PASS.
 - real-pre restart-compose PASS.
 - real-pre verify-local PASS.

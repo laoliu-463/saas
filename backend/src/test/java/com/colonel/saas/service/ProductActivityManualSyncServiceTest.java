@@ -44,7 +44,7 @@ class ProductActivityManualSyncServiceTest {
         assertThat(result.syncStatus()).isEqualTo("ACCEPTED");
         verify(colonelActivityService).syncActivitySummaryFromUpstream("ACT-1", null);
         verify(productActivitySyncApplicationService).refreshManualActivitySnapshots("ACT-1", null, 20);
-        verify(productActivitySyncApplicationService).markManualActivitySyncCompleted("ACT-1");
+        verify(productActivitySyncApplicationService).markActivitySyncCompleted("ACT-1");
     }
 
     @Test
@@ -93,6 +93,6 @@ class ProductActivityManualSyncServiceTest {
         ProductActivityManualSyncService.SyncTriggerResult result = service.trigger("ACT-1", null);
 
         assertThat(result.syncStatus()).isEqualTo("ACCEPTED");
-        verify(productActivitySyncApplicationService, never()).markManualActivitySyncCompleted(any());
+        verify(productActivitySyncApplicationService, never()).markActivitySyncCompleted(any());
     }
 }
