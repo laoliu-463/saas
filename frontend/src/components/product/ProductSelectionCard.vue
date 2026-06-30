@@ -152,8 +152,22 @@
 
         <div class="selection-card__metrics">
           <div class="selection-card__metrics-row">
+            <span
+              v-if="commissionTypeTagText"
+              class="selection-card__metric-tag selection-card__metric-tag--type"
+              :title="commissionTypeTagText"
+            >
+              {{ commissionTypeTagText }}
+            </span>
             <span class="selection-card__metric-tag" :title="`公开佣金 ${displayCommissionRate}`">
               佣 {{ displayCommissionRate }}
+            </span>
+            <span
+              v-if="campaignCommissionRateText"
+              class="selection-card__metric-tag selection-card__metric-tag--campaign"
+              :title="`投放期佣金 ${campaignCommissionRateText}`"
+            >
+              投放期佣 {{ campaignCommissionRateText }}
             </span>
             <span class="selection-card__metric-tag">
               {{ card.specs?.length ? card.specs.length + '规格' : '单规格' }}
@@ -251,6 +265,14 @@ const emit = defineEmits<{
   quickSample: [raw: Record<string, unknown>]
   refresh: [raw: Record<string, unknown>]
 }>()
+
+type InfoField = {
+  key: string
+  label: string
+  value: string
+  copyText?: string
+  warning?: boolean
+}
 
 const message = useMessage()
 const imageVisible = ref(Boolean(props.card.imageUrl))
@@ -368,63 +390,105 @@ const shopScoreValue = computed(() => {
   return String(score)
 })
 
+const cleanDisplayText = (value: unknown) => {
+  const text = String(value ?? '').trim()
+  return text && text !== '-' ? text : ''
+}
+
+const commissionTypeTagText = computed(() => {
+  const label = cleanDisplayText((props.card as any).commissionTypeLabel)
+  if (label) return label
+  return (props.card as any).isDoubleCommission ? '双佣金' : ''
+})
+
 const displayCommissionRate = computed(() => {
-  const campaign = String(props.card.campaignCommissionRate || '').trim()
-  if (campaign && campaign !== '-') return campaign
   return props.card.commissionRate || '-'
 })
 
-const infoFields = computed(() => [
-  {
-    key: 'recruiter',
-    label: '招商',
-    value: props.card.recruiterName,
-    copyText: props.card.recruiterName
-  },
-  {
-    key: 'sample',
-    label: '寄样',
-    value: props.card.sampleRequirement,
-    copyText: props.card.sampleRequirement
-  },
-  {
-    key: 'time',
-    label: '时间',
-    value: timeLine.value,
-    copyText: timeLine.value !== '-' ? timeLine.value : ''
-  },
-  {
-    key: 'colonel',
-    label: '团长',
-    value: props.card.colonelName,
-    copyText: props.card.colonelName
-  },
-  {
-    key: 'shop',
-    label: '店铺',
-    value: props.card.shopName,
-    copyText: props.card.shopName
-  },
-  {
-    key: 'activity',
-    label: '活动',
-    value: props.card.activityName,
-    copyText: props.card.activityName
-  },
-  {
-    key: 'stock',
-    label: '库存',
-    value: stockValue.value,
-    copyText: stockValue.value,
-    warning: stockWarning.value
-  },
-  {
-    key: 'shopScore',
-    label: '商家评分',
-    value: shopScoreValue.value,
-    copyText: shopScoreValue.value
+const campaignCommissionRateText = computed(() => cleanDisplayText(props.card.campaignCommissionRate))
+
+const campaignServiceFeeRateText = computed(() => cleanDisplayText(props.card.campaignServiceFeeRate))
+
+const infoFields = computed(() => {
+  const fields: InfoField[] = [
+    {
+      key: 'recruiter',
+      label: '招商',
+      value: props.card.recruiterName,
+      copyText: props.card.recruiterName
+    },
+    {
+      key: 'sample',
+      label: '寄样',
+      value: props.card.sampleRequirement,
+      copyText: props.card.sampleRequirement
+    },
+    {
+      key: 'time',
+      label: '时间',
+      value: timeLine.value,
+      copyText: timeLine.value !== '-' ? timeLine.value : ''
+    },
+    {
+      key: 'colonel',
+      label: '团长',
+      value: props.card.colonelName,
+      copyText: props.card.colonelName
+    },
+    {
+      key: 'shop',
+      label: '店铺',
+      value: props.card.shopName,
+      copyText: props.card.shopName
+    },
+    {
+      key: 'activity',
+      label: '活动',
+      value: props.card.activityName,
+      copyText: props.card.activityName
+    }
+  ]
+  if (commissionTypeTagText.value) {
+    fields.push({
+      key: 'commissionType',
+      label: '佣金类型',
+      value: commissionTypeTagText.value,
+      copyText: commissionTypeTagText.value
+    })
   }
-])
+  if (campaignCommissionRateText.value) {
+    fields.push({
+      key: 'campaignCommission',
+      label: '投放期佣',
+      value: campaignCommissionRateText.value,
+      copyText: campaignCommissionRateText.value
+    })
+  }
+  if (campaignServiceFeeRateText.value) {
+    fields.push({
+      key: 'campaignServiceFee',
+      label: '投放服务费',
+      value: campaignServiceFeeRateText.value,
+      copyText: campaignServiceFeeRateText.value
+    })
+  }
+  fields.push(
+    {
+      key: 'stock',
+      label: '库存',
+      value: stockValue.value,
+      copyText: stockValue.value,
+      warning: stockWarning.value
+    },
+    {
+      key: 'shopScore',
+      label: '商家评分',
+      value: shopScoreValue.value,
+      copyText: shopScoreValue.value
+    }
+  )
+  return fields
+})
 
 const onImageError = () => {
   imageVisible.value = false
@@ -785,6 +849,20 @@ const copyField = async (text: string | undefined, label: string) => {
   max-width: 72px;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.selection-card__metric-tag--type {
+  max-width: 88px;
+  border-color: #fecaca;
+  background: #fff1f2;
+  color: #be123c;
+}
+
+.selection-card__metric-tag--campaign {
+  max-width: 112px;
+  border-color: #fed7aa;
+  background: #fff7ed;
+  color: #c2410c;
 }
 
 .selection-card__metrics-grid {

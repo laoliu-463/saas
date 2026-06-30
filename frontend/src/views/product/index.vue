@@ -544,7 +544,21 @@ const normalizeText = (value?: string | number | null) => {
 const formatPercent = (value?: string | number | null) => {
   const text = normalizeText(value)
   if (!text) return '-'
-  return text.includes('%') ? text : `${text}%`
+  if (text.includes('%')) return text
+  const numeric = Number(text)
+  if (Number.isFinite(numeric) && numeric > 0 && numeric <= 1) {
+    return `${(numeric * 100).toFixed(2)}%`
+  }
+  return `${text}%`
+}
+
+const formatBasisPointPercent = (value?: string | number | null) => {
+  const text = normalizeText(value)
+  if (!text) return ''
+  if (text.includes('%')) return text
+  const numeric = Number(text)
+  if (!Number.isFinite(numeric) || numeric <= 0) return ''
+  return `${(numeric / 100).toFixed(2)}%`
 }
 
 const formatMoney = (value?: string | number | null, prefix = '¥') => {
@@ -623,18 +637,22 @@ const getActivityLines = (item: any) => [
 const getCommissionLines = (item: any) => {
   const common = normalizeText(item.commonCommissionRateText || item.normalCommissionText || item.activityCosRatioText)
   const daily = normalizeText(item.dailyCommissionRateText || item.activityCosRatioText)
-  const campaign = normalizeText(item.campaignCommissionRateText || item.deliveryCommissionRateText || item.putCommissionRateText)
+  const campaign = normalizeText(item.campaignCommissionRateText || item.deliveryCommissionRateText || item.putCommissionRateText) ||
+    formatBasisPointPercent(item.activityAdCosRatio ?? item.activity_ad_cos_ratio)
+  const typeText = normalizeText(item.cosTypeText || item.cos_type_text || item.commissionTypeText) ||
+    (hasDoubleCommission(item) ? '双佣金' : '')
   return [
+    typeText ? `类型：${typeText}` : '',
     `普通：${common || '-'}`,
     `日常：${daily || '-'}`,
     `投放期：${campaign || '-'}`
-  ]
+  ].filter(Boolean)
 }
 
 const getServiceFeeLines = (item: any) => {
-  const normal = normalizeText(item.serviceFeeRateText || item.serviceFeeRate)
+  const normal = normalizeText(item.adServiceRatio || item.ad_service_ratio || item.serviceFeeRateText || item.serviceFeeRate)
   const daily = normalizeText(item.dailyServiceFeeRateText || item.dayServiceFeeRate || item.estimatedServiceFee)
-  const campaign = normalizeText(item.campaignServiceFeeRateText || item.putServiceFeeRate)
+  const campaign = normalizeText(item.campaignServiceFeeRateText || item.putServiceFeeRate || item.adServiceRatio || item.ad_service_ratio)
   return [
     normal ? `普通：${formatPercent(normal)}` : '',
     `日常：${daily ? (String(daily).includes('%') ? formatPercent(daily) : formatMoney(daily)) : '-'}`,
@@ -643,7 +661,14 @@ const getServiceFeeLines = (item: any) => {
 }
 
 const hasDoubleCommission = (item: any) =>
-  Boolean(item?.doubleCommission || item?.dualCommission || item?.serviceFeeMode === 'DOUBLE' || item?.promotionMode === 'DOUBLE')
+  Boolean(
+    item?.doubleCommission ||
+      item?.dualCommission ||
+      item?.serviceFeeMode === 'DOUBLE' ||
+      item?.promotionMode === 'DOUBLE' ||
+      Number(item?.cosType ?? item?.cos_type) === 1 ||
+      normalizeText(item?.cosTypeText || item?.cos_type_text).includes('双佣')
+  )
 
 const ensureActivityId = async () => {
   if (isSharedLibraryMode.value) return ''

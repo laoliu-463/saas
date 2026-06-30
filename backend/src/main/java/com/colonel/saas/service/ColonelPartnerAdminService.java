@@ -13,10 +13,16 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 /**
- * 团长主数据管理服务（运营后台）。
+ * 团长主数据管理服务（运营后台，Router legacy 路径，DDD-COLONEL-001）。
  *
  * <p>职责：支持运营人员手动维护团长的联系方式（联系人姓名、电话、微信、备注）。
- * 自动同步流程不会覆盖人工维护的联系方式字段。
+ * 自动同步流程不会覆盖人工维护的联系方式字段。</p>
+ *
+ * <p><b>DDD 切片状态（DDD-COLONEL-002 Slice 4 收尾）：</b>
+ * 本类是 {@link com.colonel.saas.domain.colonel.application.ColonelPartnerContactUpdateRouter}
+ * 的 legacy 路径（OFF 灰度时调用）。Router ON 时已切到
+ * {@link com.colonel.saas.domain.colonel.application.ColonelPartnerContactUpdateApplicationService}，
+ * 故不再二次切为委派壳，以保留 RouterTest 中 OFF 路径的业务一致性断言。</p>
  *
  * <p>依赖服务/仓储：
  * <ul>

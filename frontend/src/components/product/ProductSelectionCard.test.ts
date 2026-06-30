@@ -248,6 +248,22 @@ describe('ProductSelectionCard hover drawer', () => {
     expect(firstMetric.text()).toBe('佣 20%')
   })
 
+  it('双佣金商品展示类型和投放期佣金', () => {
+    const wrapper = mountCard({
+      card: {
+        ...baseCard,
+        commissionTypeLabel: '双佣金',
+        isDoubleCommission: true,
+        campaignCommissionRate: '8.00%',
+        campaignServiceFeeRate: '8%'
+      }
+    })
+    const metrics = wrapper.find('.selection-card__metrics')
+
+    expect(metrics.text()).toContain('双佣金')
+    expect(metrics.text()).toContain('投放期佣 8.00%')
+  })
+
   it('hover 详情字段按 FUNC-001 要求展示标签顺序', () => {
     const wrapper = mountCard()
     const labels = wrapper.findAll('.selection-card__field dt').map((node) => node.text())

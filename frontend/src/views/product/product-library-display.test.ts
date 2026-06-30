@@ -195,6 +195,34 @@ describe('product-library-display', () => {
     expect(card.sampleRequirement).toContain('1000')
   })
 
+  it('normalizeProductCard maps dual commission fields from backend product views', () => {
+    const card = normalizeProductCard({
+      productId: '9001',
+      title: '双佣商品',
+      activityCosRatioText: '25.00%',
+      cosType: 1,
+      cosTypeText: '双佣金',
+      adServiceRatio: '8%',
+      activityAdCosRatio: 800
+    })
+
+    expect(card.commissionTypeLabel).toBe('双佣金')
+    expect(card.isDoubleCommission).toBe(true)
+    expect(card.commissionRate).toBe('25.00%')
+    expect(card.serviceFeeRate).toBe('8%')
+    expect(card.campaignCommissionRate).toBe('8.00%')
+  })
+
+  it('normalizeProductCard formats decimal service fee rate as percent', () => {
+    const card = normalizeProductCard({
+      productId: '9002',
+      title: '费率商品',
+      serviceFeeRate: 0.08
+    })
+
+    expect(card.serviceFeeRate).toBe('8.00%')
+  })
+
   it('normalizeProductCard does not throw on empty payload', () => {
     const card = normalizeProductCard({})
     expect(card.productName).toBe('未命名商品')

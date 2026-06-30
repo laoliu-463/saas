@@ -224,6 +224,15 @@
                       <n-descriptions-item label="商家信息">{{ detail.merchantName || detail.merchantShopName || '-' }}</n-descriptions-item>
                       <n-descriptions-item label="售价">{{ detail.priceText || '-' }}</n-descriptions-item>
                       <n-descriptions-item label="佣金率"><span class="highlight-text">{{ detail.activityCosRatioText || '-' }}</span></n-descriptions-item>
+                      <n-descriptions-item v-if="detailCommissionTypeText !== '-'" label="佣金类型">
+                        {{ detailCommissionTypeText }}
+                      </n-descriptions-item>
+                      <n-descriptions-item v-if="detailCampaignCommissionText !== '-'" label="投放期佣金">
+                        {{ detailCampaignCommissionText }}
+                      </n-descriptions-item>
+                      <n-descriptions-item v-if="detailAdServiceRatioText !== '-'" label="广告服务费率">
+                        {{ detailAdServiceRatioText }}
+                      </n-descriptions-item>
                       <n-descriptions-item label="服务费率">{{ formatPercent(detail.serviceFeeRate) }}</n-descriptions-item>
                       <n-descriptions-item label="当前库存">{{ detail.productStock || '-' }}</n-descriptions-item>
                       <n-descriptions-item label="累计销量">{{ detail.sales30d ?? detail.sales ?? 0 }}</n-descriptions-item>
@@ -606,6 +615,41 @@ const promotionLinks = computed(() => {
 
 const getStatusLabel = getBizStatusLabel;
 const normalizeText = normalizeLogText;
+const cleanDetailText = (value?: string | number | null) => {
+  const text = normalizeText(value === null || value === undefined ? value : String(value));
+  return text && text !== '-' ? text : '';
+};
+
+const formatBasisPointPercent = (value?: string | number | null) => {
+  const text = cleanDetailText(value);
+  if (!text) return '-';
+  if (text.includes('%')) return text;
+  const num = Number(text);
+  if (!Number.isFinite(num) || num <= 0) return '-';
+  return `${(num / 100).toFixed(2)}%`;
+};
+
+const detailCommissionTypeText = computed(() => {
+  const label = cleanDetailText(detail.value?.cosTypeText || detail.value?.commissionTypeText);
+  if (label) return label;
+  const cosType = Number(detail.value?.cosType ?? detail.value?.cos_type);
+  return cosType === 1 ? '双佣金' : '-';
+});
+
+const detailCampaignCommissionText = computed(() => {
+  const labeled = cleanDetailText(
+    detail.value?.campaignCommissionRateText ||
+      detail.value?.deliveryCommissionRateText ||
+      detail.value?.putCommissionRateText
+  );
+  if (labeled) return formatPercent(labeled);
+  return formatBasisPointPercent(detail.value?.activityAdCosRatio ?? detail.value?.activity_ad_cos_ratio);
+});
+
+const detailAdServiceRatioText = computed(() => {
+  const labeled = cleanDetailText(detail.value?.adServiceRatio ?? detail.value?.ad_service_ratio);
+  return labeled ? formatPercent(labeled) : '-';
+});
 const decisionLabel = getDecisionLevelLabel;
 const formatOperatorDisplay = formatOperatorLabel;
 
@@ -1008,6 +1052,10 @@ const retryManualCopy = async () => {
 const formatPercent = (value?: number | string | null) => {
   if (value === null || value === undefined || value === '') return '-';
   if (typeof value === 'string' && value.includes('%')) return value;
+  const numeric = Number(value);
+  if (Number.isFinite(numeric) && numeric > 0 && numeric <= 1) {
+    return `${(numeric * 100).toFixed(2)}%`;
+  }
   return `${value}%`;
 };
 
