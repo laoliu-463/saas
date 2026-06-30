@@ -354,6 +354,8 @@ export interface ProductCardView {
   livePrice: string
   commissionRate: string
   serviceFeeRate: string
+  commissionTypeLabel: string
+  isDoubleCommission: boolean
   campaignCommissionRate: string
   campaignServiceFeeRate: string
   totalSales: number
@@ -430,9 +432,27 @@ export function formatTotalSalesWan(value: number | null | undefined): string {
 }
 
 const formatRateText = (value: unknown): string => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    if (value > 0 && value <= 1) return `${(value * 100).toFixed(2)}%`
+    return `${value}%`
+  }
   const text = normalizeText(value as string | number | null | undefined)
   if (!text) return '-'
+  const numeric = Number(text)
+  if (Number.isFinite(numeric) && numeric > 0 && numeric <= 1) {
+    return `${(numeric * 100).toFixed(2)}%`
+  }
   return text.includes('%') ? text : `${text}%`
+}
+
+const formatBasisPointRate = (value: unknown): string => {
+  if (value === null || value === undefined || value === '') return ''
+  const text = normalizeText(value as string | number | null | undefined)
+  if (!text) return ''
+  if (text.includes('%')) return text
+  const numeric = Number(text)
+  if (!Number.isFinite(numeric) || numeric <= 0) return ''
+  return `${(numeric / 100).toFixed(2)}%`
 }
 
 const formatMoneyText = (value: unknown): string => {
@@ -446,12 +466,29 @@ const formatMoneyText = (value: unknown): string => {
 
 const resolveServiceFeeRateText = (raw: any): string => {
   const labeled = normalizeText(
-    raw?.serviceFeeRateText || raw?.dailyServiceFeeRateText || raw?.serviceFeeRate
+    raw?.adServiceRatio || raw?.ad_service_ratio || raw?.serviceFeeRateText || raw?.dailyServiceFeeRateText || raw?.serviceFeeRate
   )
   if (labeled) return formatRateText(labeled)
   const estimated = normalizeText(raw?.estimatedServiceFee || raw?.estimatedServiceFeeAmount)
   if (estimated) return estimated.startsWith('¥') ? estimated : `¥${estimated}`
   return '-'
+}
+
+const resolveCommissionType = (raw: any) => {
+  const label = normalizeText(
+    raw?.cosTypeText || raw?.cos_type_text || raw?.commissionTypeText || raw?.commission_type_text
+  )
+  const cosType = Number(raw?.cosType ?? raw?.cos_type)
+  const isDoubleCommission = Boolean(
+    raw?.doubleCommission === true ||
+      raw?.dualCommission === true ||
+      cosType === 1 ||
+      label.includes('双佣')
+  )
+  return {
+    label: label || (isDoubleCommission ? '双佣金' : ''),
+    isDoubleCommission
+  }
 }
 
 export function normalizeProductCard(raw: any): ProductCardView {
@@ -471,6 +508,19 @@ export function normalizeProductCard(raw: any): ProductCardView {
     normalizeText(raw?.baiyingUrl || raw?.baiyingLink || raw?.buyinUrl) || ''
   const promotionUrl =
     normalizeText(raw?.promotionLink || raw?.promoteLink || raw?.shortLink || raw?.promotionUrl) || ''
+  const commissionType = resolveCommissionType(raw)
+  const campaignCommissionRate =
+    formatRateText(
+      raw?.campaignCommissionRateText || raw?.deliveryCommissionRateText || raw?.putCommissionRateText
+    )
+  const activityAdCommissionRate = formatBasisPointRate(raw?.activityAdCosRatio ?? raw?.activity_ad_cos_ratio)
+  const campaignServiceFeeRate = formatRateText(
+    raw?.campaignServiceFeeRateText ||
+      raw?.putServiceFeeRateText ||
+      raw?.adServiceRatio ||
+      raw?.ad_service_ratio ||
+      supplement?.specialCommissionRatio
+  )
 
   return {
     id: relationId,
@@ -489,12 +539,10 @@ export function normalizeProductCard(raw: any): ProductCardView {
     livePrice: formatMoneyText(raw?.livePriceText || raw?.priceText || raw?.price),
     commissionRate: formatRateText(raw?.commissionRateText || raw?.activityCosRatioText || raw?.commissionRate),
     serviceFeeRate: resolveServiceFeeRateText(raw),
-    campaignCommissionRate: formatRateText(
-      raw?.campaignCommissionRateText || raw?.deliveryCommissionRateText || raw?.putCommissionRateText
-    ),
-    campaignServiceFeeRate: formatRateText(
-      raw?.campaignServiceFeeRateText || raw?.putServiceFeeRateText || supplement?.specialCommissionRatio
-    ),
+    commissionTypeLabel: commissionType.label,
+    isDoubleCommission: commissionType.isDoubleCommission,
+    campaignCommissionRate: campaignCommissionRate !== '-' ? campaignCommissionRate : activityAdCommissionRate || '-',
+    campaignServiceFeeRate,
     totalSales: Number.isFinite(sales) ? sales : 0,
     totalSalesText: formatTotalSalesWan(sales),
     sampleRequirement: buildSampleRequirementText(raw),

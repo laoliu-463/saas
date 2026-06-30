@@ -53,6 +53,15 @@
         <span v-if="stockAlertText" class="selection-card__stock-alert" data-testid="product-stock-alert">
           {{ stockAlertText }}
         </span>
+        <span
+          v-if="commissionTypeTagText"
+          class="selection-card__dual-commission"
+          :class="{ 'selection-card__dual-commission--below-pin': card.isPinned }"
+          data-testid="product-dual-commission-badge"
+          :title="commissionTypeTagText"
+        >
+          {{ commissionTypeTagText }}
+        </span>
         <span class="selection-card__shop-tag" :title="card.shopName">{{ shopTagText }}</span>
         <span v-if="card.supportInvestment" class="selection-card__ads-tag">投流</span>
 
@@ -152,8 +161,22 @@
 
         <div class="selection-card__metrics">
           <div class="selection-card__metrics-row">
+            <span
+              v-if="commissionTypeTagText"
+              class="selection-card__metric-tag selection-card__metric-tag--type"
+              :title="commissionTypeTagText"
+            >
+              {{ commissionTypeTagText }}
+            </span>
             <span class="selection-card__metric-tag" :title="`公开佣金 ${displayCommissionRate}`">
               佣 {{ displayCommissionRate }}
+            </span>
+            <span
+              v-if="campaignCommissionRateText"
+              class="selection-card__metric-tag selection-card__metric-tag--campaign"
+              :title="`投放期佣金 ${campaignCommissionRateText}`"
+            >
+              投放期佣 {{ campaignCommissionRateText }}
             </span>
             <span class="selection-card__metric-tag">
               {{ card.specs?.length ? card.specs.length + '规格' : '单规格' }}
@@ -251,6 +274,14 @@ const emit = defineEmits<{
   quickSample: [raw: Record<string, unknown>]
   refresh: [raw: Record<string, unknown>]
 }>()
+
+type InfoField = {
+  key: string
+  label: string
+  value: string
+  copyText?: string
+  warning?: boolean
+}
 
 const message = useMessage()
 const imageVisible = ref(Boolean(props.card.imageUrl))
@@ -368,63 +399,106 @@ const shopScoreValue = computed(() => {
   return String(score)
 })
 
+const cleanDisplayText = (value: unknown) => {
+  const text = String(value ?? '').trim()
+  return text && text !== '-' ? text : ''
+}
+
+const commissionTypeTagText = computed(() => {
+  if (!(props.card as any).isDoubleCommission) return ''
+  const label = cleanDisplayText((props.card as any).commissionTypeLabel)
+  if (label) return label
+  return '双佣金'
+})
+
 const displayCommissionRate = computed(() => {
-  const campaign = String(props.card.campaignCommissionRate || '').trim()
-  if (campaign && campaign !== '-') return campaign
   return props.card.commissionRate || '-'
 })
 
-const infoFields = computed(() => [
-  {
-    key: 'recruiter',
-    label: '招商',
-    value: props.card.recruiterName,
-    copyText: props.card.recruiterName
-  },
-  {
-    key: 'sample',
-    label: '寄样',
-    value: props.card.sampleRequirement,
-    copyText: props.card.sampleRequirement
-  },
-  {
-    key: 'time',
-    label: '时间',
-    value: timeLine.value,
-    copyText: timeLine.value !== '-' ? timeLine.value : ''
-  },
-  {
-    key: 'colonel',
-    label: '团长',
-    value: props.card.colonelName,
-    copyText: props.card.colonelName
-  },
-  {
-    key: 'shop',
-    label: '店铺',
-    value: props.card.shopName,
-    copyText: props.card.shopName
-  },
-  {
-    key: 'activity',
-    label: '活动',
-    value: props.card.activityName,
-    copyText: props.card.activityName
-  },
-  {
-    key: 'stock',
-    label: '库存',
-    value: stockValue.value,
-    copyText: stockValue.value,
-    warning: stockWarning.value
-  },
-  {
-    key: 'shopScore',
-    label: '商家评分',
-    value: shopScoreValue.value,
-    copyText: shopScoreValue.value
+const campaignCommissionRateText = computed(() => cleanDisplayText(props.card.campaignCommissionRate))
+
+const campaignServiceFeeRateText = computed(() => cleanDisplayText(props.card.campaignServiceFeeRate))
+
+const infoFields = computed(() => {
+  const fields: InfoField[] = [
+    {
+      key: 'recruiter',
+      label: '招商',
+      value: props.card.recruiterName,
+      copyText: props.card.recruiterName
+    },
+    {
+      key: 'sample',
+      label: '寄样',
+      value: props.card.sampleRequirement,
+      copyText: props.card.sampleRequirement
+    },
+    {
+      key: 'time',
+      label: '时间',
+      value: timeLine.value,
+      copyText: timeLine.value !== '-' ? timeLine.value : ''
+    },
+    {
+      key: 'colonel',
+      label: '团长',
+      value: props.card.colonelName,
+      copyText: props.card.colonelName
+    },
+    {
+      key: 'shop',
+      label: '店铺',
+      value: props.card.shopName,
+      copyText: props.card.shopName
+    },
+    {
+      key: 'activity',
+      label: '活动',
+      value: props.card.activityName,
+      copyText: props.card.activityName
+    }
+  ]
+  if (commissionTypeTagText.value) {
+    fields.push({
+      key: 'commissionType',
+      label: '佣金类型',
+      value: commissionTypeTagText.value,
+      copyText: commissionTypeTagText.value
+    })
   }
-])
+  if (campaignCommissionRateText.value) {
+    fields.push({
+      key: 'campaignCommission',
+      label: '投放期佣',
+      value: campaignCommissionRateText.value,
+      copyText: campaignCommissionRateText.value
+    })
+  }
+  if (campaignServiceFeeRateText.value) {
+    fields.push({
+      key: 'campaignServiceFee',
+      label: '投放服务费',
+      value: campaignServiceFeeRateText.value,
+      copyText: campaignServiceFeeRateText.value
+    })
+  }
+  fields.push(
+    {
+      key: 'stock',
+      label: '库存',
+      value: stockValue.value,
+      copyText: stockValue.value,
+      warning: stockWarning.value
+    },
+    {
+      key: 'shopScore',
+      label: '商家评分',
+      value: shopScoreValue.value,
+      copyText: shopScoreValue.value
+    }
+  )
+  return fields
+})
 
 const onImageError = () => {
   imageVisible.value = false
@@ -552,6 +626,29 @@ const copyField = async (text: string | undefined, label: string) => {
   font-size: 10px;
   font-weight: 600;
   line-height: 16px;
+}
+
+.selection-card__dual-commission {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 3;
+  max-width: calc(100% - 16px);
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: rgba(190, 18, 60, 0.94);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 2px 8px rgba(190, 18, 60, 0.24);
+}
+
+.selection-card__dual-commission--below-pin {
+  top: 34px;
 }
 
 .selection-card__shop-tag {
@@ -785,6 +882,20 @@ const copyField = async (text: string | undefined, label: string) => {
   max-width: 72px;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.selection-card__metric-tag--type {
+  max-width: 88px;
+  border-color: #fecaca;
+  background: #fff1f2;
+  color: #be123c;
+}
+
+.selection-card__metric-tag--campaign {
+  max-width: 112px;
+  border-color: #fed7aa;
+  background: #fff7ed;
+  color: #c2410c;
 }
 
 .selection-card__metrics-grid {

@@ -150,6 +150,35 @@ class ProductServiceFilterTest {
     }
 
     @Test
+    void getSelectedLibraryPage_shouldExposeDualCommissionDisplayFields() {
+        ProductOperationState selectedState = state("10001", "9001");
+        selectedState.setAuditPayload("{\"doubleCommission\":true}");
+        Page<ProductOperationState> statePage = new Page<>(1, 200, 1);
+        statePage.setRecords(List.of(selectedState));
+
+        ProductSnapshot snapshot = snapshot("10001", "9001", "玩具乐器", 9900L);
+        snapshot.setActivityCosRatioText("25.00%");
+        snapshot.setCosType(1);
+        snapshot.setCosTypeText("双佣金");
+        snapshot.setAdServiceRatio("8%");
+        snapshot.setActivityAdCosRatio(800L);
+
+        when(operationStateMapper.selectPage(any(Page.class), any())).thenReturn(statePage);
+        when(snapshotMapper.selectBatchIds(any())).thenReturn(List.of(snapshot));
+
+        var result = service.getSelectedLibraryPage(1, 10, filter().doubleCommission("1").build());
+
+        assertThat(result.getRecords()).singleElement().satisfies(product -> {
+            assertThat(product.getActivityCosRatioText()).isEqualTo("25.00%");
+            assertThat(product.getCosType()).isEqualTo(1);
+            assertThat(product.getCosTypeText()).isEqualTo("双佣金");
+            assertThat(product.getAdServiceRatio()).isEqualTo("8%");
+            assertThat(product.getActivityAdCosRatio()).isEqualTo(800L);
+            assertThat(product.getServiceFeeRate()).isEqualByComparingTo("8.00");
+        });
+    }
+
+    @Test
     void getSelectedLibraryPage_shouldFilterByLivePriceRange() {
         ProductOperationState state1 = state("10001", "9001");
         ProductOperationState state2 = state("10002", "9002");

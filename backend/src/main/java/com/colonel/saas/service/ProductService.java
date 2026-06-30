@@ -4545,8 +4545,15 @@ public class ProductService {
         product.setPromotionStartTime(snapshot.getPromotionStartTime());
         product.setPromotionEndTime(snapshot.getPromotionEndTime());
         product.setPriceText(snapshot.getPriceText());
+        product.setActivityCosRatio(snapshot.getActivityCosRatio());
         product.setActivityCosRatioText(snapshot.getActivityCosRatioText());
-        product.setEstimatedServiceFee(estimateFee(snapshot.getPrice(), resolveServiceFeeRate(snapshot)).toPlainString());
+        product.setCosType(snapshot.getCosType());
+        product.setCosTypeText(snapshot.getCosTypeText());
+        product.setAdServiceRatio(snapshot.getAdServiceRatio());
+        product.setActivityAdCosRatio(snapshot.getActivityAdCosRatio());
+        BigDecimal serviceFeeRate = resolveServiceFeeRate(snapshot);
+        product.setServiceFeeRate(serviceFeeRate);
+        product.setEstimatedServiceFee(estimateFee(snapshot.getPrice(), serviceFeeRate).toPlainString());
         product.setSales30d(snapshot.getSales() == null ? 0L : snapshot.getSales());
         product.setHasSampleRule(isSampleRuleAvailable(snapshot));
         product.setSystemTags(buildLibrarySystemTags(snapshot));

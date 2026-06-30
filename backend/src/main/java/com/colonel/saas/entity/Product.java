@@ -169,6 +169,30 @@ public class Product extends BaseEntity {
     @TableField(exist = false)
     private String activityCosRatioText;
 
+    /** 虚拟字段：活动佣金比例原始数值，来源于商品快照 */
+    @TableField(exist = false)
+    private Long activityCosRatio;
+
+    /** 虚拟字段：佣金类型编码，1 表示双佣金 */
+    @TableField(exist = false)
+    private Integer cosType;
+
+    /** 虚拟字段：佣金类型展示文案 */
+    @TableField(exist = false)
+    private String cosTypeText;
+
+    /** 虚拟字段：广告服务费率展示文案 */
+    @TableField(exist = false)
+    private String adServiceRatio;
+
+    /** 虚拟字段：投放期佣金比例原始数值 */
+    @TableField(exist = false)
+    private Long activityAdCosRatio;
+
+    /** 虚拟字段：服务费率百分数值，来源于商品快照 */
+    @TableField(exist = false)
+    private BigDecimal serviceFeeRate;
+
     /** 虚拟字段：预估服务费金额的展示文案 */
     @TableField(exist = false)
     private String estimatedServiceFee;
