@@ -28,23 +28,21 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * 订单域查询与筛选服务。
+ * 订单域查询与筛选服务（Router legacy 路径，DDD-ORDER-006 已部分就位）。
  *
- * <p>负责订单主链路（/orders、/orders/unattributed、/orders/stats、/orders/filter-options）
+ * <p>职责：订单主链路（/orders、/orders/unattributed、/orders/stats、/orders/filter-options）
  * 的筛选条件构造与分页查询。订单域不变量（CLAUDE.md）：仅事实，不算提成，不应用独家覆盖。
- * 本服务只读 / 写 {@code colonelsettlement_order} 事实表，不访问 {@code performance_records}、
- * {@code exclusive_talent}、{@code exclusive_merchant} 等业绩 / 独家覆盖表。</p>
+ * 本服务只读 / 写 {@code colonelsettlement_order} 事实表。</p>
  *
- * <h3>职责</h3>
- * <ul>
- *   <li>构造订单列表的 {@link LambdaQueryWrapper}（与 {@code OrderController.getOrders} 共用）</li>
- *   <li>构造订单统计的 {@link QueryWrapper}（与 {@code OrderController.getStats} 共用）</li>
- *   <li>应用数据范围（PERSONAL/DEPT/ALL）过滤，保证非 admin 只能看自己/本组</li>
- *   <li>应用时间区间筛选（createTime / settleTime）</li>
- *   <li>应用归因状态 / 未归因原因筛选</li>
- *   <li>应用 Dashboard 诊断分类筛选（白名单 + 防 SQL 注入）</li>
- *   <li>解析 CSV 形式的部门 ID 列表（招募/渠道部门）</li>
- * </ul>
+ * <p><b>DDD 切片状态（DDD-ORDER-006 Slice 2 收尾）：</b>
+ * 本类是 {@link com.colonel.saas.controller.OrderController} 在
+ * {@code ddd.refactor.order-application.enabled=false} 时的 legacy 入口；
+ * ON 时由 {@code OrderDomainFacade.getOrders / getStats} 接管，故不再二次切为委派壳，
+ * 以保留 Router 灰度的 OFF 路径业务一致性。</p>
+ *
+ * <p><b>已知已切出的方法：</b>
+ * {@code getOrderDetail} 已迁移到 {@code OrderDetailQueryApplicationService}
+ * （{@code OrderQueryService} 改为 1-line 委派壳，DDD-ORDER-006 Slice 1）。</p>
  *
  * <h3>协作</h3>
  * <ul>
