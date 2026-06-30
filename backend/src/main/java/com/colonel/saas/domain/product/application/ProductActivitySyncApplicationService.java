@@ -1,5 +1,6 @@
 package com.colonel.saas.domain.product.application;
 
+import com.colonel.saas.common.exception.UpstreamErrorCode;
 import com.colonel.saas.domain.product.policy.ActivityProductPagePolicy;
 import com.colonel.saas.gateway.douyin.DouyinProductGateway;
 import com.colonel.saas.service.ProductService;
@@ -42,18 +43,16 @@ public class ProductActivitySyncApplicationService {
     public Map<String, Object> refreshActivityProductList(ActivityProductListRefreshCommand command) {
         ActivityProductRefreshResult refreshResult =
                 refreshActivitySnapshots(buildActivityProductListRefreshRequest(command));
-        Map<String, Object> payload = productService.buildActivityProductListViewFromDb(
-                command.activityId(),
-                command.count(),
-                command.cursor(),
-                command.productInfo(),
-                command.bizStatus(),
-                command.status(),
-                command.sortBy(),
-                command.goodsTags(),
-                command.productTags());
+        Map<String, Object> payload = buildActivityProductListView(command.toQueryCommand());
         payload.put("syncStats", buildSyncStats(refreshResult));
         return payload;
+    }
+
+    public Map<String, Object> loadActivityProductList(ActivityProductListQueryCommand command) {
+        if (productService.hasActivitySnapshots(command.activityId())) {
+            return buildActivityProductListView(command);
+        }
+        return buildNeedSyncHint(command.activityId());
     }
 
     public ActivityProductRefreshResult refreshActivitySnapshots(
@@ -108,6 +107,31 @@ public class ProductActivitySyncApplicationService {
         return syncStats;
     }
 
+    private Map<String, Object> buildActivityProductListView(ActivityProductListQueryCommand command) {
+        return productService.buildActivityProductListViewFromDb(
+                command.activityId(),
+                command.count(),
+                command.cursor(),
+                command.productInfo(),
+                command.bizStatus(),
+                command.status(),
+                command.sortBy(),
+                command.goodsTags(),
+                command.productTags());
+    }
+
+    private Map<String, Object> buildNeedSyncHint(String activityId) {
+        Map<String, Object> hintPayload = new LinkedHashMap<>();
+        hintPayload.put("items", java.util.List.of());
+        hintPayload.put("total", 0L);
+        hintPayload.put("activityId", activityId);
+        hintPayload.put("needSync", Boolean.TRUE);
+        hintPayload.put("errorCode", UpstreamErrorCode.DATA_NOT_READY.name());
+        hintPayload.put("message", "该活动尚未同步商品，请先点击「同步商品」");
+        hintPayload.put("lastSyncAt", null);
+        return hintPayload;
+    }
+
     private DouyinProductGateway.ActivityProductQueryRequest buildActivityProductSyncRequest(
             String appId,
             String activityId,
@@ -142,6 +166,31 @@ public class ProductActivitySyncApplicationService {
             String cursor,
             Long page,
             String appId,
+            String sortBy,
+            String goodsTags,
+            String productTags) {
+
+        private ActivityProductListQueryCommand toQueryCommand() {
+            return new ActivityProductListQueryCommand(
+                    activityId,
+                    count,
+                    cursor,
+                    productInfo,
+                    bizStatus,
+                    status,
+                    sortBy,
+                    goodsTags,
+                    productTags);
+        }
+    }
+
+    public record ActivityProductListQueryCommand(
+            String activityId,
+            Integer count,
+            String cursor,
+            String productInfo,
+            String bizStatus,
+            Integer status,
             String sortBy,
             String goodsTags,
             String productTags) {

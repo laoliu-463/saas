@@ -1,11 +1,16 @@
 # Harness Changelog（索引）
 
 > 任务 ID：HARNESS-DOC-GC-OPTIMIZE-002
-> 更新时间：2026-06-29
+> 更新时间：2026-06-30
 > 详细历史（含每版修改文件、行为变化、证据）：`archive/20260610/harness-changelog-full.md`
 > 治理政策：`rules/policies/retention-policy.md` 第 2 节（changelog 索引 ≤200 行）
 
 ## 最近版本摘要
+
+### v0.8.13 — 2026-06-30
+- DDD-VERIFY-001 活动商品默认列表读模型边界切片：`ColonelActivityController.listProducts(refresh=false)` 不再直接调用 `ProductService.hasActivitySnapshots` / `buildActivityProductListViewFromDb`，本地快照列表读取与 `needSync + DATA_NOT_READY` 提示迁入 `ProductActivitySyncApplicationService.loadActivityProductList`；Controller 保留权限、参数透传和 `refresh=true` 既有应用层入口。API 路径、请求/响应字段、DB schema、权限、状态值和真实同步入口均不变。
+- RED/GREEN application/controller/routing parity 37 tests PASS；`mvn -DskipTests compile`、`mvn -q -DskipTests package`、Product 全集合 355 tests PASS；架构集合 188 tests / 5 failures / 1 skipped，失败仍为既有 order/user 架构红线；全量 `mvn test` 未产生完整 PASS。real-pre 初次 recreate 遇到 zombie PID，Docker 恢复后 `restart-compose.ps1` 与 `verify-local.ps1` PASS，安全业务探针 GET 默认列表无 token 返回 401，未触发真实同步或 backfill；本轮 evidence 结论为 PARTIAL。
+- 证据：`harness/reports/evidence-20260630-122617.md`；latest：`harness/reports/latest-evidence-20260630.md`；retro：`harness/reports/retro-20260630-122617.md`。
 
 ### v0.8.12 — 2026-06-29
 - DDD-VERIFY-001 活动商品 `refresh=true` 列表同步边界切片：`ColonelActivityController` 不再直接构造 `DouyinProductGateway.ActivityProductQueryRequest`，请求字段、刷新后本地列表读取和 `syncStats` 六字段组装迁入 `ProductActivitySyncApplicationService.refreshActivityProductList`；Controller 保留权限校验、活动摘要同步和异常映射。API 路径、请求/响应字段、DB schema、权限、状态值和真实刷新入口均不变。

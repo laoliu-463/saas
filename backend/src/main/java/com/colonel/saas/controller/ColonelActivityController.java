@@ -214,7 +214,7 @@ public class ColonelActivityController extends BaseController {
             // 改造后路径（504 根因修复）：
             // 1) refresh=true 强制走抖音同步（用户主动触发，已知耗时）
             // 2) refresh=false 且 DB 有快照 → 走 DB（理想路径）
-            // 3) refresh=false 且 DB 无快照 → 返回 needSync=true + DATA_NOT_READY 提示
+            // 3) refresh=false 且 DB 无快照 → 返回 needSync 提示
             //    **永不在线调抖音** —— 这是 504 根因
             if (Boolean.TRUE.equals(refresh)) {
                 colonelActivityService.syncActivitySummaryFromUpstream(activityId, appId);
@@ -237,20 +237,17 @@ public class ColonelActivityController extends BaseController {
                                 goodsTags,
                                 productTags)));
             }
-            if (productService.hasActivitySnapshots(activityId)) {
-                return ok(productService.buildActivityProductListViewFromDb(
-                        activityId, count, cursor, productInfo, bizStatus, status, sortBy, goodsTags, productTags));
-            }
-            // DB 无快照：返回 needSync=true 提示，引导前端调 syncProducts
-            Map<String, Object> hintPayload = new LinkedHashMap<>();
-            hintPayload.put("items", java.util.List.of());
-            hintPayload.put("total", 0L);
-            hintPayload.put("activityId", activityId);
-            hintPayload.put("needSync", Boolean.TRUE);
-            hintPayload.put("errorCode", UpstreamErrorCode.DATA_NOT_READY.name());
-            hintPayload.put("message", "该活动尚未同步商品，请先点击「同步商品」");
-            hintPayload.put("lastSyncAt", null);
-            return ok(hintPayload);
+            return ok(productActivitySyncApplicationService.loadActivityProductList(
+                    new ProductActivitySyncApplicationService.ActivityProductListQueryCommand(
+                            activityId,
+                            count,
+                            cursor,
+                            productInfo,
+                            bizStatus,
+                            status,
+                            sortBy,
+                            goodsTags,
+                            productTags)));
         } catch (DouyinApiException e) {
             // refresh=true 路径调用抖音，捕获 DouyinApiException 映射为带 errorCode 的 BusinessException
             throw mapProductError(e);

@@ -316,6 +316,28 @@ class DddProduct003ProductRoutingTest {
     }
 
     @Test
+    @DisplayName("活动商品默认列表读模型和 needSync 提示由商品域应用入口承接")
+    void activityProductDefaultList_shouldRouteSnapshotReadAndNeedSyncHintThroughProductApplicationBoundary()
+            throws Exception {
+        String controllerSource = readSource("com/colonel/saas/controller/ColonelActivityController.java");
+        String applicationSource = readSource(
+                "com/colonel/saas/domain/product/application/ProductActivitySyncApplicationService.java");
+
+        assertThat(controllerSource)
+                .contains("loadActivityProductList")
+                .contains("ActivityProductListQueryCommand")
+                .doesNotContain("hasActivitySnapshots")
+                .doesNotContain("buildActivityProductListViewFromDb")
+                .doesNotContain("该活动尚未同步商品，请先点击「同步商品」");
+        assertThat(applicationSource)
+                .contains("ActivityProductListQueryCommand")
+                .contains("loadActivityProductList")
+                .contains("hasActivitySnapshots")
+                .contains("buildActivityProductListViewFromDb")
+                .contains("DATA_NOT_READY");
+    }
+
+    @Test
     @DisplayName("商品转链 Port、mapping 和事件边界唯一收口")
     void productPromotion_shouldUseSingleApplicationPortAndCompletedEvent() throws Exception {
         String productServiceSource = readSource("com/colonel/saas/service/ProductService.java");

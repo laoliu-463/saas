@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -199,4 +200,65 @@ class ProductActivitySyncApplicationServiceTest {
                 .containsEntry("skippedCount", 0)
                 .containsEntry("autoLibraryEligible", true);
     }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void loadActivityProductList_shouldReturnLocalSnapshotViewWhenSnapshotsExist() throws Exception {
+        ProductActivitySyncApplicationService applicationService =
+                new ProductActivitySyncApplicationService(productService);
+        Map<String, Object> listView = new LinkedHashMap<>();
+        listView.put("activityId", "100018");
+        listView.put("items", List.of(Map.of("productId", 9002L)));
+        listView.put("total", 1L);
+        when(productService.hasActivitySnapshots("100018")).thenReturn(true);
+        when(productService.buildActivityProductListViewFromDb(
+                "100018", 20, "cursor-1", "防晒", "APPROVED", 1, "commissionDesc", "tag-a", "tag-b"))
+                .thenReturn(listView);
+
+        ProductActivitySyncApplicationService.ActivityProductListQueryCommand command =
+                new ProductActivitySyncApplicationService.ActivityProductListQueryCommand(
+                "100018", 20, "cursor-1", "防晒", "APPROVED", 1, "commissionDesc", "tag-a", "tag-b");
+
+        Map<String, Object> result = applicationService.loadActivityProductList(command);
+
+        assertThat(result).isSameAs(listView);
+        verify(productService).hasActivitySnapshots("100018");
+        verify(productService).buildActivityProductListViewFromDb(
+                "100018", 20, "cursor-1", "防晒", "APPROVED", 1, "commissionDesc", "tag-a", "tag-b");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void loadActivityProductList_shouldReturnLegacyNeedSyncHintWhenSnapshotsMissing() throws Exception {
+        ProductActivitySyncApplicationService applicationService =
+                new ProductActivitySyncApplicationService(productService);
+        when(productService.hasActivitySnapshots("100018")).thenReturn(false);
+
+        ProductActivitySyncApplicationService.ActivityProductListQueryCommand command =
+                new ProductActivitySyncApplicationService.ActivityProductListQueryCommand(
+                        "100018", 20, null, null, null, null, null, null, null);
+
+        Map<String, Object> result = applicationService.loadActivityProductList(command);
+
+        assertThat(result)
+                .containsEntry("total", 0L)
+                .containsEntry("activityId", "100018")
+                .containsEntry("needSync", Boolean.TRUE)
+                .containsEntry("errorCode", "DATA_NOT_READY")
+                .containsEntry("message", "该活动尚未同步商品，请先点击「同步商品」")
+                .containsEntry("lastSyncAt", null);
+        assertThat((List<?>) result.get("items")).isEmpty();
+        verify(productService).hasActivitySnapshots("100018");
+        verify(productService, never()).buildActivityProductListViewFromDb(
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any());
+    }
+
 }

@@ -367,9 +367,7 @@ class ColonelActivityControllerTest {
         listView.put("nextCursor", "next-cursor");
         listView.put("items", List.of(itemView));
 
-        // 改造后：hasActivitySnapshots=true 直接走 DB
-        when(productService.hasActivitySnapshots("100018")).thenReturn(true);
-        when(productService.buildActivityProductListViewFromDb("100018", 20, null, null, null, null, null, null, null)).thenReturn(listView);
+        when(productActivitySyncApplicationService.loadActivityProductList(any())).thenReturn(listView);
 
         mockMvc.perform(get("/colonel/activities/{activityId}/products", "100018")
                         .param("searchType", "4")
@@ -384,16 +382,30 @@ class ColonelActivityControllerTest {
                 .andExpect(jsonPath("$.data.items[0].bizStatus").value("APPROVED"))
                 .andExpect(jsonPath("$.data.items[0].bizStatusLabel").value("审核通过"));
 
-        verify(productService).hasActivitySnapshots("100018");
-        verify(productService).buildActivityProductListViewFromDb("100018", 20, null, null, null, null, null, null, null);
+        ArgumentCaptor<ProductActivitySyncApplicationService.ActivityProductListQueryCommand> queryCaptor =
+                ArgumentCaptor.forClass(ProductActivitySyncApplicationService.ActivityProductListQueryCommand.class);
+        verify(productActivitySyncApplicationService).loadActivityProductList(queryCaptor.capture());
+        assertThat(queryCaptor.getValue().activityId()).isEqualTo("100018");
+        assertThat(queryCaptor.getValue().count()).isEqualTo(20);
+        assertThat(queryCaptor.getValue().productInfo()).isNull();
+        assertThat(queryCaptor.getValue().bizStatus()).isNull();
+        assertThat(queryCaptor.getValue().status()).isNull();
         // 关键断言：DB 有快照时绝不触发刷新入口
         verify(productActivitySyncApplicationService, never()).refreshActivityProductList(any());
     }
 
     @Test
     void listProducts_shouldNeverCallUpstreamByDefaultAndReturnNeedSyncWhenNoSnapshots() throws Exception {
-        // 改造后（504 根因修复）：refresh=false 且 DB 无快照时，永不调抖音
-        when(productService.hasActivitySnapshots("100018")).thenReturn(false);
+        // 改造后（504 根因修复）：refresh=false 且 DB 无快照时，由 product application 返回 needSync 提示
+        Map<String, Object> hintPayload = new LinkedHashMap<>();
+        hintPayload.put("items", List.of());
+        hintPayload.put("total", 0L);
+        hintPayload.put("activityId", "100018");
+        hintPayload.put("needSync", Boolean.TRUE);
+        hintPayload.put("errorCode", "DATA_NOT_READY");
+        hintPayload.put("message", "该活动尚未同步商品，请先点击「同步商品」");
+        hintPayload.put("lastSyncAt", null);
+        when(productActivitySyncApplicationService.loadActivityProductList(any())).thenReturn(hintPayload);
 
         mockMvc.perform(get("/colonel/activities/{activityId}/products", "100018")
                         .param("searchType", "4")
@@ -412,6 +424,7 @@ class ColonelActivityControllerTest {
                 .andExpect(jsonPath("$.data.items").isEmpty());
 
         // 关键断言：默认 refresh=false 时绝不触发刷新入口
+        verify(productActivitySyncApplicationService).loadActivityProductList(any());
         verify(productActivitySyncApplicationService, never()).refreshActivityProductList(any());
         verify(productService, never()).upsertSnapshots(any(), any());
     }
@@ -427,9 +440,7 @@ class ColonelActivityControllerTest {
         listView.put("total", 1);
         listView.put("items", List.of(itemView));
 
-        when(productService.hasActivitySnapshots("100018")).thenReturn(true);
-        when(productService.buildActivityProductListViewFromDb("100018", 10, "cursor-1", "本地", "PENDING_AUDIT", 1, null, null, null))
-                .thenReturn(listView);
+        when(productActivitySyncApplicationService.loadActivityProductList(any())).thenReturn(listView);
 
         mockMvc.perform(get("/colonel/activities/{activityId}/products", "100018")
                         .param("count", "10")
@@ -441,6 +452,15 @@ class ColonelActivityControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.items[0].title").value("本地快照商品"));
 
+        ArgumentCaptor<ProductActivitySyncApplicationService.ActivityProductListQueryCommand> queryCaptor =
+                ArgumentCaptor.forClass(ProductActivitySyncApplicationService.ActivityProductListQueryCommand.class);
+        verify(productActivitySyncApplicationService).loadActivityProductList(queryCaptor.capture());
+        assertThat(queryCaptor.getValue().activityId()).isEqualTo("100018");
+        assertThat(queryCaptor.getValue().count()).isEqualTo(10);
+        assertThat(queryCaptor.getValue().cursor()).isEqualTo("cursor-1");
+        assertThat(queryCaptor.getValue().productInfo()).isEqualTo("本地");
+        assertThat(queryCaptor.getValue().bizStatus()).isEqualTo("PENDING_AUDIT");
+        assertThat(queryCaptor.getValue().status()).isEqualTo(1);
         verify(productActivitySyncApplicationService, never()).refreshActivityProductList(any());
         verify(productService, never()).upsertSnapshots(eq("100018"), any());
     }
@@ -454,9 +474,7 @@ class ColonelActivityControllerTest {
                 .andExpect(jsonPath("$.code").value(400))
                 .andExpect(jsonPath("$.msg").value("商品状态仅支持 0=待审核、1=推广中、2=申请未通过、3=合作已终止、6=合作已到期"));
 
-        verify(productService, never()).hasActivitySnapshots("100018");
-        verify(productService, never()).buildActivityProductListViewFromDb(
-                any(), any(), any(), any(), any(), any(), any(), any(), any());
+        verify(productActivitySyncApplicationService, never()).loadActivityProductList(any());
         verify(productActivitySyncApplicationService, never()).refreshActivityProductList(any());
     }
 
