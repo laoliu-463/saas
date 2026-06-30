@@ -2,14 +2,12 @@ package com.colonel.saas.service;
 
 import com.colonel.saas.domain.product.application.ProductActivitySyncApplicationService;
 import com.colonel.saas.domain.product.policy.ProductActivityManualSyncPolicy;
-import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
-import java.time.LocalDateTime;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -24,7 +22,6 @@ public class ProductActivityManualSyncService {
 
     private final ProductActivitySyncApplicationService productActivitySyncApplicationService;
     private final ColonelsettlementActivityService colonelActivityService;
-    private final ColonelsettlementActivityMapper activityMapper;
     private final Executor syncExecutor;
     private final Set<String> runningActivityIds = ConcurrentHashMap.newKeySet();
     @Value("${product.sync.activityProduct.pageSize:20}")
@@ -33,11 +30,9 @@ public class ProductActivityManualSyncService {
     public ProductActivityManualSyncService(
             ProductActivitySyncApplicationService productActivitySyncApplicationService,
             ColonelsettlementActivityService colonelActivityService,
-            ColonelsettlementActivityMapper activityMapper,
             @Qualifier("applicationTaskExecutor") Executor syncExecutor) {
         this.productActivitySyncApplicationService = productActivitySyncApplicationService;
         this.colonelActivityService = colonelActivityService;
-        this.activityMapper = activityMapper;
         this.syncExecutor = syncExecutor;
     }
 
@@ -64,7 +59,7 @@ public class ProductActivityManualSyncService {
             ProductActivitySyncApplicationService.ActivityProductRefreshResult result =
                     productActivitySyncApplicationService.refreshManualActivitySnapshots(activityId, appId, pageSize);
             if (result.complete()) {
-                activityMapper.touchLastSyncAt(activityId, LocalDateTime.now());
+                productActivitySyncApplicationService.markManualActivitySyncCompleted(activityId);
             }
             log.info(
                     "ProductActivityManualSync completed, activityId={}, syncedProductCount={}, libraryEntryCount={}, createdCount={}, updatedCount={}, skippedCount={}, pagesFetched={}, fetchedRows={}, stoppedReason={}, stillHasNextWhenStopped={}, complete={}",

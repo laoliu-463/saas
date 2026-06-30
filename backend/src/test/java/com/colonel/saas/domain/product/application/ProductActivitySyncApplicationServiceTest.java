@@ -1,6 +1,7 @@
 package com.colonel.saas.domain.product.application;
 
 import com.colonel.saas.gateway.douyin.DouyinProductGateway;
+import com.colonel.saas.domain.product.application.port.ProductActivitySyncStatePort;
 import com.colonel.saas.service.ProductService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -8,6 +9,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -22,11 +24,12 @@ class ProductActivitySyncApplicationServiceTest {
 
     @Mock
     private ProductService productService;
+    @Mock
+    private ProductActivitySyncStatePort productActivitySyncStatePort;
 
     @Test
     void refreshActivitySnapshots_shouldDelegateToLegacyProductServiceAndMapStats() {
-        ProductActivitySyncApplicationService applicationService =
-                new ProductActivitySyncApplicationService(productService);
+        ProductActivitySyncApplicationService applicationService = applicationService();
         DouyinProductGateway.ActivityProductQueryRequest request =
                 new DouyinProductGateway.ActivityProductQueryRequest(
                         null, "ACT-1", 4L, 1L, 20, null, null, null, null, 1L, null, null);
@@ -65,8 +68,7 @@ class ProductActivitySyncApplicationServiceTest {
 
     @Test
     void refreshManualActivitySnapshots_shouldBuildClampedRequestAndDelegate() {
-        ProductActivitySyncApplicationService applicationService =
-                new ProductActivitySyncApplicationService(productService);
+        ProductActivitySyncApplicationService applicationService = applicationService();
         when(productService.refreshActivitySnapshots(org.mockito.ArgumentMatchers.any()))
                 .thenReturn(new ProductService.ActivityProductRefreshResult(
                         9,
@@ -102,8 +104,7 @@ class ProductActivitySyncApplicationServiceTest {
 
     @Test
     void refreshScheduledActivitySnapshots_shouldBuildLegacyScheduledRequestAndDelegate() {
-        ProductActivitySyncApplicationService applicationService =
-                new ProductActivitySyncApplicationService(productService);
+        ProductActivitySyncApplicationService applicationService = applicationService();
         when(productService.refreshActivitySnapshots(org.mockito.ArgumentMatchers.any()))
                 .thenReturn(new ProductService.ActivityProductRefreshResult(7, 2, 3, 4, 0));
 
@@ -127,8 +128,7 @@ class ProductActivitySyncApplicationServiceTest {
     @Test
     @SuppressWarnings("unchecked")
     void refreshActivityProductList_shouldBuildLegacyRefreshRequestAndAppendSyncStats() throws Exception {
-        ProductActivitySyncApplicationService applicationService =
-                new ProductActivitySyncApplicationService(productService);
+        ProductActivitySyncApplicationService applicationService = applicationService();
         when(productService.refreshActivitySnapshots(org.mockito.ArgumentMatchers.any()))
                 .thenReturn(new ProductService.ActivityProductRefreshResult(6, 2, 1, 5, 0));
         Map<String, Object> listView = new LinkedHashMap<>();
@@ -204,8 +204,7 @@ class ProductActivitySyncApplicationServiceTest {
     @Test
     @SuppressWarnings("unchecked")
     void loadActivityProductList_shouldReturnLocalSnapshotViewWhenSnapshotsExist() throws Exception {
-        ProductActivitySyncApplicationService applicationService =
-                new ProductActivitySyncApplicationService(productService);
+        ProductActivitySyncApplicationService applicationService = applicationService();
         Map<String, Object> listView = new LinkedHashMap<>();
         listView.put("activityId", "100018");
         listView.put("items", List.of(Map.of("productId", 9002L)));
@@ -230,8 +229,7 @@ class ProductActivitySyncApplicationServiceTest {
     @Test
     @SuppressWarnings("unchecked")
     void loadActivityProductList_shouldReturnLegacyNeedSyncHintWhenSnapshotsMissing() throws Exception {
-        ProductActivitySyncApplicationService applicationService =
-                new ProductActivitySyncApplicationService(productService);
+        ProductActivitySyncApplicationService applicationService = applicationService();
         when(productService.hasActivitySnapshots("100018")).thenReturn(false);
 
         ProductActivitySyncApplicationService.ActivityProductListQueryCommand command =
@@ -263,8 +261,7 @@ class ProductActivitySyncApplicationServiceTest {
 
     @Test
     void buildManualSyncTriggerPayload_shouldPreserveLegacyStatusMessages() {
-        ProductActivitySyncApplicationService applicationService =
-                new ProductActivitySyncApplicationService(productService);
+        ProductActivitySyncApplicationService applicationService = applicationService();
 
         Map<String, Object> accepted =
                 applicationService.buildManualSyncTriggerPayload("100018", "ACCEPTED");
@@ -285,6 +282,23 @@ class ProductActivitySyncApplicationServiceTest {
                 .containsEntry("activityId", "")
                 .containsEntry("syncStatus", "INVALID")
                 .containsEntry("message", "商品同步已转入后台执行");
+    }
+
+    @Test
+    void markManualActivitySyncCompleted_shouldDelegateToStatePortWithCurrentTimestamp() {
+        ProductActivitySyncApplicationService applicationService = applicationService();
+
+        applicationService.markManualActivitySyncCompleted("ACT-1");
+
+        ArgumentCaptor<LocalDateTime> completedAtCaptor = ArgumentCaptor.forClass(LocalDateTime.class);
+        verify(productActivitySyncStatePort).markActivitySyncCompleted(
+                org.mockito.ArgumentMatchers.eq("ACT-1"),
+                completedAtCaptor.capture());
+        assertThat(completedAtCaptor.getValue()).isNotNull();
+    }
+
+    private ProductActivitySyncApplicationService applicationService() {
+        return new ProductActivitySyncApplicationService(productService, productActivitySyncStatePort);
     }
 
 }

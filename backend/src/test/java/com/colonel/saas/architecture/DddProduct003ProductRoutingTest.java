@@ -268,10 +268,15 @@ class DddProduct003ProductRoutingTest {
         assertThat(serviceSource)
                 .contains("ProductActivitySyncApplicationService")
                 .contains("refreshManualActivitySnapshots")
+                .contains("markManualActivitySyncCompleted")
                 .doesNotContain("DouyinProductGateway")
+                .doesNotContain("ColonelsettlementActivityMapper")
+                .doesNotContain("touchLastSyncAt")
                 .doesNotContain("buildQueryRequest");
         assertThat(applicationSource)
                 .contains("refreshManualActivitySnapshots")
+                .contains("ProductActivitySyncStatePort")
+                .contains("markManualActivitySyncCompleted")
                 .contains("ActivityProductPagePolicy");
     }
 

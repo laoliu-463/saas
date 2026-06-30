@@ -1,12 +1,14 @@
 package com.colonel.saas.domain.product.application;
 
 import com.colonel.saas.common.exception.UpstreamErrorCode;
+import com.colonel.saas.domain.product.application.port.ProductActivitySyncStatePort;
 import com.colonel.saas.domain.product.policy.ActivityProductPagePolicy;
 import com.colonel.saas.domain.product.policy.ProductActivityManualSyncPolicy;
 import com.colonel.saas.gateway.douyin.DouyinProductGateway;
 import com.colonel.saas.service.ProductService;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -19,9 +21,13 @@ import java.util.Map;
 public class ProductActivitySyncApplicationService {
 
     private final ProductService productService;
+    private final ProductActivitySyncStatePort productActivitySyncStatePort;
 
-    public ProductActivitySyncApplicationService(ProductService productService) {
+    public ProductActivitySyncApplicationService(
+            ProductService productService,
+            ProductActivitySyncStatePort productActivitySyncStatePort) {
         this.productService = productService;
+        this.productActivitySyncStatePort = productActivitySyncStatePort;
     }
 
     public ActivityProductRefreshResult refreshActivitySnapshots(DouyinProductGateway.ActivityProductQueryRequest request) {
@@ -62,6 +68,10 @@ public class ProductActivitySyncApplicationService {
         payload.put("syncStatus", syncStatus);
         payload.put("message", ProductActivityManualSyncPolicy.messageFor(syncStatus));
         return payload;
+    }
+
+    public void markManualActivitySyncCompleted(String activityId) {
+        productActivitySyncStatePort.markActivitySyncCompleted(activityId, LocalDateTime.now());
     }
 
     public ActivityProductRefreshResult refreshActivitySnapshots(

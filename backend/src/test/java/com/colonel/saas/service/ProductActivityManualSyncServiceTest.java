@@ -1,21 +1,18 @@
 package com.colonel.saas.service;
 
 import com.colonel.saas.domain.product.application.ProductActivitySyncApplicationService;
-import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Executor;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -27,8 +24,6 @@ class ProductActivityManualSyncServiceTest {
     private ProductActivitySyncApplicationService productActivitySyncApplicationService;
     @Mock
     private ColonelsettlementActivityService colonelActivityService;
-    @Mock
-    private ColonelsettlementActivityMapper activityMapper;
 
     @BeforeEach
     void setUp() {
@@ -41,7 +36,6 @@ class ProductActivityManualSyncServiceTest {
         ProductActivityManualSyncService service = new ProductActivityManualSyncService(
                 productActivitySyncApplicationService,
                 colonelActivityService,
-                activityMapper,
                 Runnable::run);
 
         ProductActivityManualSyncService.SyncTriggerResult result = service.trigger(" ACT-1 ", null);
@@ -50,7 +44,7 @@ class ProductActivityManualSyncServiceTest {
         assertThat(result.syncStatus()).isEqualTo("ACCEPTED");
         verify(colonelActivityService).syncActivitySummaryFromUpstream("ACT-1", null);
         verify(productActivitySyncApplicationService).refreshManualActivitySnapshots("ACT-1", null, 20);
-        verify(activityMapper).touchLastSyncAt(eq("ACT-1"), any(LocalDateTime.class));
+        verify(productActivitySyncApplicationService).markManualActivitySyncCompleted("ACT-1");
     }
 
     @Test
@@ -60,7 +54,6 @@ class ProductActivityManualSyncServiceTest {
         ProductActivityManualSyncService service = new ProductActivityManualSyncService(
                 productActivitySyncApplicationService,
                 colonelActivityService,
-                activityMapper,
                 queuedExecutor);
 
         ProductActivityManualSyncService.SyncTriggerResult first = service.trigger("ACT-1", null);
@@ -95,12 +88,11 @@ class ProductActivityManualSyncServiceTest {
         ProductActivityManualSyncService service = new ProductActivityManualSyncService(
                 productActivitySyncApplicationService,
                 colonelActivityService,
-                activityMapper,
                 Runnable::run);
 
         ProductActivityManualSyncService.SyncTriggerResult result = service.trigger("ACT-1", null);
 
         assertThat(result.syncStatus()).isEqualTo("ACCEPTED");
-        verify(activityMapper, never()).touchLastSyncAt(eq("ACT-1"), any(LocalDateTime.class));
+        verify(productActivitySyncApplicationService, never()).markManualActivitySyncCompleted(any());
     }
 }
