@@ -106,8 +106,38 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
- * 寄样管理控制器，负责寄样申请的全生命周期管理。
+ * 寄样管理控制器（LEGACY 已弃用，DDD-SAMPLE 评估中）。
  *
+ * <p><b>DDD 切片状态（DDD-SAMPLE Slice 1 收尾）：</b>
+ * 本类是历史遗留的"god controller"——3574 行 / 29 public method，
+ * 通过 {@code @RestController} 注册路由，业务实现混杂 service/domain 边界，
+ * 已不匹配 DDD 分层架构。</p>
+ *
+ * <p><b>DDD 替代路径（已就位）：</b>
+ * <ul>
+ *   <li>{@link com.colonel.saas.controller.SampleController} —— 路由层
+ *       （{@code SampleController} → {@code domain.sample.application.SampleApplicationService}）</li>
+ *   <li>{@link com.colonel.saas.domain.sample.application.SampleApplicationService}
+ *       —— DDD 写模型入口（199 行）</li>
+ *   <li>{@link com.colonel.saas.domain.sample.application.SampleCommandApplicationService}
+ *       —— 寄样命令（168 行）</li>
+ *   <li>{@link com.colonel.saas.domain.sample.application.SampleQueryApplicationService}
+ *       —— 寄样查询（127 行）</li>
+ *   <li>{@link com.colonel.saas.domain.sample.application.SampleApplicationPort}
+ *       + {@link com.colonel.saas.domain.sample.application.SampleApplicationPortImpl}
+ *       —— port / adapter 模式</li>
+ * </ul>
+ *
+ * <p><b>main 目录无 caller（已切换 DDD）：</b>
+ * 仅 5 个 test 文件引用（含架构测试读源码断言、{@code SampleControllerTest} 的 mock），
+ * 实际生产路由已被 {@code SampleController} 接管。本类后续清理方向：在 Controller test
+ * 改用 {@code SampleController} 之后删除；当前保留以兼容测试。</p>
+ *
+ * <p><b>不再二次切片的理由：</b>
+ * 3574 行混杂 Controller / 业务逻辑 / 状态机，且路由注解 {@code @RequestMapping}
+ * 已被 {@code SampleController} 取代；切委派壳会引入 Spring 路由冲突风险。</p>
+ *
+ * <p>历史职责：</p>
  * <ul>
  *   <li>创建寄样申请并初始化状态为"待审核"（{@code PENDING_AUDIT}）</li>
  *   <li>寄样单分页查询、看板视图、状态日志查询</li>
