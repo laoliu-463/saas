@@ -261,4 +261,30 @@ class ProductActivitySyncApplicationServiceTest {
                 org.mockito.ArgumentMatchers.any());
     }
 
+    @Test
+    void buildManualSyncTriggerPayload_shouldPreserveLegacyStatusMessages() {
+        ProductActivitySyncApplicationService applicationService =
+                new ProductActivitySyncApplicationService(productService);
+
+        Map<String, Object> accepted =
+                applicationService.buildManualSyncTriggerPayload("100018", "ACCEPTED");
+        Map<String, Object> running =
+                applicationService.buildManualSyncTriggerPayload("100018", "RUNNING");
+        Map<String, Object> invalid =
+                applicationService.buildManualSyncTriggerPayload("", "INVALID");
+
+        assertThat(accepted)
+                .containsEntry("activityId", "100018")
+                .containsEntry("syncStatus", "ACCEPTED")
+                .containsEntry("message", "商品同步已转入后台执行");
+        assertThat(running)
+                .containsEntry("activityId", "100018")
+                .containsEntry("syncStatus", "RUNNING")
+                .containsEntry("message", "商品同步已在后台执行，请稍后刷新列表");
+        assertThat(invalid)
+                .containsEntry("activityId", "")
+                .containsEntry("syncStatus", "INVALID")
+                .containsEntry("message", "商品同步已转入后台执行");
+    }
+
 }

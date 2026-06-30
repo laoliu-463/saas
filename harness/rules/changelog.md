@@ -7,6 +7,11 @@
 
 ## 最近版本摘要
 
+### v0.8.15 — 2026-06-30
+- DDD-VERIFY-001 活动商品手动同步触发响应边界切片：新增 `ProductActivityManualSyncPolicy` 承接 ACCEPTED/RUNNING/INVALID 状态常量与旧响应文案映射，`ProductActivitySyncApplicationService.buildManualSyncTriggerPayload` 统一构造 `activityId/syncStatus/message` payload，`ColonelActivityController.syncProducts` 只保留权限校验和委派；API 路径、响应字段、异步执行、运行中幂等、DB schema、锁和真实同步入口均不变。
+- RED 先暴露缺少 policy/application 方法；GREEN targeted 23 tests、同步入口回归 43 tests、Product 全集合 360 tests、compile/package、real-pre restart/health PASS；安全业务探针 POST 手动同步无 token 返回 401，未触发真实同步；架构集合 189 tests / 5 failures / 1 skipped，全量 `mvn test` 2748 tests / 5 failures / 3 skipped，失败仍为既有 order/user 架构红线，本轮 evidence 结论为 PARTIAL。
+- 证据：`harness/reports/evidence-20260630-131610.md`；latest：`harness/reports/latest-evidence-20260630.md`；retro：`harness/reports/retro-20260630-131610.md`。
+
 ### v0.8.14 — 2026-06-30
 - DDD-VERIFY-001 活动商品 backfill unchanged 状态切片：`ProductActivityBackfillService.finishJob` 将既有 `BackfillResult.unchanged` 写入 `request_params_json` metadata，`ProductBackfillJobStatusQueryService` 从 metadata 回显到既有 `unchanged` API 字段；不新增 DB 字段，不改 API 路径、请求/响应字段、状态枚举、confirm/dryRun、锁 key 或真实同步入口。
 - RED 先暴露 `FinishMetrics` 缺少 unchanged；GREEN targeted 28 tests、Product 全集合 359 tests、compile/package、real-pre restart/health PASS；安全业务探针 GET backfill job status 无 token 返回 401，未触发真实 backfill；架构集合 188 tests / 5 failures / 1 skipped，全量 `mvn test` 2745 tests / 5 failures / 3 skipped，失败仍为既有 order/user 架构红线，本轮 evidence 结论为 PARTIAL。

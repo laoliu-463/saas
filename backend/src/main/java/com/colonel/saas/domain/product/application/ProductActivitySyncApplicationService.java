@@ -2,6 +2,7 @@ package com.colonel.saas.domain.product.application;
 
 import com.colonel.saas.common.exception.UpstreamErrorCode;
 import com.colonel.saas.domain.product.policy.ActivityProductPagePolicy;
+import com.colonel.saas.domain.product.policy.ProductActivityManualSyncPolicy;
 import com.colonel.saas.gateway.douyin.DouyinProductGateway;
 import com.colonel.saas.service.ProductService;
 import org.springframework.stereotype.Service;
@@ -53,6 +54,14 @@ public class ProductActivitySyncApplicationService {
             return buildActivityProductListView(command);
         }
         return buildNeedSyncHint(command.activityId());
+    }
+
+    public Map<String, Object> buildManualSyncTriggerPayload(String activityId, String syncStatus) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("activityId", activityId);
+        payload.put("syncStatus", syncStatus);
+        payload.put("message", ProductActivityManualSyncPolicy.messageFor(syncStatus));
+        return payload;
     }
 
     public ActivityProductRefreshResult refreshActivitySnapshots(

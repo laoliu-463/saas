@@ -170,13 +170,9 @@ public class ColonelActivityController extends BaseController {
                 activityAccessService.normalizeRoles(roleCodes));
         ProductActivityManualSyncService.SyncTriggerResult triggerResult =
                 productActivityManualSyncService.trigger(activityId, appId);
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("activityId", triggerResult.activityId());
-        payload.put("syncStatus", triggerResult.syncStatus());
-        payload.put("message", "RUNNING".equals(triggerResult.syncStatus())
-                ? "商品同步已在后台执行，请稍后刷新列表"
-                : "商品同步已转入后台执行");
-        return ok(payload);
+        return ok(productActivitySyncApplicationService.buildManualSyncTriggerPayload(
+                triggerResult.activityId(),
+                triggerResult.syncStatus()));
     }
 
     @Operation(summary = "活动商品列表", description = "查询团长活动下的商品列表。优先使用本地快照构造业务视图；本地无快照且未要求 refresh 时返回 needSync=true 提示先同步，永不在线调抖音。")

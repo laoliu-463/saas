@@ -1,6 +1,7 @@
 package com.colonel.saas.service;
 
 import com.colonel.saas.domain.product.application.ProductActivitySyncApplicationService;
+import com.colonel.saas.domain.product.policy.ProductActivityManualSyncPolicy;
 import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -43,10 +44,10 @@ public class ProductActivityManualSyncService {
     public SyncTriggerResult trigger(String activityId, String appId) {
         String normalizedActivityId = activityId == null ? "" : activityId.trim();
         if (!StringUtils.hasText(normalizedActivityId)) {
-            return new SyncTriggerResult("", "INVALID");
+            return new SyncTriggerResult("", ProductActivityManualSyncPolicy.STATUS_INVALID);
         }
         if (!runningActivityIds.add(normalizedActivityId)) {
-            return new SyncTriggerResult(normalizedActivityId, "RUNNING");
+            return new SyncTriggerResult(normalizedActivityId, ProductActivityManualSyncPolicy.STATUS_RUNNING);
         }
         try {
             CompletableFuture.runAsync(() -> runSync(normalizedActivityId, appId), syncExecutor);
@@ -54,7 +55,7 @@ public class ProductActivityManualSyncService {
             runningActivityIds.remove(normalizedActivityId);
             throw ex;
         }
-        return new SyncTriggerResult(normalizedActivityId, "ACCEPTED");
+        return new SyncTriggerResult(normalizedActivityId, ProductActivityManualSyncPolicy.STATUS_ACCEPTED);
     }
 
     private void runSync(String activityId, String appId) {

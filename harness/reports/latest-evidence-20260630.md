@@ -1,6 +1,6 @@
 # Latest Evidence
 
-See `harness/reports/evidence-20260630-125241.md`.
+See `harness/reports/evidence-20260630-131610.md`.
 
 ## Conclusion
 PARTIAL
@@ -12,8 +12,8 @@ PARTIAL
 ## Code-Side Evidence
 - Compile PASS.
 - Package PASS.
-- Backfill metadata/status targeted tests PASS.
+- Product manual sync response targeted tests PASS.
 - Product tests PASS.
 - real-pre restart-compose PASS.
 - real-pre verify-local PASS.
-- Safe unauthenticated backfill status probe returned 401.
+- Safe unauthenticated manual sync trigger probe returned 401.

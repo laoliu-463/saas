@@ -531,6 +531,12 @@ class ColonelActivityControllerTest {
     void syncProducts_shouldTriggerBackgroundSyncAndReturnAcceptedImmediately() throws Exception {
         when(productActivityManualSyncService.trigger("100018", null)).thenReturn(
                 new ProductActivityManualSyncService.SyncTriggerResult("100018", "ACCEPTED"));
+        Map<String, Object> triggerPayload = new LinkedHashMap<>();
+        triggerPayload.put("activityId", "100018");
+        triggerPayload.put("syncStatus", "ACCEPTED");
+        triggerPayload.put("message", "商品同步已转入后台执行");
+        when(productActivitySyncApplicationService.buildManualSyncTriggerPayload("100018", "ACCEPTED"))
+                .thenReturn(triggerPayload);
 
         mockMvc.perform(post("/colonel/activities/{activityId}/products/sync", "100018")
                         .requestAttr("roleCodes", List.of(RoleCodes.ADMIN)))
@@ -541,6 +547,7 @@ class ColonelActivityControllerTest {
                 .andExpect(jsonPath("$.data.message").value("商品同步已转入后台执行"));
 
         verify(productActivityManualSyncService).trigger("100018", null);
+        verify(productActivitySyncApplicationService).buildManualSyncTriggerPayload("100018", "ACCEPTED");
         verify(productService, never()).refreshActivitySnapshots(any());
     }
 

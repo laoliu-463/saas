@@ -276,6 +276,30 @@ class DddProduct003ProductRoutingTest {
     }
 
     @Test
+    @DisplayName("活动商品手动同步响应由商品域应用入口和策略构造")
+    void productActivityManualSyncResponse_shouldRoutePayloadThroughProductApplicationBoundary() throws Exception {
+        String controllerSource = readSource("com/colonel/saas/controller/ColonelActivityController.java");
+        String applicationSource = readSource(
+                "com/colonel/saas/domain/product/application/ProductActivitySyncApplicationService.java");
+        String policySource = readSource(
+                "com/colonel/saas/domain/product/policy/ProductActivityManualSyncPolicy.java");
+
+        assertThat(controllerSource)
+                .contains("buildManualSyncTriggerPayload")
+                .doesNotContain("payload.put(\"message\"")
+                .doesNotContain("\"RUNNING\".equals(triggerResult.syncStatus())")
+                .doesNotContain("商品同步已在后台执行，请稍后刷新列表")
+                .doesNotContain("商品同步已转入后台执行");
+        assertThat(applicationSource)
+                .contains("buildManualSyncTriggerPayload")
+                .contains("ProductActivityManualSyncPolicy");
+        assertThat(policySource)
+                .contains("messageFor")
+                .contains("STATUS_RUNNING")
+                .contains("STATUS_ACCEPTED");
+    }
+
+    @Test
     @DisplayName("活动商品定时同步请求构造委托商品域应用入口")
     void productActivityScheduledSync_shouldDelegateRequestBuildingToProductApplicationBoundary() throws Exception {
         String jobSource = readSource("com/colonel/saas/job/ProductActivitySyncJob.java");
