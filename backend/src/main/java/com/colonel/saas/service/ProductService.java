@@ -8,6 +8,7 @@ import com.colonel.saas.common.enums.ProductBizStatus;
 import com.colonel.saas.common.result.PageResult;
 import com.colonel.saas.constant.ProductDisplayStatus;
 import com.colonel.saas.domain.product.event.ProductDomainEventPublisher;
+import com.colonel.saas.domain.product.application.ProductLibraryApplicationService;
 import com.colonel.saas.domain.product.application.port.CopyPromotionSupportPort;
 import com.colonel.saas.domain.product.policy.ProductDisplayPolicy;
 import com.colonel.saas.domain.product.policy.ProductPinPolicy;
@@ -167,6 +168,7 @@ public class ProductService implements CopyPromotionSupportPort {
     private final ProductDomainEventPublisher productDomainEventPublisher;
     /** 商品库展示优先级策略（DDD-PRODUCT-002，不含置顶） */
     private final ProductDisplayPolicy productDisplayPolicy;
+    private final ProductLibraryApplicationService productLibraryApplicationService;
     /** 活动商品列表 Redis 短 TTL 缓存；单元测试未注入时自动回退 DB 直查。 */
     private ActivityProductRedisCacheService activityProductRedisCacheService;
     @Value("${douyin.real.promotion-write-enabled:false}")
@@ -209,7 +211,8 @@ public class ProductService implements CopyPromotionSupportPort {
             ProductDisplayRuleService productDisplayRuleService,
             ColonelPartnerSyncService colonelPartnerSyncService,
             ProductDomainEventPublisher productDomainEventPublisher,
-            ProductDisplayPolicy productDisplayPolicy) {
+            ProductDisplayPolicy productDisplayPolicy,
+            @org.springframework.context.annotation.Lazy ProductLibraryApplicationService productLibraryApplicationService) {
         this.douyinConvertPort = douyinConvertPort;
         this.douyinProductGateway = douyinProductGateway;
         this.snapshotMapper = snapshotMapper;
@@ -230,6 +233,7 @@ public class ProductService implements CopyPromotionSupportPort {
         this.colonelPartnerSyncService = colonelPartnerSyncService;
         this.productDomainEventPublisher = productDomainEventPublisher;
         this.productDisplayPolicy = productDisplayPolicy;
+        this.productLibraryApplicationService = productLibraryApplicationService;
     }
 
     @Autowired(required = false)
@@ -1488,16 +1492,7 @@ public class ProductService implements CopyPromotionSupportPort {
     }
 
     public List<String> listLibraryCategories() {
-        List<String> categories = snapshotMapper.listDisplayingLibraryCategoryNames();
-        if (categories == null || categories.isEmpty()) {
-            return List.of();
-        }
-        return categories.stream()
-                .filter(StringUtils::hasText)
-                .map(String::trim)
-                .distinct()
-                .sorted(String.CASE_INSENSITIVE_ORDER)
-                .toList();
+        return productLibraryApplicationService.listLibraryCategories();
     }
 
     public AdminProductCounts getAdminCounts() {

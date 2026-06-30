@@ -80,7 +80,8 @@ class ProductServiceColonelBuyinIdTest {
                 productDisplayRuleService,
                 colonelPartnerSyncService,
                 productDomainEventPublisher,
-                new com.colonel.saas.domain.product.policy.ProductDisplayPolicy()
+                new com.colonel.saas.domain.product.policy.ProductDisplayPolicy(),
+                null
         );
     }
 

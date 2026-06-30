@@ -88,7 +88,8 @@ class ProductServiceFilterTest {
                 productDisplayRuleService,
                 colonelPartnerSyncService,
                 productDomainEventPublisher,
-                new com.colonel.saas.domain.product.policy.ProductDisplayPolicy()
+                new com.colonel.saas.domain.product.policy.ProductDisplayPolicy(),
+                null
         );
         lenient().when(productBizStatusService.readBizStatus(any())).thenReturn(ProductBizStatus.APPROVED);
         lenient().when(snapshotMapper.selectSelectedLibraryPage(
@@ -783,8 +784,17 @@ class ProductServiceFilterTest {
     }
 
     @Test
-    void listLibraryCategories_shouldReturnDistinctSortedNames() {
-        when(snapshotMapper.listDisplayingLibraryCategoryNames()).thenReturn(List.of("美妆", "食品饮料", "美妆"));
+    void listLibraryCategories_shouldDelegateToApplication() {
+        // After DDD-PRODUCT-001 Slice 1: listLibraryCategories moved to ProductLibraryApplicationService.
+        // This test now verifies Service is a 1-line delegate. Business assertions live in
+        // ProductLibraryApplicationServiceTest.
+        com.colonel.saas.domain.product.application.ProductLibraryApplicationService applicationService =
+                org.mockito.Mockito.mock(
+                        com.colonel.saas.domain.product.application.ProductLibraryApplicationService.class);
+        org.mockito.Mockito.when(applicationService.listLibraryCategories())
+                .thenReturn(List.of("美妆", "食品饮料"));
+        org.springframework.test.util.ReflectionTestUtils.setField(
+                service, "productLibraryApplicationService", applicationService);
 
         assertThat(service.listLibraryCategories()).containsExactly("美妆", "食品饮料");
     }

@@ -105,7 +105,8 @@ class ProductServiceActivityStatusIndependenceTest {
                 productDisplayRuleService,
                 colonelPartnerSyncService,
                 productDomainEventPublisher,
-                productDisplayPolicy);
+                productDisplayPolicy,
+                null);
         when(snapshotMapper.upsert(any(ProductSnapshot.class))).thenReturn(1);
         when(operationStateMapper.updateById(any(ProductOperationState.class))).thenReturn(1);
         when(productDisplayRuleService.repairLibraryStateForActivity(any(), eq(false), anyInt()))

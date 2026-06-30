@@ -100,7 +100,8 @@ class ProductServiceLibraryViewTest {
                 productDisplayRuleService,
                 colonelPartnerSyncService,
                 productDomainEventPublisher,
-                new com.colonel.saas.domain.product.policy.ProductDisplayPolicy());
+                new com.colonel.saas.domain.product.policy.ProductDisplayPolicy(),
+                null);
         when(productBizStatusService.readBizStatus(any())).thenReturn(null);
         when(talentFollowService.listByProduct(any(), any())).thenReturn(List.of());
         when(colonelActivityMapper.selectByActivityId(any())).thenReturn(null);
