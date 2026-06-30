@@ -43,10 +43,23 @@ import java.util.function.Supplier;
 
 /**
  * 订单同步服务：从抖音结算网关拉取最新订单并持久化。
- * <p>
- * 支持按时间窗口自动同步、手动触发、按订单号精确同步三种模式；
+ *
+ * <p>支持按时间窗口自动同步、手动触发、按订单号精确同步三种模式；
  * 内置分布式锁（Redis）防并发，熔断器保护上游网关；同步过程中
- * 通过 {@link OrderAttributionRouter} 完成订单归属解析与字段写入。
+ * 通过 {@link OrderAttributionRouter} 完成订单归属解析与字段写入。</p>
+ *
+ * <p><b>DDD 切片状态（DDD-ORDER-006 Slice 3 收尾）：</b>
+ * 本服务是 {@link com.colonel.saas.domain.order.application.OrderSyncApplicationService}
+ * 调度的"实现层"——Application 负责 Command 模式路由、Checkpoint 解析、SyncResult 包装，
+ * 本类负责 Redis 锁、熔断器、Gateway 调用、订单落库的实际逻辑。</p>
+ *
+ * <p><b>不切为委派壳的原因：</b>
+ * 本服务是 6 种同步模式（INCREMENTAL/PAY_RECENT/SETTLE/INSTITUTE_RECENT/
+ * INSTITUTE_HOT_RECENT/SPECIFIC）的实现中心，1445 行包含熔断器阈值 / 锁 TTL /
+ * 多 gateway 调用细节，全部都是基础设施级配置与运行时控制；Application 层的
+ * 包装（command 模式、checkpoint 解析、dry-run 短路）依赖本类 SyncResult 的
+ * 完整字段语义（pages/totalFetched/stopReason 等），直接二次切会破坏应用层封装
+ * 并引入数据流入风险。</p>
  */
 @Slf4j
 @Service
