@@ -405,9 +405,10 @@ const cleanDisplayText = (value: unknown) => {
 }
 
 const commissionTypeTagText = computed(() => {
+  if (!(props.card as any).isDoubleCommission) return ''
   const label = cleanDisplayText((props.card as any).commissionTypeLabel)
   if (label) return label
-  return (props.card as any).isDoubleCommission ? '双佣金' : ''
+  return '双佣金'
 })
 
 const displayCommissionRate = computed(() => {

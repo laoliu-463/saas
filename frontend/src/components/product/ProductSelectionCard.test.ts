@@ -266,6 +266,19 @@ describe('ProductSelectionCard hover drawer', () => {
     expect(metrics.text()).toContain('投放期佣 8.00%')
   })
 
+  it('普通佣金商品不展示佣金类型角标', () => {
+    const wrapper = mountCard({
+      card: {
+        ...baseCard,
+        commissionTypeLabel: '固定佣金',
+        isDoubleCommission: false
+      }
+    })
+
+    expect(wrapper.find('[data-testid="product-dual-commission-badge"]').exists()).toBe(false)
+    expect(wrapper.find('.selection-card__metrics').text()).not.toContain('固定佣金')
+  })
+
   it('hover 详情字段按 FUNC-001 要求展示标签顺序', () => {
     const wrapper = mountCard()
     const labels = wrapper.findAll('.selection-card__field dt').map((node) => node.text())
