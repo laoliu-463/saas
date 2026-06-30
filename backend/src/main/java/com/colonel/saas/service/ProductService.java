@@ -80,7 +80,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
- * 商品核心业务服务（商品域）。
+ * 商品核心业务服务（商品域，DDD-PRODUCT-001 评估中）。
  *
  * <ul>
  *   <li>商品快照同步：从抖音活动 API 拉取并落库商品快照，支持全量刷新和增量更新</li>
@@ -94,6 +94,34 @@ import java.util.stream.Collectors;
  *
  * <p>架构角色：商品域聚合根服务，协调快照、运营状态、推广链接、订单、达人等多个子领域。
  * 依赖 MyBatis-Plus 进行持久化，通过 {@link DouyinActivityGateway} 与抖店开放平台交互。</p>
+ *
+ * <p><b>DDD 切片状态（DDD-PRODUCT-001 Slice 3 收尾）：</b>
+ * 本服务是商品域的"god service"——6370 行 / 60 public method，内部 helper 高度耦合
+ * （{@code toLegacyProduct} 调 10+ private helper；{@code collectSelectedLibraryProducts} /
+ * {@code sortSelectedLibraryProducts} / {@code tryGetSelectedLibraryDbPage} 共享多状态
+ * 过滤逻辑）。</p>
+ *
+ * <p><b>已切出的方法（DDD-PRODUCT-001 Slice 1+2）：</b>
+ * <ul>
+ *   <li>{@link #listLibraryCategories} → {@code ProductLibraryApplicationService}（Slice 1）</li>
+ *   <li>{@link #getAdminCounts} → {@code ProductLibraryApplicationService}（Slice 2）</li>
+ * </ul>
+ *
+ * <p><b>不再逐方法切片的理由：</b>
+ * <ol>
+ *   <li>剩余 58 个方法中，多数依赖 {@code toLegacyProduct} / {@code collectSelectedLibraryProducts} /
+ *       {@code sortSelectedLibraryProducts} / {@code tryGetSelectedLibraryDbPage} 等内部
+ *       高度耦合 helper，搬到 Application 会破坏封装（helper 也得搬，导致"搬一个 method 搬半个 class"）</li>
+ *   <li>{@code ProductController} 没有 Router 灰度，直接调本 Service —— 委派壳化仅改
+ *       Service 内部实现，无法灰度验证，需要更上层的 Controller Router 灰度方案配合</li>
+ *   <li>{@code ProductDomainFacade} / {@code LegacyProductDomainFacade} 已存在但
+ *       只被 OrderService / ProductQuickSampleService 跨域调用，未接管 Controller 主路径</li>
+ * </ol>
+ *
+ * <p><b>推荐后续路径：</b>
+ * 在 Controller 层引入 Router 灰度（OFF 调本 Service，ON 调 {@code ProductDomainFacade}
+ * 或新建的 ProductControllerRouter），按方法独立性和风险逐个切；当前阶段对剩余方法
+ * 维持现状。</p>
  *
  * @see ProductBizStatusService 商品业务状态计算
  * @see ProductDisplayRuleService 商品展示规则
