@@ -29,12 +29,40 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * 业绩查询服务。
- * <p>
- * 提供单订单、批量、分页列表、导出等多种查询方式，所有查询均受
+ * 业绩查询服务（DDD-PERFORMANCE 评估中，Facade 实现层）。
+ *
+ * <p>提供单订单、批量、分页列表、导出等多种查询方式，所有查询均受
  * {@link PerformanceAccessScope} 数据范围约束（personal / group / all）。
  * 底层通过 {@link JdbcTemplate} 原生 SQL 关联 performance_records、
- * colonelsettlement_order、colonelsettlement_activity 等表。
+ * colonelsettlement_order、colonelsettlement_activity 等表。</p>
+ *
+ * <p><b>DDD 切片状态（DDD-PERFORMANCE Slice 1 收尾）：</b>
+ * 本服务是 PerformanceQueryFacade 的实现层——已被多个 caller 调用：
+ * <ul>
+ *   <li>{@link com.colonel.saas.controller.PerformanceController} —— 路由层</li>
+ *   <li>{@link com.colonel.saas.domain.performance.facade.LegacyPerformanceQueryFacade}
+ *       + {@link com.colonel.saas.domain.performance.facade.PerformanceQueryFacade}
+ *       —— Facade 实现</li>
+ *   <li>{@link com.colonel.saas.job.PerformanceCacheWarmupJob} —— 缓存预热</li>
+ *   <li>{@link com.colonel.saas.service.CommissionService} / DashboardService 等</li>
+ * </ul>
+ *
+ * <p><b>已就位的 DDD 结构：</b>
+ * <ul>
+ *   <li>{@link com.colonel.saas.domain.performance.application.PerformanceCalculationApplicationService}
+ *       —— 计算入口（27 行）</li>
+ *   <li>{@link com.colonel.saas.domain.performance.application.ExclusiveMerchantApplicationService}
+ *       —— 独家商户</li>
+ *   <li>3 对 Facade（Performance/Order/Exclusive × Modern/Legacy）</li>
+ *   <li>4 个 Policy（Access/Attribution/Money/Exclusive）</li>
+ *   <li>1 个 RepositoryAdapter（ExclusiveMerchant）</li>
+ * </ul>
+ *
+ * <p><b>不再二次切为委派壳的理由：</b>
+ * 772 行 / 11 public method，被 10+ caller 跨域调用（Controller + Facade + Job + Commission +
+ * Dashboard），与 {@link PerformanceMetricsQueryService}（461 行 / 12 public method）共享
+ * {@code performanceRecordsMapper} 和 SQL 装配逻辑。强行委派壳化会破坏 Facade 实现层
+ * 语义（Facade 实现应该是薄壳而不是又一层委派）。当前阶段对剩余方法维持现状。</p>
  */
 @Service
 public class PerformanceQueryService {
