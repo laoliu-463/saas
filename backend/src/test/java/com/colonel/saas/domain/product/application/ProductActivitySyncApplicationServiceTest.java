@@ -1,6 +1,7 @@
 package com.colonel.saas.domain.product.application;
 
 import com.colonel.saas.gateway.douyin.DouyinProductGateway;
+import com.colonel.saas.domain.product.application.port.ProductActivitySyncSchedulePort;
 import com.colonel.saas.domain.product.application.port.ProductActivitySyncStatePort;
 import com.colonel.saas.service.ProductService;
 import org.junit.jupiter.api.Test;
@@ -26,6 +27,8 @@ class ProductActivitySyncApplicationServiceTest {
     private ProductService productService;
     @Mock
     private ProductActivitySyncStatePort productActivitySyncStatePort;
+    @Mock
+    private ProductActivitySyncSchedulePort productActivitySyncSchedulePort;
 
     @Test
     void refreshActivitySnapshots_shouldDelegateToLegacyProductServiceAndMapStats() {
@@ -297,8 +300,24 @@ class ProductActivitySyncApplicationServiceTest {
         assertThat(completedAtCaptor.getValue()).isNotNull();
     }
 
+    @Test
+    void loadScheduledActivityIds_shouldDelegateToSchedulePort() {
+        ProductActivitySyncApplicationService applicationService = applicationService();
+        LocalDateTime lastSyncedBefore = LocalDateTime.of(2026, 6, 30, 14, 30);
+        when(productActivitySyncSchedulePort.findActivitiesDueForSync(20, lastSyncedBefore))
+                .thenReturn(List.of("ACT-10", "ACT-20"));
+
+        List<String> result = applicationService.loadScheduledActivityIds(20, lastSyncedBefore);
+
+        assertThat(result).containsExactly("ACT-10", "ACT-20");
+        verify(productActivitySyncSchedulePort).findActivitiesDueForSync(20, lastSyncedBefore);
+    }
+
     private ProductActivitySyncApplicationService applicationService() {
-        return new ProductActivitySyncApplicationService(productService, productActivitySyncStatePort);
+        return new ProductActivitySyncApplicationService(
+                productService,
+                productActivitySyncStatePort,
+                productActivitySyncSchedulePort);
     }
 
 }

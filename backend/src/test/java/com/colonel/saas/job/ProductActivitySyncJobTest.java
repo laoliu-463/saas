@@ -1,7 +1,6 @@
 package com.colonel.saas.job;
 
 import com.colonel.saas.domain.product.application.ProductActivitySyncApplicationService;
-import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
 import com.colonel.saas.service.DistributedJobLockService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -17,7 +16,6 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
@@ -33,8 +31,6 @@ class ProductActivitySyncJobTest {
     private ProductActivitySyncApplicationService productActivitySyncApplicationService;
     @Mock
     private DistributedJobLockService jobLockService;
-    @Mock
-    private ColonelsettlementActivityMapper activityMapper;
 
     @BeforeEach
     void setUp() {
@@ -54,7 +50,7 @@ class ProductActivitySyncJobTest {
 
         job.syncAll();
 
-        verifyNoInteractions(jobLockService, activityMapper, productActivitySyncApplicationService);
+        verifyNoInteractions(jobLockService, productActivitySyncApplicationService);
     }
 
     @Test
@@ -65,7 +61,7 @@ class ProductActivitySyncJobTest {
         job.syncAll();
 
         verify(jobLockService).tryAcquire(eq(JobLockKeys.PRODUCT_ACTIVITY_SYNC), any(Duration.class));
-        verifyNoInteractions(activityMapper, productActivitySyncApplicationService);
+        verifyNoInteractions(productActivitySyncApplicationService);
         verify(jobLockService, never()).release(JobLockKeys.PRODUCT_ACTIVITY_SYNC);
         verify(jobLockService).release(JobLockKeys.PRODUCT_BACKFILL_GLOBAL);
     }
@@ -76,7 +72,8 @@ class ProductActivitySyncJobTest {
 
         job.syncAll();
 
-        verify(activityMapper, never()).selectActiveActivityIds(anyInt(), any(LocalDateTime.class));
+        verify(productActivitySyncApplicationService, never())
+                .loadScheduledActivityIds(org.mockito.ArgumentMatchers.anyInt(), any(LocalDateTime.class));
         verify(productActivitySyncApplicationService, times(2)).refreshScheduledActivitySnapshots(any(), any());
         verify(productActivitySyncApplicationService).markActivitySyncCompleted("ACT-1");
         verify(productActivitySyncApplicationService).markActivitySyncCompleted("ACT-2");
@@ -128,7 +125,7 @@ class ProductActivitySyncJobTest {
     @Test
     void syncAll_shouldLoadActivitiesRefreshAndMarkActivitySyncCompleted() {
         ProductActivitySyncJob job = job(true, "");
-        when(activityMapper.selectActiveActivityIds(eq(20), any(LocalDateTime.class)))
+        when(productActivitySyncApplicationService.loadScheduledActivityIds(eq(20), any(LocalDateTime.class)))
                 .thenReturn(List.of("ACT-10", "ACT-20"));
 
         job.syncAll();
@@ -148,7 +145,7 @@ class ProductActivitySyncJobTest {
     }
 
     private ProductActivitySyncJob job(boolean enabled, String whitelistActivities) {
-        ProductActivitySyncJob job = new ProductActivitySyncJob(productActivitySyncApplicationService, jobLockService, activityMapper, 0);
+        ProductActivitySyncJob job = new ProductActivitySyncJob(productActivitySyncApplicationService, jobLockService, 0);
         ReflectionTestUtils.setField(job, "enabled", enabled);
         ReflectionTestUtils.setField(job, "batchSize", 20);
         ReflectionTestUtils.setField(job, "pageSize", 20);

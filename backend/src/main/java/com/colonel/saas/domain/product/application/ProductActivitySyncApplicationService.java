@@ -1,6 +1,7 @@
 package com.colonel.saas.domain.product.application;
 
 import com.colonel.saas.common.exception.UpstreamErrorCode;
+import com.colonel.saas.domain.product.application.port.ProductActivitySyncSchedulePort;
 import com.colonel.saas.domain.product.application.port.ProductActivitySyncStatePort;
 import com.colonel.saas.domain.product.policy.ActivityProductPagePolicy;
 import com.colonel.saas.domain.product.policy.ProductActivityManualSyncPolicy;
@@ -10,6 +11,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -22,12 +24,15 @@ public class ProductActivitySyncApplicationService {
 
     private final ProductService productService;
     private final ProductActivitySyncStatePort productActivitySyncStatePort;
+    private final ProductActivitySyncSchedulePort productActivitySyncSchedulePort;
 
     public ProductActivitySyncApplicationService(
             ProductService productService,
-            ProductActivitySyncStatePort productActivitySyncStatePort) {
+            ProductActivitySyncStatePort productActivitySyncStatePort,
+            ProductActivitySyncSchedulePort productActivitySyncSchedulePort) {
         this.productService = productService;
         this.productActivitySyncStatePort = productActivitySyncStatePort;
+        this.productActivitySyncSchedulePort = productActivitySyncSchedulePort;
     }
 
     public ActivityProductRefreshResult refreshActivitySnapshots(DouyinProductGateway.ActivityProductQueryRequest request) {
@@ -72,6 +77,10 @@ public class ProductActivitySyncApplicationService {
 
     public void markActivitySyncCompleted(String activityId) {
         productActivitySyncStatePort.markActivitySyncCompleted(activityId, LocalDateTime.now());
+    }
+
+    public List<String> loadScheduledActivityIds(int limit, LocalDateTime lastSyncedBefore) {
+        return productActivitySyncSchedulePort.findActivitiesDueForSync(limit, lastSyncedBefore);
     }
 
     public ActivityProductRefreshResult refreshActivitySnapshots(

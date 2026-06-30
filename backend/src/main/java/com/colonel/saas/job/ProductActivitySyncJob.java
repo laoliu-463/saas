@@ -1,7 +1,6 @@
 package com.colonel.saas.job;
 
 import com.colonel.saas.domain.product.application.ProductActivitySyncApplicationService;
-import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
 import com.colonel.saas.service.DistributedJobLockService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -31,7 +30,6 @@ public class ProductActivitySyncJob {
 
     private final ProductActivitySyncApplicationService productActivitySyncApplicationService;
     private final DistributedJobLockService jobLockService;
-    private final ColonelsettlementActivityMapper activityMapper;
     private final int qpsGuardSleepMillis;
 
     @Value("${product.activity.sync.enabled:false}")
@@ -52,19 +50,16 @@ public class ProductActivitySyncJob {
     @Autowired
     public ProductActivitySyncJob(
             ProductActivitySyncApplicationService productActivitySyncApplicationService,
-            DistributedJobLockService jobLockService,
-            ColonelsettlementActivityMapper activityMapper) {
-        this(productActivitySyncApplicationService, jobLockService, activityMapper, QPS_GUARD_SLEEP_MS);
+            DistributedJobLockService jobLockService) {
+        this(productActivitySyncApplicationService, jobLockService, QPS_GUARD_SLEEP_MS);
     }
 
     ProductActivitySyncJob(
             ProductActivitySyncApplicationService productActivitySyncApplicationService,
             DistributedJobLockService jobLockService,
-            ColonelsettlementActivityMapper activityMapper,
             int qpsGuardSleepMillis) {
         this.productActivitySyncApplicationService = productActivitySyncApplicationService;
         this.jobLockService = jobLockService;
-        this.activityMapper = activityMapper;
         this.qpsGuardSleepMillis = Math.max(0, qpsGuardSleepMillis);
     }
 
@@ -152,7 +147,7 @@ public class ProductActivitySyncJob {
                     .distinct()
                     .toList();
         }
-        return activityMapper.selectActiveActivityIds(
+        return productActivitySyncApplicationService.loadScheduledActivityIds(
                 normalizedMaxActivitiesPerRun(),
                 LocalDateTime.now().minusMinutes(30));
     }

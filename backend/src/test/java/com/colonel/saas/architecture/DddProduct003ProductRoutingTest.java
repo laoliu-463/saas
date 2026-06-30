@@ -313,13 +313,18 @@ class DddProduct003ProductRoutingTest {
 
         assertThat(jobSource)
                 .contains("ProductActivitySyncApplicationService")
+                .contains("loadScheduledActivityIds")
                 .contains("refreshScheduledActivitySnapshots")
                 .contains("markActivitySyncCompleted")
                 .doesNotContain("DouyinProductGateway")
+                .doesNotContain("ColonelsettlementActivityMapper")
+                .doesNotContain("selectActiveActivityIds")
                 .doesNotContain("touchLastSyncAt")
                 .doesNotContain("buildQueryRequest")
                 .doesNotContain("normalizedPageSize");
         assertThat(applicationSource)
+                .contains("ProductActivitySyncSchedulePort")
+                .contains("loadScheduledActivityIds")
                 .contains("refreshScheduledActivitySnapshots")
                 .contains("ActivityProductPagePolicy");
     }
