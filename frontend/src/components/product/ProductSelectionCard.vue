@@ -53,6 +53,15 @@
         <span v-if="stockAlertText" class="selection-card__stock-alert" data-testid="product-stock-alert">
           {{ stockAlertText }}
         </span>
+        <span
+          v-if="commissionTypeTagText"
+          class="selection-card__dual-commission"
+          :class="{ 'selection-card__dual-commission--below-pin': card.isPinned }"
+          data-testid="product-dual-commission-badge"
+          :title="commissionTypeTagText"
+        >
+          {{ commissionTypeTagText }}
+        </span>
         <span class="selection-card__shop-tag" :title="card.shopName">{{ shopTagText }}</span>
         <span v-if="card.supportInvestment" class="selection-card__ads-tag">投流</span>
 
@@ -616,6 +625,29 @@ const copyField = async (text: string | undefined, label: string) => {
   font-size: 10px;
   font-weight: 600;
   line-height: 16px;
+}
+
+.selection-card__dual-commission {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 3;
+  max-width: calc(100% - 16px);
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: rgba(190, 18, 60, 0.94);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 2px 8px rgba(190, 18, 60, 0.24);
+}
+
+.selection-card__dual-commission--below-pin {
+  top: 34px;
 }
 
 .selection-card__shop-tag {

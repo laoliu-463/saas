@@ -259,7 +259,9 @@ describe('ProductSelectionCard hover drawer', () => {
       }
     })
     const metrics = wrapper.find('.selection-card__metrics')
+    const imageBadge = wrapper.find('[data-testid="product-dual-commission-badge"]')
 
+    expect(imageBadge.text()).toBe('双佣金')
     expect(metrics.text()).toContain('双佣金')
     expect(metrics.text()).toContain('投放期佣 8.00%')
   })
