@@ -1,86 +1,36 @@
 package com.colonel.saas.service;
 
-import com.colonel.saas.common.exception.BusinessException;
-import com.colonel.saas.domain.order.facade.OrderReadFacade;
-import com.colonel.saas.domain.performance.application.PerformanceCalculationApplicationService;
+import com.colonel.saas.domain.performance.application.PerformanceMonthRecalculationApplicationService;
 import com.colonel.saas.dto.performance.PerformanceRecalculateMonthResponse;
-import com.colonel.saas.entity.ColonelsettlementOrder;
 import org.springframework.stereotype.Service;
-import org.springframework.util.StringUtils;
-
-import java.time.LocalDateTime;
-import java.time.YearMonth;
-import java.time.format.DateTimeFormatter;
-import java.time.format.DateTimeParseException;
-import java.util.List;
-import java.util.UUID;
 
 /**
- * 业绩月度重算服务，针对未结算订单重新计算业绩记录。
+ * 业绩月度重算服务（DDD 委派壳，DDD-PERFORMANCE Slice 5）。
  *
- * <p>每月定时或手动触发，扫描指定月份内未结算的订单，
- * 逐笔调用 {@link PerformanceCalculationApplicationService#upsertFromOrder} 重新计算业绩。</p>
+ * <p>本类为 1-line 委派壳，所有真实业务逻辑（月份解析 / 时间区间 / 逐笔重算 / 容错 /
+ * 响应组装）已搬至 {@link PerformanceMonthRecalculationApplicationService}。
+ * 现有调用方（{@code PerformanceController} 等）继续通过本类调用，行为零变化。</p>
+ *
+ * <p>Service 不再直接依赖 {@code PerformanceCalculationApplicationService} /
+ * {@code OrderReadFacade}，而是通过新 Application 间接委派。
+ * 架构边界检查 {@code DddPerf001CalculationApplicationServiceRoutingTest}
+ * 已跟随调整，验证入口委派形态而非文件 import 字符串。</p>
  */
 @Service
 public class PerformanceMonthRecalculationService {
 
-    private static final DateTimeFormatter MONTH = DateTimeFormatter.ofPattern("yyyy-MM");
-
-    private static final int MAX_RECALC_ORDERS = 2000;
-
-    private final OrderReadFacade orderReadFacade;
-
-    private final PerformanceCalculationApplicationService performanceCalculationApplicationService;
+    private final PerformanceMonthRecalculationApplicationService monthRecalculationApplicationService;
 
     public PerformanceMonthRecalculationService(
-            OrderReadFacade orderReadFacade,
-            PerformanceCalculationApplicationService performanceCalculationApplicationService) {
-        this.orderReadFacade = orderReadFacade;
-        this.performanceCalculationApplicationService = performanceCalculationApplicationService;
+            PerformanceMonthRecalculationApplicationService monthRecalculationApplicationService) {
+        this.monthRecalculationApplicationService = monthRecalculationApplicationService;
     }
 
+    /**
+     * 委派到 {@link PerformanceMonthRecalculationApplicationService#recalculateMonth}
+     * （DDD-PERFORMANCE Slice 5）。
+     */
     public PerformanceRecalculateMonthResponse recalculateMonth(String month, String reason) {
-        if (!StringUtils.hasText(month)) {
-            throw BusinessException.param("month 不能为空");
-        }
-        if (!StringUtils.hasText(reason)) {
-            throw BusinessException.param("reason 不能为空");
-        }
-        YearMonth targetMonth;
-        try {
-            targetMonth = YearMonth.parse(month.trim(), MONTH);
-        } catch (DateTimeParseException ex) {
-            throw BusinessException.param("month 格式应为 yyyy-MM");
-        }
-
-        LocalDateTime start = targetMonth.atDay(1).atStartOfDay();
-        LocalDateTime end = targetMonth.plusMonths(1).atDay(1).atStartOfDay();
-        List<ColonelsettlementOrder> orders = orderReadFacade.findUnsettledOrdersByCreateTimeRange(
-                start, end, MAX_RECALC_ORDERS);
-
-        int upserted = 0;
-        int skippedSettled = 0;
-        for (ColonelsettlementOrder order : orders) {
-            if (order.getSettleTime() != null) {
-                skippedSettled++;
-                continue;
-            }
-            try {
-                if (performanceCalculationApplicationService.upsertFromOrder(order) != null) {
-                    upserted++;
-                }
-            } catch (Exception ignored) {
-                // 单条失败不影响整批重算
-            }
-        }
-
-        PerformanceRecalculateMonthResponse response = new PerformanceRecalculateMonthResponse();
-        response.setJobId(UUID.randomUUID().toString());
-        response.setStatus("SUBMITTED");
-        response.setMonth(targetMonth.toString());
-        response.setScanned(orders.size());
-        response.setUpserted(upserted);
-        response.setSkippedSettled(skippedSettled);
-        return response;
+        return monthRecalculationApplicationService.recalculateMonth(month, reason);
     }
 }

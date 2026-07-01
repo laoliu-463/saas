@@ -1,9 +1,7 @@
-package com.colonel.saas.service;
+package com.colonel.saas.domain.performance.application;
 
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.domain.order.facade.OrderReadFacade;
-import com.colonel.saas.domain.performance.application.PerformanceCalculationApplicationService;
-import com.colonel.saas.domain.performance.application.PerformanceMonthRecalculationApplicationService;
 import com.colonel.saas.dto.performance.PerformanceRecalculateMonthResponse;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.PerformanceRecord;
@@ -25,8 +23,15 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+/**
+ * PerformanceMonthRecalculationApplicationService 直接行为验证（DDD-PERFORMANCE Slice 5）。
+ *
+ * <p>核心目标：验证 Application 层独立持有完整的月度重算逻辑，
+ * 不依赖 Service 中转。Service 层委派是 thin shell，
+ * 真实业务逻辑（月份解析 / 时间区间 / 逐笔重算 / 容错 / 响应组装）必须由本测试覆盖。</p>
+ */
 @ExtendWith(MockitoExtension.class)
-class PerformanceMonthRecalculationServiceTest {
+class PerformanceMonthRecalculationApplicationServiceTest {
 
     @Mock
     private OrderReadFacade orderReadFacade;
@@ -34,23 +39,17 @@ class PerformanceMonthRecalculationServiceTest {
     @Mock
     private PerformanceCalculationApplicationService performanceCalculationApplicationService;
 
-    private PerformanceMonthRecalculationService service;
+    private PerformanceMonthRecalculationApplicationService applicationService;
 
     @BeforeEach
     void setUp() {
-        // DDD-PERFORMANCE Slice 5: recalculateMonth 已下沉至 application 层；
-        // service 是 thin shell 委派壳。测试使用同一份 mock 共享给 Application，
-        // 保证 Service → Application 委派调用链上 OrderReadFacade /
-        // PerformanceCalculationApplicationService 行为可被验证。
-        PerformanceMonthRecalculationApplicationService applicationService =
-                new PerformanceMonthRecalculationApplicationService(
-                        orderReadFacade, performanceCalculationApplicationService);
-        service = new PerformanceMonthRecalculationService(applicationService);
+        applicationService = new PerformanceMonthRecalculationApplicationService(
+                orderReadFacade, performanceCalculationApplicationService);
     }
 
     @Test
     void recalculateMonth_shouldRejectBlankMonth() {
-        assertThatThrownBy(() -> service.recalculateMonth(" ", "重算五月"))
+        assertThatThrownBy(() -> applicationService.recalculateMonth(" ", "重算五月"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("month 不能为空");
 
@@ -59,7 +58,7 @@ class PerformanceMonthRecalculationServiceTest {
 
     @Test
     void recalculateMonth_shouldRejectBlankReason() {
-        assertThatThrownBy(() -> service.recalculateMonth("2026-05", " "))
+        assertThatThrownBy(() -> applicationService.recalculateMonth("2026-05", " "))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("reason 不能为空");
 
@@ -68,7 +67,7 @@ class PerformanceMonthRecalculationServiceTest {
 
     @Test
     void recalculateMonth_shouldRejectInvalidMonthFormat() {
-        assertThatThrownBy(() -> service.recalculateMonth("2026/05", "重算五月"))
+        assertThatThrownBy(() -> applicationService.recalculateMonth("2026/05", "重算五月"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("month 格式应为 yyyy-MM");
 
@@ -87,7 +86,7 @@ class PerformanceMonthRecalculationServiceTest {
         when(performanceCalculationApplicationService.upsertFromOrder(failed)).thenThrow(new IllegalStateException("boom"));
         when(performanceCalculationApplicationService.upsertFromOrder(ignored)).thenReturn(null);
 
-        PerformanceRecalculateMonthResponse response = service.recalculateMonth(" 2026-05 ", "重算五月");
+        PerformanceRecalculateMonthResponse response = applicationService.recalculateMonth(" 2026-05 ", "重算五月");
 
         assertThat(response.getJobId()).isNotBlank();
         assertThat(response.getStatus()).isEqualTo("SUBMITTED");
