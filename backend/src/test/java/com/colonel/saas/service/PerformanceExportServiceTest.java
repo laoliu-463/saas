@@ -3,8 +3,10 @@ package com.colonel.saas.service;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.dto.performance.PerformanceDetailDTO;
 import com.colonel.saas.dto.performance.PerformanceListQuery;
+import com.colonel.saas.domain.performance.application.PerformanceExportApplicationService;
 import com.colonel.saas.domain.performance.policy.PerformanceAccessContext;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -25,9 +27,20 @@ class PerformanceExportServiceTest {
     @Mock
     private PerformanceQueryService performanceQueryService;
 
+    private PerformanceExportService service;
+
+    @BeforeEach
+    void setUp() {
+        // DDD-PERFORMANCE Slice 6: exportXlsx 已下沉至 application 层；
+        // service 是 thin shell 委派壳。测试使用同一份 mock 共享给 Application，
+        // 保证 Service → Application 委派调用链上 PerformanceQueryService 行为可被验证。
+        PerformanceExportApplicationService applicationService =
+                new PerformanceExportApplicationService(performanceQueryService);
+        service = new PerformanceExportService(applicationService);
+    }
+
     @Test
     void exportXlsx_shouldWriteHeadersAmountsAndFormattedTimes() throws Exception {
-        PerformanceExportService service = new PerformanceExportService(performanceQueryService);
         PerformanceListQuery query = new PerformanceListQuery();
         PerformanceAccessContext context = PerformanceAccessContext.of(
                 UUID.randomUUID(),
@@ -90,7 +103,6 @@ class PerformanceExportServiceTest {
 
     @Test
     void exportXlsx_shouldKeepBlankStringsAndZeroAmountsForNullValues() throws Exception {
-        PerformanceExportService service = new PerformanceExportService(performanceQueryService);
         PerformanceListQuery query = new PerformanceListQuery();
         PerformanceAccessContext context = PerformanceAccessContext.of(
                 UUID.randomUUID(),
