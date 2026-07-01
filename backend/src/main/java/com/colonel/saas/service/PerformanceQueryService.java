@@ -58,11 +58,27 @@ import java.util.UUID;
  *   <li>1 个 RepositoryAdapter（ExclusiveMerchant）</li>
  * </ul>
  *
- * <p><b>不再二次切为委派壳的理由：</b>
- * 772 行 / 11 public method，被 10+ caller 跨域调用（Controller + Facade + Job + Commission +
- * Dashboard），与 {@link PerformanceMetricsQueryService}（461 行 / 12 public method）共享
- * {@code performanceRecordsMapper} 和 SQL 装配逻辑。强行委派壳化会破坏 Facade 实现层
- * 语义（Facade 实现应该是薄壳而不是又一层委派）。当前阶段对剩余方法维持现状。</p>
+ * <p><b>不再二次切为委派壳的理由（DDD-PERFORMANCE Slice 5 评估结论）：</b>
+ * 本服务是 PerformanceQueryFacade 的实现层，跨域 caller 8 个文件
+ * （PerformanceController / LegacyPerformanceQueryFacade / PerformanceQueryFacade /
+ * LegacyOrderPerformanceQueryFacade / OrderPerformanceQueryFacade /
+ * PerformanceExportService / PerformanceCacheWarmupJob / PerformanceControllerTest），
+ * 与已切完的 PerformanceMetricsQueryService（175 行 thin shell）/PerformanceSummaryService
+ * （50 行 thin shell）共享 {@code performanceRecordMapper} 和 SQL 装配 helper。
+ * 强行委派壳化会破坏 Facade 实现层语义（Facade 实现应该是薄壳而不是又一层委派）。
+ * 按 ddd-sprint-practical-pitfalls SKILL Class 2 sub-variant 决策表，标记
+ * <b>维持现状</b>——不再二次切为委派壳。后续若 caller 收缩到 ≤3 个 Facade 单点，
+ * 可重评估为 Slice 6 候选。</p>
+ *
+ * <p><b>DDD-PERFORMANCE 完成度：</b>
+ * <ul>
+ *   <li>Slice 1：PerformanceQueryService 身份标注（本文，Facade 实现层）</li>
+ *   <li>Slice 2：PerformanceMetricsQueryService.aggregateRange → PerformanceAggregateApplicationService</li>
+ *   <li>Slice 3：PerformanceMetricsQueryService.trendByDay + aggregateDashboardSummary → 同 Application</li>
+ *   <li>Slice 4：PerformanceSummaryService 整体（3 method + 7 helper）→ PerformanceSummaryApplicationService</li>
+ *   <li>Slice 5：PerformanceQueryService 评估，维持现状（本文档段）</li>
+ * </ul>
+ * 性能域 5 个 god svc 4 个已切/标注，剩余 0 个真 god 待切目标。</p>
  */
 @Service
 public class PerformanceQueryService {
