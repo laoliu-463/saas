@@ -2,6 +2,7 @@ package com.colonel.saas.service;
 
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.config.DddRefactorProperties;
+import com.colonel.saas.domain.performance.application.PerformanceAggregateApplicationService;
 import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -25,14 +26,17 @@ public class PerformanceMetricsQueryService {
     private final JdbcTemplate jdbcTemplate;
     private final DataScopePolicy dataScopePolicy;
     private final DddRefactorProperties dddRefactorProperties;
+    private final PerformanceAggregateApplicationService aggregateApplicationService;
 
     public PerformanceMetricsQueryService(
             JdbcTemplate jdbcTemplate,
             DataScopePolicy dataScopePolicy,
-            DddRefactorProperties dddRefactorProperties) {
+            DddRefactorProperties dddRefactorProperties,
+            PerformanceAggregateApplicationService aggregateApplicationService) {
         this.jdbcTemplate = jdbcTemplate;
         this.dataScopePolicy = dataScopePolicy;
         this.dddRefactorProperties = dddRefactorProperties;
+        this.aggregateApplicationService = aggregateApplicationService;
     }
 
     public record PerformanceAggregate(
@@ -74,6 +78,13 @@ public class PerformanceMetricsQueryService {
         return Boolean.TRUE.equals(exists);
     }
 
+    /**
+     * 委派到 {@link PerformanceAggregateApplicationService#aggregateRange}（DDD-PERFORMANCE Slice 2）。
+     *
+     * <p>完整 SQL 装配逻辑已迁出至 application 层；本 service 仅保留 thin shell 委派，
+     * 保持 caller 端零修改（DataController / DashboardService /
+     * DashboardShadowCompareService / DataApplicationService 仍按既有签名调用）。</p>
+     */
     public PerformanceAggregate aggregateRange(
             LocalDateTime startInclusive,
             LocalDateTime endExclusive,
@@ -81,10 +92,13 @@ public class PerformanceMetricsQueryService {
             UUID userId,
             UUID deptId,
             DataScope dataScope) {
-        return aggregateRange(startInclusive, endExclusive, timeField,
-                null, null, null, userId, deptId, dataScope);
+        return aggregateApplicationService.aggregateRange(
+                startInclusive, endExclusive, timeField, userId, deptId, dataScope);
     }
 
+    /**
+     * 委派到 {@link PerformanceAggregateApplicationService#aggregateRange}（DDD-PERFORMANCE Slice 2）。
+     */
     public PerformanceAggregate aggregateRange(
             LocalDateTime startInclusive,
             LocalDateTime endExclusive,
@@ -95,57 +109,9 @@ public class PerformanceMetricsQueryService {
             UUID userId,
             UUID deptId,
             DataScope dataScope) {
-        boolean estimateTrack = isEstimateTrack(timeField);
-        String timeColumn = resolveTimeColumn(timeField);
-        List<Object> args = new ArrayList<>();
-        StringBuilder where = orderFactsPerformanceJoin();
-        appendScope(where, args, userId, deptId, dataScope);
-        appendBusinessLineFilter(where, args, businessLine, channelId, recruiterId);
-        appendRangeFilter(where, args, timeColumn, startInclusive, endExclusive);
-
-        String amountColumn = estimateTrack ? "co.order_amount" : "co.settle_amount";
-        String serviceFeeColumn = estimateTrack ? "co.estimate_service_fee" : "co.effective_service_fee";
-        String techFeeColumn = estimateTrack ? "co.estimate_tech_service_fee" : "co.effective_tech_service_fee";
-        String expenseColumn = estimateTrack ? "co.estimate_service_fee_expense" : "co.effective_service_fee_expense";
-        String profitColumn = estimateTrack ? "pr.estimate_service_profit" : "pr.effective_service_profit";
-        String recruiterColumn = estimateTrack ? "pr.estimate_recruiter_commission" : "pr.effective_recruiter_commission";
-        String channelColumn = estimateTrack ? "pr.estimate_channel_commission" : "pr.effective_channel_commission";
-        String grossColumn = estimateTrack ? "pr.estimate_gross_profit" : "pr.effective_gross_profit";
-
-        String sql = """
-                SELECT
-                    COUNT(*) AS order_count,
-                    COALESCE(SUM(%s), 0) AS order_amount_cent,
-                    COALESCE(SUM(%s), 0) AS service_fee_income_cent,
-                    COALESCE(SUM(%s), 0) AS tech_service_fee_cent,
-                    COALESCE(SUM(%s), 0) AS service_fee_expense_cent,
-                    COALESCE(SUM(co.settle_second_colonel_commission), 0) AS talent_commission_cent,
-                    COALESCE(SUM(%s), 0) AS service_profit_cent,
-                    COALESCE(SUM(%s), 0) AS recruiter_commission_cent,
-                    COALESCE(SUM(%s), 0) AS channel_commission_cent,
-                    COALESCE(SUM(%s), 0) AS gross_profit_cent
-                """.formatted(
-                amountColumn,
-                serviceFeeColumn,
-                techFeeColumn,
-                expenseColumn,
-                profitColumn,
-                recruiterColumn,
-                channelColumn,
-                grossColumn) + where;
-
-        Map<String, Object> row = jdbcTemplate.queryForMap(sql, args.toArray());
-        return new PerformanceAggregate(
-                asLong(row.get("order_count")),
-                asLong(row.get("order_amount_cent")),
-                asLong(row.get("service_fee_income_cent")),
-                asLong(row.get("tech_service_fee_cent")),
-                asLong(row.get("service_fee_expense_cent")),
-                asLong(row.get("talent_commission_cent")),
-                asLong(row.get("service_profit_cent")),
-                asLong(row.get("recruiter_commission_cent")),
-                asLong(row.get("channel_commission_cent")),
-                asLong(row.get("gross_profit_cent")));
+        return aggregateApplicationService.aggregateRange(
+                startInclusive, endExclusive, timeField,
+                businessLine, channelId, recruiterId, userId, deptId, dataScope);
     }
 
     public List<TrendPoint> trendByDay(
@@ -253,6 +219,9 @@ public class PerformanceMetricsQueryService {
         return isEstimateTrack(timeField) ? "estimate" : "effective";
     }
 
+    /**
+     * 保留 isEstimateTrack / resolveTimeColumn：trendByDay + aggregateDashboardSummary 仍依赖。
+     */
     private boolean isEstimateTrack(String timeField) {
         return "create_time".equals(resolveTimeColumn(timeField));
     }
@@ -269,6 +238,10 @@ public class PerformanceMetricsQueryService {
         };
     }
 
+    /**
+     * 保留 appendScope / orderFactsPerformanceJoin / appendRangeFilter / appendBusinessLineFilter /
+     * appendScopeLegacy / appendScopeWithPolicy：trendByDay + aggregateDashboardSummary 仍依赖。
+     */
     private void appendScope(
             StringBuilder where,
             List<Object> args,
@@ -445,6 +418,9 @@ public class PerformanceMetricsQueryService {
         return value == null ? null : String.valueOf(value);
     }
 
+    /**
+     * 保留 asLong：trendByDay + aggregateDashboardSummary + queryLeaderboard 仍依赖。
+     */
     private long asLong(Object value) {
         if (value instanceof Number number) {
             return number.longValue();

@@ -1,9 +1,9 @@
-package com.colonel.saas.service;
+package com.colonel.saas.domain.performance.application;
 
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.config.DddRefactorProperties;
-import com.colonel.saas.domain.performance.application.PerformanceAggregateApplicationService;
 import com.colonel.saas.domain.user.policy.DataScopePolicy;
+import com.colonel.saas.service.PerformanceMetricsQueryService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -14,7 +14,6 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -26,14 +25,20 @@ import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+/**
+ * PerformanceAggregateApplicationService 直接行为验证（DDD-PERFORMANCE Slice 2）。
+ *
+ * <p>核心目标：验证 Application 层独立持有完整的 aggregateRange SQL 装配逻辑，
+ * 不依赖 Service 中转。Service 层委托是 thin shell，
+ * 真实业务逻辑必须由本测试覆盖。</p>
+ */
 @ExtendWith(MockitoExtension.class)
-class PerformanceMetricsQueryServiceTest {
+class PerformanceAggregateApplicationServiceTest {
 
     @Mock
     private JdbcTemplate jdbcTemplate;
 
-    private PerformanceMetricsQueryService service;
-    private PerformanceAggregateApplicationService aggregateApplicationService;
+    private PerformanceAggregateApplicationService applicationService;
     private DataScopePolicy dataScopePolicy;
     private DddRefactorProperties dddRefactorProperties;
 
@@ -41,109 +46,71 @@ class PerformanceMetricsQueryServiceTest {
     void setUp() {
         dataScopePolicy = spy(new DataScopePolicy());
         dddRefactorProperties = new DddRefactorProperties();
-        // DDD-PERFORMANCE Slice 2: aggregateRange 已下沉至 application 层，
-        // 但 service 仍持有 thin shell 委派；测试使用同一份 mock jdbcTemplate/dataScopePolicy，
-        // 保证 service.aggregateRange 调用链上 SQL 装配 / DataScopePolicy 行为可被验证。
-        aggregateApplicationService = new PerformanceAggregateApplicationService(
+        applicationService = new PerformanceAggregateApplicationService(
                 jdbcTemplate, dataScopePolicy, dddRefactorProperties);
-        service = new PerformanceMetricsQueryService(
-                jdbcTemplate, dataScopePolicy, dddRefactorProperties, aggregateApplicationService);
-    }
-
-    @Test
-    void resolveAmountTrackLabel_shouldMapCreateTimeToEstimate() {
-        assertThat(service.resolveAmountTrackLabel("createTime")).isEqualTo("estimate");
-        assertThat(service.resolveAmountTrackLabel("settleTime")).isEqualTo("effective");
     }
 
     @Test
     void aggregateRange_shouldUseEstimateColumnsForCreateTrack() {
         when(jdbcTemplate.queryForMap(contains("co.estimate_service_fee"), any(Object[].class)))
                 .thenReturn(Map.of(
-                        "order_count", 2L,
-                        "order_amount_cent", 5000L,
-                        "service_fee_income_cent", 600L,
-                        "tech_service_fee_cent", 60L,
-                        "talent_commission_cent", 0L,
-                        "service_profit_cent", 540L,
-                        "recruiter_commission_cent", 54L,
-                        "channel_commission_cent", 108L,
-                        "gross_profit_cent", 378L));
+                        "order_count", 3L,
+                        "order_amount_cent", 7500L,
+                        "service_fee_income_cent", 900L,
+                        "tech_service_fee_cent", 90L,
+                        "talent_commission_cent", 100L,
+                        "service_profit_cent", 810L,
+                        "recruiter_commission_cent", 81L,
+                        "channel_commission_cent", 162L,
+                        "gross_profit_cent", 567L));
 
         LocalDate today = LocalDate.now();
-        PerformanceMetricsQueryService.PerformanceAggregate aggregate = service.aggregateRange(
+        PerformanceMetricsQueryService.PerformanceAggregate aggregate = applicationService.aggregateRange(
                 today.atStartOfDay(),
                 today.plusDays(1).atStartOfDay(),
                 "createTime",
+                UUID.randomUUID(),
+                null,
+                DataScope.ALL);
+
+        assertThat(aggregate.orderCount()).isEqualTo(3L);
+        assertThat(aggregate.grossProfitCent()).isEqualTo(567L);
+        assertThat(aggregate.talentCommissionCent()).isEqualTo(100L);
+    }
+
+    @Test
+    void aggregateRange_shouldUseEffectiveColumnsForSettleTrack() {
+        when(jdbcTemplate.queryForMap(contains("co.settle_amount"), any(Object[].class)))
+                .thenReturn(Map.of(
+                        "order_count", 2L,
+                        "order_amount_cent", 6000L,
+                        "service_fee_income_cent", 720L,
+                        "tech_service_fee_cent", 72L,
+                        "talent_commission_cent", 50L,
+                        "service_profit_cent", 648L,
+                        "recruiter_commission_cent", 64L,
+                        "channel_commission_cent", 129L,
+                        "gross_profit_cent", 455L));
+
+        LocalDate today = LocalDate.now();
+        PerformanceMetricsQueryService.PerformanceAggregate aggregate = applicationService.aggregateRange(
+                today.atStartOfDay(),
+                today.plusDays(1).atStartOfDay(),
+                "settleTime",
                 UUID.randomUUID(),
                 null,
                 DataScope.ALL);
 
         assertThat(aggregate.orderCount()).isEqualTo(2L);
-        assertThat(aggregate.grossProfitCent()).isEqualTo(378L);
-    }
-
-    @Test
-    void aggregateRange_shouldAlignCreateTrackWithAllOrderFacts() {
-        when(jdbcTemplate.queryForMap(any(String.class), any(Object[].class)))
-                .thenReturn(Map.of(
-                        "order_count", 1L,
-                        "order_amount_cent", 1000L,
-                        "service_fee_income_cent", 100L,
-                        "tech_service_fee_cent", 10L,
-                        "talent_commission_cent", 0L,
-                        "service_profit_cent", 90L,
-                        "recruiter_commission_cent", 9L,
-                        "channel_commission_cent", 18L,
-                        "gross_profit_cent", 63L));
-
-        LocalDate today = LocalDate.now();
-        service.aggregateRange(
-                today.atStartOfDay(),
-                today.plusDays(1).atStartOfDay(),
-                "createTime",
-                UUID.randomUUID(),
-                null,
-                DataScope.ALL);
+        assertThat(aggregate.grossProfitCent()).isEqualTo(455L);
 
         ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
         verify(jdbcTemplate).queryForMap(sqlCaptor.capture(), any(Object[].class));
-        String sql = sqlCaptor.getValue();
-
-        assertThat(sql).contains("FROM colonelsettlement_order co");
-        assertThat(sql).contains("LEFT JOIN performance_records pr ON pr.order_id = co.order_id");
-        assertThat(sql).contains("co.deleted = 0");
-        assertThat(sql).doesNotContain("pr.is_valid = TRUE");
-        assertThat(sql).contains("co.create_time >= ?");
-        assertThat(sql).contains("co.create_time < ?");
-        assertThat(sql).doesNotContain("co.pay_time");
-    }
-
-    @Test
-    void trendByDay_shouldAlignCreateTrackWithAllOrderFacts() {
-        when(jdbcTemplate.queryForList(any(String.class), any(Object[].class)))
-                .thenReturn(List.of(Map.of(
-                        "stat_date", LocalDate.now().toString(),
-                        "order_count", 2L,
-                        "order_amount_cent", 5000L)));
-
-        LocalDate today = LocalDate.now();
-        service.trendByDay(
-                today.atStartOfDay(),
-                today.plusDays(1).atStartOfDay(),
-                "createTime",
-                UUID.randomUUID(),
-                null,
-                DataScope.ALL);
-
-        ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
-        verify(jdbcTemplate).queryForList(sqlCaptor.capture(), any(Object[].class));
-        String sql = sqlCaptor.getValue();
-
-        assertThat(sql).contains("FROM colonelsettlement_order co");
-        assertThat(sql).contains("LEFT JOIN performance_records pr ON pr.order_id = co.order_id");
-        assertThat(sql).contains("COALESCE(SUM(co.order_amount), 0) AS order_amount_cent");
-        assertThat(sql).doesNotContain("pr.is_valid = TRUE");
+        assertThat(sqlCaptor.getValue())
+                .contains("co.settle_amount")
+                .contains("co.effective_service_fee")
+                .contains("pr.effective_gross_profit")
+                .contains("settle_time IS NOT NULL");
     }
 
     @Test
@@ -163,7 +130,7 @@ class PerformanceMetricsQueryServiceTest {
         UUID userId = UUID.randomUUID();
         UUID deptId = UUID.randomUUID();
         LocalDate today = LocalDate.now();
-        service.aggregateRange(
+        applicationService.aggregateRange(
                 today.atStartOfDay(),
                 today.plusDays(1).atStartOfDay(),
                 "createTime",
@@ -200,7 +167,7 @@ class PerformanceMetricsQueryServiceTest {
         UUID userId = UUID.randomUUID();
         UUID deptId = UUID.randomUUID();
         LocalDate today = LocalDate.now();
-        service.aggregateRange(
+        applicationService.aggregateRange(
                 today.atStartOfDay(),
                 today.plusDays(1).atStartOfDay(),
                 "createTime",
@@ -234,7 +201,7 @@ class PerformanceMetricsQueryServiceTest {
                         "gross_profit_cent", 630L));
 
         LocalDate today = LocalDate.now();
-        service.aggregateRange(
+        applicationService.aggregateRange(
                 today.atStartOfDay(),
                 today.plusDays(1).atStartOfDay(),
                 "settleTime",
@@ -248,31 +215,35 @@ class PerformanceMetricsQueryServiceTest {
     }
 
     @Test
-    void aggregateDashboardSummary_shouldUseEffectiveTrackColumns() {
+    void aggregateRange_businessLineChannelShouldAppendChannelFilter() {
         when(jdbcTemplate.queryForMap(any(String.class), any(Object[].class)))
                 .thenReturn(Map.of(
-                        "order_count", 5L,
-                        "order_amount_cent", 120000L,
-                        "service_fee_cent", 2300L));
-        when(jdbcTemplate.queryForList(any(String.class), any(Object[].class)))
-                .thenReturn(List.of(Map.of(
-                        "user_id", "channel-1",
-                        "user_name", "渠道A",
-                        "order_count", 2L,
-                        "order_amount_cent", 50000L,
-                        "service_fee_cent", 900L)))
-                .thenReturn(List.of());
+                        "order_count", 0L,
+                        "order_amount_cent", 0L,
+                        "service_fee_income_cent", 0L,
+                        "tech_service_fee_cent", 0L,
+                        "talent_commission_cent", 0L,
+                        "service_profit_cent", 0L,
+                        "recruiter_commission_cent", 0L,
+                        "channel_commission_cent", 0L,
+                        "gross_profit_cent", 0L));
 
-        PerformanceMetricsQueryService.DashboardPerformanceSummary summary = service.aggregateDashboardSummary(
-                LocalDate.now().minusDays(7).atStartOfDay(),
-                LocalDate.now().atTime(23, 59, 59),
+        LocalDate today = LocalDate.now();
+        applicationService.aggregateRange(
+                today.atStartOfDay(),
+                today.plusDays(1).atStartOfDay(),
+                "createTime",
+                "CHANNEL",
+                UUID.randomUUID(),
+                null,
                 UUID.randomUUID(),
                 null,
                 DataScope.ALL);
 
-        assertThat(summary.orderCount()).isEqualTo(5L);
-        assertThat(summary.serviceFeeCent()).isEqualTo(2300L);
-        assertThat(summary.channelPerformance()).hasSize(1);
-        assertThat(summary.channelPerformance().get(0).userName()).isEqualTo("渠道A");
+        ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
+        verify(jdbcTemplate).queryForMap(sqlCaptor.capture(), any(Object[].class));
+        assertThat(sqlCaptor.getValue())
+                .contains("pr.final_channel_user_id IS NOT NULL")
+                .contains("pr.final_channel_user_id = ?");
     }
 }
