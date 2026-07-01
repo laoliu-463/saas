@@ -1,20 +1,15 @@
 package com.colonel.saas.service;
 
 import com.colonel.saas.common.enums.DataScope;
-import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.domain.performance.application.PerformanceAggregateApplicationService;
-import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -24,18 +19,12 @@ import java.util.UUID;
 public class PerformanceMetricsQueryService {
 
     private final JdbcTemplate jdbcTemplate;
-    private final DataScopePolicy dataScopePolicy;
-    private final DddRefactorProperties dddRefactorProperties;
     private final PerformanceAggregateApplicationService aggregateApplicationService;
 
     public PerformanceMetricsQueryService(
             JdbcTemplate jdbcTemplate,
-            DataScopePolicy dataScopePolicy,
-            DddRefactorProperties dddRefactorProperties,
             PerformanceAggregateApplicationService aggregateApplicationService) {
         this.jdbcTemplate = jdbcTemplate;
-        this.dataScopePolicy = dataScopePolicy;
-        this.dddRefactorProperties = dddRefactorProperties;
         this.aggregateApplicationService = aggregateApplicationService;
     }
 
@@ -121,10 +110,13 @@ public class PerformanceMetricsQueryService {
             UUID userId,
             UUID deptId,
             DataScope dataScope) {
-        return trendByDay(startInclusive, endExclusive, timeField,
-                null, null, null, userId, deptId, dataScope);
+        return aggregateApplicationService.trendByDay(
+                startInclusive, endExclusive, timeField, userId, deptId, dataScope);
     }
 
+    /**
+     * 委派到 {@link PerformanceAggregateApplicationService#trendByDay}（DDD-PERFORMANCE Slice 3）。
+     */
     public List<TrendPoint> trendByDay(
             LocalDateTime startInclusive,
             LocalDateTime endExclusive,
@@ -135,84 +127,22 @@ public class PerformanceMetricsQueryService {
             UUID userId,
             UUID deptId,
             DataScope dataScope) {
-        boolean estimateTrack = isEstimateTrack(timeField);
-        String timeColumn = resolveTimeColumn(timeField);
-        List<Object> args = new ArrayList<>();
-        StringBuilder where = orderFactsPerformanceJoin();
-        appendScope(where, args, userId, deptId, dataScope);
-        appendBusinessLineFilter(where, args, businessLine, channelId, recruiterId);
-        appendRangeFilter(where, args, timeColumn, startInclusive, endExclusive);
-
-        String amountColumn = estimateTrack ? "co.order_amount" : "co.settle_amount";
-        String sql = """
-                SELECT DATE(co.%s) AS stat_date,
-                       COUNT(*) AS order_count,
-                       COALESCE(SUM(%s), 0) AS order_amount_cent
-                """.formatted(timeColumn, amountColumn) + where + """
-                 GROUP BY DATE(co.%s)
-                """.formatted(timeColumn);
-
-        List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, args.toArray());
-        Map<LocalDate, TrendPoint> mapped = new LinkedHashMap<>();
-        for (Map<String, Object> row : rows) {
-            LocalDate day = LocalDate.parse(String.valueOf(row.get("stat_date")));
-            mapped.put(day, new TrendPoint(
-                    day.toString(),
-                    asLong(row.get("order_count")),
-                    asLong(row.get("order_amount_cent"))));
-        }
-
-        List<TrendPoint> trend = new ArrayList<>();
-        LocalDate cursor = startInclusive.toLocalDate();
-        LocalDate endDate = endExclusive.toLocalDate().minusDays(1);
-        while (!cursor.isAfter(endDate)) {
-            TrendPoint point = mapped.get(cursor);
-            trend.add(point == null
-                    ? new TrendPoint(cursor.toString(), 0L, 0L)
-                    : point);
-            cursor = cursor.plusDays(1);
-        }
-        return trend;
+        return aggregateApplicationService.trendByDay(
+                startInclusive, endExclusive, timeField,
+                businessLine, channelId, recruiterId, userId, deptId, dataScope);
     }
 
+    /**
+     * 委派到 {@link PerformanceAggregateApplicationService#aggregateDashboardSummary}（DDD-PERFORMANCE Slice 3）。
+     */
     public DashboardPerformanceSummary aggregateDashboardSummary(
             LocalDateTime startInclusive,
             LocalDateTime endInclusive,
             UUID userId,
             UUID deptId,
             DataScope dataScope) {
-        List<Object> args = new ArrayList<>();
-        StringBuilder where = orderFactsPerformanceJoin();
-        appendScope(where, args, userId, deptId, dataScope);
-        appendSettleTimeRangeInclusive(where, args, startInclusive, endInclusive);
-
-        String totalsSql = """
-                SELECT
-                    COUNT(*) AS order_count,
-                    COALESCE(SUM(co.settle_amount), 0) AS order_amount_cent,
-                    COALESCE(SUM(co.effective_service_fee), 0) AS service_fee_cent
-                """ + where;
-        Map<String, Object> totals = jdbcTemplate.queryForMap(totalsSql, args.toArray());
-
-        List<PerformanceLeaderboardItem> channelPerformance = queryLeaderboard(
-                where.toString(),
-                new ArrayList<>(args),
-                "pr.final_channel_user_id",
-                "co.channel_user_name",
-                "co.attribution_status = 'ATTRIBUTED' AND pr.final_channel_user_id IS NOT NULL");
-        List<PerformanceLeaderboardItem> colonelPerformance = queryLeaderboard(
-                where.toString(),
-                new ArrayList<>(args),
-                "pr.final_recruiter_user_id",
-                "co.colonel_user_name",
-                "co.attribution_status = 'ATTRIBUTED' AND pr.final_recruiter_user_id IS NOT NULL");
-
-        return new DashboardPerformanceSummary(
-                asLong(totals.get("order_count")),
-                asLong(totals.get("order_amount_cent")),
-                asLong(totals.get("service_fee_cent")),
-                channelPerformance,
-                colonelPerformance);
+        return aggregateApplicationService.aggregateDashboardSummary(
+                startInclusive, endInclusive, userId, deptId, dataScope);
     }
 
     public String resolveAmountTrackLabel(String timeField) {
@@ -220,7 +150,10 @@ public class PerformanceMetricsQueryService {
     }
 
     /**
-     * 保留 isEstimateTrack / resolveTimeColumn：trendByDay + aggregateDashboardSummary 仍依赖。
+     * 保留 isEstimateTrack / resolveTimeColumn：公开 API
+     * {@link #resolveAmountTrackLabel} 仍依赖这两个 helper。
+     * 其他 SQL 装配/数据范围策略 helper 已全部下沉至
+     * {@link PerformanceAggregateApplicationService}（DDD-PERFORMANCE Slice 3）。
      */
     private boolean isEstimateTrack(String timeField) {
         return "create_time".equals(resolveTimeColumn(timeField));
@@ -236,202 +169,5 @@ public class PerformanceMetricsQueryService {
             case "settletime", "settle_time", "settle" -> "settle_time";
             default -> "create_time";
         };
-    }
-
-    /**
-     * 保留 appendScope / orderFactsPerformanceJoin / appendRangeFilter / appendBusinessLineFilter /
-     * appendScopeLegacy / appendScopeWithPolicy：trendByDay + aggregateDashboardSummary 仍依赖。
-     */
-    private void appendScope(
-            StringBuilder where,
-            List<Object> args,
-            UUID userId,
-            UUID deptId,
-            DataScope dataScope) {
-        if (dataScope == null) {
-            return;
-        }
-        if (!dddRefactorProperties.getDataScopePolicy().isEnabled()) {
-            appendScopeLegacy(where, args, userId, deptId, dataScope);
-            return;
-        }
-        appendScopeWithPolicy(where, args, userId, deptId, dataScope);
-    }
-
-    private void appendScopeLegacy(
-            StringBuilder where,
-            List<Object> args,
-            UUID userId,
-            UUID deptId,
-            DataScope dataScope) {
-        if (dataScope == DataScope.PERSONAL && userId != null) {
-            where.append(" AND co.user_id = ?");
-            args.add(userId);
-            return;
-        }
-        if (dataScope == DataScope.DEPT && deptId != null) {
-            where.append(" AND co.dept_id = ?");
-            args.add(deptId);
-        }
-    }
-
-    private StringBuilder orderFactsPerformanceJoin() {
-        return new StringBuilder("""
-                FROM colonelsettlement_order co
-                LEFT JOIN performance_records pr ON pr.order_id = co.order_id
-                WHERE co.deleted = 0
-                """);
-    }
-
-    private void appendScopeWithPolicy(
-            StringBuilder where,
-            List<Object> args,
-            UUID userId,
-            UUID deptId,
-            DataScope dataScope) {
-        DataScopePolicy.Decision decision = dataScopePolicy.decide(userId, deptId, dataScope);
-        switch (decision) {
-            case FILTER_USER -> {
-                where.append(" AND co.user_id = ?");
-                args.add(userId);
-            }
-            case FILTER_DEPT -> {
-                where.append(" AND co.dept_id = ?");
-                args.add(deptId);
-            }
-            case NO_FILTER -> {
-                // no filter
-            }
-        }
-    }
-
-    /**
-     * 追加时间范围过滤条件，并在 settle 轨道时强制要求 settle_time 不为空。
-     *
-     * <p>用于聚合/趋势查询统一处理时间范围 + 已结算限定：
-     * 任意一端为 null 时跳过该方向，时间范围在 settle 轨道上自动要求
-     * {@code co.settle_time IS NOT NULL}，与原有 SQL 行为一致。</p>
-     */
-    private void appendRangeFilter(
-            StringBuilder where,
-            List<Object> args,
-            String timeColumn,
-            LocalDateTime startInclusive,
-            LocalDateTime endExclusive) {
-        if (startInclusive != null) {
-            where.append(" AND co.").append(timeColumn).append(" >= ?");
-            args.add(startInclusive);
-        }
-        if (endExclusive != null) {
-            where.append(" AND co.").append(timeColumn).append(" < ?");
-            args.add(endExclusive);
-        }
-        if ("settle_time".equals(timeColumn) && (startInclusive != null || endExclusive != null)) {
-            where.append(" AND co.settle_time IS NOT NULL");
-        }
-    }
-
-    /**
-     * 追加业务线 + 渠道/招商 筛选条件。
-     *
-     * <p>业务线取值：
-     * <ul>
-     *   <li>CHANNEL：仅保留有 final_channel_user_id 的记录；可叠加 channelId 精确过滤</li>
-     *   <li>RECRUITER：仅保留有 final_recruiter_user_id 的记录；可叠加 recruiterId 精确过滤</li>
-     *   <li>其他值（含 null）：不追加业务线筛选</li>
-     * </ul>
-     *
-     * <p>此过滤在数据范围过滤之后追加，确保业务线筛选与 dataScope 兼容叠加。</p>
-     */
-    private void appendBusinessLineFilter(
-            StringBuilder where,
-            List<Object> args,
-            String businessLine,
-            UUID channelId,
-            UUID recruiterId) {
-        if (businessLine == null) {
-            return;
-        }
-        String normalized = businessLine.trim().toUpperCase(Locale.ROOT);
-        if ("CHANNEL".equals(normalized)) {
-            where.append(" AND pr.final_channel_user_id IS NOT NULL");
-            if (channelId != null) {
-                where.append(" AND pr.final_channel_user_id = ?");
-                args.add(channelId);
-            }
-        } else if ("RECRUITER".equals(normalized)) {
-            where.append(" AND pr.final_recruiter_user_id IS NOT NULL");
-            if (recruiterId != null) {
-                where.append(" AND pr.final_recruiter_user_id = ?");
-                args.add(recruiterId);
-            }
-        }
-        // 其他取值：忽略，避免非法值或注入
-    }
-
-    private void appendSettleTimeRangeInclusive(
-            StringBuilder where,
-            List<Object> args,
-            LocalDateTime startInclusive,
-            LocalDateTime endInclusive) {
-        if (startInclusive != null) {
-            where.append(" AND co.settle_time >= ?");
-            args.add(startInclusive);
-        }
-        if (endInclusive != null) {
-            where.append(" AND co.settle_time <= ?");
-            args.add(endInclusive);
-        }
-        if (startInclusive != null || endInclusive != null) {
-            where.append(" AND co.settle_time IS NOT NULL");
-        }
-    }
-
-    private List<PerformanceLeaderboardItem> queryLeaderboard(
-            String baseWhere,
-            List<Object> args,
-            String userIdColumn,
-            String userNameColumn,
-            String extraFilter) {
-        String sql = """
-                SELECT %s::text AS user_id,
-                       MAX(%s) AS user_name,
-                       COUNT(*) AS order_count,
-                       COALESCE(SUM(co.settle_amount), 0) AS order_amount_cent,
-                       COALESCE(SUM(co.effective_service_fee), 0) AS service_fee_cent
-                """.formatted(userIdColumn, userNameColumn) + baseWhere
-                + " AND " + extraFilter
-                + " GROUP BY " + userIdColumn
-                + " ORDER BY order_count DESC, order_amount_cent DESC"
-                + " LIMIT 10";
-        return jdbcTemplate.queryForList(sql, args.toArray()).stream()
-                .map(row -> new PerformanceLeaderboardItem(
-                        asString(row.get("user_id")),
-                        asString(row.get("user_name")),
-                        asLong(row.get("order_count")),
-                        asLong(row.get("order_amount_cent")),
-                        asLong(row.get("service_fee_cent"))))
-                .toList();
-    }
-
-    private String asString(Object value) {
-        return value == null ? null : String.valueOf(value);
-    }
-
-    /**
-     * 保留 asLong：trendByDay + aggregateDashboardSummary + queryLeaderboard 仍依赖。
-     */
-    private long asLong(Object value) {
-        if (value instanceof Number number) {
-            return number.longValue();
-        }
-        if (value == null) {
-            return 0L;
-        }
-        try {
-            return Long.parseLong(String.valueOf(value));
-        } catch (NumberFormatException ex) {
-            return 0L;
-        }
     }
 }

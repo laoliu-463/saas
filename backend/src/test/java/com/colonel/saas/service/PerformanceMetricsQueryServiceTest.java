@@ -41,13 +41,13 @@ class PerformanceMetricsQueryServiceTest {
     void setUp() {
         dataScopePolicy = spy(new DataScopePolicy());
         dddRefactorProperties = new DddRefactorProperties();
-        // DDD-PERFORMANCE Slice 2: aggregateRange 已下沉至 application 层，
-        // 但 service 仍持有 thin shell 委派；测试使用同一份 mock jdbcTemplate/dataScopePolicy，
-        // 保证 service.aggregateRange 调用链上 SQL 装配 / DataScopePolicy 行为可被验证。
+        // DDD-PERFORMANCE Slice 3: aggregateRange + trendByDay + aggregateDashboardSummary
+        // 全部下沉至 application 层；测试使用同一份 mock jdbcTemplate/dataScopePolicy，
+        // 保证 service → application 委派调用链上 SQL 装配 / DataScopePolicy 行为可被验证。
         aggregateApplicationService = new PerformanceAggregateApplicationService(
                 jdbcTemplate, dataScopePolicy, dddRefactorProperties);
         service = new PerformanceMetricsQueryService(
-                jdbcTemplate, dataScopePolicy, dddRefactorProperties, aggregateApplicationService);
+                jdbcTemplate, aggregateApplicationService);
     }
 
     @Test
