@@ -5,6 +5,7 @@ import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.dto.performance.PerformanceSummaryQuery;
 import com.colonel.saas.dto.performance.PerformanceTrackSummaryDTO;
+import com.colonel.saas.domain.performance.application.PerformanceSummaryApplicationService;
 import com.colonel.saas.domain.performance.policy.PerformanceAccessContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -37,7 +38,11 @@ class PerformanceSummaryServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new PerformanceSummaryService(jdbcTemplate);
+        // DDD-PERFORMANCE Slice 4: getSummary/aggregateEstimate/aggregateEffective
+        // 已下沉至 application 层；service 是 thin shell 委派壳。
+        // 测试使用同一份 mock jdbcTemplate 共享给 Application，保证 SQL 装配行为可被验证。
+        PerformanceSummaryApplicationService applicationService = new PerformanceSummaryApplicationService(jdbcTemplate);
+        service = new PerformanceSummaryService(applicationService);
     }
 
     @Test
