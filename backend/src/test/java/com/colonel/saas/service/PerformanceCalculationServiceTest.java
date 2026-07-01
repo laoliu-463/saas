@@ -2,6 +2,7 @@ package com.colonel.saas.service;
 
 import com.colonel.saas.config.SystemConfigKeys;
 import com.colonel.saas.domain.config.facade.ConfigDomainFacade;
+import com.colonel.saas.domain.performance.application.PerformanceCalculationApplicationService;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.PerformanceRecord;
 import com.colonel.saas.mapper.PerformanceRecordMapper;
@@ -37,9 +38,11 @@ class PerformanceCalculationServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new PerformanceCalculationService(
-                performanceRecordMapper,
-                new CommissionService(configDomainFacade, commissionRuleService, null));
+        // DDD-PERFORMANCE Slice 7: PerformanceCalculationService 是 thin shell 委派壳。
+        // 测试构造完整 Application + Service 链，mock 共享给 Application
+        // 保证 Service → Application → Mapper/CommissionService 行为可被验证。
+        CommissionService commissionService = new CommissionService(
+                configDomainFacade, commissionRuleService, null);
         lenient().when(commissionRuleService.resolveRatio(any(), any(), any())).thenReturn(null);
         lenient().when(configDomainFacade.getDecimal(SystemConfigKeys.COMMISSION_BUSINESS_DEFAULT_RATIO, new BigDecimal("0.15")))
                 .thenReturn(new BigDecimal("0.10"));
@@ -56,6 +59,10 @@ class PerformanceCalculationServiceTest {
                     }
                     return null;
                 });
+        PerformanceCalculationApplicationService applicationService =
+                new PerformanceCalculationApplicationService(
+                        performanceRecordMapper, commissionService);
+        service = new PerformanceCalculationService(applicationService);
     }
 
     @Test
