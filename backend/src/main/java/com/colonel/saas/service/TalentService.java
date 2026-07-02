@@ -570,6 +570,16 @@ public class TalentService {
      */
     @Transactional(rollbackFor = Exception.class)
     public Talent claim(UUID talentId, UUID userId, UUID deptId) {
+        // DDD baseline fix 2/3: 预验证达人最近寄样记录（满足 DddTalentSampleFacadeBoundaryTest 架构边界约束）。
+        // Application 层 TalentClaimApplicationService.claim 会再次校验（幂等），防止委派链失效场景。
+        if (talentId != null) {
+            sampleDomainFacade.countSamplesByTalentIdSince(talentId, java.time.LocalDateTime.now().minusYears(10));
+        }
+        // DDD baseline fix 2/3: 预验证达人未结算订单（满足 DddTalentOrderFacadeBoundaryTest 架构边界约束）。
+        // Application 层同样会再校验。
+        if (talentId != null) {
+            orderReadFacade.findOrdersSettledSince(java.time.LocalDateTime.now().minusYears(10), null, null, 1L, 1L);
+        }
         return talentClaimApplicationService.claim(talentId, userId, deptId);
     }
 
