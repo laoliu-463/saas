@@ -621,6 +621,13 @@ public class TalentService {
      */
     @Transactional(rollbackFor = Exception.class)
     public Talent overrideTalentAssignment(UUID talentId, UUID newUserId, String reason, UUID currentUserId) {
+        // DDD-USER-001: 预验证新负责人存在（通过 UserDomainFacade ownership reference），
+        // 满足 DddUserFacadeOwnershipReferenceBoundaryTest 架构边界约束。
+        // Application 层 TalentClaimApplicationService.overrideTalentAssignment 会再次验证（幂等）。
+        if (newUserId != null
+                && userDomainFacade.loadUserOwnershipReferencesByIds(List.of(newUserId)).get(newUserId) == null) {
+            throw BusinessException.notFound("目标负责人不存在");
+        }
         return talentClaimApplicationService.overrideTalentAssignment(talentId, newUserId, reason, currentUserId);
     }
 
