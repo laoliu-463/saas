@@ -73,18 +73,27 @@ APIFOX_BRANCH=ddd-sync
 APIFOX_OPENAPI_FILE=docs/openapi/saas-openapi.json
 ```
 
-执行：
+Windows / PowerShell：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\sync-apifox.ps1
+```
+
+Bash：
 
 ```bash
 bash scripts/sync-apifox.sh
 ```
+
+当前 Windows 环境建议优先使用 PowerShell 脚本；Bash 脚本适合 Linux/macOS 或 Bash 中能直接执行 `node` 的环境。
 
 脚本执行逻辑：
 
 1. 检查 `apifox` CLI 是否在 `PATH`。
 2. 检查 Token、项目 ID 是否仍为占位符，并检查 OpenAPI 文件。
 3. 执行 `apifox login --with-token`。
-4. 执行 `apifox import --project <id> --format openapi --file <json> --branch <branch>`。
+4. PowerShell 脚本会在目标分支不存在时创建 `sprint` 分支。
+5. 执行 `apifox import --project <id> --format openapi --file <json> --branch <branch>`。
 
 如果当前 CLI 版本不支持 `import --branch`，先用 `apifox import --help` 确认参数，再通过 Apifox UI 将导入目标设置到 AI/dev 分支。
 
