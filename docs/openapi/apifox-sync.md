@@ -13,11 +13,13 @@
 - OpenAPI 分组：`apifox`，导出路径为 `/v3/api-docs/apifox`。
 - Apifox 支持导入 OpenAPI 3.0、3.1 和 Swagger 2.0 JSON/YAML。
 - Apifox 导入后的目录主要依赖接口 `tags`，未标注 `@Tag` 的接口需要后续补齐文档注解。
+- Apifox CLI `apifox import` 与 Apifox UI 的 endpoint 数据面可能不一致；本脚本使用官方 Open API `POST /v1/projects/{projectId}/import-openapi`，通过 `targetBranchId` 明确导入目标分支。
 
 参考：
 - https://springdoc.org/
 - https://docs.apifox.com/import-openapi-swagger
 - https://docs.apifox.com/cli-command-options
+- https://apifox-openapi.apifox.cn/api-173409873
 - https://docs.apifox.com/6597992m0
 
 ## 导出 OpenAPI
@@ -61,6 +63,7 @@ bash scripts/export-openapi.sh
 | `APIFOX_PROJECT_ID` | 是 | Apifox 项目 ID |
 | `APIFOX_BRANCH` | 否 | 默认 `ddd-sync`，建议先导入 AI/dev 分支 |
 | `APIFOX_BRANCH_SOURCE` | 否 | 默认 `main`，仅用于目标分支不存在时创建分支 |
+| `APIFOX_MODULE_ID` | 否 | 可选；指定 Apifox 目标模块，不填则使用项目默认模块 |
 | `APIFOX_OPENAPI_FILE` | 否 | 默认 `docs/openapi/saas-openapi.json` |
 | `APIFOX_IMPORT_OUTPUT` | 否 | 默认 `runtime/apifox-import-latest.json` |
 
@@ -74,6 +77,7 @@ APIFOX_PROJECT_ID=__FILL_ME_APIFOX_PROJECT_ID__
 APIFOX_BRANCH=ddd-sync
 APIFOX_BRANCH_SOURCE=main
 APIFOX_OPENAPI_FILE=docs/openapi/saas-openapi.json
+# APIFOX_MODULE_ID=__FILL_ME_APIFOX_MODULE_ID__
 ```
 
 Bash / WSL：
@@ -91,18 +95,20 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\sync-apifox.ps1
 脚本执行逻辑：
 
 1. 检查 `apifox` CLI 是否在 `PATH`。
-2. 检查 Token、项目 ID 是否仍为占位符，并检查 OpenAPI 文件。
+2. 检查 `node`、`curl`、Token、项目 ID 是否可用，并检查 OpenAPI 文件。
 3. 执行 `apifox login --with-token`。
-4. 目标分支不存在时创建 `sprint` 分支；`APIFOX_BRANCH_SOURCE=main` 只表示分支来源。
-5. 执行 `apifox import --project <id> --format openapi --file <json> --branch <branch>`。
-6. 保存 import 原始输出并解析 counters。
+4. 查询目标分支并取得 branch id；目标分支不存在时创建 `sprint` 分支。
+5. 调用官方 Open API `POST /v1/projects/{projectId}/import-openapi`。
+6. 在请求体 `options.targetBranchId` 中显式传入目标分支 id。
+7. 保存 import 原始输出并解析 `data.counters`。
 
 红线：
 
 - 创建分支成功不等于导入成功。
 - `branch create --from main` 只表示 `ddd-sync` 从 `main` 创建。
-- `apifox import` 必须显式指定 `APIFOX_BRANCH`。
-- Evidence 必须记录 import target branch 和 import counters。
+- CLI `apifox import --branch` 返回的 `apiCollection` 计数不能单独证明 UI 接口管理已有内容。
+- OpenAPI 云端导入必须显式指定 `APIFOX_BRANCH` 对应的 `targetBranchId`。
+- Evidence 必须记录 branch source、import target branch、target branch id、import API 和 import counters。
 
 导入 counters 必须满足：
 
@@ -110,9 +116,16 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\sync-apifox.ps1
 - `schemaFailed=0`
 - `endpointCreated + endpointUpdated + endpointIgnored > 0`
 
-注意：`apifox endpoint list/get` 与 OpenAPI 导入后的 `apiCollection` 查询面可能不完全一致。判断云端导入是否存在接口内容时，优先使用 import counters，并通过 `apifox export --format apifox --branch <branch>` 复核 `apiCollection` 中的接口叶子节点。
+判断云端导入是否存在接口内容时，优先使用：
 
-如果当前 CLI 版本不支持 `import --branch`，先用 `apifox import --help` 确认参数，再通过 Apifox UI 将导入目标设置到 AI/dev 分支。
+```bash
+apifox endpoint list --project "$APIFOX_PROJECT_ID" --branch "$APIFOX_BRANCH" --page 1 --page-size 5
+apifox endpoint get <endpoint_id> --project "$APIFOX_PROJECT_ID" --branch "$APIFOX_BRANCH"
+```
+
+`apifox project get` 的项目级 `statistics.endpointCount` 不能替代分支级 endpoint 验证。
+
+如果 UI 仍看不到接口，先确认已经切换到 `APIFOX_BRANCH` 分支，再检查当前模块筛选、目录筛选和浏览器缓存。
 
 ## 验收
 
@@ -122,4 +135,5 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\sync-apifox.ps1
 - 缺少 Apifox Token 时，只能标记为同步跳过，不能写成 Apifox 导入成功。
 - 同步日志必须显示 `Branch source` 与 `Import target branch`，不能把分支来源当成导入目标。
 - import counters 通过后，才允许声明 Apifox 云端导入 PASS。
+- `apifox endpoint list/get --branch <branch>` 能查到接口详情后，才允许声明 UI 接口数据面已写入。
 - 导入 Apifox 后人工检查目录、鉴权、请求模型、响应模型和 legacy 接口标识。

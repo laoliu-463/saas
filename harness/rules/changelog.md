@@ -8,8 +8,8 @@
 ## 最近版本摘要
 
 ### v0.7.5 — 2026-07-04
-- 新增 Apifox OpenAPI 同步红线：创建分支不等于导入成功，`apifox import` 必须显式指定 `APIFOX_BRANCH`。
-- Evidence 必须记录 branch source、import target branch 与 endpoint/schema import counters。
+- 新增 Apifox OpenAPI 同步红线：创建分支不等于导入成功，Open API import 必须显式指定 `APIFOX_BRANCH` 对应的 `targetBranchId`。
+- Evidence 必须记录 branch source、import target branch、target branch id、import API、endpoint/schema import counters 和 `endpoint list/get` 结果。
 - 范围：OpenAPI/Apifox harness；不修改业务逻辑、API、schema、权限、状态机、金额、佣金、提成或归因规则。
 
 ### v0.7.3 — 2026-06-22
