@@ -59,22 +59,30 @@ bash scripts/export-openapi.sh
 |---|---|---|
 | `APIFOX_ACCESS_TOKEN` | 是 | Apifox 访问令牌，禁止入库 |
 | `APIFOX_PROJECT_ID` | 是 | Apifox 项目 ID |
-| `APIFOX_BRANCH` | 否 | 默认 `ai-sync`，建议先导入 AI/dev 分支 |
+| `APIFOX_BRANCH` | 否 | 默认 `ddd-sync`，建议先导入 AI/dev 分支 |
 | `APIFOX_OPENAPI_FILE` | 否 | 默认 `docs/openapi/saas-openapi.json` |
+
+脚本会优先读取进程环境变量；未设置时，会从仓库根目录 `.env` 读取上述 `APIFOX_*` 键。`.env` 已被 Git 忽略，只能保存本机占位符或真实私密配置，禁止提交。
+
+`.env` 占位符示例：
+
+```bash
+APIFOX_ACCESS_TOKEN=__FILL_ME_APIFOX_ACCESS_TOKEN__
+APIFOX_PROJECT_ID=__FILL_ME_APIFOX_PROJECT_ID__
+APIFOX_BRANCH=ddd-sync
+APIFOX_OPENAPI_FILE=docs/openapi/saas-openapi.json
+```
 
 执行：
 
 ```bash
-APIFOX_ACCESS_TOKEN="$APIFOX_ACCESS_TOKEN" \
-APIFOX_PROJECT_ID="$APIFOX_PROJECT_ID" \
-APIFOX_BRANCH=ai-sync \
 bash scripts/sync-apifox.sh
 ```
 
 脚本执行逻辑：
 
 1. 检查 `apifox` CLI 是否在 `PATH`。
-2. 检查 Token、项目 ID 和 OpenAPI 文件。
+2. 检查 Token、项目 ID 是否仍为占位符，并检查 OpenAPI 文件。
 3. 执行 `apifox login --with-token`。
 4. 执行 `apifox import --project <id> --format openapi --file <json> --branch <branch>`。
 

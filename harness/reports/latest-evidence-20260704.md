@@ -21,6 +21,9 @@ PARTIAL
   - `agent-do.ps1 -Env real-pre -Scope backend -Message "docs: add openapi apifox export"`：构建、重启、健康 PASS；业务 preflight BLOCKED
   - `scripts/export-openapi.ps1`：PASS，导出 `paths=221`
   - `bash -n scripts/export-openapi.sh; bash -n scripts/sync-apifox.sh`：PASS
+  - `npm install -g apifox-cli@latest`：PASS，安装版本 `2.2.5`
+  - `apifox import --help`：PASS，确认支持 `--project`、`--format openapi`、`--file`、`--branch`
+  - `bash scripts/sync-apifox.sh`：按预期被 `.env` 占位符保护阻断，未发起云端导入
 - **接口**:
   - `GET /api/system/health`：`UP`
   - `GET /api/v3/api-docs/apifox`：无 JWT 返回 401；带 JWT 导出成功
@@ -33,7 +36,8 @@ PARTIAL
 
 ## 风险
 
-- Apifox CLI 未安装，且未提供 `APIFOX_ACCESS_TOKEN` / `APIFOX_PROJECT_ID`，所以未执行真实导入。
+- Apifox CLI 已安装，但 `.env` 中 `APIFOX_ACCESS_TOKEN` / `APIFOX_PROJECT_ID` 仍为占位符，所以未执行真实导入。
+- `apifox-cli@2.2.5` 安装时出现上游弃用依赖警告，当前未影响 CLI `import` 命令可用性。
 - real-pre preflight 因抖音 Token 状态 `BLOCKED_AUTH` 未通过，不能声明业务闭环 PASS。
 - `harness/reports` 初次检查超限，已归档 2 个旧/详细报告后复查 PASS。
 - `docs` 根目录存在较多历史文件；本次新增内容放入 `docs/openapi/`，未继续增加 docs 根目录文件。
@@ -41,6 +45,6 @@ PARTIAL
 
 ## 下一步
 
-- 安装 Apifox CLI 并配置 Token / Project ID 后执行 `bash scripts/sync-apifox.sh`。
+- 将 `.env` 中 Apifox 占位符替换为真实 Token / Project ID 后执行 `bash scripts/sync-apifox.sh`。
 - 完成抖音授权后重跑 real-pre preflight。
 - 本次未发现需要升级 Harness；仅记录既有 reports/docs 文件数超限风险。
