@@ -60,7 +60,9 @@ bash scripts/export-openapi.sh
 | `APIFOX_ACCESS_TOKEN` | 是 | Apifox 访问令牌，禁止入库 |
 | `APIFOX_PROJECT_ID` | 是 | Apifox 项目 ID |
 | `APIFOX_BRANCH` | 否 | 默认 `ddd-sync`，建议先导入 AI/dev 分支 |
+| `APIFOX_BRANCH_SOURCE` | 否 | 默认 `main`，仅用于目标分支不存在时创建分支 |
 | `APIFOX_OPENAPI_FILE` | 否 | 默认 `docs/openapi/saas-openapi.json` |
+| `APIFOX_IMPORT_OUTPUT` | 否 | 默认 `runtime/apifox-import-latest.json` |
 
 脚本会优先读取进程环境变量；未设置时，会从仓库根目录 `.env` 读取上述 `APIFOX_*` 键。`.env` 已被 Git 忽略，只能保存本机占位符或真实私密配置，禁止提交。
 
@@ -70,30 +72,45 @@ bash scripts/export-openapi.sh
 APIFOX_ACCESS_TOKEN=__FILL_ME_APIFOX_ACCESS_TOKEN__
 APIFOX_PROJECT_ID=__FILL_ME_APIFOX_PROJECT_ID__
 APIFOX_BRANCH=ddd-sync
+APIFOX_BRANCH_SOURCE=main
 APIFOX_OPENAPI_FILE=docs/openapi/saas-openapi.json
 ```
 
-Windows / PowerShell：
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\sync-apifox.ps1
-```
-
-Bash：
+Bash / WSL：
 
 ```bash
 bash scripts/sync-apifox.sh
 ```
 
-当前 Windows 环境建议优先使用 PowerShell 脚本；Bash 脚本适合 Linux/macOS 或 Bash 中能直接执行 `node` 的环境。
+Windows / PowerShell 备用入口：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\sync-apifox.ps1
+```
 
 脚本执行逻辑：
 
 1. 检查 `apifox` CLI 是否在 `PATH`。
 2. 检查 Token、项目 ID 是否仍为占位符，并检查 OpenAPI 文件。
 3. 执行 `apifox login --with-token`。
-4. PowerShell 脚本会在目标分支不存在时创建 `sprint` 分支。
+4. 目标分支不存在时创建 `sprint` 分支；`APIFOX_BRANCH_SOURCE=main` 只表示分支来源。
 5. 执行 `apifox import --project <id> --format openapi --file <json> --branch <branch>`。
+6. 保存 import 原始输出并解析 counters。
+
+红线：
+
+- 创建分支成功不等于导入成功。
+- `branch create --from main` 只表示 `ddd-sync` 从 `main` 创建。
+- `apifox import` 必须显式指定 `APIFOX_BRANCH`。
+- Evidence 必须记录 import target branch 和 import counters。
+
+导入 counters 必须满足：
+
+- `endpointFailed=0`
+- `schemaFailed=0`
+- `endpointCreated + endpointUpdated + endpointIgnored > 0`
+
+注意：`apifox endpoint list/get` 与 OpenAPI 导入后的 `apiCollection` 查询面可能不完全一致。判断云端导入是否存在接口内容时，优先使用 import counters，并通过 `apifox export --format apifox --branch <branch>` 复核 `apiCollection` 中的接口叶子节点。
 
 如果当前 CLI 版本不支持 `import --branch`，先用 `apifox import --help` 确认参数，再通过 Apifox UI 将导入目标设置到 AI/dev 分支。
 
@@ -103,4 +120,6 @@ bash scripts/sync-apifox.sh
 - `/api/v3/api-docs/apifox` 能返回非空 OpenAPI JSON。
 - `docs/openapi/saas-openapi.json` 存在且 `paths` 数量与 Controller 清单大体匹配。
 - 缺少 Apifox Token 时，只能标记为同步跳过，不能写成 Apifox 导入成功。
+- 同步日志必须显示 `Branch source` 与 `Import target branch`，不能把分支来源当成导入目标。
+- import counters 通过后，才允许声明 Apifox 云端导入 PASS。
 - 导入 Apifox 后人工检查目录、鉴权、请求模型、响应模型和 legacy 接口标识。

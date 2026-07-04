@@ -68,6 +68,7 @@ dump.rdb
 .kiro/
 .qoder/
 .codex/
+.apifox/
 .opencode.json
 .mcp.json
 .code-review-graphignore

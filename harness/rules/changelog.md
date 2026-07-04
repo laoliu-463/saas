@@ -7,6 +7,11 @@
 
 ## 最近版本摘要
 
+### v0.7.5 — 2026-07-04
+- 新增 Apifox OpenAPI 同步红线：创建分支不等于导入成功，`apifox import` 必须显式指定 `APIFOX_BRANCH`。
+- Evidence 必须记录 branch source、import target branch 与 endpoint/schema import counters。
+- 范围：OpenAPI/Apifox harness；不修改业务逻辑、API、schema、权限、状态机、金额、佣金、提成或归因规则。
+
 ### v0.7.3 — 2026-06-22
 - 新增 Jenkins real-pre CD 规范：固定 job、源码分支、Preflight、后端测试、前端构建、镜像标签、Compose 校验、real-pre 部署、健康检查、回滚和 evidence report。
 - 明确生产环境不由 `saas-real-pre-cd` 自动触碰，后续生产接入必须另建审批型 job。
