@@ -5,7 +5,7 @@ import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.domain.config.facade.ConfigDomainFacade;
 import com.colonel.saas.domain.order.facade.OrderReadFacade;
 import com.colonel.saas.domain.sample.facade.SampleDomainFacade;
-import com.colonel.saas.domain.user.policy.DataScopePolicy;
+import com.colonel.saas.domain.user.policy.DataScopeResolver;
 import com.colonel.saas.entity.Talent;
 import com.colonel.saas.mapper.TalentMapper;
 import org.springframework.stereotype.Service;
@@ -27,7 +27,7 @@ import java.util.UUID;
  * <p><b>数据范围策略：</b>
  * <ul>
  *   <li>旧模式 (DddRefactorProperties.DataScopePolicy.Enabled=false): 按 DataScope + userId/deptId 直接构造 OrderScopeFilter</li>
- *   <li>新模式 (Enabled=true): 通过 DataScopePolicy.decide() 决策</li>
+ *   <li>新模式 (Enabled=true): 通过 DataScopeResolver 决策</li>
  * </ul>
  *
  * <p><b>业务域：</b>达人域 — 独家达标检查</p>
@@ -41,7 +41,7 @@ public class ExclusiveTalentCheckApplicationService {
     private final OrderReadFacade orderReadFacade;
     private final SampleDomainFacade sampleDomainFacade;
     private final ConfigDomainFacade configDomainFacade;
-    private final DataScopePolicy dataScopePolicy;
+    private final DataScopeResolver dataScopeResolver;
     private final DddRefactorProperties dddRefactorProperties;
 
     public ExclusiveTalentCheckApplicationService(
@@ -49,13 +49,13 @@ public class ExclusiveTalentCheckApplicationService {
             OrderReadFacade orderReadFacade,
             SampleDomainFacade sampleDomainFacade,
             ConfigDomainFacade configDomainFacade,
-            DataScopePolicy dataScopePolicy,
+            DataScopeResolver dataScopeResolver,
             DddRefactorProperties dddRefactorProperties) {
         this.talentMapper = talentMapper;
         this.orderReadFacade = orderReadFacade;
         this.sampleDomainFacade = sampleDomainFacade;
         this.configDomainFacade = configDomainFacade;
-        this.dataScopePolicy = dataScopePolicy;
+        this.dataScopeResolver = dataScopeResolver;
         this.dddRefactorProperties = dddRefactorProperties;
     }
 
@@ -118,16 +118,15 @@ public class ExclusiveTalentCheckApplicationService {
      * 新版订单数据范围。1:1 等价 TalentService.resolveExclusiveOrderScopeWithPolicy。
      */
     private OrderScopeFilter resolveExclusiveOrderScopeWithPolicy(DataScope dataScope, UUID userId, UUID deptId) {
-        DataScopePolicy.ContextRequirement requirement =
-                dataScopePolicy.contextRequirement(userId, deptId, dataScope);
-        if (requirement != DataScopePolicy.ContextRequirement.SATISFIED) {
+        DataScopeResolver.ResolvedDataScope resolvedScope =
+                dataScopeResolver.resolve(userId, deptId, dataScope);
+        if (!resolvedScope.contextSatisfied()) {
             return OrderScopeFilter.unfiltered();
         }
-        DataScopePolicy.Decision decision = dataScopePolicy.decide(userId, deptId, dataScope);
-        if (decision == DataScopePolicy.Decision.FILTER_USER) {
+        if (resolvedScope.filtersUser()) {
             return new OrderScopeFilter(userId, null);
         }
-        if (decision == DataScopePolicy.Decision.FILTER_DEPT) {
+        if (resolvedScope.filtersDept()) {
             return new OrderScopeFilter(null, deptId);
         }
         return OrderScopeFilter.unfiltered();

@@ -3,10 +3,13 @@ package com.colonel.saas.controller;
 import com.colonel.saas.common.exception.GlobalExceptionHandler;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.config.DddRefactorProperties;
+import com.colonel.saas.domain.order.application.OrderFilterOptionsQueryService;
 import com.colonel.saas.domain.order.facade.OrderDomainFacade;
+import com.colonel.saas.domain.order.facade.OrderReadFacade;
 import com.colonel.saas.domain.product.facade.ProductDomainFacade;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.domain.user.policy.DataScopePolicy;
+import com.colonel.saas.domain.user.policy.DataScopeResolver;
 import com.colonel.saas.service.DashboardService;
 import com.colonel.saas.service.OperationLogService;
 import com.colonel.saas.service.OrderAttributionReplayService;
@@ -14,10 +17,8 @@ import com.colonel.saas.service.Order1603SettlementDryRunService;
 import com.colonel.saas.service.Order2704SettlementDryRunService;
 import com.colonel.saas.service.Order6468PaginationDryRunService;
 import com.colonel.saas.service.OrderQueryService;
-import com.colonel.saas.service.CommissionService;
 import com.colonel.saas.service.OrderService;
 import com.colonel.saas.service.OrderSyncService;
-import com.colonel.saas.service.PerformanceBackfillService;
 import com.colonel.saas.service.ShortTtlCacheService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -51,15 +52,15 @@ class OrderSyncControllerTest {
     @Mock
     private ColonelsettlementOrderMapper orderMapper;
     @Mock
+    private OrderReadFacade orderReadFacade;
+    @Mock
+    private OrderFilterOptionsQueryService orderFilterOptionsQueryService;
+    @Mock
     private OrderQueryService orderQueryService;
     @Mock
     private OrderAttributionReplayService orderAttributionReplayService;
     @Mock
     private OperationLogService operationLogService;
-    @Mock
-    private CommissionService commissionService;
-    @Mock
-    private PerformanceBackfillService performanceBackfillService;
     @Mock
     private UserDomainFacade userDomainFacade;
     @Mock
@@ -80,18 +81,18 @@ class OrderSyncControllerTest {
         // 本测试只覆盖 /orders/sync 端点，OrderService 不会被调用，但仍需传入真实实例。
         DashboardService dashboardService = org.mockito.Mockito.mock(DashboardService.class);
         DataScopePolicy dataScopePolicy = new DataScopePolicy();
+        DataScopeResolver dataScopeResolver = new DataScopeResolver(dataScopePolicy);
         OrderService orderService = new OrderService(
-                orderMapper, dashboardService, productDomainFacade, dataScopePolicy, new com.colonel.saas.config.DddRefactorProperties());
+                orderMapper, dashboardService, productDomainFacade, dataScopeResolver, new com.colonel.saas.config.DddRefactorProperties());
         mockMvc = MockMvcBuilders
                 .standaloneSetup(new OrderController(
                         orderSyncService,
-                        orderMapper,
+                        orderReadFacade,
+                        orderFilterOptionsQueryService,
                         orderQueryService,
                         orderAttributionReplayService,
                         operationLogService,
                         new ShortTtlCacheService(),
-                        commissionService,
-                        performanceBackfillService,
                         userDomainFacade,
                         order6468PaginationDryRunService,
                         order1603SettlementDryRunService,
@@ -99,7 +100,7 @@ class OrderSyncControllerTest {
                         orderService,
                         dddRefactorProperties,
                         orderDomainFacade,
-                        dataScopePolicy))
+                        dataScopeResolver))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
     }

@@ -10,6 +10,7 @@ import com.colonel.saas.domain.product.facade.ProductActivityReadFacade;
 import com.colonel.saas.domain.talent.facade.ExclusiveTalentReadFacade;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.domain.user.policy.DataScopePolicy;
+import com.colonel.saas.domain.user.policy.DataScopeResolver;
 import com.colonel.saas.service.CommissionService;
 import com.colonel.saas.service.PerformanceMetricsQueryService;
 import com.colonel.saas.service.ShortTtlCacheService;
@@ -78,7 +79,7 @@ class DataApplicationServiceOrderSummaryCacheTest {
                 performanceMetricsQueryService,
                 orderPerformanceQueryFacade,
                 userDomainFacade,
-                new DataScopePolicy(),
+                new DataScopeResolver(new DataScopePolicy()),
                 new DddRefactorProperties(),
                 jdbcTemplate);
     }
@@ -157,7 +158,7 @@ class DataApplicationServiceOrderSummaryCacheTest {
                 dataOrderQueryFacade, commissionService, exclusiveTalentReadFacade,
                 exclusiveMerchantReadFacade, productActivityReadFacade, zeroTtlCache,
                 performanceMetricsQueryService, orderPerformanceQueryFacade, userDomainFacade,
-                new DataScopePolicy(), new DddRefactorProperties(), jdbcTemplate);
+                new DataScopeResolver(new DataScopePolicy()), new DddRefactorProperties(), jdbcTemplate);
 
         UUID userId = UUID.randomUUID();
         for (int i = 0; i < 5; i++) {

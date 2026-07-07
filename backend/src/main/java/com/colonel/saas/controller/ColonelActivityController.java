@@ -11,8 +11,7 @@ import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.douyin.DouyinApiException;
 import com.colonel.saas.entity.ColonelsettlementActivity;
 import com.colonel.saas.entity.SysUser;
-import com.colonel.saas.gateway.douyin.DouyinActivityGateway;
-import com.colonel.saas.gateway.douyin.DouyinProductGateway;
+import com.colonel.saas.domain.product.application.dto.ActivityProductRefreshRequest;
 import com.colonel.saas.domain.product.policy.ProductDisplayPolicy;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.service.activity.ActivityAccessService;
@@ -60,8 +59,6 @@ public class ColonelActivityController extends BaseController {
     private static final Duration ACTIVITY_LIST_CACHE_TTL = Duration.ofSeconds(60);
     private static final String ACTIVITY_LIST_CACHE_PREFIX = "activities:list:";
 
-    private final DouyinActivityGateway douyinActivityGateway;
-    private final DouyinProductGateway douyinProductGateway;
     private final ProductService productService;
     private final ShortTtlCacheService shortTtlCacheService;
     private final SysUserService sysUserService;
@@ -72,8 +69,6 @@ public class ColonelActivityController extends BaseController {
     private final ProductDisplayPolicy productDisplayPolicy;
 
     public ColonelActivityController(
-            DouyinActivityGateway douyinActivityGateway,
-            DouyinProductGateway douyinProductGateway,
             ProductService productService,
             ShortTtlCacheService shortTtlCacheService,
             SysUserService sysUserService,
@@ -82,8 +77,6 @@ public class ColonelActivityController extends BaseController {
             UserDomainFacade userDomainFacade,
             ActivityAccessService activityAccessService,
             ProductDisplayPolicy productDisplayPolicy) {
-        this.douyinActivityGateway = douyinActivityGateway;
-        this.douyinProductGateway = douyinProductGateway;
         this.productService = productService;
         this.shortTtlCacheService = shortTtlCacheService;
         this.sysUserService = sysUserService;
@@ -295,10 +288,9 @@ public class ColonelActivityController extends BaseController {
             // 3) refresh=false 且 DB 无快照 → 返回 needSync=true + DATA_NOT_READY 提示
             //    **永不在线调抖音** —— 这是 504 根因
             if (Boolean.TRUE.equals(refresh)) {
-                DouyinProductGateway.ActivityProductQueryRequest queryRequest =
-                        new DouyinProductGateway.ActivityProductQueryRequest(
-                                appId, activityId, searchType, sortType, count, cooperationInfo, cooperationType,
-                                productInfo, status, retrieveMode, cursor, page);
+                ActivityProductRefreshRequest queryRequest = new ActivityProductRefreshRequest(
+                        appId, activityId, searchType, sortType, count, cooperationInfo, cooperationType,
+                        productInfo, status, retrieveMode, cursor, page);
                 colonelActivityService.syncActivitySummaryFromUpstream(activityId, appId);
                 ProductService.ActivityProductRefreshResult refreshResult =
                         productService.refreshActivitySnapshots(queryRequest);

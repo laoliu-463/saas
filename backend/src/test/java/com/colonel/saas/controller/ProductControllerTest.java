@@ -9,7 +9,10 @@ import com.colonel.saas.dto.product.ProductFilterOptionsDTO;
 import com.colonel.saas.entity.Product;
 import com.colonel.saas.gateway.douyin.DouyinPromotionGateway;
 import com.colonel.saas.service.ColonelPartnerSyncService;
+import com.colonel.saas.domain.product.application.ProductLibraryPageQueryService;
 import com.colonel.saas.domain.product.application.ProductQuickSampleApplicationService;
+import com.colonel.saas.domain.product.application.dto.ProductLibraryPageQuery;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.service.ProductService;
 import org.junit.jupiter.api.BeforeEach;
@@ -44,6 +47,8 @@ class ProductControllerTest {
     @Mock
     private ProductQuickSampleApplicationService productQuickSampleApplicationService;
     @Mock
+    private ProductLibraryPageQueryService productLibraryPageQueryService;
+    @Mock
     private ColonelPartnerSyncService colonelPartnerSyncService;
 
     private ProductController productController;
@@ -53,8 +58,9 @@ class ProductControllerTest {
         productController = new ProductController(
                 productService,
                 productQuickSampleApplicationService,
+                productLibraryPageQueryService,
                 colonelPartnerSyncService,
-                new CurrentUserPermissionPolicy());
+                new CurrentUserPermissionChecker(new CurrentUserPermissionPolicy()));
     }
 
     @Test
@@ -286,7 +292,12 @@ class ProductControllerTest {
 
         var response = productController.generatePromotionLink(id, request, null, userId, deptId);
 
+        assertThat(response.getData().pickSource()).isEqualTo("ABC12345");
+        assertThat(response.getData().pickExtra()).isEqualTo("ABC12345");
         assertThat(response.getData().shortId()).isEqualTo("ABC12345");
+        assertThat(response.getData().shortLink()).isEqualTo("https://s.link");
+        assertThat(response.getData().promoteLink()).isEqualTo("https://p.link");
+        assertThat(response.getData().uuidSeed()).isEqualTo(result.uuidSeed());
         verify(productService).generatePromotionLink(id, userId, deptId, "ext-1", 4, true, "PRODUCT_LIBRARY", null, null);
     }
 
@@ -383,7 +394,7 @@ class ProductControllerTest {
         product.setName("共享商品");
         page.setRecords(List.of(product));
         page.setTotal(1);
-        when(productService.getSelectedLibraryPage(eq(1L), eq(10L), any(ProductService.SelectedLibraryFilter.class))).thenReturn(page);
+        when(productLibraryPageQueryService.getSelectedLibraryPage(eq(1L), eq(10L), any(ProductLibraryPageQuery.class))).thenReturn(page);
 
         var response = productController.page(
                 1, 10, null, null,
@@ -394,13 +405,13 @@ class ProductControllerTest {
 
         assertThat(response.getData().getTotal()).isEqualTo(1);
         assertThat(response.getData().getRecords().get(0).getName()).isEqualTo("共享商品");
-        verify(productService).getSelectedLibraryPage(eq(1L), eq(10L), any(ProductService.SelectedLibraryFilter.class));
+        verify(productLibraryPageQueryService).getSelectedLibraryPage(eq(1L), eq(10L), any(ProductLibraryPageQuery.class));
     }
 
     @Test
     void page_shouldPassProductIdToSelectedLibraryFilter() {
         Page<Product> page = new Page<>(1, 10);
-        when(productService.getSelectedLibraryPage(eq(1L), eq(10L), any(ProductService.SelectedLibraryFilter.class))).thenReturn(page);
+        when(productLibraryPageQueryService.getSelectedLibraryPage(eq(1L), eq(10L), any(ProductLibraryPageQuery.class))).thenReturn(page);
 
         productController.page(
                 1, 10, null, null,
@@ -409,9 +420,9 @@ class ProductControllerTest {
                 null, null, null, null, null, null, null, null, null, null, null, null,
                 null, null, null, null, null, null, "9001");
 
-        ArgumentCaptor<ProductService.SelectedLibraryFilter> filterCaptor =
-                ArgumentCaptor.forClass(ProductService.SelectedLibraryFilter.class);
-        verify(productService).getSelectedLibraryPage(eq(1L), eq(10L), filterCaptor.capture());
+        ArgumentCaptor<ProductLibraryPageQuery> filterCaptor =
+                ArgumentCaptor.forClass(ProductLibraryPageQuery.class);
+        verify(productLibraryPageQueryService).getSelectedLibraryPage(eq(1L), eq(10L), filterCaptor.capture());
         assertThat(filterCaptor.getValue().productId()).isEqualTo("9001");
     }
 
@@ -419,7 +430,7 @@ class ProductControllerTest {
     void page_shouldReturnCursorFieldsWhenCursorQueryIsSupported() {
         Product product = new Product();
         product.setProductId("9001");
-        when(productService.getSelectedLibraryCursorPage(eq("cursor-1"), eq(500L), any(ProductService.SelectedLibraryFilter.class)))
+        when(productLibraryPageQueryService.getSelectedLibraryCursorPage(eq("cursor-1"), eq(500L), any(ProductLibraryPageQuery.class)))
                 .thenReturn(new ProductService.SelectedLibraryCursorPage(List.of(product), 500L, true, "cursor-2"));
 
         var response = productController.page(
@@ -433,7 +444,7 @@ class ProductControllerTest {
         assertThat(response.getData().getHasMore()).isTrue();
         assertThat(response.getData().getNextCursor()).isEqualTo("cursor-2");
         assertThat(response.getData().getSize()).isEqualTo(500L);
-        verify(productService).getSelectedLibraryCursorPage(eq("cursor-1"), eq(500L), any(ProductService.SelectedLibraryFilter.class));
+        verify(productLibraryPageQueryService).getSelectedLibraryCursorPage(eq("cursor-1"), eq(500L), any(ProductLibraryPageQuery.class));
     }
 
     @Test

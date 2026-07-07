@@ -200,5 +200,13 @@ class JwtAuthenticationFilterTest {
         filter.doFilter(blocked, blockedResponse, blockedChain);
         assertThat(blockedResponse.getStatus()).isEqualTo(403);
         assertThat(blockedChain.getRequest()).isNull();
+
+        MockHttpServletRequest blockedDataScope = new MockHttpServletRequest("GET", "/users/current/data-scope");
+        blockedDataScope.addHeader("Authorization", "Bearer pending.token");
+        MockHttpServletResponse blockedDataScopeResponse = new MockHttpServletResponse();
+        MockFilterChain blockedDataScopeChain = new MockFilterChain();
+        filter.doFilter(blockedDataScope, blockedDataScopeResponse, blockedDataScopeChain);
+        assertThat(blockedDataScopeResponse.getStatus()).isEqualTo(403);
+        assertThat(blockedDataScopeChain.getRequest()).isNull();
     }
 }

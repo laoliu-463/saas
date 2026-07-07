@@ -2,7 +2,7 @@ param(
     [Alias("Env")]
     [ValidateSet("test", "real-pre")]
     [string]$TargetEnv = "real-pre",
-    [ValidateSet("backend", "frontend", "full", "docs")]
+    [ValidateSet("backend", "frontend", "full", "docs", "apifox")]
     [string]$Scope = "full",
     [switch]$DryRun
 )
@@ -16,8 +16,8 @@ $config = Get-HarnessEnvConfig -Env $TargetEnv
 Write-HarnessStage "Compose restart"
 & (Join-Path $PSScriptRoot "safety-check.ps1") -Env $TargetEnv -Scope $Scope -DryRun:$DryRun
 
-if ($Scope -eq "docs") {
-    Write-Host "Scope=docs: compose restart skipped."
+if ($Scope -eq "docs" -or $Scope -eq "apifox") {
+    Write-Host "Scope=${Scope}: compose restart skipped."
     return
 }
 

@@ -5,7 +5,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.config.DddRefactorProperties;
-import com.colonel.saas.domain.user.policy.DataScopePolicy;
+import com.colonel.saas.domain.user.policy.DataScopeResolver;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import org.springframework.stereotype.Service;
@@ -49,15 +49,15 @@ public class OrderAttributionService {
     public static final int DEFAULT_LOOKBACK_DAYS = 30;
 
     private final ColonelsettlementOrderMapper orderMapper;
-    private final DataScopePolicy dataScopePolicy;
+    private final DataScopeResolver dataScopeResolver;
     private final DddRefactorProperties dddRefactorProperties;
 
     public OrderAttributionService(
             ColonelsettlementOrderMapper orderMapper,
-            DataScopePolicy dataScopePolicy,
+            DataScopeResolver dataScopeResolver,
             DddRefactorProperties dddRefactorProperties) {
         this.orderMapper = orderMapper;
-        this.dataScopePolicy = dataScopePolicy;
+        this.dataScopeResolver = dataScopeResolver;
         this.dddRefactorProperties = dddRefactorProperties;
     }
 
@@ -269,7 +269,7 @@ public class OrderAttributionService {
             DataScope dataScope,
             String userIdColumn,
             String deptIdColumn) {
-        dataScopePolicy.applyTo(wrapper, userId, deptId, dataScope, userIdColumn, deptIdColumn);
+        dataScopeResolver.applyTo(wrapper, userId, deptId, dataScope, userIdColumn, deptIdColumn);
     }
 
     public Map<String, Object> getSingleAggregate(QueryWrapper<ColonelsettlementOrder> wrapper) {

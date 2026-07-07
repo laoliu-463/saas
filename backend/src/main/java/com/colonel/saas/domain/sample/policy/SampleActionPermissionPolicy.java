@@ -2,7 +2,7 @@ package com.colonel.saas.domain.sample.policy;
 
 import com.colonel.saas.common.exception.ForbiddenException;
 import com.colonel.saas.constant.RoleCodes;
-import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
 
 import java.util.Objects;
 
@@ -14,14 +14,16 @@ import java.util.Objects;
  */
 public class SampleActionPermissionPolicy {
 
-    private final CurrentUserPermissionPolicy currentUserPermissionPolicy;
+    private final CurrentUserPermissionChecker currentUserPermissionChecker;
 
-    public SampleActionPermissionPolicy(CurrentUserPermissionPolicy currentUserPermissionPolicy) {
-        this.currentUserPermissionPolicy = Objects.requireNonNull(currentUserPermissionPolicy, "currentUserPermissionPolicy");
+    public SampleActionPermissionPolicy(CurrentUserPermissionChecker currentUserPermissionChecker) {
+        this.currentUserPermissionChecker = Objects.requireNonNull(
+                currentUserPermissionChecker,
+                "currentUserPermissionChecker");
     }
 
     public void ensureCanApply(Object roleCodes) {
-        if (!currentUserPermissionPolicy.hasAnyRole(roleCodes,
+        if (!currentUserPermissionChecker.hasAnyRole(roleCodes,
                 RoleCodes.ADMIN,
                 RoleCodes.CHANNEL_LEADER,
                 RoleCodes.CHANNEL_STAFF)) {
@@ -30,7 +32,7 @@ public class SampleActionPermissionPolicy {
     }
 
     public void ensureCanDelete(Object roleCodes) {
-        if (!currentUserPermissionPolicy.hasAnyRole(roleCodes,
+        if (!currentUserPermissionChecker.hasAnyRole(roleCodes,
                 RoleCodes.ADMIN,
                 RoleCodes.CHANNEL_LEADER,
                 RoleCodes.CHANNEL_STAFF)) {
@@ -49,7 +51,7 @@ public class SampleActionPermissionPolicy {
     }
 
     public void ensureCanSyncLogistics(Object roleCodes) {
-        if (!currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.OPS_STAFF)) {
+        if (!currentUserPermissionChecker.hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.OPS_STAFF)) {
             throw new ForbiddenException("仅运营或管理员可触发物流同步");
         }
     }
@@ -61,7 +63,7 @@ public class SampleActionPermissionPolicy {
     }
 
     public boolean canImportLogistics(Object roleCodes) {
-        return currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.OPS_STAFF);
+        return currentUserPermissionChecker.hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.OPS_STAFF);
     }
 
     public void ensureCanOverwriteLogisticsImport(Object roleCodes) {
@@ -71,11 +73,11 @@ public class SampleActionPermissionPolicy {
     }
 
     public boolean canOverwriteLogisticsImport(Object roleCodes) {
-        return currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.ADMIN);
+        return currentUserPermissionChecker.hasAnyRole(roleCodes, RoleCodes.ADMIN);
     }
 
     public void ensureCanExport(Object roleCodes) {
-        if (!currentUserPermissionPolicy.hasAnyRole(roleCodes,
+        if (!currentUserPermissionChecker.hasAnyRole(roleCodes,
                 RoleCodes.ADMIN,
                 RoleCodes.BIZ_LEADER,
                 RoleCodes.BIZ_STAFF,
@@ -85,40 +87,40 @@ public class SampleActionPermissionPolicy {
     }
 
     public boolean isSevenDayLimitExempt(Object roleCodes) {
-        return currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.CHANNEL_LEADER);
+        return currentUserPermissionChecker.hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.CHANNEL_LEADER);
     }
 
     public boolean isOpsStaffOnly(Object roleCodes) {
-        return currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.OPS_STAFF)
-                && !currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.ADMIN);
+        return currentUserPermissionChecker.hasAnyRole(roleCodes, RoleCodes.OPS_STAFF)
+                && !currentUserPermissionChecker.hasAnyRole(roleCodes, RoleCodes.ADMIN);
     }
 
     public boolean isPlainBizStaff(Object roleCodes) {
-        return currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.BIZ_STAFF)
-                && !currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.BIZ_LEADER);
+        return currentUserPermissionChecker.hasAnyRole(roleCodes, RoleCodes.BIZ_STAFF)
+                && !currentUserPermissionChecker.hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.BIZ_LEADER);
     }
 
     public boolean hasGlobalSampleAccess(Object roleCodes) {
-        return currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.ADMIN);
+        return currentUserPermissionChecker.hasAnyRole(roleCodes, RoleCodes.ADMIN);
     }
 
     public boolean canAccessAssignedSampleProduct(Object roleCodes) {
-        return currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.BIZ_STAFF);
+        return currentUserPermissionChecker.hasAnyRole(roleCodes, RoleCodes.BIZ_STAFF);
     }
 
     public boolean requiresChannelTalentClaim(Object roleCodes) {
-        return currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.CHANNEL_STAFF, RoleCodes.CHANNEL_LEADER)
-                && !currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.ADMIN);
+        return currentUserPermissionChecker.hasAnyRole(roleCodes, RoleCodes.CHANNEL_STAFF, RoleCodes.CHANNEL_LEADER)
+                && !currentUserPermissionChecker.hasAnyRole(roleCodes, RoleCodes.ADMIN);
     }
 
     private void ensureReviewAction(Object roleCodes) {
-        if (!currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.BIZ_STAFF)) {
+        if (!currentUserPermissionChecker.hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.BIZ_STAFF)) {
             throw new ForbiddenException("仅招商角色可以审核寄样");
         }
     }
 
     private void ensureLogisticsAction(Object roleCodes) {
-        if (!currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.OPS_STAFF)) {
+        if (!currentUserPermissionChecker.hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.OPS_STAFF)) {
             throw new ForbiddenException("仅运营角色可以推进物流状态");
         }
     }

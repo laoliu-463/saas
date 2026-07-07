@@ -2,6 +2,7 @@ package com.colonel.saas.domain.performance.application;
 
 import com.colonel.saas.domain.performance.policy.PerformanceAccessContext;
 import com.colonel.saas.domain.performance.policy.PerformanceAccessScope;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
 import com.colonel.saas.dto.performance.PerformanceSummaryQuery;
 import com.colonel.saas.dto.performance.PerformanceSummaryResponse;
 import com.colonel.saas.dto.performance.PerformanceTrackSummaryDTO;
@@ -51,9 +52,13 @@ public class PerformanceSummaryApplicationService {
             """;
 
     private final JdbcTemplate jdbcTemplate;
+    private final CurrentUserPermissionChecker currentUserPermissionChecker;
 
-    public PerformanceSummaryApplicationService(JdbcTemplate jdbcTemplate) {
+    public PerformanceSummaryApplicationService(
+            JdbcTemplate jdbcTemplate,
+            CurrentUserPermissionChecker currentUserPermissionChecker) {
         this.jdbcTemplate = jdbcTemplate;
+        this.currentUserPermissionChecker = currentUserPermissionChecker;
     }
 
     /**
@@ -79,7 +84,8 @@ public class PerformanceSummaryApplicationService {
         PerformanceAccessScope.assertFilterAllowed(
                 safeQuery.getChannelId(),
                 safeQuery.getRecruiterId(),
-                context);
+                context,
+                currentUserPermissionChecker);
 
         // 第三步：分别聚合双轨指标，组装响应
         PerformanceSummaryResponse response = new PerformanceSummaryResponse();
@@ -154,7 +160,7 @@ public class PerformanceSummaryApplicationService {
         // 第一步：以订单事实未删除为基准条件
         StringBuilder where = new StringBuilder(" WHERE co.deleted = 0 ");
         // 第二步：追加数据权限范围条件（个人/部门/全部）
-        PerformanceAccessScope.appendScopeCondition(where, args, context, "pr");
+        PerformanceAccessScope.appendScopeCondition(where, args, context, "pr", currentUserPermissionChecker);
         // 第三步：追加业务筛选条件（渠道、招募官、活动等）
         appendSummaryFilters(where, args, query);
         // 第四步：追加 cohort 时间区间条件

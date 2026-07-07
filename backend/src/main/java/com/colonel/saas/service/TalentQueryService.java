@@ -15,8 +15,8 @@ import com.colonel.saas.entity.TalentEnrichTask;
 import com.colonel.saas.domain.sample.facade.SampleDomainFacade;
 import com.colonel.saas.domain.sample.facade.dto.TalentRecentSampleDTO;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
-import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
-import com.colonel.saas.domain.user.policy.DataScopePolicy;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
+import com.colonel.saas.domain.user.policy.DataScopeResolver;
 import com.colonel.saas.mapper.TalentClaimMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -83,10 +83,10 @@ public class TalentQueryService {
     private final SampleDomainFacade sampleDomainFacade;
     /** Spring JdbcTemplate，用于原生 SQL 聚合订单统计 */
     private final JdbcTemplate jdbcTemplate;
-    /** 用户域权限策略，用于统一角色编码集合解析和匹配 */
-    private final CurrentUserPermissionPolicy currentUserPermissionPolicy;
-    /** 用户域数据范围策略，用于灰度开启后的详情访问范围决策 */
-    private final DataScopePolicy dataScopePolicy;
+    /** 用户域权限检查器，用于统一角色编码集合解析和匹配 */
+    private final CurrentUserPermissionChecker currentUserPermissionChecker;
+    /** 用户域数据范围 Resolver，用于灰度开启后的详情访问范围决策 */
+    private final DataScopeResolver dataScopeResolver;
     /** DDD 灰度开关，默认关闭时保留 Legacy 访问判断 */
     private final DddRefactorProperties dddRefactorProperties;
 
@@ -98,8 +98,8 @@ public class TalentQueryService {
      * @param userDomainFacade     用户领域门面（查询认领人显示标签）
      * @param sampleDomainFacade   寄样域只读门面（统计寄样次数和最近寄样记录）
      * @param jdbcTemplate         JDBC 模板（原生 SQL 聚合查询）
-     * @param currentUserPermissionPolicy 用户域权限策略（角色编码匹配）
-     * @param dataScopePolicy      用户域数据范围策略
+     * @param currentUserPermissionChecker 用户域权限检查器（角色编码匹配）
+     * @param dataScopeResolver     用户域数据范围 Resolver
      * @param dddRefactorProperties DDD 灰度开关
      */
     public TalentQueryService(
@@ -108,16 +108,16 @@ public class TalentQueryService {
             UserDomainFacade userDomainFacade,
             SampleDomainFacade sampleDomainFacade,
             JdbcTemplate jdbcTemplate,
-            CurrentUserPermissionPolicy currentUserPermissionPolicy,
-            DataScopePolicy dataScopePolicy,
+            CurrentUserPermissionChecker currentUserPermissionChecker,
+            DataScopeResolver dataScopeResolver,
             DddRefactorProperties dddRefactorProperties) {
         this.talentService = talentService;
         this.talentClaimMapper = talentClaimMapper;
         this.userDomainFacade = userDomainFacade;
         this.sampleDomainFacade = sampleDomainFacade;
         this.jdbcTemplate = jdbcTemplate;
-        this.currentUserPermissionPolicy = currentUserPermissionPolicy;
-        this.dataScopePolicy = dataScopePolicy;
+        this.currentUserPermissionChecker = currentUserPermissionChecker;
+        this.dataScopeResolver = dataScopeResolver;
         this.dddRefactorProperties = dddRefactorProperties;
     }
 
@@ -321,14 +321,14 @@ public class TalentQueryService {
         Talent talent = talentService.getById(talentId);
         UUID resolvedTalentId = talent == null ? null : talent.getId();
         // 注意：达人不存在时放行，由下游业务层处理不存在场景
-        if (resolvedTalentId == null || currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.ADMIN)) {
+        if (resolvedTalentId == null || currentUserPermissionChecker.hasAnyRole(roleCodes, RoleCodes.ADMIN)) {
             return;
         }
         // 查询该达人的所有生效认领记录
         List<TalentClaim> activeClaims = talentClaimMapper.findActiveByTalentId(resolvedTalentId);
         List<TalentClaim> safeActiveClaims = activeClaims == null ? List.of() : activeClaims;
         // 渠道主管：所属部门认领了该达人即有权操作
-        if (currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.CHANNEL_LEADER)) {
+        if (currentUserPermissionChecker.hasAnyRole(roleCodes, RoleCodes.CHANNEL_LEADER)) {
             boolean ownedByCurrentDept = currentDeptId != null && safeActiveClaims.stream()
                     .anyMatch(claim -> currentDeptId.equals(claim.getDeptId()));
             if (ownedByCurrentDept) {
@@ -336,7 +336,7 @@ public class TalentQueryService {
             }
         }
         // 渠道专员：个人认领了该达人即有权操作
-        if (currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.CHANNEL_STAFF)) {
+        if (currentUserPermissionChecker.hasAnyRole(roleCodes, RoleCodes.CHANNEL_STAFF)) {
             boolean ownedByCurrentUser = currentUserId != null && safeActiveClaims.stream()
                     .anyMatch(claim -> currentUserId.equals(claim.getUserId()));
             if (ownedByCurrentUser) {
@@ -421,35 +421,30 @@ public class TalentQueryService {
             UUID currentDeptId,
             DataScope dataScope,
             List<TalentClaim> activeClaims) {
-        DataScopePolicy.ContextRequirement requirement =
-                dataScopePolicy.contextRequirement(currentUserId, currentDeptId, dataScope);
-        if (requirement != DataScopePolicy.ContextRequirement.SATISFIED) {
+        DataScopeResolver.ResolvedDataScope resolvedScope =
+                dataScopeResolver.resolve(currentUserId, currentDeptId, dataScope);
+        if (!resolvedScope.contextSatisfied()) {
             throw new ForbiddenException("无权查看该达人详情");
         }
 
-        DataScopePolicy.Decision decision = dataScopePolicy.decide(currentUserId, currentDeptId, dataScope);
-        if (decision == DataScopePolicy.Decision.NO_FILTER) {
+        if (resolvedScope.noFilter()) {
             return;
         }
 
         List<TalentClaim> safeActiveClaims = activeClaims == null ? List.of() : activeClaims;
-        switch (decision) {
-            case FILTER_USER -> {
-                boolean ownedByCurrentUser = safeActiveClaims.stream()
-                        .anyMatch(claim -> currentUserId.equals(claim.getUserId()));
-                if (!ownedByCurrentUser) {
-                    throw new ForbiddenException("无权查看该达人详情");
-                }
+        if (resolvedScope.filtersUser()) {
+            boolean ownedByCurrentUser = safeActiveClaims.stream()
+                    .anyMatch(claim -> currentUserId.equals(claim.getUserId()));
+            if (!ownedByCurrentUser) {
+                throw new ForbiddenException("无权查看该达人详情");
             }
-            case FILTER_DEPT -> {
-                boolean ownedByCurrentDept = safeActiveClaims.stream()
-                        .anyMatch(claim -> currentDeptId.equals(claim.getDeptId()));
-                if (!ownedByCurrentDept) {
-                    throw new ForbiddenException("无权查看该达人详情");
-                }
-            }
-            case NO_FILTER -> {
-                // handled above
+            return;
+        }
+        if (resolvedScope.filtersDept()) {
+            boolean ownedByCurrentDept = safeActiveClaims.stream()
+                    .anyMatch(claim -> currentDeptId.equals(claim.getDeptId()));
+            if (!ownedByCurrentDept) {
+                throw new ForbiddenException("无权查看该达人详情");
             }
         }
     }

@@ -852,7 +852,10 @@ CREATE TABLE IF NOT EXISTS system_config_change_log (
     new_value     TEXT,
     source        VARCHAR(50)  NOT NULL,
     operator_id   UUID,
-    changed_at    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+    changed_at    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    event_id      UUID,
+    change_reason TEXT,
+    config_version INT
 );
 CREATE INDEX IF NOT EXISTS idx_sccl_config_key_changed
     ON system_config_change_log(config_key, changed_at DESC);

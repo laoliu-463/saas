@@ -5,7 +5,9 @@ import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.domain.config.facade.ConfigDomainFacade;
 import com.colonel.saas.domain.order.facade.OrderReadFacade;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
+import com.colonel.saas.domain.user.policy.DataScopeResolver;
 import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.entity.TalentClaim;
 import com.colonel.saas.mapper.TalentClaimMapper;
@@ -49,8 +51,8 @@ class TalentClaimApplicationServiceTest {
                 orderReadFacade,
                 configDomainFacade,
                 userDomainFacade,
-                new CurrentUserPermissionPolicy(),
-                new DataScopePolicy(),
+                new CurrentUserPermissionChecker(new CurrentUserPermissionPolicy()),
+                new DataScopeResolver(new DataScopePolicy()),
                 operationLogService,
                 new DddRefactorProperties(),
                 redisTemplate);

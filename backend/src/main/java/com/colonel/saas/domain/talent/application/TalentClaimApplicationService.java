@@ -11,8 +11,8 @@ import com.colonel.saas.domain.order.facade.OrderReadFacade;
 import com.colonel.saas.domain.talent.policy.TalentClaimPolicy;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.domain.user.facade.dto.UserOwnershipReference;
-import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
-import com.colonel.saas.domain.user.policy.DataScopePolicy;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
+import com.colonel.saas.domain.user.policy.DataScopeResolver;
 import com.colonel.saas.domain.config.facade.ConfigDomainFacade;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.Talent;
@@ -68,8 +68,8 @@ public class TalentClaimApplicationService {
     private final OrderReadFacade orderReadFacade;
     private final ConfigDomainFacade configDomainFacade;
     private final UserDomainFacade userDomainFacade;
-    private final CurrentUserPermissionPolicy currentUserPermissionPolicy;
-    private final DataScopePolicy dataScopePolicy;
+    private final CurrentUserPermissionChecker currentUserPermissionChecker;
+    private final DataScopeResolver dataScopeResolver;
     private final OperationLogService operationLogService;
     private final DddRefactorProperties dddRefactorProperties;
     private final RedisTemplate<String, Object> redisTemplate;
@@ -80,8 +80,8 @@ public class TalentClaimApplicationService {
             OrderReadFacade orderReadFacade,
             ConfigDomainFacade configDomainFacade,
             UserDomainFacade userDomainFacade,
-            CurrentUserPermissionPolicy currentUserPermissionPolicy,
-            DataScopePolicy dataScopePolicy,
+            CurrentUserPermissionChecker currentUserPermissionChecker,
+            DataScopeResolver dataScopeResolver,
             OperationLogService operationLogService,
             DddRefactorProperties dddRefactorProperties,
             RedisTemplate<String, Object> redisTemplate) {
@@ -90,8 +90,8 @@ public class TalentClaimApplicationService {
         this.orderReadFacade = orderReadFacade;
         this.configDomainFacade = configDomainFacade;
         this.userDomainFacade = userDomainFacade;
-        this.currentUserPermissionPolicy = currentUserPermissionPolicy;
-        this.dataScopePolicy = dataScopePolicy;
+        this.currentUserPermissionChecker = currentUserPermissionChecker;
+        this.dataScopeResolver = dataScopeResolver;
         this.operationLogService = operationLogService;
         this.dddRefactorProperties = dddRefactorProperties;
         this.redisTemplate = redisTemplate;
@@ -170,7 +170,7 @@ public class TalentClaimApplicationService {
         getById(talentId);
 
         List<TalentClaim> activeClaims = talentClaimMapper.findActiveByTalentId(talentId);
-        boolean isAdmin = currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.ADMIN);
+        boolean isAdmin = currentUserPermissionChecker.hasAnyRole(roleCodes, RoleCodes.ADMIN);
         TalentClaim releaseTarget = TalentClaimPolicy.selectReleaseTarget(activeClaims, userId, isAdmin);
 
         releaseTarget.setStatus(CLAIM_STATUS_RELEASED);
@@ -450,17 +450,16 @@ public class TalentClaimApplicationService {
             UUID userId,
             UUID deptId,
             DataScope dataScope) {
-        DataScopePolicy.ContextRequirement requirement =
-                dataScopePolicy.contextRequirement(userId, deptId, dataScope);
-        if (requirement != DataScopePolicy.ContextRequirement.SATISFIED) {
+        DataScopeResolver.ResolvedDataScope resolvedScope =
+                dataScopeResolver.resolve(userId, deptId, dataScope);
+        if (!resolvedScope.contextSatisfied()) {
             throw new ForbiddenException("无权操作该达人");
         }
-        DataScopePolicy.Decision decision = dataScopePolicy.decide(userId, deptId, dataScope);
-        if (decision == DataScopePolicy.Decision.FILTER_USER) {
+        if (resolvedScope.filtersUser()) {
             assertCanOperateBlacklistAllowed(hasActiveClaimForUser(activeClaims, userId));
             return;
         }
-        if (decision == DataScopePolicy.Decision.FILTER_DEPT) {
+        if (resolvedScope.filtersDept()) {
             assertCanOperateBlacklistAllowed(hasActiveClaimForDept(activeClaims, deptId));
         }
     }

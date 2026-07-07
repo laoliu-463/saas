@@ -76,19 +76,13 @@ class DataScopePolicyParityTest {
         if (wrapper == null || dataScope == null) {
             return;
         }
-        switch (dataScope) {
-            case PERSONAL -> {
-                if (userId != null) {
-                    wrapper.eq(ColonelsettlementOrder::getUserId, userId);
-                }
+        if (DataScope.PERSONAL == dataScope) {
+            if (userId != null) {
+                wrapper.eq(ColonelsettlementOrder::getUserId, userId);
             }
-            case DEPT -> {
-                if (deptId != null) {
-                    wrapper.eq(ColonelsettlementOrder::getDeptId, deptId);
-                }
-            }
-            case ALL -> {
-                // no-op
+        } else if (DataScope.DEPT == dataScope) {
+            if (deptId != null) {
+                wrapper.eq(ColonelsettlementOrder::getDeptId, deptId);
             }
         }
     }
@@ -104,19 +98,13 @@ class DataScopePolicyParityTest {
         if (wrapper == null || dataScope == null) {
             return;
         }
-        switch (dataScope) {
-            case PERSONAL -> {
-                if (userId != null) {
-                    wrapper.eq("user_id", userId);
-                }
+        if (DataScope.PERSONAL == dataScope) {
+            if (userId != null) {
+                wrapper.eq("user_id", userId);
             }
-            case DEPT -> {
-                if (deptId != null) {
-                    wrapper.eq("dept_id", deptId);
-                }
-            }
-            case ALL -> {
-                // no-op
+        } else if (DataScope.DEPT == dataScope) {
+            if (deptId != null) {
+                wrapper.eq("dept_id", deptId);
             }
         }
     }

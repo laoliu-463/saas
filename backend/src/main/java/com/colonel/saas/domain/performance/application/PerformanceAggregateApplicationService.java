@@ -2,7 +2,7 @@ package com.colonel.saas.domain.performance.application;
 
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.config.DddRefactorProperties;
-import com.colonel.saas.domain.user.policy.DataScopePolicy;
+import com.colonel.saas.domain.user.policy.DataScopeResolver;
 import com.colonel.saas.service.PerformanceMetricsQueryService;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -38,7 +38,7 @@ import java.util.UUID;
  * <p>依赖：
  * <ul>
  *   <li>{@link JdbcTemplate} —— 多表 JOIN 原始 SQL</li>
- *   <li>{@link DataScopePolicy} —— 数据范围策略（灰度切换）</li>
+ *   <li>{@link DataScopeResolver} —— 用户域数据范围解析器（灰度切换）</li>
  *   <li>{@link DddRefactorProperties} —— DataScopePolicy 开关</li>
  * </ul>
  */
@@ -46,15 +46,15 @@ import java.util.UUID;
 public class PerformanceAggregateApplicationService {
 
     private final JdbcTemplate jdbcTemplate;
-    private final DataScopePolicy dataScopePolicy;
+    private final DataScopeResolver dataScopeResolver;
     private final DddRefactorProperties dddRefactorProperties;
 
     public PerformanceAggregateApplicationService(
             JdbcTemplate jdbcTemplate,
-            DataScopePolicy dataScopePolicy,
+            DataScopeResolver dataScopeResolver,
             DddRefactorProperties dddRefactorProperties) {
         this.jdbcTemplate = jdbcTemplate;
-        this.dataScopePolicy = dataScopePolicy;
+        this.dataScopeResolver = dataScopeResolver;
         this.dddRefactorProperties = dddRefactorProperties;
     }
 
@@ -167,7 +167,7 @@ public class PerformanceAggregateApplicationService {
             appendScopeLegacy(where, args, userId, deptId, dataScope);
             return;
         }
-        appendScopeWithPolicy(where, args, userId, deptId, dataScope);
+        appendScopeWithResolver(where, args, userId, deptId, dataScope);
     }
 
     private void appendScopeLegacy(
@@ -195,25 +195,21 @@ public class PerformanceAggregateApplicationService {
                 """);
     }
 
-    private void appendScopeWithPolicy(
+    private void appendScopeWithResolver(
             StringBuilder where,
             List<Object> args,
             UUID userId,
             UUID deptId,
             DataScope dataScope) {
-        DataScopePolicy.Decision decision = dataScopePolicy.decide(userId, deptId, dataScope);
-        switch (decision) {
-            case FILTER_USER -> {
-                where.append(" AND co.user_id = ?");
-                args.add(userId);
-            }
-            case FILTER_DEPT -> {
-                where.append(" AND co.dept_id = ?");
-                args.add(deptId);
-            }
-            case NO_FILTER -> {
-                // no filter
-            }
+        DataScopeResolver.ResolvedDataScope resolved = dataScopeResolver.resolve(userId, deptId, dataScope);
+        if (resolved.filtersUser()) {
+            where.append(" AND co.user_id = ?");
+            args.add(userId);
+            return;
+        }
+        if (resolved.filtersDept()) {
+            where.append(" AND co.dept_id = ?");
+            args.add(deptId);
         }
     }
 

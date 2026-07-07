@@ -13,8 +13,8 @@ import com.colonel.saas.dto.sample.SampleFilterOptionItem;
 import com.colonel.saas.dto.sample.SampleFilterOptionsDTO;
 import com.colonel.saas.entity.SampleRequest;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
-import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
-import com.colonel.saas.domain.user.policy.DataScopePolicy;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
+import com.colonel.saas.domain.user.policy.DataScopeResolver;
 import com.colonel.saas.mapper.SampleRequestMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -41,22 +41,22 @@ public class SampleFilterOptionsService {
     private final SampleRequestMapper sampleRequestMapper;
     private final ProductDomainFacade productDomainFacade;
     private final UserDomainFacade userDomainFacade;
-    private final CurrentUserPermissionPolicy currentUserPermissionPolicy;
-    private final DataScopePolicy dataScopePolicy;
+    private final CurrentUserPermissionChecker currentUserPermissionChecker;
+    private final DataScopeResolver dataScopeResolver;
     private final DddRefactorProperties dddRefactorProperties;
 
     public SampleFilterOptionsService(
             SampleRequestMapper sampleRequestMapper,
             ProductDomainFacade productDomainFacade,
             UserDomainFacade userDomainFacade,
-            CurrentUserPermissionPolicy currentUserPermissionPolicy,
-            DataScopePolicy dataScopePolicy,
+            CurrentUserPermissionChecker currentUserPermissionChecker,
+            DataScopeResolver dataScopeResolver,
             DddRefactorProperties dddRefactorProperties) {
         this.sampleRequestMapper = sampleRequestMapper;
         this.productDomainFacade = productDomainFacade;
         this.userDomainFacade = userDomainFacade;
-        this.currentUserPermissionPolicy = currentUserPermissionPolicy;
-        this.dataScopePolicy = dataScopePolicy;
+        this.currentUserPermissionChecker = currentUserPermissionChecker;
+        this.dataScopeResolver = dataScopeResolver;
         this.dddRefactorProperties = dddRefactorProperties;
     }
 
@@ -160,20 +160,20 @@ public class SampleFilterOptionsService {
         if (!isPlainBizStaff(roleCodes)) {
             return false;
         }
-        DataScopePolicy.ContextRequirement requirement =
-                dataScopePolicy.contextRequirement(userId, deptId, dataScope);
-        if (requirement == DataScopePolicy.ContextRequirement.MISSING_USER) {
+        DataScopeResolver.ResolvedDataScope resolved =
+                dataScopeResolver.resolve(userId, deptId, dataScope);
+        if (resolved.missingUser()) {
             return dataScope == DataScope.PERSONAL;
         }
-        if (requirement != DataScopePolicy.ContextRequirement.SATISFIED) {
+        if (!resolved.contextSatisfied()) {
             return false;
         }
-        return dataScopePolicy.decide(userId, deptId, dataScope) == DataScopePolicy.Decision.FILTER_USER;
+        return resolved.filtersUser();
     }
 
     private boolean isPlainBizStaff(Object roleCodes) {
-        return currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.BIZ_STAFF)
-                && !currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.BIZ_LEADER);
+        return currentUserPermissionChecker.hasAnyRole(roleCodes, RoleCodes.BIZ_STAFF)
+                && !currentUserPermissionChecker.hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.BIZ_LEADER);
     }
 
     private List<SampleFilterOptionItem> buildChannelOptions(

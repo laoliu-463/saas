@@ -2,6 +2,7 @@ package com.colonel.saas.domain.performance.application;
 
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.config.DddRefactorProperties;
+import com.colonel.saas.domain.user.policy.DataScopeResolver;
 import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.service.PerformanceMetricsQueryService;
 import org.junit.jupiter.api.BeforeEach;
@@ -14,6 +15,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -22,6 +24,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -47,7 +50,7 @@ class PerformanceAggregateApplicationServiceTest {
         dataScopePolicy = spy(new DataScopePolicy());
         dddRefactorProperties = new DddRefactorProperties();
         applicationService = new PerformanceAggregateApplicationService(
-                jdbcTemplate, dataScopePolicy, dddRefactorProperties);
+                jdbcTemplate, new DataScopeResolver(dataScopePolicy), dddRefactorProperties);
     }
 
     @Test
@@ -245,5 +248,89 @@ class PerformanceAggregateApplicationServiceTest {
         assertThat(sqlCaptor.getValue())
                 .contains("pr.final_channel_user_id IS NOT NULL")
                 .contains("pr.final_channel_user_id = ?");
+    }
+
+    @Test
+    void trendByDay_shouldUseTrackColumnsAndFillMissingDays() {
+        LocalDate start = LocalDate.of(2026, 6, 1);
+        when(jdbcTemplate.queryForList(any(String.class), any(Object[].class)))
+                .thenReturn(List.of(Map.of(
+                        "stat_date", start.plusDays(1).toString(),
+                        "order_count", 4L,
+                        "order_amount_cent", 12000L)));
+
+        List<PerformanceMetricsQueryService.TrendPoint> trend = applicationService.trendByDay(
+                start.atStartOfDay(),
+                start.plusDays(3).atStartOfDay(),
+                "createTime",
+                UUID.randomUUID(),
+                null,
+                DataScope.ALL);
+
+        assertThat(trend).containsExactly(
+                new PerformanceMetricsQueryService.TrendPoint("2026-06-01", 0L, 0L),
+                new PerformanceMetricsQueryService.TrendPoint("2026-06-02", 4L, 12000L),
+                new PerformanceMetricsQueryService.TrendPoint("2026-06-03", 0L, 0L));
+
+        ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
+        verify(jdbcTemplate).queryForList(sqlCaptor.capture(), any(Object[].class));
+        assertThat(sqlCaptor.getValue())
+                .contains("DATE(co.create_time) AS stat_date")
+                .contains("COALESCE(SUM(co.order_amount), 0) AS order_amount_cent")
+                .contains("GROUP BY DATE(co.create_time)");
+    }
+
+    @Test
+    void aggregateDashboardSummary_shouldBuildChannelAndRecruiterLeaderboards() {
+        when(jdbcTemplate.queryForMap(any(String.class), any(Object[].class)))
+                .thenReturn(Map.of(
+                        "order_count", 7L,
+                        "order_amount_cent", 42000L,
+                        "service_fee_cent", 2100L));
+        when(jdbcTemplate.queryForList(any(String.class), any(Object[].class)))
+                .thenReturn(List.of(Map.of(
+                        "user_id", "channel-1",
+                        "user_name", "渠道A",
+                        "order_count", 3L,
+                        "order_amount_cent", 18000L,
+                        "service_fee_cent", 900L)))
+                .thenReturn(List.of(Map.of(
+                        "user_id", "recruiter-1",
+                        "user_name", "招商A",
+                        "order_count", 2L,
+                        "order_amount_cent", 12000L,
+                        "service_fee_cent", 600L)));
+
+        PerformanceMetricsQueryService.DashboardPerformanceSummary summary =
+                applicationService.aggregateDashboardSummary(
+                        LocalDateTime.of(2026, 6, 1, 0, 0),
+                        LocalDateTime.of(2026, 6, 30, 23, 59, 59),
+                        UUID.randomUUID(),
+                        null,
+                        DataScope.ALL);
+
+        assertThat(summary.orderCount()).isEqualTo(7L);
+        assertThat(summary.channelPerformance()).containsExactly(
+                new PerformanceMetricsQueryService.PerformanceLeaderboardItem(
+                        "channel-1", "渠道A", 3L, 18000L, 900L));
+        assertThat(summary.colonelPerformance()).containsExactly(
+                new PerformanceMetricsQueryService.PerformanceLeaderboardItem(
+                        "recruiter-1", "招商A", 2L, 12000L, 600L));
+
+        ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
+        verify(jdbcTemplate, times(2)).queryForList(sqlCaptor.capture(), any(Object[].class));
+        List<String> leaderboardSql = sqlCaptor.getAllValues();
+        assertThat(leaderboardSql.get(0))
+                .contains("pr.final_channel_user_id::text AS user_id")
+                .contains("co.attribution_status = 'ATTRIBUTED' AND pr.final_channel_user_id IS NOT NULL")
+                .contains("GROUP BY pr.final_channel_user_id")
+                .contains("ORDER BY order_count DESC, order_amount_cent DESC")
+                .contains("LIMIT 10");
+        assertThat(leaderboardSql.get(1))
+                .contains("pr.final_recruiter_user_id::text AS user_id")
+                .contains("co.attribution_status = 'ATTRIBUTED' AND pr.final_recruiter_user_id IS NOT NULL")
+                .contains("GROUP BY pr.final_recruiter_user_id")
+                .contains("ORDER BY order_count DESC, order_amount_cent DESC")
+                .contains("LIMIT 10");
     }
 }

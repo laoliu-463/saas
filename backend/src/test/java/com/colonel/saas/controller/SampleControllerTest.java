@@ -35,8 +35,10 @@ import com.colonel.saas.domain.talent.facade.TalentDomainFacade;
 import com.colonel.saas.domain.talent.facade.dto.TalentReadDTO;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.domain.user.facade.dto.UserOwnershipReference;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.domain.user.policy.DataScopePolicy;
+import com.colonel.saas.domain.user.policy.DataScopeResolver;
 import com.colonel.saas.domain.sample.event.SampleDomainEventPublisher;
 import com.colonel.saas.domain.sample.policy.SampleActionPermissionPolicy;
 import com.colonel.saas.service.CrawlerTalentInfoService;
@@ -149,7 +151,8 @@ class SampleControllerTest {
                 sampleRequestMapper,
                 productDomainFacade,
                 userDomainFacade,
-                new SampleActionPermissionPolicy(new CurrentUserPermissionPolicy()),
+                new SampleActionPermissionPolicy(
+                        new CurrentUserPermissionChecker(new CurrentUserPermissionPolicy())),
                 talentDomainFacade,
                 sampleStatusLogService,
                 sampleStatusLogMapper,
@@ -162,7 +165,7 @@ class SampleControllerTest {
                 sampleLogisticsSubscriptionService,
                 sampleDomainEventPublisher,
                 new SampleWriteTransactionService(),
-                dataScopePolicy,
+                new DataScopeResolver(dataScopePolicy),
                 dddRefactorProperties);
         LegacySampleQueryService legacyQuery = new LegacySampleQueryService(applicationDelegate);
         LegacySampleCommandService legacyCommand = new LegacySampleCommandService(applicationDelegate);
@@ -1565,7 +1568,7 @@ class SampleControllerTest {
 
         assertThat(response.getData().getTotal()).isZero();
         verify(dataScopePolicy).contextRequirement(null, deptId, DataScope.PERSONAL);
-        verify(dataScopePolicy, never()).decide(null, deptId, DataScope.PERSONAL);
+        verify(dataScopePolicy).decide(null, deptId, DataScope.PERSONAL);
         verify(sampleRequestMapper).findPageForAuditor(any(Page.class), eq(null), any(QueryWrapper.class));
         verify(sampleRequestMapper, never()).findPageWithScope(any(Page.class), any(QueryWrapper.class));
     }

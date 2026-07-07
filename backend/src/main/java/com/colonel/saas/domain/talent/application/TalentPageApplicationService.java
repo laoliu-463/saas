@@ -5,7 +5,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.config.DddRefactorProperties;
-import com.colonel.saas.domain.user.policy.DataScopePolicy;
+import com.colonel.saas.domain.user.policy.DataScopeResolver;
 import com.colonel.saas.entity.Talent;
 import com.colonel.saas.entity.TalentClaim;
 import com.colonel.saas.mapper.TalentClaimMapper;
@@ -28,7 +28,7 @@ import java.util.stream.Collectors;
  * <p><b>数据范围策略：</b>
  * <ul>
  *   <li>旧模式 (DddRefactorProperties.DataScopePolicy.Enabled=false): 按 DataScope + userId/deptId 决定查 active claims</li>
- *   <li>新模式 (Enabled=true): 通过 DataScopePolicy.decide() 决策</li>
+ *   <li>新模式 (Enabled=true): 通过 DataScopeResolver 决策</li>
  * </ul>
  *
  * <p><b>业务域：</b>达人域 — 分页查询</p>
@@ -38,17 +38,17 @@ public class TalentPageApplicationService {
 
     private final TalentMapper talentMapper;
     private final TalentClaimMapper talentClaimMapper;
-    private final DataScopePolicy dataScopePolicy;
+    private final DataScopeResolver dataScopeResolver;
     private final DddRefactorProperties dddRefactorProperties;
 
     public TalentPageApplicationService(
             TalentMapper talentMapper,
             TalentClaimMapper talentClaimMapper,
-            DataScopePolicy dataScopePolicy,
+            DataScopeResolver dataScopeResolver,
             DddRefactorProperties dddRefactorProperties) {
         this.talentMapper = talentMapper;
         this.talentClaimMapper = talentClaimMapper;
-        this.dataScopePolicy = dataScopePolicy;
+        this.dataScopeResolver = dataScopeResolver;
         this.dddRefactorProperties = dddRefactorProperties;
     }
 
@@ -130,7 +130,7 @@ public class TalentPageApplicationService {
     }
 
     /**
-     * 新版数据范围（DataScopePolicy 决策）。
+     * 新版数据范围（DataScopeResolver 决策）。
      * 1:1 等价 TalentService.applyPageDataScopeWithPolicy(...) 17 行 helper。
      */
     private boolean applyPageDataScopeWithPolicy(
@@ -138,18 +138,17 @@ public class TalentPageApplicationService {
             DataScope dataScope,
             UUID userId,
             UUID deptId) {
-        DataScopePolicy.ContextRequirement requirement =
-                dataScopePolicy.contextRequirement(userId, deptId, dataScope);
-        if (requirement != DataScopePolicy.ContextRequirement.SATISFIED) {
+        DataScopeResolver.ResolvedDataScope resolvedScope =
+                dataScopeResolver.resolve(userId, deptId, dataScope);
+        if (!resolvedScope.contextSatisfied()) {
             return true;
         }
-        DataScopePolicy.Decision decision = dataScopePolicy.decide(userId, deptId, dataScope);
-        if (decision == DataScopePolicy.Decision.FILTER_USER) {
+        if (resolvedScope.filtersUser()) {
             return applyClaimedTalentFilter(
                     wrapper,
                     talentClaimMapper.findActiveByUserId(userId));
         }
-        if (decision == DataScopePolicy.Decision.FILTER_DEPT) {
+        if (resolvedScope.filtersDept()) {
             return applyClaimedTalentFilter(
                     wrapper,
                     talentClaimMapper.findActiveByDeptId(deptId));

@@ -3,8 +3,8 @@ package com.colonel.saas.domain.performance.policy;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.constant.RoleCodes;
-import com.colonel.saas.domain.user.policy.DataScopePolicy;
-import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
+import com.colonel.saas.domain.user.policy.DataScopeResolver;
 import com.colonel.saas.entity.PerformanceRecord;
 
 import java.util.List;
@@ -30,8 +30,6 @@ import java.util.UUID;
  */
 public final class PerformanceAccessScope {
 
-    private static final CurrentUserPermissionPolicy USER_PERMISSION_POLICY = new CurrentUserPermissionPolicy();
-
     /** 工具类，禁止实例化 */
     private PerformanceAccessScope() {
     }
@@ -48,13 +46,15 @@ public final class PerformanceAccessScope {
      * @param context 访问上下文
      * @return true 表示可导出
      */
-    public static boolean canExport(PerformanceAccessContext context) {
+    public static boolean canExport(
+            PerformanceAccessContext context,
+            CurrentUserPermissionChecker currentUserPermissionChecker) {
         if (context == null) {
             return false;
         }
         List<String> roles = context.roleCodes();
-        return USER_PERMISSION_POLICY.hasAnyRole(roles, RoleCodes.ADMIN)
-                || USER_PERMISSION_POLICY.hasAnyRole(roles, RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER);
+        return checkerHasAnyRole(currentUserPermissionChecker, roles, RoleCodes.ADMIN)
+                || checkerHasAnyRole(currentUserPermissionChecker, roles, RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER);
     }
 
     /**
@@ -63,8 +63,10 @@ public final class PerformanceAccessScope {
      * @param context 访问上下文
      * @return true 表示可重算
      */
-    public static boolean canRecalculateMonth(PerformanceAccessContext context) {
-        return context != null && USER_PERMISSION_POLICY.hasAnyRole(context.roleCodes(), RoleCodes.ADMIN);
+    public static boolean canRecalculateMonth(
+            PerformanceAccessContext context,
+            CurrentUserPermissionChecker currentUserPermissionChecker) {
+        return context != null && checkerHasAnyRole(currentUserPermissionChecker, context.roleCodes(), RoleCodes.ADMIN);
     }
 
     /**
@@ -85,21 +87,22 @@ public final class PerformanceAccessScope {
     public static void assertFilterAllowed(
             UUID channelId,
             UUID recruiterId,
-            PerformanceAccessContext context) {
+            PerformanceAccessContext context,
+            CurrentUserPermissionChecker currentUserPermissionChecker) {
         if (context == null) {
             throw BusinessException.forbidden("无权访问业绩数据");
         }
         // 第二步：ADMIN 类角色无需校验
-        if (isAdminLike(context)) {
+        if (isAdminLike(context, currentUserPermissionChecker)) {
             return;
         }
         // 第三步：渠道维度角色校验
-        if (channelId != null && isChannelScoped(context)) {
-            assertChannelFilter(channelId, context);
+        if (channelId != null && isChannelScoped(context, currentUserPermissionChecker)) {
+            assertChannelFilter(channelId, context, currentUserPermissionChecker);
         }
         // 第四步：招商维度角色校验
-        if (recruiterId != null && isRecruiterScoped(context)) {
-            assertRecruiterFilter(recruiterId, context);
+        if (recruiterId != null && isRecruiterScoped(context, currentUserPermissionChecker)) {
+            assertRecruiterFilter(recruiterId, context, currentUserPermissionChecker);
         }
     }
 
@@ -119,11 +122,14 @@ public final class PerformanceAccessScope {
      * @param context 访问上下文
      * @return true 表示有权访问
      */
-    public static boolean canAccessRecord(PerformanceRecord record, PerformanceAccessContext context) {
+    public static boolean canAccessRecord(
+            PerformanceRecord record,
+            PerformanceAccessContext context,
+            CurrentUserPermissionChecker currentUserPermissionChecker) {
         if (record == null || context == null) {
             return false;
         }
-        if (isAdminLike(context)) {
+        if (isAdminLike(context, currentUserPermissionChecker)) {
             return true;
         }
         UUID userId = context.userId();
@@ -131,20 +137,20 @@ public final class PerformanceAccessScope {
             return false;
         }
         // 渠道人员：仅查看自己作为渠道归属人的记录
-        if (isChannelStaffOnly(context)) {
+        if (isChannelStaffOnly(context, currentUserPermissionChecker)) {
             return userId.equals(record.getFinalChannelUserId());
         }
         // 招商人员：仅查看自己作为招商归属人的记录
-        if (isRecruiterStaffOnly(context)) {
+        if (isRecruiterStaffOnly(context, currentUserPermissionChecker)) {
             return userId.equals(record.getFinalRecruiterUserId());
         }
         // 渠道组长：查看本部门渠道人员的记录
-        if (isChannelLeader(context)) {
+        if (isChannelLeader(context, currentUserPermissionChecker)) {
             return record.getFinalChannelUserId() != null
                     && matchesDeptMember(record.getFinalChannelUserId(), context);
         }
         // 招商组长：查看本部门招商人员的记录
-        if (isRecruiterLeader(context)) {
+        if (isRecruiterLeader(context, currentUserPermissionChecker)) {
             return record.getFinalRecruiterUserId() != null
                     && matchesDeptMember(record.getFinalRecruiterUserId(), context);
         }
@@ -178,70 +184,73 @@ public final class PerformanceAccessScope {
             StringBuilder where,
             List<Object> args,
             PerformanceAccessContext context,
-            String prAlias) {
+            String prAlias,
+            CurrentUserPermissionChecker currentUserPermissionChecker) {
         if (where == null || context == null) {
             return;
         }
         String pr = hasText(prAlias) ? prAlias.trim() : "pr";
-        if (appendRoleScopeCondition(where, args, context, pr)) {
+        if (appendRoleScopeCondition(where, args, context, pr, currentUserPermissionChecker)) {
             return;
         }
         appendLegacyDataScopeFallback(where, args, context, pr);
     }
 
     /**
-     * 向 SQL WHERE 子句追加数据范围条件，数据范围解释委托给用户域 {@link DataScopePolicy}。
+     * 向 SQL WHERE 子句追加数据范围条件，数据范围解释委托给用户域 {@link DataScopeResolver}。
      *
      * <p>该方法是 DDD 数据范围旁路，供调用方在灰度开关开启后使用。
      * 角色维度仍由业绩域策略解释，只有 PERSONAL / DEPT / ALL 数据范围决策交给用户域。</p>
      */
-    public static void appendScopeConditionWithPolicy(
+    public static void appendScopeConditionWithResolver(
             StringBuilder where,
             List<Object> args,
             PerformanceAccessContext context,
             String prAlias,
-            DataScopePolicy dataScopePolicy) {
-        if (dataScopePolicy == null) {
-            appendScopeCondition(where, args, context, prAlias);
+            DataScopeResolver dataScopeResolver,
+            CurrentUserPermissionChecker currentUserPermissionChecker) {
+        if (dataScopeResolver == null) {
+            appendScopeCondition(where, args, context, prAlias, currentUserPermissionChecker);
             return;
         }
         if (where == null || context == null) {
             return;
         }
         String pr = hasText(prAlias) ? prAlias.trim() : "pr";
-        if (appendRoleScopeCondition(where, args, context, pr)) {
+        if (appendRoleScopeCondition(where, args, context, pr, currentUserPermissionChecker)) {
             return;
         }
-        appendPolicyDataScopeFallback(where, args, context, pr, dataScopePolicy);
+        appendResolverDataScopeFallback(where, args, context, pr, dataScopeResolver);
     }
 
     private static boolean appendRoleScopeCondition(
             StringBuilder where,
             List<Object> args,
             PerformanceAccessContext context,
-            String pr) {
-        if (isAdminLike(context)) {
+            String pr,
+            CurrentUserPermissionChecker currentUserPermissionChecker) {
+        if (isAdminLike(context, currentUserPermissionChecker)) {
             return true;
         }
         UUID userId = context.userId();
         UUID deptId = context.deptId();
-        if (isChannelStaffOnly(context)) {
+        if (isChannelStaffOnly(context, currentUserPermissionChecker)) {
             where.append(" AND ").append(pr).append(".final_channel_user_id = ?");
             args.add(requireScopeUser(userId));
             return true;
         }
-        if (isRecruiterStaffOnly(context)) {
+        if (isRecruiterStaffOnly(context, currentUserPermissionChecker)) {
             where.append(" AND ").append(pr).append(".final_recruiter_user_id = ?");
             args.add(requireScopeUser(userId));
             return true;
         }
-        if (isChannelLeader(context)) {
+        if (isChannelLeader(context, currentUserPermissionChecker)) {
             where.append(" AND ").append(pr).append(".final_channel_user_id IN (")
                     .append(deptUserSubquery()).append(")");
             args.add(requireScopeDept(deptId));
             return true;
         }
-        if (isRecruiterLeader(context)) {
+        if (isRecruiterLeader(context, currentUserPermissionChecker)) {
             where.append(" AND ").append(pr).append(".final_recruiter_user_id IN (")
                     .append(deptUserSubquery()).append(")");
             args.add(requireScopeDept(deptId));
@@ -276,26 +285,25 @@ public final class PerformanceAccessScope {
         }
     }
 
-    private static void appendPolicyDataScopeFallback(
+    private static void appendResolverDataScopeFallback(
             StringBuilder where,
             List<Object> args,
             PerformanceAccessContext context,
             String pr,
-            DataScopePolicy dataScopePolicy) {
+            DataScopeResolver dataScopeResolver) {
         UUID userId = context.userId();
         UUID deptId = context.deptId();
-        DataScopePolicy.ContextRequirement requirement =
-                dataScopePolicy.contextRequirement(userId, deptId, context.dataScope());
-        if (requirement == DataScopePolicy.ContextRequirement.MISSING_USER) {
+        DataScopeResolver.ResolvedDataScope resolved =
+                dataScopeResolver.resolve(userId, deptId, context.dataScope());
+        if (resolved.missingUser()) {
             requireScopeUser(userId);
             return;
         }
-        if (requirement == DataScopePolicy.ContextRequirement.MISSING_DEPT) {
+        if (resolved.missingDept()) {
             requireScopeDept(deptId);
             return;
         }
-        DataScopePolicy.Decision decision = dataScopePolicy.decide(userId, deptId, context.dataScope());
-        if (decision == DataScopePolicy.Decision.FILTER_DEPT) {
+        if (resolved.filtersDept()) {
             where.append(" AND (").append(pr).append(".final_channel_user_id IN (")
                     .append(deptUserSubquery()).append(")")
                     .append(" OR ").append(pr).append(".final_recruiter_user_id IN (")
@@ -304,7 +312,7 @@ public final class PerformanceAccessScope {
             args.add(deptId);
             return;
         }
-        if (decision == DataScopePolicy.Decision.FILTER_USER) {
+        if (resolved.filtersUser()) {
             where.append(" AND (").append(pr).append(".final_channel_user_id = ? OR ")
                     .append(pr).append(".final_recruiter_user_id = ?)");
             args.add(userId);
@@ -355,9 +363,11 @@ public final class PerformanceAccessScope {
      * @param context 访问上下文
      * @return true 表示管理员类角色，可查看全部数据
      */
-    private static boolean isAdminLike(PerformanceAccessContext context) {
+    private static boolean isAdminLike(
+            PerformanceAccessContext context,
+            CurrentUserPermissionChecker currentUserPermissionChecker) {
         return context.dataScope() == DataScope.ALL
-                || USER_PERMISSION_POLICY.hasAnyRole(context.roleCodes(), RoleCodes.ADMIN, RoleCodes.OPS_STAFF);
+                || checkerHasAnyRole(currentUserPermissionChecker, context.roleCodes(), RoleCodes.ADMIN, RoleCodes.OPS_STAFF);
     }
 
     /**
@@ -366,10 +376,12 @@ public final class PerformanceAccessScope {
      * @param context 访问上下文
      * @return true 表示纯渠道人员，仅查看自己的渠道维度业绩
      */
-    private static boolean isChannelStaffOnly(PerformanceAccessContext context) {
+    private static boolean isChannelStaffOnly(
+            PerformanceAccessContext context,
+            CurrentUserPermissionChecker currentUserPermissionChecker) {
         List<String> roles = context.roleCodes();
-        return USER_PERMISSION_POLICY.hasAnyRole(roles, RoleCodes.CHANNEL_STAFF)
-                && !USER_PERMISSION_POLICY.hasAnyRole(roles, RoleCodes.ADMIN, RoleCodes.CHANNEL_LEADER, RoleCodes.OPS_STAFF);
+        return checkerHasAnyRole(currentUserPermissionChecker, roles, RoleCodes.CHANNEL_STAFF)
+                && !checkerHasAnyRole(currentUserPermissionChecker, roles, RoleCodes.ADMIN, RoleCodes.CHANNEL_LEADER, RoleCodes.OPS_STAFF);
     }
 
     /**
@@ -378,10 +390,12 @@ public final class PerformanceAccessScope {
      * @param context 访问上下文
      * @return true 表示纯招商人员，仅查看自己的招商维度业绩
      */
-    private static boolean isRecruiterStaffOnly(PerformanceAccessContext context) {
+    private static boolean isRecruiterStaffOnly(
+            PerformanceAccessContext context,
+            CurrentUserPermissionChecker currentUserPermissionChecker) {
         List<String> roles = context.roleCodes();
-        return USER_PERMISSION_POLICY.hasAnyRole(roles, RoleCodes.BIZ_STAFF)
-                && !USER_PERMISSION_POLICY.hasAnyRole(roles, RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.OPS_STAFF);
+        return checkerHasAnyRole(currentUserPermissionChecker, roles, RoleCodes.BIZ_STAFF)
+                && !checkerHasAnyRole(currentUserPermissionChecker, roles, RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.OPS_STAFF);
     }
 
     /**
@@ -390,9 +404,11 @@ public final class PerformanceAccessScope {
      * @param context 访问上下文
      * @return true 表示渠道组长，可查看本部门渠道人员业绩
      */
-    private static boolean isChannelLeader(PerformanceAccessContext context) {
-        return USER_PERMISSION_POLICY.hasAnyRole(context.roleCodes(), RoleCodes.CHANNEL_LEADER)
-                && !USER_PERMISSION_POLICY.hasAnyRole(context.roleCodes(), RoleCodes.ADMIN);
+    private static boolean isChannelLeader(
+            PerformanceAccessContext context,
+            CurrentUserPermissionChecker currentUserPermissionChecker) {
+        return checkerHasAnyRole(currentUserPermissionChecker, context.roleCodes(), RoleCodes.CHANNEL_LEADER)
+                && !checkerHasAnyRole(currentUserPermissionChecker, context.roleCodes(), RoleCodes.ADMIN);
     }
 
     /**
@@ -401,9 +417,11 @@ public final class PerformanceAccessScope {
      * @param context 访问上下文
      * @return true 表示招商组长，可查看本部门招商人员业绩
      */
-    private static boolean isRecruiterLeader(PerformanceAccessContext context) {
-        return USER_PERMISSION_POLICY.hasAnyRole(context.roleCodes(), RoleCodes.BIZ_LEADER)
-                && !USER_PERMISSION_POLICY.hasAnyRole(context.roleCodes(), RoleCodes.ADMIN);
+    private static boolean isRecruiterLeader(
+            PerformanceAccessContext context,
+            CurrentUserPermissionChecker currentUserPermissionChecker) {
+        return checkerHasAnyRole(currentUserPermissionChecker, context.roleCodes(), RoleCodes.BIZ_LEADER)
+                && !checkerHasAnyRole(currentUserPermissionChecker, context.roleCodes(), RoleCodes.ADMIN);
     }
 
     /**
@@ -412,8 +430,11 @@ public final class PerformanceAccessScope {
      * @param context 访问上下文
      * @return true 表示渠道维度角色
      */
-    private static boolean isChannelScoped(PerformanceAccessContext context) {
-        return isChannelStaffOnly(context) || isChannelLeader(context);
+    private static boolean isChannelScoped(
+            PerformanceAccessContext context,
+            CurrentUserPermissionChecker currentUserPermissionChecker) {
+        return isChannelStaffOnly(context, currentUserPermissionChecker)
+                || isChannelLeader(context, currentUserPermissionChecker);
     }
 
     /**
@@ -422,8 +443,11 @@ public final class PerformanceAccessScope {
      * @param context 访问上下文
      * @return true 表示招商维度角色
      */
-    private static boolean isRecruiterScoped(PerformanceAccessContext context) {
-        return isRecruiterStaffOnly(context) || isRecruiterLeader(context);
+    private static boolean isRecruiterScoped(
+            PerformanceAccessContext context,
+            CurrentUserPermissionChecker currentUserPermissionChecker) {
+        return isRecruiterStaffOnly(context, currentUserPermissionChecker)
+                || isRecruiterLeader(context, currentUserPermissionChecker);
     }
 
     /**
@@ -433,8 +457,11 @@ public final class PerformanceAccessScope {
      * @param context   访问上下文
      * @throws BusinessException 越权时抛出 403 异常
      */
-    private static void assertChannelFilter(UUID channelId, PerformanceAccessContext context) {
-        if (isChannelStaffOnly(context) && !channelId.equals(context.userId())) {
+    private static void assertChannelFilter(
+            UUID channelId,
+            PerformanceAccessContext context,
+            CurrentUserPermissionChecker currentUserPermissionChecker) {
+        if (isChannelStaffOnly(context, currentUserPermissionChecker) && !channelId.equals(context.userId())) {
             throw BusinessException.forbidden("无权按该渠道筛选业绩");
         }
     }
@@ -446,8 +473,11 @@ public final class PerformanceAccessScope {
      * @param context     访问上下文
      * @throws BusinessException 越权时抛出 403 异常
      */
-    private static void assertRecruiterFilter(UUID recruiterId, PerformanceAccessContext context) {
-        if (isRecruiterStaffOnly(context) && !recruiterId.equals(context.userId())) {
+    private static void assertRecruiterFilter(
+            UUID recruiterId,
+            PerformanceAccessContext context,
+            CurrentUserPermissionChecker currentUserPermissionChecker) {
+        if (isRecruiterStaffOnly(context, currentUserPermissionChecker) && !recruiterId.equals(context.userId())) {
             throw BusinessException.forbidden("无权按该招商筛选业绩");
         }
     }
@@ -470,5 +500,13 @@ public final class PerformanceAccessScope {
 
     private static boolean hasText(String value) {
         return value != null && !value.isBlank();
+    }
+
+    private static boolean checkerHasAnyRole(
+            CurrentUserPermissionChecker currentUserPermissionChecker,
+            Object roleCodes,
+            String... expectedRoles) {
+        return currentUserPermissionChecker != null
+                && currentUserPermissionChecker.hasAnyRole(roleCodes, expectedRoles);
     }
 }

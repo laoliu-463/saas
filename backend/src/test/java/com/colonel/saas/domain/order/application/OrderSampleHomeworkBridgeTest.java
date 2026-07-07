@@ -1,11 +1,11 @@
 package com.colonel.saas.domain.order.application;
 
 import com.colonel.saas.config.DddRefactorProperties;
+import com.colonel.saas.domain.sample.facade.SampleHomeworkFacade;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.event.OrderSyncedEvent;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.service.OperationLogService;
-import com.colonel.saas.service.SampleLifecycleService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -29,7 +29,7 @@ class OrderSampleHomeworkBridgeTest {
     @Mock
     private ColonelsettlementOrderMapper orderMapper;
     @Mock
-    private SampleLifecycleService sampleLifecycleService;
+    private SampleHomeworkFacade sampleHomeworkFacade;
     @Mock
     private OperationLogService operationLogService;
 
@@ -42,7 +42,7 @@ class OrderSampleHomeworkBridgeTest {
         bridge = new OrderSampleHomeworkBridge(
                 dddRefactorProperties,
                 orderMapper,
-                sampleLifecycleService,
+                sampleHomeworkFacade,
                 operationLogService);
     }
 
@@ -50,7 +50,7 @@ class OrderSampleHomeworkBridgeTest {
     void completeHomework_whenSwitchOff_shouldDoNothing() {
         bridge.completeHomeworkForSyncedOrder(sampleEvent());
 
-        verifyNoInteractions(orderMapper, sampleLifecycleService, operationLogService);
+        verifyNoInteractions(orderMapper, sampleHomeworkFacade, operationLogService);
     }
 
     @Test
@@ -68,7 +68,7 @@ class OrderSampleHomeworkBridgeTest {
 
         bridge.completeHomeworkForSyncedOrder(event);
 
-        verify(sampleLifecycleService).completePendingHomeworkByOrder(order);
+        verify(sampleHomeworkFacade).completePendingHomeworkByOrder(order);
         verify(operationLogService).recordSystemAction(
                 eq(order.getUserId()),
                 eq("订单归因"),
@@ -89,7 +89,7 @@ class OrderSampleHomeworkBridgeTest {
 
         bridge.completeHomeworkForSyncedOrder(sampleEvent());
 
-        verify(sampleLifecycleService, never()).completePendingHomeworkByOrder(any());
+        verify(sampleHomeworkFacade, never()).completePendingHomeworkByOrder(any());
         verifyNoInteractions(operationLogService);
     }
 

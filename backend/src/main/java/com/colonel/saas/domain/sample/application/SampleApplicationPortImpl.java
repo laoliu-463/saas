@@ -12,7 +12,7 @@ import com.colonel.saas.domain.sample.api.SampleApplicationPort;
 import com.colonel.saas.domain.sample.event.SampleDomainEventPublisher;
 import com.colonel.saas.domain.talent.facade.TalentDomainFacade;
 import com.colonel.saas.domain.talent.facade.dto.TalentReadDTO;
-import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
 import com.colonel.saas.entity.CrawlerTalentInfo;
 import com.colonel.saas.entity.SampleRequest;
 import com.colonel.saas.entity.Talent;
@@ -73,7 +73,7 @@ public class SampleApplicationPortImpl implements SampleApplicationPort {
     private final SampleStatusLogService sampleStatusLogService;
     private final DouyinQuickSampleGateway douyinQuickSampleGateway;
     private final SampleDomainEventPublisher sampleDomainEventPublisher;
-    private final CurrentUserPermissionPolicy currentUserPermissionPolicy;
+    private final CurrentUserPermissionChecker currentUserPermissionChecker;
 
     public SampleApplicationPortImpl(
             CrawlerTalentInfoService crawlerTalentInfoService,
@@ -84,7 +84,7 @@ public class SampleApplicationPortImpl implements SampleApplicationPort {
             SampleStatusLogService sampleStatusLogService,
             DouyinQuickSampleGateway douyinQuickSampleGateway,
             SampleDomainEventPublisher sampleDomainEventPublisher,
-            CurrentUserPermissionPolicy currentUserPermissionPolicy) {
+            CurrentUserPermissionChecker currentUserPermissionChecker) {
         this.crawlerTalentInfoService = crawlerTalentInfoService;
         this.talentDomainFacade = talentDomainFacade;
         this.sampleRequestMapper = sampleRequestMapper;
@@ -93,7 +93,7 @@ public class SampleApplicationPortImpl implements SampleApplicationPort {
         this.sampleStatusLogService = sampleStatusLogService;
         this.douyinQuickSampleGateway = douyinQuickSampleGateway;
         this.sampleDomainEventPublisher = sampleDomainEventPublisher;
-        this.currentUserPermissionPolicy = currentUserPermissionPolicy;
+        this.currentUserPermissionChecker = currentUserPermissionChecker;
     }
 
     @Override
@@ -285,7 +285,7 @@ public class SampleApplicationPortImpl implements SampleApplicationPort {
     }
 
     private void ensureChannelTalentClaim(UUID userId, UUID talentId, Object roleCodes) {
-        if (currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.ADMIN)) {
+        if (currentUserPermissionChecker.hasAnyRole(roleCodes, RoleCodes.ADMIN)) {
             return;
         }
         if (userId == null || talentId == null) {
@@ -297,7 +297,7 @@ public class SampleApplicationPortImpl implements SampleApplicationPort {
     }
 
     private void checkSevenDaysLimit(UUID userId, UUID talentId, UUID productId, Object roleCodes) {
-        if (currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.CHANNEL_LEADER)) {
+        if (currentUserPermissionChecker.hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.CHANNEL_LEADER)) {
             return;
         }
         if (!configDomainFacade.isSampleLimitEnabled()) {

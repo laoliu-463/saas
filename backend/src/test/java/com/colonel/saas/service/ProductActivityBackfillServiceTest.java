@@ -19,6 +19,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.SimpleTransactionStatus;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -129,6 +130,59 @@ class ProductActivityBackfillServiceTest {
         verify(jobLogMapper).insert(any(ProductSyncJobLog.class));
         verify(jobLogMapper).updateById(jobLogCaptor.capture());
         assertThat(jobLogCaptor.getValue().getErrorMessage()).isNotBlank();
+    }
+
+    @Test
+    void backfillAsync_shouldReturnRunningAndDeferWorkflowToExecutor() {
+        List<Runnable> queuedTasks = new ArrayList<>();
+        ProductActivityBackfillService asyncService = new ProductActivityBackfillService(
+                dryRunProbeService,
+                productService,
+                activityMapper,
+                snapshotMapper,
+                jobLogMapper,
+                syncStateMapper,
+                jobLockService,
+                productDisplayRuleService,
+                douyinProductGateway,
+                queuedTasks::add,
+                transactionManager);
+        when(dryRunProbeService.fullDryRun(any(), any()))
+                .thenReturn(fullDryRunResult());
+        UUID requestedBy = UUID.randomUUID();
+
+        ProductActivityBackfillService.BackfillAsyncResponse response = asyncService.backfillAsync(
+                new ProductActivityBackfillService.BackfillRequest(
+                        "CUSTOM_ACTIVITY_IDS",
+                        List.of("3859423"),
+                        20,
+                        50,
+                        1000,
+                        50_000,
+                        true,
+                        false,
+                        "DEFERRED"),
+                requestedBy);
+
+        assertThat(response.jobId()).startsWith("product-backfill-");
+        assertThat(response.status()).isEqualTo("RUNNING");
+        ArgumentCaptor<ProductSyncJobLog> startLogCaptor = ArgumentCaptor.forClass(ProductSyncJobLog.class);
+        verify(jobLogMapper).insert(startLogCaptor.capture());
+        assertThat(startLogCaptor.getValue().getJobId()).isEqualTo(response.jobId());
+        assertThat(startLogCaptor.getValue().getStatus()).isEqualTo("RUNNING");
+        assertThat(startLogCaptor.getValue().getRequestedBy()).isEqualTo(requestedBy);
+        assertThat(queuedTasks).hasSize(1);
+        verify(dryRunProbeService, never()).fullDryRun(any(), any());
+
+        queuedTasks.get(0).run();
+
+        verify(dryRunProbeService).fullDryRun(any(), any());
+        ArgumentCaptor<ProductSyncJobLog> finishLogCaptor = ArgumentCaptor.forClass(ProductSyncJobLog.class);
+        verify(jobLogMapper, org.mockito.Mockito.atLeastOnce()).updateById(finishLogCaptor.capture());
+        ProductSyncJobLog finalLog = finishLogCaptor.getAllValues().get(finishLogCaptor.getAllValues().size() - 1);
+        assertThat(finalLog.getJobId()).isEqualTo(response.jobId());
+        assertThat(finalLog.getStatus()).isEqualTo("SUCCESS");
+        assertThat(finalLog.getFinishedAt()).isNotNull();
     }
 
     @Test

@@ -10,12 +10,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 class DddUserDataScopePolicySampleApplicationBoundaryTest {
 
     @Test
-    void sampleApplication_shouldGateDataScopePolicyPathBehindFeatureFlag() throws Exception {
+    void sampleApplication_shouldResolveDataScopeThroughUserResolverBehindFeatureFlag() throws Exception {
         String source = Files.readString(Path.of(
                 "src/main/java/com/colonel/saas/service/sample/SampleApplicationService.java"));
 
         assertThat(source)
-                .contains("DataScopePolicy")
+                .contains("DataScopeResolver")
                 .contains("DddRefactorProperties")
                 .contains("dddRefactorProperties.getDataScopePolicy().isEnabled()")
                 .contains("shouldUseAuditorQueryLegacy")
@@ -24,19 +24,27 @@ class DddUserDataScopePolicySampleApplicationBoundaryTest {
                 .contains("shouldUseExportAuditorQuery")
                 .contains("canAccessSampleByDataScopeLegacy")
                 .contains("canAccessSampleByDataScopeWithPolicy")
-                .contains("dataScopePolicy.contextRequirement")
-                .contains("dataScopePolicy.decide");
+                .contains("DataScopeResolver.ResolvedDataScope resolved")
+                .contains("dataScopeResolver.resolve")
+                .contains("resolved.missingUser()")
+                .contains("resolved.contextSatisfied()")
+                .contains("resolved.filtersUser()")
+                .contains("resolved.filtersDept()")
+                .doesNotContain("import com.colonel.saas.domain.user.policy.DataScopePolicy;")
+                .doesNotContain("dataScopePolicy.");
     }
 
     @Test
-    void sampleQueryConfiguration_shouldInjectDataScopePolicyIntoApplicationDelegate() throws Exception {
+    void sampleQueryConfiguration_shouldInjectDataScopeResolverIntoApplicationDelegate() throws Exception {
         String source = Files.readString(Path.of(
                 "src/main/java/com/colonel/saas/service/sample/SampleQueryConfiguration.java"));
 
         assertThat(source)
-                .contains("DataScopePolicy dataScopePolicy")
+                .contains("DataScopeResolver dataScopeResolver")
                 .contains("DddRefactorProperties dddRefactorProperties")
-                .contains("dataScopePolicy")
-                .contains("dddRefactorProperties");
+                .contains("dataScopeResolver")
+                .contains("dddRefactorProperties")
+                .doesNotContain("DataScopePolicy dataScopePolicy")
+                .doesNotContain("dataScopePolicy");
     }
 }

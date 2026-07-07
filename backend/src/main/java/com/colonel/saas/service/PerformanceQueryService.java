@@ -14,7 +14,8 @@ import com.colonel.saas.entity.PerformanceRecord;
 import com.colonel.saas.mapper.PerformanceRecordMapper;
 import com.colonel.saas.domain.performance.policy.PerformanceAccessContext;
 import com.colonel.saas.domain.performance.policy.PerformanceAccessScope;
-import com.colonel.saas.domain.user.policy.DataScopePolicy;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
+import com.colonel.saas.domain.user.policy.DataScopeResolver;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -104,7 +105,8 @@ public class PerformanceQueryService {
     private final PerformanceRecordMapper performanceRecordMapper;
     private final OrderReadFacade orderReadFacade;
     private final JdbcTemplate jdbcTemplate;
-    private final DataScopePolicy dataScopePolicy;
+    private final DataScopeResolver dataScopeResolver;
+    private final CurrentUserPermissionChecker currentUserPermissionChecker;
     private final DddRefactorProperties dddRefactorProperties;
 
     @Autowired
@@ -112,24 +114,15 @@ public class PerformanceQueryService {
             PerformanceRecordMapper performanceRecordMapper,
             OrderReadFacade orderReadFacade,
             JdbcTemplate jdbcTemplate,
-            DataScopePolicy dataScopePolicy,
+            DataScopeResolver dataScopeResolver,
+            CurrentUserPermissionChecker currentUserPermissionChecker,
             DddRefactorProperties dddRefactorProperties) {
         this.performanceRecordMapper = performanceRecordMapper;
         this.orderReadFacade = orderReadFacade;
         this.jdbcTemplate = jdbcTemplate;
-        this.dataScopePolicy = dataScopePolicy;
+        this.dataScopeResolver = dataScopeResolver;
+        this.currentUserPermissionChecker = currentUserPermissionChecker;
         this.dddRefactorProperties = dddRefactorProperties;
-    }
-
-    PerformanceQueryService(
-            PerformanceRecordMapper performanceRecordMapper,
-            OrderReadFacade orderReadFacade,
-            JdbcTemplate jdbcTemplate) {
-        this(performanceRecordMapper,
-                orderReadFacade,
-                jdbcTemplate,
-                new DataScopePolicy(),
-                new DddRefactorProperties());
     }
 
     /**
@@ -168,7 +161,8 @@ public class PerformanceQueryService {
         if (!hasCurrentPerformance(record)) {
             throwPerformanceUnavailable(normalized);
         }
-        if (!PerformanceAccessScope.canAccessRecord(record, context) && !canAccessRecordByScopedSql(normalized, context)) {
+        if (!PerformanceAccessScope.canAccessRecord(record, context, currentUserPermissionChecker)
+                && !canAccessRecordByScopedSql(normalized, context)) {
             throw BusinessException.forbidden("无权查看该订单业绩");
         }
         return loadDetailByOrderId(normalized);
@@ -293,7 +287,8 @@ public class PerformanceQueryService {
         PerformanceAccessScope.assertFilterAllowed(
                 safeQuery.getChannelId(),
                 safeQuery.getRecruiterId(),
-                context);
+                context,
+                currentUserPermissionChecker);
 
         long pageSize = normalizePageSize(safeQuery.getPageSize());
         long page = safeQuery.getPage() <= 0 ? 1 : safeQuery.getPage();
@@ -342,7 +337,8 @@ public class PerformanceQueryService {
         PerformanceAccessScope.assertFilterAllowed(
                 safeQuery.getChannelId(),
                 safeQuery.getRecruiterId(),
-                context);
+                context,
+                currentUserPermissionChecker);
         List<Object> args = new ArrayList<>();
         StringBuilder where = buildFilterWhere(safeQuery, context, args);
         long total = count(where, args);
@@ -645,15 +641,22 @@ public class PerformanceQueryService {
             PerformanceAccessContext context,
             String prAlias) {
         if (!dddRefactorProperties.getDataScopePolicy().isEnabled()) {
-            PerformanceAccessScope.appendScopeCondition(where, args, context, prAlias);
+            PerformanceAccessScope.appendScopeCondition(where, args, context, prAlias, currentUserPermissionChecker);
             return;
         }
-        PerformanceAccessScope.appendScopeConditionWithPolicy(where, args, context, prAlias, dataScopePolicy);
+        PerformanceAccessScope.appendScopeConditionWithResolver(
+                where,
+                args,
+                context,
+                prAlias,
+                dataScopeResolver,
+                currentUserPermissionChecker);
     }
 
     /** 批量查询场景的权限校验：先尝试内存级判断，不通过时回退 SQL 级判断。 */
     private boolean canAccessBatchRecord(String orderId, PerformanceRecord record, PerformanceAccessContext context) {
-        return (hasCurrentPerformance(record) && PerformanceAccessScope.canAccessRecord(record, context))
+        return (hasCurrentPerformance(record)
+                && PerformanceAccessScope.canAccessRecord(record, context, currentUserPermissionChecker))
                 || canAccessRecordByScopedSql(orderId, context);
     }
 

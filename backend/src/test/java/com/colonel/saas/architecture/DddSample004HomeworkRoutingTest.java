@@ -5,6 +5,7 @@ import com.colonel.saas.domain.order.application.OrderAmountMappingRouter;
 import com.colonel.saas.domain.order.event.InProcessOrderDomainEventPublisher;
 import com.colonel.saas.domain.order.event.OrderDomainEventPublisher;
 import com.colonel.saas.domain.order.event.OrderEventPayloadMapper;
+import com.colonel.saas.domain.sample.facade.SampleHomeworkFacade;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
@@ -13,7 +14,6 @@ import com.colonel.saas.service.MerchantService;
 import com.colonel.saas.service.OperationLogService;
 import com.colonel.saas.service.OrderSyncPersistenceService;
 import com.colonel.saas.service.PickSourceMappingService;
-import com.colonel.saas.service.SampleLifecycleService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -43,7 +43,7 @@ class DddSample004HomeworkRoutingTest {
     @Mock
     private MerchantService merchantService;
     @Mock
-    private SampleLifecycleService sampleLifecycleService;
+    private SampleHomeworkFacade sampleHomeworkFacade;
     @Mock
     private OperationLogService operationLogService;
     @Mock
@@ -71,7 +71,7 @@ class DddSample004HomeworkRoutingTest {
                 orderSyncDedupClaimMapper,
                 pickSourceMappingService,
                 merchantService,
-                sampleLifecycleService,
+                sampleHomeworkFacade,
                 operationLogService,
                 userDomainFacade,
                 new OrderAmountMappingRouter(dddRefactorProperties),
@@ -90,7 +90,7 @@ class DddSample004HomeworkRoutingTest {
 
         persistenceService.persistOrder(order);
 
-        verify(sampleLifecycleService).completePendingHomeworkByOrder(order);
+        verify(sampleHomeworkFacade).completePendingHomeworkByOrder(order);
     }
 
     @Test
@@ -106,7 +106,7 @@ class DddSample004HomeworkRoutingTest {
 
         persistenceService.persistOrder(order);
 
-        verify(sampleLifecycleService, never()).completePendingHomeworkByOrder(order);
+        verify(sampleHomeworkFacade, never()).completePendingHomeworkByOrder(order);
     }
 
     private static ColonelsettlementOrder sampleOrder() {

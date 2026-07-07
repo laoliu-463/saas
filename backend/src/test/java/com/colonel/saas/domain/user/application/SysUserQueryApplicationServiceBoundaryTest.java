@@ -17,6 +17,9 @@ class SysUserQueryApplicationServiceBoundaryTest {
 
         assertThat(source).contains("UserQueryLookup");
         assertThat(source)
+                .contains("DataScopeResolver")
+                .doesNotContain("DataScopePolicy");
+        assertThat(source)
                 .doesNotContain("QueryWrapper")
                 .doesNotContain("com.colonel.saas.mapper.")
                 .doesNotContain("com.colonel.saas.entity.");

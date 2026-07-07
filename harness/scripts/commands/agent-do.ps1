@@ -2,7 +2,7 @@ param(
     [Alias("Env")]
     [ValidateSet("test", "real-pre")]
     [string]$TargetEnv = "real-pre",
-    [ValidateSet("backend", "frontend", "full", "docs")]
+    [ValidateSet("backend", "frontend", "full", "docs", "apifox")]
     [string]$Scope = "full",
     [object]$DeployRemote = $false,
     [string]$Message = "chore: harness automated run",
@@ -43,6 +43,38 @@ try {
         if ($Scope -eq "docs") {
             $buildResult = "Scope=docs: build skipped."
             $businessResult = "Scope=docs: business validation not applicable; safety check executed."
+        }
+        elseif ($Scope -eq "apifox") {
+            Write-HarnessStage "Apifox OpenAPI local verification"
+            $bashPath = Get-HarnessBashPath
+            $repoRootForBash = Convert-HarnessPathToMsys -Path $config.RepoRoot
+            $previousApifoxCli = $env:APIFOX_CLI
+            if (Get-Command "apifox.cmd" -ErrorAction SilentlyContinue) {
+                $env:APIFOX_CLI = "apifox.cmd"
+            }
+            elseif ([string]::IsNullOrWhiteSpace($env:APIFOX_CLI)) {
+                $env:APIFOX_CLI = "apifox"
+            }
+            try {
+                $verifyCommand = "cd '$repoRootForBash' && APIFOX_CLI='${env:APIFOX_CLI}' bash scripts/verify-openapi-apifox.sh"
+                Write-Host "$bashPath -lc $verifyCommand"
+                if (-not $DryRun) {
+                    & $bashPath "-lc" $verifyCommand
+                    if ($LASTEXITCODE -ne 0) {
+                        throw "Apifox OpenAPI verification failed."
+                    }
+                }
+            }
+            finally {
+                $env:APIFOX_CLI = $previousApifoxCli
+            }
+            if ($DryRun) {
+                $buildResult = "Scope=apifox: DRY-RUN; application build skipped and Apifox/OpenAPI local harness not executed by agent-do."
+            }
+            else {
+                $buildResult = "Scope=apifox: application build skipped; Apifox/OpenAPI local harness PASS."
+            }
+            $businessResult = "Scope=apifox: business validation not applicable; cloud import not executed."
         }
         else {
             if ($Scope -eq "backend" -or $Scope -eq "full") {
@@ -89,16 +121,16 @@ try {
         Pop-Location
     }
 
-    & (Join-Path $PSScriptRoot "restart-compose.ps1") -Env $TargetEnv -Scope $Scope -DryRun:$DryRun
-    & (Join-Path $PSScriptRoot "verify-local.ps1") -Env $TargetEnv -Scope $Scope -DryRun:$DryRun
-    if ($Scope -eq "docs") {
-        $healthResult = "Scope=docs: compose restart and HTTP health checks skipped by docs-only path."
+    if ($Scope -eq "docs" -or $Scope -eq "apifox") {
+        $healthResult = "Scope=${Scope}: compose restart and HTTP health checks skipped by scoped local harness path."
     }
     else {
+        & (Join-Path $PSScriptRoot "restart-compose.ps1") -Env $TargetEnv -Scope $Scope -DryRun:$DryRun
+        & (Join-Path $PSScriptRoot "verify-local.ps1") -Env $TargetEnv -Scope $Scope -DryRun:$DryRun
         $healthResult = "Local health verification: PASS"
     }
 
-    if ($Scope -ne "docs") {
+    if ($Scope -ne "docs" -and $Scope -ne "apifox") {
         if ($SkipBusinessValidation) {
             $businessResult = "Business validation skipped by -SkipBusinessValidation; not a full PASS."
         }

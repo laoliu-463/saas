@@ -7,6 +7,7 @@ import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.GlobalExceptionHandler;
 import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.domain.user.policy.DataScopePolicy;
+import com.colonel.saas.domain.user.policy.DataScopeResolver;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.service.OrderAttributionService;
@@ -49,7 +50,7 @@ class OrderAttributionControllerTest {
         mockMvc = MockMvcBuilders
                 .standaloneSetup(new OrderAttributionController(new OrderAttributionService(
                         orderMapper,
-                        new DataScopePolicy(),
+                        new DataScopeResolver(new DataScopePolicy()),
                         new DddRefactorProperties())))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();

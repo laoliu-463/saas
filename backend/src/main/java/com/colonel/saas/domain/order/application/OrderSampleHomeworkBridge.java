@@ -1,11 +1,11 @@
 package com.colonel.saas.domain.order.application;
 
 import com.colonel.saas.config.DddRefactorProperties;
+import com.colonel.saas.domain.sample.facade.SampleHomeworkFacade;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.event.OrderSyncedEvent;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import com.colonel.saas.service.OperationLogService;
-import com.colonel.saas.service.SampleLifecycleService;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -19,17 +19,17 @@ public class OrderSampleHomeworkBridge {
 
     private final DddRefactorProperties dddRefactorProperties;
     private final ColonelsettlementOrderMapper orderMapper;
-    private final SampleLifecycleService sampleLifecycleService;
+    private final SampleHomeworkFacade sampleHomeworkFacade;
     private final OperationLogService operationLogService;
 
     public OrderSampleHomeworkBridge(
             DddRefactorProperties dddRefactorProperties,
             ColonelsettlementOrderMapper orderMapper,
-            SampleLifecycleService sampleLifecycleService,
+            SampleHomeworkFacade sampleHomeworkFacade,
             OperationLogService operationLogService) {
         this.dddRefactorProperties = dddRefactorProperties;
         this.orderMapper = orderMapper;
-        this.sampleLifecycleService = sampleLifecycleService;
+        this.sampleHomeworkFacade = sampleHomeworkFacade;
         this.operationLogService = operationLogService;
     }
 
@@ -46,7 +46,7 @@ public class OrderSampleHomeworkBridge {
         if (order == null) {
             return;
         }
-        sampleLifecycleService.completePendingHomeworkByOrder(order);
+        sampleHomeworkFacade.completePendingHomeworkByOrder(order);
         recordAttributionFollowUp(order);
     }
 

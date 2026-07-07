@@ -45,7 +45,7 @@ class ProductActivitySyncJobTest {
                 .thenReturn(true);
         lenient().when(jobLockService.tryAcquire(eq(JobLockKeys.PRODUCT_ACTIVITY_SYNC), any(Duration.class)))
                 .thenReturn(true);
-        lenient().when(productService.refreshActivitySnapshots(any()))
+        lenient().when(productService.refreshActivitySnapshots(any(DouyinProductGateway.ActivityProductQueryRequest.class)))
                 .thenReturn(new ProductService.ActivityProductRefreshResult(3, 1, 1, 2, 0));
     }
 
@@ -78,7 +78,7 @@ class ProductActivitySyncJobTest {
         job.syncAll();
 
         verify(activityMapper, never()).selectActiveActivityIds(anyInt(), any(LocalDateTime.class));
-        verify(productService, times(2)).refreshActivitySnapshots(any());
+        verify(productService, times(2)).refreshActivitySnapshots(any(DouyinProductGateway.ActivityProductQueryRequest.class));
         verify(activityMapper).touchLastSyncAt(eq("ACT-1"), any(LocalDateTime.class));
         verify(activityMapper).touchLastSyncAt(eq("ACT-2"), any(LocalDateTime.class));
         verify(jobLockService).release(JobLockKeys.PRODUCT_ACTIVITY_SYNC);
@@ -88,13 +88,13 @@ class ProductActivitySyncJobTest {
     @Test
     void syncAll_shouldContinueWhenSingleActivityFails() {
         ProductActivitySyncJob job = job(true, "ACT-1,ACT-2");
-        when(productService.refreshActivitySnapshots(any()))
+        when(productService.refreshActivitySnapshots(any(DouyinProductGateway.ActivityProductQueryRequest.class)))
                 .thenThrow(new RuntimeException("upstream down"))
                 .thenReturn(new ProductService.ActivityProductRefreshResult(5, 2, 2, 3, 0));
 
         job.syncAll();
 
-        verify(productService, times(2)).refreshActivitySnapshots(any());
+        verify(productService, times(2)).refreshActivitySnapshots(any(DouyinProductGateway.ActivityProductQueryRequest.class));
         verify(activityMapper, never()).touchLastSyncAt(eq("ACT-1"), any(LocalDateTime.class));
         verify(activityMapper).touchLastSyncAt(eq("ACT-2"), any(LocalDateTime.class));
         verify(jobLockService).release(JobLockKeys.PRODUCT_ACTIVITY_SYNC);
@@ -104,7 +104,7 @@ class ProductActivitySyncJobTest {
     @Test
     void syncAll_shouldNotTouchLastSyncAtWhenActivityIncomplete() {
         ProductActivitySyncJob job = job(true, "ACT-1");
-        when(productService.refreshActivitySnapshots(any()))
+        when(productService.refreshActivitySnapshots(any(DouyinProductGateway.ActivityProductQueryRequest.class)))
                 .thenReturn(new ProductService.ActivityProductRefreshResult(
                         2_000,
                         1,

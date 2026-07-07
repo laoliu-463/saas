@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.domain.user.policy.DataScopePolicy;
+import com.colonel.saas.domain.user.policy.DataScopeResolver;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -44,14 +45,14 @@ class OrderAttributionServiceTest {
     private ColonelsettlementOrderMapper orderMapper;
 
     private OrderAttributionService service;
-    private DataScopePolicy dataScopePolicy;
+    private DataScopeResolver dataScopeResolver;
     private DddRefactorProperties dddRefactorProperties;
 
     @BeforeEach
     void setUp() {
-        dataScopePolicy = spy(new DataScopePolicy());
+        dataScopeResolver = spy(new DataScopeResolver(new DataScopePolicy()));
         dddRefactorProperties = new DddRefactorProperties();
-        service = new OrderAttributionService(orderMapper, dataScopePolicy, dddRefactorProperties);
+        service = new OrderAttributionService(orderMapper, dataScopeResolver, dddRefactorProperties);
     }
 
     // ============================================================
@@ -110,7 +111,7 @@ class OrderAttributionServiceTest {
         ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> captor = ArgumentCaptor.forClass(QueryWrapper.class);
         verify(orderMapper).findPageWithScope(any(Page.class), captor.capture());
         assertThat(captor.getValue().getSqlSegment()).contains("co.user_id");
-        verify(dataScopePolicy, never()).applyTo(
+        verify(dataScopeResolver, never()).applyTo(
                 any(QueryWrapper.class),
                 any(),
                 any(),
@@ -131,7 +132,7 @@ class OrderAttributionServiceTest {
         ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> captor = ArgumentCaptor.forClass(QueryWrapper.class);
         verify(orderMapper).findPageWithScope(any(Page.class), captor.capture());
         assertThat(captor.getValue().getSqlSegment()).contains("co.user_id");
-        verify(dataScopePolicy).applyTo(
+        verify(dataScopeResolver).applyTo(
                 any(QueryWrapper.class),
                 eq(userId),
                 eq(null),
@@ -151,7 +152,7 @@ class OrderAttributionServiceTest {
                 DataScope.DEPT);
 
         assertThat(wrapper.getSqlSegment()).contains("dept_id");
-        verify(dataScopePolicy, never()).applyTo(
+        verify(dataScopeResolver, never()).applyTo(
                 any(QueryWrapper.class),
                 any(),
                 any(),
@@ -172,7 +173,7 @@ class OrderAttributionServiceTest {
                 DataScope.DEPT);
 
         assertThat(wrapper.getSqlSegment()).contains("dept_id");
-        verify(dataScopePolicy).applyTo(
+        verify(dataScopeResolver).applyTo(
                 any(QueryWrapper.class),
                 eq(null),
                 eq(deptId),

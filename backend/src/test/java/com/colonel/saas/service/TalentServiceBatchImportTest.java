@@ -14,7 +14,9 @@ import com.colonel.saas.domain.talent.application.TalentPoolApplicationService;
 import com.colonel.saas.domain.talent.application.TalentProfileApplicationService;
 import com.colonel.saas.entity.Talent;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
+import com.colonel.saas.domain.user.policy.DataScopeResolver;
 import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.mapper.TalentClaimMapper;
 import com.colonel.saas.mapper.TalentEnrichTaskMapper;
@@ -101,23 +103,23 @@ class TalentServiceBatchImportTest {
                         operationLogService),
                 new TalentPoolApplicationService(talentMapper, talentClaimMapper),
                 new TalentEnrichmentApplicationService(talentMapper),
-                new TalentPageApplicationService(talentMapper, talentClaimMapper, new DataScopePolicy(), new DddRefactorProperties()),
-                new ExclusiveTalentCheckApplicationService(talentMapper, orderReadFacade, sampleDomainFacade, configDomainFacade, new DataScopePolicy(), new DddRefactorProperties()),
+                new TalentPageApplicationService(talentMapper, talentClaimMapper, new DataScopeResolver(new DataScopePolicy()), new DddRefactorProperties()),
+                new ExclusiveTalentCheckApplicationService(talentMapper, orderReadFacade, sampleDomainFacade, configDomainFacade, new DataScopeResolver(new DataScopePolicy()), new DddRefactorProperties()),
                 new TalentClaimApplicationService(
                         talentClaimMapper,
                         talentMapper,
                         orderReadFacade,
                         configDomainFacade,
                         userDomainFacade,
-                        new CurrentUserPermissionPolicy(),
-                        new DataScopePolicy(),
+                        new CurrentUserPermissionChecker(new CurrentUserPermissionPolicy()),
+                        new DataScopeResolver(new DataScopePolicy()),
                         operationLogService,
                         new DddRefactorProperties(),
                         redisTemplate),
                 operationLogService,
                 userDomainFacade,
-                new CurrentUserPermissionPolicy(),
-                new DataScopePolicy(),
+                new CurrentUserPermissionChecker(new CurrentUserPermissionPolicy()),
+                new DataScopeResolver(new DataScopePolicy()),
                 new DddRefactorProperties());
     }
 

@@ -5,7 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.controller.OrderController;
-import com.colonel.saas.domain.user.policy.DataScopePolicy;
+import com.colonel.saas.domain.user.policy.DataScopeResolver;
 import com.colonel.saas.dto.order.OrderDetailResponse;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.domain.order.query.OrderDetailView;
@@ -43,10 +43,10 @@ public class LegacyOrderDomainFacade implements OrderDomainFacade {
     private final OrderSyncService orderSyncService;
 
     /**
-     * 数据范围策略（DDD-USER-DATASCOPE-005）：委托 {@link DataScopePolicy}
+     * 数据范围策略（DDD-USER-DATASCOPE-005）：委托 {@link DataScopeResolver}
      * 处理 self/group/all 数据范围过滤。详见 issue #7。
      */
-    private final DataScopePolicy dataScopePolicy;
+    private final DataScopeResolver dataScopeResolver;
 
     /**
      * DDD 化灰度开关（DDD-DATASCOPE-001）。
@@ -58,13 +58,13 @@ public class LegacyOrderDomainFacade implements OrderDomainFacade {
             OrderQueryService orderQueryService,
             ColonelsettlementOrderMapper orderMapper,
             OrderSyncService orderSyncService,
-            DataScopePolicy dataScopePolicy,
+            DataScopeResolver dataScopeResolver,
             com.colonel.saas.config.DddRefactorProperties dddRefactorProperties) {
         this.orderService = orderService;
         this.orderQueryService = orderQueryService;
         this.orderMapper = orderMapper;
         this.orderSyncService = orderSyncService;
-        this.dataScopePolicy = dataScopePolicy;
+        this.dataScopeResolver = dataScopeResolver;
         this.dddRefactorProperties = dddRefactorProperties;
     }
 
@@ -426,7 +426,7 @@ public class LegacyOrderDomainFacade implements OrderDomainFacade {
             return;
         }
         // 新路径
-        dataScopePolicy.applyTo(wrapper, userId, deptId, dataScope,
+        dataScopeResolver.applyTo(wrapper, userId, deptId, dataScope,
                 ColonelsettlementOrder::getUserId, ColonelsettlementOrder::getDeptId);
     }
 
@@ -459,7 +459,7 @@ public class LegacyOrderDomainFacade implements OrderDomainFacade {
             return;
         }
         // 新路径
-        dataScopePolicy.applyTo(wrapper, userId, deptId, dataScope, "user_id", "dept_id");
+        dataScopeResolver.applyTo(wrapper, userId, deptId, dataScope, "user_id", "dept_id");
     }
 
     private static List<UUID> normalizeUuidList(List<UUID> ids) {

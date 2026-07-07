@@ -39,31 +39,64 @@ class DddPerformanceAccessPolicyBoundaryTest {
         assertThat(source)
                 .doesNotContain("private static boolean hasAnyRole")
                 .doesNotContain("toLowerCase(Locale.ROOT)")
-                .contains("CurrentUserPermissionPolicy")
-                .contains("USER_PERMISSION_POLICY.hasAnyRole");
+                .doesNotContain("CurrentUserPermissionPolicy")
+                .doesNotContain("USER_PERMISSION_POLICY")
+                .contains("CurrentUserPermissionChecker")
+                .contains("currentUserPermissionChecker.hasAnyRole");
     }
 
     @Test
-    void performanceQueryService_shouldGateDataScopePolicyPathBehindFeatureFlag() throws IOException {
+    void performanceQueryService_shouldGateDataScopeResolverPathBehindFeatureFlag() throws IOException {
         String source = Files.readString(
                 sourcePath("src/main/java/com/colonel/saas/service/PerformanceQueryService.java"));
 
         assertThat(source)
                 .contains("DddRefactorProperties")
                 .contains("dddRefactorProperties.getDataScopePolicy().isEnabled()")
-                .contains("PerformanceAccessScope.appendScopeConditionWithPolicy")
-                .contains("PerformanceAccessScope.appendScopeCondition");
+                .contains("DataScopeResolver")
+                .contains("CurrentUserPermissionChecker")
+                .contains("PerformanceAccessScope.appendScopeConditionWithResolver")
+                .contains("PerformanceAccessScope.appendScopeCondition")
+                .doesNotContain("import com.colonel.saas.domain.user.policy.DataScopePolicy")
+                .doesNotContain("new DataScopePolicy()");
     }
 
     @Test
-    void performanceAccessScope_shouldOfferDataScopePolicySidePath() throws IOException {
+    void performanceAccessScope_shouldOfferDataScopeResolverSidePath() throws IOException {
         String source = Files.readString(
                 sourcePath("src/main/java/com/colonel/saas/domain/performance/policy/PerformanceAccessScope.java"));
 
         assertThat(source)
-                .contains("DataScopePolicy")
-                .contains("dataScopePolicy.contextRequirement")
-                .contains("dataScopePolicy.decide");
+                .contains("DataScopeResolver")
+                .contains("dataScopeResolver.resolve")
+                .contains("DataScopeResolver.ResolvedDataScope")
+                .doesNotContain("DataScopePolicy")
+                .doesNotContain("dataScopePolicy.")
+                .doesNotContain("DataScopePolicy.Decision")
+                .doesNotContain("DataScopePolicy.ContextRequirement");
+    }
+
+    @Test
+    void performanceUserPolicyConsumers_shouldNotDependOnDirectUserPolicyClasses() throws IOException {
+        String[] performanceConsumers = {
+                "src/main/java/com/colonel/saas/controller/PerformanceController.java",
+                "src/main/java/com/colonel/saas/service/PerformanceQueryService.java",
+                "src/main/java/com/colonel/saas/domain/performance/application/PerformanceAggregateApplicationService.java",
+                "src/main/java/com/colonel/saas/domain/performance/application/PerformanceSummaryApplicationService.java",
+                "src/main/java/com/colonel/saas/domain/performance/policy/PerformanceAccessScope.java"
+        };
+
+        for (String relativePath : performanceConsumers) {
+            String source = Files.readString(sourcePath(relativePath));
+            assertThat(source)
+                    .as(relativePath)
+                    .doesNotContain("import com.colonel.saas.domain.user.policy.DataScopePolicy")
+                    .doesNotContain("import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy")
+                    .doesNotContain("dataScopePolicy.")
+                    .doesNotContain("currentUserPermissionPolicy.")
+                    .doesNotContain("new DataScopePolicy()")
+                    .doesNotContain("new CurrentUserPermissionPolicy()");
+        }
     }
 
     private static String readUnchecked(Path path) {

@@ -21,3 +21,19 @@
 4. **定期复查**：任务结束后必须运行限制检查；每周或每个迭代开始前做一次清理复查。
 
 > 详情请查阅 `rules/harness-structure-policy.md` 和 `INDEX.md`。
+
+## DDD 收口验收
+
+DDD 重构收口使用固定脚本聚合检查工作区、白名单、证据矩阵、架构测试和通用安全门禁：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\check-ddd-acceptance.ps1 -MaxRedlineDebt 11
+```
+
+常用变体：
+
+- `-DocsOnly`：跳过 Maven，只做文档、矩阵、白名单和通用 docs 安全检查。
+- `-RequireRedlineZero`：要求 architecture redline 白名单有效项为 0。
+- `-FailOnUnexpectedDirty`：遇到非 docs/harness 且非登记历史 dirty 的文件时失败。
+
+报告默认写入 `harness/reports/latest-ddd-acceptance-report.md`。详细口径见 `docs/ddd-validation-guide.md`。

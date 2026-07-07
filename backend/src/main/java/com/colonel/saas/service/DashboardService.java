@@ -3,7 +3,7 @@ package com.colonel.saas.service;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.domain.order.facade.OrderReadFacade;
-import com.colonel.saas.domain.user.policy.DataScopePolicy;
+import com.colonel.saas.domain.user.policy.DataScopeResolver;
 import lombok.Data;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -87,8 +87,8 @@ public class DashboardService {
     private final JdbcTemplate jdbcTemplate;
     /** 业绩指标查询服务，用于判断是否可用汇总表以及从汇总表读取聚合数据 */
     private final PerformanceMetricsQueryService performanceMetricsQueryService;
-    /** 数据范围策略，由用户域统一解释 PERSONAL / DEPT / ALL 可见性范围 */
-    private final DataScopePolicy dataScopePolicy;
+    /** 数据范围解析器，由用户域统一解释 PERSONAL / DEPT / ALL 可见性范围 */
+    private final DataScopeResolver dataScopeResolver;
     /** DDD 重构灰度开关，默认关闭时保持 Legacy 查询路径 */
     private final DddRefactorProperties dddRefactorProperties;
 
@@ -107,12 +107,12 @@ public class DashboardService {
             OrderReadFacade orderReadFacade,
             JdbcTemplate jdbcTemplate,
             PerformanceMetricsQueryService performanceMetricsQueryService,
-            DataScopePolicy dataScopePolicy,
+            DataScopeResolver dataScopeResolver,
             DddRefactorProperties dddRefactorProperties) {
         this.orderReadFacade = orderReadFacade;
         this.jdbcTemplate = jdbcTemplate;
         this.performanceMetricsQueryService = performanceMetricsQueryService;
-        this.dataScopePolicy = dataScopePolicy;
+        this.dataScopeResolver = dataScopeResolver;
         this.dddRefactorProperties = dddRefactorProperties;
     }
 
@@ -377,7 +377,7 @@ public class DashboardService {
             appendScopeClauseLegacy(clauses, args, userId, deptId, dataScope);
             return;
         }
-        appendScopeClauseWithPolicy(clauses, args, userId, deptId, dataScope);
+        appendScopeClauseWithResolver(clauses, args, userId, deptId, dataScope);
     }
 
     private void appendScopeClauseLegacy(
@@ -397,25 +397,22 @@ public class DashboardService {
         }
     }
 
-    private void appendScopeClauseWithPolicy(
+    private void appendScopeClauseWithResolver(
             List<String> clauses,
             List<Object> args,
             UUID userId,
             UUID deptId,
             DataScope dataScope) {
-        DataScopePolicy.Decision decision = dataScopePolicy.decide(userId, deptId, dataScope);
-        switch (decision) {
-            case FILTER_USER -> {
-                clauses.add("co.user_id = ?");
-                args.add(userId);
-            }
-            case FILTER_DEPT -> {
-                clauses.add("co.dept_id = ?");
-                args.add(deptId);
-            }
-            case NO_FILTER -> {
-                // no filter
-            }
+        DataScopeResolver.ResolvedDataScope resolved =
+                dataScopeResolver.resolve(userId, deptId, dataScope);
+        if (resolved.filtersUser()) {
+            clauses.add("co.user_id = ?");
+            args.add(userId);
+            return;
+        }
+        if (resolved.filtersDept()) {
+            clauses.add("co.dept_id = ?");
+            args.add(deptId);
         }
     }
 
@@ -844,14 +841,17 @@ public class DashboardService {
         if (!dddRefactorProperties.getDataScopePolicy().isEnabled()) {
             return buildOrderVisibilityLegacy(userId, deptId, dataScope);
         }
-        DataScopePolicy.Decision decision = dataScopePolicy.decide(userId, deptId, dataScope);
-        return switch (decision) {
-            case FILTER_USER -> OrderReadFacade.OrderVisibility.user(userId);
-            case FILTER_DEPT -> OrderReadFacade.OrderVisibility.dept(deptId);
-            case NO_FILTER -> dataScopePolicy.requiresFilter(dataScope)
-                    ? OrderReadFacade.OrderVisibility.none()
-                    : OrderReadFacade.OrderVisibility.all();
-        };
+        DataScopeResolver.ResolvedDataScope resolved =
+                dataScopeResolver.resolve(userId, deptId, dataScope);
+        if (resolved.filtersUser()) {
+            return OrderReadFacade.OrderVisibility.user(userId);
+        }
+        if (resolved.filtersDept()) {
+            return OrderReadFacade.OrderVisibility.dept(deptId);
+        }
+        return dataScopeResolver.requiresFilter(dataScope)
+                ? OrderReadFacade.OrderVisibility.none()
+                : OrderReadFacade.OrderVisibility.all();
     }
 
     private OrderReadFacade.OrderVisibility buildOrderVisibilityLegacy(UUID userId, UUID deptId, DataScope dataScope) {

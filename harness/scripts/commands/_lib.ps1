@@ -4,6 +4,49 @@ function Get-HarnessRepoRoot {
     return (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..\..\..")).Path
 }
 
+function Get-HarnessBashPath {
+    $bashCommand = Get-Command bash -ErrorAction SilentlyContinue
+    if ($bashCommand -and $bashCommand.Source -and ($bashCommand.Source -notmatch "\\System32\\bash\.exe$")) {
+        return $bashCommand.Source
+    }
+
+    $gitExecPath = Get-HarnessGitValue -Arguments @("--exec-path")
+    if (-not [string]::IsNullOrWhiteSpace($gitExecPath)) {
+        $gitCore = Resolve-Path -LiteralPath $gitExecPath -ErrorAction SilentlyContinue
+        if ($gitCore) {
+            $gitRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $gitCore.Path))
+            $candidate = Join-Path $gitRoot "bin\bash.exe"
+            if (Test-Path -LiteralPath $candidate) {
+                return $candidate
+            }
+        }
+    }
+
+    foreach ($candidate in @(
+        "D:\DevTools\Git\Git\bin\bash.exe",
+        "C:\Program Files\Git\bin\bash.exe",
+        "C:\Program Files (x86)\Git\bin\bash.exe"
+    )) {
+        if (Test-Path -LiteralPath $candidate) {
+            return $candidate
+        }
+    }
+
+    throw "Git Bash was not found. Install Git Bash or set PATH so bash resolves to Git Bash, not WSL."
+}
+
+function Convert-HarnessPathToMsys {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    $resolved = (Resolve-Path -LiteralPath $Path).Path
+    if ($resolved -match "^([A-Za-z]):\\(.*)$") {
+        $drive = $matches[1].ToLowerInvariant()
+        $rest = $matches[2] -replace "\\", "/"
+        return "/$drive/$rest"
+    }
+    return ($resolved -replace "\\", "/")
+}
+
 function Write-HarnessStage {
     param([Parameter(Mandatory = $true)][string]$Title)
     Write-Host ""

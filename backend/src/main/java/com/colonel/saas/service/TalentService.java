@@ -31,8 +31,8 @@ import com.colonel.saas.domain.talent.application.TalentClaimApplicationService;
 import com.colonel.saas.domain.talent.application.TalentProfileApplicationService;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.domain.user.facade.dto.UserOwnershipReference;
-import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
-import com.colonel.saas.domain.user.policy.DataScopePolicy;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
+import com.colonel.saas.domain.user.policy.DataScopeResolver;
 import com.colonel.saas.mapper.TalentMapper;
 import com.colonel.saas.service.talent.TalentEnrichOrchestrator;
 import com.colonel.saas.service.talent.TalentInputParseResult;
@@ -158,10 +158,10 @@ public class TalentService {
     private final OperationLogService operationLogService;
     /** 系统用户 Mapper（用于归属覆盖时校验目标负责人） */
     private final UserDomainFacade userDomainFacade;
-    /** 当前用户权限策略（用于统一解释角色编码集合） */
-    private final CurrentUserPermissionPolicy currentUserPermissionPolicy;
-    /** 用户域数据范围策略（灰度开启时消费，默认关闭保留 Legacy 路径） */
-    private final DataScopePolicy dataScopePolicy;
+    /** 当前用户权限检查器（用于统一解释角色编码集合） */
+    private final CurrentUserPermissionChecker currentUserPermissionChecker;
+    /** 用户域数据范围 Resolver（灰度开启时消费，默认关闭保留 Legacy 路径） */
+    private final DataScopeResolver dataScopeResolver;
     /** DDD 重构灰度开关配置 */
     private final DddRefactorProperties dddRefactorProperties;
 
@@ -181,8 +181,8 @@ public class TalentService {
      * @param businessRuleConfigService 业务规则配置服务（预设标签等非门面项）
      * @param operationLogService      操作日志服务
      * @param userDomainFacade         用户域门面
-     * @param currentUserPermissionPolicy 当前用户权限策略
-     * @param dataScopePolicy             用户域数据范围策略
+     * @param currentUserPermissionChecker 当前用户权限检查器
+     * @param dataScopeResolver            用户域数据范围 Resolver
      * @param dddRefactorProperties       DDD 重构灰度开关配置
      */
     public TalentService(
@@ -206,8 +206,8 @@ public class TalentService {
             TalentClaimApplicationService talentClaimApplicationService,
             OperationLogService operationLogService,
             UserDomainFacade userDomainFacade,
-            CurrentUserPermissionPolicy currentUserPermissionPolicy,
-            DataScopePolicy dataScopePolicy,
+            CurrentUserPermissionChecker currentUserPermissionChecker,
+            DataScopeResolver dataScopeResolver,
             DddRefactorProperties dddRefactorProperties) {
         this.talentMapper = talentMapper;
         this.talentClaimMapper = talentClaimMapper;
@@ -229,8 +229,8 @@ public class TalentService {
         this.talentClaimApplicationService = talentClaimApplicationService;
         this.operationLogService = operationLogService;
         this.userDomainFacade = userDomainFacade;
-        this.currentUserPermissionPolicy = currentUserPermissionPolicy;
-        this.dataScopePolicy = dataScopePolicy;
+        this.currentUserPermissionChecker = currentUserPermissionChecker;
+        this.dataScopeResolver = dataScopeResolver;
         this.dddRefactorProperties = dddRefactorProperties;
     }
     /**
@@ -868,17 +868,16 @@ public class TalentService {
             UUID userId,
             UUID deptId,
             DataScope dataScope) {
-        DataScopePolicy.ContextRequirement requirement =
-                dataScopePolicy.contextRequirement(userId, deptId, dataScope);
-        if (requirement != DataScopePolicy.ContextRequirement.SATISFIED) {
+        DataScopeResolver.ResolvedDataScope resolvedScope =
+                dataScopeResolver.resolve(userId, deptId, dataScope);
+        if (!resolvedScope.contextSatisfied()) {
             throw new ForbiddenException("无权操作该达人");
         }
-        DataScopePolicy.Decision decision = dataScopePolicy.decide(userId, deptId, dataScope);
-        if (decision == DataScopePolicy.Decision.FILTER_USER) {
+        if (resolvedScope.filtersUser()) {
             assertCanOperateBlacklistAllowed(hasActiveClaimForUser(activeClaims, userId));
             return;
         }
-        if (decision == DataScopePolicy.Decision.FILTER_DEPT) {
+        if (resolvedScope.filtersDept()) {
             assertCanOperateBlacklistAllowed(hasActiveClaimForDept(activeClaims, deptId));
         }
     }

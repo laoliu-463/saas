@@ -225,7 +225,8 @@ class DashboardShadowCompareTest {
                 orderReadFacade,
                 jdbc,
                 perf,
-                new com.colonel.saas.domain.user.policy.DataScopePolicy(),
+                new com.colonel.saas.domain.user.policy.DataScopeResolver(
+                        new com.colonel.saas.domain.user.policy.DataScopePolicy()),
                 new com.colonel.saas.config.DddRefactorProperties());
         // shadowCompareService is null by default (field injection not done in unit test)
 

@@ -5,6 +5,7 @@ import com.colonel.saas.domain.order.application.OrderAmountMappingRouter;
 import com.colonel.saas.domain.order.event.InProcessOrderDomainEventPublisher;
 import com.colonel.saas.domain.order.event.OrderDomainEventPublisher;
 import com.colonel.saas.domain.order.event.OrderEventPayloadMapper;
+import com.colonel.saas.domain.sample.facade.SampleHomeworkFacade;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.event.OrderSyncedEvent;
@@ -42,7 +43,7 @@ class OrderSyncPersistenceInstituteSettlementTest {
     @Mock
     private MerchantService merchantService;
     @Mock
-    private SampleLifecycleService sampleLifecycleService;
+    private SampleHomeworkFacade sampleHomeworkFacade;
     @Mock
     private OperationLogService operationLogService;
     @Mock
@@ -69,7 +70,7 @@ class OrderSyncPersistenceInstituteSettlementTest {
                 orderSyncDedupClaimMapper,
                 pickSourceMappingService,
                 merchantService,
-                sampleLifecycleService,
+                sampleHomeworkFacade,
                 operationLogService,
                 userDomainFacade,
                 new OrderAmountMappingRouter(properties),

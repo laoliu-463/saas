@@ -1,6 +1,8 @@
 package com.colonel.saas.domain.performance.application;
 
 import com.colonel.saas.domain.performance.policy.PerformanceAccessContext;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.dto.performance.PerformanceSummaryQuery;
 import com.colonel.saas.dto.performance.PerformanceSummaryResponse;
 import com.colonel.saas.dto.performance.PerformanceTrackSummaryDTO;
@@ -39,7 +41,9 @@ class PerformanceSummaryApplicationServiceTest {
 
     @BeforeEach
     void setUp() {
-        applicationService = new PerformanceSummaryApplicationService(jdbcTemplate);
+        applicationService = new PerformanceSummaryApplicationService(
+                jdbcTemplate,
+                new CurrentUserPermissionChecker(new CurrentUserPermissionPolicy()));
     }
 
     private PerformanceAccessContext personalStaffScope(UUID userId) {

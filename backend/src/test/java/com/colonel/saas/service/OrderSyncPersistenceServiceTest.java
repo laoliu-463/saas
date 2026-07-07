@@ -6,6 +6,7 @@ import com.colonel.saas.domain.order.event.InProcessOrderDomainEventPublisher;
 import com.colonel.saas.domain.order.event.OrderDomainEventPublisher;
 import com.colonel.saas.domain.order.event.OrderEventPayloadMapper;
 import com.colonel.saas.domain.order.event.OrderStatusChangedEvent;
+import com.colonel.saas.domain.sample.facade.SampleHomeworkFacade;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.event.OrderSyncedEvent;
@@ -49,7 +50,7 @@ class OrderSyncPersistenceServiceTest {
     @Mock
     private MerchantService merchantService;
     @Mock
-    private SampleLifecycleService sampleLifecycleService;
+    private SampleHomeworkFacade sampleHomeworkFacade;
     @Mock
     private OperationLogService operationLogService;
     @Mock
@@ -79,7 +80,7 @@ class OrderSyncPersistenceServiceTest {
                 orderSyncDedupClaimMapper,
                 pickSourceMappingService,
                 merchantService,
-                sampleLifecycleService,
+                sampleHomeworkFacade,
                 operationLogService,
                 userDomainFacade,
                 orderAmountMappingRouter,
@@ -101,7 +102,7 @@ class OrderSyncPersistenceServiceTest {
         assertThat(result).isTrue();
         verify(pickSourceMappingService).ensureFromOrder(order);
         verify(merchantService).ensureMerchantFromOrder(order);
-        verify(sampleLifecycleService).completePendingHomeworkByOrder(order);
+        verify(sampleHomeworkFacade).completePendingHomeworkByOrder(order);
     }
 
     @Test
@@ -229,7 +230,7 @@ class OrderSyncPersistenceServiceTest {
         verify(orderMapper).updateSyncedById(order);
         verify(pickSourceMappingService).ensureFromOrder(order);
         verify(merchantService).ensureMerchantFromOrder(order);
-        verify(sampleLifecycleService).completePendingHomeworkByOrder(order);
+        verify(sampleHomeworkFacade).completePendingHomeworkByOrder(order);
     }
 
     @Test
@@ -250,7 +251,7 @@ class OrderSyncPersistenceServiceTest {
         verify(orderMapper, never()).insertIgnoreByOrderId(any());
         verify(pickSourceMappingService).ensureFromOrder(order);
         verify(merchantService).ensureMerchantFromOrder(order);
-        verify(sampleLifecycleService).completePendingHomeworkByOrder(order);
+        verify(sampleHomeworkFacade).completePendingHomeworkByOrder(order);
     }
 
     @Test
@@ -336,7 +337,7 @@ class OrderSyncPersistenceServiceTest {
 
         verify(pickSourceMappingService).ensureFromOrder(order);
         verify(merchantService).ensureMerchantFromOrder(order);
-        verify(sampleLifecycleService, never()).completePendingHomeworkByOrder(order);
+        verify(sampleHomeworkFacade, never()).completePendingHomeworkByOrder(order);
     }
 
     @Test
@@ -379,7 +380,7 @@ class OrderSyncPersistenceServiceTest {
         verify(orderMapper, never()).updateSyncedById(any());
         verifyNoInteractions(pickSourceMappingService);
         verifyNoInteractions(merchantService);
-        verifyNoInteractions(sampleLifecycleService);
+        verifyNoInteractions(sampleHomeworkFacade);
         verifyNoInteractions(eventPublisher);
     }
 

@@ -7,11 +7,18 @@ import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.douyin.DouyinApiException;
 import com.colonel.saas.douyin.DouyinTokenService;
-import com.colonel.saas.gateway.douyin.DouyinActivityGateway;
-import com.colonel.saas.gateway.douyin.DouyinOrderGateway;
-import com.colonel.saas.gateway.douyin.DouyinProductGateway;
-import com.colonel.saas.gateway.douyin.DouyinPromotionGateway;
-import com.colonel.saas.gateway.douyin.DouyinTokenGateway;
+import com.colonel.saas.domain.shared.application.DouyinActivityDiagnosticService;
+import com.colonel.saas.domain.shared.application.DouyinOrderDiagnosticQueryService;
+import com.colonel.saas.domain.shared.application.DouyinPromotionDiagnosticQueryService;
+import com.colonel.saas.domain.shared.application.DouyinProductDiagnosticQueryService;
+import com.colonel.saas.domain.shared.application.DouyinTokenDiagnosticQueryService;
+import com.colonel.saas.domain.shared.application.dto.DouyinActivityListProbeQuery;
+import com.colonel.saas.domain.shared.application.dto.DouyinActivityMutateProbeCommand;
+import com.colonel.saas.domain.shared.application.dto.DouyinActivityProductProbeQuery;
+import com.colonel.saas.domain.shared.application.dto.DouyinOrderRawProbeQuery;
+import com.colonel.saas.domain.shared.application.dto.DouyinPromotionRawProbeCommand;
+import com.colonel.saas.domain.shared.application.dto.DouyinTokenCreateProbeCommand;
+import com.colonel.saas.domain.shared.application.dto.DouyinTokenCreateProbeResult;
 import com.colonel.saas.service.DouyinWebhookEventService;
 import com.colonel.saas.service.OrderSyncPersistenceService;
 import com.colonel.saas.service.settlement.SettlementOrderGateway;
@@ -64,11 +71,11 @@ import java.util.stream.Collectors;
  *
  * <p>本控制器为联调调试用途，端点返回结构包含上游原始响应，不适合直接用于生产前端。</p>
  *
- * @see DouyinActivityGateway
- * @see DouyinProductGateway
- * @see DouyinOrderGateway
- * @see DouyinPromotionGateway
- * @see DouyinTokenGateway
+ * @see DouyinActivityDiagnosticService
+ * @see DouyinProductDiagnosticQueryService
+ * @see DouyinOrderDiagnosticQueryService
+ * @see DouyinPromotionDiagnosticQueryService
+ * @see DouyinTokenDiagnosticQueryService
  * @see DouyinTokenService
  * @see DouyinWebhookEventService
  */
@@ -81,18 +88,18 @@ import java.util.stream.Collectors;
 @SecurityRequirement(name = "bearerAuth")
 public class DouyinController extends BaseController {
 
-    /** 抖音活动网关，负责活动 CRUD 与商品取消操作 */
-    private final DouyinActivityGateway douyinActivityGateway;
-    /** 抖音商品网关，负责活动商品查询与 SKU 查询 */
-    private final DouyinProductGateway douyinProductGateway;
-    /** 抖音订单网关，负责结算订单查询 */
-    private final DouyinOrderGateway douyinOrderGateway;
+    /** 抖音活动联调诊断服务 */
+    private final DouyinActivityDiagnosticService douyinActivityDiagnosticService;
+    /** 抖音商品联调诊断查询服务 */
+    private final DouyinProductDiagnosticQueryService douyinProductDiagnosticQueryService;
+    /** 抖音订单联调诊断查询服务 */
+    private final DouyinOrderDiagnosticQueryService douyinOrderDiagnosticQueryService;
     /** 1603 结算口径网关，负责默认结算 probe */
     private final SettlementOrderGateway instituteSettlementGateway;
-    /** 抖音推广网关，负责推广链接转换与 RAW 探针 */
-    private final DouyinPromotionGateway douyinPromotionGateway;
-    /** 抖音 Token 网关，负责机构信息查询与 Token 创建探针 */
-    private final DouyinTokenGateway douyinTokenGateway;
+    /** 抖音推广联调诊断查询服务 */
+    private final DouyinPromotionDiagnosticQueryService douyinPromotionDiagnosticQueryService;
+    /** 抖音 Token 联调诊断查询服务 */
+    private final DouyinTokenDiagnosticQueryService douyinTokenDiagnosticQueryService;
     /** 抖音 Token 服务，负责 Token 缓存管理、刷新与初始化 */
     private final DouyinTokenService douyinTokenService;
     /** Webhook 事件服务，负责事件重放与补偿消费 */
@@ -101,29 +108,29 @@ public class DouyinController extends BaseController {
     /**
      * 构造注入.
      *
-     * @param douyinActivityGateway   抖音活动网关
-     * @param douyinProductGateway    抖音商品网关
-     * @param douyinOrderGateway      抖音订单网关
-     * @param douyinPromotionGateway  抖音推广网关
-     * @param douyinTokenGateway      抖音 Token 网关
+     * @param douyinActivityDiagnosticService 抖音活动联调诊断服务
+     * @param douyinProductDiagnosticQueryService 抖音商品联调诊断查询服务
+     * @param douyinOrderDiagnosticQueryService 抖音订单联调诊断查询服务
+     * @param douyinPromotionDiagnosticQueryService 抖音推广联调诊断查询服务
+     * @param douyinTokenDiagnosticQueryService 抖音 Token 联调诊断查询服务
      * @param douyinTokenService      抖音 Token 服务
      * @param douyinWebhookEventService Webhook 事件服务
      */
     public DouyinController(
-            DouyinActivityGateway douyinActivityGateway,
-            DouyinProductGateway douyinProductGateway,
-            DouyinOrderGateway douyinOrderGateway,
+            DouyinActivityDiagnosticService douyinActivityDiagnosticService,
+            DouyinProductDiagnosticQueryService douyinProductDiagnosticQueryService,
+            DouyinOrderDiagnosticQueryService douyinOrderDiagnosticQueryService,
             @Qualifier("instituteOrderColonelSettlementGateway") SettlementOrderGateway instituteSettlementGateway,
-            DouyinPromotionGateway douyinPromotionGateway,
-            DouyinTokenGateway douyinTokenGateway,
+            DouyinPromotionDiagnosticQueryService douyinPromotionDiagnosticQueryService,
+            DouyinTokenDiagnosticQueryService douyinTokenDiagnosticQueryService,
             DouyinTokenService douyinTokenService,
             DouyinWebhookEventService douyinWebhookEventService) {
-        this.douyinActivityGateway = douyinActivityGateway;
-        this.douyinProductGateway = douyinProductGateway;
-        this.douyinOrderGateway = douyinOrderGateway;
+        this.douyinActivityDiagnosticService = douyinActivityDiagnosticService;
+        this.douyinProductDiagnosticQueryService = douyinProductDiagnosticQueryService;
+        this.douyinOrderDiagnosticQueryService = douyinOrderDiagnosticQueryService;
         this.instituteSettlementGateway = instituteSettlementGateway;
-        this.douyinPromotionGateway = douyinPromotionGateway;
-        this.douyinTokenGateway = douyinTokenGateway;
+        this.douyinPromotionDiagnosticQueryService = douyinPromotionDiagnosticQueryService;
+        this.douyinTokenDiagnosticQueryService = douyinTokenDiagnosticQueryService;
         this.douyinTokenService = douyinTokenService;
         this.douyinWebhookEventService = douyinWebhookEventService;
     }
@@ -167,10 +174,8 @@ public class DouyinController extends BaseController {
         result.put("endpoint", "alliance.instituteColonelActivityList");
         result.put("appId", appId);
         try {
-            DouyinActivityGateway.ActivityListResult gatewayResult = douyinActivityGateway.listActivities(
-                    new DouyinActivityGateway.ActivityListQuery(appId, 0, 0L, 1L, 1L, 20L, null)
-            );
-            result.put("remoteResponse", gatewayResult.toMap());
+            result.put("remoteResponse", douyinActivityDiagnosticService.listActivities(
+                    new DouyinActivityListProbeQuery(appId, 0, 0L, 1L, 1L, 20L, null)));
             result.put("status", "success");
         } catch (DouyinApiException | BusinessException | IllegalArgumentException | IllegalStateException e) {
             log.error("Douyin activity test call failed", e);
@@ -200,7 +205,7 @@ public class DouyinController extends BaseController {
         result.put("appId", appId);
         result.put("activityId", activityId);
         try {
-            result.put("remoteResponse", douyinActivityGateway.activityDetail(appId, activityId));
+            result.put("remoteResponse", douyinActivityDiagnosticService.activityDetail(appId, activityId));
             result.put("status", "success");
         } catch (DouyinApiException | BusinessException | IllegalArgumentException | IllegalStateException e) {
             log.error("Douyin activity detail call failed", e);
@@ -240,10 +245,8 @@ public class DouyinController extends BaseController {
         result.put("endpoint", "alliance.instituteColonelActivityList");
         result.put("appId", appId);
         try {
-            DouyinActivityGateway.ActivityListResult gatewayResult = douyinActivityGateway.listActivities(
-                    new DouyinActivityGateway.ActivityListQuery(appId, status, searchType, sortType, page, pageSize, activityInfo)
-            );
-            result.put("remoteResponse", gatewayResult.toMap());
+            result.put("remoteResponse", douyinActivityDiagnosticService.listActivities(
+                    new DouyinActivityListProbeQuery(appId, status, searchType, sortType, page, pageSize, activityInfo)));
             result.put("status", "success");
         } catch (DouyinApiException | BusinessException | IllegalArgumentException | IllegalStateException e) {
             log.error("Douyin product activities test call failed", e);
@@ -278,23 +281,8 @@ public class DouyinController extends BaseController {
         result.put("appId", appId);
         result.put("activityId", activityId);
         try {
-            DouyinProductGateway.ActivityProductListResult gatewayResult = douyinProductGateway.queryActivityProducts(
-                    new DouyinProductGateway.ActivityProductQueryRequest(
-                            appId,
-                            activityId,
-                            4L,
-                            1L,
-                            count,
-                            null,
-                            null,
-                            null,
-                            null,
-                            1L,
-                            cursor,
-                            null
-                    )
-            );
-            result.put("remoteResponse", gatewayResult.toMap());
+            result.put("remoteResponse", douyinProductDiagnosticQueryService.activityProducts(
+                    new DouyinActivityProductProbeQuery(appId, activityId, count, cursor)));
             result.put("status", "success");
         } catch (DouyinApiException | BusinessException | IllegalArgumentException | IllegalStateException e) {
             log.error("Douyin products by activity test call failed", e);
@@ -395,7 +383,7 @@ public class DouyinController extends BaseController {
         try {
             Map<String, Object> payload = request.toPayload();
             result.put("payload", payload);
-            result.put("remoteResponse", douyinActivityGateway.cancelActivityProduct(request.getAppId(), payload));
+            result.put("remoteResponse", douyinActivityDiagnosticService.cancelActivityProduct(request.getAppId(), payload));
             result.put("status", "success");
         } catch (DouyinApiException | BusinessException | IllegalArgumentException | IllegalStateException e) {
             log.error("Douyin activity product cancel call failed", e);
@@ -425,7 +413,7 @@ public class DouyinController extends BaseController {
             String appId = appIdValue == null ? null : String.valueOf(appIdValue).trim();
             result.put("appId", appId);
             result.put("payload", payload);
-            result.put("remoteResponse", douyinActivityGateway.cancelActivityProduct(appId, payload));
+            result.put("remoteResponse", douyinActivityDiagnosticService.cancelActivityProduct(appId, payload));
             result.put("status", "success");
         } catch (DouyinApiException | BusinessException | IllegalArgumentException | IllegalStateException e) {
             log.error("Douyin activity product cancel raw call failed", e);
@@ -468,11 +456,12 @@ public class DouyinController extends BaseController {
                     throw new IllegalArgumentException("product_id is required for buyin.productSkus.v2");
                 }
                 result.put("remoteResponse", Map.of(
-                        "data", Map.of("skus", douyinProductGateway.queryProductSkus(productId))
+                        "data", Map.of("skus", douyinProductDiagnosticQueryService.productSkus(productId))
                 ));
                 result.put("status", "success");
             } else {
-                result.put("remoteResponse", douyinPromotionGateway.rawUpstreamPost(appId, method, payload));
+                result.put("remoteResponse", douyinPromotionDiagnosticQueryService.rawUpstreamPost(
+                        new DouyinPromotionRawProbeCommand(appId, method, payload)));
                 result.put("status", "success");
             }
         } catch (DouyinApiException | BusinessException | IllegalArgumentException | IllegalStateException e) {
@@ -506,14 +495,12 @@ public class DouyinController extends BaseController {
             int count = request.get("count") instanceof Number number ? number.intValue() : 20;
             result.put("appId", appId);
             result.put("payload", request);
-            result.put("remoteResponse", douyinOrderGateway.listInstituteOrders(
-                    new DouyinOrderGateway.DouyinOrderQueryRequest(
+            result.put("remoteResponse", douyinOrderDiagnosticQueryService.instituteOrdersRawResponse(
+                    new DouyinOrderRawProbeQuery(
                             parseFlexibleEpoch(startRaw, "start_time"),
                             parseFlexibleEpoch(endRaw, "end_time"),
                             count,
-                            cursor
-                    )
-            ).rawResponse());
+                            cursor)));
             result.put("status", "success");
         } catch (DouyinApiException | BusinessException | IllegalArgumentException | IllegalStateException e) {
             log.error("Douyin order sync raw probe failed", e);
@@ -532,7 +519,7 @@ public class DouyinController extends BaseController {
                     content = @Content(examples = @ExampleObject(value = "{\"appId\":\"test-app\",\"applicationLimited\":false,\"activityName\":\"测试活动\",\"activityDesc\":\"联调用活动\",\"applyStartTime\":\"2026-04-28 10:00:00\",\"applyEndTime\":\"2026-04-29 10:00:00\",\"commissionRate\":\"10\",\"serviceRate\":\"5\",\"estimatedSingleSale\":\"1000\",\"activityType\":1,\"online\":true}"))
             )
             @Valid @RequestBody ActivityCreateOrUpdateRequest request) {
-        return ok(douyinActivityGateway.createOrUpdateActivity(buildActivityMutateCommand(request, request.getActivityId())));
+        return ok(douyinActivityDiagnosticService.createOrUpdateActivity(buildActivityMutateCommand(request, request.getActivityId())));
     }
 
     @Operation(summary = "[联调] 更新活动", description = "验证上游 alliance.colonelActivityCreateOrUpdate 更新团长活动能力。")
@@ -546,7 +533,7 @@ public class DouyinController extends BaseController {
                     content = @Content(examples = @ExampleObject(value = "{\"appId\":\"test-app\",\"applicationLimited\":false,\"activityName\":\"测试活动-更新\",\"activityDesc\":\"联调用活动\",\"applyStartTime\":\"2026-04-28 10:00:00\",\"applyEndTime\":\"2026-04-29 10:00:00\",\"commissionRate\":\"10\",\"serviceRate\":\"5\",\"estimatedSingleSale\":\"1000\",\"activityType\":1,\"online\":true}"))
             )
             @Valid @RequestBody ActivityCreateOrUpdateRequest request) {
-        return ok(douyinActivityGateway.createOrUpdateActivity(buildActivityMutateCommand(request, activityId)));
+        return ok(douyinActivityDiagnosticService.createOrUpdateActivity(buildActivityMutateCommand(request, activityId)));
     }
 
     @Operation(summary = "[联调] 查询 Token 状态", description = "查看当前 appId 的 Token 缓存状态，用于确认真实联调前授权是否准备完毕。")
@@ -576,7 +563,7 @@ public class DouyinController extends BaseController {
         result.put("endpoint", "buyin.institutionInfo");
         result.put("appId", appId);
         try {
-            result.put("remoteResponse", douyinTokenGateway.institutionInfo(appId));
+            result.put("remoteResponse", douyinTokenDiagnosticQueryService.institutionInfo(appId));
             result.put("status", "success");
         } catch (DouyinApiException | BusinessException | IllegalArgumentException | IllegalStateException e) {
             log.error("Douyin institution info call failed", e);
@@ -619,8 +606,8 @@ public class DouyinController extends BaseController {
                     content = @Content(examples = @ExampleObject(value = "{\"appId\":\"7623665273727387199\",\"code\":\"达人或机构授权code\",\"grantType\":\"authorization_code\"}"))
             )
             @Valid @RequestBody TokenCreateRequest request) {
-        DouyinTokenGateway.ProbeTokenCreateResult probe = douyinTokenGateway.probeCreateToken(
-                new DouyinTokenGateway.TokenCreateCommand(
+        DouyinTokenCreateProbeResult probe = douyinTokenDiagnosticQueryService.probeCreateToken(
+                new DouyinTokenCreateProbeCommand(
                         request.getCode(),
                         request.getGrantType(),
                         request.getTestShop(),
@@ -646,10 +633,10 @@ public class DouyinController extends BaseController {
         return ok(result);
     }
 
-    private DouyinActivityGateway.ActivityMutateCommand buildActivityMutateCommand(
+    private DouyinActivityMutateProbeCommand buildActivityMutateCommand(
             ActivityCreateOrUpdateRequest request,
             Long activityId) {
-        return new DouyinActivityGateway.ActivityMutateCommand(
+        return new DouyinActivityMutateProbeCommand(
                 request.getAppId(),
                 activityId,
                 request.getApplicationLimited(),

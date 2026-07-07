@@ -6,7 +6,7 @@ import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.common.result.PageResult;
 import com.colonel.saas.constant.RoleCodes;
-import com.colonel.saas.gateway.douyin.DouyinActivityGateway;
+import com.colonel.saas.domain.colonel.application.ColonelActivityDetailQueryService;
 import com.colonel.saas.entity.ColonelsettlementActivity;
 import com.colonel.saas.service.ColonelsettlementActivityService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -38,7 +38,7 @@ import java.util.Map;
  * <p>访问权限：业务负责人、渠道负责人、渠道专员、团长负责人</p>
  *
  * @see com.colonel.saas.service.ColonelsettlementActivityService
- * @see com.colonel.saas.gateway.douyin.DouyinActivityGateway
+ * @see ColonelActivityDetailQueryService
  */
 @Slf4j
 @Validated
@@ -51,20 +51,20 @@ public class ColonelsettlementActivityController extends BaseController {
     /** 活动服务，负责本地活动数据的查询与管理 */
     private final ColonelsettlementActivityService activityService;
 
-    /** 抖音活动网关，负责调用抖音开放平台活动相关接口 */
-    private final DouyinActivityGateway douyinActivityGateway;
+    /** 团长活动详情查询应用服务。 */
+    private final ColonelActivityDetailQueryService activityDetailQueryService;
 
     /**
-     * 构造函数，注入活动服务与抖音活动网关依赖
+     * 构造函数，注入活动服务与活动详情查询服务。
      *
      * @param activityService      活动服务实例
-     * @param douyinActivityGateway 抖音活动网关实例
+     * @param activityDetailQueryService 活动详情查询服务
      */
     public ColonelsettlementActivityController(
             ColonelsettlementActivityService activityService,
-            DouyinActivityGateway douyinActivityGateway) {
+            ColonelActivityDetailQueryService activityDetailQueryService) {
         this.activityService = activityService;
-        this.douyinActivityGateway = douyinActivityGateway;
+        this.activityDetailQueryService = activityDetailQueryService;
     }
 
     /**
@@ -119,8 +119,7 @@ public class ColonelsettlementActivityController extends BaseController {
             @Parameter(description = "抖音应用 appId；不传则使用系统默认应用配置。") @RequestParam(required = false) String appId,
             @Parameter(description = "团长活动 ID。") @PathVariable String activityId) {
         log.info("Get colonel activity detail, activityId={}", activityId);
-        // 通过抖音活动网关调用远端接口获取活动详情
-        Map<String, Object> response = douyinActivityGateway.activityDetail(appId, activityId);
+        Map<String, Object> response = activityDetailQueryService.getDouyinDetail(appId, activityId);
         return ok(response);
     }
 }

@@ -10,21 +10,35 @@ import static org.assertj.core.api.Assertions.assertThat;
 class DddUserDataScopePolicyDataApplicationBoundaryTest {
 
     @Test
-    void dataApplication_shouldConsumeUserDomainDataScopePolicy() throws Exception {
+    void dataApplication_shouldConsumeUserDomainDataScopeResolver() throws Exception {
         String source = Files.readString(Path.of(
                 "src/main/java/com/colonel/saas/service/data/DataApplicationService.java"));
 
         assertThat(source)
-                .contains("DataScopePolicy")
+                .contains("DataScopeResolver")
                 .contains("DddRefactorProperties")
                 .contains("dddRefactorProperties.getDataScopePolicy().isEnabled()")
-                .contains("dataScopePolicy")
+                .contains("dataScopeResolver")
                 .contains("applyQueryDataScopeLegacy")
-                .contains("applyQueryDataScopeWithPolicy")
+                .contains("applyQueryDataScopeWithResolver")
                 .contains("applyLambdaDataScopeLegacy")
-                .contains("applyLambdaDataScopeWithPolicy")
+                .contains("applyLambdaDataScopeWithResolver")
                 .contains("requireDataScopeContextLegacy")
-                .contains("requireDataScopeContextWithPolicy")
+                .contains("requireDataScopeContextWithResolver")
+                .doesNotContain("import com.colonel.saas.domain.user.policy.DataScopePolicy;")
+                .doesNotContain("dataScopePolicy.")
                 .doesNotContain("switch (dataScope)");
+    }
+
+    @Test
+    void dataController_shouldInjectDataScopeResolverInsteadOfPolicy() throws Exception {
+        String source = Files.readString(Path.of(
+                "src/main/java/com/colonel/saas/controller/DataController.java"));
+
+        assertThat(source)
+                .contains("DataScopeResolver")
+                .contains("dataScopeResolver")
+                .doesNotContain("import com.colonel.saas.domain.user.policy.DataScopePolicy;")
+                .doesNotContain("DataScopePolicy dataScopePolicy");
     }
 }

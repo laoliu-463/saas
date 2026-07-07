@@ -5,6 +5,7 @@ import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.exception.ForbiddenException;
 import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.domain.user.policy.DataScopePolicy;
+import com.colonel.saas.domain.user.policy.DataScopeResolver;
 import com.colonel.saas.dto.order.OrderDetailResponse;
 import com.colonel.saas.service.AttributionService;
 import org.junit.jupiter.api.BeforeEach;
@@ -46,7 +47,7 @@ class OrderDetailQueryApplicationServiceTest {
     @BeforeEach
     void setUp() {
         applicationService = new OrderDetailQueryApplicationService(
-                jdbcTemplate, new DataScopePolicy(), new DddRefactorProperties());
+                jdbcTemplate, newDataScopeResolver(), new DddRefactorProperties());
     }
 
     @Test
@@ -62,9 +63,13 @@ class OrderDetailQueryApplicationServiceTest {
                 .contains("dddRefactorProperties.getDataScopePolicy().isEnabled()")
                 .contains("assertCanAccessLegacy")
                 .contains("assertCanAccessWithPolicy")
-                .contains("DataScopePolicy")
-                .contains("dataScopePolicy.contextRequirement")
-                .contains("dataScopePolicy.decide");
+                .contains("DataScopeResolver")
+                .contains("dataScopeResolver.resolve")
+                .contains("resolved.contextSatisfied()")
+                .contains("resolved.filtersUser()")
+                .contains("resolved.filtersDept()")
+                .doesNotContain("dataScopePolicy.contextRequirement")
+                .doesNotContain("dataScopePolicy.decide");
     }
 
     @Test
@@ -284,7 +289,7 @@ class OrderDetailQueryApplicationServiceTest {
         DddRefactorProperties properties = new DddRefactorProperties();
         properties.getDataScopePolicy().setEnabled(true);
         OrderDetailQueryApplicationService enabledApp = new OrderDetailQueryApplicationService(
-                jdbcTemplate, new DataScopePolicy(), properties);
+                jdbcTemplate, newDataScopeResolver(), properties);
         UUID orderUserId = UUID.randomUUID();
         UUID orderDeptId = UUID.randomUUID();
         when(jdbcTemplate.queryForList(anyString(), eq("policy-scoped-order")))
@@ -312,6 +317,10 @@ class OrderDetailQueryApplicationServiceTest {
                 orderUserId, null, DataScope.DEPT))
                 .isInstanceOf(ForbiddenException.class)
                 .hasMessageContaining("无权查看该订单详情");
+    }
+
+    private DataScopeResolver newDataScopeResolver() {
+        return new DataScopeResolver(new DataScopePolicy());
     }
 
     @Test

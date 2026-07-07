@@ -43,7 +43,7 @@ import com.colonel.saas.domain.talent.facade.TalentDomainFacade;
 import com.colonel.saas.domain.talent.facade.dto.TalentReadDTO;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.domain.user.facade.dto.UserOwnershipReference;
-import com.colonel.saas.domain.user.policy.DataScopePolicy;
+import com.colonel.saas.domain.user.policy.DataScopeResolver;
 import com.colonel.saas.service.CrawlerTalentInfoService;
 import com.colonel.saas.domain.config.facade.ConfigDomainFacade;
 import com.colonel.saas.service.ProductService;
@@ -245,8 +245,8 @@ public class SampleApplicationService extends BaseController {
     /** 寄样写操作事务服务，封装寄样相关的写操作事务边界，确保数据一致性 */
     private final SampleWriteTransactionService sampleWriteTransactionService;
 
-    /** 用户域数据范围策略，灰度开启后用于解释 PERSONAL / DEPT / ALL。 */
-    private final DataScopePolicy dataScopePolicy;
+    /** 用户域数据范围解析器，灰度开启后用于解释 PERSONAL / DEPT / ALL。 */
+    private final DataScopeResolver dataScopeResolver;
 
     /** DDD 重构灰度开关，默认关闭以保持 Legacy 行为。 */
     private final DddRefactorProperties dddRefactorProperties;
@@ -278,7 +278,7 @@ public class SampleApplicationService extends BaseController {
      * @param sampleLogisticsSubscriptionService  物流订阅服务
      * @param sampleDomainEventPublisher          寄样领域事件发布器
      * @param sampleWriteTransactionService       寄样写操作事务服务
-     * @param dataScopePolicy                     用户域数据范围策略
+     * @param dataScopeResolver                   用户域数据范围解析器
      * @param dddRefactorProperties               DDD 灰度开关配置
      */
     public SampleApplicationService(
@@ -298,7 +298,7 @@ public class SampleApplicationService extends BaseController {
             SampleLogisticsSubscriptionService sampleLogisticsSubscriptionService,
             SampleDomainEventPublisher sampleDomainEventPublisher,
             SampleWriteTransactionService sampleWriteTransactionService,
-            DataScopePolicy dataScopePolicy,
+            DataScopeResolver dataScopeResolver,
             DddRefactorProperties dddRefactorProperties) {
         this.sampleRequestMapper = sampleRequestMapper;
         this.productDomainFacade = productDomainFacade;
@@ -316,7 +316,7 @@ public class SampleApplicationService extends BaseController {
         this.sampleLogisticsSubscriptionService = sampleLogisticsSubscriptionService;
         this.sampleDomainEventPublisher = sampleDomainEventPublisher;
         this.sampleWriteTransactionService = sampleWriteTransactionService;
-        this.dataScopePolicy = dataScopePolicy;
+        this.dataScopeResolver = dataScopeResolver;
         this.dddRefactorProperties = dddRefactorProperties;
     }
 
@@ -582,15 +582,15 @@ public class SampleApplicationService extends BaseController {
         if (!sampleActionPermissionPolicy.isPlainBizStaff(roleCodes)) {
             return false;
         }
-        DataScopePolicy.ContextRequirement requirement =
-                dataScopePolicy.contextRequirement(userId, deptId, dataScope);
-        if (requirement == DataScopePolicy.ContextRequirement.MISSING_USER) {
+        DataScopeResolver.ResolvedDataScope resolved =
+                dataScopeResolver.resolve(userId, deptId, dataScope);
+        if (resolved.missingUser()) {
             return dataScope == DataScope.PERSONAL;
         }
-        if (requirement != DataScopePolicy.ContextRequirement.SATISFIED) {
+        if (!resolved.contextSatisfied()) {
             return false;
         }
-        return dataScopePolicy.decide(userId, deptId, dataScope) == DataScopePolicy.Decision.FILTER_USER;
+        return resolved.filtersUser();
     }
 
     /**
@@ -1923,16 +1923,15 @@ public class SampleApplicationService extends BaseController {
             UUID currentUserId,
             UUID currentDeptId,
             DataScope dataScope) {
-        DataScopePolicy.ContextRequirement requirement =
-                dataScopePolicy.contextRequirement(currentUserId, currentDeptId, dataScope);
-        if (requirement != DataScopePolicy.ContextRequirement.SATISFIED) {
+        DataScopeResolver.ResolvedDataScope resolved =
+                dataScopeResolver.resolve(currentUserId, currentDeptId, dataScope);
+        if (!resolved.contextSatisfied()) {
             return false;
         }
-        DataScopePolicy.Decision decision = dataScopePolicy.decide(currentUserId, currentDeptId, dataScope);
-        if (decision == DataScopePolicy.Decision.FILTER_USER) {
+        if (resolved.filtersUser()) {
             return currentUserId != null && currentUserId.equals(sample.getChannelUserId());
         }
-        if (decision == DataScopePolicy.Decision.FILTER_DEPT) {
+        if (resolved.filtersDept()) {
             UUID ownerDeptId = resolveSampleOwnerDeptId(sample);
             return currentDeptId != null && ownerDeptId != null && currentDeptId.equals(ownerDeptId);
         }

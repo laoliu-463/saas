@@ -10,7 +10,14 @@
 ### v0.7.5 — 2026-07-04
 - 新增 Apifox OpenAPI 同步红线：创建分支不等于导入成功，Open API import 必须显式指定 `APIFOX_BRANCH` 对应的 `targetBranchId`。
 - Evidence 必须记录 branch source、import target branch、target branch id、import API、endpoint/schema import counters 和 `endpoint list/get` 结果。
+- 新增开发入口门禁：云端导入前必须校验 `APIFOX_DEV_BASE_URL`、`APIFOX_DEV_PORT`、OpenAPI `servers`，可用时回读 Apifox environment Base URL。
+- 新增 `agent-do.ps1 -Scope apifox` 和 `scripts/verify-openapi-apifox.sh`，默认只做 local verification，不发布 docs-site/shared-doc。
 - 范围：OpenAPI/Apifox harness；不修改业务逻辑、API、schema、权限、状态机、金额、佣金、提成或归因规则。
+
+### v0.7.4 — 2026-07-04
+- 新增 DDD 收口聚合验收脚本：`harness/scripts/check-ddd-acceptance.ps1`，覆盖 dirty 分类、白名单 debt、证据矩阵、Maven 架构测试、通用安全检查和 latest report。
+- 新增 `docs/ddd-validation-guide.md`，说明 DDD 1.0 收口、七层验收、每轮 Codex 流程和 redline debt 逐步清零口径。
+- 范围：Harness/docs；不修改业务逻辑、API、schema、权限、状态机、金额、佣金、提成或归因规则。
 
 ### v0.7.3 — 2026-06-22
 - 新增 Jenkins real-pre CD 规范：固定 job、源码分支、Preflight、后端测试、前端构建、镜像标签、Compose 校验、real-pre 部署、健康检查、回滚和 evidence report。

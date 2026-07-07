@@ -1,5 +1,6 @@
 package com.colonel.saas.domain.user.facade;
 
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import org.junit.jupiter.api.Test;
 
@@ -35,7 +36,12 @@ class LegacyUserDomainFacadeBoundaryTest {
     @Test
     void facadeShouldPreserveCurrentUserPermissionPolicyRoleMatchingBehavior() {
         CurrentUserPermissionPolicy oracle = new CurrentUserPermissionPolicy();
-        LegacyUserDomainFacade facade = new LegacyUserDomainFacade(null, null, null, null, oracle);
+        LegacyUserDomainFacade facade = new LegacyUserDomainFacade(
+                null,
+                null,
+                null,
+                null,
+                new CurrentUserPermissionChecker(oracle));
         List<String> roleCodes = List.of(" ADMIN ", "biz_leader", "ADMIN");
         String rawRoleCodes = "[ ADMIN , biz_leader , ADMIN ]";
 

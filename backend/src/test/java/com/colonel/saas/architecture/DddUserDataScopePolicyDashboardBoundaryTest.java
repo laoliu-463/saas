@@ -10,19 +10,21 @@ import static org.assertj.core.api.Assertions.assertThat;
 class DddUserDataScopePolicyDashboardBoundaryTest {
 
     @Test
-    void dashboardService_shouldDelegateDataScopeDecisionToUserPolicy() throws Exception {
+    void dashboardService_shouldDelegateDataScopeDecisionToUserResolver() throws Exception {
         String source = Files.readString(Path.of(
                 "src/main/java/com/colonel/saas/service/DashboardService.java"));
 
         assertThat(source)
-                .contains("DataScopePolicy")
+                .contains("DataScopeResolver")
                 .contains("DddRefactorProperties")
                 .contains("dddRefactorProperties.getDataScopePolicy().isEnabled()")
-                .contains("dataScopePolicy")
+                .contains("dataScopeResolver")
                 .contains("appendScopeClauseLegacy")
-                .contains("appendScopeClauseWithPolicy")
+                .contains("appendScopeClauseWithResolver")
                 .contains("buildOrderVisibility")
                 .contains("buildOrderVisibilityLegacy")
+                .doesNotContain("import com.colonel.saas.domain.user.policy.DataScopePolicy;")
+                .doesNotContain("dataScopePolicy.")
                 .doesNotContain("switch (dataScope)");
     }
 }

@@ -9,6 +9,7 @@ import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.domain.performance.facade.OrderPerformanceQueryFacade;
+import com.colonel.saas.domain.performance.policy.PerformanceAccessContext;
 import com.colonel.saas.dto.performance.OrderPerformanceBatchResponse;
 import com.colonel.saas.dto.performance.OrderPerformanceDTO;
 import com.colonel.saas.entity.ColonelsettlementActivity;
@@ -21,6 +22,7 @@ import com.colonel.saas.domain.performance.facade.ExclusiveMerchantReadFacade;
 import com.colonel.saas.domain.talent.facade.ExclusiveTalentReadFacade;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.domain.user.policy.DataScopePolicy;
+import com.colonel.saas.domain.user.policy.DataScopeResolver;
 import com.colonel.saas.vo.data.OrderDetailVO;
 import com.colonel.saas.service.CommissionService;
 import com.colonel.saas.service.PerformanceMetricsQueryService;
@@ -100,7 +102,7 @@ class DataControllerTest {
                 performanceMetricsQueryService,
                 orderPerformanceQueryFacade,
                 userDomainFacade,
-                dataScopePolicy,
+                new DataScopeResolver(dataScopePolicy),
                 dddRefactorProperties,
                 jdbcTemplate
         );
@@ -432,6 +434,33 @@ class DataControllerTest {
         verify(dataScopePolicy, times(10)).contextRequirement(userId, deptId, DataScope.DEPT);
         verify(dataScopePolicy, times(10)).applyTo(
                 any(QueryWrapper.class), eq(userId), eq(deptId), eq(DataScope.DEPT), eq("user_id"), eq("dept_id"));
+    }
+
+    @Test
+    void getMetrics_withDataScopePolicyEnabled_allScopeShouldStayUnfiltered() {
+        dddRefactorProperties.getDataScopePolicy().setEnabled(true);
+        UUID userId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+        when(dataOrderQueryFacade.selectMaps(any(QueryWrapper.class)))
+                .thenReturn(List.of(Map.of("order_count", 0L, "order_amount_cent", 0L)))
+                .thenReturn(List.of())
+                .thenReturn(List.of());
+        when(commissionService.calculateByActivityBuckets(any())).thenReturn(
+                new CommissionService.CommissionSummary(0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L,
+                        java.math.BigDecimal.valueOf(0.5), java.math.BigDecimal.valueOf(0.25)));
+
+        var response = dataController.getMetrics(userId, deptId, DataScope.ALL);
+
+        assertThat(response.getCode()).isEqualTo(200);
+        ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
+        verify(dataOrderQueryFacade, times(10)).selectMaps(wrapperCaptor.capture());
+        assertThat(wrapperCaptor.getAllValues())
+                .allSatisfy(wrapper -> assertThat(wrapper.getSqlSegment())
+                        .doesNotContain("user_id")
+                        .doesNotContain("dept_id"));
+        verify(dataScopePolicy, times(10)).contextRequirement(userId, deptId, DataScope.ALL);
+        verify(dataScopePolicy, times(10)).applyTo(
+                any(QueryWrapper.class), eq(userId), eq(deptId), eq(DataScope.ALL), eq("user_id"), eq("dept_id"));
     }
 
     @Test
@@ -1271,6 +1300,52 @@ class DataControllerTest {
     }
 
     @Test
+    void backendCsvExports_shouldUseAttachmentHeadersUtf8BomAndStableHeaders() throws Exception {
+        Page<ColonelsettlementOrder> emptyOrders = new Page<>(1, 2000);
+        when(dataOrderQueryFacade.findPageWithScope(any(Page.class), any(QueryWrapper.class)))
+                .thenReturn(emptyOrders)
+                .thenReturn(emptyOrders);
+        when(productActivityReadFacade.selectExportPage(any(Long.class), any(Long.class), any(), any()))
+                .thenReturn(List.of());
+
+        MockHttpServletResponse ordersResponse = new MockHttpServletResponse();
+        dataController.exportOrders(
+                null, null, null, null,
+                null, null, null,
+                UUID.randomUUID(), UUID.randomUUID(), DataScope.ALL,
+                ordersResponse);
+
+        MockHttpServletResponse orderDetailResponse = new MockHttpServletResponse();
+        dataController.exportOrderDetail(
+                null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null,
+                null, null, UUID.randomUUID(), null, DataScope.ALL, orderDetailResponse);
+
+        MockHttpServletResponse activitiesResponse = new MockHttpServletResponse();
+        dataController.exportActivities(
+                null,
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                DataScope.ALL,
+                activitiesResponse);
+
+        assertThat(ordersResponse.getContentType()).isEqualTo("text/csv; charset=UTF-8");
+        assertThat(ordersResponse.getHeader("Content-Disposition")).isEqualTo("attachment; filename=\"orders.csv\"");
+        assertThat(ordersResponse.getContentAsString())
+                .startsWith("\ufeff订单号,商品名称,达人名称,金额,归因来源,状态,创建时间,结算时间");
+
+        assertThat(orderDetailResponse.getContentType()).isEqualTo("text/csv; charset=UTF-8");
+        assertThat(orderDetailResponse.getHeader("Content-Disposition")).isEqualTo("attachment; filename=\"order-detail.csv\"");
+        assertThat(orderDetailResponse.getContentAsString())
+                .startsWith("\ufeff订单ID,活动信息,商品信息,合作方信息,推广者,渠道,招商,订单状态,订单额,服务费收入,技术服务费,服务费支出,服务费收益,招商提成,渠道提成,毛利,订单时间");
+
+        assertThat(activitiesResponse.getContentType()).isEqualTo("text/csv; charset=UTF-8");
+        assertThat(activitiesResponse.getHeader("Content-Disposition")).isEqualTo("attachment; filename=\"activities.csv\"");
+        assertThat(activitiesResponse.getContentAsString())
+                .startsWith("\ufeff活动ID,活动名称,开始时间,结束时间,状态");
+    }
+
+    @Test
     void sensitiveDataEndpoints_shouldRequireAdminOrLeaderRoles() throws Exception {
         Method exportOrders = DataController.class.getDeclaredMethod(
                 "exportOrders",
@@ -1545,6 +1620,118 @@ class DataControllerTest {
         assertThat(content).contains("订单ID,活动信息,商品信息,合作方信息,推广者,渠道,招商,订单状态,订单额,服务费收入,技术服务费,服务费支出,服务费收益,招商提成,渠道提成,毛利,订单时间");
         assertThat(content).contains("ORD_EXP");
         assertThat(content).contains("结算：-");
+    }
+
+    @Test
+    void exportOrderDetail_shouldUseScopedFactsAndReadFacadesForCsvReconciliation() throws Exception {
+        UUID userId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+        UUID talentId = UUID.randomUUID();
+        UUID channelUserId = UUID.randomUUID();
+        UUID recruiterUserId = UUID.randomUUID();
+        UUID recruiterDeptId = UUID.randomUUID();
+        UUID channelDeptId = UUID.randomUUID();
+
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setOrderId("ORD_A3");
+        order.setOrderStatus(3);
+        order.setOrderAmount(12345L);
+        order.setSettleAmount(12000L);
+        order.setEstimateServiceFee(1000L);
+        order.setEffectiveServiceFee(950L);
+        order.setEstimateTechServiceFee(200L);
+        order.setEffectiveTechServiceFee(180L);
+        order.setProductId("PROD-A3");
+        order.setProductTitle("导出商品A3");
+        order.setShopId(10086L);
+        order.setShopName("合作方A3");
+        order.setTalentId(talentId);
+        order.setTalentName("达人A3");
+        order.setActivityId("ACT-A3");
+        order.setOrderCreateTime(LocalDateTime.of(2026, 6, 1, 9, 30));
+        order.setPayTime(LocalDateTime.of(2026, 6, 1, 9, 40));
+        order.setSettleTime(LocalDateTime.of(2026, 6, 2, 10, 0));
+
+        Page<ColonelsettlementOrder> orderPage = new Page<>(1, 2000, 1);
+        orderPage.setRecords(List.of(order));
+        when(dataOrderQueryFacade.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(orderPage);
+
+        OrderPerformanceDTO perf = new OrderPerformanceDTO();
+        perf.setOrderId("ORD_A3");
+        perf.setFinalChannelId(channelUserId.toString());
+        perf.setFinalRecruiterId(recruiterUserId.toString());
+        perf.setEstimateServiceProfit(700L);
+        perf.setEffectiveServiceProfit(650L);
+        perf.setEstimateRecruiterCommission(110L);
+        perf.setEffectiveRecruiterCommission(100L);
+        perf.setEstimateChannelCommission(90L);
+        perf.setEffectiveChannelCommission(80L);
+        perf.setEstimateGrossProfit(500L);
+        perf.setEffectiveGrossProfit(470L);
+        perf.setIsValid(Boolean.TRUE);
+        OrderPerformanceBatchResponse perfResponse = new OrderPerformanceBatchResponse();
+        perfResponse.setItems(List.of(perf));
+        when(orderPerformanceQueryFacade.batchGetOrderPerformance(eq(List.of("ORD_A3")), any(PerformanceAccessContext.class)))
+                .thenReturn(perfResponse);
+
+        ColonelsettlementActivity activity = new ColonelsettlementActivity();
+        activity.setActivityId("ACT-A3");
+        activity.setName("活动A3");
+        when(productActivityReadFacade.selectNamesByActivityIds(eq(List.of("ACT-A3")))).thenReturn(List.of(activity));
+        when(userDomainFacade.loadUserDisplayNamesByIds(any()))
+                .thenReturn(Map.of(channelUserId, "渠道负责人A3", recruiterUserId, "招商负责人A3"));
+
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        dataController.exportOrderDetail(
+                "ORD_A3", "FINISHED", talentId, "merchant_10086",
+                "PROD-A3", "导出商品", "合作方", "达人A3",
+                "旧招商字段", "渠道负责人", "ACT-A3", "活动A3",
+                "10086", "合作方A3", "招商负责人", "MERCHANT",
+                LocalDate.of(2026, 6, 1), LocalDate.of(2026, 6, 30), "settleTime",
+                recruiterDeptId.toString(), channelDeptId.toString(),
+                userId, deptId, DataScope.DEPT, response);
+
+        ArgumentCaptor<Page> pageCaptor = ArgumentCaptor.forClass(Page.class);
+        ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
+        verify(dataOrderQueryFacade).findPageWithScope(pageCaptor.capture(), wrapperCaptor.capture());
+        assertThat(pageCaptor.getValue().getCurrent()).isEqualTo(1L);
+        assertThat(pageCaptor.getValue().getSize()).isEqualTo(2000L);
+        String segment = wrapperCaptor.getValue().getSqlSegment();
+        assertThat(segment)
+                .contains("co.settle_time")
+                .contains("co.order_id")
+                .contains("co.order_status")
+                .contains("co.product_id")
+                .contains("colonel_activity")
+                .contains("activity_name")
+                .contains("partner_name")
+                .contains("performance_records")
+                .contains("final_channel_user_id")
+                .contains("final_recruiter_user_id")
+                .contains("co.dept_id")
+                .contains("co.channel_dept_id");
+
+        ArgumentCaptor<PerformanceAccessContext> accessCaptor = ArgumentCaptor.forClass(PerformanceAccessContext.class);
+        verify(orderPerformanceQueryFacade).batchGetOrderPerformance(eq(List.of("ORD_A3")), accessCaptor.capture());
+        assertThat(accessCaptor.getValue().userId()).isEqualTo(userId);
+        assertThat(accessCaptor.getValue().deptId()).isEqualTo(deptId);
+        assertThat(accessCaptor.getValue().dataScope()).isEqualTo(DataScope.DEPT);
+        verify(productActivityReadFacade).selectNamesByActivityIds(eq(List.of("ACT-A3")));
+        verify(userDomainFacade).loadUserDisplayNamesByIds(org.mockito.ArgumentMatchers.argThat(ids ->
+                ids.contains(channelUserId) && ids.contains(recruiterUserId)));
+
+        String content = response.getContentAsString();
+        assertThat(content)
+                .contains("ORD_A3")
+                .contains("活动A3 / ID：ACT-A3")
+                .contains("导出商品A3 / ID：PROD-A3")
+                .contains("合作方A3 / ID：10086")
+                .contains("渠道负责人A3")
+                .contains("招商负责人A3")
+                .contains("支付：123.45；结算：120.00")
+                .contains("预估：10.00；结算：9.50")
+                .contains("预估：7.00；结算：6.50")
+                .contains("付款：2026-06-01 09:40；结算：2026-06-02 10:00；创建：2026-06-01 09:30");
     }
 
     @Test

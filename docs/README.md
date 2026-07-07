@@ -41,6 +41,7 @@
 | [12-项目记忆索引.md](12-项目记忆索引.md) | 本地项目记忆迁移索引和短事实入口 | V2 必做 |
 | [13-Claude项目记忆迁移索引.md](13-Claude项目记忆迁移索引.md) | Claude 本地项目记忆与归档快照迁移索引 | V2 必做 |
 | [14-Codex会话记忆迁移索引.md](14-Codex会话记忆迁移索引.md) | Codex 本地 SAAS 相关会话索引与导入边界 | V2 必做 |
+| [ddd-validation-guide.md](ddd-validation-guide.md) | DDD 收口验收脚本、矩阵证据和白名单 debt 口径 | V2 必做 |
 
 ## 兼容入口
 

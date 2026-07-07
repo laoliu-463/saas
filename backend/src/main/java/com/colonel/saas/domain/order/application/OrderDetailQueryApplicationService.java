@@ -4,7 +4,7 @@ import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.exception.ForbiddenException;
 import com.colonel.saas.config.DddRefactorProperties;
-import com.colonel.saas.domain.user.policy.DataScopePolicy;
+import com.colonel.saas.domain.user.policy.DataScopeResolver;
 import com.colonel.saas.dto.order.OrderDetailResponse;
 import com.colonel.saas.service.AttributionService;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -31,7 +31,7 @@ import java.util.UUID;
  * <p>依赖：
  * <ul>
  *   <li>{@link JdbcTemplate} —— 多表 JOIN 原始 SQL</li>
- *   <li>{@link DataScopePolicy} —— 数据范围策略（灰度切换）</li>
+ *   <li>{@link DataScopeResolver} —— 数据范围策略（灰度切换）</li>
  *   <li>{@link DddRefactorProperties} —— DataScopePolicy 开关</li>
  * </ul>
  */
@@ -39,15 +39,15 @@ import java.util.UUID;
 public class OrderDetailQueryApplicationService {
 
     private final JdbcTemplate jdbcTemplate;
-    private final DataScopePolicy dataScopePolicy;
+    private final DataScopeResolver dataScopeResolver;
     private final DddRefactorProperties dddRefactorProperties;
 
     public OrderDetailQueryApplicationService(
             JdbcTemplate jdbcTemplate,
-            DataScopePolicy dataScopePolicy,
+            DataScopeResolver dataScopeResolver,
             DddRefactorProperties dddRefactorProperties) {
         this.jdbcTemplate = jdbcTemplate;
-        this.dataScopePolicy = dataScopePolicy;
+        this.dataScopeResolver = dataScopeResolver;
         this.dddRefactorProperties = dddRefactorProperties;
     }
 
@@ -225,33 +225,23 @@ public class OrderDetailQueryApplicationService {
     }
 
     void assertCanAccessWithPolicy(Map<String, Object> row, UUID currentUserId, UUID currentDeptId, DataScope dataScope) {
-        DataScopePolicy.ContextRequirement requirement =
-                dataScopePolicy.contextRequirement(currentUserId, currentDeptId, dataScope);
-        if (requirement != DataScopePolicy.ContextRequirement.SATISFIED) {
+        DataScopeResolver.ResolvedDataScope resolved =
+                dataScopeResolver.resolve(currentUserId, currentDeptId, dataScope);
+        if (!resolved.contextSatisfied()) {
             throw new ForbiddenException("无权查看该订单详情");
         }
 
-        DataScopePolicy.Decision decision = dataScopePolicy.decide(currentUserId, currentDeptId, dataScope);
-        if (decision == DataScopePolicy.Decision.NO_FILTER) {
+        if (resolved.noFilter()) {
             return;
         }
 
         UUID orderUserId = uuidValue(asText(row.get("order_user_id")));
         UUID orderDeptId = uuidValue(asText(row.get("order_dept_id")));
-        switch (decision) {
-            case FILTER_USER -> {
-                if (!currentUserId.equals(orderUserId)) {
-                    throw new ForbiddenException("无权查看该订单详情");
-                }
-            }
-            case FILTER_DEPT -> {
-                if (!currentDeptId.equals(orderDeptId)) {
-                    throw new ForbiddenException("无权查看该订单详情");
-                }
-            }
-            case NO_FILTER -> {
-                // handled above
-            }
+        if (resolved.filtersUser() && !currentUserId.equals(orderUserId)) {
+            throw new ForbiddenException("无权查看该订单详情");
+        }
+        if (resolved.filtersDept() && !currentDeptId.equals(orderDeptId)) {
+            throw new ForbiddenException("无权查看该订单详情");
         }
     }
 

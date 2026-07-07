@@ -14,11 +14,10 @@ class SwaggerConfigTest {
     private final SwaggerConfig config = new SwaggerConfig();
 
     @Test
-    void swaggerConfig_shouldLoadOnlyInTestProfile() {
+    void swaggerConfig_shouldBeProfileNeutral() {
         Profile profile = SwaggerConfig.class.getAnnotation(Profile.class);
 
-        assertThat(profile).isNotNull();
-        assertThat(profile.value()).containsExactly("test");
+        assertThat(profile).isNull();
     }
 
     @Test
@@ -26,7 +25,7 @@ class SwaggerConfigTest {
         OpenAPI openAPI = config.openAPI();
 
         assertThat(openAPI.getInfo().getTitle()).isEqualTo("抖音团长 SaaS API");
-        assertThat(openAPI.getInfo().getVersion()).isEqualTo("2.2.0");
+        assertThat(openAPI.getInfo().getVersion()).isEqualTo("1.0.0");
         assertThat(openAPI.getComponents().getSecuritySchemes())
                 .containsKey("bearerAuth");
         assertThat(openAPI.getSecurity()).singleElement()

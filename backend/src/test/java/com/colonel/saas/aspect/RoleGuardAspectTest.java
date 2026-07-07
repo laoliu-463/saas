@@ -3,6 +3,7 @@ package com.colonel.saas.aspect;
 import com.colonel.saas.annotation.RequireRoles;
 import com.colonel.saas.common.exception.ForbiddenException;
 import com.colonel.saas.constant.RoleCodes;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.reflect.MethodSignature;
@@ -23,7 +24,8 @@ import static org.mockito.Mockito.when;
 
 class RoleGuardAspectTest {
 
-    private final RoleGuardAspect aspect = new RoleGuardAspect(new CurrentUserPermissionPolicy());
+    private final RoleGuardAspect aspect = new RoleGuardAspect(
+            new CurrentUserPermissionChecker(new CurrentUserPermissionPolicy()));
 
     @AfterEach
     void tearDown() {
@@ -72,6 +74,14 @@ class RoleGuardAspectTest {
     @Test
     void shouldThrowForbiddenWhenNoRoleMatched() throws Throwable {
         bindRoleCodes(List.of(RoleCodes.CHANNEL_STAFF));
+        ProceedingJoinPoint point = mockJoinPoint(ProtectedController.class, "bizEndpoint");
+
+        assertThatThrownBy(() -> aspect.guard(point))
+                .isInstanceOf(ForbiddenException.class);
+    }
+
+    @Test
+    void shouldThrowForbiddenWhenRoleCodesMissing() throws Throwable {
         ProceedingJoinPoint point = mockJoinPoint(ProtectedController.class, "bizEndpoint");
 
         assertThatThrownBy(() -> aspect.guard(point))

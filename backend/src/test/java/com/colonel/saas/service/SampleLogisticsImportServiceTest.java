@@ -5,6 +5,7 @@ import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.exception.ForbiddenException;
 import com.colonel.saas.domain.sample.event.SampleDomainEventPublisher;
 import com.colonel.saas.domain.sample.policy.SampleActionPermissionPolicy;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.dto.sample.LogisticsImportResult;
 import com.colonel.saas.dto.sample.LogisticsImportRow;
@@ -51,7 +52,8 @@ class SampleLogisticsImportServiceTest {
                 sampleRequestMapper, sampleStatusLogService,
                 sampleDomainEventPublisher,
                 sampleLogisticsSubscriptionService,
-                new SampleActionPermissionPolicy(new CurrentUserPermissionPolicy()));
+                new SampleActionPermissionPolicy(
+                        new CurrentUserPermissionChecker(new CurrentUserPermissionPolicy())));
     }
 
     @Test

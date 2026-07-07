@@ -8,6 +8,7 @@ import com.colonel.saas.auth.service.OrgStructureService;
 import com.colonel.saas.auth.support.AuthTestFixtures;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.domain.user.policy.DataScopePolicy;
+import com.colonel.saas.domain.user.policy.DataScopeResolver;
 import com.colonel.saas.domain.user.port.UserQueryLookup;
 import com.colonel.saas.domain.user.port.UserQueryLookup.UserQueryFilter;
 import com.colonel.saas.vo.SysUserVO;
@@ -42,7 +43,7 @@ class SysUserQueryApplicationServiceTest {
         service = new SysUserQueryApplicationService(
                 userQueryLookup,
                 orgStructureService,
-                new DataScopePolicy());
+                new DataScopeResolver(new DataScopePolicy()));
     }
 
     @Test

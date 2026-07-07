@@ -15,6 +15,8 @@ import com.colonel.saas.service.PerformanceMonthRecalculationService;
 import com.colonel.saas.service.PerformanceQueryService;
 import com.colonel.saas.service.PerformanceSummaryService;
 import com.colonel.saas.domain.performance.policy.PerformanceAccessContext;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -55,7 +57,8 @@ class DddPerformance003RoutingTest {
                 monthRecalculationService,
                 operationLogService,
                 dddRefactorProperties,
-                performanceQueryFacade
+                performanceQueryFacade,
+                new CurrentUserPermissionChecker(new CurrentUserPermissionPolicy())
         );
     }
 

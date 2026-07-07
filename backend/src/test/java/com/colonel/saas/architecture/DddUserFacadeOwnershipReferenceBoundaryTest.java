@@ -27,15 +27,23 @@ class DddUserFacadeOwnershipReferenceBoundaryTest {
     }
 
     @Test
-    void talentRelease_shouldDelegateRoleMatchingToUserPermissionPolicy() throws Exception {
+    void talentRelease_shouldDelegateRoleMatchingToUserPermissionChecker() throws Exception {
         String talentService = Files.readString(Path.of(
                 "src/main/java/com/colonel/saas/service/TalentService.java"));
+        String talentClaimApplicationService = Files.readString(Path.of(
+                "src/main/java/com/colonel/saas/domain/talent/application/TalentClaimApplicationService.java"));
 
         assertThat(talentService)
                 .doesNotContain("private boolean hasRole")
                 .doesNotContain("String target = role")
                 .doesNotContain("roleCodes.stream()")
-                .contains("CurrentUserPermissionPolicy")
-                .contains("currentUserPermissionPolicy");
+                .contains("talentClaimApplicationService.release");
+        assertThat(talentClaimApplicationService)
+                .doesNotContain("import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;")
+                .doesNotContain("private final CurrentUserPermissionPolicy")
+                .doesNotContain("String target = role")
+                .doesNotContain("roleCodes.stream()")
+                .contains("CurrentUserPermissionChecker")
+                .contains("currentUserPermissionChecker.hasAnyRole");
     }
 }

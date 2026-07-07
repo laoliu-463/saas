@@ -16,6 +16,8 @@ import com.colonel.saas.service.PerformanceQueryService;
 import com.colonel.saas.service.PerformanceSummaryService;
 import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.domain.performance.facade.PerformanceQueryFacade;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -62,7 +64,8 @@ class PerformanceControllerTest {
                 monthRecalculationService,
                 operationLogService,
                 dddRefactorProperties,
-                performanceQueryFacade);
+                performanceQueryFacade,
+                new CurrentUserPermissionChecker(new CurrentUserPermissionPolicy()));
         org.mockito.Mockito.lenient().when(dddRefactorProperties.isEnabled()).thenReturn(false);
     }
 

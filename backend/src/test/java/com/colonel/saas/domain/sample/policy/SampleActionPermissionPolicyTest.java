@@ -2,6 +2,7 @@ package com.colonel.saas.domain.sample.policy;
 
 import com.colonel.saas.common.exception.ForbiddenException;
 import com.colonel.saas.constant.RoleCodes;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -18,7 +19,8 @@ class SampleActionPermissionPolicyTest {
 
     @BeforeEach
     void setUp() {
-        policy = new SampleActionPermissionPolicy(new CurrentUserPermissionPolicy());
+        policy = new SampleActionPermissionPolicy(
+                new CurrentUserPermissionChecker(new CurrentUserPermissionPolicy()));
     }
 
     @Test

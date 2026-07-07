@@ -3,6 +3,7 @@ package com.colonel.saas.service;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.domain.performance.application.PerformanceAggregateApplicationService;
+import com.colonel.saas.domain.user.policy.DataScopeResolver;
 import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -45,7 +46,7 @@ class PerformanceMetricsQueryServiceTest {
         // 全部下沉至 application 层；测试使用同一份 mock jdbcTemplate/dataScopePolicy，
         // 保证 service → application 委派调用链上 SQL 装配 / DataScopePolicy 行为可被验证。
         aggregateApplicationService = new PerformanceAggregateApplicationService(
-                jdbcTemplate, dataScopePolicy, dddRefactorProperties);
+                jdbcTemplate, new DataScopeResolver(dataScopePolicy), dddRefactorProperties);
         service = new PerformanceMetricsQueryService(
                 jdbcTemplate, aggregateApplicationService);
     }

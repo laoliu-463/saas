@@ -8,6 +8,7 @@ import com.colonel.saas.domain.product.facade.dto.ProductReadDTO;
 import com.colonel.saas.domain.product.facade.dto.ProductSnapshotReadDTO;
 import com.colonel.saas.domain.product.port.ProductSampleApplicationPort;
 import com.colonel.saas.domain.product.port.QuickSampleApplyPortResult;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.dto.product.QuickSampleApplyRequest;
 import com.colonel.saas.entity.Product;
@@ -65,7 +66,7 @@ class DddProduct003ProductRoutingTest {
                 false,
                 dddRefactorProperties,
                 productDomainFacade,
-                new CurrentUserPermissionPolicy()
+                new CurrentUserPermissionChecker(new CurrentUserPermissionPolicy())
         );
         lenient().when(douyinQuickSampleGateway.isSupported()).thenReturn(false);
         lenient().when(douyinQuickSampleGateway.supportStatus())
@@ -137,29 +138,49 @@ class DddProduct003ProductRoutingTest {
 
     @Test
     @DisplayName("快速寄样角色编码匹配委托用户域权限策略")
-    void productQuickSample_shouldDelegateRoleCodeMatchingToUserPolicy() throws Exception {
+    void productQuickSample_shouldDelegateRoleCodeMatchingToUserPermissionChecker() throws Exception {
         String source = readSource("com/colonel/saas/service/ProductQuickSampleService.java");
 
         assertThat(source)
                 .doesNotContain("private boolean hasAnyRole")
                 .doesNotContain("roleCodes.toString()")
                 .doesNotContain("roleCodes instanceof Collection")
-                .contains("CurrentUserPermissionPolicy")
-                .contains("currentUserPermissionPolicy.hasAnyRole");
+                .doesNotContain("import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;")
+                .doesNotContain("private final CurrentUserPermissionPolicy")
+                .doesNotContain("currentUserPermissionPolicy.hasAnyRole")
+                .contains("CurrentUserPermissionChecker")
+                .contains("currentUserPermissionChecker.hasAnyRole");
     }
 
     @Test
     @DisplayName("选品分页角色编码匹配委托用户域权限策略")
-    void productPickPage_shouldDelegateRoleCodeMatchingToUserPolicy() throws Exception {
+    void productPickPage_shouldDelegateRoleCodeMatchingToUserPermissionChecker() throws Exception {
         String source = readSource("com/colonel/saas/controller/ProductController.java");
 
         assertThat(source)
                 .doesNotContain("roleCodes.stream()")
                 .doesNotContain(".map(String::toLowerCase)")
                 .doesNotContain("normalized.contains(RoleCodes.ADMIN)")
-                .contains("CurrentUserPermissionPolicy")
-                .contains("currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.BIZ_STAFF)")
-                .contains("currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.BIZ_LEADER)");
+                .doesNotContain("import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;")
+                .doesNotContain("private final CurrentUserPermissionPolicy")
+                .doesNotContain("currentUserPermissionPolicy.hasAnyRole")
+                .contains("CurrentUserPermissionChecker")
+                .contains("currentUserPermissionChecker.hasAnyRole(roleCodes, RoleCodes.BIZ_STAFF)")
+                .contains("currentUserPermissionChecker.hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.BIZ_LEADER)");
+    }
+
+    @Test
+    @DisplayName("商品库分页入口路由到 product application query service")
+    void productLibraryPage_shouldRouteThroughApplicationQueryService() throws Exception {
+        String source = readSource("com/colonel/saas/controller/ProductController.java");
+
+        assertThat(source)
+                .contains("ProductLibraryPageQueryService")
+                .contains("ProductLibraryPageQuery")
+                .contains("productLibraryPageQueryService.getSelectedLibraryPage")
+                .contains("productLibraryPageQueryService.getSelectedLibraryCursorPage")
+                .doesNotContain("productService.getSelectedLibraryPage")
+                .doesNotContain("productService.getSelectedLibraryCursorPage");
     }
 
     private String readSource(String relativePath) throws Exception {

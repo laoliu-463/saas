@@ -71,12 +71,12 @@ function Assert-NoPlainSecrets {
             continue
         }
         $extension = [System.IO.Path]::GetExtension($file).ToLowerInvariant()
-        $isCodeFile = @('.ts', '.tsx', '.js', '.jsx', '.vue', '.java', '.kt', '.py').Contains($extension)
+        $isCodeFile = @('.ts', '.tsx', '.js', '.jsx', '.vue', '.java', '.kt', '.py', '.sh', '.ps1').Contains($extension)
         $hits = Select-String -LiteralPath $path -Pattern $pattern -ErrorAction SilentlyContinue
         foreach ($hit in $hits) {
             $line = $hit.Line
             $hasSkipKeyword = $false
-            $skipKeywords = @('REDACTED', 'placeholder', 'example', 'change-me')
+            $skipKeywords = @('REDACTED', 'placeholder', 'example', 'change-me', '__FILL_ME_')
             foreach ($kw in $skipKeywords) {
                 if ($line.Contains($kw)) {
                     $hasSkipKeyword = $true

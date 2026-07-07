@@ -148,10 +148,25 @@ class BusinessRuleConfigServiceTest {
 
     @Test
     void invalidate_shouldIgnoreBlankAndSupportAllLocalEviction() {
+        when(systemConfigMapper.findByConfigKey(SystemConfigKeys.TALENT_PROTECTION_DAYS))
+                .thenReturn(Optional.of(config("30")))
+                .thenReturn(Optional.of(config("45")));
+        when(systemConfigMapper.findByConfigKey(SystemConfigKeys.SAMPLE_RESTRICT_DAYS))
+                .thenReturn(Optional.of(config("7")))
+                .thenReturn(Optional.of(config("9")));
+
+        assertThat(service.getTalentProtectionDays()).isEqualTo(30);
+        assertThat(service.getSampleRestrictDays()).isEqualTo(7);
+        assertThat(service.getTalentProtectionDays()).isEqualTo(30);
+        assertThat(service.getSampleRestrictDays()).isEqualTo(7);
+
         service.invalidate(" ");
         service.invalidateAll();
 
-        assertThat(service.getTalentProtectionDays()).isEqualTo(30);
+        assertThat(service.getTalentProtectionDays()).isEqualTo(45);
+        assertThat(service.getSampleRestrictDays()).isEqualTo(9);
+        verify(systemConfigMapper, times(2)).findByConfigKey(SystemConfigKeys.TALENT_PROTECTION_DAYS);
+        verify(systemConfigMapper, times(2)).findByConfigKey(SystemConfigKeys.SAMPLE_RESTRICT_DAYS);
     }
 
     private SystemConfig config(String value) {

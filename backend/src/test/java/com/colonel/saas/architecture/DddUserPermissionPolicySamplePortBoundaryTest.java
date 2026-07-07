@@ -10,14 +10,31 @@ import static org.assertj.core.api.Assertions.assertThat;
 class DddUserPermissionPolicySamplePortBoundaryTest {
 
     @Test
-    void sampleApplicationPort_shouldDelegateRoleCodeMatchingToUserPolicy() throws Exception {
+    void sampleApplicationPort_shouldDelegateRoleCodeMatchingToUserPermissionChecker() throws Exception {
         String source = Files.readString(Path.of(
                 "src/main/java/com/colonel/saas/domain/sample/application/SampleApplicationPortImpl.java"));
 
         assertThat(source)
                 .doesNotContain("private boolean hasAnyRole")
-                .contains("CurrentUserPermissionPolicy")
-                .contains("currentUserPermissionPolicy.hasAnyRole");
+                .doesNotContain("import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;")
+                .doesNotContain("private final CurrentUserPermissionPolicy")
+                .doesNotContain("currentUserPermissionPolicy.hasAnyRole")
+                .contains("CurrentUserPermissionChecker")
+                .contains("currentUserPermissionChecker.hasAnyRole");
+    }
+
+    @Test
+    void sampleActionPermissionPolicy_shouldDelegateRoleCodeMatchingToUserPermissionChecker() throws Exception {
+        String source = Files.readString(Path.of(
+                "src/main/java/com/colonel/saas/domain/sample/policy/SampleActionPermissionPolicy.java"));
+
+        assertThat(source)
+                .doesNotContain("private boolean hasAnyRole")
+                .doesNotContain("import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;")
+                .doesNotContain("private final CurrentUserPermissionPolicy")
+                .doesNotContain("currentUserPermissionPolicy.hasAnyRole")
+                .contains("CurrentUserPermissionChecker")
+                .contains("currentUserPermissionChecker.hasAnyRole");
     }
 
     @Test

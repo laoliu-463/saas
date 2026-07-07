@@ -18,7 +18,9 @@ import com.colonel.saas.domain.sample.facade.SampleDomainFacade;
 import com.colonel.saas.domain.user.facade.dto.UserOwnershipReference;
 import com.colonel.saas.domain.talent.application.TalentPoolApplicationService;
 import com.colonel.saas.domain.talent.application.TalentProfileApplicationService;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
+import com.colonel.saas.domain.user.policy.DataScopeResolver;
 import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.entity.TalentClaim;
 import com.colonel.saas.entity.TalentEnrichTask;
@@ -124,8 +126,8 @@ class TalentServiceTest {
                 newTalentClaimApplicationService(),
                 operationLogService,
                 userDomainFacade,
-                new CurrentUserPermissionPolicy(),
-                new DataScopePolicy(),
+                new CurrentUserPermissionChecker(new CurrentUserPermissionPolicy()),
+                new DataScopeResolver(new DataScopePolicy()),
                 new DddRefactorProperties()
         );
         when(configDomainFacade.getTalentClaimProtectDays()).thenReturn(30);
@@ -224,9 +226,10 @@ class TalentServiceTest {
                 .contains("dddRefactorProperties.getDataScopePolicy().isEnabled()")
                 .contains("applyPageDataScopeLegacy")
                 .contains("applyPageDataScopeWithPolicy")
-                .contains("DataScopePolicy")
-                .contains("dataScopePolicy.contextRequirement")
-                .contains("dataScopePolicy.decide");
+                .contains("DataScopeResolver")
+                .contains("dataScopeResolver.resolve")
+                .doesNotContain("import com.colonel.saas.domain.user.policy.DataScopePolicy;")
+                .doesNotContain("dataScopePolicy.");
     }
 
     @Test
@@ -238,8 +241,10 @@ class TalentServiceTest {
                 .contains("dddRefactorProperties.getDataScopePolicy().isEnabled()")
                 .contains("assertCanOperateBlacklistLegacy")
                 .contains("assertCanOperateBlacklistWithPolicy")
-                .contains("dataScopePolicy.contextRequirement")
-                .contains("dataScopePolicy.decide");
+                .contains("DataScopeResolver")
+                .contains("dataScopeResolver.resolve")
+                .doesNotContain("import com.colonel.saas.domain.user.policy.DataScopePolicy;")
+                .doesNotContain("dataScopePolicy.");
     }
 
     @Test
@@ -252,8 +257,10 @@ class TalentServiceTest {
                 .contains("dddRefactorProperties.getDataScopePolicy().isEnabled()")
                 .contains("resolveExclusiveOrderScopeLegacy")
                 .contains("resolveExclusiveOrderScopeWithPolicy")
-                .contains("dataScopePolicy.contextRequirement")
-                .contains("dataScopePolicy.decide");
+                .contains("DataScopeResolver")
+                .contains("dataScopeResolver.resolve")
+                .doesNotContain("import com.colonel.saas.domain.user.policy.DataScopePolicy;")
+                .doesNotContain("dataScopePolicy.");
     }
 
     @Test
@@ -884,8 +891,8 @@ class TalentServiceTest {
                 newTalentClaimApplicationService(),
                 operationLogService,
                 userDomainFacade,
-                new CurrentUserPermissionPolicy(),
-                new DataScopePolicy(),
+                new CurrentUserPermissionChecker(new CurrentUserPermissionPolicy()),
+                new DataScopeResolver(new DataScopePolicy()),
                 new DddRefactorProperties()
         );
 
@@ -1050,7 +1057,7 @@ class TalentServiceTest {
     }
 
     @Test
-    void evaluateExclusiveDataScopePolicyEnabledPath_shouldDelegateOrderScopeDecisionToUserPolicy() {
+    void evaluateExclusiveDataScopePolicyEnabledPath_shouldDelegateOrderScopeDecisionToUserResolver() {
         DataScopePolicy dataScopePolicy = spy(new DataScopePolicy());
         TalentService enabledService = talentServiceWithDataScopePolicyEnabled(dataScopePolicy);
         UUID talentId = UUID.randomUUID();
@@ -1079,7 +1086,7 @@ class TalentServiceTest {
         verify(dataScopePolicy).contextRequirement(null, deptId, DataScope.DEPT);
         verify(dataScopePolicy).decide(null, deptId, DataScope.DEPT);
         verify(dataScopePolicy).contextRequirement(null, null, DataScope.PERSONAL);
-        verify(dataScopePolicy, never()).decide(null, null, DataScope.PERSONAL);
+        verify(dataScopePolicy).decide(null, null, DataScope.PERSONAL);
         verify(orderReadFacade, times(3)).findOrdersSettledSince(
                 any(LocalDateTime.class),
                 nullable(UUID.class),
@@ -1383,8 +1390,8 @@ class TalentServiceTest {
                 newTalentClaimApplicationService(dataScopePolicy, properties),
                 operationLogService,
                 userDomainFacade,
-                new CurrentUserPermissionPolicy(),
-                dataScopePolicy,
+                new CurrentUserPermissionChecker(new CurrentUserPermissionPolicy()),
+                new DataScopeResolver(dataScopePolicy),
                 properties
         );
     }
@@ -1425,7 +1432,7 @@ class TalentServiceTest {
         return new TalentPageApplicationService(
                 talentMapper,
                 talentClaimMapper,
-                new DataScopePolicy(),
+                new DataScopeResolver(new DataScopePolicy()),
                 new DddRefactorProperties());
     }
 
@@ -1441,7 +1448,7 @@ class TalentServiceTest {
                 orderReadFacade,
                 sampleDomainFacade,
                 configDomainFacade,
-                dataScopePolicy,
+                new DataScopeResolver(dataScopePolicy),
                 properties);
     }
 
@@ -1458,8 +1465,8 @@ class TalentServiceTest {
                 orderReadFacade,
                 configDomainFacade,
                 userDomainFacade,
-                new CurrentUserPermissionPolicy(),
-                dataScopePolicy,
+                new CurrentUserPermissionChecker(new CurrentUserPermissionPolicy()),
+                new DataScopeResolver(dataScopePolicy),
                 operationLogService,
                 properties,
                 redisTemplate);

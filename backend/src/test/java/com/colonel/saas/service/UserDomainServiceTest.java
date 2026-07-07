@@ -8,6 +8,7 @@ import com.colonel.saas.dto.user.CheckPermissionRequest;
 import com.colonel.saas.dto.user.CheckPermissionResponse;
 import com.colonel.saas.dto.user.CurrentUserResponse;
 import com.colonel.saas.dto.user.UserDataScopeResponse;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.domain.user.policy.UserCredentialPolicy;
 import com.colonel.saas.entity.SysRole;
@@ -57,7 +58,7 @@ class UserDomainServiceTest {
                 sysRoleMapper,
                 passwordEncoder,
                 operationLogService,
-                new CurrentUserPermissionPolicy(),
+                new CurrentUserPermissionChecker(new CurrentUserPermissionPolicy()),
                 new UserCredentialPolicy());
     }
 

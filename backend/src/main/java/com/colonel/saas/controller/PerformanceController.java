@@ -25,6 +25,7 @@ import com.colonel.saas.domain.performance.policy.PerformanceAccessContext;
 import com.colonel.saas.domain.performance.policy.PerformanceAccessScope;
 import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.domain.performance.facade.PerformanceQueryFacade;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletResponse;
@@ -120,6 +121,9 @@ public class PerformanceController extends BaseController {
     /** 业绩只读查询门面 */
     private final PerformanceQueryFacade performanceQueryFacade;
 
+    /** 用户域权限检查器：导出等角色判断统一经用户域规则入口 */
+    private final CurrentUserPermissionChecker currentUserPermissionChecker;
+
     public PerformanceController(
             PerformanceQueryService performanceQueryService,
             PerformanceSummaryService performanceSummaryService,
@@ -127,7 +131,8 @@ public class PerformanceController extends BaseController {
             PerformanceMonthRecalculationService monthRecalculationService,
             OperationLogService operationLogService,
             DddRefactorProperties dddRefactorProperties,
-            PerformanceQueryFacade performanceQueryFacade) {
+            PerformanceQueryFacade performanceQueryFacade,
+            CurrentUserPermissionChecker currentUserPermissionChecker) {
         this.performanceQueryService = performanceQueryService;
         this.performanceSummaryService = performanceSummaryService;
         this.performanceExportService = performanceExportService;
@@ -135,6 +140,7 @@ public class PerformanceController extends BaseController {
         this.operationLogService = operationLogService;
         this.dddRefactorProperties = dddRefactorProperties;
         this.performanceQueryFacade = performanceQueryFacade;
+        this.currentUserPermissionChecker = currentUserPermissionChecker;
     }
 
     /**
@@ -420,7 +426,7 @@ public class PerformanceController extends BaseController {
             HttpServletResponse response) throws IOException {
         // 第一步：组装访问上下文并校验导出权限
         PerformanceAccessContext context = PerformanceAccessContext.of(userId, deptId, dataScope, roleCodes);
-        if (!PerformanceAccessScope.canExport(context)) {
+        if (!PerformanceAccessScope.canExport(context, currentUserPermissionChecker)) {
             throw BusinessException.forbidden("无权导出业绩明细");
         }
         // 第二步：构建查询，page=1，pageSize 取导出上限

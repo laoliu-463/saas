@@ -40,17 +40,7 @@ class OrgValidationPolicyTest {
         deletionCounts = new HashMap<>();
         OrgLeaderCandidateLookup leaderCandidateLookup =
                 leaderUserId -> Optional.ofNullable(leaderCandidates.get(leaderUserId));
-        OrgDeletionConstraintLookup deletionConstraintLookup = new OrgDeletionConstraintLookup() {
-            @Override
-            public long countDirectUsers(UUID deptId) {
-                return deletionCounts.getOrDefault(deptId, DeletionCounts.EMPTY).directUsers();
-            }
-
-            @Override
-            public long countChildGroups(UUID deptId) {
-                return deletionCounts.getOrDefault(deptId, DeletionCounts.EMPTY).childGroups();
-            }
-        };
+        OrgDeletionConstraintLookup deletionConstraintLookup = new MapBackedDeletionConstraintLookup(deletionCounts);
         policy = new OrgValidationPolicy(
                 leaderCandidateLookup,
                 deletionConstraintLookup,
@@ -210,5 +200,24 @@ class OrgValidationPolicyTest {
 
     private record DeletionCounts(long directUsers, long childGroups) {
         private static final DeletionCounts EMPTY = new DeletionCounts(0L, 0L);
+    }
+
+    private static class MapBackedDeletionConstraintLookup implements OrgDeletionConstraintLookup {
+
+        private final Map<UUID, DeletionCounts> deletionCounts;
+
+        private MapBackedDeletionConstraintLookup(Map<UUID, DeletionCounts> deletionCounts) {
+            this.deletionCounts = deletionCounts;
+        }
+
+        @Override
+        public long countDirectUsers(UUID deptId) {
+            return deletionCounts.getOrDefault(deptId, DeletionCounts.EMPTY).directUsers();
+        }
+
+        @Override
+        public long countChildGroups(UUID deptId) {
+            return deletionCounts.getOrDefault(deptId, DeletionCounts.EMPTY).childGroups();
+        }
     }
 }

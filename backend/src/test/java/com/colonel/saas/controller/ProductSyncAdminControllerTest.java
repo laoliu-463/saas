@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 
@@ -87,6 +88,84 @@ class ProductSyncAdminControllerTest {
                 .containsExactly("/product-sync/admin");
         assertThat(method.getAnnotation(PostMapping.class).value())
                 .containsExactly("/backfill-activity-products");
+        assertThat(method.getAnnotation(RequireRoles.class).value())
+                .containsExactly(RoleCodes.ADMIN);
+    }
+
+    @Test
+    void backfillActivityProductsAsync_shouldRequireAdminAndDelegateUserId() throws Exception {
+        UUID userId = UUID.randomUUID();
+        ProductActivityBackfillService.BackfillAsyncResponse result =
+                new ProductActivityBackfillService.BackfillAsyncResponse("product-backfill-1", "RUNNING");
+        when(backfillService.backfillAsync(any(), eq(userId))).thenReturn(result);
+
+        ProductActivityBackfillService.BackfillRequest request =
+                new ProductActivityBackfillService.BackfillRequest(
+                        "CUSTOM_ACTIVITY_IDS",
+                        List.of("3859423"),
+                        20,
+                        50,
+                        1000,
+                        50_000,
+                        true,
+                        false,
+                        "DEFERRED");
+
+        var response = controller.backfillActivityProductsAsync(request, userId);
+
+        assertThat(response.getData().jobId()).isEqualTo("product-backfill-1");
+        assertThat(response.getData().status()).isEqualTo("RUNNING");
+        verify(backfillService).backfillAsync(request, userId);
+
+        Method method = ProductSyncAdminController.class.getMethod(
+                "backfillActivityProductsAsync",
+                ProductActivityBackfillService.BackfillRequest.class,
+                UUID.class);
+        assertThat(method.getAnnotation(PostMapping.class).value())
+                .containsExactly("/backfill-activity-products/async");
+        assertThat(method.getAnnotation(RequireRoles.class).value())
+                .containsExactly(RoleCodes.ADMIN);
+    }
+
+    @Test
+    void getBackfillJobStatus_shouldRequireAdminAndDelegateJobId() throws Exception {
+        ProductActivityBackfillService.BackfillJobStatus status =
+                new ProductActivityBackfillService.BackfillJobStatus(
+                        "product-backfill-1",
+                        "SUCCESS",
+                        true,
+                        "CUSTOM_ACTIVITY_IDS",
+                        1,
+                        1,
+                        0,
+                        0,
+                        120,
+                        100,
+                        20,
+                        100,
+                        0,
+                        0,
+                        0,
+                        0,
+                        Map.of("DONE_NO_MORE", 1L),
+                        null,
+                        "2026-07-05T21:00:00",
+                        0,
+                        0,
+                        0,
+                        "2026-07-05T21:00:00",
+                        "2026-07-05T21:00:01");
+        when(backfillService.getJobStatus("product-backfill-1")).thenReturn(status);
+
+        var response = controller.getBackfillJobStatus("product-backfill-1");
+
+        assertThat(response.getData().jobId()).isEqualTo("product-backfill-1");
+        assertThat(response.getData().status()).isEqualTo("SUCCESS");
+        verify(backfillService).getJobStatus("product-backfill-1");
+
+        Method method = ProductSyncAdminController.class.getMethod("getBackfillJobStatus", String.class);
+        assertThat(method.getAnnotation(GetMapping.class).value())
+                .containsExactly("/backfill-jobs/{jobId}");
         assertThat(method.getAnnotation(RequireRoles.class).value())
                 .containsExactly(RoleCodes.ADMIN);
     }

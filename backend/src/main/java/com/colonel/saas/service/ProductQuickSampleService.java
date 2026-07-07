@@ -8,7 +8,7 @@ import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.domain.product.port.ProductSampleApplicationPort;
 import com.colonel.saas.domain.product.port.QuickSampleApplyCommand;
 import com.colonel.saas.domain.product.port.QuickSampleApplyPortResult;
-import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
 import com.colonel.saas.dto.product.QuickSampleApplyRequest;
 import com.colonel.saas.dto.product.QuickSampleApplyResponse;
 import com.colonel.saas.entity.Product;
@@ -76,8 +76,8 @@ public class ProductQuickSampleService {
     private final DddRefactorProperties dddRefactorProperties;
     /** 商品只读门面 */
     private final ProductDomainFacade productDomainFacade;
-    /** 用户域权限策略，用于统一角色编码集合解析和匹配 */
-    private final CurrentUserPermissionPolicy currentUserPermissionPolicy;
+    /** 用户域权限检查器，用于统一角色编码集合解析和匹配 */
+    private final CurrentUserPermissionChecker currentUserPermissionChecker;
 
     /**
      * 构造注入。
@@ -92,7 +92,7 @@ public class ProductQuickSampleService {
             @Value("${app.douyin.quick-sample.enabled:false}") boolean douyinQuickSampleEnabled,
             DddRefactorProperties dddRefactorProperties,
             ProductDomainFacade productDomainFacade,
-            CurrentUserPermissionPolicy currentUserPermissionPolicy) {
+            CurrentUserPermissionChecker currentUserPermissionChecker) {
         this.productService = productService;
         this.productMapper = productMapper;
         this.productSnapshotMapper = productSnapshotMapper;
@@ -102,7 +102,7 @@ public class ProductQuickSampleService {
         this.douyinQuickSampleEnabled = douyinQuickSampleEnabled;
         this.dddRefactorProperties = dddRefactorProperties;
         this.productDomainFacade = productDomainFacade;
-        this.currentUserPermissionPolicy = currentUserPermissionPolicy;
+        this.currentUserPermissionChecker = currentUserPermissionChecker;
     }
 
     /**
@@ -302,8 +302,8 @@ public class ProductQuickSampleService {
     }
 
     private void ensureChannelRole(Object roleCodes) {
-        if (!currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.CHANNEL_STAFF, RoleCodes.CHANNEL_LEADER)
-                && !currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.ADMIN)) {
+        if (!currentUserPermissionChecker.hasAnyRole(roleCodes, RoleCodes.CHANNEL_STAFF, RoleCodes.CHANNEL_LEADER)
+                && !currentUserPermissionChecker.hasAnyRole(roleCodes, RoleCodes.ADMIN)) {
             throw new ForbiddenException("仅渠道角色可使用快速寄样");
         }
     }

@@ -191,14 +191,17 @@ class RuleCenterControllerTest {
     @Test
     void changeLogs_passesKeyAndPage() throws Exception {
         UUID logId = UUID.randomUUID();
+        UUID eventId = UUID.randomUUID();
+        UUID operatorId = UUID.randomUUID();
+        java.time.LocalDateTime changedAt = java.time.LocalDateTime.of(2026, 7, 7, 12, 45, 0);
         RuleCenterChangeLogView view = new RuleCenterChangeLogView(
-                logId, UUID.randomUUID(),
+                logId, eventId,
                 "sample.restrict_enabled",
                 "UPDATE",
                 "true", "false",
-                "rule_center", "调整",
-                UUID.randomUUID(),
-                2, java.time.LocalDateTime.now());
+                "RULE_CENTER", "调整",
+                operatorId,
+                2, changedAt);
         Page<RuleCenterChangeLogView> page = new Page<>(1, 20);
         page.setRecords(List.of(view));
         page.setTotal(1);
@@ -211,7 +214,16 @@ class RuleCenterControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.total").value(1))
-                .andExpect(jsonPath("$.data.records[0].configKey").value("sample.restrict_enabled"));
+                .andExpect(jsonPath("$.data.records[0].id").value(logId.toString()))
+                .andExpect(jsonPath("$.data.records[0].eventId").value(eventId.toString()))
+                .andExpect(jsonPath("$.data.records[0].configKey").value("sample.restrict_enabled"))
+                .andExpect(jsonPath("$.data.records[0].changeAction").value("UPDATE"))
+                .andExpect(jsonPath("$.data.records[0].oldValue").value("true"))
+                .andExpect(jsonPath("$.data.records[0].newValue").value("false"))
+                .andExpect(jsonPath("$.data.records[0].source").value("RULE_CENTER"))
+                .andExpect(jsonPath("$.data.records[0].changeReason").value("调整"))
+                .andExpect(jsonPath("$.data.records[0].operatorId").value(operatorId.toString()))
+                .andExpect(jsonPath("$.data.records[0].configVersion").value(2));
 
         verify(ruleCenterService).changeLogs("sample.restrict_enabled", 1, 20);
     }

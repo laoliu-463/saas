@@ -9,7 +9,6 @@ import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.auth.service.SysUserService;
 import com.colonel.saas.domain.product.application.CopyPromotionApplicationService;
 import com.colonel.saas.entity.ProductOperationLog;
-import com.colonel.saas.gateway.douyin.DouyinPromotionGateway;
 import com.colonel.saas.service.ProductPinService;
 import com.colonel.saas.service.ProductService;
 

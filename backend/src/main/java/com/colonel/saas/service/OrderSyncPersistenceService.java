@@ -6,6 +6,7 @@ import com.colonel.saas.domain.order.application.OrderAmountMappingRouter;
 import com.colonel.saas.domain.order.event.OrderDomainEventPublisher;
 import com.colonel.saas.domain.order.event.OrderEventPayloadMapper;
 import com.colonel.saas.domain.order.event.OrderStatusChangedEvent;
+import com.colonel.saas.domain.sample.facade.SampleHomeworkFacade;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.event.OrderSyncedEvent;
@@ -45,8 +46,8 @@ public class OrderSyncPersistenceService {
     private final PickSourceMappingService pickSourceMappingService;
     /** 商家服务，订单持久化后确保关联商家记录存在 */
     private final MerchantService merchantService;
-    /** 寄样生命周期服务，订单持久化后完成待交作业状态的寄样单 */
-    private final SampleLifecycleService sampleLifecycleService;
+    /** 寄样交作业 Facade，订单持久化后提交订单事实给寄样域 */
+    private final SampleHomeworkFacade sampleHomeworkFacade;
     /** 操作日志服务，记录归因后置步骤的执行轨迹 */
     private final OperationLogService operationLogService;
     /** 用户域门面，提供用户名称查询能力（DDD-USER-002 替代 SysUserMapper） */
@@ -65,7 +66,7 @@ public class OrderSyncPersistenceService {
             OrderSyncDedupClaimMapper orderSyncDedupClaimMapper,
             PickSourceMappingService pickSourceMappingService,
             MerchantService merchantService,
-            SampleLifecycleService sampleLifecycleService,
+            SampleHomeworkFacade sampleHomeworkFacade,
             OperationLogService operationLogService,
             UserDomainFacade userDomainFacade,
             OrderAmountMappingRouter orderAmountMappingRouter,
@@ -76,7 +77,7 @@ public class OrderSyncPersistenceService {
         this.orderSyncDedupClaimMapper = orderSyncDedupClaimMapper;
         this.pickSourceMappingService = pickSourceMappingService;
         this.merchantService = merchantService;
-        this.sampleLifecycleService = sampleLifecycleService;
+        this.sampleHomeworkFacade = sampleHomeworkFacade;
         this.operationLogService = operationLogService;
         this.userDomainFacade = userDomainFacade;
         this.orderAmountMappingRouter = orderAmountMappingRouter;
@@ -253,7 +254,7 @@ public class OrderSyncPersistenceService {
         recordAttributionFollowUp(order, "沉淀商家", "ensureMerchantFromOrder");
 
         if (!isSampleHomeworkEventDriven()) {
-            sampleLifecycleService.completePendingHomeworkByOrder(order);
+            sampleHomeworkFacade.completePendingHomeworkByOrder(order);
             recordAttributionFollowUp(order, "完成寄样作业", "completePendingHomeworkByOrder");
         }
     }

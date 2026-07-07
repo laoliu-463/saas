@@ -7,15 +7,16 @@ import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.common.result.PageResult;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.entity.Product;
-import com.colonel.saas.gateway.douyin.DouyinPromotionGateway;
 import com.colonel.saas.dto.product.ProductFilterOptionItem;
 import com.colonel.saas.dto.product.ProductFilterOptionsDTO;
 import com.colonel.saas.dto.product.QuickSampleApplyRequest;
 import com.colonel.saas.dto.product.QuickSampleApplyResponse;
 import com.colonel.saas.entity.ColonelPartner;
 import com.colonel.saas.service.ColonelPartnerSyncService;
+import com.colonel.saas.domain.product.application.ProductLibraryPageQueryService;
 import com.colonel.saas.domain.product.application.ProductQuickSampleApplicationService;
-import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
+import com.colonel.saas.domain.product.application.dto.ProductLibraryPageQuery;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
 import com.colonel.saas.service.ProductService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -93,21 +94,26 @@ public class ProductController extends BaseController {
     /** 快速寄样应用层，处理商品库弹窗式快速寄样申请的创建与校验。 */
     private final ProductQuickSampleApplicationService productQuickSampleApplicationService;
 
+    /** 商品库分页查询应用层。 */
+    private final ProductLibraryPageQueryService productLibraryPageQueryService;
+
     /** 团长合作方同步服务，提供团长合作方列表查询（已废弃的筛选项接口使用）。 */
     private final ColonelPartnerSyncService colonelPartnerSyncService;
 
-    /** 当前用户权限策略，统一处理角色编码解析与匹配。 */
-    private final CurrentUserPermissionPolicy currentUserPermissionPolicy;
+    /** 当前用户权限检查器，统一处理角色编码解析与匹配。 */
+    private final CurrentUserPermissionChecker currentUserPermissionChecker;
 
     public ProductController(
             ProductService productService,
             ProductQuickSampleApplicationService productQuickSampleApplicationService,
+            ProductLibraryPageQueryService productLibraryPageQueryService,
             ColonelPartnerSyncService colonelPartnerSyncService,
-            CurrentUserPermissionPolicy currentUserPermissionPolicy) {
+            CurrentUserPermissionChecker currentUserPermissionChecker) {
         this.productService = productService;
         this.productQuickSampleApplicationService = productQuickSampleApplicationService;
+        this.productLibraryPageQueryService = productLibraryPageQueryService;
         this.colonelPartnerSyncService = colonelPartnerSyncService;
-        this.currentUserPermissionPolicy = currentUserPermissionPolicy;
+        this.currentUserPermissionChecker = currentUserPermissionChecker;
     }
 
     /**
@@ -215,7 +221,7 @@ public class ProductController extends BaseController {
             @Parameter(description = "是否已挂车：1/0。") @RequestParam(required = false) String listed,
             @Parameter(description = "是否有免费样：1/0。") @RequestParam(required = false) String freeSample,
             @Parameter(description = "商品 ID，精确匹配。") @RequestParam(name = "productId", required = false) String productId) {
-        ProductService.SelectedLibraryFilter filter = new ProductService.SelectedLibraryFilter(
+        ProductLibraryPageQuery query = new ProductLibraryPageQuery(
                 keyword,
                 status,
                 shopKeyword,
@@ -262,7 +268,7 @@ public class ProductController extends BaseController {
         );
         if (limit != null || StringUtils.hasText(cursor)) {
             ProductService.SelectedLibraryCursorPage cursorPage =
-                    productService.getSelectedLibraryCursorPage(cursor, limit == null ? size : limit, filter);
+                    productLibraryPageQueryService.getSelectedLibraryCursorPage(cursor, limit == null ? size : limit, query);
             if (cursorPage != null) {
                 PageResult<Product> response = new PageResult<>();
                 response.setTotal(0L);
@@ -274,7 +280,7 @@ public class ProductController extends BaseController {
                 return ok(response);
             }
         }
-        IPage<Product> result = productService.getSelectedLibraryPage(page, size, filter);
+        IPage<Product> result = productLibraryPageQueryService.getSelectedLibraryPage(page, size, query);
         return okPage(result);
     }
 
@@ -577,7 +583,7 @@ public class ProductController extends BaseController {
     @Operation(summary = "[已废弃] 商品转链", description = "兼容旧版商品转链入口。请迁移到 /colonel/activities/{activityId}/products/{productId}/promotion-links。")
     @RequireRoles({RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF})
     @PostMapping("/{id}/promotion-links")
-    public ApiResult<DouyinPromotionGateway.PromotionLinkResult> generatePromotionLink(
+    public ApiResult<PromotionLinkResponse> generatePromotionLink(
             @Parameter(description = "商品主键 ID，使用 UUID 格式。") @PathVariable UUID id,
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
                     description = "转链请求体，可为空；为空时使用默认场景。",
@@ -588,7 +594,7 @@ public class ProductController extends BaseController {
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId) {
         PromotionLinkRequest safeRequest = request == null ? new PromotionLinkRequest() : request;
-        DouyinPromotionGateway.PromotionLinkResult result = productService.generatePromotionLink(
+        var result = productService.generatePromotionLink(
                 id,
                 userId,
                 deptId,
@@ -599,7 +605,14 @@ public class ProductController extends BaseController {
                 safeRequest.getTalentId(),
                 idempotencyKey
         );
-        return ok(result);
+        return ok(new PromotionLinkResponse(
+                result.pickSource(),
+                result.pickExtra(),
+                result.shortId(),
+                result.shortLink(),
+                result.promoteLink(),
+                result.uuidSeed()
+        ));
     }
 
     /**
@@ -1047,6 +1060,18 @@ public class ProductController extends BaseController {
     }
 
     /**
+     * 商品转链响应体。
+     */
+    public record PromotionLinkResponse(
+            String pickSource,
+            String pickExtra,
+            String shortId,
+            String shortLink,
+            String promoteLink,
+            String uuidSeed) {
+    }
+
+    /**
      * 商品达人跟进请求体。
      *
      * <p>用于旧版 {@code POST /{id}/follow} 接口，记录达人跟进状态与内容。
@@ -1130,9 +1155,9 @@ public class ProductController extends BaseController {
      * @return {@code true} 表示需要限制为仅查看自己的商品，{@code false} 表示不限制
      */
     private boolean shouldLimitPickPageToSelf(List<String> roleCodes) {
-        if (currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.BIZ_LEADER)) {
+        if (currentUserPermissionChecker.hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.BIZ_LEADER)) {
             return false;
         }
-        return currentUserPermissionPolicy.hasAnyRole(roleCodes, RoleCodes.BIZ_STAFF);
+        return currentUserPermissionChecker.hasAnyRole(roleCodes, RoleCodes.BIZ_STAFF);
     }
 }

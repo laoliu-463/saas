@@ -7,6 +7,7 @@ import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.domain.product.port.ProductSampleApplicationPort;
 import com.colonel.saas.domain.product.port.QuickSampleApplyCommand;
 import com.colonel.saas.domain.product.port.QuickSampleApplyPortResult;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.dto.product.QuickSampleApplyRequest;
 import com.colonel.saas.gateway.douyin.DouyinQuickSampleGateway;
@@ -68,7 +69,7 @@ class QuickSampleApplyTest {
                 false,
                 dddRefactorProperties,
                 productDomainFacade,
-                new CurrentUserPermissionPolicy()
+                new CurrentUserPermissionChecker(new CurrentUserPermissionPolicy())
         );
         org.mockito.Mockito.lenient().when(dddRefactorProperties.isEnabled()).thenReturn(false);
         org.mockito.Mockito.lenient().when(douyinQuickSampleGateway.isSupported()).thenReturn(false);

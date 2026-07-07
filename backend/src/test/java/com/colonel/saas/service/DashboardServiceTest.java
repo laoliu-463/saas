@@ -4,6 +4,7 @@ import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.domain.order.facade.OrderReadFacade;
 import com.colonel.saas.domain.user.policy.DataScopePolicy;
+import com.colonel.saas.domain.user.policy.DataScopeResolver;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -51,7 +52,7 @@ class DashboardServiceTest {
                 orderReadFacade,
                 jdbcTemplate,
                 performanceMetricsQueryService,
-                dataScopePolicy,
+                new DataScopeResolver(dataScopePolicy),
                 dddRefactorProperties);
         lenient().when(performanceMetricsQueryService.hasPerformanceRecords()).thenReturn(false);
     }
@@ -231,6 +232,29 @@ class DashboardServiceTest {
     }
 
     @Test
+    void getActivityProductBreakdown_dataScopePolicyEnabledPathShouldDelegateDeptScopeToUserPolicy() {
+        dddRefactorProperties.getDataScopePolicy().setEnabled(true);
+        UUID userId = UUID.fromString("11111111-1111-1111-1111-111111111111");
+        UUID deptId = UUID.fromString("22222222-2222-2222-2222-222222222222");
+        when(jdbcTemplate.queryForList(anyString(), any(Object[].class)))
+                .thenReturn(List.of(Map.of("total_count", 1L)))
+                .thenReturn(List.of(productRow("activity-1", "product-1", "部门范围商品")));
+
+        DashboardService.ActivityProductPage page =
+                service.getActivityProductBreakdown(null, null, userId, deptId, DataScope.DEPT, 1, 1);
+
+        assertThat(page.total()).isEqualTo(1L);
+        ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<Object[]> argsCaptor = ArgumentCaptor.forClass(Object[].class);
+        verify(jdbcTemplate, times(2)).queryForList(sqlCaptor.capture(), argsCaptor.capture());
+        assertThat(sqlCaptor.getAllValues().get(0))
+                .contains("co.dept_id = ?")
+                .doesNotContain("co.user_id = ?");
+        assertThat(argsCaptor.getAllValues().get(0)).containsExactly(deptId);
+        verify(dataScopePolicy).decide(userId, deptId, DataScope.DEPT);
+    }
+
+    @Test
     void getActivityProductBreakdown_shouldApplyRangeAndDeptScopeBeforePagingArgs() {
         LocalDateTime start = LocalDateTime.of(2026, 5, 1, 0, 0);
         LocalDateTime end = LocalDateTime.of(2026, 5, 31, 23, 59);
@@ -278,6 +302,19 @@ class DashboardServiceTest {
         assertThat(visibility.type()).isEqualTo(OrderReadFacade.OrderVisibilityType.USER);
         assertThat(visibility.userId()).isEqualTo(userId);
         verify(dataScopePolicy).decide(userId, deptId, DataScope.PERSONAL);
+    }
+
+    @Test
+    void applyScope_dataScopePolicyEnabledPathShouldKeepAllScopeUnfiltered() {
+        dddRefactorProperties.getDataScopePolicy().setEnabled(true);
+        UUID userId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+
+        OrderReadFacade.OrderVisibility visibility = invokeBuildOrderVisibility(userId, deptId, DataScope.ALL);
+
+        assertThat(visibility.type()).isEqualTo(OrderReadFacade.OrderVisibilityType.ALL);
+        verify(dataScopePolicy).decide(userId, deptId, DataScope.ALL);
+        verify(dataScopePolicy).requiresFilter(DataScope.ALL);
     }
 
     @Test

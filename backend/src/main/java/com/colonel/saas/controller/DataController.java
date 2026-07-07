@@ -18,7 +18,7 @@ import com.colonel.saas.domain.performance.facade.OrderPerformanceQueryFacade;
 import com.colonel.saas.domain.product.facade.ProductActivityReadFacade;
 import com.colonel.saas.domain.talent.facade.ExclusiveTalentReadFacade;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
-import com.colonel.saas.domain.user.policy.DataScopePolicy;
+import com.colonel.saas.domain.user.policy.DataScopeResolver;
 import com.colonel.saas.entity.ColonelsettlementActivity;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.ExclusiveMerchant;
@@ -90,10 +90,10 @@ public class DataController extends DataApplicationService {
             PerformanceMetricsQueryService performanceMetricsQueryService,
             OrderPerformanceQueryFacade orderPerformanceQueryFacade,
             UserDomainFacade userDomainFacade,
-            DataScopePolicy dataScopePolicy,
+            DataScopeResolver dataScopeResolver,
             DddRefactorProperties dddRefactorProperties,
             org.springframework.jdbc.core.JdbcTemplate jdbcTemplate) {
-        super(dataOrderQueryFacade, commissionService, exclusiveTalentReadFacade, exclusiveMerchantReadFacade, productActivityReadFacade, shortTtlCacheService, performanceMetricsQueryService, orderPerformanceQueryFacade, userDomainFacade, dataScopePolicy, dddRefactorProperties, jdbcTemplate);
+        super(dataOrderQueryFacade, commissionService, exclusiveTalentReadFacade, exclusiveMerchantReadFacade, productActivityReadFacade, shortTtlCacheService, performanceMetricsQueryService, orderPerformanceQueryFacade, userDomainFacade, dataScopeResolver, dddRefactorProperties, jdbcTemplate);
     }
 
     @GetMapping("/data/orders")

@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.colonel.saas.constant.SysUserStatus;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.BusinessException;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy.RolePermission;
 import com.colonel.saas.domain.user.policy.UserCredentialPolicy;
@@ -61,8 +62,8 @@ public class UserDomainService {
     private final PasswordEncoder passwordEncoder;
     /** 操作日志服务 */
     private final OperationLogService operationLogService;
-    /** 当前用户权限与数据范围策略 */
-    private final CurrentUserPermissionPolicy currentUserPermissionPolicy;
+    /** 当前用户权限与数据范围检查入口 */
+    private final CurrentUserPermissionChecker currentUserPermissionChecker;
     /** 当前用户凭证策略 */
     private final UserCredentialPolicy userCredentialPolicy;
 
@@ -71,13 +72,13 @@ public class UserDomainService {
             SysRoleMapper sysRoleMapper,
             PasswordEncoder passwordEncoder,
             OperationLogService operationLogService,
-            CurrentUserPermissionPolicy currentUserPermissionPolicy,
+            CurrentUserPermissionChecker currentUserPermissionChecker,
             UserCredentialPolicy userCredentialPolicy) {
         this.sysUserMapper = sysUserMapper;
         this.sysRoleMapper = sysRoleMapper;
         this.passwordEncoder = passwordEncoder;
         this.operationLogService = operationLogService;
-        this.currentUserPermissionPolicy = currentUserPermissionPolicy;
+        this.currentUserPermissionChecker = currentUserPermissionChecker;
         this.userCredentialPolicy = userCredentialPolicy;
     }
 
@@ -109,9 +110,9 @@ public class UserDomainService {
         SysUser user = requireLoginEligibleUser(userId);
         // 第二步：加载激活角色并解析角色编码
         List<RolePermission> roles = activeRolePermissions(userId);
-        List<String> roleCodes = currentUserPermissionPolicy.resolveRoleCodes(roles, requestRoleCodes);
+        List<String> roleCodes = currentUserPermissionChecker.resolveRoleCodes(roles, requestRoleCodes);
         // 第三步：计算数据范围
-        int dataScopeCode = currentUserPermissionPolicy.resolveDataScopeCode(roles, requestScope, roleCodes);
+        int dataScopeCode = currentUserPermissionChecker.resolveDataScopeCode(roles, requestScope, roleCodes);
         // 第四步：构建响应
         return new CurrentUserResponse(
                 user.getId(),
@@ -119,9 +120,9 @@ public class UserDomainService {
                 user.getRealName(),
                 user.getDeptId() == null ? deptId : user.getDeptId(),
                 dataScopeCode,
-                currentUserPermissionPolicy.scopeName(dataScopeCode),
+                currentUserPermissionChecker.scopeName(dataScopeCode),
                 roleCodes,
-                currentUserPermissionPolicy.mergePermissions(roles, dataScopeCode),
+                currentUserPermissionChecker.mergePermissions(roles, dataScopeCode),
                 user.getStatus() == null ? SysUserStatus.ACTIVE : user.getStatus(),
                 Boolean.TRUE.equals(user.getForcePasswordChange())
         );
@@ -243,7 +244,7 @@ public class UserDomainService {
             UUID userId,
             List<String> requestRoleCodes,
             CheckPermissionRequest request) {
-        return currentUserPermissionPolicy.checkPermission(requestRoleCodes, activeRolePermissions(userId), request);
+        return currentUserPermissionChecker.checkPermission(requestRoleCodes, activeRolePermissions(userId), request);
     }
 
     /**

@@ -1,0 +1,3 @@
+# DDD100-GUARD frozen legacy Controller direct Mapper/Gateway imports.
+# Format: backend-relative-path|imported-fqcn
+# New entries are forbidden. Move orchestration to Application/Facade/Port layers instead.

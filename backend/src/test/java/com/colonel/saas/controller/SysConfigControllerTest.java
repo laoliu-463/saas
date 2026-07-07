@@ -1,7 +1,9 @@
 package com.colonel.saas.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.colonel.saas.annotation.RequireRoles;
 import com.colonel.saas.common.exception.GlobalExceptionHandler;
+import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.entity.SystemConfig;
 import com.colonel.saas.service.SysConfigService;
@@ -15,10 +17,12 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
@@ -129,6 +133,29 @@ class SysConfigControllerTest {
                 .andExpect(status().isOk());
 
         verify(sysConfigService).delete(configId, userId);
+    }
+
+    @Test
+    void controller_shouldKeepWriteApisAdminOnlyAndGroupedReadExplicitlyWhitelisted() throws Exception {
+        RequireRoles classRoles = SysConfigController.class.getAnnotation(RequireRoles.class);
+        Method grouped = SysConfigController.class.getMethod("grouped", Object.class);
+        Method create = SysConfigController.class.getMethod("create", SystemConfig.class, UUID.class);
+        Method update = SysConfigController.class.getMethod("update", UUID.class, SystemConfig.class, UUID.class);
+        Method delete = SysConfigController.class.getMethod("delete", UUID.class, UUID.class);
+
+        assertThat(classRoles).isNotNull();
+        assertThat(classRoles.value()).containsExactly(RoleCodes.ADMIN);
+        assertThat(grouped.getAnnotation(RequireRoles.class).value())
+                .containsExactly(
+                        RoleCodes.ADMIN,
+                        RoleCodes.BIZ_LEADER,
+                        RoleCodes.BIZ_STAFF,
+                        RoleCodes.CHANNEL_LEADER,
+                        RoleCodes.CHANNEL_STAFF,
+                        RoleCodes.OPS_STAFF);
+        assertThat(create.getAnnotation(RequireRoles.class)).isNull();
+        assertThat(update.getAnnotation(RequireRoles.class)).isNull();
+        assertThat(delete.getAnnotation(RequireRoles.class)).isNull();
     }
 
     private static SystemConfig config(String key, String value) {

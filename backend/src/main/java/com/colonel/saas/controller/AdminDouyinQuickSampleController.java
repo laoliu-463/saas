@@ -4,12 +4,10 @@ import com.colonel.saas.annotation.RequireRoles;
 import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.constant.RoleCodes;
+import com.colonel.saas.domain.product.application.ProductQuickSampleStatusQueryService;
 import com.colonel.saas.dto.douyin.DouyinQuickSampleStatusResponse;
-import com.colonel.saas.gateway.douyin.DouyinQuickSampleGateway;
-import com.colonel.saas.service.ProductQuickSampleService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -26,8 +24,7 @@ import org.springframework.web.bind.annotation.RestController;
  * <p>API 路径前缀：{@code /admin/douyin/quick-sample}
  * <p>访问权限：管理员和运维人员（{@link com.colonel.saas.constant.RoleCodes#ADMIN}、{@link com.colonel.saas.constant.RoleCodes#OPS_STAFF}）
  *
- * @see com.colonel.saas.gateway.douyin.DouyinQuickSampleGateway
- * @see com.colonel.saas.service.ProductQuickSampleService
+ * @see ProductQuickSampleStatusQueryService
  */
 @Tag(name = "抖店快速寄样诊断", description = "外部抖店 quick_sample_apply 联通状态诊断。")
 @RestController
@@ -35,23 +32,11 @@ import org.springframework.web.bind.annotation.RestController;
 @RequireRoles({RoleCodes.ADMIN, RoleCodes.OPS_STAFF})
 public class AdminDouyinQuickSampleController extends BaseController {
 
-    /** 抖店快速寄样 Gateway，负责与抖店 quick_sample_apply 接口的交互和状态检测 */
-    private final DouyinQuickSampleGateway douyinQuickSampleGateway;
+    /** 快速寄样状态查询应用服务。 */
+    private final ProductQuickSampleStatusQueryService productQuickSampleStatusQueryService;
 
-    /** 快速寄样功能是否在配置中启用（由 app.douyin.quick-sample.enabled 控制） */
-    private final boolean douyinQuickSampleEnabled;
-
-    /**
-     * 构造注入抖店快速寄样 Gateway 和启用开关配置。
-     *
-     * @param douyinQuickSampleGateway   抖店快速寄样 Gateway 实例
-     * @param douyinQuickSampleEnabled   快速寄样功能配置开关，默认为 false
-     */
-    public AdminDouyinQuickSampleController(
-            DouyinQuickSampleGateway douyinQuickSampleGateway,
-            @Value("${app.douyin.quick-sample.enabled:false}") boolean douyinQuickSampleEnabled) {
-        this.douyinQuickSampleGateway = douyinQuickSampleGateway;
-        this.douyinQuickSampleEnabled = douyinQuickSampleEnabled;
+    public AdminDouyinQuickSampleController(ProductQuickSampleStatusQueryService productQuickSampleStatusQueryService) {
+        this.productQuickSampleStatusQueryService = productQuickSampleStatusQueryService;
     }
 
     /**
@@ -71,15 +56,6 @@ public class AdminDouyinQuickSampleController extends BaseController {
     @Operation(summary = "抖店快速寄样状态", description = "返回 SDK 是否支持外部 quick_sample_apply 及 LOCAL_FALLBACK 策略。")
     @GetMapping("/status")
     public ApiResult<DouyinQuickSampleStatusResponse> status() {
-        DouyinQuickSampleGateway.SupportStatus supportStatus = douyinQuickSampleGateway.supportStatus();
-        boolean supported = douyinQuickSampleGateway.isSupported();
-        String statusName = supportStatus == null ? ProductQuickSampleService.GATEWAY_STATUS_UNSUPPORTED : supportStatus.name();
-        return ok(DouyinQuickSampleStatusResponse.builder()
-                .supported(supported)
-                .status(statusName)
-                .realConnected(false)
-                .message("当前 SDK 未支持 quick_sample_apply")
-                .fallbackEnabled(true)
-                .build());
+        return ok(productQuickSampleStatusQueryService.status());
     }
 }

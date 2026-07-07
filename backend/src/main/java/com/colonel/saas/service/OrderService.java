@@ -8,7 +8,7 @@ import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.domain.product.facade.ProductDomainFacade;
 import com.colonel.saas.domain.product.facade.dto.ProductOrderDisplayDTO;
 import com.colonel.saas.domain.product.facade.dto.ProductSnapshotOrderDisplayDTO;
-import com.colonel.saas.domain.user.policy.DataScopePolicy;
+import com.colonel.saas.domain.user.policy.DataScopeResolver;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import org.springframework.beans.factory.annotation.Value;
@@ -61,10 +61,10 @@ public class OrderService {
     private final ProductDomainFacade productDomainFacade;
 
     /**
-     * 数据范围策略（DDD-USER-DATASCOPE-004）：委托 {@link DataScopePolicy}
+     * 数据范围策略（DDD-USER-DATASCOPE-004）：委托 {@link DataScopeResolver}
      * 处理 self/group/all 数据范围过滤。详见 issue #6。
      */
-    private final DataScopePolicy dataScopePolicy;
+    private final DataScopeResolver dataScopeResolver;
 
     /**
      * DDD 化灰度开关（DDD-DATASCOPE-001）。
@@ -81,12 +81,12 @@ public class OrderService {
             ColonelsettlementOrderMapper orderMapper,
             DashboardService dashboardService,
             ProductDomainFacade productDomainFacade,
-            DataScopePolicy dataScopePolicy,
+            DataScopeResolver dataScopeResolver,
             com.colonel.saas.config.DddRefactorProperties dddRefactorProperties) {
         this.orderMapper = orderMapper;
         this.dashboardService = dashboardService;
         this.productDomainFacade = productDomainFacade;
-        this.dataScopePolicy = dataScopePolicy;
+        this.dataScopeResolver = dataScopeResolver;
         this.dddRefactorProperties = dddRefactorProperties;
     }
 
@@ -552,8 +552,8 @@ public class OrderService {
             }
             return;
         }
-        // 新路径（DDD-USER-DATASCOPE-004：委托 DataScopePolicy，行为 1:1 等价于原 switch 实现）
-        dataScopePolicy.applyTo(wrapper, userId, deptId, dataScope,
+        // 新路径（DDD-USER-DATASCOPE-004：委托 DataScopeResolver，行为 1:1 等价于原 switch 实现）
+        dataScopeResolver.applyTo(wrapper, userId, deptId, dataScope,
                 ColonelsettlementOrder::getUserId, ColonelsettlementOrder::getDeptId);
     }
 
@@ -585,8 +585,8 @@ public class OrderService {
             }
             return;
         }
-        // 新路径（DDD-USER-DATASCOPE-004：委托 DataScopePolicy，行为 1:1 等价于原 switch 实现）
-        dataScopePolicy.applyTo(wrapper, userId, deptId, dataScope, "user_id", "dept_id");
+        // 新路径（DDD-USER-DATASCOPE-004：委托 DataScopeResolver，行为 1:1 等价于原 switch 实现）
+        dataScopeResolver.applyTo(wrapper, userId, deptId, dataScope, "user_id", "dept_id");
     }
 
     public void normalizeOrderRow(ColonelsettlementOrder order) {

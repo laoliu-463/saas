@@ -11,7 +11,9 @@ import com.colonel.saas.entity.Talent;
 import com.colonel.saas.entity.TalentClaim;
 import com.colonel.saas.domain.sample.facade.SampleDomainFacade;
 import com.colonel.saas.domain.sample.facade.dto.TalentRecentSampleDTO;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
+import com.colonel.saas.domain.user.policy.DataScopeResolver;
 import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.mapper.TalentClaimMapper;
@@ -69,8 +71,8 @@ class TalentQueryServiceTest {
                 userDomainFacade,
                 sampleDomainFacade,
                 jdbcTemplate,
-                new CurrentUserPermissionPolicy(),
-                new DataScopePolicy(),
+                new CurrentUserPermissionChecker(new CurrentUserPermissionPolicy()),
+                new DataScopeResolver(new DataScopePolicy()),
                 new DddRefactorProperties()
         );
         lenient().when(sampleDomainFacade.countSamplesByTalentIds(any())).thenReturn(Map.of());
@@ -85,9 +87,14 @@ class TalentQueryServiceTest {
                 .contains("dddRefactorProperties.getDataScopePolicy().isEnabled()")
                 .contains("assertCanAccessLegacy")
                 .contains("assertCanAccessWithPolicy")
-                .contains("DataScopePolicy")
-                .contains("dataScopePolicy.contextRequirement")
-                .contains("dataScopePolicy.decide");
+                .contains("DataScopeResolver")
+                .contains("dataScopeResolver.resolve")
+                .contains("CurrentUserPermissionChecker")
+                .contains("currentUserPermissionChecker.hasAnyRole")
+                .doesNotContain("import com.colonel.saas.domain.user.policy.DataScopePolicy;")
+                .doesNotContain("import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;")
+                .doesNotContain("dataScopePolicy.")
+                .doesNotContain("currentUserPermissionPolicy.");
     }
 
     private Path talentQueryServiceSourcePath() {
@@ -585,8 +592,8 @@ class TalentQueryServiceTest {
                 userDomainFacade,
                 sampleDomainFacade,
                 jdbcTemplate,
-                new CurrentUserPermissionPolicy(),
-                new DataScopePolicy(),
+                new CurrentUserPermissionChecker(new CurrentUserPermissionPolicy()),
+                new DataScopeResolver(new DataScopePolicy()),
                 properties
         );
         UUID talentId = UUID.randomUUID();

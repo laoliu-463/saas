@@ -3,6 +3,9 @@ package com.colonel.saas.service;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.config.DddRefactorProperties;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
+import com.colonel.saas.domain.user.policy.DataScopeResolver;
 import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.dto.performance.PerformanceBatchRequest;
 import com.colonel.saas.dto.performance.PerformanceListQuery;
@@ -50,10 +53,18 @@ class PerformanceQueryServiceTest {
     private OperationLogService operationLogService;
 
     private PerformanceQueryService service;
+    private CurrentUserPermissionChecker currentUserPermissionChecker;
 
     @BeforeEach
     void setUp() {
-        service = new PerformanceQueryService(performanceRecordMapper, orderReadFacade, jdbcTemplate);
+        currentUserPermissionChecker = new CurrentUserPermissionChecker(new CurrentUserPermissionPolicy());
+        service = new PerformanceQueryService(
+                performanceRecordMapper,
+                orderReadFacade,
+                jdbcTemplate,
+                new DataScopeResolver(new DataScopePolicy()),
+                currentUserPermissionChecker,
+                new DddRefactorProperties());
     }
 
     @Test
@@ -186,7 +197,8 @@ class PerformanceQueryServiceTest {
                 performanceRecordMapper,
                 orderReadFacade,
                 jdbcTemplate,
-                dataScopePolicy,
+                new DataScopeResolver(dataScopePolicy),
+                currentUserPermissionChecker,
                 properties);
         when(jdbcTemplate.queryForObject(any(String.class), eq(Long.class), any(Object[].class))).thenReturn(0L);
         when(jdbcTemplate.query(anyString(), org.mockito.ArgumentMatchers.<RowMapper<?>>any(), any(Object[].class)))

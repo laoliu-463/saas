@@ -5,7 +5,7 @@ import com.colonel.saas.auth.dto.DeptMemberPageRequest;
 import com.colonel.saas.auth.dto.SysUserPageRequest;
 import com.colonel.saas.auth.service.OrgStructureService;
 import com.colonel.saas.common.enums.DataScope;
-import com.colonel.saas.domain.user.policy.DataScopePolicy;
+import com.colonel.saas.domain.user.policy.DataScopeResolver;
 import com.colonel.saas.domain.user.port.UserQueryLookup;
 import com.colonel.saas.domain.user.port.UserQueryLookup.UserQueryFilter;
 import com.colonel.saas.vo.SysUserVO;
@@ -28,15 +28,15 @@ public class SysUserQueryApplicationService {
 
     private final UserQueryLookup userQueryLookup;
     private final OrgStructureService orgStructureService;
-    private final DataScopePolicy dataScopePolicy;
+    private final DataScopeResolver dataScopeResolver;
 
     public SysUserQueryApplicationService(
             UserQueryLookup userQueryLookup,
             OrgStructureService orgStructureService,
-            DataScopePolicy dataScopePolicy) {
+            DataScopeResolver dataScopeResolver) {
         this.userQueryLookup = userQueryLookup;
         this.orgStructureService = orgStructureService;
-        this.dataScopePolicy = dataScopePolicy;
+        this.dataScopeResolver = dataScopeResolver;
     }
 
     public IPage<SysUserVO> findPage(
@@ -74,8 +74,7 @@ public class SysUserQueryApplicationService {
     }
 
     private UserQueryFilter resolveFilter(UUID currentUserId, UUID currentDeptId, DataScope dataScope) {
-        DataScopePolicy.Decision decision = dataScopePolicy.decide(currentUserId, currentDeptId, dataScope);
-        return switch (decision) {
+        return switch (dataScopeResolver.resolve(currentUserId, currentDeptId, dataScope).decision()) {
             case FILTER_USER -> UserQueryFilter.user(currentUserId);
             case FILTER_DEPT -> UserQueryFilter.dept(currentDeptId);
             case NO_FILTER -> UserQueryFilter.none();

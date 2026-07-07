@@ -11,6 +11,7 @@ import com.colonel.saas.domain.product.facade.ProductDomainFacade;
 import com.colonel.saas.domain.product.facade.dto.ProductOrderDisplayDTO;
 import com.colonel.saas.domain.product.facade.dto.ProductSnapshotOrderDisplayDTO;
 import com.colonel.saas.domain.user.policy.DataScopePolicy;
+import com.colonel.saas.domain.user.policy.DataScopeResolver;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeEach;
@@ -58,7 +59,7 @@ class OrderServiceTest {
     @BeforeEach
     void setUp() {
         initTableInfo(ColonelsettlementOrder.class);
-        service = new OrderService(orderMapper, dashboardService, productDomainFacade, new DataScopePolicy(), new com.colonel.saas.config.DddRefactorProperties());
+        service = new OrderService(orderMapper, dashboardService, productDomainFacade, newDataScopeResolver(), new com.colonel.saas.config.DddRefactorProperties());
     }
 
     private void initTableInfo(Class<?> entityClass) {
@@ -75,9 +76,10 @@ class OrderServiceTest {
         String source = Files.readString(orderServiceSourcePath());
 
         assertThat(source)
-                .contains("dataScopePolicy.applyTo(wrapper, userId, deptId, dataScope,\n"
+                .contains("dataScopeResolver.applyTo(wrapper, userId, deptId, dataScope,\n"
                         + "                ColonelsettlementOrder::getUserId, ColonelsettlementOrder::getDeptId)")
-                .contains("dataScopePolicy.applyTo(wrapper, userId, deptId, dataScope, \"user_id\", \"dept_id\")")
+                .contains("dataScopeResolver.applyTo(wrapper, userId, deptId, dataScope, \"user_id\", \"dept_id\")")
+                .contains("DataScopeResolver")
                 .doesNotContain("DataScopePolicy.Decision decision = dataScopePolicy.decide");
     }
 
@@ -452,8 +454,12 @@ class OrderServiceTest {
                 orderMapper,
                 dashboardService,
                 productDomainFacade,
-                new DataScopePolicy(),
+                newDataScopeResolver(),
                 properties);
+    }
+
+    private DataScopeResolver newDataScopeResolver() {
+        return new DataScopeResolver(new DataScopePolicy());
     }
 
     // ============================================================

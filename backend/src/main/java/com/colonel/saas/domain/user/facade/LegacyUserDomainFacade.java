@@ -7,7 +7,7 @@ import com.colonel.saas.domain.user.port.DepartmentOptionLookup;
 import com.colonel.saas.domain.user.port.DepartmentOptionLookup.DepartmentEntry;
 import com.colonel.saas.domain.user.port.UserBasicLookup;
 import com.colonel.saas.domain.user.port.UserBasicLookup.BasicUser;
-import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
 import com.colonel.saas.dto.user.CheckPermissionRequest;
 import com.colonel.saas.dto.user.CurrentUserResponse;
 import com.colonel.saas.dto.user.UserDataScopeResponse;
@@ -35,19 +35,19 @@ public class LegacyUserDomainFacade implements UserDomainFacade {
     private final UserMasterDataService userMasterDataService;
     private final DepartmentOptionLookup departmentOptionLookup;
     private final UserBasicLookup userBasicLookup;
-    private final CurrentUserPermissionPolicy currentUserPermissionPolicy;
+    private final CurrentUserPermissionChecker currentUserPermissionChecker;
 
     public LegacyUserDomainFacade(
             UserDomainService userDomainService,
             UserMasterDataService userMasterDataService,
             DepartmentOptionLookup departmentOptionLookup,
             UserBasicLookup userBasicLookup,
-            CurrentUserPermissionPolicy currentUserPermissionPolicy) {
+            CurrentUserPermissionChecker currentUserPermissionChecker) {
         this.userDomainService = userDomainService;
         this.userMasterDataService = userMasterDataService;
         this.departmentOptionLookup = departmentOptionLookup;
         this.userBasicLookup = userBasicLookup;
-        this.currentUserPermissionPolicy = currentUserPermissionPolicy;
+        this.currentUserPermissionChecker = currentUserPermissionChecker;
     }
 
     @Override
@@ -98,12 +98,12 @@ public class LegacyUserDomainFacade implements UserDomainFacade {
 
     @Override
     public boolean hasAnyRole(Object roleCodes, String... expectedRoles) {
-        return currentUserPermissionPolicy.hasAnyRole(roleCodes, expectedRoles);
+        return currentUserPermissionChecker.hasAnyRole(roleCodes, expectedRoles);
     }
 
     @Override
     public List<String> normalizeRoleCodes(Object roleCodes) {
-        return currentUserPermissionPolicy.normalizeRoleCodes(roleCodes);
+        return currentUserPermissionChecker.normalizeRoleCodes(roleCodes);
     }
 
     private DepartmentOption toDepartmentOption(DepartmentEntry dept) {

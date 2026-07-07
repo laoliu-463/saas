@@ -20,7 +20,7 @@ import com.colonel.saas.domain.performance.facade.OrderPerformanceQueryFacade;
 import com.colonel.saas.domain.product.facade.ProductActivityReadFacade;
 import com.colonel.saas.domain.talent.facade.ExclusiveTalentReadFacade;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
-import com.colonel.saas.domain.user.policy.DataScopePolicy;
+import com.colonel.saas.domain.user.policy.DataScopeResolver;
 import com.colonel.saas.dto.performance.OrderPerformanceBatchResponse;
 import com.colonel.saas.dto.performance.OrderPerformanceDTO;
 import com.colonel.saas.entity.ColonelsettlementActivity;
@@ -172,8 +172,8 @@ public class DataApplicationService extends BaseController {
     /** 用户门面，负责查询渠道/招商负责人展示名称 */
     private final UserDomainFacade userDomainFacade;
 
-    /** 用户域数据范围策略，负责解释 PERSONAL / DEPT / ALL 的过滤决策 */
-    private final DataScopePolicy dataScopePolicy;
+    /** 用户域数据范围解析器，负责解释 PERSONAL / DEPT / ALL 的过滤决策 */
+    private final DataScopeResolver dataScopeResolver;
 
     /** DDD 重构灰度开关，默认关闭以保持 Legacy 行为。 */
     private final DddRefactorProperties dddRefactorProperties;
@@ -199,7 +199,7 @@ public class DataApplicationService extends BaseController {
             PerformanceMetricsQueryService performanceMetricsQueryService,
             OrderPerformanceQueryFacade orderPerformanceQueryFacade,
             UserDomainFacade userDomainFacade,
-            DataScopePolicy dataScopePolicy,
+            DataScopeResolver dataScopeResolver,
             DddRefactorProperties dddRefactorProperties,
             JdbcTemplate jdbcTemplate) {
         this.dataOrderQueryFacade = dataOrderQueryFacade;
@@ -211,7 +211,7 @@ public class DataApplicationService extends BaseController {
         this.performanceMetricsQueryService = performanceMetricsQueryService;
         this.orderPerformanceQueryFacade = orderPerformanceQueryFacade;
         this.userDomainFacade = userDomainFacade;
-        this.dataScopePolicy = dataScopePolicy;
+        this.dataScopeResolver = dataScopeResolver;
         this.dddRefactorProperties = dddRefactorProperties;
         this.jdbcTemplate = jdbcTemplate;
     }
@@ -2341,7 +2341,7 @@ public class DataApplicationService extends BaseController {
             applyQueryDataScopeLegacy(wrapper, userId, deptId, dataScope, userIdColumn, deptIdColumn);
             return;
         }
-        applyQueryDataScopeWithPolicy(wrapper, userId, deptId, dataScope, userIdColumn, deptIdColumn);
+        applyQueryDataScopeWithResolver(wrapper, userId, deptId, dataScope, userIdColumn, deptIdColumn);
     }
 
     private <T> void applyQueryDataScopeLegacy(
@@ -2361,15 +2361,15 @@ public class DataApplicationService extends BaseController {
         }
     }
 
-    private <T> void applyQueryDataScopeWithPolicy(
+    private <T> void applyQueryDataScopeWithResolver(
             QueryWrapper<T> wrapper,
             UUID userId,
             UUID deptId,
             DataScope dataScope,
             String userIdColumn,
             String deptIdColumn) {
-        requireDataScopeContextWithPolicy(userId, deptId, dataScope);
-        dataScopePolicy.applyTo(wrapper, userId, deptId, dataScope, userIdColumn, deptIdColumn);
+        requireDataScopeContextWithResolver(userId, deptId, dataScope);
+        dataScopeResolver.applyTo(wrapper, userId, deptId, dataScope, userIdColumn, deptIdColumn);
     }
 
     private <T> void applyLambdaDataScope(
@@ -2386,7 +2386,7 @@ public class DataApplicationService extends BaseController {
             applyLambdaDataScopeLegacy(wrapper, userId, deptId, dataScope, userIdColumn, deptIdColumn);
             return;
         }
-        applyLambdaDataScopeWithPolicy(wrapper, userId, deptId, dataScope, userIdColumn, deptIdColumn);
+        applyLambdaDataScopeWithResolver(wrapper, userId, deptId, dataScope, userIdColumn, deptIdColumn);
     }
 
     private <T> void applyLambdaDataScopeLegacy(
@@ -2406,15 +2406,15 @@ public class DataApplicationService extends BaseController {
         }
     }
 
-    private <T> void applyLambdaDataScopeWithPolicy(
+    private <T> void applyLambdaDataScopeWithResolver(
             LambdaQueryWrapper<T> wrapper,
             UUID userId,
             UUID deptId,
             DataScope dataScope,
             SFunction<T, ?> userIdColumn,
             SFunction<T, ?> deptIdColumn) {
-        requireDataScopeContextWithPolicy(userId, deptId, dataScope);
-        dataScopePolicy.applyTo(wrapper, userId, deptId, dataScope, userIdColumn, deptIdColumn);
+        requireDataScopeContextWithResolver(userId, deptId, dataScope);
+        dataScopeResolver.applyTo(wrapper, userId, deptId, dataScope, userIdColumn, deptIdColumn);
     }
 
     private void requireDataScopeContextLegacy(UUID userId, UUID deptId, DataScope dataScope) {
@@ -2426,13 +2426,13 @@ public class DataApplicationService extends BaseController {
         }
     }
 
-    private void requireDataScopeContextWithPolicy(UUID userId, UUID deptId, DataScope dataScope) {
-        DataScopePolicy.ContextRequirement requirement =
-                dataScopePolicy.contextRequirement(userId, deptId, dataScope);
-        if (requirement == DataScopePolicy.ContextRequirement.MISSING_USER) {
+    private void requireDataScopeContextWithResolver(UUID userId, UUID deptId, DataScope dataScope) {
+        DataScopeResolver.ResolvedDataScope resolved =
+                dataScopeResolver.resolve(userId, deptId, dataScope);
+        if (resolved.missingUser()) {
             throw BusinessException.forbidden("数据权限异常：缺少用户上下文");
         }
-        if (requirement == DataScopePolicy.ContextRequirement.MISSING_DEPT) {
+        if (resolved.missingDept()) {
             throw BusinessException.forbidden("数据权限异常：缺少部门上下文");
         }
     }

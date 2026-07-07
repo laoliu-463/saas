@@ -3,12 +3,15 @@ package com.colonel.saas.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.colonel.saas.common.enums.ProductBizStatus;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.handler.UUIDTypeHandler;
 import com.colonel.saas.constant.ProductDisplayStatus;
 import com.colonel.saas.domain.order.facade.OrderReadFacade;
 import com.colonel.saas.domain.order.facade.PromotionLinkRecordFacade;
+import com.colonel.saas.domain.product.application.dto.ActivityProductRefreshRequest;
 import com.colonel.saas.domain.product.policy.ProductDisplayPolicy;
 import com.colonel.saas.douyin.DouyinApiException;
 import com.colonel.saas.entity.ColonelsettlementActivity;
@@ -35,6 +38,7 @@ import java.util.List;
 import java.util.Map;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -58,6 +62,8 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
 class ProductServiceActivityStatusIndependenceTest {
+
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     @Mock private com.colonel.saas.domain.product.application.port.DouyinConvertPort douyinConvertPort;
     @Mock private DouyinProductGateway douyinProductGateway;
@@ -519,6 +525,79 @@ class ProductServiceActivityStatusIndependenceTest {
     }
 
     @Test
+    void auditProduct_approveShouldPersistNormalizedAuditPayload() throws Exception {
+        String activityId = "ACT006";
+        String productId = "6";
+        UUID operatorId = UUID.randomUUID();
+        UUID operatorDeptId = UUID.randomUUID();
+        ProductSnapshot snapshot = snapshot(activityId, productId);
+        ProductOperationState state = state(activityId, productId);
+        Map<String, Object> supplement = new LinkedHashMap<>();
+        supplement.put("exclusivePriceRemark", " 直播间专属价 129 元 ");
+        supplement.put("shippingInfo", "48 小时内发货");
+        supplement.put("sellingPoints", List.of("高转化卖点", " "));
+        supplement.put("promotionScript", "达人可直接口播");
+        supplement.put("supportsAds", true);
+        supplement.put("adsRule", "投流 1:0.5");
+        supplement.put("rewardRemark", "达标后额外奖励");
+        supplement.put("participationRequirements", "粉丝画像匹配");
+        supplement.put("campaignTimeRemark", "活动期内有效");
+        supplement.put("materialFiles", List.of("https://material.test/card.png", " "));
+        supplement.put("goodsTags", List.of("食品", "夏季"));
+        supplement.put("productTags", List.of("主推"));
+        supplement.put("sampleThresholdSales", 30000L);
+        supplement.put("sampleThresholdLevel", 2);
+        supplement.put("sampleThresholdRemark", "需真人出镜");
+
+        when(snapshotMapper.selectOne(any())).thenReturn(snapshot);
+        when(operationStateMapper.selectOne(any())).thenReturn(state);
+        when(operationStateMapper.selectList(any())).thenReturn(List.of());
+        when(productBizStatusService.readBizStatus(state)).thenReturn(ProductBizStatus.PENDING_AUDIT);
+        when(productBizStatusService.changeStatus(
+                eq(state),
+                eq(ProductBizStatus.APPROVED),
+                eq("AUDIT"),
+                eq(operatorId),
+                eq(operatorDeptId),
+                any(),
+                eq("审核通过，已加入商品库"),
+                any(ProductBizStatusService.StatusMutation.class)))
+                .thenAnswer(invocation -> {
+                    ProductBizStatusService.StatusMutation mutation = invocation.getArgument(7);
+                    mutation.apply(state);
+                    state.setBizStatus(ProductBizStatus.APPROVED.name());
+                    return state;
+                });
+
+        productService.auditProduct(activityId, productId, true, "素材完整", supplement, operatorId, operatorDeptId);
+
+        assertThat(state.getSelectedToLibrary()).isTrue();
+        assertThat(state.getAuditStatus()).isEqualTo(2);
+        assertThat(state.getAuditRemark()).isNull();
+        assertThat(state.getAuditPayload()).isNotBlank();
+        Map<String, Object> persisted = OBJECT_MAPPER.readValue(
+                state.getAuditPayload(),
+                new TypeReference<Map<String, Object>>() {});
+        assertThat(persisted)
+                .containsEntry("exclusivePriceRemark", "直播间专属价 129 元")
+                .containsEntry("shippingInfo", "48 小时内发货")
+                .containsEntry("promotionScript", "达人可直接口播")
+                .containsEntry("supportsAds", true)
+                .containsEntry("adsRule", "投流 1:0.5")
+                .containsEntry("rewardRemark", "达标后额外奖励")
+                .containsEntry("participationRequirements", "粉丝画像匹配")
+                .containsEntry("campaignTimeRemark", "活动期内有效")
+                .containsEntry("sampleThresholdRemark", "需真人出镜");
+        assertThat(persisted.get("sellingPoints")).asList().containsExactly("高转化卖点");
+        assertThat(persisted.get("materialFiles")).asList().containsExactly("https://material.test/card.png");
+        assertThat(persisted.get("goodsTags")).asList().containsExactly("食品", "夏季");
+        assertThat(persisted.get("productTags")).asList().containsExactly("主推");
+        assertThat(((Number) persisted.get("sampleThresholdSales")).longValue()).isEqualTo(30000L);
+        assertThat(((Number) persisted.get("sampleThresholdLevel")).longValue()).isEqualTo(2L);
+        verify(productDisplayRuleService).applyForProductId(productId);
+    }
+
+    @Test
     void upsertSnapshots_shouldPreserveLocalOperationStateFieldsWhenSnapshotRefreshes() {
         String activityId = "ACT007";
         String productId = "7";
@@ -576,6 +655,50 @@ class ProductServiceActivityStatusIndependenceTest {
         assertThat(existing.getPinnedUntil()).isEqualTo(pinnedUntil);
         assertThat(existing.getPinnedBy()).isEqualTo(pinnedBy);
         verify(operationStateMapper, never()).updateById(any(ProductOperationState.class));
+    }
+
+    @Test
+    void refreshActivitySnapshots_shouldAcceptApplicationRefreshRequestAndReuseRefreshFlow() {
+        String activityId = "ACT009";
+        List<DouyinProductGateway.ActivityProductQueryRequest> requests = new ArrayList<>();
+        when(douyinProductGateway.queryActivityProducts(any())).thenAnswer(invocation -> {
+            DouyinProductGateway.ActivityProductQueryRequest request = invocation.getArgument(0);
+            requests.add(request);
+            return new DouyinProductGateway.ActivityProductListResult(
+                    false,
+                    9L,
+                    30001L,
+                    1L,
+                    null,
+                    List.of(item(9L, "DTO刷新商品")));
+        });
+        when(operationStateMapper.selectOne(any())).thenReturn(null);
+        when(productBizStatusService.initStateIfAbsent(any(), eq(activityId), eq("9"), any(), any(), any()))
+                .thenReturn(state(activityId, "9"));
+        when(productDisplayRuleService.repairLibraryStateForActivity(activityId, false, 10000))
+                .thenReturn(new ProductDisplayRuleService.LibraryRepairResult(
+                        activityId, false, 1, 1, 1, 1, 0, 0, 0, 0, List.of()));
+
+        ProductService.ActivityProductRefreshResult result = productService.refreshActivitySnapshots(
+                new ActivityProductRefreshRequest(
+                        "app-1", activityId, 4L, 2L, 19, "合作", 0,
+                        "商品", 1, 1L, "cursor-1", 3L));
+
+        assertThat(result.syncedProductCount()).isEqualTo(1);
+        assertThat(requests).hasSize(1);
+        DouyinProductGateway.ActivityProductQueryRequest request = requests.get(0);
+        assertThat(request.appId()).isEqualTo("app-1");
+        assertThat(request.activityId()).isEqualTo(activityId);
+        assertThat(request.searchType()).isEqualTo(4L);
+        assertThat(request.sortType()).isEqualTo(2L);
+        assertThat(request.count()).isEqualTo(19);
+        assertThat(request.cooperationInfo()).isEqualTo("合作");
+        assertThat(request.cooperationType()).isEqualTo(0);
+        assertThat(request.productInfo()).isEqualTo("商品");
+        assertThat(request.status()).isEqualTo(1);
+        assertThat(request.retrieveMode()).isEqualTo(1L);
+        assertThat(request.cursor()).isEqualTo("cursor-1");
+        assertThat(request.page()).isNull();
     }
 
     @Test

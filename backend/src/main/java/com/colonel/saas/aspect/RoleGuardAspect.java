@@ -3,7 +3,7 @@ package com.colonel.saas.aspect;
 import com.colonel.saas.annotation.RequireRoles;
 import com.colonel.saas.common.exception.ForbiddenException;
 import com.colonel.saas.constant.RoleCodes;
-import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
 import jakarta.servlet.http.HttpServletRequest;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
@@ -49,8 +49,8 @@ import java.util.List;
  * 这确保了所有 Controller 端点都受角色鉴权保护，无需逐个添加切点。</p>
  *
  * <h3>角色编码比较规则</h3>
- * <p>角色编码解析与匹配统一委托给用户域 {@link CurrentUserPermissionPolicy}，
- * 以复用登录上下文、数据范围和业务域权限入口的同一套角色编码规范化规则。</p>
+ * <p>角色编码解析与匹配统一委托给用户域 {@link CurrentUserPermissionChecker}，
+ * 以复用登录上下文、数据范围和业务域权限入口的同一套权限检查入口。</p>
  *
  * @see com.colonel.saas.annotation.RequireRoles 标注此注解的 Controller 方法/类会被此切面鉴权
  * @see com.colonel.saas.constant.RoleCodes 系统角色编码常量定义
@@ -60,10 +60,10 @@ import java.util.List;
 @Component
 public class RoleGuardAspect {
 
-    private final CurrentUserPermissionPolicy currentUserPermissionPolicy;
+    private final CurrentUserPermissionChecker currentUserPermissionChecker;
 
-    public RoleGuardAspect(CurrentUserPermissionPolicy currentUserPermissionPolicy) {
-        this.currentUserPermissionPolicy = currentUserPermissionPolicy;
+    public RoleGuardAspect(CurrentUserPermissionChecker currentUserPermissionChecker) {
+        this.currentUserPermissionChecker = currentUserPermissionChecker;
     }
 
     /**
@@ -90,13 +90,13 @@ public class RoleGuardAspect {
         // 第二步：从当前 HTTP 请求中提取用户的角色编码集合
         List<String> currentRoles = resolveCurrentRoles();
         // 管理员角色拥有最高权限，直接放行，无需匹配具体角色列表
-        if (currentUserPermissionPolicy.hasAnyRole(currentRoles, RoleCodes.ADMIN)) {
+        if (currentUserPermissionChecker.hasAnyRole(currentRoles, RoleCodes.ADMIN)) {
             return point.proceed();
         }
 
         // 第三步：遍历注解声明的角色列表，检查当前用户是否拥有匹配的角色
         // 只要有一个角色匹配即视为通过鉴权
-        if (currentUserPermissionPolicy.hasAnyRole(currentRoles, requireRoles.value())) {
+        if (currentUserPermissionChecker.hasAnyRole(currentRoles, requireRoles.value())) {
             return point.proceed();
         }
 
@@ -153,6 +153,6 @@ public class RoleGuardAspect {
         }
         HttpServletRequest request = servletAttrs.getRequest();
         // 从 request attribute 中获取 roleCodes，由上游认证拦截器写入
-        return currentUserPermissionPolicy.normalizeRoleCodes(request.getAttribute("roleCodes"));
+        return currentUserPermissionChecker.normalizeRoleCodes(request.getAttribute("roleCodes"));
     }
 }

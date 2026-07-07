@@ -1,5 +1,7 @@
 package com.colonel.saas.service;
 
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.config.ConfigDefinitionRegistry;
 import com.colonel.saas.config.RuleCenterSchemaRegistry;
 import com.colonel.saas.config.SystemConfigKeys;
@@ -13,11 +15,12 @@ import com.colonel.saas.entity.SystemConfigChangeLog;
 import com.colonel.saas.mapper.SystemConfigChangeLogMapper;
 import com.colonel.saas.mapper.SystemConfigMapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -175,7 +178,27 @@ class RuleCenterServiceTest {
             assertThat(view.eventId()).isEqualTo(eventId);
             assertThat(view.configKey()).isEqualTo(SystemConfigKeys.PRESET_TALENT_TAGS);
             assertThat(view.changeAction()).isEqualTo("UPDATE");
+            assertThat(view.oldValue()).isEqualTo("[]");
+            assertThat(view.newValue()).isEqualTo("[\"美妆\"]");
+            assertThat(view.source()).isEqualTo("rule_center");
+            assertThat(view.changeReason()).isEqualTo("调整");
+            assertThat(view.operatorId()).isEqualTo(log.getOperatorId());
+            assertThat(view.configVersion()).isEqualTo(2);
         });
+
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        ArgumentCaptor<Page<SystemConfigChangeLog>> pageCaptor = ArgumentCaptor.forClass((Class) Page.class);
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        ArgumentCaptor<QueryWrapper<SystemConfigChangeLog>> wrapperCaptor =
+                ArgumentCaptor.forClass((Class) QueryWrapper.class);
+        verify(mapper).selectPage(pageCaptor.capture(), wrapperCaptor.capture());
+        assertThat(pageCaptor.getValue().getCurrent()).isEqualTo(1);
+        assertThat(pageCaptor.getValue().getSize()).isEqualTo(10);
+        QueryWrapper<SystemConfigChangeLog> wrapper = wrapperCaptor.getValue();
+        assertThat(normalizeSqlSegment(wrapper.getSqlSegment()))
+                .contains("config_key")
+                .contains("order by")
+                .contains("changed_at desc");
     }
 
     @Test
@@ -235,5 +258,9 @@ class RuleCenterServiceTest {
                 sysConfigService == null ? mock(SysConfigService.class) : sysConfigService,
                 outboxService == null ? mock(DomainEventOutboxService.class) : outboxService,
                 consumeLogMapper == null ? mock(DomainEventConsumeLogMapper.class) : consumeLogMapper);
+    }
+
+    private static String normalizeSqlSegment(String sqlSegment) {
+        return sqlSegment.toLowerCase(Locale.ROOT).replaceAll("\\s+", " ").trim();
     }
 }

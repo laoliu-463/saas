@@ -84,6 +84,21 @@ class ProductLibraryRepairControllerTest {
     }
 
     @Test
+    void repairActivityLibraryState_shouldDefaultToDryRunWhenBodyMissing() throws Exception {
+        when(productDisplayRuleService.repairLibraryStateForActivity("3859423", true, 1000))
+                .thenReturn(new ProductDisplayRuleService.LibraryRepairResult(
+                        "3859423", true, 0, 0, 0, 0, 0, 0, 0, 0, List.of()));
+
+        mockMvc.perform(post("/colonel/activities/{activityId}/products/repair-library-state", "3859423"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.activityId").value("3859423"))
+                .andExpect(jsonPath("$.data.dryRun").value(true));
+
+        verify(productDisplayRuleService).repairLibraryStateForActivity("3859423", true, 1000);
+    }
+
+    @Test
     void libraryHealth_shouldReturnHealthMetrics() throws Exception {
         when(productDisplayRuleService.inspectLibraryHealth())
                 .thenReturn(new ProductDisplayRuleService.LibraryHealthResult(

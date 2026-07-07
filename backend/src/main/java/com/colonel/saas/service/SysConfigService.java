@@ -291,7 +291,8 @@ public class SysConfigService {
                 userId,
                 null,
                 CHANGE_SOURCE_API,
-                "CREATE");
+                "CREATE",
+                Map.of(config.getConfigKey(), config));
         // 第五步：记录操作日志
         operationLogService.recordSystemAction(
                 userId,
@@ -375,7 +376,8 @@ public class SysConfigService {
                 userId,
                 null,
                 CHANGE_SOURCE_API,
-                "UPDATE");
+                "UPDATE",
+                Map.of(existing.getConfigKey(), existing));
         // 第六步：记录操作日志
         operationLogService.recordSystemAction(
                 userId,
@@ -421,7 +423,8 @@ public class SysConfigService {
                 userId,
                 null,
                 CHANGE_SOURCE_API,
-                "DELETE");
+                "DELETE",
+                Map.of(existing.getConfigKey(), existing));
         // 第四步：记录操作日志
         operationLogService.recordSystemAction(
                 userId,
@@ -569,13 +572,26 @@ public class SysConfigService {
             String operatorName,
             String source,
             String changeAction) {
+        publishConfigChanged(changes, userId, operatorName, source, changeAction, Map.of());
+    }
+
+    private void publishConfigChanged(
+            List<ConfigChangedEventFactory.ConfigChangeContext> changes,
+            UUID userId,
+            String operatorName,
+            String source,
+            String changeAction,
+            Map<String, SystemConfig> knownConfigs) {
         if (changes == null || changes.isEmpty()) {
             return;
         }
         // 第一步：生成事件 ID 并逐条记录变更日志
         UUID eventId = UUID.randomUUID();
         for (ConfigChangedEventFactory.ConfigChangeContext change : changes) {
-            SystemConfig config = systemConfigMapper.findByConfigKey(change.configKey()).orElse(null);
+            SystemConfig config = knownConfigs.get(change.configKey());
+            if (config == null) {
+                config = systemConfigMapper.findByConfigKey(change.configKey()).orElse(null);
+            }
             recordConfigChange(
                     config,
                     changeAction,

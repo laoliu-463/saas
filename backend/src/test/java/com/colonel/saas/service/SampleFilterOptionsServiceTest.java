@@ -8,8 +8,10 @@ import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.domain.product.facade.ProductDomainFacade;
 import com.colonel.saas.domain.product.facade.dto.ProductReadDTO;
 import com.colonel.saas.domain.product.facade.dto.ProductSnapshotReadDTO;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.domain.user.policy.DataScopePolicy;
+import com.colonel.saas.domain.user.policy.DataScopeResolver;
 import com.colonel.saas.dto.sample.SampleFilterOptionsDTO;
 import com.colonel.saas.entity.SampleRequest;
 import com.colonel.saas.mapper.SampleRequestMapper;
@@ -51,8 +53,8 @@ class SampleFilterOptionsServiceTest {
                 sampleRequestMapper,
                 productDomainFacade,
                 userDomainFacade,
-                new CurrentUserPermissionPolicy(),
-                dataScopePolicy,
+                new CurrentUserPermissionChecker(new CurrentUserPermissionPolicy()),
+                new DataScopeResolver(dataScopePolicy),
                 dddRefactorProperties);
     }
 
@@ -124,7 +126,7 @@ class SampleFilterOptionsServiceTest {
         service.buildOptions(null, deptId, DataScope.PERSONAL, List.of(RoleCodes.BIZ_STAFF));
 
         verify(dataScopePolicy).contextRequirement(null, deptId, DataScope.PERSONAL);
-        verify(dataScopePolicy, never()).decide(null, deptId, DataScope.PERSONAL);
+        verify(dataScopePolicy).decide(null, deptId, DataScope.PERSONAL);
         verify(sampleRequestMapper).findPageForAuditor(any(Page.class), eq(null), any());
         verify(sampleRequestMapper, never()).findPageWithScope(any(Page.class), any());
     }

@@ -2,7 +2,7 @@ param(
     [Alias("Env")]
     [ValidateSet("test", "real-pre")]
     [string]$TargetEnv = "real-pre",
-    [ValidateSet("backend", "frontend", "full", "docs")]
+    [ValidateSet("backend", "frontend", "full", "docs", "apifox")]
     [string]$Scope = "full",
     [switch]$DryRun
 )
@@ -25,8 +25,8 @@ Write-Host "Scope: $Scope"
 $repoRoot = Get-HarnessRepoRoot
 Assert-HarnessRepoRoot -RepoRoot $repoRoot
 
-if ($Scope -eq "docs") {
-    Write-Host "Scope=docs: repository structure check passed; HTTP health checks skipped."
+if ($Scope -eq "docs" -or $Scope -eq "apifox") {
+    Write-Host "Scope=${Scope}: repository structure check passed; HTTP health checks skipped."
     return
 }
 

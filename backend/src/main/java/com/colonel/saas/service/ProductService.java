@@ -8,6 +8,7 @@ import com.colonel.saas.common.enums.ProductBizStatus;
 import com.colonel.saas.common.result.PageResult;
 import com.colonel.saas.constant.ProductDisplayStatus;
 import com.colonel.saas.domain.product.event.ProductDomainEventPublisher;
+import com.colonel.saas.domain.product.application.dto.ActivityProductRefreshRequest;
 import com.colonel.saas.domain.product.application.ProductLibraryApplicationService;
 import com.colonel.saas.domain.product.application.port.CopyPromotionSupportPort;
 import com.colonel.saas.domain.product.policy.ProductDisplayPolicy;
@@ -2061,6 +2062,14 @@ public class ProductService implements CopyPromotionSupportPort {
     }
 
     @Transactional(rollbackFor = Exception.class)
+    public ActivityProductRefreshResult refreshActivitySnapshots(ActivityProductRefreshRequest request) {
+        if (request == null) {
+            return refreshActivitySnapshots((DouyinProductGateway.ActivityProductQueryRequest) null);
+        }
+        return refreshActivitySnapshots(toActivityProductQueryRequest(request));
+    }
+
+    @Transactional(rollbackFor = Exception.class)
     public ActivityProductRefreshResult refreshActivitySnapshots(DouyinProductGateway.ActivityProductQueryRequest request) {
         return refreshActivitySnapshots(
                 request,
@@ -2135,6 +2144,23 @@ public class ProductService implements CopyPromotionSupportPort {
                         },
                 pageNo -> sleepBeforeNextActivityProductPage(request.activityId(), pageNo - 1, normalizedPageIntervalMs));
         return finishActivityProductRefresh(request, pageResult, normalizedPageIntervalMs);
+    }
+
+    private DouyinProductGateway.ActivityProductQueryRequest toActivityProductQueryRequest(
+            ActivityProductRefreshRequest request) {
+        return new DouyinProductGateway.ActivityProductQueryRequest(
+                request.appId(),
+                request.activityId(),
+                request.searchType(),
+                request.sortType(),
+                request.count(),
+                request.cooperationInfo(),
+                request.cooperationType(),
+                request.productInfo(),
+                request.status(),
+                request.retrieveMode(),
+                request.cursor(),
+                request.page());
     }
 
     @Transactional(rollbackFor = Exception.class)
