@@ -6,6 +6,7 @@ import com.colonel.saas.config.ConfigDefinitionRegistry;
 import com.colonel.saas.config.RuleCenterSchemaRegistry;
 import com.colonel.saas.config.SystemConfigKeys;
 import com.colonel.saas.common.exception.BusinessException;
+import com.colonel.saas.domain.config.application.RuleCenterApplicationService;
 import com.colonel.saas.domain.event.DomainEventConsumeLog;
 import com.colonel.saas.domain.event.DomainEventConsumeLogMapper;
 import com.colonel.saas.domain.event.DomainEventOutbox;
@@ -47,6 +48,7 @@ class RuleCenterServiceTest {
             null,
             null,
             null,
+            null,
             null);
 
     @Test
@@ -83,12 +85,17 @@ class RuleCenterServiceTest {
 
     @Test
     void currentValuesAndGroupValuesShouldLoadStoredValuesOrEmptyDefaults() {
+        // After DDD-CONFIG-001 Slice 1: currentValues / groupValues moved to RuleCenterApplicationService.
+        // Service is now a 1-line delegate. Business assertions live in RuleCenterApplicationServiceTest.
         SystemConfigMapper mapper = mock(SystemConfigMapper.class);
         SystemConfig stored = new SystemConfig();
         stored.setConfigKey(SystemConfigKeys.PRESET_TALENT_TAGS);
         stored.setConfigValue("[\"美妆\"]");
         when(mapper.findByConfigKey(SystemConfigKeys.PRESET_TALENT_TAGS)).thenReturn(Optional.of(stored));
+        RuleCenterApplicationService applicationService = new RuleCenterApplicationService(
+                ruleCenterSchemaRegistry, configDefinitionRegistry, mapper);
         RuleCenterService service = serviceWith(mapper, null, null, null, null);
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "ruleCenterApplicationService", applicationService);
 
         var current = service.currentValues();
         var talent = service.groupValues("talent");
@@ -257,7 +264,8 @@ class RuleCenterServiceTest {
                 changeLogMapper == null ? mock(SystemConfigChangeLogMapper.class) : changeLogMapper,
                 sysConfigService == null ? mock(SysConfigService.class) : sysConfigService,
                 outboxService == null ? mock(DomainEventOutboxService.class) : outboxService,
-                consumeLogMapper == null ? mock(DomainEventConsumeLogMapper.class) : consumeLogMapper);
+                consumeLogMapper == null ? mock(DomainEventConsumeLogMapper.class) : consumeLogMapper,
+                null);
     }
 
     private static String normalizeSqlSegment(String sqlSegment) {
