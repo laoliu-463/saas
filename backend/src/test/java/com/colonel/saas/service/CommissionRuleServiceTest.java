@@ -9,6 +9,7 @@ import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.common.handler.UUIDTypeHandler;
 import com.colonel.saas.common.exception.BusinessException;
+import com.colonel.saas.common.result.ResultCode;
 import com.colonel.saas.entity.CommissionRule;
 import com.colonel.saas.mapper.CommissionRuleMapper;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
@@ -88,12 +89,38 @@ class CommissionRuleServiceTest {
     }
 
     @Test
+    void resolveRule_shouldExposeMatchedRuleVersionEvidence() {
+        UUID ruleId = UUID.randomUUID();
+        LocalDateTime updatedAt = LocalDateTime.of(2026, 7, 8, 10, 30);
+        CommissionRule productRule = activeRule(
+                CommissionRuleService.DIMENSION_PRODUCT,
+                "P-1",
+                CommissionRuleService.TYPE_RECRUITER,
+                "0.25");
+        productRule.setId(ruleId);
+        productRule.setVersion(7);
+        productRule.setUpdateTime(updatedAt);
+        when(commissionRuleMapper.selectOne(any())).thenReturn(productRule);
+
+        CommissionRuleService.CommissionRuleResolution resolution = service.resolveRule(
+                CommissionRuleService.TYPE_RECRUITER,
+                new CommissionRuleService.CommissionResolutionContext("A-1", "P-1", UUID.randomUUID()),
+                LocalDateTime.now());
+
+        assertThat(resolution.ratio()).isEqualByComparingTo("0.25");
+        assertThat(resolution.ruleId()).isEqualTo(ruleId);
+        assertThat(resolution.ruleVersion()).isEqualTo(7);
+        assertThat(resolution.ruleUpdatedAt()).isEqualTo(updatedAt);
+    }
+
+    @Test
     void create_shouldPersistValidatedRule() {
         CommissionRule rule = new CommissionRule();
         rule.setDimensionType(CommissionRuleService.DIMENSION_ACTIVITY);
         rule.setDimensionId("3559407");
         rule.setCommissionType(CommissionRuleService.TYPE_CHANNEL);
         rule.setRatio(new BigDecimal("0.18"));
+        rule.setVersion(99);
 
         when(commissionRuleMapper.insert(any(CommissionRule.class))).thenReturn(1);
 
@@ -104,6 +131,7 @@ class CommissionRuleServiceTest {
         verify(commissionRuleMapper).insert(captor.capture());
         assertThat(captor.getValue().getDimensionType()).isEqualTo(CommissionRuleService.DIMENSION_ACTIVITY);
         assertThat(captor.getValue().getCommissionType()).isEqualTo(CommissionRuleService.TYPE_CHANNEL);
+        assertThat(captor.getValue().getVersion()).isEqualTo(1);
     }
 
     @Test
@@ -314,6 +342,79 @@ class CommissionRuleServiceTest {
         ArgumentCaptor<CommissionRule> captor = ArgumentCaptor.forClass(CommissionRule.class);
         verify(commissionRuleMapper).updateById(captor.capture());
         assertThat(captor.getValue().getDeleted()).isEqualTo(1);
+    }
+
+    @Test
+    void update_shouldKeepLoadedVersionForOptimisticLockEvidence() {
+        UUID id = UUID.randomUUID();
+        CommissionRule existing = activeRule(
+                CommissionRuleService.DIMENSION_ACTIVITY,
+                "A-1",
+                CommissionRuleService.TYPE_CHANNEL,
+                "0.18");
+        existing.setId(id);
+        existing.setVersion(5);
+        CommissionRule request = activeRule(
+                CommissionRuleService.DIMENSION_PRODUCT,
+                "P-1",
+                CommissionRuleService.TYPE_RECRUITER,
+                "0.25");
+        request.setVersion(99);
+        when(commissionRuleMapper.selectById(id)).thenReturn(existing);
+        when(commissionRuleMapper.updateById(any(CommissionRule.class))).thenReturn(1);
+
+        service.update(id, request);
+
+        ArgumentCaptor<CommissionRule> captor = ArgumentCaptor.forClass(CommissionRule.class);
+        verify(commissionRuleMapper).updateById(captor.capture());
+        assertThat(captor.getValue().getId()).isEqualTo(id);
+        assertThat(captor.getValue().getVersion()).isEqualTo(5);
+        assertThat(captor.getValue().getDimensionType()).isEqualTo(CommissionRuleService.DIMENSION_PRODUCT);
+    }
+
+    @Test
+    void update_shouldThrowConflictWhenOptimisticLockUpdatesNoRows() {
+        UUID id = UUID.randomUUID();
+        CommissionRule existing = activeRule(
+                CommissionRuleService.DIMENSION_ACTIVITY,
+                "A-1",
+                CommissionRuleService.TYPE_CHANNEL,
+                "0.18");
+        existing.setId(id);
+        existing.setVersion(5);
+        CommissionRule request = activeRule(
+                CommissionRuleService.DIMENSION_PRODUCT,
+                "P-1",
+                CommissionRuleService.TYPE_RECRUITER,
+                "0.25");
+        when(commissionRuleMapper.selectById(id)).thenReturn(existing);
+        when(commissionRuleMapper.updateById(any(CommissionRule.class))).thenReturn(0);
+
+        assertThatThrownBy(() -> service.update(id, request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("提成规则已被他人修改")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode())
+                        .isEqualTo(ResultCode.CONFLICT.getCode()));
+    }
+
+    @Test
+    void delete_shouldThrowConflictWhenOptimisticLockUpdatesNoRows() {
+        UUID id = UUID.randomUUID();
+        CommissionRule existing = activeRule(
+                CommissionRuleService.DIMENSION_ACTIVITY,
+                "A-1",
+                CommissionRuleService.TYPE_CHANNEL,
+                "0.18");
+        existing.setId(id);
+        existing.setVersion(5);
+        when(commissionRuleMapper.selectById(id)).thenReturn(existing);
+        when(commissionRuleMapper.updateById(any(CommissionRule.class))).thenReturn(0);
+
+        assertThatThrownBy(() -> service.delete(id))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("提成规则已被他人修改")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode())
+                        .isEqualTo(ResultCode.CONFLICT.getCode()));
     }
 
     @Test

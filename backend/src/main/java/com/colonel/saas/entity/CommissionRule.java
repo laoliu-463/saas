@@ -2,7 +2,7 @@ package com.colonel.saas.entity;
 
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
-import com.colonel.saas.common.base.BaseEntity;
+import com.colonel.saas.common.base.VersionedEntity;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
@@ -14,7 +14,7 @@ import java.time.LocalDateTime;
  * <p>
  * 对应数据库表：{@code commissions}，定义按维度（达人/商品/类目等）的佣金比例配置。
  * 业绩域根据佣金规则计算提成金额，规则支持有效期和多维度配置。
- * 继承 {@link BaseEntity}，拥有 UUID 主键和审计字段。
+ * 继承 {@link VersionedEntity}，拥有 UUID 主键、审计字段和规则版本。
  * </p>
  *
  * @see PerformanceRecord 业绩记录，使用佣金规则计算提成
@@ -22,7 +22,7 @@ import java.time.LocalDateTime;
 @Data
 @EqualsAndHashCode(callSuper = true)
 @TableName("commissions")
-public class CommissionRule extends BaseEntity {
+public class CommissionRule extends VersionedEntity {
 
     /**
      * 维度类型

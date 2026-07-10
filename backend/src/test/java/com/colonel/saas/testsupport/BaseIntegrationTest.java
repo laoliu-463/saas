@@ -97,6 +97,7 @@ public abstract class BaseIntegrationTest {
                     effective_end TIMESTAMP,
                     status SMALLINT NOT NULL DEFAULT 1,
                     deleted SMALLINT NOT NULL DEFAULT 0,
+                    version INT NOT NULL DEFAULT 1,
                     create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     CONSTRAINT chk_commissions_dimension_type
@@ -107,6 +108,7 @@ public abstract class BaseIntegrationTest {
                         CHECK (ratio >= 0 AND ratio <= 1)
                 )
                 """);
+        jdbcTemplate.execute("ALTER TABLE commissions ADD COLUMN IF NOT EXISTS version INT NOT NULL DEFAULT 1");
         jdbcTemplate.execute("""
                 CREATE TABLE IF NOT EXISTS product_operation_log (
                     id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),

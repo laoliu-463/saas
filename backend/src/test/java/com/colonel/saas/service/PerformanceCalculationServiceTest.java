@@ -43,7 +43,7 @@ class PerformanceCalculationServiceTest {
         // 保证 Service → Application → Mapper/CommissionService 行为可被验证。
         CommissionService commissionService = new CommissionService(
                 configDomainFacade, commissionRuleService, null);
-        lenient().when(commissionRuleService.resolveRatio(any(), any(), any())).thenReturn(null);
+        lenient().when(commissionRuleService.resolveRule(any(), any(), any())).thenReturn(null);
         lenient().when(configDomainFacade.getDecimal(SystemConfigKeys.COMMISSION_BUSINESS_DEFAULT_RATIO, new BigDecimal("0.15")))
                 .thenReturn(new BigDecimal("0.10"));
         lenient().when(configDomainFacade.getDecimal(SystemConfigKeys.COMMISSION_CHANNEL_DEFAULT_RATIO, new BigDecimal("0.15")))
@@ -232,16 +232,30 @@ class PerformanceCalculationServiceTest {
         when(performanceRecordMapper.upsert(any())).thenReturn(1);
 
         // Mock custom ratios
-        when(commissionRuleService.resolveRatio(
+        when(commissionRuleService.resolveRule(
                 org.mockito.ArgumentMatchers.eq(CommissionRuleService.TYPE_RECRUITER),
                 any(),
                 any()))
-                .thenReturn(new BigDecimal("0.25"));
-        when(commissionRuleService.resolveRatio(
+                .thenReturn(new CommissionRuleService.CommissionRuleResolution(
+                        new BigDecimal("0.25"),
+                        UUID.randomUUID(),
+                        2,
+                        LocalDateTime.now(),
+                        CommissionRuleService.DIMENSION_ACTIVITY,
+                        "ACT-CUSTOM",
+                        CommissionRuleService.TYPE_RECRUITER));
+        when(commissionRuleService.resolveRule(
                 org.mockito.ArgumentMatchers.eq(CommissionRuleService.TYPE_CHANNEL),
                 any(),
                 any()))
-                .thenReturn(new BigDecimal("0.35"));
+                .thenReturn(new CommissionRuleService.CommissionRuleResolution(
+                        new BigDecimal("0.35"),
+                        UUID.randomUUID(),
+                        3,
+                        LocalDateTime.now(),
+                        CommissionRuleService.DIMENSION_ACTIVITY,
+                        "ACT-CUSTOM",
+                        CommissionRuleService.TYPE_CHANNEL));
 
         PerformanceRecord saved = service.upsertFromOrder(order);
 

@@ -51,7 +51,7 @@ class PerformanceCalculationEffectiveTrackTest {
         // 保证 Service → Application → Mapper/CommissionService 行为可被验证。
         CommissionService commissionService = new CommissionService(
                 configDomainFacade, commissionRuleService, null);
-        lenient().when(commissionRuleService.resolveRatio(any(), any(), any())).thenReturn(null);
+        lenient().when(commissionRuleService.resolveRule(any(), any(), any())).thenReturn(null);
         lenient().when(configDomainFacade.getDecimal(SystemConfigKeys.COMMISSION_BUSINESS_DEFAULT_RATIO, new BigDecimal("0.15")))
                 .thenReturn(new BigDecimal("0.10"));
         lenient().when(configDomainFacade.getDecimal(SystemConfigKeys.COMMISSION_CHANNEL_DEFAULT_RATIO, new BigDecimal("0.15")))

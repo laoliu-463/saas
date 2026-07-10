@@ -11,6 +11,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -36,7 +37,7 @@ class CommissionServiceTest {
     void setUp() {
         commissionService = new CommissionService(configDomainFacade, commissionRuleService, performanceCalculationService);
         org.mockito.Mockito.lenient()
-                .when(commissionRuleService.resolveRatio(
+                .when(commissionRuleService.resolveRule(
                         org.mockito.ArgumentMatchers.anyString(),
                         org.mockito.ArgumentMatchers.any(),
                         org.mockito.ArgumentMatchers.any()))
@@ -144,10 +145,26 @@ class CommissionServiceTest {
     @Test
     void calculate_shouldUseCommissionRuleRatiosBeforeLegacyActivityConfig() {
         stubDefaultRatios("0.10", "0.20");
-        when(commissionRuleService.resolveRatio(eq(CommissionRuleService.TYPE_RECRUITER), any(), any()))
-                .thenReturn(new BigDecimal("0.25"));
-        when(commissionRuleService.resolveRatio(eq(CommissionRuleService.TYPE_CHANNEL), any(), any()))
-                .thenReturn(new BigDecimal("0.30"));
+        UUID bizRuleId = UUID.randomUUID();
+        UUID channelRuleId = UUID.randomUUID();
+        when(commissionRuleService.resolveRule(eq(CommissionRuleService.TYPE_RECRUITER), any(), any()))
+                .thenReturn(new CommissionRuleService.CommissionRuleResolution(
+                        new BigDecimal("0.25"),
+                        bizRuleId,
+                        6,
+                        LocalDateTime.of(2026, 7, 8, 10, 0),
+                        CommissionRuleService.DIMENSION_PRODUCT,
+                        "PRODUCT_001",
+                        CommissionRuleService.TYPE_RECRUITER));
+        when(commissionRuleService.resolveRule(eq(CommissionRuleService.TYPE_CHANNEL), any(), any()))
+                .thenReturn(new CommissionRuleService.CommissionRuleResolution(
+                        new BigDecimal("0.30"),
+                        channelRuleId,
+                        8,
+                        LocalDateTime.of(2026, 7, 8, 11, 0),
+                        CommissionRuleService.DIMENSION_ACTIVITY,
+                        "ACTIVITY_001",
+                        CommissionRuleService.TYPE_CHANNEL));
 
         ColonelsettlementOrder order = new ColonelsettlementOrder();
         order.setActivityId("ACTIVITY_001");
@@ -162,10 +179,18 @@ class CommissionServiceTest {
         assertThat(summary.channelCommission()).isEqualTo(3000L);
         assertThat(summary.bizRatio()).isEqualByComparingTo("0.25");
         assertThat(summary.channelRatio()).isEqualByComparingTo("0.30");
+        assertThat(summary.bizRatioSource()).isEqualTo("commission_rule");
+        assertThat(summary.bizRatioSourceKey()).isEqualTo("product:PRODUCT_001");
+        assertThat(summary.bizRatioRuleId()).isEqualTo(bizRuleId);
+        assertThat(summary.bizRatioSourceVersion()).isEqualTo("6");
+        assertThat(summary.channelRatioSource()).isEqualTo("commission_rule");
+        assertThat(summary.channelRatioSourceKey()).isEqualTo("activity:ACTIVITY_001");
+        assertThat(summary.channelRatioRuleId()).isEqualTo(channelRuleId);
+        assertThat(summary.channelRatioSourceVersion()).isEqualTo("8");
 
         ArgumentCaptor<CommissionRuleService.CommissionResolutionContext> contextCaptor =
                 ArgumentCaptor.forClass(CommissionRuleService.CommissionResolutionContext.class);
-        verify(commissionRuleService).resolveRatio(eq(CommissionRuleService.TYPE_RECRUITER), contextCaptor.capture(), any());
+        verify(commissionRuleService).resolveRule(eq(CommissionRuleService.TYPE_RECRUITER), contextCaptor.capture(), any());
         assertThat(contextCaptor.getValue().activityId()).isEqualTo("ACTIVITY_001");
         assertThat(contextCaptor.getValue().productId()).isEqualTo("PRODUCT_001");
         assertThat(contextCaptor.getValue().recruiterUserId()).isEqualTo(recruiterId);

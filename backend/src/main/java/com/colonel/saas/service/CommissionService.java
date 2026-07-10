@@ -295,16 +295,20 @@ public class CommissionService {
         BigDecimal defaultChannelRatio = loadDefaultRatio(SystemConfigKeys.COMMISSION_CHANNEL_DEFAULT_RATIO);
 
         List<PerformanceMoneyPolicy.BucketInput> inputs = new ArrayList<>();
+        RatioResolution lastBizRatio = null;
+        RatioResolution lastChannelRatio = null;
         for (ActivityCommissionBucket bucket : normalizeBuckets(buckets)) {
-            BigDecimal activityBizRatio = resolveBizRatio(bucket, defaultBizRatio, effectiveAt);
-            BigDecimal activityChannelRatio = resolveChannelRatio(bucket, defaultChannelRatio, effectiveAt);
+            RatioResolution activityBizRatio = resolveBizRatio(bucket, defaultBizRatio, effectiveAt);
+            RatioResolution activityChannelRatio = resolveChannelRatio(bucket, defaultChannelRatio, effectiveAt);
+            lastBizRatio = activityBizRatio;
+            lastChannelRatio = activityChannelRatio;
             inputs.add(new PerformanceMoneyPolicy.BucketInput(
                     bucket.serviceFeeIncome(),
                     bucket.techServiceFee(),
                     bucket.serviceFeeExpense(),
                     bucket.talentCommission(),
-                    activityBizRatio,
-                    activityChannelRatio));
+                    activityBizRatio.ratio(),
+                    activityChannelRatio.ratio()));
         }
 
         PerformanceMoneyPolicy.MoneyResult result = PerformanceMoneyPolicy.calculate(inputs);
@@ -318,14 +322,22 @@ public class CommissionService {
                 result.channelCommission(),
                 result.grossProfit(),
                 result.lastBizRatio(),
-                result.lastChannelRatio());
+                result.lastChannelRatio(),
+                source(lastBizRatio),
+                sourceKey(lastBizRatio),
+                ruleId(lastBizRatio),
+                sourceVersion(lastBizRatio),
+                source(lastChannelRatio),
+                sourceKey(lastChannelRatio),
+                ruleId(lastChannelRatio),
+                sourceVersion(lastChannelRatio));
     }
 
-    private BigDecimal resolveBizRatio(
+    private RatioResolution resolveBizRatio(
             ActivityCommissionBucket bucket,
             BigDecimal defaultRatio,
             LocalDateTime effectiveAt) {
-        BigDecimal ruleRatio = resolveRuleRatio(
+        RatioResolution ruleRatio = resolveRuleRatio(
                 CommissionRuleService.TYPE_RECRUITER,
                 bucket,
                 effectiveAt);
@@ -335,11 +347,11 @@ public class CommissionService {
         return loadRatio(KEY_BIZ_ACTIVITY_RATIO_PREFIX, bucket.activityId(), defaultRatio);
     }
 
-    private BigDecimal resolveChannelRatio(
+    private RatioResolution resolveChannelRatio(
             ActivityCommissionBucket bucket,
             BigDecimal defaultRatio,
             LocalDateTime effectiveAt) {
-        BigDecimal ruleRatio = resolveRuleRatio(
+        RatioResolution ruleRatio = resolveRuleRatio(
                 CommissionRuleService.TYPE_CHANNEL,
                 bucket,
                 effectiveAt);
@@ -349,18 +361,27 @@ public class CommissionService {
         return loadRatio(KEY_CHANNEL_ACTIVITY_RATIO_PREFIX, bucket.activityId(), defaultRatio);
     }
 
-    private BigDecimal resolveRuleRatio(
+    private RatioResolution resolveRuleRatio(
             String commissionType,
             ActivityCommissionBucket bucket,
             LocalDateTime effectiveAt) {
         try {
-            return commissionRuleService.resolveRatio(
+            CommissionRuleService.CommissionRuleResolution rule = commissionRuleService.resolveRule(
                     commissionType,
                     new CommissionRuleService.CommissionResolutionContext(
                             bucket.activityId(),
                             bucket.productId(),
                             bucket.recruiterUserId()),
                     effectiveAt);
+            if (rule == null || rule.ratio() == null) {
+                return null;
+            }
+            return new RatioResolution(
+                    rule.ratio(),
+                    "commission_rule",
+                    rule.dimensionType() + ":" + (rule.dimensionId() == null ? "" : rule.dimensionId()),
+                    rule.ruleId(),
+                    rule.ruleVersion() == null ? null : String.valueOf(rule.ruleVersion()));
         } catch (Exception ex) {
             log.warn("Failed to resolve commission rule ratio, fallback to legacy config", ex);
             return null;
@@ -384,14 +405,15 @@ public class CommissionService {
         return order.getColonelUserId() != null ? order.getColonelUserId() : order.getUserId();
     }
 
-    private BigDecimal loadRatio(String overridePrefix, String activityId, BigDecimal defaultRatio) {
+    private RatioResolution loadRatio(String overridePrefix, String activityId, BigDecimal defaultRatio) {
         if (activityId != null && !activityId.isBlank()) {
-            BigDecimal override = queryRatio(overridePrefix + activityId);
+            String key = overridePrefix + activityId;
+            BigDecimal override = queryRatio(key);
             if (override != null) {
-                return override;
+                return new RatioResolution(override, "config_activity", key, null, null);
             }
         }
-        return defaultRatio;
+        return new RatioResolution(defaultRatio, "config_default", defaultRatioKey(overridePrefix), null, null);
     }
 
     private BigDecimal loadDefaultRatio(String key) {
@@ -424,6 +446,32 @@ public class CommissionService {
         }
     }
 
+    private String defaultRatioKey(String overridePrefix) {
+        if (KEY_BIZ_ACTIVITY_RATIO_PREFIX.equals(overridePrefix)) {
+            return SystemConfigKeys.COMMISSION_BUSINESS_DEFAULT_RATIO;
+        }
+        if (KEY_CHANNEL_ACTIVITY_RATIO_PREFIX.equals(overridePrefix)) {
+            return SystemConfigKeys.COMMISSION_CHANNEL_DEFAULT_RATIO;
+        }
+        return overridePrefix;
+    }
+
+    private String source(RatioResolution resolution) {
+        return resolution == null ? null : resolution.source();
+    }
+
+    private String sourceKey(RatioResolution resolution) {
+        return resolution == null ? null : resolution.sourceKey();
+    }
+
+    private UUID ruleId(RatioResolution resolution) {
+        return resolution == null ? null : resolution.ruleId();
+    }
+
+    private String sourceVersion(RatioResolution resolution) {
+        return resolution == null ? null : resolution.sourceVersion();
+    }
+
     private String normalizeActivityId(String activityId) {
         return activityId == null ? "" : activityId.trim();
     }
@@ -453,7 +501,55 @@ public class CommissionService {
             long channelCommission,
             long grossProfit,
             BigDecimal bizRatio,
-            BigDecimal channelRatio) {
+            BigDecimal channelRatio,
+            String bizRatioSource,
+            String bizRatioSourceKey,
+            UUID bizRatioRuleId,
+            String bizRatioSourceVersion,
+            String channelRatioSource,
+            String channelRatioSourceKey,
+            UUID channelRatioRuleId,
+            String channelRatioSourceVersion) {
+
+        public CommissionSummary(
+                long serviceFeeIncome,
+                long techServiceFee,
+                long serviceFeeExpense,
+                long talentCommission,
+                long serviceFeeNet,
+                long bizCommission,
+                long channelCommission,
+                long grossProfit,
+                BigDecimal bizRatio,
+                BigDecimal channelRatio) {
+            this(
+                    serviceFeeIncome,
+                    techServiceFee,
+                    serviceFeeExpense,
+                    talentCommission,
+                    serviceFeeNet,
+                    bizCommission,
+                    channelCommission,
+                    grossProfit,
+                    bizRatio,
+                    channelRatio,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null);
+        }
+    }
+
+    private record RatioResolution(
+            BigDecimal ratio,
+            String source,
+            String sourceKey,
+            UUID ruleId,
+            String sourceVersion) {
     }
 
     public record ActivityCommissionBucket(

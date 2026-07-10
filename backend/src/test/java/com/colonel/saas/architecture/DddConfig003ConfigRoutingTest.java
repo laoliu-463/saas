@@ -59,7 +59,7 @@ class DddConfig003ConfigRoutingTest {
                 .thenReturn(new BigDecimal("0.08"));
         when(configDomainFacade.getDecimal(SystemConfigKeys.COMMISSION_CHANNEL_DEFAULT_RATIO, new BigDecimal("0.15")))
                 .thenReturn(new BigDecimal("0.12"));
-        when(commissionRuleService.resolveRatio(anyString(), any(), any())).thenReturn(null);
+        when(commissionRuleService.resolveRule(anyString(), any(), any())).thenReturn(null);
 
         CommissionService service = new CommissionService(configDomainFacade, commissionRuleService, null);
         ColonelsettlementOrder order = new ColonelsettlementOrder();
@@ -79,7 +79,7 @@ class DddConfig003ConfigRoutingTest {
     @DisplayName("提成比例缺失时 fallback 到 0.15")
     void commissionRates_shouldFallbackWhenConfigMissing() {
         when(configDomainFacade.getDecimal(anyString(), any())).thenReturn(null);
-        when(commissionRuleService.resolveRatio(anyString(), any(), any())).thenReturn(null);
+        when(commissionRuleService.resolveRule(anyString(), any(), any())).thenReturn(null);
 
         CommissionService service = new CommissionService(configDomainFacade, commissionRuleService, null);
         ColonelsettlementOrder order = new ColonelsettlementOrder();

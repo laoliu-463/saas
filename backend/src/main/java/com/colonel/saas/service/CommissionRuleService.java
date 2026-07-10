@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.common.exception.BusinessException;
+import com.colonel.saas.common.exception.OptimisticLockSupport;
 import com.colonel.saas.entity.CommissionRule;
 import com.colonel.saas.mapper.CommissionRuleMapper;
 import org.springframework.stereotype.Service;
@@ -82,6 +83,27 @@ public class CommissionRuleService {
             String activityId,
             String productId,
             UUID recruiterUserId) {
+    }
+
+    /**
+     * 提成规则解析结果。
+     *
+     * @param ratio          命中的提成比例
+     * @param ruleId         命中的规则 ID
+     * @param ruleVersion    命中的规则版本
+     * @param ruleUpdatedAt  命中的规则更新时间
+     * @param dimensionType  命中的维度类型
+     * @param dimensionId    命中的维度 ID
+     * @param commissionType 命中的提成类型
+     */
+    public record CommissionRuleResolution(
+            BigDecimal ratio,
+            UUID ruleId,
+            Integer ruleVersion,
+            LocalDateTime ruleUpdatedAt,
+            String dimensionType,
+            String dimensionId,
+            String commissionType) {
     }
 
     /**
@@ -178,6 +200,7 @@ public class CommissionRuleService {
         rule.setId(UUID.randomUUID());
         rule.setDeleted(0);
         rule.setStatus(rule.getStatus() == null ? 1 : rule.getStatus());
+        rule.setVersion(1);
         rule.setCreateTime(now);
         rule.setUpdateTime(now);
         commissionRuleMapper.insert(rule);
@@ -205,7 +228,9 @@ public class CommissionRuleService {
         existing.setEffectiveEnd(rule.getEffectiveEnd());
         existing.setStatus(rule.getStatus() == null ? existing.getStatus() : rule.getStatus());
         existing.setUpdateTime(LocalDateTime.now());
-        commissionRuleMapper.updateById(existing);
+        OptimisticLockSupport.requireUpdated(
+                commissionRuleMapper.updateById(existing),
+                "提成规则已被他人修改，请刷新后重试");
         return existing;
     }
 
@@ -220,7 +245,9 @@ public class CommissionRuleService {
         CommissionRule existing = getById(id);
         existing.setDeleted(1);
         existing.setUpdateTime(LocalDateTime.now());
-        commissionRuleMapper.updateById(existing);
+        OptimisticLockSupport.requireUpdated(
+                commissionRuleMapper.updateById(existing),
+                "提成规则已被他人修改，请刷新后重试");
     }
 
     /**
@@ -235,6 +262,22 @@ public class CommissionRuleService {
      * @return 匹配到的提成比例（0~1），未匹配到时返回 null
      */
     public BigDecimal resolveRatio(String commissionType, CommissionResolutionContext context, LocalDateTime at) {
+        CommissionRuleResolution resolution = resolveRule(commissionType, context, at);
+        return resolution == null ? null : resolution.ratio();
+    }
+
+    /**
+     * 按优先级链解析提成规则，并返回命中规则版本证据。
+     *
+     * @param commissionType 提成类型（recruiter / channel）
+     * @param context        解析上下文，包含活动ID、商品ID、招商员ID
+     * @param at             生效时间点，用于过滤有效期范围；null 时使用当前时间
+     * @return 命中的规则快照，未匹配到时返回 null
+     */
+    public CommissionRuleResolution resolveRule(
+            String commissionType,
+            CommissionResolutionContext context,
+            LocalDateTime at) {
         String normalizedType = normalizeCommissionType(commissionType);
         LocalDateTime effectiveAt = at == null ? LocalDateTime.now() : at;
         for (String dimensionType : DIMENSION_PRIORITY) {
@@ -242,9 +285,16 @@ public class CommissionRuleService {
             if (!DIMENSION_GLOBAL.equals(dimensionType) && !StringUtils.hasText(dimensionId)) {
                 continue;
             }
-            BigDecimal ratio = findActiveRatio(dimensionType, dimensionId, normalizedType, effectiveAt);
-            if (ratio != null) {
-                return ratio;
+            CommissionRule rule = findActiveRule(dimensionType, dimensionId, normalizedType, effectiveAt);
+            if (rule != null && rule.getRatio() != null) {
+                return new CommissionRuleResolution(
+                        rule.getRatio(),
+                        rule.getId(),
+                        rule.getVersion(),
+                        rule.getUpdateTime(),
+                        rule.getDimensionType(),
+                        rule.getDimensionId(),
+                        rule.getCommissionType());
             }
         }
         return null;
@@ -255,7 +305,7 @@ public class CommissionRuleService {
      * 查询条件包括：未删除、状态为启用、维度类型匹配、提成类型匹配、有效期覆盖指定时间点。
      * 同一维度下取最新更新时间的规则。
      */
-    private BigDecimal findActiveRatio(
+    private CommissionRule findActiveRule(
             String dimensionType,
             String dimensionId,
             String commissionType,
@@ -274,8 +324,7 @@ public class CommissionRuleService {
         } else {
             wrapper.eq(CommissionRule::getDimensionId, dimensionId);
         }
-        CommissionRule rule = commissionRuleMapper.selectOne(wrapper);
-        return rule == null || rule.getRatio() == null ? null : rule.getRatio();
+        return commissionRuleMapper.selectOne(wrapper);
     }
 
     /**
