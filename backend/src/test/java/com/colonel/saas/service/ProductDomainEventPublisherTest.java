@@ -5,6 +5,7 @@ import com.colonel.saas.domain.event.OutboxEventAppender;
 import com.colonel.saas.domain.product.event.ActivitySyncCompletedEvent;
 import com.colonel.saas.domain.product.event.PartnerSyncCompletedEvent;
 import com.colonel.saas.domain.product.event.ProductDomainEventPublisher;
+import com.colonel.saas.domain.product.event.ProductPromotionLinkGeneratedEvent;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -112,6 +113,60 @@ class ProductDomainEventPublisherTest {
         assertThat(event.source()).isEqualTo("PRODUCT_SNAPSHOT");
         assertThat(event.created()).isTrue();
         assertThat(event.updated()).isFalse();
+    }
+
+    @Test
+    void publishPromotionLinkGenerated_shouldAppendOutboxAndPublishSpringEvent() {
+        UUID userId = UUID.fromString("00000000-0000-0000-0000-000000000011");
+        UUID deptId = UUID.fromString("00000000-0000-0000-0000-000000000022");
+        UUID mappingId = UUID.fromString("00000000-0000-0000-0000-000000000033");
+
+        publisher.publishPromotionLinkGenerated(
+                "ACT-1",
+                "P-1",
+                "talent-1",
+                userId,
+                deptId,
+                mappingId,
+                "PS-TRACE-1",
+                "https://promote.example/p1",
+                "https://short.example/p1",
+                "PRODUCT_LIBRARY",
+                4,
+                "idem-1");
+
+        ArgumentCaptor<Object> springCaptor = ArgumentCaptor.forClass(Object.class);
+        verify(applicationEventPublisher).publishEvent(springCaptor.capture());
+        assertThat(springCaptor.getValue()).isInstanceOf(ProductPromotionLinkGeneratedEvent.class);
+        ProductPromotionLinkGeneratedEvent event = (ProductPromotionLinkGeneratedEvent) springCaptor.getValue();
+        assertThat(event.productId()).isEqualTo("P-1");
+        assertThat(event.talentId()).isEqualTo("talent-1");
+        assertThat(event.pickSource()).isEqualTo("PS-TRACE-1");
+        assertThat(event.mappingId()).isEqualTo(mappingId);
+        assertThat(event.idempotencyKey()).isEqualTo("idem-1");
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, Object>> payloadCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(outboxEventAppender).appendIfAbsent(
+                eq("ProductPromotionLinkGenerated:P-1:" + mappingId),
+                eq(ProductDomainEventTypes.PRODUCT_PROMOTION_LINK_GENERATED),
+                eq(OutboxEventAppender.AGGREGATE_PRODUCT),
+                eq("P-1"),
+                eq(1),
+                payloadCaptor.capture(),
+                eq(userId),
+                eq(null));
+        assertThat(payloadCaptor.getValue())
+                .containsEntry("activityId", "ACT-1")
+                .containsEntry("productId", "P-1")
+                .containsEntry("talentId", "talent-1")
+                .containsEntry("mappingId", mappingId.toString())
+                .containsEntry("pickSource", "PS-TRACE-1")
+                .containsEntry("promotionLink", "https://promote.example/p1")
+                .containsEntry("shortLink", "https://short.example/p1")
+                .containsEntry("scene", "PRODUCT_LIBRARY")
+                .containsEntry("promotionScene", 4)
+                .containsEntry("idempotencyKey", "idem-1");
     }
 
     @Test

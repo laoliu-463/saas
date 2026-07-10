@@ -3578,7 +3578,8 @@ public class ProductService implements CopyPromotionSupportPort {
                     promotionScene,
                     needShortLink,
                     scene,
-                    talentId);
+                    talentId,
+                    idempotencyKey);
             promotionLinkIdempotencyService.markCompleted(scopeKey, result);
             return result;
         } catch (RuntimeException ex) {
@@ -3660,6 +3661,30 @@ public class ProductService implements CopyPromotionSupportPort {
             boolean needShortLink,
             String scene,
             String talentId) {
+        return generatePromotionLinkInternal(
+                activityId,
+                productId,
+                userId,
+                deptId,
+                externalUniqueId,
+                promotionScene,
+                needShortLink,
+                scene,
+                talentId,
+                null);
+    }
+
+    private DouyinPromotionGateway.PromotionLinkResult generatePromotionLinkInternal(
+            String activityId,
+            String productId,
+            UUID userId,
+            UUID deptId,
+            String externalUniqueId,
+            Integer promotionScene,
+            boolean needShortLink,
+            String scene,
+            String talentId,
+            String idempotencyKey) {
         ProductSnapshot snapshot = ensureSnapshotExists(activityId, productId);
         NativeColonelBuyinResolution nativeColonelBuyin = resolveColonelBuyinIdForNativeMapping(snapshot.getActivityId(), snapshot.getProductId());
         String finalExternalId = StringUtils.hasText(externalUniqueId) ? externalUniqueId : String.valueOf(userId);
@@ -3818,6 +3843,7 @@ public class ProductService implements CopyPromotionSupportPort {
                         null
                 );
                 evictActivityProductCache(snapshot.getActivityId());
+                publishPromotionLinkGenerated(snapshot, link, result, userId, deptId, talentId, finalPromotionScene, finalScene, idempotencyKey);
                 return result;
             }
             productBizStatusService.changeStatus(
@@ -3836,6 +3862,7 @@ public class ProductService implements CopyPromotionSupportPort {
                     }
             );
             evictActivityProductCache(snapshot.getActivityId());
+            publishPromotionLinkGenerated(snapshot, link, result, userId, deptId, talentId, finalPromotionScene, finalScene, idempotencyKey);
             return result;
         } catch (RuntimeException ex) {
             Map<String, Object> payload = new LinkedHashMap<>();
@@ -3864,6 +3891,31 @@ public class ProductService implements CopyPromotionSupportPort {
                     ex.getMessage());
             throw ex;
         }
+    }
+
+    private void publishPromotionLinkGenerated(
+            ProductSnapshot snapshot,
+            PromotionLink link,
+            DouyinPromotionGateway.PromotionLinkResult result,
+            UUID userId,
+            UUID deptId,
+            String talentId,
+            Integer promotionScene,
+            String scene,
+            String idempotencyKey) {
+        productDomainEventPublisher.publishPromotionLinkGenerated(
+                snapshot.getActivityId(),
+                snapshot.getProductId(),
+                talentId,
+                userId,
+                deptId,
+                link.getId(),
+                result.pickSource(),
+                result.promoteLink(),
+                result.shortLink(),
+                scene,
+                promotionScene,
+                idempotencyKey);
     }
 
     private String buildPickExtra(UUID userId, String channelCodeValue, String productId, String activityId) {
