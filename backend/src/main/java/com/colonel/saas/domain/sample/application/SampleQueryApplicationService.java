@@ -5,6 +5,7 @@ import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.result.PageResult;
 import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.domain.sample.application.port.SampleDetailQueryPort;
+import com.colonel.saas.domain.sample.application.port.SamplePageQueryPort;
 import com.colonel.saas.domain.sample.facade.SampleDomainFacade;
 import com.colonel.saas.service.sample.SampleQueryService;
 import com.colonel.saas.vo.sample.SampleBoardCard;
@@ -31,6 +32,7 @@ import java.util.UUID;
 public class SampleQueryApplicationService {
 
     private final SampleQueryService sampleQueryService;
+    private final SamplePageQueryPort samplePageQueryPort;
     private final SampleDetailQueryPort sampleDetailQueryPort;
     private final SampleDomainFacade sampleDomainFacade;
     private final DddRefactorProperties dddRefactorProperties;
@@ -38,13 +40,24 @@ public class SampleQueryApplicationService {
     @Autowired
     public SampleQueryApplicationService(
             SampleQueryService sampleQueryService,
+            SamplePageQueryPort samplePageQueryPort,
             SampleDetailQueryPort sampleDetailQueryPort,
             SampleDomainFacade sampleDomainFacade,
             DddRefactorProperties dddRefactorProperties) {
         this.sampleQueryService = sampleQueryService;
+        this.samplePageQueryPort = samplePageQueryPort;
         this.sampleDetailQueryPort = sampleDetailQueryPort;
         this.sampleDomainFacade = sampleDomainFacade;
         this.dddRefactorProperties = dddRefactorProperties;
+    }
+
+    /** 保留给现有单元测试和兼容调用方的构造器。 */
+    public SampleQueryApplicationService(
+            SampleQueryService sampleQueryService,
+            SampleDetailQueryPort sampleDetailQueryPort,
+            SampleDomainFacade sampleDomainFacade,
+            DddRefactorProperties dddRefactorProperties) {
+        this(sampleQueryService, null, sampleDetailQueryPort, sampleDomainFacade, dddRefactorProperties);
     }
 
     /** 保留给现有单元测试和兼容调用方的构造器。 */
@@ -86,6 +99,13 @@ public class SampleQueryApplicationService {
             UUID deptId,
             DataScope dataScope,
             Object roleCodes) {
+        if (samplePageQueryPort != null) {
+            return samplePageQueryPort.getSamplePage(
+                    page, size, keyword, status, channelUserIds, recruiterUserId, productKeyword, shopKeyword,
+                    trackingNo, requestNo, talentKeyword, cooperationType, sampleOwnerType, homeworkType,
+                    recipientName, recipientPhone, applyStartTime, applyEndTime, homeworkStartTime, homeworkEndTime,
+                    logisticsCompany, userId, deptId, dataScope, roleCodes);
+        }
         return sampleQueryService.getSamplePage(
                 page, size, keyword, status, channelUserIds, recruiterUserId, productKeyword, shopKeyword,
                 trackingNo, requestNo, talentKeyword, cooperationType, sampleOwnerType, homeworkType,
@@ -96,6 +116,9 @@ public class SampleQueryApplicationService {
     public PageResult<SampleVO> getSamplePage(
             long page, long size, String keyword, String status,
             UUID userId, UUID deptId, DataScope dataScope, Object roleCodes) {
+        if (samplePageQueryPort != null) {
+            return samplePageQueryPort.getSamplePage(page, size, keyword, status, userId, deptId, dataScope, roleCodes);
+        }
         return sampleQueryService.getSamplePage(page, size, keyword, status, userId, deptId, dataScope, roleCodes);
     }
 

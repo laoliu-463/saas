@@ -189,6 +189,8 @@
 
   列表、详情、看板和导出由 `SampleQueryApplicationService` 承担；数据范围解释消费用户域稳定出口，寄样域保留负责人、归属部门和状态可见性业务语义。
 
+  - [x] 2026-07-10：列表分页新增 `SamplePageQueryPort` 与 `LegacySamplePageQueryAdapter`，完整筛选和简化分页入口均由 `SampleQueryApplicationService` 统一编排；后续替换适配器内部读模型。
+
 - [ ] **Step 2: 再迁移命令路径**
 
   申请、删除、审核、发货、物流推进和订单已同步完成判断由 `SampleCommandApplicationService`、`SampleStateMachine` 和 `SampleActionPermissionPolicy` 承担；状态流转非法时保持原异常。
