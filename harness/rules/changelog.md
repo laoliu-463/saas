@@ -1,11 +1,18 @@
 # Harness Changelog（索引）
 
 > 任务 ID：HARNESS-DOC-GC-OPTIMIZE-002
-> 更新时间：2026-06-20
+> 更新时间：2026-07-10
 > 详细历史（含每版修改文件、行为变化、证据）：`archive/20260610/harness-changelog-full.md`
 > 治理政策：`rules/policies/retention-policy.md` 第 2 节（changelog 索引 ≤200 行）
 
 ## 最近版本摘要
+
+### v0.7.6 — 2026-07-10
+- 完成 137 项 dirty 的路径级 Git Intake 分类并固化单任务批次顺序，`unknown_paths=0`，仍按受保护 previous-partial 处理。
+- 机械重算 178 卡矩阵并将证据不足的 Y-4 / E-7 暂降 PARTIAL；修正 Validation State 的当前脚本路径。
+- 同日后续以行为测试、local real-pre migration/health/API 证据恢复 Y-4 为 DONE；E-7 仍保持 PARTIAL。本项仅更新状态证据，不升级 Harness 执行能力。
+- 补录 DEBT-026（agent-do 自动暂存/推送冲突）与 DEBT-027（超长报告归档未打包）。
+- 通过 manifest、SHA-256 校验和 ZIP 打包恢复 Harness 50/50/200 检查；不改业务生产逻辑。
 
 ### v0.7.5 — 2026-07-04
 - 新增 Apifox OpenAPI 同步红线：创建分支不等于导入成功，Open API import 必须显式指定 `APIFOX_BRANCH` 对应的 `targetBranchId`。

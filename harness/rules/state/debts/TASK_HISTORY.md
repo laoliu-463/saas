@@ -6,6 +6,8 @@
 
 | 日期 | 任务 | 结果 | 证据 |
 | --- | --- | --- | --- |
+| 2026-07-10 | Y-4 提成规则版本证据与乐观锁冲突 | DONE（local real-pre；remote/E2E 不在本卡结论） | `harness/reports/latest-evidence-20260710.md`；commits `4bb8ce1c`、`3ed74608` |
+| 2026-07-10 | GIT-INTAKE / LEDGER-RECONCILE-001：137 项 dirty 分类、矩阵重算和报告上限治理 | PARTIAL（Y-4 已由后续单卡修复；E-7 与 real-pre 授权/样本仍未收口） | `harness/reports/git-intake-20260710-125023.md`、`harness/reports/content-retire-20260710-125326.md`、`harness/manifests/reports-cleanup-20260710.json` |
 | 2026-06-06 | DOUYIN-UPSTREAM-RECONNECT-LOCAL-001 本地 real-pre 上游恢复验证 | PARTIAL（上游恢复，P0 仍 FAIL） | `harness/reports/evidence-20260606-125134-douyin-upstream-reconnect-local-001.md`、`runtime/qa/out/real-pre-p0-20260606-124354/report.md` |
 | 2026-06-03 | HARNESS-DEBT-GOVERNANCE-ITERATION：盘点 + 5 子系统整理 + 任务生命周期 + 债务防回流 | DONE（docs-only） | `harness/reports/harness-debt-governance-inventory-20260603-230334.md`、`harness/reports/harness-debt-governance-plan-20260603-230334.md`、`harness/reports/evidence-20260603-230334-harness-debt-governance.md`、`harness/reports/retro-20260603-230334-harness-debt-governance.md` |
 | 2026-06-03 | GIT-BATCH-C TALENT-ADADDRESS remote deploy verification | DONE | `harness/reports/git-batch-c-talent-address-deploy-20260603-225500.md`（commit `7573a625`） |

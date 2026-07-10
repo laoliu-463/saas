@@ -33,6 +33,10 @@
 | DASH-MONEY-P0-001 settle_amount 回退逻辑污染业绩表 | open | `harness/reports/dashboard-money-audit-001-20260604-131908.md` | PerformanceCalculationService:113 回退 `settleAmount > 0 ? settleAmount : actualAmount` 导致全部 404 条 performance_records.settle_amount = pay_amount（应=0）；SQL 证据：订单表 settle_amount=0 vs 业绩表 settle_amount=771125。下一步：DASHBOARD-MONEY-FIX-001 |
 | DASH-MONEY-P0-002 旧版 /dashboard/summary 是单轨接口 | open | `harness/reports/dashboard-money-audit-001-20260604-131908.md` | DashboardController.getSummary() 返回扁平 Summary DTO 无双轨结构。下一步：DASHBOARD-MONEY-FIX-002 评估废弃或修复 |
 | ~~DASH-MONEY-P0-004 V1 不做毛利但前端仍展示~~ | **revoked** | `harness/reports/dashboard-money-audit-001-20260604-131908.md` | 2026-06-05 用户决策：毛利纳入 V1 交付与验收。原 P0 降级为前端展示补齐任务 GROSS-PROFIT-DISPLAY-001。后端已计算并返回 grossProfit，前端需补齐展示。 |
+| Y-4 提成规则乐观锁冲突被误报成功 | fixed | `harness/reports/latest-evidence-20260710.md` | `4bb8ce1c` 补 version migration，`3ed74608` 对 update/delete 零行结果抛业务 409；47 tests、local real-pre schema/API/health 已验证 |
+| 提成规则陈旧页面未透传原始版本 | open | `harness/reports/latest-evidence-20260710.md` | 当前守卫覆盖 Service 读写窗口内并发；由业务/API 合同确认是否要求跨页面陈旧提交检测，再补请求 DTO、前端透传和真实并发集成测试 |
+| E-7 转链完成事件未透传请求幂等键 | open | `harness/reports/git-intake-20260710-125023.md` | 将调用方 `idempotencyKey` 传入事件与 outbox payload，补重复请求/事件行为测试 |
+| Y-12/E-5 汇总刷新事件生产边界冲突 | open | `harness/reports/git-intake-20260710-125023.md` | 由业务/ADR 确认应由业绩明细变更还是 dashboard 增量路径发布；确认前不擅自改生产者 |
 
 ## 更新规则
 

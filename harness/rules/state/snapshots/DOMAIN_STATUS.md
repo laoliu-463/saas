@@ -72,17 +72,17 @@
 - 当前补充：订单侧、寄样侧、商品侧与达人侧已消费 `DataScopeResolver` / `CurrentUserPermissionChecker`；`PerformanceMetricsQueryService`、`DashboardService`、`DataApplicationService`、`OrderQueryService` 等业绩 / 分析读侧仍需按 U-12~U-13 继续迁移或补证据。
 - 当前风险：跨域 Mapper 白名单和 architecture redline whitelist 均已清零；用户域核心 checker / resolver 已建立，订单、寄样、商品和达人侧已退出直接 `DataScopePolicy` / `CurrentUserPermissionPolicy` 消费；但业绩、分析模块的 `DataScopeResolver` / `PermissionChecker` 消费方式尚未完全统一，真实 admin/group/self 账号差异 E2E、authenticated 改密成功路径、real-pre 容器运行态和 `sys_role_menu` FK CASCADE 仍未完成；`UserOptionResponse` 仍保留在用户域主数据下拉 / 兼容门面，不代表跨域泄漏。
 - 待优化能力：U-12~U-13 分域迁移 DataScopeResolver / PermissionChecker 消费并补账号差异证据；UserDomainFacade 自身兼容 DTO 出口继续收口；authenticated 改密/审计 API 验证和越权负例补齐。
-- DDD 优化下一步：U-12 业绩侧权限消费；U-13 分析模块账号差异验收；U-14 在指定测试账号或授权窗口内补 authenticated real-pre 改密 API/E2E。
+- DDD 优化下一步：U-14 利用当前可用 Docker/Testcontainers 补改密审计持久化证据；U-15 在安全测试账号与回滚窗口内补 authenticated 权限负例 API/E2E。
 - 标记：P0。
 ## 配置域
 - 最新小切片：C-6/C-12 配置审计 API/SQL 验证已补齐；`RuleCenterControllerTest` 固化 `/rule-center/change-logs` 返回 `id/eventId/configKey/changeAction/oldValue/newValue/source/changeReason/operatorId/configVersion` 等审计字段，`RuleCenterServiceTest` 捕获 `QueryWrapper` 证明 changeLogs 使用 `config_key` 条件和 `changed_at desc` 排序，`DddConfigAuditSqlContractTest` 固化 `system_config_change_log` 字段与索引契约，`init-db.sql` 已补齐 `event_id/change_reason/config_version` 初始建表字段。验证：目标证据集 33 tests PASS，配置域非 Docker 回归 122 tests PASS，compile PASS，redline guard 4 tests PASS，宽口径架构命令 PASS；本轮不改运行时 API 语义、权限、状态机、金额/佣金/提成/归因规则或真实数据。
 - 当前状态：配置读取和缓存、保存/校验/版本记录、规则中心、佣金规则配置、Facade、配置消费路由、审计 API/SQL 契约、业务域反向写配置事实扫描、配置域业务动作扫描、权限注解和异常分支均有本地测试证据；`docs/领域/配置域.md` 与 `harness/rules/instructions/domain/config-domain.md` 仍定义配置域只提供参数事实。
 - 已完成能力：配置 API、规则参数、配置查询、配置变更日志基础能力、配置审计 API/SQL 契约、配置消费方边界测试、反向写配置事实守卫、业务动作守卫、权限注解守卫和异常分支无副作用测试。
 - 待优化能力：Docker/Testcontainers 事件集成测试、前端规则中心页面证据、real-pre 账号权限差异和配置改前/改后业务效果证据。
-- DDD 优化下一步：F-3/G-3 补前端规则中心与管理链 E2E；可用 Docker 后补配置事件集成运行态证据。
+- DDD 优化下一步：F-3/G-3 补前端规则中心与管理链 E2E；补配置事件集成运行态与 dispatcher 失败回写证据。
 - 标记：P1。
 ## 订单域
-- 最新小切片：O-4/O-14 证据收口已完成。O-4 按 `docs/对接/转链与pick_source归因.md` 的真实转链响应、`pick_source_mapping` SQL/API、订单 `pick_source` 命中到业绩明细追溯要求，从 PARTIAL 调整为 BLOCKED；当前缺真实命中样本且本机 Docker engine pipe 不存在，不能用本地单测声明真实归因闭环 DONE。O-14 用当前卡级复跑补齐订单同步幂等证据：`OrderSyncPersistenceService.persistOrder` 先 claim 后插入/更新，claim 失败且无既有订单时不 insert/update、不跑归因后置、不发事件；`OrderSyncDedupClaimMapper`、`create-order-sync-dedup-claim.sql`、`OrderSyncDedupSchemaBootstrap` 固化 claim 表和幂等回填。验证：O-14 目标证据集 68 tests PASS。本轮未改生产业务代码、API/schema/权限/状态机、订单同步语义、归因规则、金额/提成公式或真实数据；报告：`harness/reports/latest-evidence-20260707.md`。
+- 最新小切片：O-10/O-13 已补齐订单退款事实与冲正联动本地证据；`OrderRefundFactSyncedEvent`、`ORDER_REFUND_FACT_SYNCED`、publisher/outbox/republish 路由证明订单域只发布退款事实，`PerformanceRecordSyncListener` 消费后基于订单事实重算业绩并发布 calculated event，Analytics shadow 以独立事件类型路由。验证：O-10 目标证据集 67 tests PASS；此前 O-13 compile/package、redline guard、宽口径架构、Order/Performance/Analytics 830 tests、backend 容器重建和 health 均 PASS；real-pre P0 preflight 因抖音授权 `BLOCKED_AUTH` 阻塞，不能算真实业务流通过。报告：`harness/reports/latest-evidence-20260708.md`。O-4/O-15/G-5 仍需要真实上游/样本/E2E。
 - 最新边界变化：ORDER-READ-FACADE-CREATED-SINCE / SETTLED-SINCE 已在 `OrderReadFacade` 增加 `findOrdersCreatedSince` 与 `findOrdersSettledSince` 分页读取订单事实；`TalentClaimApplicationService` 和 `TalentService.evaluateExclusive` 不再直接依赖 `ColonelsettlementOrderMapper`，而是消费订单域门面。订单域仍只提供订单事实，不计算达人认领、业绩归属或提成。验证：targeted Maven 71 tests PASS（1 个维护型跳过）；`agent-do -Scope full` PASS。报告：`harness/reports/evidence-20260628-200945.md`；retro：`harness/reports/retro-20260628-201018.md`。
 - 最新边界变化：ORDER-SYNC-EVENT-EXPENSE-001 已让 `OrderSyncedEvent` 携带 `estimateServiceFeeExpense` / `effectiveServiceFeeExpense` 订单金额事实，`OrderEventPayloadMapper` 从订单事实映射该载荷；订单域仍只发布事实，不计算业绩。上一变化：ORDER-AMOUNT-ROUTER-EXPENSE-001 已修复 policy 开关启用时丢失服务费支出的 adapter 漂移。
 - 最新边界变化：`OrderAttributionService` 未归因分页与订单回流摘要数据范围过滤新增默认关闭的用户域 `DataScopePolicy` 旁路；默认关闭继续走 Legacy PERSONAL/DEPT `QueryWrapper.eq` 条件，开启后才调用 `DataScopePolicy.applyTo`。本轮未改订单事实、归因状态、同步、业绩事件、Mapper SQL、接口参数或历史数据。
@@ -102,8 +102,8 @@
 - DDD 优化下一步：有 `pick_source` 样本后做渠道可见性验证；之后进入 P0-SAMPLE-001 寄样流转；远端订单明细展示按部署需求单独执行。
 - 标记：P0。
 ## 业绩域
-- 最新小切片：O-6/O-7 兼容入口迁移后，业绩域继续负责 `performance_records`、最终归属、提成、冲正、双轨金额和汇总刷新；`PerformanceOrderAdminController` 作为历史 `/orders` 路径兼容桥只委派 `PerformanceBackfillService` / `CommissionService`，订单域不再持有这些写入服务。验证：`PerformanceOrderAdminControllerTest` 覆盖回填、重算、批量补算、单笔重算委派和缓存失效；Order/Performance 组合 496 tests PASS（4 个 mapper 集成环境 skip 不作实库证据）、compile PASS、redline 4/4 PASS、宽口径架构 226 tests PASS。本轮不证明真实 DB 写入、退款冲正真实样本、权限账号差异或 dashboard 对账，仍归 Y-14/Y-17/Y-18/A-8/A-9/A-11/A-12/G-5。
-- 最新报告路径：`harness/archive/by-date/report-packages/reports-20260622-ddd-datascope-afternoon-1430-1722.zip` 内 `evidence-20260622-153707.md` / `retro-20260622-153850.md`。
+- 最新小切片：Y-1/Y-2/Y-3 已补齐业绩域盘点、`performance_records` 生成入口全清单和最终归属输入追溯证据；`DddPerformanceDomainInventoryTest` 固化 controller/application/policy/facade/mapper/job/test inventory，`DddPerformanceRecordGenerationEntrypointTest` 固化事件、backfill、月度重算、兼容批量入口均委派同一 upsert funnel，`DddPerformanceAttributionTraceabilityContractTest` 固化 default/final 渠道与招商归属、attribution reason、talent/partner/product/activity 字段到 mapper 持久化。验证：Y-1/Y-2/Y-3 目标证据集 32 tests PASS；矩阵 95/58/19/6；真实订单/退款样本、real-pre backfill、dashboard API/SQL/page 对账和 E2E 仍未验证。报告：`harness/reports/latest-evidence-20260709.md`。
+- 最新小切片：Y-17 业绩权限与数据范围后端证据已从 TODO 推进到 PARTIAL；`PerformanceControllerTest` 覆盖列表 request attributes 下沉为 `PerformanceAccessContext`、staff 导出拒绝且不触发导出服务、leader 导出传递上下文并写出字节，`PerformanceAccessScopeTest` 保留导出/重算/筛选越权/fail-closed SQL 范围正反例。仍缺真实账号 API/SQL/E2E，不能标 DONE。
 - 最新边界变化：`PerformanceAccessScope` 继续承载业绩域导出、重算、筛选越权、逐条访问和 SQL 范围拼接语义，但角色编码集合匹配已委托用户域 `CurrentUserPermissionPolicy.hasAnyRole`；本轮未改业绩归属、提成、冲正、服务费双轨公式、SQL 条件语义或历史数据。
 - 最新报告路径：`harness/archive/by-date/report-packages/reports-20260621-ddd-role-policy-2115-2207/evidence-20260621-212247.md`。
 - 最新边界变化：`PerformanceMetricsQueryService` 汇总、趋势和 dashboard 业绩指标查询的数据范围过滤新增默认关闭的用户域 `DataScopePolicy` 旁路；默认关闭继续走 Legacy PERSONAL/DEPT SQL 条件拼接，开启后才委托 `DataScopePolicy.decide`。本轮未改业绩归属、提成、冲正、服务费双轨公式、接口参数或历史数据。
@@ -111,11 +111,11 @@
 - 当前状态：最终归属、提成、冲正和汇总主链路已具备；订单明细 BFF 已按 orderId 批量读取 `performance_records` 补全招商提成、渠道提成、服务费支出和服务费收益展示字段；ORDER-PERFORMANCE-EVENT-AFTER-COMMIT-FIX-001 已验证新订单事件在提交后发布，业绩 Listener 正常走 `upsertFromOrder`，重复事件仍走 upsert 幂等路径；SERVICE-FEE-INCOME-FORMULA-CODE-001 已按 2026-06-06 用户口径补齐服务费收入公式解析、结算轨不重复扣技术服务费和后端单元验证；`PerformanceAccessScope` / `PerformanceAccessContext` 已从 `service.performance` 迁入 `domain.performance.policy`，业绩访问策略进入业绩域 policy 包；独家商家评估应用服务已通过用户域负责人归属引用获取招商负责人组织单元，不改变独家覆盖规则、订单金额归集或服务费比例计算。
 - 报告路径：DDD-PERFORMANCE-ACCESS-POLICY `harness/reports/evidence-20260621-121159.md`；DDD-USER-EXCLUSIVE-MERCHANT-APPLICATION-FACADE `harness/reports/2026-06-21/ddd-user/facade-next/evidence-20260621-135500-exclusive-merchant-application-facade.md`。
 - 已完成能力：`performance_records`、最终归属、提成、冲正、汇总刷新。
-- 待优化能力：输入追溯、重复消费幂等、冲正证据、权限数据范围和 dashboard 对账补齐；继续修复 DASH-MONEY-P0-001 结算轨污染问题，避免业绩表历史数据影响看板结算口径；补充 real-pre API / SQL / 页面级服务费收入与收益双轨验收。`ORDER-PERFORMANCE-BACKFILL-001` 本地复查缺失数为 0，未执行写库。
-- DDD 优化下一步：进入 Y-1 盘点业绩域代码、接口、表、任务和测试，并与 A-11/A-12 dashboard E2E / 导出验证衔接。
+- 最新小切片：Y-4 已补齐提成规则版本 schema、规则来源快照、创建版本服务端强制为 1，以及 update/delete 零行更新的业务冲突校验；47 个目标/红线测试、backend package、本地 real-pre 迁移、容器重启、health 和鉴权列表 API 均通过，状态恢复 DONE。证据：`harness/reports/latest-evidence-20260710.md`；提交：`4bb8ce1c`、`3ed74608`。待优化能力：前端陈旧页面尚未透传原始规则版本；业绩访问范围真实账号差异、真实退款样本、PostgreSQL upsert 实库验证、真实事件触发、dashboard API/SQL/页面对账和 real-pre E2E 仍未完成；继续修复 DASH-MONEY-P0-001。`ORDER-PERFORMANCE-BACKFILL-001` 本地复查缺失数为 0，未执行写库。
+- DDD 优化下一步：优先推进 Y-17 真实账号 API/SQL/E2E 或 Y-16 业绩计算集成闭环；如涉及 real-pre 迁移/运行态，必须先执行容器和健康检查证据。
 - 标记：P0。
 ## 分析模块
-- 最新小切片：A-13/A-15 分析模块异常分支与 DOMAIN_STATUS 状态证据已补齐当前闭环；`AnalyticsEventConsumerTest` 覆盖 unsupported payload 不写 `ProcessedEventStore`、同一 `eventId` 有效 payload 可重试成功、非法 activity sync `eventId` 降级为 name-based UUID，`DashboardShadowCompareTest#compare_returnsNull_whenNewPathThrows` 证明 shadow compare 新路径异常不阻断 dashboard summary；A-15 将 dashboard、报表、只读汇总、OrderReadFacade 只读投影、DataApplicationService 跨域只读 facade 和剩余风险收口到本文件分析模块段落。验证：A-15 分析模块组合 60 tests PASS、compile PASS、redline 4/4 PASS、宽口径架构 202 tests PASS、acceptance redline active=0 PASS。报告：`harness/reports/latest-evidence-20260705.md`。本轮未改生产业务代码、API、schema、权限、金额/提成/归因规则或真实数据；API/SQL 对账、真实账号差异、E2E 与导出验证仍归 A-8/A-9/A-11/A-12/F-6/G-5。
+- 最新小切片：A-8 dashboard API 与 SQL 一致性已从 TODO 推进到 PARTIAL；新增 `DddDashboardApiSqlConsistencyContractTest` 固化 `DashboardController /summary`、`DashboardService.getSummary`、`PerformanceMetricsQueryService.aggregateDashboardSummary` 到 `PerformanceAggregateApplicationService` SQL-backed 汇总的后端合同，覆盖 `order_count/order_amount_cent/service_fee_cent`、渠道/招商 leaderboard、attributed 过滤、排序和 LIMIT。验证：A-8 目标证据集 42 tests PASS；本轮未改生产业务代码、API、schema、权限、金额/提成/归因规则或真实数据。报告：`harness/reports/latest-evidence-20260709.md`。真实 API/SQL 逐字段对账、页面展示、admin/group/self 账号差异和 E2E 仍归 A-8/A-9/A-11/F-6/G-5。
 - 最新边界变化：DDD-DASHBOARD-ORDER-READ-FACADE 已将 `DashboardService` 的订单总览、已归因 / 未归因计数、未归因原因和无业绩汇总时的渠道 / 招商排行聚合从直接 `ColonelsettlementOrderMapper` 改为消费订单域 `OrderReadFacade` 只读投影；复杂诊断 SQL 和活动商品下钻暂不扩大改动面。
 - 最新验证变化：新增 `DddDataApplicationReadFacadeBoundaryTest` 与 `DddAnalyticsReadOnlyBoundaryTest`，把分析模块 facade 消费与只读边界变成后端架构测试；`DddCrossDomainMapperGuardTest` 与 DddClean 系列守卫 PASS，`cross-domain-mapper-legacy-whitelist.txt` 无剩余 Mapper 条目。上一轮 real-pre Dashboard API/SQL 对账 evidence：`runtime/qa/out/real-pre-dashboard-reconcile-20260622-205417/`。
 - 最新边界变化：`PerformanceMetricsQueryService` 汇总读侧数据范围过滤已具备默认关闭旁路；默认关闭保持 Legacy SQL 条件拼接，开启后仅把 PERSONAL/DEPT/ALL 数据范围解释委托给用户域。本轮不改变 dashboard 指标公式、排行 SQL、订单归因或业绩归属。
@@ -123,8 +123,8 @@
 - 当前状态：dashboard、报表和只读汇总主链路已具备；`DashboardService` summary 简单订单聚合已改为消费 `OrderReadFacade`；`ProductService` 活动商品订单摘要、团长商品范围和推广链接事实读写已改为消费订单域 Facade；`DataApplicationService` 已通过订单、商品活动、达人和业绩域只读 facade 退出直接跨域 Mapper 注入，跨域 Mapper 白名单为 0；数据平台订单页已保留汇总模块，并新增/收口订单明细 Tab 与 16 列订单级明细导出；SERVICE-FEE-INCOME-FORMULA-CODE-001 已更新经营指标矩阵服务费收入 / 收益双轨公式口径与后端展示层单测；订单明细负责人展示已改为消费用户域 `loadUserDisplayNamesByIds`。
 - 报告路径：DDD-USER-DATA-APPLICATION-FACADE `harness/reports/2026-06-21/ddd-user/evidence-20260621-132400-data-application-facade.md`。
 - 已完成能力：看板汇总、报表查询、导出能力。
-- 待优化能力：跨域 Mapper 白名单已清零；后续聚焦 Dashboard summary 双轨聚合和历史结算轨污染专项、dashboard E2E、导出验证、前端页面级服务费收入 / 收益双轨验收，以及 Legacy QueryWrapper facade 的更强类型化收口。
-- DDD 优化下一步：进入分析模块 A-11/A-12 dashboard API/SQL 对账、页面 E2E 与导出验证；另起小切片评估 QueryWrapper 透传 facade 是否需要替换为稳定查询 DTO。
+- 待优化能力：跨域 Mapper 白名单已清零；A-8 已有后端 API-to-SQL 合同测试但仍缺 real-pre API/SQL 逐字段对账；后续聚焦 Dashboard 真实账号差异、页面 E2E、导出验证、前端页面级服务费收入 / 收益双轨验收，以及 Legacy QueryWrapper facade 的更强类型化收口。
+- DDD 优化下一步：优先补 A-8 real-pre API/SQL 对账或 A-9 admin/group/self 账号差异；随后推进 A-11 页面 E2E 与导出验证，另起小切片评估 QueryWrapper 透传 facade 是否需要替换为稳定查询 DTO。
 - 标记：P0。
 ## 商品域
 - 最新小切片：P-1/P-2/P-22 证据收口已补齐商品域当前盘点、字段级清单和 DOMAIN_STATUS 状态链路；`docs/领域/商品域.md` 明确商品域负责商品库、活动商品同步、展示规则输入、转链和 `pick_source_mapping`，并列出 `product`、`product_snapshot`、`product_operation_state`、`pick_source_mapping`、`promotion_link`、`product_operation_log`、`product_activity_sync_state/product_sync_job_log`、`product_display_audit_log` 字段组与边界；本轮未改生产业务代码、API、schema、权限、商品状态机、寄样状态机、金额/提成/归因规则或真实上游开关。验证：`*Product*Test` 333 tests PASS、redline 4 tests PASS、宽口径架构 202 tests PASS、`check-ddd-acceptance.ps1 -RequireRedlineZero` PASS；报告：`harness/reports/latest-ddd-acceptance-report.md`。剩余风险：P-10 数据范围业务口径、P-17 real-pre 上游闭环、P-21 前端商品库 E2E 仍未完成。
@@ -164,7 +164,7 @@
 - DDD 优化下一步：优先 P-10 等待产品确认数据范围语义；若授权和样本具备，执行 P-17 real-pre 只读 / 受控 dry-run 证据；前端环境可用时补 P-21 商品库 E2E。
 - 标记：P0。
 ## 达人域
-- 最新边界变化：DDD-TALENT-POOL-APPLICATION-SERVICE 已将 `TalentService.getPublicPool/getPrivatePool` 委派到 `TalentPoolApplicationService`，`TalentService` 保留兼容壳；测试构造器已补齐新应用服务依赖，避免 Slice 8 本地提交造成 testCompile 断裂。本轮未改达人池业务规则、认领保护期、黑名单、第三方接口或真实数据。验证：targeted Maven 92 tests PASS（1 skipped）；`agent-do -Scope full` PASS。报告：`harness/reports/evidence-20260629-115638.md`；commit：`3cd76529` / `09a762b0`。上一变化：DDD-TALENT-SAMPLE-FACADE / T-CLEAN-002 已将寄样读、独家评估订单读取和认领保护期写入收口到领域门面 / 应用服务。
+最新小切片：T-9/T-10/T-15 DONE；`DddTalentDomainInventoryEvidenceTest` 新增地址/寄样联动和标签/跟进审计 evidence guard，锚定 `TalentController` shipping-address / tags / preset-tags，`TalentProfileApplicationService` claim 层地址、`tagUpdatedBy`，`TalentFollowRecord` operator 审计，`ProductQuickSampleService -> QuickSampleApplyCommand -> SampleApplicationPortImpl -> TalentDomainFacade.writeBackClaimAddress` 地址消费与回写链路；目标证据集 30 tests PASS，`*Talent*Test,*Sample*Test` 553 tests PASS。上一小切片：T-8/T-12/T-13 DONE；`DddTalentPermissionOverreachNegativeEvidenceTest` 锚定列表/详情数据范围与 gender 拦截。达人域逐卡 evidence index：T-1/T-2/T-3/T-4 盘点、主链路、认领保护期和关系消费；T-5/T-6/T-7 和提成/冲正边界；T-8/T-9/T-10 数据范围、地址、标签跟进；T-11 BLOCKED；T-12/T-13 和单测汇总；T-14 PARTIAL；T-15 地址寄样联动；T-16/T-17 DONE；T-18 真实 admin/group/self 账号 API、浏览器 E2E、第三方达人响应 T-11/T-14/G-4。
 - 最新边界变化：`TalentService.evaluateExclusive` 独家达人评估订单查询数据范围新增灰度开启的用户域 `DataScopePolicy` 路径，默认关闭仍走 Legacy PERSONAL user / DEPT dept 过滤；本轮未改独家评估公式、订单佣金读取、寄样次数统计、达人认领规则、黑名单、第三方接口或真实数据。报告：`harness/archive/by-date/report-packages/reports-20260622-ddd-datascope-afternoon-1430-1722.zip` 内 `evidence-20260622-151700.md`。
 - 近期边界变化：`TalentService.blacklist/unblacklist/evaluateExclusive` 兼容壳已委派达人 application service；`TalentPageApplicationService`、`TalentQueryService.detail`、`TalentClaimApplicationService` 和 `ExclusiveTalentCheckApplicationService` 的 enabled DataScope 路径已消费用户域 `DataScopeResolver`；`TalentClaimApplicationService.release` 管理员角色编码匹配和 `TalentQueryService.assertCanOperate` 操作访问角色匹配已消费用户域 `CurrentUserPermissionChecker`；达人归属覆盖已通过用户域 `loadUserOwnershipReferencesByIds` 校验目标负责人存在，不再读取完整用户 DTO，既有达人认领记录 `deptId` 写入行为不变。
 - 当前状态：达人资料、批量导入、标签、地址和跟进主链路已具备。
@@ -177,7 +177,7 @@
 - 最新边界变化：`SampleApplicationService.getSampleBoard` 新增默认关闭的用户域 `DataScopePolicy` 旁路；默认关闭继续走 Legacy `findPageWithScope` 与 mapper `@DataScope` 切面，开启后仅在 plain biz staff + PERSONAL 由用户域 policy 判定后切到寄样域审核人视角 `findPageForAuditor`。本轮未改寄样状态机、动作权限、Mapper SQL、VO 组装、接口契约、默认开关或真实数据。报告：`harness/archive/by-date/report-packages/reports-20260622-ddd-datascope-late/2026-06-22-sample-datascope/evidence-20260622-181901.md`；retro：`harness/archive/by-date/report-packages/reports-20260622-ddd-datascope-late/2026-06-22-sample-datascope/retro-20260622-181923.md`。
 - 最新边界变化：`SampleApplicationService.getSampleById` 及其复用的 `requireSample` 详情访问数据范围判断新增默认关闭的用户域 `DataScopePolicy` 旁路；默认关闭继续走 Legacy PERSONAL 发起人 / DEPT 归属部门判断，开启后只把 PERSONAL/DEPT/ALL 数据范围解释交给用户域，寄样域仍保留寄样单负责人、归属部门、全局访问角色、招商专员商品分配豁免和运营可见状态业务语义。本轮未改寄样状态机、动作权限、Mapper SQL、VO 组装、接口契约或真实数据。报告：`harness/archive/by-date/report-packages/reports-20260622-ddd-datascope-late/2026-06-22-sample-datascope/evidence-20260622-175931.md`；retro：`harness/archive/by-date/report-packages/reports-20260622-ddd-datascope-late/2026-06-22-sample-datascope/retro-20260622-175954.md`。
 - 上一边界变化：`SampleApplicationService.getSamplePage` 寄样列表读路径新增默认关闭的用户域 `DataScopePolicy` 旁路；默认关闭继续走 Legacy auditor 查询判断，开启后只把 PERSONAL/DEPT/ALL 数据范围解释交给用户域，寄样域仍保留“plain biz staff 才走审核人视角”的业务语义。本轮未改寄样状态机、列表筛选参数、Mapper SQL、VO 组装、接口契约或真实数据。报告：`harness/archive/by-date/report-packages/reports-20260622-ddd-datascope-late/2026-06-22-sample-datascope/evidence-20260622-173855.md`；retro：`harness/archive/by-date/report-packages/reports-20260622-ddd-datascope-late/2026-06-22-sample-datascope/retro-20260622-173923.md`。
-- 当前状态：申请、审批、发货、物流刷新和订单事件自动完成链路已具备。TALENT-ADDRESS-SAMPLE-DEFAULT 达人寄样地址默认保存已完成（2026-06-03）；2026-06-20 已补 `SampleController` 架构测试，防止 HTTP 入口重新直接导入持久化 Mapper；`LogisticsTrackJob` 已退出寄样 Mapper 读取，仅保留调度 / 锁职责；`SampleApplicationService` 已通过用户域归属引用读取创建人部门、通过用户显示标签读取状态日志/导出/详情/看板展示名，并通过寄样域 `SampleActionPermissionPolicy` 承载动作权限；`SampleApplicationService.getSamplePage`、`getSampleById`、`getSampleBoard`、`exportSamples` 和 `SampleFilterOptionsService` 均已新增灰度开启的 `DataScopePolicy` 数据范围旁路，默认关闭保持 Legacy 行为；`SampleApplicationPortImpl` quick sample 入口和 `SampleLogisticsImportService` 物流导入入口已收口到 policy / 用户域角色解释；real-pre 仍依赖真实归因订单样本。
+- 最新小切片：S-8 DONE；新增 `DddSampleLogisticsApiBoundaryTest`，固化寄样核心 Controller/Application/Lifecycle/Policy 不直接依赖外部物流 Gateway/API/Command，外部查询与订阅调用限定在 `SampleLogisticsSyncService` / `SampleLogisticsSubscriptionService`，导入服务只做物流单号导入、模板生成和样本行写入。验证：S-8 目标证据集 110 tests PASS。上一小切片：S-9/S-10/S-11 DONE，列表/详情数据范围负例、审核/发货权限全路径、订单已同步事件消费链路 117 tests PASS。真实订单样本、真实物流 API、真实 scheduler、跨进程投递、真实账号 API 和页面 E2E 仍归 S-12/S-14/S-19/G-5。
 - 已完成能力：寄样申请、审批、发货、状态日志、订单事件消费；**地址默认保存**（寄样成功后回写 `talent_claim`，下次选达人自动带入，修改后更新，历史快照不变，多渠道隔离）。
 - TALENT-ADDRESS-SAMPLE-DEFAULT 报告路径：`harness/reports/talent-address-sample-default-20260603-224000.md`。
 - DDD-USER-SAMPLE-APPLICATION-FACADE 报告路径：`harness/reports/2026-06-21/ddd-user/facade-next/evidence-20260621-142200-sample-application-facade.md`。
@@ -185,13 +185,13 @@
 - DDD-USER-PERMISSION-POLICY-SAMPLE-SERVICE 报告路径：`harness/reports/2026-06-21/ddd-user/permission-next/evidence-20260621-154500-sample-service-role-policy.md`。
 - DDD-SAMPLE-ACTION-PERMISSION-POLICY 报告路径：`harness/reports/2026-06-21/ddd-user/permission-next/evidence-20260621-160300-sample-action-permission-policy.md`。
 - TALENT-ADDRESS-SAMPLE-DEFAULT 修改文件：`ProductQuickSampleService.java`、`SampleApplicationService.java`（后端回写）；`QuickSampleModal.vue`、`SampleCreateModal.vue`（前端加载+提交）；测试 4 文件 8 用例。
-- 待优化能力：状态机完整验证、交作业命中条件、重复消费幂等和真实样本证据补齐。
-- DDD 优化下一步：寄样域本轮清掉 `LogisticsTrackJob|SampleRequestMapper`；跨域 Mapper 白名单已清零，后续保留寄样状态机完整验证、交作业命中条件、重复消费幂等和真实样本证据补齐。
+- 待优化能力：真实样本命中、页面 E2E、运行态 scheduler / 跨进程投递和账号级权限验证补齐。
+- DDD 优化下一步：寄样域本地边界守卫已覆盖订单同步、业绩归属、提成/冲正禁止项；后续保留真实样本命中、页面 E2E、运行态 scheduler / 跨进程投递和账号级权限验证补齐。
 - 标记：P0。
 ## Outbox 事件
-- 当前状态：E-11/E-12/E-13/E-14 已形成事件生产、消费、重复消费幂等和证据索引本地闭环；E-15 本轮将事件状态收口到本文件与 `docs/04-事件契约总表.md`，矩阵主源为 `docs/ddd-completion-evidence-matrix.md`。
-- 报告路径：`harness/reports/latest-evidence-20260705.md`；当前风险：仍不证明真实 outbox scheduler、跨进程持久化幂等、真实上游订单触发或 E2E，相关缺口继续归 O-17/G-5。
-- DDD 优化下一步：事件域后续只在真实样本/运行态可用时补 runtime 证据；标记：P1。
+- 当前状态：E-1/E-2/E-3/E-4/E-5/E-6/E-8/E-9/E-10/E-11/E-12/E-13/E-14/E-15 已有本地证据；E-9 另有运行态失败重试至 DEAD 探针。E-7 因转链事件未透传调用方 `idempotencyKey` 暂降 PARTIAL；真实上游与跨进程证据仍以矩阵主源为准。
+- 报告路径：`harness/reports/latest-evidence-20260709.md`、`harness/reports/git-intake-20260710-125023.md`；当前风险：不证明真实上游样本、跨进程幂等或完整 E2E；Y-12/E-5 的汇总刷新事件生产者与领域合同存在待确认边界，不由 Agent 自行改写。
+- DDD 优化下一步：先修复 E-7 幂等键透传并补行为测试；Y-12/E-5 回到领域合同/ADR 确认生产边界；其后补真实样本、跨进程幂等、replay 负例和 E2E；标记：P1。
 ## Harness
 - 当前状态：GIT-HARNESS-001 工作区治理完成（2026-06-03）。
 - 已完成能力：Completion Gate (G0-G4)、Session Exit Gate、Quality Ledger、Git Intake / Exit Gate、Dirty Classification (10 种分类)、Allowed Change Set、Staged Scope Gate、Commit / Push / Deploy Commit Gate、批次提交流程 (GIT-BATCH-N)、Unknown Dirty Policy、Rollback Policy。
