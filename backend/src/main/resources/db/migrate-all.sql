@@ -1188,6 +1188,7 @@ CREATE TABLE IF NOT EXISTS commissions (
     effective_end TIMESTAMP,
     status SMALLINT NOT NULL DEFAULT 1,
     deleted SMALLINT NOT NULL DEFAULT 0,
+    version INT NOT NULL DEFAULT 1,
     create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     create_by UUID,
@@ -1207,8 +1208,11 @@ CREATE INDEX IF NOT EXISTS idx_commissions_effective_window
     ON commissions (effective_start, effective_end);
 
 ALTER TABLE commissions
+    ADD COLUMN IF NOT EXISTS version INT NOT NULL DEFAULT 1,
     ADD COLUMN IF NOT EXISTS create_by UUID,
     ADD COLUMN IF NOT EXISTS update_by UUID;
+
+ALTER TABLE commissions ADD COLUMN IF NOT EXISTS version INT NOT NULL DEFAULT 1;
 
 COMMENT ON TABLE commissions IS 'V2 ????????global/activity/product/user � recruiter/channel?';
 
