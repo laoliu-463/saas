@@ -11,6 +11,7 @@ import com.colonel.saas.gateway.douyin.DouyinPromotionGateway;
 import com.colonel.saas.service.ColonelPartnerSyncService;
 import com.colonel.saas.domain.product.application.ProductLibraryPageQueryService;
 import com.colonel.saas.domain.product.application.ProductQuickSampleApplicationService;
+import com.colonel.saas.domain.product.application.dto.ProductLibraryCursorPage;
 import com.colonel.saas.domain.product.application.dto.ProductLibraryPageQuery;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
@@ -431,7 +432,7 @@ class ProductControllerTest {
         Product product = new Product();
         product.setProductId("9001");
         when(productLibraryPageQueryService.getSelectedLibraryCursorPage(eq("cursor-1"), eq(500L), any(ProductLibraryPageQuery.class)))
-                .thenReturn(new ProductService.SelectedLibraryCursorPage(List.of(product), 500L, true, "cursor-2"));
+                .thenReturn(new ProductLibraryCursorPage(List.of(product), 500L, true, "cursor-2"));
 
         var response = productController.page(
                 1, 20, "cursor-1", 500L,

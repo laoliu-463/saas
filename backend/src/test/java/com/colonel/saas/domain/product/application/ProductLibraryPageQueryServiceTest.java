@@ -2,76 +2,59 @@ package com.colonel.saas.domain.product.application;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.domain.product.application.dto.ProductLibraryPageQuery;
+import com.colonel.saas.domain.product.application.dto.ProductLibraryCursorPage;
 import com.colonel.saas.entity.Product;
-import com.colonel.saas.service.ProductService;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
 
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class ProductLibraryPageQueryServiceTest {
 
-    private final ProductService productService = mock(ProductService.class);
-    private final ProductLibraryPageQueryService service = new ProductLibraryPageQueryService(productService);
+    private final ProductLibraryApplicationService applicationService = mock(ProductLibraryApplicationService.class);
+    private final ProductLibraryPageQueryService service = new ProductLibraryPageQueryService(applicationService);
 
     @Test
-    void getSelectedLibraryPage_shouldTranslateQueryToLegacyFilter() {
+    void getSelectedLibraryPage_shouldDelegateToApplicationService() {
         Page<Product> expected = new Page<>(1, 20);
         expected.setRecords(List.of(new Product()));
-        when(productService.getSelectedLibraryPage(eq(1L), eq(20L), org.mockito.ArgumentMatchers.any()))
+        when(applicationService.getSelectedLibraryPage(1L, 20L, query()))
                 .thenReturn(expected);
 
         var result = service.getSelectedLibraryPage(1, 20, query());
 
         assertThat(result).isSameAs(expected);
-        ArgumentCaptor<ProductService.SelectedLibraryFilter> captor =
-                ArgumentCaptor.forClass(ProductService.SelectedLibraryFilter.class);
-        verify(productService).getSelectedLibraryPage(eq(1L), eq(20L), captor.capture());
-        ProductService.SelectedLibraryFilter filter = captor.getValue();
-        assertThat(filter.keyword()).isEqualTo("keyword");
-        assertThat(filter.productId()).isEqualTo("9001");
-        assertThat(filter.assigneeId()).isEqualTo("11111111-1111-1111-1111-111111111111");
-        assertThat(filter.partnerType()).isEqualTo("COLONEL");
-        assertThat(filter.listed()).isEqualTo("1");
+        verify(applicationService).getSelectedLibraryPage(1L, 20L, query());
     }
 
     @Test
-    void getSelectedLibraryCursorPage_shouldTranslateQueryToLegacyFilter() {
+    void getSelectedLibraryCursorPage_shouldDelegateToApplicationService() {
         Product product = new Product();
         product.setProductId("9001");
-        ProductService.SelectedLibraryCursorPage expected =
-                new ProductService.SelectedLibraryCursorPage(List.of(product), 500L, true, "next");
-        when(productService.getSelectedLibraryCursorPage(eq("cursor"), eq(500L), org.mockito.ArgumentMatchers.any()))
+        ProductLibraryCursorPage expected =
+                new ProductLibraryCursorPage(List.of(product), 500L, true, "next");
+        when(applicationService.getSelectedLibraryCursorPage("cursor", 500L, query()))
                 .thenReturn(expected);
 
         var result = service.getSelectedLibraryCursorPage("cursor", 500, query());
 
         assertThat(result).isSameAs(expected);
-        ArgumentCaptor<ProductService.SelectedLibraryFilter> captor =
-                ArgumentCaptor.forClass(ProductService.SelectedLibraryFilter.class);
-        verify(productService).getSelectedLibraryCursorPage(eq("cursor"), eq(500L), captor.capture());
-        assertThat(captor.getValue().productId()).isEqualTo("9001");
+        verify(applicationService).getSelectedLibraryCursorPage("cursor", 500L, query());
     }
 
     @Test
-    void nullQuery_shouldUseEmptyLegacyFilter() {
+    void nullQuery_shouldUseEmptyApplicationQuery() {
         Page<Product> expected = new Page<>(1, 20);
-        when(productService.getSelectedLibraryPage(eq(1L), eq(20L), org.mockito.ArgumentMatchers.any()))
+        when(applicationService.getSelectedLibraryPage(1L, 20L, null))
                 .thenReturn(expected);
 
         service.getSelectedLibraryPage(1, 20, null);
 
-        ArgumentCaptor<ProductService.SelectedLibraryFilter> captor =
-                ArgumentCaptor.forClass(ProductService.SelectedLibraryFilter.class);
-        verify(productService).getSelectedLibraryPage(eq(1L), eq(20L), captor.capture());
-        assertThat(captor.getValue().productId()).isNull();
-        assertThat(captor.getValue().keyword()).isNull();
+        verify(applicationService).getSelectedLibraryPage(1L, 20L, null);
     }
 
     private ProductLibraryPageQuery query() {

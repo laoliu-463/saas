@@ -1,7 +1,13 @@
 package com.colonel.saas.domain.product.application;
 
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.colonel.saas.domain.product.application.dto.ProductLibraryCursorPage;
+import com.colonel.saas.domain.product.application.dto.ProductLibraryPageQuery;
+import com.colonel.saas.domain.product.application.port.ProductLibraryQueryPort;
+import com.colonel.saas.entity.Product;
 import com.colonel.saas.mapper.ProductSnapshotMapper;
 import com.colonel.saas.mapper.ProductOperationStateMapper;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -14,10 +20,11 @@ import java.util.List;
  * <ul>
  *   <li>{@link #listLibraryCategories} —— 商品库展示分类名去重排序（Slice 1）</li>
  *   <li>{@link #getAdminCounts} —— 后台管理面板统计计数（Slice 2）</li>
+ *   <li>{@link #getSelectedLibraryPage} / {@link #getSelectedLibraryCursorPage} —— 商品库分页查询端口（Slice 3）</li>
  * </ul>
  *
- * <p>本类承接 ProductService 的两个查询业务逻辑，作为 domain 层
- * 入口；Service 改为 1-line 委派壳。</p>
+ * <p>本类承接商品库应用层入口；分页查询的旧实现暂由 Legacy 适配器提供，
+ * 后续可在端口后替换而不改变 Controller 契约。</p>
  *
  * <p>依赖：
  * <ul>
@@ -30,12 +37,43 @@ public class ProductLibraryApplicationService {
 
     private final ProductSnapshotMapper snapshotMapper;
     private final ProductOperationStateMapper operationStateMapper;
+    private final ProductLibraryQueryPort queryPort;
 
+    @Autowired
+    public ProductLibraryApplicationService(
+            ProductSnapshotMapper snapshotMapper,
+            ProductOperationStateMapper operationStateMapper,
+            ProductLibraryQueryPort queryPort) {
+        this.snapshotMapper = snapshotMapper;
+        this.operationStateMapper = operationStateMapper;
+        this.queryPort = queryPort;
+    }
+
+    /**
+     * 保留给现有纯单元测试的构造器；商品库分页能力必须通过 Spring 注入查询端口。
+     */
     public ProductLibraryApplicationService(
             ProductSnapshotMapper snapshotMapper,
             ProductOperationStateMapper operationStateMapper) {
-        this.snapshotMapper = snapshotMapper;
-        this.operationStateMapper = operationStateMapper;
+        this(snapshotMapper, operationStateMapper, null);
+    }
+
+    public IPage<Product> getSelectedLibraryPage(long page, long size, ProductLibraryPageQuery query) {
+        return requireQueryPort().getSelectedLibraryPage(page, size, query);
+    }
+
+    public ProductLibraryCursorPage getSelectedLibraryCursorPage(
+            String cursor,
+            long limit,
+            ProductLibraryPageQuery query) {
+        return requireQueryPort().getSelectedLibraryCursorPage(cursor, limit, query);
+    }
+
+    private ProductLibraryQueryPort requireQueryPort() {
+        if (queryPort == null) {
+            throw new IllegalStateException("商品库查询端口未配置");
+        }
+        return queryPort;
     }
 
     /**

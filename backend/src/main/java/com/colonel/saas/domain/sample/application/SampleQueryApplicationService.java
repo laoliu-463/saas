@@ -4,12 +4,14 @@ import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.result.PageResult;
 import com.colonel.saas.config.DddRefactorProperties;
+import com.colonel.saas.domain.sample.application.port.SampleDetailQueryPort;
 import com.colonel.saas.domain.sample.facade.SampleDomainFacade;
 import com.colonel.saas.service.sample.SampleQueryService;
 import com.colonel.saas.vo.sample.SampleBoardCard;
 import com.colonel.saas.vo.sample.SampleLogisticsVO;
 import com.colonel.saas.vo.sample.SampleVO;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -22,22 +24,35 @@ import java.util.UUID;
  * 寄样查询应用层（DDD-SAMPLE-007 Batch3 Replace）。
  *
  * <p>开关 {@code ddd.refactor.sample-application.enabled=true} 且根开关开启时，
- * 按 ID 读路径先走 {@link SampleDomainFacade} 存在性检查，再委派 {@link SampleQueryService}。</p>
+ * 按 ID 读路径先走 {@link SampleDomainFacade} 存在性检查，再通过详情查询端口读取；
+ * 端口当前由 Legacy 适配器实现。</p>
  */
 @Service
 public class SampleQueryApplicationService {
 
     private final SampleQueryService sampleQueryService;
+    private final SampleDetailQueryPort sampleDetailQueryPort;
     private final SampleDomainFacade sampleDomainFacade;
     private final DddRefactorProperties dddRefactorProperties;
 
+    @Autowired
+    public SampleQueryApplicationService(
+            SampleQueryService sampleQueryService,
+            SampleDetailQueryPort sampleDetailQueryPort,
+            SampleDomainFacade sampleDomainFacade,
+            DddRefactorProperties dddRefactorProperties) {
+        this.sampleQueryService = sampleQueryService;
+        this.sampleDetailQueryPort = sampleDetailQueryPort;
+        this.sampleDomainFacade = sampleDomainFacade;
+        this.dddRefactorProperties = dddRefactorProperties;
+    }
+
+    /** 保留给现有单元测试和兼容调用方的构造器。 */
     public SampleQueryApplicationService(
             SampleQueryService sampleQueryService,
             SampleDomainFacade sampleDomainFacade,
             DddRefactorProperties dddRefactorProperties) {
-        this.sampleQueryService = sampleQueryService;
-        this.sampleDomainFacade = sampleDomainFacade;
-        this.dddRefactorProperties = dddRefactorProperties;
+        this(sampleQueryService, null, sampleDomainFacade, dddRefactorProperties);
     }
 
     public boolean isRoutingEnabled() {
@@ -87,6 +102,9 @@ public class SampleQueryApplicationService {
     public SampleVO getSampleById(UUID id, UUID userId, UUID deptId, DataScope dataScope, Object roleCodes) {
         if (isRoutingEnabled()) {
             assertSampleExistsViaFacade(id);
+        }
+        if (sampleDetailQueryPort != null) {
+            return sampleDetailQueryPort.getSampleById(id, userId, deptId, dataScope, roleCodes);
         }
         return sampleQueryService.getSampleById(id, userId, deptId, dataScope, roleCodes);
     }

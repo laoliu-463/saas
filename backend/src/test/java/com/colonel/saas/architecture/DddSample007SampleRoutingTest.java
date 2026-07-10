@@ -4,6 +4,7 @@ import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.domain.sample.application.SampleQueryApplicationService;
+import com.colonel.saas.domain.sample.application.port.SampleDetailQueryPort;
 import com.colonel.saas.domain.sample.facade.SampleDomainFacade;
 import com.colonel.saas.service.sample.SampleQueryService;
 import com.colonel.saas.vo.sample.SampleVO;
@@ -28,6 +29,7 @@ import static org.mockito.Mockito.when;
 class DddSample007SampleRoutingTest {
 
     @Mock private SampleQueryService sampleQueryService;
+    @Mock private SampleDetailQueryPort sampleDetailQueryPort;
     @Mock private SampleDomainFacade sampleDomainFacade;
     @Mock private DddRefactorProperties dddRefactorProperties;
     @Mock private DddRefactorProperties.Switch sampleApplicationSwitch;
@@ -42,7 +44,7 @@ class DddSample007SampleRoutingTest {
     void getSampleById_shouldDelegateLegacyWhenSwitchOff() {
         when(dddRefactorProperties.isEnabled()).thenReturn(false);
         SampleVO expected = new SampleVO();
-        when(sampleQueryService.getSampleById(eq(sampleId), any(), any(), any(), any())).thenReturn(expected);
+        when(sampleDetailQueryPort.getSampleById(eq(sampleId), any(), any(), any(), any())).thenReturn(expected);
 
         SampleVO actual = sampleQueryApplicationService.getSampleById(
                 sampleId, UUID.randomUUID(), UUID.randomUUID(), DataScope.ALL, null);
@@ -64,7 +66,7 @@ class DddSample007SampleRoutingTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("Sample request not found");
 
-        verify(sampleQueryService, never()).getSampleById(any(), any(), any(), any(), any());
+        verify(sampleDetailQueryPort, never()).getSampleById(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -75,12 +77,13 @@ class DddSample007SampleRoutingTest {
         when(sampleApplicationSwitch.isEnabled()).thenReturn(true);
         when(sampleDomainFacade.existsById(sampleId)).thenReturn(true);
         SampleVO expected = new SampleVO();
-        when(sampleQueryService.getSampleById(eq(sampleId), any(), any(), any(), any())).thenReturn(expected);
+        when(sampleDetailQueryPort.getSampleById(eq(sampleId), any(), any(), any(), any())).thenReturn(expected);
 
         SampleVO actual = sampleQueryApplicationService.getSampleById(
                 sampleId, UUID.randomUUID(), UUID.randomUUID(), DataScope.PERSONAL, null);
 
         assertThat(actual).isSameAs(expected);
         verify(sampleDomainFacade).existsById(sampleId);
+        verify(sampleDetailQueryPort).getSampleById(eq(sampleId), any(), any(), any(), any());
     }
 }

@@ -2,6 +2,11 @@ package com.colonel.saas.domain.product.application;
 
 import com.colonel.saas.mapper.ProductSnapshotMapper;
 import com.colonel.saas.mapper.ProductOperationStateMapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.colonel.saas.domain.product.application.dto.ProductLibraryCursorPage;
+import com.colonel.saas.domain.product.application.dto.ProductLibraryPageQuery;
+import com.colonel.saas.domain.product.application.port.ProductLibraryQueryPort;
+import com.colonel.saas.entity.Product;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -27,12 +32,14 @@ class ProductLibraryApplicationServiceTest {
     private ProductSnapshotMapper snapshotMapper;
     @Mock
     private ProductOperationStateMapper operationStateMapper;
+    @Mock
+    private ProductLibraryQueryPort queryPort;
 
     private ProductLibraryApplicationService applicationService;
 
     @BeforeEach
     void setUp() {
-        applicationService = new ProductLibraryApplicationService(snapshotMapper, operationStateMapper);
+        applicationService = new ProductLibraryApplicationService(snapshotMapper, operationStateMapper, queryPort);
     }
 
     @Test
@@ -117,5 +124,34 @@ class ProductLibraryApplicationServiceTest {
         assertThat(counts.pendingTotal()).isZero();
         assertThat(counts.hiddenTotal()).isZero();
         assertThat(counts.activityTotal()).isZero();
+    }
+
+    @Test
+    void selectedLibraryPage_shouldDelegateThroughQueryPort() {
+        ProductLibraryPageQuery query = query();
+        Page<Product> expected = new Page<>(2, 20);
+        when(queryPort.getSelectedLibraryPage(2, 20, query)).thenReturn(expected);
+
+        assertThat(applicationService.getSelectedLibraryPage(2, 20, query)).isSameAs(expected);
+    }
+
+    @Test
+    void selectedLibraryCursorPage_shouldDelegateThroughQueryPort() {
+        ProductLibraryPageQuery query = query();
+        ProductLibraryCursorPage expected = ProductLibraryCursorPage.empty(50);
+        when(queryPort.getSelectedLibraryCursorPage("cursor", 50, query)).thenReturn(expected);
+
+        assertThat(applicationService.getSelectedLibraryCursorPage("cursor", 50, query))
+                .isSameAs(expected);
+    }
+
+    private ProductLibraryPageQuery query() {
+        return new ProductLibraryPageQuery(
+                "keyword", 1, "shop", "category", "cat-a,cat-b", "activity-1",
+                "11111111-1111-1111-1111-111111111111", "gt20", "1", "100_999",
+                "LINKED", "promoting", "10_20", "1", "assigned", "traffic", "MAIN",
+                "partner-1", "COLONEL", "latest", "tag-a", "tag-b", "colonel", "1",
+                "sample", "10", "100", "20", "30", "1000", "2000", "1", "1", "1",
+                "1", "1", "0", "1", "activity-2", "recruit", "1", "1", "9001");
     }
 }

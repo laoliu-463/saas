@@ -183,6 +183,23 @@ class DddProduct003ProductRoutingTest {
                 .doesNotContain("productService.getSelectedLibraryCursorPage");
     }
 
+    @Test
+    @DisplayName("商品库查询应用层不直接依赖 ProductService，Legacy 依赖收口在适配器")
+    void productLibraryApplication_shouldHideLegacyDependencyBehindPortAdapter() throws Exception {
+        String applicationSource = readSource("com/colonel/saas/domain/product/application/ProductLibraryPageQueryService.java");
+        String portSource = readSource("com/colonel/saas/domain/product/application/port/ProductLibraryQueryPort.java");
+        String adapterSource = readSource("com/colonel/saas/domain/product/infrastructure/LegacyProductLibraryQueryAdapter.java");
+
+        assertThat(applicationSource)
+                .doesNotContain("com.colonel.saas.service.ProductService")
+                .contains("ProductLibraryApplicationService");
+        assertThat(portSource)
+                .doesNotContain("com.colonel.saas.service.ProductService");
+        assertThat(adapterSource)
+                .contains("ProductService")
+                .contains("implements ProductLibraryQueryPort");
+    }
+
     private String readSource(String relativePath) throws Exception {
         Path sourcePath = Path.of("src/main/java", relativePath);
         if (!Files.exists(sourcePath)) {

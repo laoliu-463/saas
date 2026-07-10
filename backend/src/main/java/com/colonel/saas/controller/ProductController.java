@@ -15,6 +15,7 @@ import com.colonel.saas.entity.ColonelPartner;
 import com.colonel.saas.service.ColonelPartnerSyncService;
 import com.colonel.saas.domain.product.application.ProductLibraryPageQueryService;
 import com.colonel.saas.domain.product.application.ProductQuickSampleApplicationService;
+import com.colonel.saas.domain.product.application.dto.ProductLibraryCursorPage;
 import com.colonel.saas.domain.product.application.dto.ProductLibraryPageQuery;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
 import com.colonel.saas.service.ProductService;
@@ -267,7 +268,7 @@ public class ProductController extends BaseController {
                 productId
         );
         if (limit != null || StringUtils.hasText(cursor)) {
-            ProductService.SelectedLibraryCursorPage cursorPage =
+            ProductLibraryCursorPage cursorPage =
                     productLibraryPageQueryService.getSelectedLibraryCursorPage(cursor, limit == null ? size : limit, query);
             if (cursorPage != null) {
                 PageResult<Product> response = new PageResult<>();

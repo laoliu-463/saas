@@ -106,6 +106,8 @@ import java.util.stream.Collectors;
  * <ul>
  *   <li>{@link #listLibraryCategories} → {@code ProductLibraryApplicationService}（Slice 1）</li>
  *   <li>{@link #getAdminCounts} → {@code ProductLibraryApplicationService}（Slice 2）</li>
+ *   <li>{@link #getSelectedLibraryPage} / {@link #getSelectedLibraryCursorPage} →
+ *       {@code ProductLibraryApplicationService} → {@code ProductLibraryQueryPort}；本类暂作为 Legacy 查询适配实现</li>
  * </ul>
  *
  * <p><b>不再逐方法切片的理由：</b>
@@ -113,16 +115,15 @@ import java.util.stream.Collectors;
  *   <li>剩余 58 个方法中，多数依赖 {@code toLegacyProduct} / {@code collectSelectedLibraryProducts} /
  *       {@code sortSelectedLibraryProducts} / {@code tryGetSelectedLibraryDbPage} 等内部
  *       高度耦合 helper，搬到 Application 会破坏封装（helper 也得搬，导致"搬一个 method 搬半个 class"）</li>
- *   <li>{@code ProductController} 没有 Router 灰度，直接调本 Service —— 委派壳化仅改
- *       Service 内部实现，无法灰度验证，需要更上层的 Controller Router 灰度方案配合</li>
+ *   <li>{@code ProductController} 的商品库分页已经通过 {@code ProductLibraryPageQueryService}
+ *       进入应用层；当前查询端口仍由 Legacy 适配器提供实现，可在不改 HTTP 契约的情况下继续替换</li>
  *   <li>{@code ProductDomainFacade} / {@code LegacyProductDomainFacade} 已存在但
  *       只被 OrderService / ProductQuickSampleService 跨域调用，未接管 Controller 主路径</li>
  * </ol>
  *
  * <p><b>推荐后续路径：</b>
- * 在 Controller 层引入 Router 灰度（OFF 调本 Service，ON 调 {@code ProductDomainFacade}
- * 或新建的 ProductControllerRouter），按方法独立性和风险逐个切；当前阶段对剩余方法
- * 维持现状。</p>
+ * 继续按查询端口、视图物化和复杂筛选边界逐步替换 Legacy 适配器；当前阶段对其余
+ * 商品命令和活动同步方法维持现状。</p>
  *
  * @see ProductBizStatusService 商品业务状态计算
  * @see ProductDisplayRuleService 商品展示规则
