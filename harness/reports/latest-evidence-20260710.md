@@ -6,6 +6,16 @@ PARTIAL
 本日先完成 T-9/T-10/T-15 本地 evidence 与 `GIT-INTAKE / LEDGER-RECONCILE-001`，随后完成 Y-4 乐观锁冲突修复。路径级 dirty 仍按既有 intake 保护；Y-4 恢复后 canonical 矩阵为 DONE=133 / PARTIAL=37 / TODO=0 / BLOCKED=8。real-pre 仍因抖音 token 与真实样本不足，不能声明整体业务闭环 PASS。
 
 ## 证据
+
+### 2026-07-10 22:21 迁移批次更新
+
+- 商品库分页已改为 `ProductController → ProductLibraryPageQueryService → ProductLibraryApplicationService → ProductLibraryQueryPort`；Legacy `ProductService` 依赖收口在 `LegacyProductLibraryQueryAdapter`，游标结果改用应用层 `ProductLibraryCursorPage`。
+- 寄样详情已改为 `SampleQueryApplicationService → SampleDetailQueryPort`；当前实现仍由 `LegacySampleDetailQueryAdapter` 委托旧查询服务，列表、看板、导出和命令路径未混入本批。
+- 商品域回归：352 tests / 0 failures / 0 errors / 0 skipped；宽口径 DDD/架构/合同：368 tests / 0 failures / 0 errors / 1 skipped。
+- 本批提交：`c2e805f0 refactor: route product and sample reads through ddd ports`；推送因 GitHub 443 网络不可达失败，未写成已推送。
+- `agent-do -Env real-pre -Scope full`：backend package PASS、frontend build PASS、Docker 重建/重启 PASS、backend/frontend health PASS；business preflight `BLOCKED_AUTH`，未执行真实上游业务流。
+- 原始报告已归档：`harness/archive/by-date/20260710/reports-limit-cleanup/222300/evidence-20260710-222112.zip`；完整 preflight：`runtime/qa/out/real-pre-preflight-20260710-222110/report.md`。
+
 - 环境：real-pre
 - 分支：`codex/ddd-user-role-application`
 - 验证代码 HEAD：`3ed74608`
