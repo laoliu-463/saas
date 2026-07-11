@@ -8,8 +8,8 @@
 ## 最近版本摘要
 
 ### v0.7.8 — 2026-07-11
-- 修复 `check-harness-limits.ps1` 的主工作区绝对路径依赖：现在从 `$PSScriptRoot` 解析当前 worktree 的 `harness` 根目录，避免隔离分支误读主工作区并返回错误 `PASS`。
-- 新增 `check-harness-limits-path.test.ps1`，用临时 Harness 的 51 文件溢出场景验证检查目标和报告落点；测试按 RED（错误返回主工作区 `PASS`）→ GREEN 通过。
+- 修复 `check-harness-limits.ps1` 的主工作区绝对路径依赖：现在从 `$PSScriptRoot` 解析当前 worktree 的 `harness` 根目录；违规显式返回退出码 1，合规返回 0，避免隔离分支或 CI 误判成功。
+- 新增 `check-harness-limits-path.test.ps1`，用临时 Harness 验证报告落点、51 文件违规和 50 文件合规场景；测试按两轮 RED→GREEN 固化路径与退出码行为，并复用当前 PowerShell 进程以兼容 Windows PowerShell / PowerShell 7。
 - 通过显式 manifest 归档 12 份过期报告，并将 517 行旧 evidence 打包为 ZIP；当前 `harness/reports` 直属文件数为 50，50/50/200 检查通过。范围仅限 Harness，不改变业务逻辑、API、权限、状态机或数据。
 
 ### v0.7.7 — 2026-07-11

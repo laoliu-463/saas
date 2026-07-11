@@ -89,6 +89,8 @@ $content | Set-Content -Path $reportPath -Encoding UTF8 -Force
 
 if ($isPass) {
     Write-Host "PASS"
+    exit 0
 } else {
     Write-Host "FAIL"
+    exit 1
 }
