@@ -1,0 +1,7 @@
+{
+  "items": [
+    { "path": "harness/reports/evidence-20260630-122713.md", "action": "archive", "category": "report-headroom", "reason": "preserve failed-run evidence and reserve final design evidence/retro capacity" },
+    { "path": "harness/reports/evidence-20260630-123005.md", "action": "archive", "category": "report-headroom", "reason": "preserve failed-run evidence and reserve final design evidence/retro capacity" },
+    { "path": "harness/reports/evidence-20260630-123612.md", "action": "archive", "category": "report-headroom", "reason": "preserve failed-run evidence and reserve final design evidence/retro capacity" }
+  ]
+}

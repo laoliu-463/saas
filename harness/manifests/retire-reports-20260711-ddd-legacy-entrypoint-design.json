@@ -1,0 +1,9 @@
+{
+  "items": [
+    { "path": "harness/reports/content-retire-20260630-123612.md", "action": "archive", "category": "report-headroom", "reason": "reserve evidence and retro capacity for DDD legacy entrypoint migration design" },
+    { "path": "harness/reports/content-retire-20260630-124425.md", "action": "archive", "category": "report-headroom", "reason": "reserve evidence and retro capacity for DDD legacy entrypoint migration design" },
+    { "path": "harness/reports/content-retire-20260630-125242.md", "action": "archive", "category": "report-headroom", "reason": "reserve evidence and retro capacity for DDD legacy entrypoint migration design" },
+    { "path": "harness/reports/content-retire-20260630-130212.md", "action": "archive", "category": "report-headroom", "reason": "reserve evidence and retro capacity for DDD legacy entrypoint migration design" },
+    { "path": "harness/reports/content-retire-20260707-155819.md", "action": "archive", "category": "report-headroom", "reason": "reserve evidence and retro capacity for DDD legacy entrypoint migration design" }
+  ]
+}
