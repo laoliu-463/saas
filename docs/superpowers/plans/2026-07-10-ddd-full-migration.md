@@ -185,11 +185,12 @@
 - Modify: `backend/src/test/java/com/colonel/saas/architecture/DddSampleStateMachineIntegrationClosureContractTest.java`
 - Modify: `backend/src/test/java/com/colonel/saas/domain/sample/policy/SampleStateMachineTest.java`
 
-- [ ] **Step 1: 先迁移查询路径**
+- [x] **Step 1: 先迁移查询路径**
 
   列表、详情、看板和导出由 `SampleQueryApplicationService` 承担；数据范围解释消费用户域稳定出口，寄样域保留负责人、归属部门和状态可见性业务语义。
 
   - [x] 2026-07-10：列表分页新增 `SamplePageQueryPort` 与 `LegacySamplePageQueryAdapter`，完整筛选和简化分页入口均由 `SampleQueryApplicationService` 统一编排；后续替换适配器内部读模型。
+  - [x] 2026-07-11：详情、看板、导出和物流读取均已通过独立查询 Port 路由；新增 Board / Export / Logistics Legacy adapters，保留 API、数据范围、CSV、物流读取和状态机行为，后续再替换适配器内部读模型。
 
 - [ ] **Step 2: 再迁移命令路径**
 

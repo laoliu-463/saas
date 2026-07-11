@@ -173,7 +173,7 @@
 - DDD 优化下一步：T-CLEAN-002 的 `TalentService` 跨域 Mapper 债务已清空，`AttributionService` 也已退出 pick_source / 达人 Mapper；跨域 Mapper 白名单已清零，达人域后续保持认领 / 独家评估业务规则不变，补运行态负例、第三方接口证据和权限负例。
 - 标记：P1。
 ## 寄样域
-- 最新边界变化：DDD-SAMPLE-LOGISTICS-JOB-BOUNDARY 已将 `LogisticsTrackJob` 的发货中寄样单扫描从直接 `SampleRequestMapper` 改为委托 `LogisticsTrackService.refreshShippingSamples`，由寄样域 `SampleLogisticsSyncService.refreshShippingSamples` 保持原状态=发货中、物流单号和快递公司编码非空查询口径并逐条刷新；跨域 Mapper 白名单移除 `LogisticsTrackJob|SampleRequestMapper`，后续 DDD-DATA-APPLICATION-READ-FACADES 已将白名单清零。本轮未改寄样申请 / 审核 / 物流状态机 / 动作权限 / API 字段或真实数据。验证：targeted Maven 14 tests PASS（1 个维护型跳过）；`agent-do -Scope full` PASS，backend/frontend 构建、Docker 重启、健康检查和 real-pre P0 preflight 通过。报告：`harness/reports/evidence-20260628-212217.md`；retro：`harness/reports/retro-20260628-212327.md`；commit：`e1717140`。上一变化：`SampleDomainFacade` 新增达人维度寄样摘要与近 30 天寄样计数出口。
+- 最新边界变化：`SampleQueryApplicationService` 已将列表、详情、看板、导出和物流读取统一收口到独立 Query Port；本轮新增 Board / Export / Logistics Port 与 Legacy adapter，保留 API、数据范围、CSV 列与异常、Facade 存在性检查、物流读取和状态机行为。验证：目标 7 类测试 PASS，寄样全域回归 PASS，compile PASS，DDD acceptance 258 tests / 0 failures / 0 errors / 1 skipped；commit：`4da17da8`。上一变化：DDD-SAMPLE-LOGISTICS-JOB-BOUNDARY 报告 `harness/reports/evidence-20260628-212217.md`，commit `e1717140`。
 - 最新边界变化：`SampleApplicationService.getSampleBoard` 新增默认关闭的用户域 `DataScopePolicy` 旁路；默认关闭继续走 Legacy `findPageWithScope` 与 mapper `@DataScope` 切面，开启后仅在 plain biz staff + PERSONAL 由用户域 policy 判定后切到寄样域审核人视角 `findPageForAuditor`。本轮未改寄样状态机、动作权限、Mapper SQL、VO 组装、接口契约、默认开关或真实数据。报告：`harness/archive/by-date/report-packages/reports-20260622-ddd-datascope-late/2026-06-22-sample-datascope/evidence-20260622-181901.md`；retro：`harness/archive/by-date/report-packages/reports-20260622-ddd-datascope-late/2026-06-22-sample-datascope/retro-20260622-181923.md`。
 - 最新边界变化：`SampleApplicationService.getSampleById` 及其复用的 `requireSample` 详情访问数据范围判断新增默认关闭的用户域 `DataScopePolicy` 旁路；默认关闭继续走 Legacy PERSONAL 发起人 / DEPT 归属部门判断，开启后只把 PERSONAL/DEPT/ALL 数据范围解释交给用户域，寄样域仍保留寄样单负责人、归属部门、全局访问角色、招商专员商品分配豁免和运营可见状态业务语义。本轮未改寄样状态机、动作权限、Mapper SQL、VO 组装、接口契约或真实数据。报告：`harness/archive/by-date/report-packages/reports-20260622-ddd-datascope-late/2026-06-22-sample-datascope/evidence-20260622-175931.md`；retro：`harness/archive/by-date/report-packages/reports-20260622-ddd-datascope-late/2026-06-22-sample-datascope/retro-20260622-175954.md`。
 - 上一边界变化：`SampleApplicationService.getSamplePage` 寄样列表读路径新增默认关闭的用户域 `DataScopePolicy` 旁路；默认关闭继续走 Legacy auditor 查询判断，开启后只把 PERSONAL/DEPT/ALL 数据范围解释交给用户域，寄样域仍保留“plain biz staff 才走审核人视角”的业务语义。本轮未改寄样状态机、列表筛选参数、Mapper SQL、VO 组装、接口契约或真实数据。报告：`harness/archive/by-date/report-packages/reports-20260622-ddd-datascope-late/2026-06-22-sample-datascope/evidence-20260622-173855.md`；retro：`harness/archive/by-date/report-packages/reports-20260622-ddd-datascope-late/2026-06-22-sample-datascope/retro-20260622-173923.md`。
@@ -189,9 +189,9 @@
 - DDD 优化下一步：寄样域本地边界守卫已覆盖订单同步、业绩归属、提成/冲正禁止项；后续保留真实样本命中、页面 E2E、运行态 scheduler / 跨进程投递和账号级权限验证补齐。
 - 标记：P0。
 ## Outbox 事件
-- 当前状态：E-1/E-2/E-3/E-4/E-5/E-6/E-8/E-9/E-10/E-11/E-12/E-13/E-14/E-15 已有本地证据；E-9 另有运行态失败重试至 DEAD 探针。E-7 因转链事件未透传调用方 `idempotencyKey` 暂降 PARTIAL；真实上游与跨进程证据仍以矩阵主源为准。
-- 报告路径：`harness/reports/latest-evidence-20260709.md`、`harness/reports/git-intake-20260710-125023.md`；当前风险：不证明真实上游样本、跨进程幂等或完整 E2E；Y-12/E-5 的汇总刷新事件生产者与领域合同存在待确认边界，不由 Agent 自行改写。
-- DDD 优化下一步：先修复 E-7 幂等键透传并补行为测试；Y-12/E-5 回到领域合同/ADR 确认生产边界；其后补真实样本、跨进程幂等、replay 负例和 E2E；标记：P1。
+- 当前状态：E-1/E-2/E-3/E-4/E-5/E-6/E-7/E-8/E-9/E-10/E-11/E-12/E-13/E-14/E-15 已有本地证据；E-7 已补齐转链事件类型、事件记录和 publisher 生产基线，调用方 `idempotencyKey` 可进入事件与 outbox payload；E-9 另有运行态失败重试至 DEAD 探针。真实上游与跨进程证据仍以矩阵主源为准。
+- 报告路径：`harness/reports/latest-evidence-20260709.md`、`harness/reports/git-intake-20260710-125023.md`；E-7 基线补齐 commit：`ca30e010`。当前风险：本地合同不证明真实上游样本、跨进程幂等或完整 E2E；Y-12/E-5 的汇总刷新事件生产者与领域合同存在待确认边界，不由 Agent 自行改写。
+- DDD 优化下一步：Y-12/E-5 回到领域合同/ADR 确认生产边界；其后补真实样本、跨进程幂等、replay 负例和 E2E；标记：P1。
 ## Harness
 - 当前状态：GIT-HARNESS-001 工作区治理完成（2026-06-03）。
 - 已完成能力：Completion Gate (G0-G4)、Session Exit Gate、Quality Ledger、Git Intake / Exit Gate、Dirty Classification (10 种分类)、Allowed Change Set、Staged Scope Gate、Commit / Push / Deploy Commit Gate、批次提交流程 (GIT-BATCH-N)、Unknown Dirty Policy、Rollback Policy。

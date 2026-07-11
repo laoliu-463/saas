@@ -1,11 +1,16 @@
 # Harness Changelog（索引）
 
 > 任务 ID：HARNESS-DOC-GC-OPTIMIZE-002
-> 更新时间：2026-07-10
+> 更新时间：2026-07-11
 > 详细历史（含每版修改文件、行为变化、证据）：`archive/20260610/harness-changelog-full.md`
 > 治理政策：`rules/policies/retention-policy.md` 第 2 节（changelog 索引 ≤200 行）
 
 ## 最近版本摘要
+
+### v0.7.7 — 2026-07-11
+- 完成寄样查询剩余读入口的端口化迁移：看板、导出和物流读取经 `SampleQueryApplicationService` 调用独立 Query Port，并由 Legacy adapter 保持行为兼容。
+- 补齐 E-7 promotion event 的干净检出生产基线；定向测试、寄样全域回归、DDD redline 与宽口径架构测试通过。
+- 本轮未改变 Harness 执行能力、API、权限、数据范围、状态机、CSV 或真实数据；仅同步状态和可复验证据。
 
 ### v0.7.6 — 2026-07-10
 - 完成 137 项 dirty 的路径级 Git Intake 分类并固化单任务批次顺序，`unknown_paths=0`，仍按受保护 previous-partial 处理。
