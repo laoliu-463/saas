@@ -1,8 +1,8 @@
 param()
 
 $ErrorActionPreference = "Continue"
-$harnessPath = "D:\Projects\SAAS\harness"
-$reportPath = "$harnessPath\reports\latest-harness-limits-check.md"
+$harnessPath = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")).Path
+$reportPath = Join-Path $harnessPath "reports\latest-harness-limits-check.md"
 $maxDirectFiles = 50
 $maxDirectSubdirs = 50
 $maxNonScriptLines = 200
