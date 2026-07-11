@@ -5,6 +5,9 @@ import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.result.PageResult;
 import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.domain.sample.application.port.SampleDetailQueryPort;
+import com.colonel.saas.domain.sample.application.port.SampleBoardQueryPort;
+import com.colonel.saas.domain.sample.application.port.SampleExportQueryPort;
+import com.colonel.saas.domain.sample.application.port.SampleLogisticsQueryPort;
 import com.colonel.saas.domain.sample.application.port.SamplePageQueryPort;
 import com.colonel.saas.domain.sample.facade.SampleDomainFacade;
 import com.colonel.saas.service.sample.SampleQueryService;
@@ -34,6 +37,9 @@ public class SampleQueryApplicationService {
     private final SampleQueryService sampleQueryService;
     private final SamplePageQueryPort samplePageQueryPort;
     private final SampleDetailQueryPort sampleDetailQueryPort;
+    private final SampleBoardQueryPort sampleBoardQueryPort;
+    private final SampleExportQueryPort sampleExportQueryPort;
+    private final SampleLogisticsQueryPort sampleLogisticsQueryPort;
     private final SampleDomainFacade sampleDomainFacade;
     private final DddRefactorProperties dddRefactorProperties;
 
@@ -42,11 +48,17 @@ public class SampleQueryApplicationService {
             SampleQueryService sampleQueryService,
             SamplePageQueryPort samplePageQueryPort,
             SampleDetailQueryPort sampleDetailQueryPort,
+            SampleBoardQueryPort sampleBoardQueryPort,
+            SampleExportQueryPort sampleExportQueryPort,
+            SampleLogisticsQueryPort sampleLogisticsQueryPort,
             SampleDomainFacade sampleDomainFacade,
             DddRefactorProperties dddRefactorProperties) {
         this.sampleQueryService = sampleQueryService;
         this.samplePageQueryPort = samplePageQueryPort;
         this.sampleDetailQueryPort = sampleDetailQueryPort;
+        this.sampleBoardQueryPort = sampleBoardQueryPort;
+        this.sampleExportQueryPort = sampleExportQueryPort;
+        this.sampleLogisticsQueryPort = sampleLogisticsQueryPort;
         this.sampleDomainFacade = sampleDomainFacade;
         this.dddRefactorProperties = dddRefactorProperties;
     }
@@ -57,7 +69,7 @@ public class SampleQueryApplicationService {
             SampleDetailQueryPort sampleDetailQueryPort,
             SampleDomainFacade sampleDomainFacade,
             DddRefactorProperties dddRefactorProperties) {
-        this(sampleQueryService, null, sampleDetailQueryPort, sampleDomainFacade, dddRefactorProperties);
+        this(sampleQueryService, null, sampleDetailQueryPort, null, null, null, sampleDomainFacade, dddRefactorProperties);
     }
 
     /** 保留给现有单元测试和兼容调用方的构造器。 */
@@ -155,6 +167,14 @@ public class SampleQueryApplicationService {
             LocalDateTime homeworkStartTime, LocalDateTime homeworkEndTime, String logisticsCompany,
             UUID userId, UUID deptId, DataScope dataScope, Object roleCodes,
             HttpServletResponse response) throws IOException {
+        if (sampleExportQueryPort != null) {
+            sampleExportQueryPort.exportSamples(
+                    status, keyword, channelUserIds, recruiterUserId, productKeyword, shopKeyword, trackingNo,
+                    requestNo, talentKeyword, cooperationType, sampleOwnerType, homeworkType, recipientName,
+                    recipientPhone, applyStartTime, applyEndTime, homeworkStartTime, homeworkEndTime, logisticsCompany,
+                    userId, deptId, dataScope, roleCodes, response);
+            return;
+        }
         sampleQueryService.exportSamples(
                 status, keyword, channelUserIds, recruiterUserId, productKeyword, shopKeyword, trackingNo,
                 requestNo, talentKeyword, cooperationType, sampleOwnerType, homeworkType, recipientName,
@@ -164,6 +184,9 @@ public class SampleQueryApplicationService {
 
     public Map<String, List<SampleBoardCard>> getSampleBoard(
             UUID userId, UUID deptId, DataScope dataScope, Object roleCodes) {
+        if (sampleBoardQueryPort != null) {
+            return sampleBoardQueryPort.getSampleBoard(userId, deptId, dataScope, roleCodes);
+        }
         return sampleQueryService.getSampleBoard(userId, deptId, dataScope, roleCodes);
     }
 
@@ -171,6 +194,9 @@ public class SampleQueryApplicationService {
             UUID id, UUID userId, UUID deptId, DataScope dataScope, Object roleCodes) {
         if (isRoutingEnabled()) {
             assertSampleExistsViaFacade(id);
+        }
+        if (sampleLogisticsQueryPort != null) {
+            return sampleLogisticsQueryPort.getSampleLogistics(id, userId, deptId, dataScope, roleCodes);
         }
         return sampleQueryService.getSampleLogistics(id, userId, deptId, dataScope, roleCodes);
     }
