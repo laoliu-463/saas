@@ -401,6 +401,67 @@ public class ProductDomainEventPublisher {
                 adminId);
     }
 
+    /**
+     * 发布商品转链完成事件。
+     *
+     * <p>该事件在推广链接和 pick_source 映射完成后触发，用于后续订单归因、
+     * 业绩归属和分析链路追踪。mappingId 当前使用推广链接记录 ID，
+     * 与 pick_source_mapping.promotion_link_id 关联。</p>
+     */
+    public void publishPromotionLinkGenerated(
+            String activityId,
+            String productId,
+            String talentId,
+            UUID channelUserId,
+            UUID deptId,
+            UUID mappingId,
+            String pickSource,
+            String promotionLink,
+            String shortLink,
+            String scene,
+            Integer promotionScene,
+            String idempotencyKey) {
+        LocalDateTime occurredAt = LocalDateTime.now();
+        ProductPromotionLinkGeneratedEvent event = new ProductPromotionLinkGeneratedEvent(
+                UUID.randomUUID(),
+                activityId,
+                productId,
+                talentId,
+                channelUserId,
+                deptId,
+                mappingId,
+                pickSource,
+                promotionLink,
+                shortLink,
+                scene,
+                promotionScene,
+                idempotencyKey,
+                occurredAt,
+                null);
+        publishSpringEvent(event);
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("activityId", activityId);
+        payload.put("productId", productId);
+        payload.put("talentId", talentId);
+        payload.put("channelUserId", channelUserId == null ? null : channelUserId.toString());
+        payload.put("deptId", deptId == null ? null : deptId.toString());
+        payload.put("mappingId", mappingId == null ? null : mappingId.toString());
+        payload.put("pickSource", pickSource);
+        payload.put("promotionLink", promotionLink);
+        payload.put("shortLink", shortLink);
+        payload.put("scene", scene);
+        payload.put("promotionScene", promotionScene);
+        payload.put("idempotencyKey", idempotencyKey);
+        payload.put("occurredAt", occurredAt.toString());
+        appendOutbox(
+                "ProductPromotionLinkGenerated:" + productId + ":" + mappingId,
+                ProductDomainEventTypes.PRODUCT_PROMOTION_LINK_GENERATED,
+                OutboxEventAppender.AGGREGATE_PRODUCT,
+                productId,
+                payload,
+                channelUserId);
+    }
+
     /** 由 Outbox 分发器调用，将 Outbox 载荷转为 Spring 本地事件供既有监听器消费。 */
     public void republishSpringEvent(String eventType, String payloadJson) {
         try {

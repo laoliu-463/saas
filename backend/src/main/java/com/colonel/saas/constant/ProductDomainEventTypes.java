@@ -48,6 +48,9 @@ public final class ProductDomainEventTypes {
     /** 商品强显状态变更事件 — 运营手动设置商品强制展示/隐藏后触发 */
     public static final String PRODUCT_FORCE_DISPLAY_CHANGED = "ProductForceDisplayChangedEvent";
 
+    /** 商品转链完成事件 — 推广链接生成并落 pick_source 映射后触发 */
+    public static final String PRODUCT_PROMOTION_LINK_GENERATED = "ProductPromotionLinkGeneratedEvent";
+
     /** 团长合作同步事件 — 团长级别的合作关系同步完成后触发 */
     public static final String COLONEL_PARTNER_SYNCED = "ColonelPartnerSyncedEvent";
 }
