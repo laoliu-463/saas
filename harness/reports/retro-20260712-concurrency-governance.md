@@ -18,7 +18,8 @@
 
 - 本地 real-pre admin 凭据与旧探针默认值不一致，受控 HTTP 手动触发未执行；业务证据来自已完成任务 SQL 和容器日志。
 - 上游订单定时任务出现 Douyin `20000 / isp.service-error:256`，与本轮活动商品改动无直接因果，但需要继续观察。
-- 全量 Maven 测试耗时较长，当前只收口相关 52 tests；不能把局部回归写成全量回归。
+- 相关回归已扩大到 55 tests，全部通过；全量 `mvn clean test` 被 JaCoCo 0.8.11 的 `Truncated class file` 阻塞，不能把局部回归写成全量回归。
+- 全量长跑曾出现增量 target / Spring Context 噪声，后续应单独修复 JaCoCo/Surefire 工具链并固定干净构建门禁。
 
 ## Harness 结论
 
