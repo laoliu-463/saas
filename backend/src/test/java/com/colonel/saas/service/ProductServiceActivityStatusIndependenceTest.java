@@ -958,4 +958,129 @@ class ProductServiceActivityStatusIndependenceTest {
         activity.setRecruiterUserId(recruiterId);
         return activity;
     }
+
+    @Test
+    void refreshActivitySnapshotsByStatusPartitions_shouldReconcileCompletedPartitionEvenIfTotalIncomplete() {
+        String activityId = "ACT015";
+        List<DouyinProductGateway.ActivityProductQueryRequest> requests = new ArrayList<>();
+        when(douyinProductGateway.queryActivityProducts(any())).thenAnswer(invocation -> {
+            DouyinProductGateway.ActivityProductQueryRequest request = invocation.getArgument(0);
+            requests.add(request);
+            if (Integer.valueOf(0).equals(request.status())) {
+                return new DouyinProductGateway.ActivityProductListResult(
+                        false,
+                        2L,
+                        30001L,
+                        1L,
+                        null,
+                        List.of(item(10001L, "待审核商品A", 0, "待审核"), item(10002L, "待审核商品B", 0, "待审核")));
+            }
+            if ("next-cursor-1".equals(request.cursor())) {
+                return new DouyinProductGateway.ActivityProductListResult(
+                        true,
+                        50000L,
+                        30001L,
+                        1L,
+                        "next-cursor-2",
+                        List.of(item(20003L, "推广中商品C", 1, "推广中"), item(20004L, "推广中商品D", 1, "推广中")));
+            }
+            return new DouyinProductGateway.ActivityProductListResult(
+                    true,
+                    50000L,
+                    30001L,
+                    1L,
+                    "next-cursor-1",
+                    List.of(item(20001L, "推广中商品A", 1, "推广中"), item(20002L, "推广中商品B", 1, "推广中")));
+        });
+        when(operationStateMapper.selectOne(any())).thenReturn(null);
+        when(productBizStatusService.initStateIfAbsent(any(), eq(activityId), any(), any(), any(), any()))
+                .thenAnswer(invocation -> state(activityId, invocation.getArgument(2)));
+        when(snapshotMapper.update(isNull(), any())).thenReturn(1);
+
+        ProductService.ActivityProductRefreshResult result = productService.refreshActivitySnapshotsByStatusPartitions(
+                new DouyinProductGateway.ActivityProductQueryRequest(
+                        null, activityId, 4L, 1L, 2, null, null, null, null, 1L, null, null),
+                List.of(0, 1),
+                100,
+                3,
+                300L,
+                2,
+                null);
+
+        assertThat(result.complete()).isFalse();
+        verify(snapshotMapper).update(isNull(), argThat(wrapper -> {
+            String sql = wrapper.getSqlSegment();
+            return sql.contains("activity_id")
+                    && sql.contains("deleted")
+                    && sql.contains("status")
+                    && sql.contains("product_id NOT IN");
+        }));
+    }
+
+    @Test
+    void verifyStatusPartitionReconcileForActivity3223881() {
+        String activityId = "3223881";
+        when(douyinProductGateway.queryActivityProducts(any())).thenAnswer(invocation -> {
+            DouyinProductGateway.ActivityProductQueryRequest request = invocation.getArgument(0);
+            if (Integer.valueOf(0).equals(request.status())) {
+                return new DouyinProductGateway.ActivityProductListResult(
+                        false,
+                        4L,
+                        30001L,
+                        1L,
+                        null,
+                        List.of(
+                                item(1001L, "待审核商品1", 0, "待审核"),
+                                item(1002L, "待审核商品2", 0, "待审核"),
+                                item(1003L, "待审核商品3", 0, "待审核"),
+                                item(1004L, "待审核商品4", 0, "待审核")
+                        ));
+            }
+            if ("next-cursor-1".equals(request.cursor())) {
+                return new DouyinProductGateway.ActivityProductListResult(
+                        true,
+                        50000L,
+                        30001L,
+                        1L,
+                        "next-cursor-2",
+                        List.of(item(2003L, "推广中商品C", 1, "推广中"), item(2004L, "推广中商品D", 1, "推广中")));
+            }
+            return new DouyinProductGateway.ActivityProductListResult(
+                    true,
+                    50000L,
+                    30001L,
+                    1L,
+                    "next-cursor-1",
+                    List.of(item(2001L, "推广中商品A", 1, "推广中"), item(2002L, "推广中商品B", 1, "推广中")));
+        });
+        when(operationStateMapper.selectOne(any())).thenReturn(null);
+        when(productBizStatusService.initStateIfAbsent(any(), eq(activityId), any(), any(), any(), any()))
+                .thenAnswer(invocation -> state(activityId, invocation.getArgument(2)));
+        when(snapshotMapper.update(isNull(), any())).thenReturn(6);
+
+        ProductService.ActivityProductRefreshResult result = productService.refreshActivitySnapshotsByStatusPartitions(
+                new DouyinProductGateway.ActivityProductQueryRequest(
+                        null, activityId, 4L, 1L, 2, null, null, null, null, 1L, null, null),
+                List.of(0, 1),
+                100,
+                6,
+                300L,
+                2,
+                null);
+
+        assertThat(result.complete()).isFalse();
+        assertThat(result.distinctProductIds()).isEqualTo(8);
+
+        verify(snapshotMapper).update(isNull(), argThat(wrapper -> {
+
+
+
+            String sql = wrapper.getSqlSegment();
+            return sql.contains("activity_id")
+                    && sql.contains("deleted")
+                    && sql.contains("status")
+                    && sql.contains("product_id NOT IN");
+        }));
+    }
 }
+

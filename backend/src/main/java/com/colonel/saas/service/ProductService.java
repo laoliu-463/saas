@@ -2274,6 +2274,16 @@ public class ProductService implements CopyPromotionSupportPort {
                 skippedCount += stats.skippedCount();
                 libraryEntryCount += stats.libraryEntryCount();
             }
+            if (partition.result() != null && partition.result().complete()) {
+                int staleDeletedCount = reconcileStatusPartitionSnapshots(
+                        request.activityId(),
+                        partition.status(),
+                        partition.result().productIds());
+                if (staleDeletedCount > 0) {
+                    log.info("Activity product status-partition stale snapshots marked deleted, activityId={}, status={}, staleDeletedCount={}",
+                            request.activityId(), partition.status(), staleDeletedCount);
+                }
+            }
         }
         ActivityProductPaginationRunner.Result pageResult = aggregateStatusPartitionResults(
                 partitions,
@@ -2610,6 +2620,31 @@ public class ProductService implements CopyPromotionSupportPort {
         }
         if (!currentProductIds.isEmpty()) {
             wrapper.notIn("product_id", currentProductIds);
+        }
+        return snapshotMapper.update(null, wrapper);
+    }
+
+    private int reconcileStatusPartitionSnapshots(
+            String activityId,
+            int status,
+            Set<String> currentProductIds) {
+        if (!StringUtils.hasText(activityId)) {
+            return 0;
+        }
+        Set<String> productIds = currentProductIds == null ? Set.of() : currentProductIds;
+        UpdateWrapper<ProductSnapshot> wrapper = new UpdateWrapper<>();
+        wrapper.eq("activity_id", activityId)
+                .eq("deleted", 0)
+                .set("deleted", 1)
+                .set("update_time", LocalDateTime.now());
+        Integer normalizedStatus = productDisplayPolicy.normalizeActivityProductFilterStatus(status);
+        if (normalizedStatus != null) {
+            wrapper.eq("status", normalizedStatus);
+        } else {
+            wrapper.eq("status", status);
+        }
+        if (!productIds.isEmpty()) {
+            wrapper.notIn("product_id", productIds);
         }
         return snapshotMapper.update(null, wrapper);
     }
