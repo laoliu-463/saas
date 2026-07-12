@@ -1,5 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { AxiosResponse } from 'axios';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import DouyinIntegration from './DouyinIntegration.vue';
@@ -22,6 +23,8 @@ const messageApi = vi.hoisted(() => ({
   warning: vi.fn(),
   info: vi.fn()
 }));
+
+const mockAxiosResponse = <T,>(data: T) => ({ data } as AxiosResponse<T>);
 
 vi.mock('naive-ui', async (importOriginal) => {
   const actual = await importOriginal<typeof import('naive-ui')>();
@@ -167,20 +170,20 @@ describe('DouyinIntegration oauth entry', () => {
       status: 'success',
       remoteResponse: { data: [{ productId: 'PROD-1' }] }
     });
-    vi.mocked(getActivityProducts).mockResolvedValue({
-      data: { items: [{ productId: 'PROD-1' }], total: 1 }
-    });
+    vi.mocked(getActivityProducts).mockResolvedValue(
+      mockAxiosResponse({ items: [{ productId: 'PROD-1' }], total: 1 })
+    );
     vi.mocked(postDouyinRawProbe).mockResolvedValue({
       status: 'success',
       remoteResponse: { code: 10000, data: { skus: [{ skuId: 'SKU-1' }] } }
     });
-    vi.mocked(syncOrders).mockResolvedValue({
-      data: { failed: 0, fetched: 0, created: 0, updated: 0 }
-    });
-    vi.mocked(getOrders).mockResolvedValue({ data: { total: 1 } });
-    vi.mocked(getMetrics).mockResolvedValue({
-      data: { todayOrderCount: 1, todayGmv: '1.00' }
-    });
+    vi.mocked(syncOrders).mockResolvedValue(
+      mockAxiosResponse({ failed: 0, fetched: 0, created: 0, updated: 0 })
+    );
+    vi.mocked(getOrders).mockResolvedValue(mockAxiosResponse({ total: 1 }));
+    vi.mocked(getMetrics).mockResolvedValue(
+      mockAxiosResponse({ todayOrderCount: 1, todayGmv: '1.00' })
+    );
 
     const wrapper = mount(DouyinIntegration, {
       global: {

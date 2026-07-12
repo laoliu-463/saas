@@ -19,6 +19,7 @@ import java.util.UUID;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -65,6 +66,7 @@ class OrderSampleHomeworkBridgeTest {
         order.setUserId(UUID.randomUUID());
         order.setProductName("测试商品");
         when(orderMapper.selectById(event.orderRowId())).thenReturn(order);
+        when(sampleHomeworkFacade.completePendingHomeworkByOrder(order)).thenReturn(1);
 
         bridge.completeHomeworkForSyncedOrder(event);
 
@@ -77,6 +79,54 @@ class OrderSampleHomeworkBridgeTest {
                 eq("order"),
                 eq(order.getOrderId()),
                 eq("测试商品"),
+                eq("订单归因副作用: completePendingHomeworkByOrder"));
+    }
+
+    @Test
+    void completeHomework_whenDuplicateOrderDoesNotCompleteSample_shouldNotWriteCompletionLog() {
+        dddRefactorProperties.setEnabled(true);
+        dddRefactorProperties.getSampleHomeworkEvent().setEnabled(true);
+
+        OrderSyncedEvent event = sampleEvent();
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setId(event.orderRowId());
+        order.setOrderId(event.orderId());
+        order.setUserId(UUID.randomUUID());
+        when(orderMapper.selectById(event.orderRowId())).thenReturn(order);
+        when(sampleHomeworkFacade.completePendingHomeworkByOrder(order)).thenReturn(0);
+
+        bridge.completeHomeworkForSyncedOrder(event);
+
+        verify(sampleHomeworkFacade).completePendingHomeworkByOrder(order);
+        verifyNoInteractions(operationLogService);
+    }
+
+    @Test
+    void completeHomework_whenSameOrderEventRepeated_shouldWriteCompletionLogOnlyOnce() {
+        dddRefactorProperties.setEnabled(true);
+        dddRefactorProperties.getSampleHomeworkEvent().setEnabled(true);
+
+        OrderSyncedEvent event = sampleEvent();
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setId(event.orderRowId());
+        order.setOrderId(event.orderId());
+        order.setUserId(UUID.randomUUID());
+        order.setProductName("重复订单商品");
+        when(orderMapper.selectById(event.orderRowId())).thenReturn(order);
+        when(sampleHomeworkFacade.completePendingHomeworkByOrder(order)).thenReturn(1, 0);
+
+        bridge.completeHomeworkForSyncedOrder(event);
+        bridge.completeHomeworkForSyncedOrder(event);
+
+        verify(sampleHomeworkFacade, times(2)).completePendingHomeworkByOrder(order);
+        verify(operationLogService, times(1)).recordSystemAction(
+                eq(order.getUserId()),
+                eq("订单归因"),
+                eq("完成寄样作业"),
+                eq("POST"),
+                eq("order"),
+                eq(order.getOrderId()),
+                eq("重复订单商品"),
                 eq("订单归因副作用: completePendingHomeworkByOrder"));
     }
 

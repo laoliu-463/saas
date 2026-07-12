@@ -256,7 +256,7 @@ describe('activityProduct API', () => {
 
   describe('updateActivityProductDecision', () => {
     it('calls decision update endpoint with MAIN level', () => {
-      const data = { decisionLevel: 'MAIN', reason: '主推商品' }
+      const data = { decisionLevel: 'MAIN' as const, reason: '主推商品' }
 
       updateActivityProductDecision('ACT-1', 'PROD-1', data)
 
@@ -267,7 +267,7 @@ describe('activityProduct API', () => {
     })
 
     it('calls decision update endpoint with DROP level', () => {
-      const data = { decisionLevel: 'DROP', reason: '停止运营' }
+      const data = { decisionLevel: 'DROP' as const, reason: '停止运营' }
 
       updateActivityProductDecision('ACT-1', 'PROD-1', data)
 

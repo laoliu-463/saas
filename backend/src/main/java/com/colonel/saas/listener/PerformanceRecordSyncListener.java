@@ -1,5 +1,6 @@
 package com.colonel.saas.listener;
 
+import com.colonel.saas.domain.order.event.OrderRefundFactSyncedEvent;
 import com.colonel.saas.domain.order.facade.OrderReadFacade;
 import com.colonel.saas.domain.performance.application.PerformanceCalculationApplicationService;
 import com.colonel.saas.entity.ColonelsettlementOrder;
@@ -45,22 +46,51 @@ public class PerformanceRecordSyncListener {
         }
         try {
             ColonelsettlementOrder order = orderReadFacade.findByOrderId(event.orderId());
-            if (order == null) {
-                log.warn("Performance calculation skipped, order not found: {}", event.orderId());
-                return;
-            }
-            PerformanceRecord record = performanceCalculationApplicationService.upsertFromOrder(order);
-            if (record == null) {
-                return;
-            }
-            eventPublisher.publishEvent(new PerformanceCalculatedEvent(
-                    record.getOrderId(),
-                    nvl(record.getEstimateGrossProfit()),
-                    nvl(record.getEffectiveGrossProfit()),
-                    Boolean.TRUE.equals(record.getReversed())));
+            recalculate(order, event.orderId());
         } catch (Exception ex) {
             log.warn("Performance calculation failed, orderId={}", event.orderId(), ex);
         }
+    }
+
+    @Async
+    @EventListener
+    public void onOrderRefundFactSynced(OrderRefundFactSyncedEvent event) {
+        if (event == null || event.orderId() == null) {
+            return;
+        }
+        recalculate(event.orderId());
+    }
+
+    private void recalculate(String orderId) {
+        try {
+            ColonelsettlementOrder order = orderReadFacade.findByOrderId(orderId);
+            recalculate(order, orderId);
+        } catch (Exception ex) {
+            log.warn("Performance calculation failed, orderId={}", orderId, ex);
+        }
+    }
+
+    private void recalculate(ColonelsettlementOrder order, String orderId) {
+        if (order == null) {
+            log.warn("Performance calculation skipped, order not found: {}", orderId);
+            return;
+        }
+        PerformanceRecord record = performanceCalculationApplicationService.upsertFromOrder(order);
+        if (record == null) {
+            return;
+        }
+        eventPublisher.publishEvent(new PerformanceCalculatedEvent(
+                record.getOrderId(),
+                record.getFinalChannelUserId(),
+                record.getFinalRecruiterUserId(),
+                nvl(record.getEstimateRecruiterCommission()),
+                nvl(record.getEffectiveRecruiterCommission()),
+                nvl(record.getEstimateChannelCommission()),
+                nvl(record.getEffectiveChannelCommission()),
+                nvl(record.getEstimateGrossProfit()),
+                nvl(record.getEffectiveGrossProfit()),
+                Boolean.TRUE.equals(record.getReversed()) ? "REVERSAL" : "NORMAL",
+                Boolean.TRUE.equals(record.getReversed())));
     }
 
     private long nvl(Long value) {

@@ -1,0 +1,26 @@
+{
+  "taskId": "REPORT-LIMIT-CLEANUP-20260711",
+  "reason": "archive oversized raw evidence and old report entries after real-pre DDD verification",
+  "items": [
+    {
+      "path": "harness/reports/evidence-20260711-091908.md",
+      "action": "archive",
+      "category": "report-over-200-lines"
+    },
+    {
+      "path": "harness/reports/evidence-20260711-091912.md",
+      "action": "archive",
+      "category": "report-over-200-lines"
+    },
+    {
+      "path": "harness/reports/evidence-20260704-134935.md",
+      "action": "archive",
+      "category": "old-evidence"
+    },
+    {
+      "path": "harness/reports/retro-20260704-135005.md",
+      "action": "archive",
+      "category": "old-retro"
+    }
+  ]
+}

@@ -84,6 +84,9 @@ class PerformanceSummaryApplicationServiceTest {
                 .contains("co.order_amount")
                 .contains("co.estimate_service_fee")
                 .contains("pr.estimate_service_profit")
+                .contains("co.order_status IS NULL OR co.order_status NOT IN (4, 5)")
+                .contains("COALESCE(pr.is_valid, true) = true")
+                .contains("COALESCE(pr.is_reversed, false) = false")
                 .doesNotContain("co.settle_amount")
                 .doesNotContain("co.effective_service_fee");
     }
@@ -116,6 +119,9 @@ class PerformanceSummaryApplicationServiceTest {
                 .contains("co.settle_amount")
                 .contains("co.effective_service_fee")
                 .contains("pr.effective_gross_profit")
+                .contains("co.order_status IS NULL OR co.order_status NOT IN (4, 5)")
+                .contains("COALESCE(pr.is_valid, true) = true")
+                .contains("COALESCE(pr.is_reversed, false) = false")
                 .contains("(co.settle_time IS NOT NULL OR co.effective_service_fee > 0)")
                 .doesNotContain("co.estimate_service_fee");
     }

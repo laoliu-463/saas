@@ -196,7 +196,7 @@ test('real-pre P0 / 31 / 商品链', async ({ page }, testInfo) => {
     await installAuth(page, admin);
     const productPage = await openAndAssertNoFatal(page, '/product');
     const douyinPage = await openAndAssertNoFatal(page, '/system/douyin');
-    const productImageCheck = await openProductManageAndAssertImages(page);
+    const productImageCheck = await openProductManageAndAssertImages(page, activityId);
     setDetail(ctx, 'pageCheck', { productPage, douyinPage, productImageCheck });
     if (productPage.runtimeError) markFail(ctx, '/product 出现运行时错误');
     if (douyinPage.runtimeError) markFail(ctx, '/system/douyin 出现运行时错误');
@@ -333,8 +333,10 @@ async function openAndAssertNoFatal(page: Page, route: string): Promise<{ route:
   };
 }
 
-async function openProductManageAndAssertImages(page: Page): Promise<ProductImageCheck> {
-  const route = '/product/manage/products';
+async function openProductManageAndAssertImages(page: Page, activityId?: string | null): Promise<ProductImageCheck> {
+  const route = activityId
+    ? `/product/manage/products?activityId=${encodeURIComponent(activityId)}`
+    : '/product/manage/products';
   const requestFailures: ProductImageRequestFailure[] = [];
   const onRequestFailed = (request: Request): void => {
     if (request.resourceType() !== 'image') return;

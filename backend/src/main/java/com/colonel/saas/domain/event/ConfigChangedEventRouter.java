@@ -21,7 +21,7 @@ import java.util.UUID;
  *   <li>记录消费结果日志（成功/失败）</li>
  * </ol>
  *
- * <p>整个分发过程在同一事务中执行（{@code @Transactional}），
+ * <p>整个分发过程在同一事务中执行（{@code @Transactional(noRollbackFor = Exception.class)}），
  * 若任一消费者失败，消费日志会记录失败状态，
  * 但不影响其他消费者的执行；所有消费者执行完毕后若存在失败则抛出最后一个异常。</p>
  */
@@ -67,7 +67,7 @@ public class ConfigChangedEventRouter {
      * @param payload 配置变更事件载荷
      * @throws Exception 当任一消费者执行失败时抛出（抛出的是最后一个失败的异常）
      */
-    @Transactional(rollbackFor = Exception.class)
+    @Transactional(noRollbackFor = Exception.class)
     public void dispatch(ConfigChangedEventPayload payload) throws Exception {
         Exception lastError = null;
         for (ConfigChangedEventConsumer consumer : consumers) {

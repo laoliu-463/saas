@@ -386,6 +386,7 @@ class OrderSyncServiceTest {
         assertThat(order.getActualAmount()).isEqualTo(2550L);
         assertThat(order.getEstimateServiceFee()).isEqualTo(55L);
         assertThat(order.getEstimateTechServiceFee()).isEqualTo(7L);
+        assertThat(order.getActivityId()).isEqualTo("3859423");
         // PAY_SUCC 待结算样本：6468 只写事实/预估轨，结算轨保持 null（见 SETTLE 样本测试）。
         assertThat(order.getSettleAmount()).isNull();
         assertThat(order.getEffectiveServiceFee()).isNull();
@@ -514,6 +515,38 @@ class OrderSyncServiceTest {
         assertThat(result.pages()).isEqualTo(2);
         assertThat(result.stopReason()).isEqualTo("MAX_PAGES");
         verify(douyinOrderGateway, times(2)).listInstituteOrders(any(DouyinOrderGateway.DouyinOrderQueryRequest.class));
+    }
+
+    @Test
+    void syncInstituteOrdersRecentWindow_shouldStopWhenMaxOrdersReached() {
+        ReflectionTestUtils.setField(service, "maxOrders", 1);
+        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_INSTITUTE), any(Duration.class)))
+                .thenReturn(true);
+        when(douyinOrderGateway.listInstituteOrders(any(DouyinOrderGateway.DouyinOrderQueryRequest.class)))
+                .thenReturn(pageWithRawCursor(
+                        List.of(instituteOrderItem("ORDER-1"), instituteOrderItem("ORDER-2")),
+                        false,
+                        "0",
+                        Map.of()
+                ));
+        when(attributionService.resolveAttribution(any(ColonelsettlementOrder.class), any()))
+                .thenReturn(AttributionService.AttributionResult.unattributed(
+                        null,
+                        null,
+                        "3859423",
+                        null,
+                        AttributionService.REASON_NO_PICK_SOURCE
+                ));
+        when(persistenceService.persistOrder(any(ColonelsettlementOrder.class))).thenReturn(true);
+
+        OrderSyncService.SyncResult result = service.syncInstituteOrdersRecentWindow();
+
+        assertThat(result.pages()).isEqualTo(1);
+        assertThat(result.totalFetched()).isEqualTo(2);
+        assertThat(result.uniqueOrders()).isEqualTo(1);
+        assertThat(result.created()).isEqualTo(1);
+        assertThat(result.stopReason()).isEqualTo("MAX_ORDERS");
+        verify(persistenceService, times(1)).persistOrder(any(ColonelsettlementOrder.class));
     }
 
     @Test

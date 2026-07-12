@@ -9,6 +9,7 @@ import com.colonel.saas.dto.talent.TalentDetailResponse;
 import com.colonel.saas.dto.talent.TalentPageQuery;
 import com.colonel.saas.entity.Talent;
 import com.colonel.saas.entity.TalentClaim;
+import com.colonel.saas.domain.order.facade.OrderReadFacade;
 import com.colonel.saas.domain.sample.facade.SampleDomainFacade;
 import com.colonel.saas.domain.sample.facade.dto.TalentRecentSampleDTO;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
@@ -59,6 +60,8 @@ class TalentQueryServiceTest {
     @Mock
     private SampleDomainFacade sampleDomainFacade;
     @Mock
+    private OrderReadFacade orderReadFacade;
+    @Mock
     private JdbcTemplate jdbcTemplate;
 
     private TalentQueryService talentQueryService;
@@ -70,13 +73,15 @@ class TalentQueryServiceTest {
                 talentClaimMapper,
                 userDomainFacade,
                 sampleDomainFacade,
-                jdbcTemplate,
+                orderReadFacade,
                 new CurrentUserPermissionChecker(new CurrentUserPermissionPolicy()),
                 new DataScopeResolver(new DataScopePolicy()),
                 new DddRefactorProperties()
         );
         lenient().when(sampleDomainFacade.countSamplesByTalentIds(any())).thenReturn(Map.of());
         lenient().when(sampleDomainFacade.listRecentSamplesByTalentId(any(), anyInt())).thenReturn(List.of());
+        lenient().when(orderReadFacade.summarizeTalentOrdersByDouyinUid(any(), any())).thenReturn(Map.of());
+        lenient().when(orderReadFacade.findRecentOrdersByTalentUid(any(), anyInt())).thenReturn(List.of());
     }
 
     @Test
@@ -200,11 +205,11 @@ class TalentQueryServiceTest {
                 .thenReturn(Map.of(ownerId, "渠道负责人-华东组"));
         lenient().when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM sample_request") && sql.contains("talent_id IN")), any(Object[].class)))
                 .thenReturn(List.of());
-        when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM colonelsettlement_order") && sql.contains("GROUP BY") && sql.contains("talent_uid") && sql.contains(" IN ")), any(Object[].class)))
+        lenient().when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM colonelsettlement_order") && sql.contains("GROUP BY") && sql.contains("talent_uid") && sql.contains(" IN ")), any(Object[].class)))
                 .thenReturn(List.of());
         lenient().when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM sample_request sr")), eq(talentId)))
                 .thenReturn(List.of());
-        when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("COALESCE(extra_data")), eq("talent_mock_e")))
+        lenient().when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("COALESCE(extra_data")), eq("talent_mock_e")))
                 .thenReturn(List.of());
 
         TalentDetailResponse response = talentQueryService.detail(talentId, ownerId, null, DataScope.ALL);
@@ -229,7 +234,7 @@ class TalentQueryServiceTest {
         when(talentClaimMapper.selectList(any())).thenReturn(List.of());
         lenient().when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM sample_request") && sql.contains("talent_id IN")), any(Object[].class)))
                 .thenReturn(List.of());
-        when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM colonelsettlement_order") && sql.contains("GROUP BY") && sql.contains("talent_uid") && sql.contains(" IN ")), any(Object[].class)))
+        lenient().when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM colonelsettlement_order") && sql.contains("GROUP BY") && sql.contains("talent_uid") && sql.contains(" IN ")), any(Object[].class)))
                 .thenReturn(List.of());
 
         when(sampleDomainFacade.listRecentSamplesByTalentId(talentId, 20))
@@ -248,7 +253,7 @@ class TalentQueryServiceTest {
                                 "已关闭",
                                 now.minusDays(30),
                                 null)));
-        when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("COALESCE(extra_data")), eq("talent_mock_g")))
+        lenient().when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("COALESCE(extra_data")), eq("talent_mock_g")))
                 .thenReturn(List.of());
 
         TalentDetailResponse response = talentQueryService.detail(talentId, UUID.randomUUID(), null, DataScope.ALL);
@@ -285,11 +290,11 @@ class TalentQueryServiceTest {
         when(talentClaimMapper.findActiveByTalentId(talentId)).thenReturn(List.of(claim));
         lenient().when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM sample_request") && sql.contains("talent_id IN")), any(Object[].class)))
                 .thenReturn(List.of());
-        when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM colonelsettlement_order") && sql.contains("GROUP BY") && sql.contains("talent_uid") && sql.contains(" IN ")), any(Object[].class)))
+        lenient().when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM colonelsettlement_order") && sql.contains("GROUP BY") && sql.contains("talent_uid") && sql.contains(" IN ")), any(Object[].class)))
                 .thenReturn(List.of());
         lenient().when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM sample_request sr")), eq(talentId)))
                 .thenReturn(List.of());
-        when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("COALESCE(extra_data")), eq("talent_collaboration")))
+        lenient().when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("COALESCE(extra_data")), eq("talent_collaboration")))
                 .thenReturn(List.of());
 
         TalentDetailResponse response = talentQueryService.detail(talentId, viewerId, null, DataScope.ALL);
@@ -334,11 +339,11 @@ class TalentQueryServiceTest {
                 .thenReturn(Map.of(ownerA, "渠道A", ownerB, "渠道B"));
         lenient().when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM sample_request") && sql.contains("talent_id IN")), any(Object[].class)))
                 .thenReturn(List.of());
-        when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM colonelsettlement_order") && sql.contains("GROUP BY") && sql.contains("talent_uid") && sql.contains(" IN ")), any(Object[].class)))
+        lenient().when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM colonelsettlement_order") && sql.contains("GROUP BY") && sql.contains("talent_uid") && sql.contains(" IN ")), any(Object[].class)))
                 .thenReturn(List.of());
         lenient().when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM sample_request sr")), eq(talentId)))
                 .thenReturn(List.of());
-        when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("COALESCE(extra_data")), eq("talent_multi_claim")))
+        lenient().when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("COALESCE(extra_data")), eq("talent_multi_claim")))
                 .thenReturn(List.of());
 
         TalentDetailResponse response = talentQueryService.detail(talentId, viewer, null, DataScope.ALL);
@@ -400,7 +405,7 @@ class TalentQueryServiceTest {
                 .thenReturn(Map.of(otherUserId, "渠道B"));
         lenient().when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM sample_request") && sql.contains("talent_id IN")), any(Object[].class)))
                 .thenReturn(List.of());
-        when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM colonelsettlement_order") && sql.contains("GROUP BY") && sql.contains("talent_uid") && sql.contains(" IN ")), any(Object[].class)))
+        lenient().when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM colonelsettlement_order") && sql.contains("GROUP BY") && sql.contains("talent_uid") && sql.contains(" IN ")), any(Object[].class)))
                 .thenReturn(List.of());
 
         var page = talentQueryService.page(query);
@@ -453,7 +458,7 @@ class TalentQueryServiceTest {
                 .thenReturn(Map.of(otherUserId, "渠道B"));
         lenient().when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM sample_request") && sql.contains("talent_id IN")), any(Object[].class)))
                 .thenReturn(List.of());
-        when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM colonelsettlement_order") && sql.contains("GROUP BY") && sql.contains("talent_uid") && sql.contains(" IN ")), any(Object[].class)))
+        lenient().when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM colonelsettlement_order") && sql.contains("GROUP BY") && sql.contains("talent_uid") && sql.contains(" IN ")), any(Object[].class)))
                 .thenReturn(List.of());
 
         var page = talentQueryService.page(query);
@@ -496,7 +501,7 @@ class TalentQueryServiceTest {
                 .thenReturn(Map.of(otherUserId, "渠道同事"));
         lenient().when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM sample_request") && sql.contains("talent_id IN")), any(Object[].class)))
                 .thenReturn(List.of());
-        when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM colonelsettlement_order") && sql.contains("GROUP BY") && sql.contains("talent_uid") && sql.contains(" IN ")), any(Object[].class)))
+        lenient().when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM colonelsettlement_order") && sql.contains("GROUP BY") && sql.contains("talent_uid") && sql.contains(" IN ")), any(Object[].class)))
                 .thenReturn(List.of());
 
         var page = talentQueryService.page(query);
@@ -556,7 +561,7 @@ class TalentQueryServiceTest {
                 .thenReturn(Map.of(otherUserId, "渠道同事"));
         lenient().when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM sample_request") && sql.contains("talent_id IN")), any(Object[].class)))
                 .thenReturn(List.of());
-        when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM colonelsettlement_order") && sql.contains("GROUP BY") && sql.contains("talent_uid") && sql.contains(" IN ")), any(Object[].class)))
+        lenient().when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM colonelsettlement_order") && sql.contains("GROUP BY") && sql.contains("talent_uid") && sql.contains(" IN ")), any(Object[].class)))
                 .thenReturn(List.of());
 
         var page = talentQueryService.page(query);
@@ -591,7 +596,7 @@ class TalentQueryServiceTest {
                 talentClaimMapper,
                 userDomainFacade,
                 sampleDomainFacade,
-                jdbcTemplate,
+                orderReadFacade,
                 new CurrentUserPermissionChecker(new CurrentUserPermissionPolicy()),
                 new DataScopeResolver(new DataScopePolicy()),
                 properties
@@ -665,12 +670,20 @@ class TalentQueryServiceTest {
         when(talentClaimMapper.selectList(any())).thenReturn(List.of(claim));
         lenient().when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM sample_request") && sql.contains("talent_id IN")), any(Object[].class)))
                 .thenReturn(List.of());
-        when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM colonelsettlement_order") && sql.contains("GROUP BY") && sql.contains("talent_uid") && sql.contains(" IN ")), any(Object[].class)))
+        lenient().when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM colonelsettlement_order") && sql.contains("GROUP BY") && sql.contains("talent_uid") && sql.contains(" IN ")), any(Object[].class)))
                 .thenReturn(List.of());
         lenient().when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM sample_request sr")), eq(talentId)))
                 .thenReturn(List.of());
         lenient().when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("COALESCE(extra_data")), eq("sensitive_uid")))
                 .thenReturn(List.of(orderRow));
+        when(orderReadFacade.findRecentOrdersByTalentUid("sensitive_uid", 20))
+                .thenReturn(List.of(new OrderReadFacade.TalentRecentOrder(
+                        "ORDER-SENSITIVE-001",
+                        "样例商品",
+                        1000L,
+                        100L,
+                        "不应返回的渠道名",
+                        now.minusHours(1))));
 
         TalentDetailResponse response = talentQueryService.detail(talentId, viewer, null, DataScope.PERSONAL);
 
@@ -695,11 +708,11 @@ class TalentQueryServiceTest {
         when(talentClaimMapper.findActiveByTalentId(talentId)).thenReturn(List.of());
         lenient().when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM sample_request") && sql.contains("talent_id IN")), any(Object[].class)))
                 .thenReturn(List.of());
-        when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM colonelsettlement_order") && sql.contains("GROUP BY") && sql.contains("talent_uid") && sql.contains(" IN ")), any(Object[].class)))
+        lenient().when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM colonelsettlement_order") && sql.contains("GROUP BY") && sql.contains("talent_uid") && sql.contains(" IN ")), any(Object[].class)))
                 .thenReturn(List.of());
         lenient().when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM sample_request sr")), eq(talentId)))
                 .thenReturn(List.of());
-        when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("COALESCE(extra_data")), eq("sensitive_uid")))
+        lenient().when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("COALESCE(extra_data")), eq("sensitive_uid")))
                 .thenReturn(List.of());
 
         TalentDetailResponse response = talentQueryService.detail(talentId, UUID.randomUUID(), null, DataScope.ALL);
@@ -734,7 +747,7 @@ class TalentQueryServiceTest {
         when(talentClaimMapper.selectList(any())).thenReturn(List.of());
         lenient().when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM sample_request") && sql.contains("talent_id IN")), any(Object[].class)))
                 .thenReturn(List.of());
-        when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM colonelsettlement_order") && sql.contains("GROUP BY") && sql.contains("talent_uid") && sql.contains(" IN ")), any(Object[].class)))
+        lenient().when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM colonelsettlement_order") && sql.contains("GROUP BY") && sql.contains("talent_uid") && sql.contains(" IN ")), any(Object[].class)))
                 .thenReturn(List.of());
 
         var page = talentQueryService.page(query);
@@ -763,7 +776,7 @@ class TalentQueryServiceTest {
         when(talentClaimMapper.selectList(any())).thenReturn(List.of());
         lenient().when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM sample_request") && sql.contains("talent_id IN")), any(Object[].class)))
                 .thenReturn(List.of());
-        when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM colonelsettlement_order") && sql.contains("GROUP BY") && sql.contains("talent_uid") && sql.contains(" IN ")), any(Object[].class)))
+        lenient().when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM colonelsettlement_order") && sql.contains("GROUP BY") && sql.contains("talent_uid") && sql.contains(" IN ")), any(Object[].class)))
                 .thenReturn(List.of());
 
         var page = talentQueryService.page(query);
@@ -795,7 +808,7 @@ class TalentQueryServiceTest {
         when(talentClaimMapper.selectList(any())).thenReturn(List.of());
         lenient().when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM sample_request") && sql.contains("talent_id IN")), any(Object[].class)))
                 .thenReturn(List.of());
-        when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM colonelsettlement_order") && sql.contains("GROUP BY") && sql.contains("talent_uid") && sql.contains(" IN ")), any(Object[].class)))
+        lenient().when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM colonelsettlement_order") && sql.contains("GROUP BY") && sql.contains("talent_uid") && sql.contains(" IN ")), any(Object[].class)))
                 .thenReturn(List.of());
 
         var page = talentQueryService.page(query);
@@ -830,7 +843,7 @@ class TalentQueryServiceTest {
         when(talentClaimMapper.selectList(any())).thenReturn(List.of());
         lenient().when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM sample_request") && sql.contains("talent_id IN")), any(Object[].class)))
                 .thenReturn(List.of());
-        when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM colonelsettlement_order") && sql.contains("GROUP BY") && sql.contains("talent_uid") && sql.contains(" IN ")), any(Object[].class)))
+        lenient().when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM colonelsettlement_order") && sql.contains("GROUP BY") && sql.contains("talent_uid") && sql.contains(" IN ")), any(Object[].class)))
                 .thenReturn(List.of());
 
         var page = talentQueryService.page(query);
@@ -860,12 +873,15 @@ class TalentQueryServiceTest {
         when(talentClaimMapper.selectList(any())).thenReturn(List.of());
         lenient().when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM sample_request") && sql.contains("talent_id IN")), any(Object[].class)))
                 .thenReturn(List.of());
-        when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM colonelsettlement_order") && sql.contains("GROUP BY") && sql.contains("talent_uid") && sql.contains(" IN ")), any(Object[].class)))
+        lenient().when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM colonelsettlement_order") && sql.contains("GROUP BY") && sql.contains("talent_uid") && sql.contains(" IN ")), any(Object[].class)))
                 .thenReturn(List.of(orderRow));
         lenient().when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM sample_request sr")), eq(talentId)))
                 .thenReturn(List.of());
-        when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("COALESCE(extra_data")), eq("metric_uid")))
+        lenient().when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("COALESCE(extra_data")), eq("metric_uid")))
                 .thenReturn(List.of());
+        when(orderReadFacade.summarizeTalentOrdersByDouyinUid(any(), any()))
+                .thenReturn(Map.of("metric_uid",
+                        new OrderReadFacade.TalentOrderSummary("metric_uid", 3L, 6800000L, 120000L)));
 
         TalentDetailResponse response = talentQueryService.detail(talentId, UUID.randomUUID(), null, DataScope.ALL);
 
@@ -906,7 +922,7 @@ class TalentQueryServiceTest {
         when(talentClaimMapper.selectList(any())).thenReturn(List.of());
         lenient().when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM sample_request") && sql.contains("talent_id IN")), any(Object[].class)))
                 .thenReturn(List.of());
-        when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM colonelsettlement_order") && sql.contains("GROUP BY") && sql.contains("talent_uid") && sql.contains(" IN ")), any(Object[].class)))
+        lenient().when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM colonelsettlement_order") && sql.contains("GROUP BY") && sql.contains("talent_uid") && sql.contains(" IN ")), any(Object[].class)))
                 .thenReturn(List.of());
 
         var page = talentQueryService.page(query);

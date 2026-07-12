@@ -84,6 +84,22 @@ class DomainEventDispatcherJobTest {
     }
 
     @Test
+    @DisplayName("ConfigChanged 事件路由失败时标记失败并进入重试")
+    void dispatchPendingEvents_configChangedDispatchFails_marksFailed() throws Exception {
+        String payload = "{\"items\":[{\"configKey\":\"app.test\",\"group\":\"APP\",\"newValue\":\"v1\"}]}";
+        DomainEventOutbox event = buildOutbox(ConfigChangedEventPayload.EVENT_TYPE, payload);
+
+        when(domainEventOutboxService.lockPendingEvents(anyInt(), anyInt())).thenReturn(List.of(event));
+        doThrow(new RuntimeException("config boom")).when(configChangedEventRouter)
+                .dispatch(any(ConfigChangedEventPayload.class));
+
+        job.dispatchPendingEvents();
+
+        verify(domainEventOutboxService).markFailed(event.getEventId(), 1, "config boom", 3);
+        verify(domainEventOutboxService, never()).markPublished(any(), anyInt());
+    }
+
+    @Test
     @DisplayName("Product 事件路由到 ProductDomainEventOutboxRouter")
     void dispatchPendingEvents_productEvent_routesToProductRouter() throws Exception {
         DomainEventOutbox event = buildOutbox("ProductCreated", "{\"productId\":\"abc\"}");

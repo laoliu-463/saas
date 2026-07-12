@@ -13,6 +13,7 @@
       >
         {{ option.label }}
         <span
+          v-if="hasStatusCount(option.value)"
           class="status-count"
           :data-testid="`official-status-count-${option.value}`"
         >
@@ -30,13 +31,16 @@ import {
 } from '../../../types/productManage'
 import { formatActivityProductStatusCount } from '../activity-product-status-display'
 
-withDefaults(defineProps<{
+const props = withDefaults(defineProps<{
   officialStatus: ProductOfficialStatus | null
   statusCounts?: Partial<Record<ProductOfficialStatus, number>>
 }>(), {
   officialStatus: null,
   statusCounts: () => ({})
 })
+
+const hasStatusCount = (status: ProductOfficialStatus) =>
+  Object.prototype.hasOwnProperty.call(props.statusCounts, status)
 
 defineEmits<{
   changeOfficialStatus: [value: ProductOfficialStatus | null]

@@ -3,11 +3,13 @@ package com.colonel.saas.domain.analytics.application;
 import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.domain.analytics.event.AnalyticsEventTypes;
 import com.colonel.saas.domain.analytics.infrastructure.InMemoryProcessedEventStore;
+import com.colonel.saas.domain.order.event.OrderRefundFactSyncedEvent;
 import com.colonel.saas.domain.product.event.ActivitySyncCompletedEvent;
 import com.colonel.saas.domain.product.event.ProductListedEvent;
 import com.colonel.saas.domain.sample.event.SampleApprovedEvent;
 import com.colonel.saas.event.OrderSyncedEvent;
 import com.colonel.saas.event.PerformanceCalculatedEvent;
+import com.colonel.saas.event.PerformanceSummaryRefreshedEvent;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -90,6 +92,21 @@ class AnalyticsEventConsumerTest {
     }
 
     @Test
+    void performanceSummaryRefreshedEvent_shouldRouteToPerformanceSummaryHandler() {
+        UUID eventId = UUID.randomUUID();
+        PerformanceSummaryRefreshedEvent event = performanceSummaryRefreshed(eventId);
+
+        AggregationUpdateResult result = consumer.consume(
+                eventId, AnalyticsEventTypes.PERFORMANCE_SUMMARY_REFRESHED, event);
+
+        assertThat(AnalyticsEventConsumer.resolveEventId(event)).isEqualTo(eventId);
+        assertThat(AnalyticsEventConsumer.eventTypeFor(event))
+                .isEqualTo(AnalyticsEventTypes.PERFORMANCE_SUMMARY_REFRESHED);
+        assertThat(result.handlerType()).isEqualTo(AnalyticsHandlerType.PERFORMANCE_SUMMARY);
+        assertThat(aggregationService.performanceSummaryInvocationCount()).isEqualTo(1);
+    }
+
+    @Test
     void orderEvent_shouldRouteToOrderEstimateSummaryHandler() {
         UUID eventId = UUID.randomUUID();
 
@@ -99,6 +116,21 @@ class AnalyticsEventConsumerTest {
         assertThat(result.handlerType()).isEqualTo(AnalyticsHandlerType.ORDER_ESTIMATE_SUMMARY);
         assertThat(aggregationService.orderEstimateInvocationCount()).isEqualTo(1);
     }
+
+    @Test
+    void orderRefundFactEvent_shouldRouteToPerformanceSummaryHandler() {
+        OrderRefundFactSyncedEvent event = sampleOrderRefundFactSynced();
+        UUID eventId = AnalyticsEventConsumer.resolveEventId(event);
+
+        AggregationUpdateResult result = consumer.consume(
+                eventId, AnalyticsEventTypes.ORDER_REFUND_FACT_SYNCED, event);
+
+        assertThat(AnalyticsEventConsumer.eventTypeFor(event))
+                .isEqualTo(AnalyticsEventTypes.ORDER_REFUND_FACT_SYNCED);
+        assertThat(result.handlerType()).isEqualTo(AnalyticsHandlerType.PERFORMANCE_SUMMARY);
+        assertThat(aggregationService.performanceSummaryInvocationCount()).isEqualTo(1);
+    }
+
 
     @Test
     void sampleEvent_shouldRouteToSampleSummaryHandler() {
@@ -195,6 +227,33 @@ class AnalyticsEventConsumerTest {
                 LocalDateTime.now(),
                 "talent-1",
                 Map.of());
+    }
+
+    private static OrderRefundFactSyncedEvent sampleOrderRefundFactSynced() {
+        return new OrderRefundFactSyncedEvent(
+                "ORD-REFUND-ANALYTICS",
+                UUID.randomUUID(),
+                "REF-1",
+                1000L,
+                3,
+                5,
+                "REFUND",
+                Map.of("refund_id", "REF-1"),
+                LocalDateTime.now());
+    }
+
+    private static PerformanceSummaryRefreshedEvent performanceSummaryRefreshed(UUID eventId) {
+        return new PerformanceSummaryRefreshedEvent(
+                eventId,
+                "ORD-SUMMARY-1",
+                java.time.LocalDate.of(2026, 4, 17),
+                "DAY",
+                null,
+                UUID.randomUUID(),
+                1L,
+                12800L,
+                1100L,
+                LocalDateTime.of(2026, 4, 17, 10, 31));
     }
 
     private void enableAnalyticsShadow() {

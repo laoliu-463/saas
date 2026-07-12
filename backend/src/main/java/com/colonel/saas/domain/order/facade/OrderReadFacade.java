@@ -62,6 +62,14 @@ public interface OrderReadFacade {
             String activityId,
             Collection<String> productIds);
 
+    /** 达人域列表卡片：按达人 UID 集合聚合订单事实摘要。 */
+    Map<String, TalentOrderSummary> summarizeTalentOrdersByDouyinUid(
+            Collection<String> douyinUids,
+            LocalDateTime createStart);
+
+    /** 达人域详情页：按达人 UID 读取最近订单事实。 */
+    List<TalentRecentOrder> findRecentOrdersByTalentUid(String douyinUid, int limit);
+
     /** Dashboard 订单归因计数与未归因原因，只读订单事实。 */
     DashboardAttributionSummary getDashboardAttributionSummary(
             LocalDateTime settleStart,
@@ -128,6 +136,22 @@ public interface OrderReadFacade {
             long gmvCent,
             long serviceFeeCent,
             LocalDateTime lastOrderTime) {
+    }
+
+    record TalentOrderSummary(
+            String talentUid,
+            long orderCount,
+            long orderAmountCent,
+            long serviceFeeCent) {
+    }
+
+    record TalentRecentOrder(
+            String orderId,
+            String productName,
+            long orderAmountCent,
+            long serviceFeeCent,
+            String channelName,
+            LocalDateTime createTime) {
     }
 
     record DashboardReasonCount(String reason, long count) {

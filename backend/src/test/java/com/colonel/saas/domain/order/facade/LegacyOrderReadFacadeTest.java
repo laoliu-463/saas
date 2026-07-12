@@ -234,6 +234,48 @@ class LegacyOrderReadFacadeTest {
         verify(orderMapper, times(3)).selectMaps(any());
     }
 
+    @Test
+    void summarizeTalentOrdersByDouyinUid_shouldAggregateTalentOrderFacts() {
+        when(orderMapper.selectMaps(any())).thenReturn(List.of(Map.of(
+                "talent_uid", "dy_1",
+                "order_count", 3L,
+                "order_amount", 12000L,
+                "service_fee", 800L)));
+
+        Map<String, OrderReadFacade.TalentOrderSummary> result = facade.summarizeTalentOrdersByDouyinUid(
+                List.of(" dy_1 ", "dy_1", " "),
+                LocalDateTime.of(2026, 6, 1, 0, 0));
+
+        assertThat(result).containsOnlyKeys("dy_1");
+        assertThat(result.get("dy_1").orderCount()).isEqualTo(3L);
+        assertThat(result.get("dy_1").orderAmountCent()).isEqualTo(12000L);
+        assertThat(result.get("dy_1").serviceFeeCent()).isEqualTo(800L);
+        verify(orderMapper).selectMaps(any());
+    }
+
+    @Test
+    void findRecentOrdersByTalentUid_shouldReturnRecentTalentOrders() {
+        LocalDateTime createTime = LocalDateTime.of(2026, 6, 2, 10, 0);
+        when(orderMapper.selectMaps(any())).thenReturn(List.of(Map.of(
+                "order_id", "ORD-1",
+                "product_name", "商品A",
+                "order_amount", 2000L,
+                "service_fee", 120L,
+                "channel_user_name", "渠道A",
+                "create_time", createTime)));
+
+        List<OrderReadFacade.TalentRecentOrder> result = facade.findRecentOrdersByTalentUid(" dy_1 ", 20);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).orderId()).isEqualTo("ORD-1");
+        assertThat(result.get(0).productName()).isEqualTo("商品A");
+        assertThat(result.get(0).orderAmountCent()).isEqualTo(2000L);
+        assertThat(result.get(0).serviceFeeCent()).isEqualTo(120L);
+        assertThat(result.get(0).channelName()).isEqualTo("渠道A");
+        assertThat(result.get(0).createTime()).isEqualTo(createTime);
+        verify(orderMapper).selectMaps(any());
+    }
+
     private static ColonelsettlementOrder order(String orderId) {
         ColonelsettlementOrder order = new ColonelsettlementOrder();
         order.setOrderId(orderId);

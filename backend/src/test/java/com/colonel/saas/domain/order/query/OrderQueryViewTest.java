@@ -48,6 +48,33 @@ class OrderQueryViewTest {
     }
 
     @Test
+    @DisplayName("双团长订单第一活动为空时列表视图回退到第二活动")
+    void orderListViewShouldFallbackToSecondActivityWhenPrimaryIsMissing() {
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setOrderId("ORD-SECOND-ACTIVITY");
+        order.setActivityId(" ");
+        order.setSecondActivityId("3223881");
+
+        OrderQueryView view = OrderListAssembler.toView(order);
+
+        assertThat(view.getActivityId()).isEqualTo("3223881");
+        assertThat(view.getSecondActivityId()).isEqualTo("3223881");
+    }
+
+    @Test
+    @DisplayName("双团长订单第一活动存在时不被第二活动覆盖")
+    void orderListViewShouldPreferPrimaryActivity() {
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setOrderId("ORD-PRIMARY-ACTIVITY");
+        order.setActivityId("3223880");
+        order.setSecondActivityId("3223881");
+
+        OrderQueryView view = OrderListAssembler.toView(order);
+
+        assertThat(view.getActivityId()).isEqualTo("3223880");
+    }
+
+    @Test
     @DisplayName("测试OrderDetailAssembler将响应转换为视图")
     void testOrderDetailAssembler() {
         OrderDetailResponse response = new OrderDetailResponse();

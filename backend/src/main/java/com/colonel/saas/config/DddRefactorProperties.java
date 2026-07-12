@@ -11,45 +11,47 @@ import org.springframework.stereotype.Component;
  * select an implementation path by itself, so adding the bean must not change any
  * current business behavior.</p>
  *
- * <p>All switches default to {@code false}. Future DDD tasks may read these flags
- * after their own protection tests are in place.</p>
+ * <p>The checked-in runtime profiles default every switch to {@code true}, making
+ * the DDD path the primary path. An explicit environment variable set to
+ * {@code false} remains the rollback escape hatch. A directly constructed bean
+ * keeps Java's {@code false} defaults for isolated characterization tests.</p>
  *
  * <pre>
  * ddd:
  *   refactor:
- *     enabled: false
+ *     enabled: true
  *     user-facade:
- *       enabled: false
+ *       enabled: true
  *     config-facade:
- *       enabled: false
+ *       enabled: true
  *     product-facade:
- *       enabled: false
+ *       enabled: true
  *     product-display-policy:
- *       enabled: false
+ *       enabled: true
  *     talent-facade:
- *       enabled: false
+ *       enabled: true
  *     sample-application:
- *       enabled: false
+ *       enabled: true
  *     order-application:
- *       enabled: false
+ *       enabled: true
  *     order-attribution:
- *       enabled: false
+ *       enabled: true
  *     order-amount-policy:
- *       enabled: false
+ *       enabled: true
  *     performance-calc:
- *       enabled: false
+ *       enabled: true
  *     performance-query:
- *       enabled: false
+ *       enabled: true
  *     analytics-shadow:
- *       enabled: false
+ *       enabled: true
  *     outbox:
- *       enabled: false
+ *       enabled: true
  *     data-scope-policy:
- *       enabled: false
+ *       enabled: true
  *     sample-homework-event:
- *       enabled: false
+ *       enabled: true
  *     colonel-partner-contact:
- *       enabled: false
+ *       enabled: true
  * </pre>
  */
 @Data
@@ -68,7 +70,7 @@ public class DddRefactorProperties {
 
     private Switch productFacade = new Switch();
 
-    /** 商品展示 / 活动商品查询规则灰度旁路（默认 OFF，关闭时保留 Legacy service 分支）。 */
+    /** 商品展示 / 活动商品查询规则旁路；runtime profile 默认 ON。 */
     private Switch productDisplayPolicy = new Switch();
 
     private Switch talentFacade = new Switch();
@@ -95,7 +97,7 @@ public class DddRefactorProperties {
      * <p>控制业务域数据范围调用点是否走 DataScopePolicy 路径。
      * OFF = 旧实现，ON = 新 Policy 路径。</p>
      *
-     * <p>默认 OFF（生产零变化）。</p>
+     * <p>runtime profile 默认 ON；显式设置为 false 时保留 Legacy 回滚路径。</p>
      */
     private Switch dataScopePolicy = new Switch();
 

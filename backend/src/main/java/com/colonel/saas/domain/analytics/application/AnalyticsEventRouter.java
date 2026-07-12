@@ -2,6 +2,7 @@ package com.colonel.saas.domain.analytics.application;
 
 import com.colonel.saas.domain.analytics.event.AnalyticsEventTypes;
 import com.colonel.saas.domain.analytics.event.TalentClaimedEvent;
+import com.colonel.saas.domain.order.event.OrderRefundFactSyncedEvent;
 import com.colonel.saas.domain.product.event.ActivitySyncCompletedEvent;
 import com.colonel.saas.domain.product.event.ProductHiddenEvent;
 import com.colonel.saas.domain.product.event.ProductListedEvent;
@@ -11,6 +12,7 @@ import com.colonel.saas.domain.sample.event.SampleCreatedEvent;
 import com.colonel.saas.domain.sample.event.SampleShippedEvent;
 import com.colonel.saas.event.OrderSyncedEvent;
 import com.colonel.saas.event.PerformanceCalculatedEvent;
+import com.colonel.saas.event.PerformanceSummaryRefreshedEvent;
 import org.springframework.stereotype.Component;
 
 import java.util.UUID;
@@ -38,9 +40,21 @@ public class AnalyticsEventRouter {
                 }
                 yield AggregationUpdateResult.unsupported(eventId, eventType);
             }
+            case AnalyticsEventTypes.ORDER_REFUND_FACT_SYNCED -> {
+                if (payload instanceof OrderRefundFactSyncedEvent event) {
+                    yield aggregationService.applyOrderRefundFact(eventId, eventType, event);
+                }
+                yield AggregationUpdateResult.unsupported(eventId, eventType);
+            }
             case AnalyticsEventTypes.PERFORMANCE_CALCULATED -> {
                 if (payload instanceof PerformanceCalculatedEvent event) {
                     yield aggregationService.applyPerformanceSummary(eventId, eventType, event);
+                }
+                yield AggregationUpdateResult.unsupported(eventId, eventType);
+            }
+            case AnalyticsEventTypes.PERFORMANCE_SUMMARY_REFRESHED -> {
+                if (payload instanceof PerformanceSummaryRefreshedEvent event) {
+                    yield aggregationService.applyPerformanceSummaryRefresh(eventId, eventType, event);
                 }
                 yield AggregationUpdateResult.unsupported(eventId, eventType);
             }

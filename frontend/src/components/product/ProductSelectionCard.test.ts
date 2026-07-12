@@ -75,6 +75,8 @@ const baseCard = {
   livePrice: '¥99.00',
   commissionRate: '20%',
   serviceFeeRate: '-',
+  commissionTypeLabel: '',
+  isDoubleCommission: false,
   campaignCommissionRate: '-',
   campaignServiceFeeRate: '-',
   totalSales: 0,
@@ -88,6 +90,7 @@ const baseCard = {
   supportInvestment: false,
   productUrl: '',
   baiyingUrl: '',
+  promotionUrl: '',
   specs: [],
   raw: { productId: 'PROD-1' }
 }

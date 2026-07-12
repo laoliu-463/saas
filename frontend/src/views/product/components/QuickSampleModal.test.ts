@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
+import type { AxiosResponse } from 'axios'
 import { applyQuickSample } from '../../../api/product'
 import { getTalentShippingAddress } from '../../../api/talent'
 import QuickSampleModal from './QuickSampleModal.vue'
@@ -11,6 +12,8 @@ const messageApi = vi.hoisted(() => ({
   warning: vi.fn(),
   info: vi.fn()
 }))
+
+const mockAxiosResponse = <T,>(data: T) => ({ data } as AxiosResponse<T>)
 
 vi.mock('../../../api/product', () => ({
   applyQuickSample: vi.fn().mockResolvedValue({ data: { successCount: 1, failureCount: 0, items: [] } })
@@ -60,7 +63,9 @@ vi.mock('naive-ui', async (importOriginal) => {
 describe('QuickSampleModal', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(applyQuickSample).mockResolvedValue({ data: { successCount: 1, failureCount: 0, items: [] } })
+    vi.mocked(applyQuickSample).mockResolvedValue(
+      mockAxiosResponse({ successCount: 1, failureCount: 0, items: [] })
+    )
   })
 
   it('renders quick sample form fields', () => {
@@ -139,8 +144,7 @@ describe('QuickSampleModal', () => {
   })
 
   it('shows item failure reasons instead of a generic apply failure', async () => {
-    vi.mocked(applyQuickSample).mockResolvedValueOnce({
-      data: {
+    vi.mocked(applyQuickSample).mockResolvedValueOnce(mockAxiosResponse({
         successCount: 0,
         failureCount: 1,
         items: [
@@ -150,8 +154,7 @@ describe('QuickSampleModal', () => {
             message: '商品快照不存在或商品 ID 缺失，请刷新商品后重试'
           }
         ]
-      }
-    })
+      }))
 
     const wrapper = mount(QuickSampleModal, {
       props: {

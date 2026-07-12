@@ -14,6 +14,19 @@ if [[ -d "$HOME/.hermes/node/bin" ]]; then
   PATH="$HOME/.hermes/node/bin:$PATH"
 fi
 
+PYTHON_BIN="${PYTHON_BIN:-}"
+if [[ -z "$PYTHON_BIN" ]]; then
+  if command -v python >/dev/null 2>&1; then
+    PYTHON_BIN="python"
+  elif command -v python3 >/dev/null 2>&1; then
+    PYTHON_BIN="python3"
+  elif command -v python.exe >/dev/null 2>&1; then
+    PYTHON_BIN="python.exe"
+  else
+    PYTHON_BIN="python"
+  fi
+fi
+
 fail() {
   echo "FAIL: $*" >&2
   exit 1
@@ -93,7 +106,7 @@ check_help() {
 
 scan_staged_secrets() {
   local staged_diff="$1"
-  STAGED_DIFF="$staged_diff" python - <<'PY'
+  STAGED_DIFF="$staged_diff" "$PYTHON_BIN" - <<'PY'
 import os
 import re
 import sys
@@ -170,7 +183,7 @@ openapi_stats="$(
   APIFOX_OPENAPI_FILE_PATH="$OPENAPI_FILE_PATH" \
   APIFOX_DEV_BASE_URL="${APIFOX_DEV_BASE_URL:-}" \
   APIFOX_DEV_PORT="${APIFOX_DEV_PORT:-}" \
-  python - <<'PY'
+  "$PYTHON_BIN" - <<'PY'
 import json
 import os
 import sys

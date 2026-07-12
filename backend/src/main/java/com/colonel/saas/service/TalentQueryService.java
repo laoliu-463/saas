@@ -9,6 +9,7 @@ import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.dto.talent.TalentDetailResponse;
 import com.colonel.saas.dto.talent.TalentPageQuery;
+import com.colonel.saas.domain.order.facade.OrderReadFacade;
 import com.colonel.saas.entity.Talent;
 import com.colonel.saas.entity.TalentClaim;
 import com.colonel.saas.entity.TalentEnrichTask;
@@ -18,16 +19,13 @@ import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
 import com.colonel.saas.domain.user.policy.DataScopeResolver;
 import com.colonel.saas.mapper.TalentClaimMapper;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
-import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -56,7 +54,7 @@ import java.util.stream.Collectors;
  *   <li>{@link TalentClaimMapper} — 读取认领记录</li>
  *   <li>{@link UserDomainFacade} ：查询认领人显示标签</li>
  *   <li>{@link SampleDomainFacade} — 寄样域只读门面</li>
- *   <li>{@link org.springframework.jdbc.core.JdbcTemplate} — 原生 SQL 聚合订单统计</li>
+ *   <li>{@link OrderReadFacade} — 订单域只读门面</li>
  * </ul>
  *
  * @see TalentService
@@ -71,8 +69,6 @@ public class TalentQueryService {
     private static final int CLAIM_STATUS_EXPIRED = 2;
     /** 单次数据库分页最大拉取条数，防止内存溢出 */
     private static final int TALENT_QUERY_BATCH_SIZE = 200;
-    /** SQL IN 子句批次大小，避免超长参数列表 */
-    private static final int SQL_IN_BATCH_SIZE = 200;
 
     /** 达人核心服务，委托分页与单条查询 */
     private final TalentService talentService;
@@ -81,8 +77,8 @@ public class TalentQueryService {
     private final UserDomainFacade userDomainFacade;
     /** 寄样域只读门面，提供达人维度寄样摘要 */
     private final SampleDomainFacade sampleDomainFacade;
-    /** Spring JdbcTemplate，用于原生 SQL 聚合订单统计 */
-    private final JdbcTemplate jdbcTemplate;
+    /** 订单域只读门面，提供达人维度订单摘要和最近订单 */
+    private final OrderReadFacade orderReadFacade;
     /** 用户域权限检查器，用于统一角色编码集合解析和匹配 */
     private final CurrentUserPermissionChecker currentUserPermissionChecker;
     /** 用户域数据范围 Resolver，用于灰度开启后的详情访问范围决策 */
@@ -97,7 +93,7 @@ public class TalentQueryService {
      * @param talentClaimMapper    达人认领记录 Mapper
      * @param userDomainFacade     用户领域门面（查询认领人显示标签）
      * @param sampleDomainFacade   寄样域只读门面（统计寄样次数和最近寄样记录）
-     * @param jdbcTemplate         JDBC 模板（原生 SQL 聚合查询）
+     * @param orderReadFacade     订单域只读门面
      * @param currentUserPermissionChecker 用户域权限检查器（角色编码匹配）
      * @param dataScopeResolver     用户域数据范围 Resolver
      * @param dddRefactorProperties DDD 灰度开关
@@ -107,7 +103,7 @@ public class TalentQueryService {
             TalentClaimMapper talentClaimMapper,
             UserDomainFacade userDomainFacade,
             SampleDomainFacade sampleDomainFacade,
-            JdbcTemplate jdbcTemplate,
+            OrderReadFacade orderReadFacade,
             CurrentUserPermissionChecker currentUserPermissionChecker,
             DataScopeResolver dataScopeResolver,
             DddRefactorProperties dddRefactorProperties) {
@@ -115,7 +111,7 @@ public class TalentQueryService {
         this.talentClaimMapper = talentClaimMapper;
         this.userDomainFacade = userDomainFacade;
         this.sampleDomainFacade = sampleDomainFacade;
-        this.jdbcTemplate = jdbcTemplate;
+        this.orderReadFacade = orderReadFacade;
         this.currentUserPermissionChecker = currentUserPermissionChecker;
         this.dataScopeResolver = dataScopeResolver;
         this.dddRefactorProperties = dddRefactorProperties;
@@ -485,7 +481,7 @@ public class TalentQueryService {
         Map<UUID, Long> sampleCountMap = loadSampleCounts(
                 talentIds
         );
-        Map<String, OrderAggregate> orderAggregateMap = loadOrderAggregates(
+        Map<String, OrderReadFacade.TalentOrderSummary> orderAggregateMap = loadOrderAggregates(
                 talents.stream().map(Talent::getDouyinUid).filter(StringUtils::hasText).collect(Collectors.toSet())
         );
 
@@ -517,10 +513,10 @@ public class TalentQueryService {
             talent.setSampleCount(sampleCount);
 
             // 填充订单统计与衍生指标区间标签
-            OrderAggregate aggregate = orderAggregateMap.get(talent.getDouyinUid());
+            OrderReadFacade.TalentOrderSummary aggregate = orderAggregateMap.get(talent.getDouyinUid());
             long orderCount = aggregate == null ? 0L : aggregate.orderCount();
-            long serviceFee = aggregate == null ? 0L : aggregate.serviceFee();
-            long monthlySales = aggregate == null ? 0L : aggregate.orderAmount();
+            long serviceFee = aggregate == null ? 0L : aggregate.serviceFeeCent();
+            long monthlySales = aggregate == null ? 0L : aggregate.orderAmountCent();
             talent.setOrderCount(orderCount);
             talent.setServiceFeeContribution(serviceFee);
             talent.setMonthlySales(monthlySales);
@@ -614,86 +610,17 @@ public class TalentQueryService {
     }
 
     /**
-     * 批量加载达人订单汇总（douyinUid → OrderAggregate）。
-     * <p>通过原生 SQL 从 colonelsettlement_order 表按达人维度聚合近 30 天的订单数、订单金额和服务费。
-     * 达人标识优先取 extra_data 中的 talent_uid / author_id，兜底取 talent_name。
-     * 采用分批 IN 查询避免超长参数列表。</p>
+     * 批量加载达人订单汇总（douyinUid → TalentOrderSummary）。
+     * <p>通过订单域门面读取，避免达人查询服务直接依赖订单表结构。</p>
      *
      * @param douyinUids 达人抖音 UID 集合
      * @return 抖音 UID 到订单聚合数据的映射
      */
-    private Map<String, OrderAggregate> loadOrderAggregates(Set<String> douyinUids) {
+    private Map<String, OrderReadFacade.TalentOrderSummary> loadOrderAggregates(Set<String> douyinUids) {
         if (douyinUids == null || douyinUids.isEmpty()) {
             return Collections.emptyMap();
         }
-        // 注意：仅统计近 30 天的订单数据
-        LocalDateTime cutoff = LocalDateTime.now().minusDays(30);
-        Map<String, OrderAggregate> result = new HashMap<>();
-        // 分批查询，避免 SQL IN 子句过长
-        for (List<String> batch : partition(douyinUids, SQL_IN_BATCH_SIZE)) {
-            String placeholders = joinPlaceholders(batch.size());
-            List<Object> params = new ArrayList<>(batch.size() + 1);
-            params.add(Timestamp.valueOf(cutoff));
-            params.addAll(batch);
-            List<Map<String, Object>> rows = jdbcTemplate.queryForList("""
-                    SELECT
-                        COALESCE(extra_data ->> 'talent_uid', extra_data ->> 'author_id', talent_name) AS talent_uid,
-                        COUNT(1) AS order_count,
-                        COALESCE(SUM(order_amount), 0) AS order_amount,
-                        COALESCE(SUM(settle_colonel_commission), 0) AS service_fee
-                    FROM colonelsettlement_order
-                    WHERE deleted = 0
-                      AND create_time >= ?
-                      AND COALESCE(extra_data ->> 'talent_uid', extra_data ->> 'author_id', talent_name) IN (""" + placeholders + ") " +
-                    "GROUP BY COALESCE(extra_data ->> 'talent_uid', extra_data ->> 'author_id', talent_name)",
-                    params.toArray()
-            );
-            for (Map<String, Object> row : rows) {
-                String talentUid = asText(row.get("talent_uid"));
-                if (StringUtils.hasText(talentUid)) {
-                    result.put(talentUid, new OrderAggregate(
-                            asLong(row.get("order_count")),
-                            asLong(row.get("order_amount")),
-                            asLong(row.get("service_fee"))
-                    ));
-                }
-            }
-        }
-        return result;
-    }
-
-    /**
-     * 生成指定数量的 SQL 参数占位符（"?, ?, ?"）。
-     *
-     * @param size 占位符数量，必须 &gt; 0
-     * @return 逗号分隔的占位符字符串
-     */
-    private String joinPlaceholders(int size) {
-        if (size <= 0) {
-            throw new IllegalArgumentException("size must be positive");
-        }
-        return String.join(", ", Collections.nCopies(size, "?"));
-    }
-
-    /**
-     * 将集合按指定批次大小分组，用于分批执行 SQL IN 查询。
-     *
-     * @param <T>       元素类型
-     * @param values    待分组的集合
-     * @param batchSize 每批最大条数
-     * @return 分组后的列表
-     */
-    @SuppressWarnings("unchecked")
-    private <T> List<List<T>> partition(Collection<T> values, int batchSize) {
-        if (values == null || values.isEmpty()) {
-            return List.of();
-        }
-        List<T> list = values instanceof List<?> existing ? (List<T>) existing : new ArrayList<>(values);
-        List<List<T>> partitions = new ArrayList<>();
-        for (int index = 0; index < list.size(); index += batchSize) {
-            partitions.add(list.subList(index, Math.min(index + batchSize, list.size())));
-        }
-        return partitions;
+        return orderReadFacade.summarizeTalentOrdersByDouyinUid(douyinUids, LocalDateTime.now().minusDays(30));
     }
 
     /**
@@ -830,8 +757,7 @@ public class TalentQueryService {
 
     /**
      * 加载达人最近 20 条订单记录。
-     * <p>通过原生 SQL 从 colonelsettlement_order 查询，按创建时间降序。
-     * 脱敏时隐藏渠道人员姓名。</p>
+     * <p>通过订单域门面读取，按创建时间降序。脱敏时隐藏渠道人员姓名。</p>
      *
      * @param talent               达人实体
      * @param redactSensitiveFields 是否脱敏敏感字段
@@ -841,32 +767,19 @@ public class TalentQueryService {
         if (talent == null || !StringUtils.hasText(talent.getDouyinUid())) {
             return List.of();
         }
-        List<Map<String, Object>> rows = jdbcTemplate.queryForList("""
-                SELECT
-                    order_id,
-                    COALESCE(product_title, product_name) AS product_name,
-                    order_amount,
-                    settle_colonel_commission,
-                    channel_user_name,
-                    create_time
-                FROM colonelsettlement_order
-                WHERE deleted = 0
-                  AND COALESCE(extra_data ->> 'talent_uid', extra_data ->> 'author_id', talent_name) = ?
-                ORDER BY create_time DESC
-                LIMIT 20
-                """, talent.getDouyinUid());
+        List<OrderReadFacade.TalentRecentOrder> rows = orderReadFacade.findRecentOrdersByTalentUid(talent.getDouyinUid(), 20);
         List<TalentDetailResponse.OrderItem> items = new ArrayList<>();
-        for (Map<String, Object> row : rows) {
+        for (OrderReadFacade.TalentRecentOrder row : rows) {
             TalentDetailResponse.OrderItem item = new TalentDetailResponse.OrderItem();
-            item.setOrderId(asText(row.get("order_id")));
-            item.setProductName(asText(row.get("product_name")));
-            item.setOrderAmount(asLong(row.get("order_amount")));
-            item.setServiceFee(asLong(row.get("settle_colonel_commission")));
+            item.setOrderId(row.orderId());
+            item.setProductName(row.productName());
+            item.setOrderAmount(row.orderAmountCent());
+            item.setServiceFee(row.serviceFeeCent());
             // 注意：脱敏时隐藏渠道人员姓名
             if (!redactSensitiveFields) {
-                item.setChannelName(asText(row.get("channel_user_name")));
+                item.setChannelName(row.channelName());
             }
-            item.setCreateTime(toDateTime(row.get("create_time")));
+            item.setCreateTime(row.createTime());
             items.add(item);
         }
         return items;
@@ -1490,36 +1403,6 @@ public class TalentQueryService {
         return uuid == null ? null : uuid.toString();
     }
 
-    /**
-     * 将原始对象安全转换为 LocalDateTime，null 时返回 null。
-     * <p>支持 LocalDateTime 和 JDBC Timestamp 两种类型。</p>
-     *
-     * @param raw 原始对象
-     * @return LocalDateTime，无法转换时返回 null
-     */
-    private LocalDateTime toDateTime(Object raw) {
-        if (raw == null) {
-            return null;
-        }
-        if (raw instanceof LocalDateTime time) {
-            return time;
-        }
-        if (raw instanceof Timestamp timestamp) {
-            return timestamp.toLocalDateTime();
-        }
-        return null;
-    }
-
-    /**
-     * 达人 30 天订单聚合数据。
-     * <p>由原生 SQL GROUP BY 查询生成，用于计算 GPM 等带货指标分段。</p>
-     *
-     * @param orderCount  订单数
-     * @param orderAmount 订单金额（单位：分）
-     * @param serviceFee  团长佣金（单位：分）
-     */
-    private record OrderAggregate(long orderCount, long orderAmount, long serviceFee) {
-    }
 
     /**
      * 达人认领关系数据集合。

@@ -3,6 +3,7 @@ package com.colonel.saas.listener;
 import com.colonel.saas.domain.analytics.application.AggregationUpdateResult;
 import com.colonel.saas.domain.analytics.application.AnalyticsEventConsumer;
 import com.colonel.saas.domain.analytics.event.TalentClaimedEvent;
+import com.colonel.saas.domain.order.event.OrderRefundFactSyncedEvent;
 import com.colonel.saas.domain.product.event.ActivitySyncCompletedEvent;
 import com.colonel.saas.domain.product.event.ProductHiddenEvent;
 import com.colonel.saas.domain.product.event.ProductListedEvent;
@@ -12,6 +13,7 @@ import com.colonel.saas.domain.sample.event.SampleCreatedEvent;
 import com.colonel.saas.domain.sample.event.SampleShippedEvent;
 import com.colonel.saas.event.OrderSyncedEvent;
 import com.colonel.saas.event.PerformanceCalculatedEvent;
+import com.colonel.saas.event.PerformanceSummaryRefreshedEvent;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Async;
@@ -39,7 +41,19 @@ public class AnalyticsShadowEventListener {
 
     @Async
     @EventListener
+    public void onOrderRefundFactSynced(OrderRefundFactSyncedEvent event) {
+        consume(event, AnalyticsEventConsumer.resolveEventId(event), AnalyticsEventConsumer.eventTypeFor(event));
+    }
+
+    @Async
+    @EventListener
     public void onPerformanceCalculated(PerformanceCalculatedEvent event) {
+        consume(event, AnalyticsEventConsumer.resolveEventId(event), AnalyticsEventConsumer.eventTypeFor(event));
+    }
+
+    @Async
+    @EventListener
+    public void onPerformanceSummaryRefreshed(PerformanceSummaryRefreshedEvent event) {
         consume(event, AnalyticsEventConsumer.resolveEventId(event), AnalyticsEventConsumer.eventTypeFor(event));
     }
 

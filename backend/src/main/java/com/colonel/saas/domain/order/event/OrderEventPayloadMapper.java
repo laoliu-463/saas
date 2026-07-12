@@ -71,6 +71,24 @@ public class OrderEventPayloadMapper {
                 java.time.LocalDateTime.now());
     }
 
+    public OrderRefundFactSyncedEvent toOrderRefundFactSyncedEvent(
+            ColonelsettlementOrder order,
+            Integer previousStatus) {
+        if (order == null) {
+            return null;
+        }
+        return new OrderRefundFactSyncedEvent(
+                order.getOrderId(),
+                order.getId(),
+                resolveString(order.getExtraData(), List.of("refund_id", "refundId", "after_sale_id", "afterSaleId")),
+                resolveLong(order.getExtraData(), List.of("refund_amount", "refundAmount", "refund_fee", "refundFee")),
+                previousStatus,
+                order.getOrderStatus(),
+                order.getFlowPoint(),
+                order.getExtraData(),
+                LocalDateTime.now());
+    }
+
     private LocalDateTime resolveOrderCreateTime(ColonelsettlementOrder order) {
         if (order.getOrderCreateTime() != null) {
             return order.getOrderCreateTime();
@@ -96,6 +114,39 @@ public class OrderEventPayloadMapper {
             Object value = extraData.get(key);
             if (value != null && StringUtils.hasText(value.toString())) {
                 return value.toString().trim();
+            }
+        }
+        return null;
+    }
+
+    private String resolveString(Map<String, Object> extraData, List<String> keys) {
+        if (extraData == null || extraData.isEmpty() || keys == null) {
+            return null;
+        }
+        for (String key : keys) {
+            Object value = extraData.get(key);
+            if (value != null && StringUtils.hasText(value.toString())) {
+                return value.toString().trim();
+            }
+        }
+        return null;
+    }
+
+    private Long resolveLong(Map<String, Object> extraData, List<String> keys) {
+        if (extraData == null || extraData.isEmpty() || keys == null) {
+            return null;
+        }
+        for (String key : keys) {
+            Object value = extraData.get(key);
+            if (value instanceof Number number) {
+                return number.longValue();
+            }
+            if (value != null && StringUtils.hasText(value.toString())) {
+                try {
+                    return Long.parseLong(value.toString().trim());
+                } catch (NumberFormatException ignored) {
+                    return null;
+                }
             }
         }
         return null;

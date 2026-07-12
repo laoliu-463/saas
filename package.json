@@ -31,7 +31,10 @@
     "qa:baiying:talents": "node runtime/qa/baiying-talent-collect.cjs",
     "test:all": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-all-tests.ps1",
     "test:frontend": "npm --prefix frontend run test",
-    "test:frontend:coverage": "npm --prefix frontend run test:coverage"
+    "test:frontend:coverage": "npm --prefix frontend run test:coverage",
+    "api:cli:export-assets": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/export-api-cli-skill-assets.ps1",
+    "apifox:verify": "bash scripts/verify-openapi-apifox.sh",
+    "apifox:sync": "bash scripts/sync-apifox.sh"
   },
   "devDependencies": {
     "@playwright/test": "^1.56.1",

@@ -13,6 +13,10 @@ public class OrderListAssembler {
         }
         OrderQueryView view = new OrderQueryView();
         BeanPropertyCopy.copy(order, view);
+        // 双团长订单可能只有第二活动；API 的 activityId 仍需暴露可追溯的有效活动事实。
+        if (!hasText(view.getActivityId())) {
+            view.setActivityId(view.getSecondActivityId());
+        }
         view.setOrderAmount(zeroIfNull(view.getOrderAmount()));
         view.setPayAmount(view.getOrderAmount());
         view.setActualAmount(zeroIfNull(view.getActualAmount()));
@@ -28,5 +32,9 @@ public class OrderListAssembler {
 
     private static Long zeroIfNull(Long value) {
         return value == null ? 0L : value;
+    }
+
+    private static boolean hasText(String value) {
+        return value != null && !value.trim().isEmpty();
     }
 }

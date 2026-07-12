@@ -6,7 +6,9 @@ package com.colonel.saas.domain.analytics.event;
 public final class AnalyticsEventTypes {
 
     public static final String ORDER_SYNCED = "OrderSyncedEvent";
+    public static final String ORDER_REFUND_FACT_SYNCED = "OrderRefundFactSyncedEvent";
     public static final String PERFORMANCE_CALCULATED = "PerformanceCalculatedEvent";
+    public static final String PERFORMANCE_SUMMARY_REFRESHED = "PerformanceSummaryRefreshedEvent";
     /** 寄样提交：当前映射 {@link com.colonel.saas.domain.sample.event.SampleCreatedEvent} */
     public static final String SAMPLE_SUBMITTED = "SampleSubmittedEvent";
     public static final String SAMPLE_APPROVED = "SampleApprovedEvent";

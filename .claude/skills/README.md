@@ -12,4 +12,4 @@
 | real-pre验收 | 执行真实联调验收口径 |
 | 文档重构 | 重排、裁剪、归档、索引文档 |
 | 部署排障 | 排查 Docker Compose / profile / 端口 |
-
+| saas-api-cli-skill | 接入 Apifox/OpenAPI CLI、Codex MCP 和接口测试资产索引 |

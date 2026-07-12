@@ -8,8 +8,11 @@ import com.colonel.saas.event.OrderSyncedEvent;
 public interface OrderDomainEventPublisher {
     boolean isOutboxRoutingEnabled();
     void appendOrderSyncedInTransaction(String eventKey, OrderSyncedEvent event);
+    void appendOrderRefundFactSyncedInTransaction(String eventKey, OrderRefundFactSyncedEvent event);
     void publishOrderSynced(OrderSyncedEvent event);
     void publishOrderSyncedDirect(OrderSyncedEvent event);
+    void publishOrderRefundFactSynced(OrderRefundFactSyncedEvent event);
+    void publishOrderRefundFactSyncedDirect(OrderRefundFactSyncedEvent event);
     void publishOrderStatusChangedDirect(OrderStatusChangedEvent event);
     void republishSpringEvent(String eventType, String payloadJson);
 }

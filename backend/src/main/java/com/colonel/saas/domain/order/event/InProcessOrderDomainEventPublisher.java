@@ -64,6 +64,27 @@ public class InProcessOrderDomainEventPublisher implements OrderDomainEventPubli
     }
 
     @Override
+    public void appendOrderRefundFactSyncedInTransaction(String eventKey, OrderRefundFactSyncedEvent event) {
+        if (event == null || !StringUtils.hasText(event.orderId())) {
+            return;
+        }
+        try {
+            outboxEventAppender.appendIfAbsent(
+                    eventKey,
+                    OrderDomainEventTypes.ORDER_REFUND_FACT_SYNCED,
+                    OutboxEventAppender.AGGREGATE_ORDER,
+                    event.orderId(),
+                    EVENT_VERSION,
+                    event,
+                    null,
+                    null);
+        } catch (Exception ex) {
+            log.warn("Outbox append failed: eventType={}, orderId={}",
+                    OrderDomainEventTypes.ORDER_REFUND_FACT_SYNCED, event.orderId(), ex);
+        }
+    }
+
+    @Override
     public void publishOrderSynced(OrderSyncedEvent event) {
         if (event == null || !StringUtils.hasText(event.orderId())) {
             return;
@@ -77,7 +98,37 @@ public class InProcessOrderDomainEventPublisher implements OrderDomainEventPubli
     }
 
     @Override
+    public void publishOrderRefundFactSynced(OrderRefundFactSyncedEvent event) {
+        if (event == null || !StringUtils.hasText(event.orderId())) {
+            return;
+        }
+        if (isOutboxRoutingEnabled()) {
+            String eventKey = "OrderRefundFactSynced:" + event.orderId() + ":" + event.orderRowId();
+            appendOrderRefundFactSyncedInTransaction(eventKey, event);
+            return;
+        }
+        publishOrderRefundFactSyncedDirect(event);
+    }
+
+    @Override
     public void publishOrderSyncedDirect(OrderSyncedEvent event) {
+        if (event == null) {
+            return;
+        }
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            applicationEventPublisher.publishEvent(event);
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                applicationEventPublisher.publishEvent(event);
+            }
+        });
+    }
+
+    @Override
+    public void publishOrderRefundFactSyncedDirect(OrderRefundFactSyncedEvent event) {
         if (event == null) {
             return;
         }
@@ -119,12 +170,17 @@ public class InProcessOrderDomainEventPublisher implements OrderDomainEventPubli
 
     @Override
     public void republishSpringEvent(String eventType, String payloadJson) {
-        if (!OrderDomainEventTypes.ORDER_SYNCED.equals(eventType)) {
-            return;
-        }
         try {
-            OrderSyncedEvent event = objectMapper.readValue(payloadJson, OrderSyncedEvent.class);
-            applicationEventPublisher.publishEvent(event);
+            if (OrderDomainEventTypes.ORDER_SYNCED.equals(eventType)) {
+                OrderSyncedEvent event = objectMapper.readValue(payloadJson, OrderSyncedEvent.class);
+                applicationEventPublisher.publishEvent(event);
+                return;
+            }
+            if (OrderDomainEventTypes.ORDER_REFUND_FACT_SYNCED.equals(eventType)) {
+                OrderRefundFactSyncedEvent event = objectMapper.readValue(
+                        payloadJson, OrderRefundFactSyncedEvent.class);
+                applicationEventPublisher.publishEvent(event);
+            }
         } catch (Exception ex) {
             log.warn("Spring republish failed for eventType={}", eventType, ex);
         }

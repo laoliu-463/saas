@@ -1,6 +1,7 @@
 package com.colonel.saas.domain.analytics.application;
 
 import com.colonel.saas.domain.analytics.event.TalentClaimedEvent;
+import com.colonel.saas.domain.order.event.OrderRefundFactSyncedEvent;
 import com.colonel.saas.domain.product.event.ActivitySyncCompletedEvent;
 import com.colonel.saas.domain.product.event.ProductHiddenEvent;
 import com.colonel.saas.domain.product.event.ProductListedEvent;
@@ -10,6 +11,7 @@ import com.colonel.saas.domain.sample.event.SampleCreatedEvent;
 import com.colonel.saas.domain.sample.event.SampleShippedEvent;
 import com.colonel.saas.event.OrderSyncedEvent;
 import com.colonel.saas.event.PerformanceCalculatedEvent;
+import com.colonel.saas.event.PerformanceSummaryRefreshedEvent;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -42,6 +44,21 @@ public class AnalyticsAggregationService {
             UUID eventId, String eventType, PerformanceCalculatedEvent event) {
         performanceSummaryInvocations.incrementAndGet();
         log.debug("Analytics shadow: performance summary, eventId={}, orderId={}", eventId, event.orderId());
+        return AggregationUpdateResult.applied(eventId, eventType, AnalyticsHandlerType.PERFORMANCE_SUMMARY);
+    }
+
+    public AggregationUpdateResult applyOrderRefundFact(
+            UUID eventId, String eventType, OrderRefundFactSyncedEvent event) {
+        performanceSummaryInvocations.incrementAndGet();
+        log.debug("Analytics shadow: order refund fact, eventId={}, orderId={}", eventId, event.orderId());
+        return AggregationUpdateResult.applied(eventId, eventType, AnalyticsHandlerType.PERFORMANCE_SUMMARY);
+    }
+
+    public AggregationUpdateResult applyPerformanceSummaryRefresh(
+            UUID eventId, String eventType, PerformanceSummaryRefreshedEvent event) {
+        performanceSummaryInvocations.incrementAndGet();
+        log.debug("Analytics shadow: performance summary refresh, eventId={}, summaryId={}",
+                eventId, event.summaryId());
         return AggregationUpdateResult.applied(eventId, eventType, AnalyticsHandlerType.PERFORMANCE_SUMMARY);
     }
 

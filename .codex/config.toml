@@ -4,12 +4,18 @@ experimental_use_rmcp_client = true
 
 [mcp_servers."SAAS-business-offline"]
 command = "cmd"
-args = ["/c", "npx", "-y", "apifox-mcp-server@latest", "--oas=D:\\Projects\\SAAS\\out\\openapi-business.json"]
+args = ["/c", "npx", "-y", "apifox-mcp-server@latest", "--oas=D:\\Projects\\SAAS\\docs\\openapi\\openapi-business.json"]
 startup_timeout_sec = 30
 tool_timeout_sec = 120
 
 [mcp_servers."SAAS-sdk-debug-offline"]
 command = "cmd"
-args = ["/c", "npx", "-y", "apifox-mcp-server@latest", "--oas=D:\\Projects\\SAAS\\out\\openapi-sdk-debug.json"]
+args = ["/c", "npx", "-y", "apifox-mcp-server@latest", "--oas=D:\\Projects\\SAAS\\docs\\openapi\\openapi-sdk-debug.json"]
+startup_timeout_sec = 30
+tool_timeout_sec = 120
+
+[mcp_servers."SAAS-full-openapi-offline"]
+command = "cmd"
+args = ["/c", "npx", "-y", "apifox-mcp-server@latest", "--oas=D:\\Projects\\SAAS\\docs\\openapi\\openapi-full.json"]
 startup_timeout_sec = 30
 tool_timeout_sec = 120

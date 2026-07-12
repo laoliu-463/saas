@@ -46,8 +46,10 @@ public class OrderSampleHomeworkBridge {
         if (order == null) {
             return;
         }
-        sampleHomeworkFacade.completePendingHomeworkByOrder(order);
-        recordAttributionFollowUp(order);
+        int completed = sampleHomeworkFacade.completePendingHomeworkByOrder(order);
+        if (completed > 0) {
+            recordAttributionFollowUp(order);
+        }
     }
 
     ColonelsettlementOrder resolveOrder(OrderSyncedEvent event) {

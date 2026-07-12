@@ -17,6 +17,16 @@ Apifox / OpenAPI 同步不是一次性脚本，而是接口文档交付链路的
 
 ## 验证分层
 
+### 0. CLI / MCP / Skill Asset Guard
+
+- 运行 `scripts/export-api-cli-skill-assets.ps1` 从 `docs/openapi/saas-openapi.json` 生成三份离线源：
+  - `docs/openapi/openapi-full.json`
+  - `docs/openapi/openapi-business.json`
+  - `docs/openapi/openapi-sdk-debug.json`
+- `.codex/config.toml` 和 `docs/.apifox-mcp-config.json` 必须指向上述可生成文件。
+- `.claude/skills/saas-api-cli-skill/` 只保存 Skill 流程和索引，不复制接口 / 测试源文件正文，避免双写漂移。
+- `references/project-assets-manifest.md` 必须记录接口文档和测试资产路径清单。
+
 ### A. Local OpenAPI Guard
 
 - JSON 可解析，`openapi`、`paths`、`operations`、`components.schemas` 可统计。
@@ -78,6 +88,10 @@ Apifox / OpenAPI 同步不是一次性脚本，而是接口文档交付链路的
 - 禁止删除 JWT bearerAuth 或 OpenAPI servers。
 
 ## 命令
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\export-api-cli-skill-assets.ps1
+```
 
 ```bash
 bash scripts/verify-openapi-apifox.sh

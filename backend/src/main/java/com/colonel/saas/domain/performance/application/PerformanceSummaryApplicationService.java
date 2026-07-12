@@ -7,6 +7,7 @@ import com.colonel.saas.dto.performance.PerformanceSummaryQuery;
 import com.colonel.saas.dto.performance.PerformanceSummaryResponse;
 import com.colonel.saas.dto.performance.PerformanceTrackSummaryDTO;
 import com.colonel.saas.service.CommissionService;
+import com.colonel.saas.service.OrderCommissionPolicy;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -50,6 +51,13 @@ public class PerformanceSummaryApplicationService {
             FROM colonelsettlement_order co
             LEFT JOIN performance_records pr ON pr.order_id = co.order_id
             """;
+
+    private static final String VALID_PERFORMANCE_CONDITION =
+            " AND (co.order_status IS NULL OR co.order_status NOT IN ("
+                    + OrderCommissionPolicy.STATUS_CANCELLED + ", "
+                    + OrderCommissionPolicy.STATUS_REFUNDED + "))"
+                    + " AND COALESCE(pr.is_valid, true) = true"
+                    + " AND COALESCE(pr.is_reversed, false) = false";
 
     private final JdbcTemplate jdbcTemplate;
     private final CurrentUserPermissionChecker currentUserPermissionChecker;
@@ -159,6 +167,7 @@ public class PerformanceSummaryApplicationService {
             List<Object> args) {
         // 第一步：以订单事实未删除为基准条件
         StringBuilder where = new StringBuilder(" WHERE co.deleted = 0 ");
+        where.append(VALID_PERFORMANCE_CONDITION);
         // 第二步：追加数据权限范围条件（个人/部门/全部）
         PerformanceAccessScope.appendScopeCondition(where, args, context, "pr", currentUserPermissionChecker);
         // 第三步：追加业务筛选条件（渠道、招募官、活动等）

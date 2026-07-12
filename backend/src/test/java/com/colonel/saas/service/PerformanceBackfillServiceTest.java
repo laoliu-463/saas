@@ -84,4 +84,32 @@ class PerformanceBackfillServiceTest {
         verify(orderReadFacade).findOrdersForBackfill(null, null, true, 100);
         verify(performanceCalculationApplicationService, never()).upsertFromOrder(any());
     }
+
+    @Test
+    void backfill_shouldCountFailureAndContinueWhenSingleOrderFails() {
+        ColonelsettlementOrder failingOrder = new ColonelsettlementOrder();
+        failingOrder.setOrderId("order-fail");
+        ColonelsettlementOrder succeedingOrder = new ColonelsettlementOrder();
+        succeedingOrder.setOrderId("order-ok");
+        when(orderReadFacade.findByOrderIds(List.of("order-fail", "order-ok")))
+                .thenReturn(List.of(failingOrder, succeedingOrder));
+        when(performanceCalculationApplicationService.upsertFromOrder(failingOrder))
+                .thenThrow(new IllegalStateException("boom"));
+        when(performanceCalculationApplicationService.upsertFromOrder(succeedingOrder))
+                .thenReturn(new PerformanceRecord());
+
+        PerformanceBackfillService.BackfillResult result = service.backfill(
+                List.of("order-fail", "order-ok"),
+                null,
+                null,
+                null,
+                false);
+
+        assertThat(result.scanned()).isEqualTo(2);
+        assertThat(result.upserted()).isEqualTo(1);
+        assertThat(result.failed()).isEqualTo(1);
+        assertThat(result.errors()).containsExactly("order-fail: boom");
+        verify(performanceCalculationApplicationService).upsertFromOrder(failingOrder);
+        verify(performanceCalculationApplicationService).upsertFromOrder(succeedingOrder);
+    }
 }

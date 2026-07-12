@@ -10,8 +10,8 @@
 本轮梳理统一基于以下 4 类事实源：
 
 1. **MCP 已接通的离线 OAS**
-   - `SAAS-business-offline` -> `D:\Projects\SAAS\out\openapi-business.json`
-   - `SAAS-sdk-debug-offline` -> `D:\Projects\SAAS\out\openapi-sdk-debug.json`
+   - `SAAS-business-offline` -> `D:\Projects\SAAS\docs\openapi\openapi-business.json`
+   - `SAAS-sdk-debug-offline` -> `D:\Projects\SAAS\docs\openapi\openapi-sdk-debug.json`
 2. [08-V1需求接口测试矩阵](./08-V1需求接口测试矩阵.md)
 3. [V1领域对齐总表](./V1领域对齐总表.md)
 4. `docs/` 下当前主文档口径

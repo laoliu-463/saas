@@ -1219,6 +1219,12 @@ public class OrderSyncService {
             order.setSyncSource(OrderSyncPersistenceService.SYNC_SOURCE_SETTLEMENT);
         }
         order.setColonelBuyinId(asNullableLong(rawOrderInfoValue(rawPayload, "colonel_buyin_id", "colonelBuyinId")));
+        order.setActivityId(asString(rawOrderInfoValue(
+                rawPayload,
+                "colonel_activity_id",
+                "colonelActivityId",
+                "activity_id",
+                "activityId")));
         order.setSecondColonelBuyinId(asNullableLong(rawOrderInfoValue(rawPayload, "second_colonel_buyin_id", "secondColonelBuyinId")));
         order.setSecondActivityId(asString(rawOrderInfoValue(rawPayload, "second_colonel_activity_id", "secondColonelActivityId")));
         order.setPhaseId(asString(rawValue(rawPayload, "phase_id", "phaseId")));

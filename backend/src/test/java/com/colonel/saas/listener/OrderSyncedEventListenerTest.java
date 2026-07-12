@@ -38,7 +38,7 @@ class OrderSyncedEventListenerTest {
     }
 
     @Test
-    void onOrderSynced_shouldDelegateTalentProtectionResetToTalentApplicationService() {
+    void onOrderSynced_shouldRefreshDashboardSummaryAndEvictDerivedCachesAtEntrypoint() {
         OrderSyncedEvent event = event(1, "event_uid", Map.of("author_id", " dy_author "));
 
         listener.onOrderSynced(event);

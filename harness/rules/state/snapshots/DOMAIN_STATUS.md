@@ -143,7 +143,7 @@
 - 最新边界变化：活动列表负责人展示已通过用户域 `loadUserDisplayNamesByIds` 出口读取，只消费展示名称标量，不改变活动分配、活动商品同步或商品库展示规则。
 - 最新边界变化：`ProductService` 已通过用户域显示标签、归属引用、渠道编码出口完成负责人展示、分配、转链 `pick_extra` 和跨部门绑定校验，不改变商品状态机、转链规则或 `pick_source` 归因语义。
 - 最新报告路径：`harness/reports/2026-06-21/ddd-user/facade-next/evidence-20260621-145100-product-service-facade.md`。
-- 当前状态：商品库、活动商品同步、展示规则、转链、`pick_source_mapping` 和 quick-sample 商品上下文均已有本地代码与测试证据；`ProductService` 仍是兼容壳与 legacy 聚合点，部分查询、转链、展示规则和跨域读取已通过 application/facade/port/policy 收口；矩阵当前商品域 P-1/P-2/P-3/P-4/P-5/P-6/P-7/P-8/P-9/P-11/P-12/P-13/P-14/P-15/P-16/P-18/P-19/P-20/P-22 已具备 DONE 证据。
+- 当前状态：商品库、活动商品同步、展示规则、转链、`pick_source_mapping` 和 quick-sample 商品上下文均已有本地代码与测试证据；`ProductService` 仍是兼容壳与 legacy 聚合点，部分查询、转链、展示规则和跨域读取已通过 application/facade/port/policy 收口。本轮新增商品库 `ProductLibraryApplicationService → ProductLibraryQueryPort → LegacyProductLibraryQueryAdapter` 边界，保留行为兼容；矩阵当前商品域 P-1/P-2/P-3/P-4/P-5/P-6/P-7/P-8/P-9/P-11/P-12/P-13/P-14/P-15/P-16/P-18/P-19/P-20/P-22 已具备 DONE 证据。
 - 已完成能力：商品库、活动商品、转链、`pick_source_mapping`；FUNC-001 卡片 UI；P-FIX-001C 分页优化；P-FIX-002A 同步周期配置；P-FIX-002B 唯一索引冲突修复（两遍处理）。
 - P-FIX-002 修复结论：`applyNormalDisplayDedup` 改为三阶段持久化（先降级旧 DISPLAYING→HIDDEN，再处理其他非 DISPLAYING，最后升级新 winner→DISPLAYING），避免 `uk_pos_one_displaying_per_product` partial unique index 冲突。新增/补齐 4 个相关测试覆盖严格调用顺序、切换顺序、幂等性和多候选场景。
 - P-FIX-002 报告路径：`harness/reports/p-fix-002-product-sync-display-5min-20260603-121257.md`。
@@ -159,9 +159,9 @@
 - FUNC-001 报告路径：`harness/reports/func-001-product-card-hover-ui-20260603-111451.md`。
 - GIT-BATCH-2 报告路径：`harness/reports/git-batch-2-frontend-product-ui-20260603-140800.md`。
 - PRODUCT-LIBRARY-FULL-BACKFILL-FIX-001 报告路径：`harness/reports/evidence-20260615-114620.md`；`harness/reports/product-library-full-backfill-evidence-20260615.md`；`harness/reports/product-library-backfill-observability-fix-final-20260616-0832.md`。
-- 当前风险：P-10 商品库是否按 `self/group/all` 数据范围裁剪缺少业务口径，不能由 Agent 擅自新增；P-17 real-pre 上游闭环和历史数据 repair 仍受授权 / 真实样本限制；P-21 前端商品库 E2E 缺当前截图/API 证据；历史 P-FIX 报告仍可追溯但不替代当前矩阵逐卡 DONE 证据。
-- 待优化能力：P-10 商品库数据范围口径确认后再补测试；P-17 real-pre 只读 / 受控 dry-run 证据需在授权和样本可用后执行；P-21 前端商品库 E2E 需补页面、API 和截图证据。
-- DDD 优化下一步：优先 P-10 等待产品确认数据范围语义；若授权和样本具备，执行 P-17 real-pre 只读 / 受控 dry-run 证据；前端环境可用时补 P-21 商品库 E2E。
+- 当前风险：P-10 商品库是否按 `self/group/all` 数据范围裁剪缺少业务口径，不能由 Agent 擅自新增；复杂筛选/游标编排仍在 Legacy 适配器；P-17 real-pre 上游闭环和历史数据 repair 仍受授权 / 真实样本限制；P-21 前端商品库 E2E 缺当前截图/API 证据。
+- 待优化能力：P-10 先确认数据范围口径，再按行为等价测试替换 Legacy 查询适配器；P-17 real-pre 只读 / 受控 dry-run 证据需在授权和样本可用后执行；P-21 前端商品库 E2E 需补页面、API 和截图证据。
+- DDD 优化下一步：继续完成 P-10 查询编排迁移；若授权和样本具备，执行 P-17 real-pre 只读 / 受控 dry-run 证据；前端环境可用时补 P-21 商品库 E2E。
 - 标记：P0。
 ## 达人域
 最新小切片：T-9/T-10/T-15 DONE；`DddTalentDomainInventoryEvidenceTest` 新增地址/寄样联动和标签/跟进审计 evidence guard，锚定 `TalentController` shipping-address / tags / preset-tags，`TalentProfileApplicationService` claim 层地址、`tagUpdatedBy`，`TalentFollowRecord` operator 审计，`ProductQuickSampleService -> QuickSampleApplyCommand -> SampleApplicationPortImpl -> TalentDomainFacade.writeBackClaimAddress` 地址消费与回写链路；目标证据集 30 tests PASS，`*Talent*Test,*Sample*Test` 553 tests PASS。上一小切片：T-8/T-12/T-13 DONE；`DddTalentPermissionOverreachNegativeEvidenceTest` 锚定列表/详情数据范围与 gender 拦截。达人域逐卡 evidence index：T-1/T-2/T-3/T-4 盘点、主链路、认领保护期和关系消费；T-5/T-6/T-7 和提成/冲正边界；T-8/T-9/T-10 数据范围、地址、标签跟进；T-11 BLOCKED；T-12/T-13 和单测汇总；T-14 PARTIAL；T-15 地址寄样联动；T-16/T-17 DONE；T-18 真实 admin/group/self 账号 API、浏览器 E2E、第三方达人响应 T-11/T-14/G-4。
@@ -177,7 +177,7 @@
 - 最新边界变化：`SampleApplicationService.getSampleBoard` 新增默认关闭的用户域 `DataScopePolicy` 旁路；默认关闭继续走 Legacy `findPageWithScope` 与 mapper `@DataScope` 切面，开启后仅在 plain biz staff + PERSONAL 由用户域 policy 判定后切到寄样域审核人视角 `findPageForAuditor`。本轮未改寄样状态机、动作权限、Mapper SQL、VO 组装、接口契约、默认开关或真实数据。报告：`harness/archive/by-date/report-packages/reports-20260622-ddd-datascope-late/2026-06-22-sample-datascope/evidence-20260622-181901.md`；retro：`harness/archive/by-date/report-packages/reports-20260622-ddd-datascope-late/2026-06-22-sample-datascope/retro-20260622-181923.md`。
 - 最新边界变化：`SampleApplicationService.getSampleById` 及其复用的 `requireSample` 详情访问数据范围判断新增默认关闭的用户域 `DataScopePolicy` 旁路；默认关闭继续走 Legacy PERSONAL 发起人 / DEPT 归属部门判断，开启后只把 PERSONAL/DEPT/ALL 数据范围解释交给用户域，寄样域仍保留寄样单负责人、归属部门、全局访问角色、招商专员商品分配豁免和运营可见状态业务语义。本轮未改寄样状态机、动作权限、Mapper SQL、VO 组装、接口契约或真实数据。报告：`harness/archive/by-date/report-packages/reports-20260622-ddd-datascope-late/2026-06-22-sample-datascope/evidence-20260622-175931.md`；retro：`harness/archive/by-date/report-packages/reports-20260622-ddd-datascope-late/2026-06-22-sample-datascope/retro-20260622-175954.md`。
 - 上一边界变化：`SampleApplicationService.getSamplePage` 寄样列表读路径新增默认关闭的用户域 `DataScopePolicy` 旁路；默认关闭继续走 Legacy auditor 查询判断，开启后只把 PERSONAL/DEPT/ALL 数据范围解释交给用户域，寄样域仍保留“plain biz staff 才走审核人视角”的业务语义。本轮未改寄样状态机、列表筛选参数、Mapper SQL、VO 组装、接口契约或真实数据。报告：`harness/archive/by-date/report-packages/reports-20260622-ddd-datascope-late/2026-06-22-sample-datascope/evidence-20260622-173855.md`；retro：`harness/archive/by-date/report-packages/reports-20260622-ddd-datascope-late/2026-06-22-sample-datascope/retro-20260622-173923.md`。
-- 最新小切片：S-8 DONE；新增 `DddSampleLogisticsApiBoundaryTest`，固化寄样核心 Controller/Application/Lifecycle/Policy 不直接依赖外部物流 Gateway/API/Command，外部查询与订阅调用限定在 `SampleLogisticsSyncService` / `SampleLogisticsSubscriptionService`，导入服务只做物流单号导入、模板生成和样本行写入。验证：S-8 目标证据集 110 tests PASS。上一小切片：S-9/S-10/S-11 DONE，列表/详情数据范围负例、审核/发货权限全路径、订单已同步事件消费链路 117 tests PASS。真实订单样本、真实物流 API、真实 scheduler、跨进程投递、真实账号 API 和页面 E2E 仍归 S-12/S-14/S-19/G-5。
+- 最新小切片：S-8 DONE；新增 `SampleQueryApplicationService → SampleDetailQueryPort → LegacySampleDetailQueryAdapter` 详情读边界，列表、看板、导出和命令路径保持不变；`DddSample007SampleRoutingTest`、`SampleControllerTest` 通过。新增 `DddSampleLogisticsApiBoundaryTest` 固化寄样核心 Controller/Application/Lifecycle/Policy 不直接依赖外部物流 Gateway/API/Command，外部查询与订阅调用限定在 `SampleLogisticsSyncService` / `SampleLogisticsSubscriptionService`，导入服务只做物流单号导入、模板生成和样本行写入。真实订单样本、真实物流 API、真实 scheduler、跨进程投递、真实账号 API 和页面 E2E 仍归 S-12/S-14/S-19/G-5。
 - 已完成能力：寄样申请、审批、发货、状态日志、订单事件消费；**地址默认保存**（寄样成功后回写 `talent_claim`，下次选达人自动带入，修改后更新，历史快照不变，多渠道隔离）。
 - TALENT-ADDRESS-SAMPLE-DEFAULT 报告路径：`harness/reports/talent-address-sample-default-20260603-224000.md`。
 - DDD-USER-SAMPLE-APPLICATION-FACADE 报告路径：`harness/reports/2026-06-21/ddd-user/facade-next/evidence-20260621-142200-sample-application-facade.md`。
@@ -186,12 +186,12 @@
 - DDD-SAMPLE-ACTION-PERMISSION-POLICY 报告路径：`harness/reports/2026-06-21/ddd-user/permission-next/evidence-20260621-160300-sample-action-permission-policy.md`。
 - TALENT-ADDRESS-SAMPLE-DEFAULT 修改文件：`ProductQuickSampleService.java`、`SampleApplicationService.java`（后端回写）；`QuickSampleModal.vue`、`SampleCreateModal.vue`（前端加载+提交）；测试 4 文件 8 用例。
 - 待优化能力：真实样本命中、页面 E2E、运行态 scheduler / 跨进程投递和账号级权限验证补齐。
-- DDD 优化下一步：寄样域本地边界守卫已覆盖订单同步、业绩归属、提成/冲正禁止项；后续保留真实样本命中、页面 E2E、运行态 scheduler / 跨进程投递和账号级权限验证补齐。
+- DDD 优化下一步：继续把详情 Legacy 适配器替换为寄样域读模型实现；同时保留订单同步、业绩归属、提成/冲正边界，补真实样本命中、页面 E2E、运行态 scheduler / 跨进程投递和账号级权限验证。
 - 标记：P0。
 ## Outbox 事件
-- 当前状态：E-1/E-2/E-3/E-4/E-5/E-6/E-8/E-9/E-10/E-11/E-12/E-13/E-14/E-15 已有本地证据；E-9 另有运行态失败重试至 DEAD 探针。E-7 因转链事件未透传调用方 `idempotencyKey` 暂降 PARTIAL；真实上游与跨进程证据仍以矩阵主源为准。
-- 报告路径：`harness/reports/latest-evidence-20260709.md`、`harness/reports/git-intake-20260710-125023.md`；当前风险：不证明真实上游样本、跨进程幂等或完整 E2E；Y-12/E-5 的汇总刷新事件生产者与领域合同存在待确认边界，不由 Agent 自行改写。
-- DDD 优化下一步：先修复 E-7 幂等键透传并补行为测试；Y-12/E-5 回到领域合同/ADR 确认生产边界；其后补真实样本、跨进程幂等、replay 负例和 E2E；标记：P1。
+- 当前状态：E-1/E-2/E-3/E-4/E-5/E-6/E-7/E-8/E-9/E-10/E-11/E-12/E-13/E-14/E-15 已有本地证据；E-7 已完成带幂等键入口到商品领域事件和 outbox payload 的透传，旧无幂等键入口保持兼容；E-9 另有运行态失败重试至 DEAD 探针。真实上游与跨进程证据仍以矩阵主源为准。
+- 报告路径：`harness/reports/evidence-20260710-144721.md`、`harness/reports/retro-20260710-144721.md`、`harness/reports/latest-evidence-20260710.md`、`harness/archive/by-date/20260710/reports-limit-cleanup/222300/evidence-20260710-222112.zip`、`harness/reports/retro-20260710-222112.md`；当前风险：real-pre preflight 因 `hasAccessToken=false` 为 BLOCKED_AUTH，不证明真实上游样本、跨进程幂等或完整 E2E；Y-12/E-5 的汇总刷新事件生产者与领域合同存在待确认边界，不由 Agent 自行改写。
+- DDD 优化下一步：补真实样本、跨进程幂等、replay 负例和 E2E；随后进入 Outbox 与前端领域化收口；标记：P1。
 ## Harness
 - 当前状态：GIT-HARNESS-001 工作区治理完成（2026-06-03）。
 - 已完成能力：Completion Gate (G0-G4)、Session Exit Gate、Quality Ledger、Git Intake / Exit Gate、Dirty Classification (10 种分类)、Allowed Change Set、Staged Scope Gate、Commit / Push / Deploy Commit Gate、批次提交流程 (GIT-BATCH-N)、Unknown Dirty Policy、Rollback Policy。

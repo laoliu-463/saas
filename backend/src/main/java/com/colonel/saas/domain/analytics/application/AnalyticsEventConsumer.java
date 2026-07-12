@@ -4,6 +4,7 @@ import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.domain.analytics.event.AnalyticsEventTypes;
 import com.colonel.saas.domain.analytics.event.TalentClaimedEvent;
 import com.colonel.saas.domain.analytics.infrastructure.ProcessedEventStore;
+import com.colonel.saas.domain.order.event.OrderRefundFactSyncedEvent;
 import com.colonel.saas.domain.product.event.ActivitySyncCompletedEvent;
 import com.colonel.saas.domain.product.event.ProductHiddenEvent;
 import com.colonel.saas.domain.product.event.ProductListedEvent;
@@ -13,6 +14,7 @@ import com.colonel.saas.domain.sample.event.SampleCreatedEvent;
 import com.colonel.saas.domain.sample.event.SampleShippedEvent;
 import com.colonel.saas.event.OrderSyncedEvent;
 import com.colonel.saas.event.PerformanceCalculatedEvent;
+import com.colonel.saas.event.PerformanceSummaryRefreshedEvent;
 import org.springframework.stereotype.Service;
 
 import java.nio.charset.StandardCharsets;
@@ -78,9 +80,23 @@ public class AnalyticsEventConsumer {
                 ("OrderSynced:" + event.orderId()).getBytes(StandardCharsets.UTF_8));
     }
 
+    public static UUID resolveEventId(OrderRefundFactSyncedEvent event) {
+        if (event.orderRowId() != null) {
+            return UUID.nameUUIDFromBytes(
+                    ("OrderRefundFactSynced:" + event.orderId() + ":" + event.orderRowId())
+                            .getBytes(StandardCharsets.UTF_8));
+        }
+        return UUID.nameUUIDFromBytes(
+                ("OrderRefundFactSynced:" + event.orderId()).getBytes(StandardCharsets.UTF_8));
+    }
+
     public static UUID resolveEventId(PerformanceCalculatedEvent event) {
         return UUID.nameUUIDFromBytes(
                 ("PerformanceCalculated:" + event.orderId()).getBytes(StandardCharsets.UTF_8));
+    }
+
+    public static UUID resolveEventId(PerformanceSummaryRefreshedEvent event) {
+        return event.eventId();
     }
 
     public static UUID resolveEventId(SampleCreatedEvent event) {
@@ -129,8 +145,16 @@ public class AnalyticsEventConsumer {
         return AnalyticsEventTypes.ORDER_SYNCED;
     }
 
+    public static String eventTypeFor(OrderRefundFactSyncedEvent ignored) {
+        return AnalyticsEventTypes.ORDER_REFUND_FACT_SYNCED;
+    }
+
     public static String eventTypeFor(PerformanceCalculatedEvent ignored) {
         return AnalyticsEventTypes.PERFORMANCE_CALCULATED;
+    }
+
+    public static String eventTypeFor(PerformanceSummaryRefreshedEvent ignored) {
+        return AnalyticsEventTypes.PERFORMANCE_SUMMARY_REFRESHED;
     }
 
     public static String eventTypeFor(SampleCreatedEvent ignored) {

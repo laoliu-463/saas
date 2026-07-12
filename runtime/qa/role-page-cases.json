@@ -6,38 +6,56 @@
       "mustAccess": [
         {
           "path": "/dashboard",
-          "allowedFinalPaths": ["/dashboard"]
+          "allowedFinalPaths": [
+            "/dashboard"
+          ]
         },
         {
           "path": "/product/library",
-          "allowedFinalPaths": ["/product/library"]
+          "allowedFinalPaths": [
+            "/product/library"
+          ]
         },
         {
           "path": "/product/activity",
-          "allowedFinalPaths": ["/product/manage"]
+          "allowedFinalPaths": [
+            "/product/manage"
+          ]
         },
         {
           "path": "/orders",
-          "allowedFinalPaths": ["/orders"]
+          "allowedFinalPaths": [
+            "/orders"
+          ]
         },
         {
           "path": "/system",
-          "allowedFinalPaths": ["/system/users"]
+          "allowedFinalPaths": [
+            "/system/users"
+          ]
         },
         {
           "path": "/system/users",
-          "allowedFinalPaths": ["/system/users"]
+          "allowedFinalPaths": [
+            "/system/users"
+          ]
         }
       ],
       "mustReject": [],
       "mustSeeText": [
         {
-          "scope": "@sidebar",
-          "texts": ["归因概览", "订单工作台"]
+          "path": "/dashboard",
+          "texts": [
+            "归因概览",
+            "订单工作台"
+          ]
         },
         {
           "path": "/system",
-          "texts": ["系统管理", "用户管理"]
+          "texts": [
+            "系统管理",
+            "用户管理"
+          ]
         }
       ],
       "mustNotSeeText": [],
@@ -49,51 +67,214 @@
       "mustAccess": [
         {
           "path": "/dashboard",
-          "allowedFinalPaths": ["/dashboard"]
+          "allowedFinalPaths": [
+            "/dashboard"
+          ]
         },
         {
           "path": "/product/library",
-          "allowedFinalPaths": ["/product/library"]
+          "allowedFinalPaths": [
+            "/product/library"
+          ]
         },
         {
           "path": "/product/activity",
-          "allowedFinalPaths": ["/product/manage"]
+          "allowedFinalPaths": [
+            "/product/manage"
+          ]
         },
         {
           "path": "/orders",
-          "allowedFinalPaths": ["/orders"]
+          "allowedFinalPaths": [
+            "/orders"
+          ]
         }
       ],
       "mustReject": [
         {
           "path": "/system",
           "mustNotStayUnderPrefix": "/system",
-          "allowedFinalPaths": ["/dashboard", "/orders"]
+          "allowedFinalPaths": [
+            "/dashboard",
+            "/orders",
+            "/data"
+          ]
         },
         {
           "path": "/system/users",
           "mustNotStayUnderPrefix": "/system",
-          "allowedFinalPaths": ["/dashboard", "/orders"]
+          "allowedFinalPaths": [
+            "/dashboard",
+            "/orders",
+            "/data"
+          ]
         }
       ],
       "mustSeeText": [
         {
-          "scope": "@sidebar",
-          "texts": ["归因概览", "订单工作台"]
+          "path": "/dashboard",
+          "texts": [
+            "归因概览",
+            "订单工作台"
+          ]
         },
         {
           "path": "/product/activity",
-          "texts": ["活动列表", "商品列表"]
+          "texts": [
+            "活动列表",
+            "商品列表"
+          ]
         }
       ],
       "mustNotSeeText": [
         {
           "scope": "@sidebar",
-          "texts": ["系统管理", "达人 CRM"]
+          "texts": [
+            "系统管理",
+            "达人 CRM"
+          ]
         },
         {
           "path": "/system",
-          "texts": ["系统管理", "用户管理"]
+          "texts": [
+            "系统管理",
+            "用户管理"
+          ]
+        }
+      ],
+      "consoleErrorAllowSubstrings": []
+    },
+    "biz_staff": {
+      "username": "biz_staff",
+      "password": "admin123",
+      "mustAccess": [
+        {
+          "path": "/data",
+          "allowedFinalPaths": [
+            "/data"
+          ]
+        },
+        {
+          "path": "/product/library",
+          "allowedFinalPaths": [
+            "/product/library"
+          ]
+        },
+        {
+          "path": "/product/manage/products",
+          "allowedFinalPaths": [
+            "/product/manage/products"
+          ]
+        },
+        {
+          "path": "/sample",
+          "allowedFinalPaths": [
+            "/sample"
+          ]
+        }
+      ],
+      "mustReject": [
+        {
+          "path": "/system",
+          "mustNotStayUnderPrefix": "/system",
+          "allowedFinalPaths": [
+            "/product/manage/products"
+          ]
+        },
+        {
+          "path": "/talent",
+          "mustNotStayUnderPrefix": "/talent",
+          "allowedFinalPaths": [
+            "/product/manage/products"
+          ]
+        }
+      ],
+      "mustSeeText": [
+        {
+          "path": "/data",
+          "texts": [
+            "我的业绩"
+          ]
+        }
+      ],
+      "mustNotSeeText": [
+        {
+          "scope": "@sidebar",
+          "texts": [
+            "系统管理",
+            "达人 CRM"
+          ]
+        }
+      ],
+      "consoleErrorAllowSubstrings": []
+    },
+    "channel_staff": {
+      "username": "channel_staff",
+      "password": "admin123",
+      "mustAccess": [
+        {
+          "path": "/data",
+          "allowedFinalPaths": [
+            "/data"
+          ]
+        },
+        {
+          "path": "/product/library",
+          "allowedFinalPaths": [
+            "/product/library"
+          ]
+        },
+        {
+          "path": "/talent",
+          "allowedFinalPaths": [
+            "/talent"
+          ]
+        },
+        {
+          "path": "/sample",
+          "allowedFinalPaths": [
+            "/sample"
+          ]
+        }
+      ],
+      "mustReject": [
+        {
+          "path": "/system",
+          "mustNotStayUnderPrefix": "/system",
+          "allowedFinalPaths": [
+            "/product"
+          ]
+        },
+        {
+          "path": "/product/manage/products",
+          "mustNotStayUnderPrefix": "/product/manage",
+          "allowedFinalPaths": [
+            "/product"
+          ]
+        }
+      ],
+      "mustSeeText": [
+        {
+          "path": "/data",
+          "texts": [
+            "我的业绩"
+          ]
+        },
+        {
+          "path": "/talent",
+          "texts": [
+            "团队公海",
+            "我的达人"
+          ]
+        }
+      ],
+      "mustNotSeeText": [
+        {
+          "scope": "@sidebar",
+          "texts": [
+            "系统管理",
+            "商品管理"
+          ]
         }
       ],
       "consoleErrorAllowSubstrings": []

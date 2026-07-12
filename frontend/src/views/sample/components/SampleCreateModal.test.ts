@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
+import type { AxiosResponse } from 'axios'
 import { createSample, getSampleProductCandidates, searchSampleTalents } from '../../../api/sample'
 import { getTalentShippingAddress } from '../../../api/talent'
 import SampleCreateModal from './SampleCreateModal.vue'
@@ -11,10 +12,12 @@ const messageApi = vi.hoisted(() => ({
   info: vi.fn()
 }))
 
+const mockAxiosResponse = vi.hoisted(() => <T,>(data: T) => ({ data } as AxiosResponse<T>))
+
 vi.mock('../../../api/sample', () => ({
-  createSample: vi.fn().mockResolvedValue({ data: {} }),
-  getSampleProductCandidates: vi.fn().mockResolvedValue({ data: { records: [], total: 0 } }),
-  searchSampleTalents: vi.fn().mockResolvedValue({ data: { records: [], total: 0 } })
+  createSample: vi.fn().mockResolvedValue(mockAxiosResponse({})),
+  getSampleProductCandidates: vi.fn().mockResolvedValue(mockAxiosResponse({ records: [], total: 0 })),
+  searchSampleTalents: vi.fn().mockResolvedValue(mockAxiosResponse({ records: [], total: 0 }))
 }))
 
 vi.mock('../../../api/talent', () => ({
@@ -44,7 +47,7 @@ vi.mock('naive-ui', async (importOriginal) => {
 describe('SampleCreateModal', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(createSample).mockResolvedValue({ data: {} })
+    vi.mocked(createSample).mockResolvedValue(mockAxiosResponse({}))
   })
 
   it('should load default address when talent is selected', async () => {
@@ -53,14 +56,12 @@ describe('SampleCreateModal', () => {
       recipientPhone: '13900139000',
       recipientAddress: '上海市浦东新区某地址'
     })
-    vi.mocked(searchSampleTalents).mockResolvedValueOnce({
-      data: {
+    vi.mocked(searchSampleTalents).mockResolvedValueOnce(mockAxiosResponse({
         records: [
           { talentId: 'talent-uuid-1', nickname: '达人B', fansCount: 50000, creditScore: 4.5, region: '上海', mainCategory: '美妆' }
         ],
         total: 1
-      }
-    })
+      }))
 
     const wrapper = mount(SampleCreateModal, {
       props: { show: true },
@@ -93,9 +94,9 @@ describe('SampleCreateModal', () => {
   })
 
   it('should pass address fields to createSample API', async () => {
-    vi.mocked(getSampleProductCandidates).mockResolvedValueOnce({
-      data: { records: [{ id: 'prod-1', name: '测试商品' }], total: 1 }
-    })
+    vi.mocked(getSampleProductCandidates).mockResolvedValueOnce(
+      mockAxiosResponse({ records: [{ id: 'prod-1', name: '测试商品' }], total: 1 })
+    )
 
     const wrapper = mount(SampleCreateModal, {
       props: { show: true },

@@ -70,4 +70,44 @@ class OrderEventPayloadMapperTest {
         assertThat(event.effectiveServiceFeeExpense()).isEqualTo(4L);
         assertThat(event.occurredAt()).isNotNull();
     }
+
+    @Test
+    void toOrderRefundFactSyncedEvent_shouldMapKnownRefundFactsFromExtraDataWithoutInferringAmount() {
+        UUID orderRowId = UUID.randomUUID();
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setOrderId("ORD-REFUND-1");
+        order.setId(orderRowId);
+        order.setOrderStatus(5);
+        order.setFlowPoint("REFUND");
+        order.setExtraData(Map.of(
+                "refund_id", "REF-1",
+                "refund_amount", 12800L));
+
+        OrderRefundFactSyncedEvent event = mapper.toOrderRefundFactSyncedEvent(order, 3);
+
+        assertThat(event.orderId()).isEqualTo("ORD-REFUND-1");
+        assertThat(event.orderRowId()).isEqualTo(orderRowId);
+        assertThat(event.refundId()).isEqualTo("REF-1");
+        assertThat(event.refundAmount()).isEqualTo(12800L);
+        assertThat(event.previousStatus()).isEqualTo(3);
+        assertThat(event.status()).isEqualTo(5);
+        assertThat(event.flowPoint()).isEqualTo("REFUND");
+        assertThat(event.extraData()).containsEntry("refund_id", "REF-1");
+        assertThat(event.occurredAt()).isNotNull();
+    }
+
+    @Test
+    void toOrderRefundFactSyncedEvent_shouldKeepUnknownRefundAmountNull() {
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setOrderId("ORD-REFUND-UNKNOWN");
+        order.setId(UUID.randomUUID());
+        order.setOrderStatus(4);
+        order.setOrderAmount(999L);
+        order.setExtraData(Map.of("refund_amount", "not-a-number"));
+
+        OrderRefundFactSyncedEvent event = mapper.toOrderRefundFactSyncedEvent(order, 2);
+
+        assertThat(event.refundAmount()).isNull();
+        assertThat(event.status()).isEqualTo(4);
+    }
 }

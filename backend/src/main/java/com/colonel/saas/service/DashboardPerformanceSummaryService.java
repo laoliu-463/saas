@@ -2,11 +2,16 @@ package com.colonel.saas.service;
 
 import com.colonel.saas.domain.performance.policy.PerformanceMoneyPolicy;
 import com.colonel.saas.event.OrderSyncedEvent;
+import com.colonel.saas.event.PerformanceSummaryRefreshedEvent;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.UUID;
 
 /**
  * 仪表盘业绩日报汇总服务。
@@ -32,9 +37,11 @@ public class DashboardPerformanceSummaryService {
 
     /** JDBC 模板，用于执行日报汇总的 UPSERT SQL */
     private final JdbcTemplate jdbcTemplate;
+    private final ApplicationEventPublisher eventPublisher;
 
-    public DashboardPerformanceSummaryService(JdbcTemplate jdbcTemplate) {
+    public DashboardPerformanceSummaryService(JdbcTemplate jdbcTemplate, ApplicationEventPublisher eventPublisher) {
         this.jdbcTemplate = jdbcTemplate;
+        this.eventPublisher = eventPublisher;
     }
 
     /**
@@ -57,6 +64,7 @@ public class DashboardPerformanceSummaryService {
                 || !OrderCommissionPolicy.countsTowardPerformance(event.orderStatus())) {
             return;
         }
+        long orderAmountDelta = Math.max(event.orderAmount(), 0L);
         long serviceFeeNet = PerformanceMoneyPolicy.serviceFeeNetCent(
                 event.effectiveServiceFee(),
                 0L,
@@ -75,7 +83,30 @@ public class DashboardPerformanceSummaryService {
                     updated_at = CURRENT_TIMESTAMP
                 """,
                 statDate,
-                Math.max(event.orderAmount(), 0L),
+                orderAmountDelta,
                 serviceFeeNet);
+        eventPublisher.publishEvent(new PerformanceSummaryRefreshedEvent(
+                stableEventId(statDate, event.orderId()),
+                event.orderId(),
+                statDate,
+                "DAY",
+                null,
+                stableSummaryId(statDate),
+                1L,
+                orderAmountDelta,
+                serviceFeeNet,
+                LocalDateTime.now()));
+    }
+
+    private static UUID stableEventId(LocalDate statDate, String orderId) {
+        return UUID.nameUUIDFromBytes(
+                ("PerformanceSummaryRefreshed:" + statDate + ":" + orderId)
+                        .getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static UUID stableSummaryId(LocalDate statDate) {
+        return UUID.nameUUIDFromBytes(
+                ("DashboardPerformanceDaily:" + statDate)
+                        .getBytes(StandardCharsets.UTF_8));
     }
 }

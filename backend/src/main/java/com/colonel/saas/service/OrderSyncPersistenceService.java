@@ -5,6 +5,7 @@ import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.domain.order.application.OrderAmountMappingRouter;
 import com.colonel.saas.domain.order.event.OrderDomainEventPublisher;
 import com.colonel.saas.domain.order.event.OrderEventPayloadMapper;
+import com.colonel.saas.domain.order.event.OrderRefundFactSyncedEvent;
 import com.colonel.saas.domain.order.event.OrderStatusChangedEvent;
 import com.colonel.saas.domain.sample.facade.SampleHomeworkFacade;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
@@ -242,6 +243,11 @@ public class OrderSyncPersistenceService {
             OrderStatusChangedEvent statusEvent = orderEventPayloadMapper.toOrderStatusChangedEvent(
                     order, previousStatus, newlyInserted);
             orderDomainEventPublisher.publishOrderStatusChangedDirect(statusEvent);
+            if (OrderCommissionPolicy.isInvalidatedStatus(order.getOrderStatus())) {
+                OrderRefundFactSyncedEvent refundEvent = orderEventPayloadMapper.toOrderRefundFactSyncedEvent(
+                        order, previousStatus);
+                orderDomainEventPublisher.publishOrderRefundFactSynced(refundEvent);
+            }
         }
     }
 

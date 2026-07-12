@@ -5,6 +5,7 @@ import com.colonel.saas.constant.OrderDomainEventTypes;
 import com.colonel.saas.domain.event.OutboxEventAppender;
 import com.colonel.saas.domain.order.event.InProcessOrderDomainEventPublisher;
 import com.colonel.saas.domain.order.event.OrderDomainEventPublisher;
+import com.colonel.saas.domain.order.event.OrderRefundFactSyncedEvent;
 import com.colonel.saas.event.OrderSyncedEvent;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
@@ -89,6 +90,31 @@ class DddOutbox001OrderRoutingTest {
         assertThat(((OrderSyncedEvent) captor.getValue()).orderId()).isEqualTo("ORD-1");
     }
 
+    @Test
+    @DisplayName("退款事实事件写入 Outbox 且可反序列化回 Spring 事件")
+    void orderRefundFactSynced_shouldWriteOutboxAndRepublishSpringEvent() throws Exception {
+        OrderRefundFactSyncedEvent event = sampleRefundEvent();
+
+        publisher.appendOrderRefundFactSyncedInTransaction("OrderRefundFactSynced:ORD-1:" + event.orderRowId(), event);
+        verify(outboxEventAppender).appendIfAbsent(
+                eq("OrderRefundFactSynced:ORD-1:" + event.orderRowId()),
+                eq(OrderDomainEventTypes.ORDER_REFUND_FACT_SYNCED),
+                eq(OutboxEventAppender.AGGREGATE_ORDER),
+                eq("ORD-1"),
+                eq(1),
+                eq(event),
+                eq(null),
+                eq(null));
+
+        String payload = objectMapper.writeValueAsString(event);
+        publisher.republishSpringEvent(OrderDomainEventTypes.ORDER_REFUND_FACT_SYNCED, payload);
+
+        ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
+        verify(applicationEventPublisher).publishEvent(captor.capture());
+        assertThat(captor.getValue()).isInstanceOf(OrderRefundFactSyncedEvent.class);
+        assertThat(((OrderRefundFactSyncedEvent) captor.getValue()).refundId()).isEqualTo("REF-1");
+    }
+
     private static OrderSyncedEvent sampleEvent() {
         return new OrderSyncedEvent(
                 "ORD-1",
@@ -109,5 +135,18 @@ class DddOutbox001OrderRoutingTest {
                 LocalDateTime.now(),
                 "talent-1",
                 null);
+    }
+
+    private static OrderRefundFactSyncedEvent sampleRefundEvent() {
+        return new OrderRefundFactSyncedEvent(
+                "ORD-1",
+                UUID.randomUUID(),
+                "REF-1",
+                100L,
+                3,
+                5,
+                "REFUND",
+                null,
+                LocalDateTime.now());
     }
 }

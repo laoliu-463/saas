@@ -6,6 +6,7 @@ import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.dto.performance.PerformanceBatchRequest;
 import com.colonel.saas.dto.performance.PerformanceBatchResponse;
 import com.colonel.saas.dto.performance.PerformanceDetailDTO;
+import com.colonel.saas.dto.performance.PerformanceListQuery;
 import com.colonel.saas.dto.performance.PerformancePageResponse;
 import com.colonel.saas.dto.performance.PerformanceSummaryResponse;
 import com.colonel.saas.dto.performance.PerformanceTrackSummaryDTO;
@@ -16,13 +17,16 @@ import com.colonel.saas.service.PerformanceQueryService;
 import com.colonel.saas.service.PerformanceSummaryService;
 import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.domain.performance.facade.PerformanceQueryFacade;
+import com.colonel.saas.domain.performance.policy.PerformanceAccessContext;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.mock.web.MockHttpServletResponse;
 
 import java.util.List;
 import java.util.UUID;
@@ -30,6 +34,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -132,7 +137,7 @@ class PerformanceControllerTest {
     }
 
     @Test
-    void list_shouldReturnPage() {
+    void list_shouldPassRequestAttributesIntoPerformanceAccessContext() {
         PerformancePageResponse page = new PerformancePageResponse();
         page.setTotal(10);
         when(performanceQueryService.list(any(), any())).thenReturn(page);
@@ -140,8 +145,57 @@ class PerformanceControllerTest {
         var response = controller.list(
                 null, null, null, null, null, null, null, null, null, null,
                 "pay", null, null, "both", 1, 20, null, null,
-                userId, deptId, DataScope.ALL, List.of(RoleCodes.ADMIN));
+                userId, deptId, DataScope.DEPT, List.of(RoleCodes.CHANNEL_LEADER));
 
         assertThat(response.getData().getTotal()).isEqualTo(10L);
+        ArgumentCaptor<PerformanceAccessContext> contextCaptor =
+                ArgumentCaptor.forClass(PerformanceAccessContext.class);
+        verify(performanceQueryService).list(any(), contextCaptor.capture());
+        PerformanceAccessContext context = contextCaptor.getValue();
+        assertThat(context.userId()).isEqualTo(userId);
+        assertThat(context.deptId()).isEqualTo(deptId);
+        assertThat(context.dataScope()).isEqualTo(DataScope.DEPT);
+        assertThat(context.roleCodes()).containsExactly(RoleCodes.CHANNEL_LEADER);
+    }
+
+    @Test
+    void export_shouldRejectStaffRoleBeforeServiceCall() throws Exception {
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        assertThatThrownBy(() -> controller.export(
+                null, null, null, null, null, null, null, null, null, null,
+                "pay", null, null, null, null, "both", null, null,
+                userId, deptId, DataScope.PERSONAL, List.of(RoleCodes.CHANNEL_STAFF), response))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("无权导出业绩明细");
+
+        verify(performanceExportService, never()).exportXlsx(any(), any());
+    }
+
+    @Test
+    void export_shouldPassAccessContextToExportServiceAndWriteBytes() throws Exception {
+        byte[] bytes = new byte[]{1, 2, 3};
+        when(performanceExportService.exportXlsx(any(), any())).thenReturn(bytes);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        controller.export(
+                "ORD-1", "PROD-1", "商品", 10L, "商家", "ACT-1",
+                UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), "PAY_SUCC",
+                "pay", null, null, null, null, "both", "payTime", "desc",
+                userId, deptId, DataScope.DEPT, List.of(RoleCodes.BIZ_LEADER), response);
+
+        ArgumentCaptor<PerformanceListQuery> queryCaptor = ArgumentCaptor.forClass(PerformanceListQuery.class);
+        ArgumentCaptor<PerformanceAccessContext> contextCaptor =
+                ArgumentCaptor.forClass(PerformanceAccessContext.class);
+        verify(performanceExportService).exportXlsx(queryCaptor.capture(), contextCaptor.capture());
+        PerformanceAccessContext context = contextCaptor.getValue();
+        assertThat(context.userId()).isEqualTo(userId);
+        assertThat(context.deptId()).isEqualTo(deptId);
+        assertThat(context.dataScope()).isEqualTo(DataScope.DEPT);
+        assertThat(context.roleCodes()).containsExactly(RoleCodes.BIZ_LEADER);
+        assertThat(queryCaptor.getValue().getOrderId()).isEqualTo("ORD-1");
+        assertThat(response.getContentType())
+                .isEqualTo("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        assertThat(response.getContentAsByteArray()).containsExactly(bytes);
     }
 }

@@ -356,12 +356,12 @@ const authStore = useAuthStore()
 
 const loading = ref(false)
 const syncing = ref(false)
-const postSyncRefreshTimers: ReturnType<typeof window.setTimeout>[] = []
-let postSyncPollTimer: ReturnType<typeof window.setTimeout> | null = null
+const postSyncRefreshTimers: number[] = []
+let postSyncPollTimer: number | null = null
 const loadingMore = ref(false)
 const showSlowLoading = ref(false)
 const showInitialLoading = useDelayedFlag(loading, 300)
-let slowLoadingTimer: ReturnType<typeof setTimeout> | null = null
+let slowLoadingTimer: number | null = null
 const products = ref<any[]>([])
 const nextCursor = ref('')
 const hasMore = ref(false)
@@ -498,14 +498,17 @@ const activityStats = computed(() =>
   activityStatusCounts.value || countActivityProductStatusGroups(products.value)
 )
 
-const officialStatusCounts = computed(() => ({
-  PENDING_REVIEW: activityStats.value.pendingReview,
-  PROMOTING: activityStats.value.promoting,
-  REJECTED: activityStats.value.rejected,
-  TERMINATED: activityStats.value.terminated,
-  CANCELED: activityStats.value.canceled,
-  EXPIRED: activityStats.value.expired
-}))
+const officialStatusCounts = computed(() => {
+  if (!activityStatusCounts.value) return undefined
+  return {
+    PENDING_REVIEW: activityStatusCounts.value.pendingReview,
+    PROMOTING: activityStatusCounts.value.promoting,
+    REJECTED: activityStatusCounts.value.rejected,
+    TERMINATED: activityStatusCounts.value.terminated,
+    CANCELED: activityStatusCounts.value.canceled,
+    EXPIRED: activityStatusCounts.value.expired
+  }
+})
 
 const activityLoadSummary = computed(() =>
   formatActivityProductLoadSummary(products.value.length, activityQueryTotal.value)
@@ -797,12 +800,12 @@ const refreshAssignedActivityOptions = async () => {
 }
 
 const fetchProducts = async (reset: boolean, forceRemote = false, overrideActivityId?: string): Promise<boolean> => {
-  if (slowLoadingTimer) { clearTimeout(slowLoadingTimer); slowLoadingTimer = null }
+  if (slowLoadingTimer) { window.clearTimeout(slowLoadingTimer); slowLoadingTimer = null }
   showSlowLoading.value = false
   if (reset) loading.value = true
   else loadingMore.value = true
   // Show "查询较慢" hint after 10s if still loading
-  slowLoadingTimer = setTimeout(() => {
+  slowLoadingTimer = window.setTimeout(() => {
     if (loading.value || loadingMore.value) showSlowLoading.value = true
   }, 10_000)
 
@@ -926,7 +929,7 @@ const fetchProducts = async (reset: boolean, forceRemote = false, overrideActivi
     }
     return false
   } finally {
-    if (slowLoadingTimer) { clearTimeout(slowLoadingTimer); slowLoadingTimer = null }
+    if (slowLoadingTimer) { window.clearTimeout(slowLoadingTimer); slowLoadingTimer = null }
     showSlowLoading.value = false
     loading.value = false
     loadingMore.value = false

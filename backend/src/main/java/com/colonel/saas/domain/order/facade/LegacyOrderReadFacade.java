@@ -9,6 +9,7 @@ import com.colonel.saas.service.OrderCommissionPolicy;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.Comparator;
@@ -275,6 +276,79 @@ public class LegacyOrderReadFacade implements OrderReadFacade {
     }
 
     @Override
+    public Map<String, TalentOrderSummary> summarizeTalentOrdersByDouyinUid(
+            Collection<String> douyinUids,
+            LocalDateTime createStart) {
+        if (douyinUids == null || douyinUids.isEmpty()) {
+            return Map.of();
+        }
+        List<String> normalized = douyinUids.stream()
+                .filter(StringUtils::hasText)
+                .map(String::trim)
+                .distinct()
+                .toList();
+        if (normalized.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, TalentOrderSummary> result = new LinkedHashMap<>();
+        for (int offset = 0; offset < normalized.size(); offset += DEFAULT_LIMIT) {
+            List<String> batch = normalized.subList(offset, Math.min(offset + DEFAULT_LIMIT, normalized.size()));
+            QueryWrapper<ColonelsettlementOrder> wrapper = new QueryWrapper<ColonelsettlementOrder>()
+                    .select("""
+                            COALESCE(extra_data ->> 'talent_uid', extra_data ->> 'author_id', talent_name) AS talent_uid
+                            """,
+                            "COUNT(1) AS order_count",
+                            "COALESCE(SUM(order_amount), 0) AS order_amount",
+                            "COALESCE(SUM(settle_colonel_commission), 0) AS service_fee")
+                    .eq("deleted", 0)
+                    .in("COALESCE(extra_data ->> 'talent_uid', extra_data ->> 'author_id', talent_name)", batch)
+                    .groupBy("COALESCE(extra_data ->> 'talent_uid', extra_data ->> 'author_id', talent_name)");
+            if (createStart != null) {
+                wrapper.ge("create_time", createStart);
+            }
+            for (Map<String, Object> row : orderMapper.selectMaps(wrapper)) {
+                String talentUid = asString(readMapValue(row, "talent_uid"));
+                if (StringUtils.hasText(talentUid)) {
+                    result.put(talentUid, new TalentOrderSummary(
+                            talentUid,
+                            asLong(readMapValue(row, "order_count")),
+                            asLong(readMapValue(row, "order_amount")),
+                            asLong(readMapValue(row, "service_fee"))));
+                }
+            }
+        }
+        return result;
+    }
+
+    @Override
+    public List<TalentRecentOrder> findRecentOrdersByTalentUid(String douyinUid, int limit) {
+        if (!StringUtils.hasText(douyinUid)) {
+            return List.of();
+        }
+        int safeLimit = limit <= 0 ? 20 : Math.min(limit, DEFAULT_LIMIT);
+        QueryWrapper<ColonelsettlementOrder> wrapper = new QueryWrapper<ColonelsettlementOrder>()
+                .select("order_id",
+                        "COALESCE(product_title, product_name) AS product_name",
+                        "order_amount",
+                        "settle_colonel_commission AS service_fee",
+                        "channel_user_name",
+                        "create_time")
+                .eq("deleted", 0)
+                .apply("COALESCE(extra_data ->> 'talent_uid', extra_data ->> 'author_id', talent_name) = {0}", douyinUid.trim())
+                .orderByDesc("create_time")
+                .last("LIMIT " + safeLimit);
+        return orderMapper.selectMaps(wrapper).stream()
+                .map(row -> new TalentRecentOrder(
+                        asString(readMapValue(row, "order_id")),
+                        asString(readMapValue(row, "product_name")),
+                        asLong(readMapValue(row, "order_amount")),
+                        asLong(readMapValue(row, "service_fee")),
+                        asString(readMapValue(row, "channel_user_name")),
+                        asDateTime(readMapValue(row, "create_time"))))
+                .toList();
+    }
+
+    @Override
     public DashboardAttributionSummary getDashboardAttributionSummary(
             LocalDateTime settleStart,
             LocalDateTime settleEnd,
@@ -438,6 +512,16 @@ public class LegacyOrderReadFacade implements OrderReadFacade {
 
     private static String asString(Object val) {
         return val == null ? null : String.valueOf(val);
+    }
+
+    private static LocalDateTime asDateTime(Object val) {
+        if (val instanceof LocalDateTime dateTime) {
+            return dateTime;
+        }
+        if (val instanceof Timestamp timestamp) {
+            return timestamp.toLocalDateTime();
+        }
+        return null;
     }
 
     private static final class MutableProductOrderSummary {

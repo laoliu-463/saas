@@ -82,34 +82,36 @@ debug: false
 
 ddd:
   refactor:
-    enabled: ${DDD_REFACTOR_ENABLED:false}
+    enabled: ${DDD_REFACTOR_ENABLED:true}
     user-facade:
-      enabled: ${DDD_REFACTOR_USER_FACADE_ENABLED:false}
+      enabled: ${DDD_REFACTOR_USER_FACADE_ENABLED:true}
     config-facade:
-      enabled: ${DDD_REFACTOR_CONFIG_FACADE_ENABLED:false}
+      enabled: ${DDD_REFACTOR_CONFIG_FACADE_ENABLED:true}
     product-facade:
-      enabled: ${DDD_REFACTOR_PRODUCT_FACADE_ENABLED:false}
+      enabled: ${DDD_REFACTOR_PRODUCT_FACADE_ENABLED:true}
+    product-display-policy:
+      enabled: ${DDD_REFACTOR_PRODUCT_DISPLAY_POLICY_ENABLED:true}
     talent-facade:
-      enabled: ${DDD_REFACTOR_TALENT_FACADE_ENABLED:false}
+      enabled: ${DDD_REFACTOR_TALENT_FACADE_ENABLED:true}
     sample-application:
-      enabled: ${DDD_REFACTOR_SAMPLE_APPLICATION_ENABLED:false}
+      enabled: ${DDD_REFACTOR_SAMPLE_APPLICATION_ENABLED:true}
     order-application:
-      enabled: ${DDD_REFACTOR_ORDER_APPLICATION_ENABLED:false}
+      enabled: ${DDD_REFACTOR_ORDER_APPLICATION_ENABLED:true}
     order-attribution:
-      enabled: ${DDD_REFACTOR_ORDER_ATTRIBUTION_ENABLED:false}
+      enabled: ${DDD_REFACTOR_ORDER_ATTRIBUTION_ENABLED:true}
     order-amount-policy:
-      enabled: ${DDD_REFACTOR_ORDER_AMOUNT_POLICY_ENABLED:false}
+      enabled: ${DDD_REFACTOR_ORDER_AMOUNT_POLICY_ENABLED:true}
     performance-calc:
-      enabled: ${DDD_REFACTOR_PERFORMANCE_CALC_ENABLED:false}
+      enabled: ${DDD_REFACTOR_PERFORMANCE_CALC_ENABLED:true}
     performance-query:
-      enabled: ${DDD_REFACTOR_PERFORMANCE_QUERY_ENABLED:false}
+      enabled: ${DDD_REFACTOR_PERFORMANCE_QUERY_ENABLED:true}
     analytics-shadow:
-      enabled: ${DDD_REFACTOR_ANALYTICS_SHADOW_ENABLED:false}
+      enabled: ${DDD_REFACTOR_ANALYTICS_SHADOW_ENABLED:true}
     outbox:
-      enabled: ${DDD_REFACTOR_OUTBOX_ENABLED:false}
+      enabled: ${DDD_REFACTOR_OUTBOX_ENABLED:true}
     data-scope-policy:
-      enabled: ${DDD_REFACTOR_DATA_SCOPE_POLICY_ENABLED:false}
+      enabled: ${DDD_REFACTOR_DATA_SCOPE_POLICY_ENABLED:true}
     sample-homework-event:
-      enabled: ${DDD_REFACTOR_SAMPLE_HOMEWORK_EVENT_ENABLED:false}
+      enabled: ${DDD_REFACTOR_SAMPLE_HOMEWORK_EVENT_ENABLED:true}
     colonel-partner-contact:
-      enabled: ${DDD_REFACTOR_COLONEL_PARTNER_CONTACT_ENABLED:false}
+      enabled: ${DDD_REFACTOR_COLONEL_PARTNER_CONTACT_ENABLED:true}

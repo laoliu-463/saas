@@ -2,8 +2,6 @@ package com.colonel.saas.domain.colonel.policy;
 
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.entity.ColonelPartner;
-import org.springframework.stereotype.Component;
-import org.springframework.util.StringUtils;
 
 import java.util.regex.Pattern;
 
@@ -20,7 +18,6 @@ import java.util.regex.Pattern;
  * <p>本类是 colonel 域的"业务规则"层，与 Application Service 分离，
  * 便于跨 Application 复用同一规则集。</p>
  */
-@Component
 public class ColonelPartnerBusinessPolicy {
 
     /** 抖音百应 ID 格式：纯数字字符串，长度 10-25 位。 */
@@ -36,10 +33,10 @@ public class ColonelPartnerBusinessPolicy {
         if (partner == null) {
             throw BusinessException.param("团长主数据不能为空");
         }
-        if (!StringUtils.hasText(partner.getColonelName())) {
+        if (!hasText(partner.getColonelName())) {
             throw BusinessException.param("团长名称不能为空");
         }
-        if (!StringUtils.hasText(partner.getColonelBuyinId())) {
+        if (!hasText(partner.getColonelBuyinId())) {
             throw BusinessException.param("团长百应 ID 不能为空");
         }
         if (!BUYIN_ID_PATTERN.matcher(partner.getColonelBuyinId()).matches()) {
@@ -59,9 +56,9 @@ public class ColonelPartnerBusinessPolicy {
         if (partner == null) {
             return;
         }
-        boolean hasPhone = StringUtils.hasText(partner.getContactPhone());
-        boolean hasWechat = StringUtils.hasText(partner.getContactWechat());
-        boolean hasName = StringUtils.hasText(partner.getContactName());
+        boolean hasPhone = hasText(partner.getContactPhone());
+        boolean hasWechat = hasText(partner.getContactWechat());
+        boolean hasName = hasText(partner.getContactName());
         if (!hasPhone && !hasWechat && !hasName) {
             throw BusinessException.param("团长联系方式不能全部为空");
         }
@@ -75,5 +72,9 @@ public class ColonelPartnerBusinessPolicy {
      */
     public boolean isValidBuyinId(String buyinId) {
         return buyinId != null && BUYIN_ID_PATTERN.matcher(buyinId).matches();
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.isBlank();
     }
 }

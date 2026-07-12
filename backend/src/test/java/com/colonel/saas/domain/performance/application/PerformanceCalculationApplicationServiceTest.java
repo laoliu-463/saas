@@ -14,6 +14,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -47,7 +49,7 @@ class PerformanceCalculationApplicationServiceTest {
         // 测试通过 mock 共享 configDomainFacade / commissionRuleService 验证 Application 行为。
         CommissionService commissionService = new CommissionService(
                 configDomainFacade, commissionRuleService, null);
-        lenient().when(commissionRuleService.resolveRatio(any(), any(), any())).thenReturn(null);
+        lenient().when(commissionRuleService.resolveRule(any(), any(), any())).thenReturn(null);
         lenient().when(configDomainFacade.getDecimal(SystemConfigKeys.COMMISSION_BUSINESS_DEFAULT_RATIO, new BigDecimal("0.15")))
                 .thenReturn(new BigDecimal("0.10"));
         lenient().when(configDomainFacade.getDecimal(SystemConfigKeys.COMMISSION_CHANNEL_DEFAULT_RATIO, new BigDecimal("0.15")))
@@ -112,6 +114,70 @@ class PerformanceCalculationApplicationServiceTest {
     }
 
     @Test
+    void upsertFromOrder_shouldPreserveTraceableAttributionInputsOnPerformanceRecord() {
+        UUID channelUserId = UUID.randomUUID();
+        UUID recruiterUserId = UUID.randomUUID();
+        UUID fallbackUserId = UUID.randomUUID();
+        UUID talentId = UUID.randomUUID();
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setId(UUID.randomUUID());
+        order.setOrderId("ORD-TRACE-1");
+        order.setChannelUserId(channelUserId);
+        order.setColonelUserId(recruiterUserId);
+        order.setUserId(fallbackUserId);
+        order.setTalentId(talentId);
+        order.setShopId(90000001L);
+        order.setProductId("PROD-TRACE-1");
+        order.setActivityId("ACT-TRACE-1");
+        order.setOrderStatus(1);
+
+        when(performanceRecordMapper.findByOrderId("ORD-TRACE-1")).thenReturn(null);
+        when(performanceRecordMapper.upsert(any())).thenReturn(1);
+
+        PerformanceRecord result = applicationService.upsertFromOrder(order);
+
+        assertThat(result).isNotNull();
+        assertThat(result.getDefaultChannelUserId()).isEqualTo(channelUserId);
+        assertThat(result.getDefaultRecruiterUserId()).isEqualTo(recruiterUserId);
+        assertThat(result.getFinalChannelUserId()).isEqualTo(channelUserId);
+        assertThat(result.getFinalRecruiterUserId()).isEqualTo(recruiterUserId);
+        assertThat(result.getChannelAttribution()).isEqualTo("pick_source");
+        assertThat(result.getRecruiterAttribution()).isEqualTo("activity_owner");
+        assertThat(result.getTalentId()).isEqualTo(talentId);
+        assertThat(result.getPartnerId()).isEqualTo(90000001L);
+        assertThat(result.getProductId()).isEqualTo("PROD-TRACE-1");
+        assertThat(result.getActivityId()).isEqualTo("ACT-TRACE-1");
+    }
+
+    @Test
+    void upsertFromOrder_existingRecordShouldReuseIdAndAdvanceVersionForDuplicateConsumption() {
+        UUID existingId = UUID.randomUUID();
+        LocalDateTime createdAt = LocalDateTime.of(2026, 7, 8, 10, 0);
+        PerformanceRecord existing = new PerformanceRecord();
+        existing.setId(existingId);
+        existing.setCalculationVersion(3);
+        existing.setCreatedAt(createdAt);
+
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setId(UUID.randomUUID());
+        order.setOrderId("ORD-DUPLICATE-CONSUMPTION");
+        order.setOrderStatus(1);
+        order.setEstimateServiceFee(1000L);
+        order.setEstimateTechServiceFee(100L);
+        order.setEstimateServiceFeeExpense(200L);
+
+        when(performanceRecordMapper.findByOrderId("ORD-DUPLICATE-CONSUMPTION")).thenReturn(existing);
+        when(performanceRecordMapper.upsert(any())).thenReturn(1);
+
+        PerformanceRecord result = applicationService.upsertFromOrder(order);
+
+        assertThat(result).isNotNull();
+        assertThat(result.getId()).isEqualTo(existingId);
+        assertThat(result.getCreatedAt()).isEqualTo(createdAt);
+        assertThat(result.getCalculationVersion()).isEqualTo(4);
+    }
+
+    @Test
     void upsertFromOrder_shouldZeroCommissionsForCancelledOrder() {
         ColonelsettlementOrder order = new ColonelsettlementOrder();
         order.setId(java.util.UUID.randomUUID());
@@ -134,6 +200,52 @@ class PerformanceCalculationApplicationServiceTest {
         assertThat(result.getReversed()).isTrue();
         assertThat(result.getEstimateServiceProfit()).isZero();
         assertThat(result.getEffectiveServiceProfit()).isZero();
+        assertThat(result.getEstimateRecruiterCommission()).isZero();
+        assertThat(result.getEffectiveRecruiterCommission()).isZero();
+        assertThat(result.getEstimateChannelCommission()).isZero();
+        assertThat(result.getEffectiveChannelCommission()).isZero();
+        assertThat(result.getEstimateGrossProfit()).isZero();
+        assertThat(result.getEffectiveGrossProfit()).isZero();
+    }
+
+    @Test
+    void upsertFromOrder_shouldReverseRefundedExistingRecordAndAdvanceVersion() {
+        UUID recordId = UUID.randomUUID();
+        LocalDateTime createdAt = LocalDateTime.of(2026, 7, 1, 9, 30);
+        PerformanceRecord existing = new PerformanceRecord();
+        existing.setId(recordId);
+        existing.setCalculationVersion(7);
+        existing.setCreatedAt(createdAt);
+
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setId(UUID.randomUUID());
+        order.setOrderId("ORD-REFUNDED-EXISTING");
+        order.setOrderStatus(5);
+        order.setOrderAmount(10000L);
+        order.setSettleAmount(9000L);
+        order.setEstimateServiceFee(1000L);
+        order.setEffectiveServiceFee(900L);
+        order.setEstimateTechServiceFee(100L);
+        order.setEffectiveTechServiceFee(90L);
+        order.setEstimateServiceFeeExpense(200L);
+        order.setEffectiveServiceFeeExpense(180L);
+
+        when(performanceRecordMapper.findByOrderId("ORD-REFUNDED-EXISTING")).thenReturn(existing);
+        when(performanceRecordMapper.upsert(any())).thenReturn(1);
+
+        PerformanceRecord result = applicationService.upsertFromOrder(order);
+
+        assertThat(result).isNotNull();
+        assertThat(result.getId()).isEqualTo(recordId);
+        assertThat(result.getCreatedAt()).isEqualTo(createdAt);
+        assertThat(result.getCalculationVersion()).isEqualTo(8);
+        assertThat(result.getOrderStatus()).isEqualTo(5);
+        assertThat(result.getValid()).isFalse();
+        assertThat(result.getReversed()).isTrue();
+        assertThat(result.getEstimateServiceProfit()).isZero();
+        assertThat(result.getEffectiveServiceProfit()).isZero();
+        assertThat(result.getEstimateServiceFeeExpense()).isZero();
+        assertThat(result.getEffectiveServiceFeeExpense()).isZero();
         assertThat(result.getEstimateRecruiterCommission()).isZero();
         assertThat(result.getEffectiveRecruiterCommission()).isZero();
         assertThat(result.getEstimateChannelCommission()).isZero();

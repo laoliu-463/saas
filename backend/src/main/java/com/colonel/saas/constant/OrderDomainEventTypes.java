@@ -7,6 +7,8 @@ public final class OrderDomainEventTypes {
 
     /** 订单同步完成事件，对应 {@link com.colonel.saas.event.OrderSyncedEvent}。 */
     public static final String ORDER_SYNCED = "OrderSynced";
+    /** 退款/失效订单事实已同步事件。 */
+    public static final String ORDER_REFUND_FACT_SYNCED = "OrderRefundFactSynced";
 
     private OrderDomainEventTypes() {
     }

@@ -5,6 +5,7 @@ import com.colonel.saas.domain.order.application.OrderAmountMappingRouter;
 import com.colonel.saas.domain.order.event.InProcessOrderDomainEventPublisher;
 import com.colonel.saas.domain.order.event.OrderDomainEventPublisher;
 import com.colonel.saas.domain.order.event.OrderEventPayloadMapper;
+import com.colonel.saas.domain.order.event.OrderRefundFactSyncedEvent;
 import com.colonel.saas.domain.order.event.OrderStatusChangedEvent;
 import com.colonel.saas.domain.sample.facade.SampleHomeworkFacade;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
@@ -449,17 +450,17 @@ class OrderSyncPersistenceServiceTest {
             verifyNoInteractions(eventPublisher);
             List<TransactionSynchronization> synchronizations =
                     TransactionSynchronizationManager.getSynchronizations();
-            // There will be two synchronizations: OrderSyncedEvent and OrderStatusChangedEvent
-            assertThat(synchronizations).hasSize(2);
+            // There will be three synchronizations: OrderSyncedEvent, OrderStatusChangedEvent and refund fact event.
+            assertThat(synchronizations).hasSize(3);
 
             synchronizations.forEach(TransactionSynchronization::afterCommit);
 
             ArgumentCaptor<Object> eventCaptor = ArgumentCaptor.forClass(Object.class);
-            // 2 events: OrderSyncedEvent and OrderStatusChangedEvent
-            verify(eventPublisher, org.mockito.Mockito.times(2)).publishEvent(eventCaptor.capture());
+            verify(eventPublisher, org.mockito.Mockito.times(3)).publishEvent(eventCaptor.capture());
             
             List<Object> capturedEvents = eventCaptor.getAllValues();
             assertThat(capturedEvents).anyMatch(e -> e instanceof OrderStatusChangedEvent);
+            assertThat(capturedEvents).anyMatch(e -> e instanceof OrderRefundFactSyncedEvent);
             OrderStatusChangedEvent statusEvent = 
                 (OrderStatusChangedEvent) capturedEvents.stream()
                     .filter(e -> e instanceof OrderStatusChangedEvent)
@@ -467,6 +468,13 @@ class OrderSyncPersistenceServiceTest {
             assertThat(statusEvent.orderId()).isEqualTo(order.getOrderId());
             assertThat(statusEvent.previousStatus()).isEqualTo(2);
             assertThat(statusEvent.currentStatus()).isEqualTo(4);
+            OrderRefundFactSyncedEvent refundEvent =
+                    (OrderRefundFactSyncedEvent) capturedEvents.stream()
+                            .filter(e -> e instanceof OrderRefundFactSyncedEvent)
+                            .findFirst().orElseThrow();
+            assertThat(refundEvent.orderId()).isEqualTo(order.getOrderId());
+            assertThat(refundEvent.previousStatus()).isEqualTo(2);
+            assertThat(refundEvent.status()).isEqualTo(4);
         } finally {
             TransactionSynchronizationManager.clearSynchronization();
         }

@@ -59,4 +59,8 @@ public final class OrderCommissionPolicy {
     public static boolean countsTowardPerformance(Integer orderStatus) {
         return countsTowardCommission(orderStatus);
     }
+
+    public static boolean isInvalidatedStatus(Integer orderStatus) {
+        return orderStatus != null && (orderStatus == STATUS_CANCELLED || orderStatus == STATUS_REFUNDED);
+    }
 }

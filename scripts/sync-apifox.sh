@@ -13,6 +13,19 @@ if [[ -d "$HOME/.hermes/node/bin" ]]; then
   PATH="$HOME/.hermes/node/bin:$PATH"
 fi
 
+PYTHON_BIN="${PYTHON_BIN:-}"
+if [[ -z "$PYTHON_BIN" ]]; then
+  if command -v python >/dev/null 2>&1; then
+    PYTHON_BIN="python"
+  elif command -v python3 >/dev/null 2>&1; then
+    PYTHON_BIN="python3"
+  elif command -v python.exe >/dev/null 2>&1; then
+    PYTHON_BIN="python.exe"
+  else
+    PYTHON_BIN="python"
+  fi
+fi
+
 for arg in "$@"; do
   case "$arg" in
     --dry-run)
@@ -94,7 +107,7 @@ sanitize_file() {
   [[ -f "$file" ]] || return 0
   APIFOX_SANITIZE_TOKEN="${APIFOX_ACCESS_TOKEN:-}" \
   APIFOX_SANITIZE_PROJECT="${APIFOX_PROJECT_ID:-}" \
-  python - "$file" <<'PY'
+  "$PYTHON_BIN" - "$file" <<'PY'
 import os
 import re
 import sys
@@ -109,6 +122,11 @@ project = os.environ.get("APIFOX_SANITIZE_PROJECT") or ""
 if token and not token.startswith("__FILL_ME_"):
     text = text.replace(token, "***REDACTED_APIFOX_TOKEN***")
 if project and not project.startswith("__FILL_ME_"):
+    text = re.sub(
+        r'(:\s*)' + re.escape(project) + r'(?=\s*[,}])',
+        r'\1"***REDACTED_APIFOX_PROJECT_ID***"',
+        text,
+    )
     text = text.replace(project, "***REDACTED_APIFOX_PROJECT_ID***")
 
 text = re.sub(r"(Authorization\s*:\s*Bearer\s+)[A-Za-z0-9._~+/=-]+", r"\1***REDACTED***", text, flags=re.I)
@@ -123,7 +141,7 @@ sanitize_text() {
   APIFOX_SANITIZE_TOKEN="${APIFOX_ACCESS_TOKEN:-}" \
   APIFOX_SANITIZE_PROJECT="${APIFOX_PROJECT_ID:-}" \
   APIFOX_SANITIZE_TEXT="${1:-}" \
-  python - <<'PY'
+  "$PYTHON_BIN" - <<'PY'
 import os
 import re
 
@@ -134,6 +152,11 @@ project = os.environ.get("APIFOX_SANITIZE_PROJECT") or ""
 if token and not token.startswith("__FILL_ME_"):
     text = text.replace(token, "***REDACTED_APIFOX_TOKEN***")
 if project and not project.startswith("__FILL_ME_"):
+    text = re.sub(
+        r'(:\s*)' + re.escape(project) + r'(?=\s*[,}])',
+        r'\1"***REDACTED_APIFOX_PROJECT_ID***"',
+        text,
+    )
     text = text.replace(project, "***REDACTED_APIFOX_PROJECT_ID***")
 text = re.sub(r"(Authorization\s*:\s*Bearer\s+)[A-Za-z0-9._~+/=-]+", r"\1***REDACTED***", text, flags=re.I)
 print(text)
@@ -182,9 +205,9 @@ load_apifox_env
 OPENAPI_FILE="${APIFOX_OPENAPI_FILE:-docs/openapi/saas-openapi.json}"
 APIFOX_BRANCH="${APIFOX_BRANCH:-ddd-sync}"
 APIFOX_BRANCH_SOURCE="${APIFOX_BRANCH_SOURCE:-main}"
-IMPORT_OUTPUT="${APIFOX_IMPORT_OUTPUT:-harness/reports/apifox-import-latest.log}"
-ENDPOINT_LIST_OUTPUT="${APIFOX_ENDPOINT_LIST_OUTPUT:-harness/reports/apifox-endpoint-list-latest.json}"
-ENVIRONMENT_OUTPUT="${APIFOX_ENVIRONMENT_OUTPUT:-harness/reports/apifox-environment-latest.json}"
+IMPORT_OUTPUT="${APIFOX_IMPORT_OUTPUT:-harness/reports/apifox/import-latest.log}"
+ENDPOINT_LIST_OUTPUT="${APIFOX_ENDPOINT_LIST_OUTPUT:-harness/reports/apifox/endpoint-list-latest.json}"
+ENVIRONMENT_OUTPUT="${APIFOX_ENVIRONMENT_OUTPUT:-harness/reports/apifox/environment-latest.json}"
 
 OPENAPI_FILE_PATH="$(resolve_workspace_path "$OPENAPI_FILE")"
 IMPORT_OUTPUT_PATH="$(resolve_workspace_path "$IMPORT_OUTPUT")"
@@ -241,7 +264,7 @@ fi
 require_command "$APIFOX_CLI" "Apifox CLI is not installed or not in PATH."
 require_command node "Node.js is not installed or not in PATH."
 require_command curl "curl is not installed or not in PATH."
-require_command python "Python is not installed or not in PATH."
+require_command "$PYTHON_BIN" "Python is not installed or not in PATH."
 
 require_help_option "apifox import" "--branch" apifox_cmd import --help
 require_help_option "apifox endpoint list" "--branch" apifox_cmd endpoint list --help
@@ -473,7 +496,7 @@ sample_index=0
 while IFS= read -r endpoint_id; do
   [[ -n "$endpoint_id" ]] || continue
   sample_index=$((sample_index + 1))
-  sample_output="harness/reports/apifox-endpoint-sample-${sample_index}.json"
+  sample_output="harness/reports/apifox/endpoint-sample-${sample_index}.json"
   sample_output_path="$(resolve_workspace_path "$sample_output")"
   endpoint_detail_output="$(apifox_cmd endpoint get "$endpoint_id" --project "$APIFOX_PROJECT_ID" --branch "$APIFOX_BRANCH" 2>&1)" || {
     echo "apifox endpoint get failed for sample $sample_index." >&2
