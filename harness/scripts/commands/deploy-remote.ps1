@@ -54,6 +54,11 @@ if [ ! -f "`$activity_migration" ]; then
   echo "Required activity schema migration not found: `$activity_migration"
   exit 1
 fi
+config_migration="backend/src/main/resources/db/alter-v2-config-20260523.sql"
+if [ ! -f "`$config_migration" ]; then
+  echo "Required V2 config migration not found: `$config_migration"
+  exit 1
+fi
 backfill_migration="backend/src/main/resources/db/migrate/V20260615_001__product_activity_backfill_state.sql"
 if [ ! -f "`$backfill_migration" ]; then
   echo "Required product backfill schema migration not found: `$backfill_migration"
@@ -73,6 +78,15 @@ if [ "`$schema_count" != "6" ]; then
   exit 1
 fi
 echo "Activity schema guard passed."
+echo "Applying required V2 config schema migration ..."
+docker cp "`$config_migration" "`$pg_container:/tmp/alter-v2-config-20260523.sql"
+compose exec -T postgres-real-pre sh -lc 'psql -U "`$POSTGRES_USER" -d "`$POSTGRES_DB" -v ON_ERROR_STOP=1 -f /tmp/alter-v2-config-20260523.sql' </dev/null
+config_version_count="`$(compose exec -T postgres-real-pre sh -lc 'psql -U "`$POSTGRES_USER" -d "`$POSTGRES_DB" -tAc "SELECT count(*) FROM information_schema.columns WHERE table_schema = '"'"'public'"'"' AND table_name = '"'"'commissions'"'"' AND column_name = '"'"'version'"'"'"' </dev/null | tr -d '[:space:]')"
+if [ "`$config_version_count" != "1" ]; then
+  echo "V2 config schema guard failed: commissions.version is missing"
+  exit 1
+fi
+echo "V2 config schema guard passed."
 echo "Applying required product backfill schema migration ..."
 docker cp "`$backfill_migration" "`$pg_container:/tmp/V20260615_001__product_activity_backfill_state.sql"
 compose exec -T postgres-real-pre sh -lc 'psql -U "`$POSTGRES_USER" -d "`$POSTGRES_DB" -v ON_ERROR_STOP=1 -f /tmp/V20260615_001__product_activity_backfill_state.sql' </dev/null
