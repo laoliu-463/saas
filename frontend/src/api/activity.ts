@@ -59,3 +59,14 @@ export const assignColonelActivity = (
   activityId: string | number,
   payload: { assigneeId: string | null }
 ) => request.put(`/colonel/activities/${activityId}/assignee`, payload);
+
+/**
+ * 触发活动列表异步同步
+ */
+export const triggerActivityListSync = () => request.post('/colonel/activities/list-sync');
+
+/**
+ * 获取活动列表同步异步任务状态
+ */
+export const getActivitySyncJob = (jobId: string) => request.get(`/colonel/activities/list-sync/${jobId}`);
+
