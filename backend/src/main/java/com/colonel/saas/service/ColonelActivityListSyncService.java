@@ -5,6 +5,7 @@ import com.colonel.saas.gateway.douyin.DouyinActivityGateway;
 import com.colonel.saas.job.JobLockKeys;
 import com.colonel.saas.mapper.ColonelActivitySyncJobLogMapper;
 import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
+import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -13,12 +14,18 @@ import org.springframework.util.StringUtils;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * 活动列表异步同步服务。
@@ -49,6 +56,8 @@ public class ColonelActivityListSyncService {
     private final DistributedJobLockService jobLockService;
     private final ExecutorService syncExecutor;
     private final AtomicBoolean running = new AtomicBoolean(false);
+    private final Object pageFetchExecutorMonitor = new Object();
+    private volatile ExecutorService pageFetchExecutor;
 
     @Value("${colonel.activity.list-sync.enabled:true}")
     private boolean enabled;
@@ -58,6 +67,9 @@ public class ColonelActivityListSyncService {
 
     @Value("${colonel.activity.list-sync.page-size:20}")
     private int pageSize;
+
+    @Value("${colonel.activity.list-sync.page-parallelism:4}")
+    private int pageParallelism = 4;
 
     public ColonelActivityListSyncService(
             DouyinActivityGateway douyinActivityGateway,
@@ -136,73 +148,179 @@ public class ColonelActivityListSyncService {
         String lockOwner = "act-list-sync:" + jobId;
         if (!jobLockService.tryAcquire(JobLockKeys.COLONEL_ACTIVITY_LIST_SYNC, SYNC_LOCK_TTL, lockOwner)) {
             log.info("ColonelActivityListSync skipped, lock held, jobId={}", jobId);
-            jobLogMapper.updateStatus(jobId, "FAILED_LOCKED", LocalDateTime.now(), 0, 0, "同步锁被占用", null);
+            jobLogMapper.updateStatus(jobId, "FAILED_LOCKED", LocalDateTime.now(), 0, 0, 0, "同步锁被占用", null);
             return;
         }
         if (!running.compareAndSet(false, true)) {
             jobLockService.releaseWithOwner(JobLockKeys.COLONEL_ACTIVITY_LIST_SYNC, lockOwner);
-            jobLogMapper.updateStatus(jobId, "FAILED_LOCKED", LocalDateTime.now(), 0, 0, "并发冲突", null);
+            jobLogMapper.updateStatus(jobId, "FAILED_LOCKED", LocalDateTime.now(), 0, 0, 0, "并发冲突", null);
             return;
         }
         try {
             jobLogMapper.updateRunning(jobId, LocalDateTime.now());
-            int synced = 0;
-            int failed = 0;
-            int total = 0;
-
-            for (int page = 1; page <= maxPages; page++) {
-                DouyinActivityGateway.ActivityListResult result;
-                try {
-                    result = douyinActivityGateway.listActivities(
-                            new DouyinActivityGateway.ActivityListQuery(null, null, null, null, (long) page, (long) pageSize, null));
-                } catch (Exception ex) {
-                    log.warn("ColonelActivityListSync page fetch failed, jobId={}, page={}", jobId, page, ex);
-                    failed++;
-                    break;
-                }
-
-                if (result == null || result.activityList() == null || result.activityList().isEmpty()) {
-                    break;
-                }
-
-                total += result.activityList().size();
-                for (DouyinActivityGateway.ActivityItem item : result.activityList()) {
-                    try {
-                        activityService.syncFromGatewayItem(item);
-                        synced++;
-                    } catch (Exception ex) {
-                        log.warn("ColonelActivityListSync item failed, jobId={}, activityId={}", jobId, item.activityId(), ex);
-                        failed++;
-                    }
-                }
-
-                // 续租
-                jobLockService.renew(JobLockKeys.COLONEL_ACTIVITY_LIST_SYNC, lockOwner, SYNC_LOCK_TTL.toMillis());
-
-                if (result.activityList().size() < pageSize) {
-                    break;
-                }
-
-                try {
-                    Thread.sleep(200);
-                } catch (InterruptedException ex) {
-                    Thread.currentThread().interrupt();
-                    break;
-                }
-            }
-
-            String status = failed == 0 ? "SUCCESS" : (synced > 0 ? "PARTIAL" : "FAILED");
-            String errorMessage = failed > 0 ? String.format("同步失败 %d 条", failed) : null;
-            jobLogMapper.updateStatus(jobId, status, LocalDateTime.now(), synced, failed, errorMessage,
-                    toMetadataJson(total, synced, failed));
-            log.info("ColonelActivityListSync finished, jobId={}, status={}, total={}, synced={}, failed={}",
-                    jobId, status, total, synced, failed);
+            SyncAccumulator accumulator = syncActivityPages(jobId, lockOwner);
+            String status = accumulator.isSuccessful()
+                    ? "SUCCESS"
+                    : (accumulator.synced > 0 ? "PARTIAL" : "FAILED");
+            String errorMessage = accumulator.errorMessage;
+            jobLogMapper.updateStatus(jobId, status, LocalDateTime.now(), accumulator.fetchedRows,
+                    accumulator.synced, accumulator.failed, errorMessage,
+                    toMetadataJson(accumulator.fetchedRows, accumulator.synced, accumulator.failed,
+                            accumulator.pagesFetched, accumulator.complete));
+            log.info("ColonelActivityListSync finished, jobId={}, status={}, total={}, pagesFetched={}, synced={}, failed={}, parallelism={}",
+                    jobId, status, accumulator.fetchedRows, accumulator.pagesFetched, accumulator.synced,
+                    accumulator.failed, normalizedPageParallelism());
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            jobLogMapper.updateStatus(jobId, "FAILED", LocalDateTime.now(), 0, 0, 0,
+                    "活动列表同步被中断", null);
         } catch (Exception ex) {
             log.error("ColonelActivityListSync unexpected error, jobId={}", jobId, ex);
-            jobLogMapper.updateStatus(jobId, "FAILED", LocalDateTime.now(), 0, 0, ex.getMessage(), null);
+            jobLogMapper.updateStatus(jobId, "FAILED", LocalDateTime.now(), 0, 0, 0, ex.getMessage(), null);
         } finally {
             running.set(false);
             jobLockService.releaseWithOwner(JobLockKeys.COLONEL_ACTIVITY_LIST_SYNC, lockOwner);
+        }
+    }
+
+    private SyncAccumulator syncActivityPages(String jobId, String lockOwner) throws InterruptedException {
+        SyncAccumulator accumulator = new SyncAccumulator();
+        PageFetchResult firstPage = fetchPage(jobId, 1);
+        processPage(firstPage, accumulator, jobId);
+        if (accumulator.complete || accumulator.fetchFailed) {
+            return accumulator;
+        }
+
+        int nextPage = 2;
+        int normalizedParallelism = normalizedPageParallelism();
+        while (!accumulator.complete && !accumulator.fetchFailed && nextPage <= maxPages) {
+            int windowEnd = Math.min(maxPages, nextPage + normalizedParallelism - 1);
+            for (PageFetchResult page : fetchPageWindow(jobId, nextPage, windowEnd)) {
+                processPage(page, accumulator, jobId);
+                if (accumulator.complete || accumulator.fetchFailed) {
+                    break;
+                }
+            }
+            nextPage = windowEnd + 1;
+            jobLockService.renew(JobLockKeys.COLONEL_ACTIVITY_LIST_SYNC, lockOwner, SYNC_LOCK_TTL.toMillis());
+        }
+
+        if (!accumulator.complete && !accumulator.fetchFailed) {
+            accumulator.failed++;
+            accumulator.errorMessage = String.format("达到活动列表最大页数上限 %d，结果不完整", maxPages);
+        }
+        return accumulator;
+    }
+
+    private void processPage(PageFetchResult page, SyncAccumulator accumulator, String jobId) {
+        if (page.error != null) {
+            accumulator.fetchFailed = true;
+            accumulator.failed++;
+            accumulator.errorMessage = String.format("第 %d 页拉取失败: %s", page.page, page.error.getMessage());
+            return;
+        }
+        if (page.result == null || page.result.activityList() == null) {
+            accumulator.fetchFailed = true;
+            accumulator.failed++;
+            accumulator.errorMessage = String.format("第 %d 页返回结构为空", page.page);
+            return;
+        }
+        accumulator.pagesFetched++;
+        List<DouyinActivityGateway.ActivityItem> items = page.result.activityList();
+        if (items.isEmpty()) {
+            accumulator.complete = true;
+            return;
+        }
+        accumulator.fetchedRows += items.size();
+        for (DouyinActivityGateway.ActivityItem item : items) {
+            try {
+                activityService.syncFromGatewayItem(item);
+                accumulator.synced++;
+            } catch (Exception ex) {
+                log.warn("ColonelActivityListSync item failed, jobId={}, activityId={}", jobId,
+                        item == null ? null : item.activityId(), ex);
+                accumulator.failed++;
+            }
+        }
+        if (items.size() < normalizedPageSize()) {
+            accumulator.complete = true;
+        }
+    }
+
+    private List<PageFetchResult> fetchPageWindow(String jobId, int startPage, int endPage)
+            throws InterruptedException {
+        List<Future<PageFetchResult>> futures = new ArrayList<>();
+        for (int page = startPage; page <= endPage; page++) {
+            int requestedPage = page;
+            futures.add(getPageFetchExecutor().submit(() -> fetchPage(jobId, requestedPage)));
+        }
+        List<PageFetchResult> results = new ArrayList<>(futures.size());
+        try {
+            for (int index = 0; index < futures.size(); index++) {
+                Future<PageFetchResult> future = futures.get(index);
+                try {
+                    results.add(future.get());
+                } catch (ExecutionException ex) {
+                    Throwable cause = ex.getCause() == null ? ex : ex.getCause();
+                    results.add(PageFetchResult.failure(startPage + index, cause));
+                }
+            }
+            return results;
+        } catch (InterruptedException ex) {
+            futures.forEach(future -> future.cancel(true));
+            throw ex;
+        }
+    }
+
+    private PageFetchResult fetchPage(String jobId, int page) {
+        try {
+            DouyinActivityGateway.ActivityListResult result = douyinActivityGateway.listActivities(
+                    new DouyinActivityGateway.ActivityListQuery(null, null, null, null,
+                            (long) page, (long) normalizedPageSize(), null));
+            return PageFetchResult.success(page, result);
+        } catch (Exception ex) {
+            log.warn("ColonelActivityListSync page fetch failed, jobId={}, page={}", jobId, page, ex);
+            return PageFetchResult.failure(page, ex);
+        }
+    }
+
+    private ExecutorService getPageFetchExecutor() {
+        ExecutorService existing = pageFetchExecutor;
+        if (existing != null) {
+            return existing;
+        }
+        synchronized (pageFetchExecutorMonitor) {
+            if (pageFetchExecutor == null) {
+                pageFetchExecutor = Executors.newFixedThreadPool(
+                        normalizedPageParallelism(), namedThreadFactory("activity-list-page-"));
+            }
+            return pageFetchExecutor;
+        }
+    }
+
+    private int normalizedPageSize() {
+        return Math.min(Math.max(pageSize, 1), 100);
+    }
+
+    private int normalizedPageParallelism() {
+        return Math.min(Math.max(pageParallelism, 1), 8);
+    }
+
+    private ThreadFactory namedThreadFactory(String prefix) {
+        AtomicInteger sequence = new AtomicInteger();
+        return runnable -> {
+            Thread thread = new Thread(runnable, prefix + sequence.incrementAndGet());
+            thread.setDaemon(true);
+            return thread;
+        };
+    }
+
+    @PreDestroy
+    void shutdownExecutors() {
+        syncExecutor.shutdownNow();
+        ExecutorService pageExecutor = pageFetchExecutor;
+        if (pageExecutor != null) {
+            pageExecutor.shutdownNow();
         }
     }
 
@@ -222,8 +340,33 @@ public class ColonelActivityListSyncService {
         }
     }
 
-    private String toMetadataJson(int total, int synced, int failed) {
-        return String.format("{\"total\":%d,\"synced\":%d,\"failed\":%d}", total, synced, failed);
+    private String toMetadataJson(int total, int synced, int failed, int pagesFetched, boolean complete) {
+        return String.format("{\"total\":%d,\"synced\":%d,\"failed\":%d,\"pagesFetched\":%d,\"complete\":%s}",
+                total, synced, failed, pagesFetched, complete);
+    }
+
+    private static final class SyncAccumulator {
+        private int fetchedRows;
+        private int pagesFetched;
+        private int synced;
+        private int failed;
+        private boolean complete;
+        private boolean fetchFailed;
+        private String errorMessage;
+
+        private boolean isSuccessful() {
+            return complete && !fetchFailed && failed == 0;
+        }
+    }
+
+    private record PageFetchResult(int page, DouyinActivityGateway.ActivityListResult result, Throwable error) {
+        private static PageFetchResult success(int page, DouyinActivityGateway.ActivityListResult result) {
+            return new PageFetchResult(page, result, null);
+        }
+
+        private static PageFetchResult failure(int page, Throwable error) {
+            return new PageFetchResult(page, null, error);
+        }
     }
 
     public record SyncTriggerResult(String jobId, String status, String message) {}

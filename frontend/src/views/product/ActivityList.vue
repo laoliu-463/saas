@@ -155,7 +155,7 @@ import { useRouter } from 'vue-router'
 import PageHeader from '../../components/PageHeader.vue'
 import PageEmpty from '../../components/PageEmpty.vue'
 import { assignColonelActivity, getColonelActivityPage, triggerActivityListSync, getActivitySyncJob } from '../../api/activity'
-import { getActivityProducts } from '../../api/activityProduct'
+import { getActivityProducts, getActivityProductSyncJob } from '../../api/activityProduct'
 import { getDouyinInstitutionInfo } from '../../api/douyin'
 import { exportActivities } from '../../api/data'
 import { useRuntimeEnvironment } from '../../composables/useRuntimeEnvironment'
@@ -185,7 +185,12 @@ import {
 } from './activity-list-display'
 import {
   batchSyncActivityProducts,
-  formatActivityProductSyncMessage
+  formatActivityProductSyncMessage,
+  shouldPollActivityProductSyncJob,
+  isActivityProductSyncTerminal,
+  isActivityProductSyncSuccess,
+  getActivityProductSyncPollDelayMs,
+  ACTIVITY_PRODUCT_SYNC_MAX_POLLS
 } from './activity-sync'
 import { buildActivityProductListRoute } from './product-page-data-source'
 
@@ -624,6 +629,48 @@ const syncLatestActivities = async () => {
   }
 }
 
+const activeProductSyncTimers = new Map<string, number>()
+
+const pollSingleActivityProductSyncJob = async (
+  activityId: string,
+  jobId: string,
+  attempt = 0
+) => {
+  if (activeProductSyncTimers.has(activityId)) {
+    window.clearTimeout(activeProductSyncTimers.get(activityId)!)
+    activeProductSyncTimers.delete(activityId)
+  }
+  try {
+    const res: any = await getActivityProductSyncJob(activityId, jobId, { suppressErrorNotice: true })
+    const syncStatus = String(res?.data?.syncStatus || '')
+    if (isActivityProductSyncSuccess(syncStatus)) {
+      message.success(`活动 [${activityId}] 商品同步完成，已刷新对应统计`)
+      void hydrateProductStats(data.value.filter((r) => String(r.activityId) === activityId))
+      return
+    }
+    if (isActivityProductSyncTerminal(syncStatus)) {
+      if (syncStatus === 'PARTIAL') {
+        message.warning(`活动 [${activityId}] 商品同步部分完成，已更新现有数据`)
+      } else {
+        message.warning(`活动 [${activityId}] 商品同步结束 (${syncStatus})`)
+      }
+      void hydrateProductStats(data.value.filter((r) => String(r.activityId) === activityId))
+      return
+    }
+    if (attempt >= ACTIVITY_PRODUCT_SYNC_MAX_POLLS) {
+      return
+    }
+  } catch {
+    if (attempt >= ACTIVITY_PRODUCT_SYNC_MAX_POLLS) {
+      return
+    }
+  }
+  const timer = window.setTimeout(() => {
+    void pollSingleActivityProductSyncJob(activityId, jobId, attempt + 1)
+  }, getActivityProductSyncPollDelayMs(attempt))
+  activeProductSyncTimers.set(activityId, timer)
+}
+
 const syncSelectedActivityProducts = async () => {
   if (!checkedRowKeys.value.length) {
     message.warning('请先选择活动')
@@ -643,6 +690,11 @@ const syncSelectedActivityProducts = async () => {
         message.success(text)
       }
       await fetchData()
+      summary.results.forEach((item) => {
+        if (item.ok && item.jobId && shouldPollActivityProductSyncJob(item.syncStatus)) {
+          void pollSingleActivityProductSyncJob(item.activityId, item.jobId, 0)
+        }
+      })
     } else {
       message.error(text)
     }

@@ -112,6 +112,11 @@ product:
       apiSleepMs: ${PRODUCT_SYNC_BACKFILL_API_SLEEP_MS:100}
       staleReconcileCron: ${PRODUCT_SYNC_BACKFILL_STALE_RECONCILE_CRON:0 */15 * * * ?}
 
+colonel:
+  activity:
+    list-sync:
+      page-parallelism: ${COLONEL_ACTIVITY_LIST_SYNC_PAGE_PARALLELISM:4}
+
 app:
   performance:
     slow-query-threshold-ms: ${APP_SLOW_QUERY_THRESHOLD_MS:500}

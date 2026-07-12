@@ -16,6 +16,9 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -24,6 +27,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -102,7 +106,7 @@ class ColonelActivityListSyncServiceTest {
 
         // 验证同步状态更新为 RUNNING，然后更新为 SUCCESS
         verify(jobLogMapper).updateRunning(eq(result.jobId()), any());
-        verify(jobLogMapper).updateStatus(eq(result.jobId()), eq("SUCCESS"), any(), eq(1), eq(0), any(), any());
+        verify(jobLogMapper).updateStatus(eq(result.jobId()), eq("SUCCESS"), any(), eq(1), eq(1), eq(0), any(), any());
 
         // 验证调用了 activityService.syncFromGatewayItem
         verify(activityService).syncFromGatewayItem(item);
@@ -119,7 +123,63 @@ class ColonelActivityListSyncServiceTest {
         ColonelActivityListSyncService.SyncTriggerResult result = service.triggerSync(null);
 
         assertThat(result.jobId()).isNotNull();
-        verify(jobLogMapper).updateStatus(eq(result.jobId()), eq("FAILED_LOCKED"), any(), eq(0), eq(0), any(), any());
+        verify(jobLogMapper).updateStatus(eq(result.jobId()), eq("FAILED_LOCKED"), any(), eq(0), eq(0), eq(0), any(), any());
         verify(douyinActivityGateway, never()).listActivities(any());
+    }
+
+    @Test
+    void triggerSync_shouldFetchSubsequentPagesConcurrentlyWithinBoundedWindow() throws Exception {
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "maxPages", 5);
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "pageSize", 2);
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "pageParallelism", 2);
+        when(jobLockService.tryAcquire(eq(JobLockKeys.COLONEL_ACTIVITY_LIST_SYNC), any(Duration.class), anyString()))
+                .thenReturn(true);
+
+        AtomicInteger activePageFetches = new AtomicInteger();
+        AtomicInteger maxConcurrentPageFetches = new AtomicInteger();
+        CountDownLatch subsequentPagesStarted = new CountDownLatch(2);
+
+        when(douyinActivityGateway.listActivities(any())).thenAnswer(invocation -> {
+            DouyinActivityGateway.ActivityListQuery query = invocation.getArgument(0);
+            long page = query.page();
+            if (page > 1) {
+                int active = activePageFetches.incrementAndGet();
+                maxConcurrentPageFetches.accumulateAndGet(active, Math::max);
+                subsequentPagesStarted.countDown();
+                subsequentPagesStarted.await(250, TimeUnit.MILLISECONDS);
+                activePageFetches.decrementAndGet();
+            }
+            return new DouyinActivityGateway.ActivityListResult(
+                    false,
+                    9999L,
+                    6L,
+                    List.of(
+                            activityItem(page * 10 + 1),
+                            activityItem(page * 10 + 2)
+                    )
+            );
+        });
+
+        ColonelActivityListSyncService.SyncTriggerResult result = service.triggerSync(null);
+
+        assertThat(result.status()).isEqualTo("QUEUED");
+        assertThat(maxConcurrentPageFetches.get()).isGreaterThanOrEqualTo(2);
+        assertThat(maxConcurrentPageFetches.get()).isLessThanOrEqualTo(2);
+        verify(activityService, times(10)).syncFromGatewayItem(any());
+    }
+
+    private DouyinActivityGateway.ActivityItem activityItem(long activityId) {
+        return new DouyinActivityGateway.ActivityItem(
+                activityId,
+                "Activity " + activityId,
+                "2026-07-01",
+                "2026-07-31",
+                5,
+                "推广中",
+                "2026-07-01",
+                "2026-07-10",
+                null,
+                9999L
+        );
     }
 }

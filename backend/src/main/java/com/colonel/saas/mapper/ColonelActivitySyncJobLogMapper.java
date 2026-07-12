@@ -21,6 +21,7 @@ public interface ColonelActivitySyncJobLogMapper {
             @Param("jobId") String jobId,
             @Param("status") String status,
             @Param("finishedAt") LocalDateTime finishedAt,
+            @Param("activitiesTotal") Integer activitiesTotal,
             @Param("activitiesSynced") Integer activitiesSynced,
             @Param("activitiesFailed") Integer activitiesFailed,
             @Param("errorMessage") String errorMessage,

@@ -34,6 +34,7 @@
         UPDATE colonel_activity_sync_job_log
            SET status = #{status},
                finished_at = #{finishedAt},
+               activities_total = COALESCE(#{activitiesTotal}, activities_total),
                activities_synced = COALESCE(#{activitiesSynced}, activities_synced),
                activities_failed = COALESCE(#{activitiesFailed}, activities_failed),
                error_message = #{errorMessage},

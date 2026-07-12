@@ -1076,7 +1076,7 @@ const refreshProductsAfterActivitySync = async (activityId: string) => {
     activityId: selectedActivityId
   }
   fallbackActivityId.value = selectedActivityId
-  await fetchProducts(true, false, selectedActivityId)
+  await fetchProducts(true, true, selectedActivityId)
 }
 
 const schedulePostSyncRefreshes = (activityId: string, syncStatus?: string) => {
