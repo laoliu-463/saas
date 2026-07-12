@@ -1,0 +1,10 @@
+{
+  "items": [
+    { "path": "harness/reports/content-retire-20260710-125326.md", "action": "archive", "category": "report-headroom", "reason": "preserve prior maintenance evidence and reserve wave 1 plan evidence capacity" },
+    { "path": "harness/reports/content-retire-20260711-154915.md", "action": "archive", "category": "report-headroom", "reason": "preserve prior maintenance evidence and reserve wave 1 plan evidence capacity" },
+    { "path": "harness/reports/evidence-20260630-124425.md", "action": "archive", "category": "report-headroom", "reason": "preserve historical evidence and reserve wave 1 plan evidence capacity" },
+    { "path": "harness/reports/evidence-20260630-124427.md", "action": "archive", "category": "report-headroom", "reason": "preserve historical evidence and reserve wave 1 plan evidence capacity" },
+    { "path": "harness/reports/evidence-20260630-125242.md", "action": "archive", "category": "report-headroom", "reason": "preserve historical evidence and reserve wave 1 plan evidence capacity" },
+    { "path": "harness/reports/evidence-20260630-130212.md", "action": "archive", "category": "report-headroom", "reason": "preserve historical evidence and reserve wave 1 plan evidence capacity" }
+  ]
+}
