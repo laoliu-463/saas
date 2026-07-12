@@ -66,7 +66,7 @@ class DddOrderSyncIntegrationClosureContractTest {
     void orderSyncLocalClosureShouldKeepRealPreAndExternalSampleGapsExplicit() throws IOException {
         assertFileContains(
                 "../docs/ddd-completion-evidence-matrix.md",
-                "| O-15 | BLOCKED | 阻塞原因：依赖 real-pre 真实上游响应 / 样本证据",
+                "| O-15 | BLOCKED | 阻塞原因：real-pre preflight 已于",
                 "| O-4 | BLOCKED |",
                 "真实 `pick_source` 命中订单样本");
         assertFileContains(

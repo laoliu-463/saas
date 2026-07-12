@@ -2,55 +2,33 @@
 
 ## Metadata
 
-- Time: 2026-07-11 19:31:19 +08:00
+- Time: 2026-07-12 14:16:51 +08:00
 - Branch: codex/ddd-user-role-application
-- HEAD: 17a2b805
+- HEAD: 92eb547f
 - Conclusion: PASS
 
 ## Dirty Files
 
-- Total: 136
-- docs/harness: 40
+- Total: 14
+- docs/harness: 13
 - known historical tests: 0
-- unexpected non docs/harness: 96
+- unexpected non docs/harness: 1
 
 ~~~text
- M .claude/skills/README.md
- M .codex/config.toml
- M backend/src/main/java/com/colonel/saas/config/DddRefactorProperties.java
- M backend/src/main/java/com/colonel/saas/constant/OrderDomainEventTypes.java
- M backend/src/main/java/com/colonel/saas/constant/ProductDomainEventTypes.java
- M backend/src/main/java/com/colonel/saas/domain/analytics/application/AnalyticsAggregationService.java
- M backend/src/main/java/com/colonel/saas/domain/analytics/application/AnalyticsEventConsumer.java
- M backend/src/main/java/com/colonel/saas/domain/analytics/application/AnalyticsEventRouter.java
- M backend/src/main/java/com/colonel/saas/domain/analytics/event/AnalyticsEventTypes.java
- M backend/src/main/java/com/colonel/saas/domain/colonel/policy/ColonelPartnerBusinessPolicy.java
- M backend/src/main/java/com/colonel/saas/domain/event/ConfigChangedEventRouter.java
- M backend/src/main/java/com/colonel/saas/domain/order/application/OrderSampleHomeworkBridge.java
- M backend/src/main/java/com/colonel/saas/domain/order/event/InProcessOrderDomainEventPublisher.java
- M backend/src/main/java/com/colonel/saas/domain/order/event/OrderDomainEventPublisher.java
- M backend/src/main/java/com/colonel/saas/domain/order/event/OrderEventPayloadMapper.java
- M backend/src/main/java/com/colonel/saas/domain/order/facade/LegacyOrderReadFacade.java
- M backend/src/main/java/com/colonel/saas/domain/order/facade/OrderReadFacade.java
- M backend/src/main/java/com/colonel/saas/domain/performance/application/PerformanceSummaryApplicationService.java
- M backend/src/main/java/com/colonel/saas/domain/product/event/ProductDomainEventPublisher.java
- M backend/src/main/java/com/colonel/saas/event/PerformanceCalculatedEvent.java
- M backend/src/main/java/com/colonel/saas/listener/AnalyticsShadowEventListener.java
- M backend/src/main/java/com/colonel/saas/listener/PerformanceRecordSyncListener.java
- M backend/src/main/java/com/colonel/saas/service/DashboardPerformanceSummaryService.java
- M backend/src/main/java/com/colonel/saas/service/OrderCommissionPolicy.java
- M backend/src/main/java/com/colonel/saas/service/OrderSyncPersistenceService.java
- M backend/src/main/java/com/colonel/saas/service/OrderSyncService.java
- M backend/src/main/java/com/colonel/saas/service/TalentQueryService.java
- M backend/src/main/resources/application-real-pre.yml
- M backend/src/main/resources/application-test.yml
- M backend/src/main/resources/application.yml
- M backend/src/test/java/com/colonel/saas/architecture/DddOutbox001OrderRoutingTest.java
- M backend/src/test/java/com/colonel/saas/architecture/DddTalentOrderFacadeBoundaryTest.java
- M backend/src/test/java/com/colonel/saas/controller/PerformanceControllerTest.java
- M backend/src/test/java/com/colonel/saas/domain/analytics/application/AnalyticsEventConsumerTest.java
- M backend/src/test/java/com/colonel/saas/domain/order/application/OrderSampleHomeworkBridgeTest.java
-... omitted 101 more
+ M backend/src/test/java/com/colonel/saas/architecture/DddOrderSyncIntegrationClosureContractTest.java
+ M docs/ddd-completion-evidence-matrix.md
+ D harness/reports/evidence-20260712-013336.md
+ D harness/reports/evidence-20260712-135645.md
+ M harness/reports/latest-ddd-acceptance-report.md
+ D harness/reports/latest-evidence-20260704.md
+ D harness/reports/latest-evidence-20260707.md
+ D harness/reports/retro-20260704-142252.md
+ D harness/reports/retro-20260704-143955.md
+ D harness/reports/retro-20260704-150831.md
+ M harness/rules/state/snapshots/DOMAIN_STATUS.md
+?? harness/manifests/reports-cleanup-20260712.json
+?? harness/reports/evidence-20260712-141015.md
+?? harness/reports/retro-20260712-135818.md
 ~~~
 
 ## Whitelist
@@ -64,16 +42,16 @@
 
 | DONE | PARTIAL | TODO | BLOCKED | Total |
 | ---: | ---: | ---: | ---: | ---: |
-| 134 | 36 | 0 | 8 | 178 |
+| 139 | 31 | 0 | 8 | 178 |
 
 ## Checks
 
 | Check | Status | Summary | Command |
 | --- | --- | --- | --- |
-| git status | WARN | dirtyFiles=136 | git status --short |
+| git status | WARN | dirtyFiles=14 | git status --short |
 | cross-domain mapper whitelist | PASS | active=0, totalLines=10 |  |
 | architecture redline whitelist | PASS | active=0, totalLines=3 |  |
-| DDD evidence matrix | PASS | DONE=134, PARTIAL=36, TODO=0, BLOCKED=8, total=178 |  |
+| DDD evidence matrix | PASS | DONE=139, PARTIAL=31, TODO=0, BLOCKED=8, total=178 |  |
 | git diff --check | PASS | exitCode=0 | git diff --check |
 | check-harness-limits | PASS | exitCode=0 | powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\check-harness-limits.ps1 |
 | safety-check docs dry-run | PASS | exitCode=0 | powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\safety-check.ps1 -Env real-pre -Scope docs -DryRun |
@@ -85,42 +63,7 @@
 
 ## Warnings
 
-- Unexpected non docs/harness dirty file: .claude/skills/README.md
-- Unexpected non docs/harness dirty file: .codex/config.toml
-- Unexpected non docs/harness dirty file: backend/src/main/java/com/colonel/saas/config/DddRefactorProperties.java
-- Unexpected non docs/harness dirty file: backend/src/main/java/com/colonel/saas/constant/OrderDomainEventTypes.java
-- Unexpected non docs/harness dirty file: backend/src/main/java/com/colonel/saas/constant/ProductDomainEventTypes.java
-- Unexpected non docs/harness dirty file: backend/src/main/java/com/colonel/saas/domain/analytics/application/AnalyticsAggregationService.java
-- Unexpected non docs/harness dirty file: backend/src/main/java/com/colonel/saas/domain/analytics/application/AnalyticsEventConsumer.java
-- Unexpected non docs/harness dirty file: backend/src/main/java/com/colonel/saas/domain/analytics/application/AnalyticsEventRouter.java
-- Unexpected non docs/harness dirty file: backend/src/main/java/com/colonel/saas/domain/analytics/event/AnalyticsEventTypes.java
-- Unexpected non docs/harness dirty file: backend/src/main/java/com/colonel/saas/domain/colonel/policy/ColonelPartnerBusinessPolicy.java
-- Unexpected non docs/harness dirty file: backend/src/main/java/com/colonel/saas/domain/event/ConfigChangedEventRouter.java
-- Unexpected non docs/harness dirty file: backend/src/main/java/com/colonel/saas/domain/order/application/OrderSampleHomeworkBridge.java
-- Unexpected non docs/harness dirty file: backend/src/main/java/com/colonel/saas/domain/order/event/InProcessOrderDomainEventPublisher.java
-- Unexpected non docs/harness dirty file: backend/src/main/java/com/colonel/saas/domain/order/event/OrderDomainEventPublisher.java
-- Unexpected non docs/harness dirty file: backend/src/main/java/com/colonel/saas/domain/order/event/OrderEventPayloadMapper.java
-- Unexpected non docs/harness dirty file: backend/src/main/java/com/colonel/saas/domain/order/facade/LegacyOrderReadFacade.java
-- Unexpected non docs/harness dirty file: backend/src/main/java/com/colonel/saas/domain/order/facade/OrderReadFacade.java
-- Unexpected non docs/harness dirty file: backend/src/main/java/com/colonel/saas/domain/performance/application/PerformanceSummaryApplicationService.java
-- Unexpected non docs/harness dirty file: backend/src/main/java/com/colonel/saas/domain/product/event/ProductDomainEventPublisher.java
-- Unexpected non docs/harness dirty file: backend/src/main/java/com/colonel/saas/event/PerformanceCalculatedEvent.java
-- Unexpected non docs/harness dirty file: backend/src/main/java/com/colonel/saas/listener/AnalyticsShadowEventListener.java
-- Unexpected non docs/harness dirty file: backend/src/main/java/com/colonel/saas/listener/PerformanceRecordSyncListener.java
-- Unexpected non docs/harness dirty file: backend/src/main/java/com/colonel/saas/service/DashboardPerformanceSummaryService.java
-- Unexpected non docs/harness dirty file: backend/src/main/java/com/colonel/saas/service/OrderCommissionPolicy.java
-- Unexpected non docs/harness dirty file: backend/src/main/java/com/colonel/saas/service/OrderSyncPersistenceService.java
-- Unexpected non docs/harness dirty file: backend/src/main/java/com/colonel/saas/service/OrderSyncService.java
-- Unexpected non docs/harness dirty file: backend/src/main/java/com/colonel/saas/service/TalentQueryService.java
-- Unexpected non docs/harness dirty file: backend/src/main/resources/application-real-pre.yml
-- Unexpected non docs/harness dirty file: backend/src/main/resources/application-test.yml
-- Unexpected non docs/harness dirty file: backend/src/main/resources/application.yml
-- Unexpected non docs/harness dirty file: backend/src/test/java/com/colonel/saas/architecture/DddOutbox001OrderRoutingTest.java
-- Unexpected non docs/harness dirty file: backend/src/test/java/com/colonel/saas/architecture/DddTalentOrderFacadeBoundaryTest.java
-- Unexpected non docs/harness dirty file: backend/src/test/java/com/colonel/saas/controller/PerformanceControllerTest.java
-- Unexpected non docs/harness dirty file: backend/src/test/java/com/colonel/saas/domain/analytics/application/AnalyticsEventConsumerTest.java
-- Unexpected non docs/harness dirty file: backend/src/test/java/com/colonel/saas/domain/order/application/OrderSampleHomeworkBridgeTest.java
-- ... omitted 61 more
+- Unexpected non docs/harness dirty file: backend/src/test/java/com/colonel/saas/architecture/DddOrderSyncIntegrationClosureContractTest.java
 
 ## Failures
 

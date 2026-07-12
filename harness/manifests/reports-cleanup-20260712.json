@@ -1,0 +1,15 @@
+{
+  "taskId": "REPORT-LIMIT-CLEANUP-20260712",
+  "reason": "压缩归档 real-pre DDD 运行产生的历史报告，恢复 reports 目录和文本行数限制",
+  "archive": "harness/archive/by-date/20260712/reports-limit-cleanup/140900/report-pack.zip",
+  "items": [
+    "harness/reports/evidence-20260712-013336.md",
+    "harness/reports/evidence-20260712-135645.md",
+    "harness/reports/retro-20260704-142252.md",
+    "harness/reports/retro-20260704-143955.md",
+    "harness/reports/retro-20260704-150831.md",
+    "harness/reports/latest-evidence-20260704.md",
+    "harness/reports/latest-evidence-20260707.md"
+  ],
+  "verification": "每个源文件均位于 harness/reports，归档包生成后才移除源文件；不涉及源码、环境文件或数据库资源。"
+}
