@@ -41,6 +41,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
@@ -722,7 +723,7 @@ class ColonelActivityControllerTest {
             assertThat(apiResult.getCode()).isEqualTo(200);
             Object data = apiResult.getData();
             assertThat(data).isInstanceOf(Map.class);
-            Map<?, ?> payload = (Map<?, ?>) data;
+            Map<String, Object> payload = (Map<String, Object>) data;
             assertThat(payload).containsEntry("refreshDeprecated", Boolean.TRUE);
             assertThat(payload).containsKey("items");
             // 关键: 不调 refreshActivitySnapshots, 因此 gateway 异常不应冒泡
