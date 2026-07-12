@@ -480,8 +480,16 @@ public class ProductActivityManualSyncService {
         if (jobLockService == null) {
             return ManualSyncLockState.acquired(activityLockKey, false, false);
         }
-        String globalLockOwner = safeCurrentLockOwner(JobLockKeys.PRODUCT_BACKFILL_GLOBAL);
-        if (StringUtils.hasText(globalLockOwner)) {
+        // P0 修复 (R1): 改用 tryAcquire(..., owner) 替代 read-then-act
+        // 修复前 bug: safeCurrentLockOwner 是只读检查, 与后续 tryAcquire 不是原子操作,
+        // 期间 backfill 释放锁后, manual 仍以为锁被持有, 错误返回 QUEUED 之外的路径。
+        // 修复后: 原子 tryAcquire 失败直接返回 locked, 后续 activity lock 不再获取,
+        // 同步路径不会执行 (避免绕过 global 锁的并发写入)。
+        // 锁持续到 refresh 完成, 由调用方 (runQueuedSync) 在 finally 块通过 releaseManualSyncLocks 统一释放.
+        boolean globalAcquired = jobLockService.tryAcquire(
+                JobLockKeys.PRODUCT_BACKFILL_GLOBAL, MANUAL_SYNC_LOCK_TTL, lockOwner);
+        if (!globalAcquired) {
+            String globalLockOwner = safeCurrentLockOwner(JobLockKeys.PRODUCT_BACKFILL_GLOBAL);
             return ManualSyncLockState.locked(
                     activityLockKey,
                     JobLockKeys.PRODUCT_BACKFILL_GLOBAL,
@@ -500,7 +508,8 @@ public class ProductActivityManualSyncService {
                         safeCurrentLockTtlSeconds(activityLockKey),
                         "当前活动商品同步锁被占用，请等待当前活动任务完成后重试");
             }
-            return ManualSyncLockState.acquired(activityLockKey, true, false);
+            // P0 修复: acquiredGlobalLock=true 表示已成功抢到 global lock, 触发方在 finally 块统一释放
+            return ManualSyncLockState.acquired(activityLockKey, true, true);
         } finally {
             if (!acquiredActivityLock) {
                 releaseManualSyncLocks(activityId, activityLockKey, false, false, lockOwner);
