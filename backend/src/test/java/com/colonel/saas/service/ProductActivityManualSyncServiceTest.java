@@ -44,6 +44,8 @@ class ProductActivityManualSyncServiceTest {
     private ProductSyncJobLogMapper jobLogMapper;
     @Mock
     private DistributedJobLockService jobLockService;
+    @Mock
+    private DistributedConcurrencyLimiter concurrencyLimiter;
 
     @BeforeEach
     void setUp() {
@@ -87,7 +89,7 @@ class ProductActivityManualSyncServiceTest {
         ArgumentCaptor<DouyinProductGateway.ActivityProductQueryRequest> captor =
                 ArgumentCaptor.forClass(DouyinProductGateway.ActivityProductQueryRequest.class);
         verify(productService).refreshActivitySnapshotsByStatusPartitions(
-                captor.capture(), eq(3000), eq(50000), eq(300L), eq(1), any());
+                captor.capture(), eq(3000), eq(50000), eq(300L), eq(2), any());
         assertThat(captor.getValue().activityId()).isEqualTo("ACT-1");
         assertThat(captor.getValue().count()).isEqualTo(20);
         verify(activityMapper).touchLastSyncAt(eq("ACT-1"), any(LocalDateTime.class));
@@ -255,9 +257,11 @@ class ProductActivityManualSyncServiceTest {
     }
 
     @Test
-    void trigger_shouldQueueJobWithoutRunningWhenGlobalLockIsHeld() {
-        when(jobLockService.currentLockValue(JobLockKeys.PRODUCT_BACKFILL_GLOBAL)).thenReturn("scheduler");
-        when(jobLockService.currentLockTtlSeconds(JobLockKeys.PRODUCT_BACKFILL_GLOBAL)).thenReturn(120L);
+    void trigger_shouldRunWhenGlobalBackfillLockIsHeldButActivityLockIsAvailable() {
+        when(jobLockService.tryAcquire(
+                eq(JobLockKeys.productBackfillActivityLock("ACT-1")),
+                any(java.time.Duration.class),
+                any(String.class))).thenReturn(true);
         ProductActivityManualSyncService service = new ProductActivityManualSyncService(
                 productService,
                 colonelActivityService,
@@ -274,6 +278,40 @@ class ProductActivityManualSyncServiceTest {
         assertThat(result.syncStatus()).isEqualTo("QUEUED");
         verify(jobLogMapper).insert(any(ProductSyncJobLog.class));
         verify(jobLogMapper).updateById(any(ProductSyncJobLog.class));
+        verify(productService).refreshActivitySnapshotsByStatusPartitions(
+                any(DouyinProductGateway.ActivityProductQueryRequest.class),
+                anyInt(),
+                anyInt(),
+                anyLong(),
+                anyInt(),
+                any());
+        verify(colonelActivityService).syncActivitySummaryFromUpstream("ACT-1", null);
+        verify(jobLockService, never()).tryAcquire(
+                eq(JobLockKeys.PRODUCT_BACKFILL_GLOBAL),
+                any(java.time.Duration.class),
+                any(String.class));
+    }
+
+    @Test
+    void trigger_shouldStayQueuedWhenDistributedConcurrencySlotIsUnavailable() {
+        when(jobLockService.tryAcquire(
+                eq(JobLockKeys.productBackfillActivityLock("ACT-1")),
+                any(java.time.Duration.class),
+                any(String.class))).thenReturn(true);
+        when(concurrencyLimiter.tryAcquire(any(String.class), any(java.time.Duration.class))).thenReturn(false);
+        ProductActivityManualSyncService service = new ProductActivityManualSyncService(
+                productService,
+                colonelActivityService,
+                activityMapper,
+                jobLogMapper,
+                jobLockService,
+                null,
+                Runnable::run,
+                concurrencyLimiter);
+
+        ProductActivityManualSyncService.SyncTriggerResult result = service.trigger("ACT-1", null);
+
+        assertThat(result.syncStatus()).isEqualTo("QUEUED");
         verify(productService, never()).refreshActivitySnapshotsByStatusPartitions(
                 any(DouyinProductGateway.ActivityProductQueryRequest.class),
                 anyInt(),
@@ -281,7 +319,8 @@ class ProductActivityManualSyncServiceTest {
                 anyLong(),
                 anyInt(),
                 any());
-        verify(colonelActivityService, never()).syncActivitySummaryFromUpstream(any(), any());
+        verify(jobLockService).releaseWithOwner(
+                eq(JobLockKeys.productBackfillActivityLock("ACT-1")), any(String.class));
     }
 
     @Test

@@ -65,6 +65,7 @@ public class ProductActivityManualSyncService {
     private final ColonelsettlementActivityMapper activityMapper;
     private final ProductSyncJobLogMapper jobLogMapper;
     private final DistributedJobLockService jobLockService;
+    private final DistributedConcurrencyLimiter concurrencyLimiter;
     private final TransactionTemplate progressTransactionTemplate;
     private final Executor syncExecutor;
     private final Map<String, ProductSyncJobLog> activeJobsByActivity = new ConcurrentHashMap<>();
@@ -79,8 +80,8 @@ public class ProductActivityManualSyncService {
     private int manualMaxPagesPerActivity = DEFAULT_MANUAL_MAX_PAGES_PER_ACTIVITY;
     @Value("${product.sync.activityProduct.manual-maxRowsPerActivity:50000}")
     private int manualMaxRowsPerActivity = DEFAULT_MANUAL_MAX_ROWS_PER_ACTIVITY;
-    @Value("${product.sync.activityProduct.manual-status-partition-parallelism:1}")
-    private int manualStatusPartitionParallelism = 1;
+    @Value("${product.sync.activityProduct.manual-status-partition-parallelism:2}")
+    private int manualStatusPartitionParallelism = 2;
     @Value("${product.sync.activityProduct.manual-queue-drain-enabled:true}")
     private boolean manualQueueDrainEnabled = true;
     @Value("${product.sync.activityProduct.manual-queue-drain-batch-size:5}")
@@ -98,7 +99,19 @@ public class ProductActivityManualSyncService {
             ColonelsettlementActivityMapper activityMapper,
             ProductSyncJobLogMapper jobLogMapper,
             @Qualifier("applicationTaskExecutor") Executor syncExecutor) {
-        this(productService, colonelActivityService, activityMapper, jobLogMapper, null, null, syncExecutor);
+        this(productService, colonelActivityService, activityMapper, jobLogMapper, null, null, syncExecutor, null);
+    }
+
+    public ProductActivityManualSyncService(
+            ProductService productService,
+            ColonelsettlementActivityService colonelActivityService,
+            ColonelsettlementActivityMapper activityMapper,
+            ProductSyncJobLogMapper jobLogMapper,
+            DistributedJobLockService jobLockService,
+            PlatformTransactionManager transactionManager,
+            @Qualifier("applicationTaskExecutor") Executor syncExecutor) {
+        this(productService, colonelActivityService, activityMapper, jobLogMapper,
+                jobLockService, transactionManager, syncExecutor, null);
     }
 
     @Autowired
@@ -109,12 +122,14 @@ public class ProductActivityManualSyncService {
             ProductSyncJobLogMapper jobLogMapper,
             DistributedJobLockService jobLockService,
             PlatformTransactionManager transactionManager,
-            @Qualifier("applicationTaskExecutor") Executor syncExecutor) {
+            @Qualifier("applicationTaskExecutor") Executor syncExecutor,
+            DistributedConcurrencyLimiter concurrencyLimiter) {
         this.productService = productService;
         this.colonelActivityService = colonelActivityService;
         this.activityMapper = activityMapper;
         this.jobLogMapper = jobLogMapper;
         this.jobLockService = jobLockService;
+        this.concurrencyLimiter = concurrencyLimiter;
         this.progressTransactionTemplate = createRequiresNewTemplate(transactionManager);
         this.syncExecutor = syncExecutor;
     }
@@ -317,7 +332,7 @@ public class ProductActivityManualSyncService {
                         activityId,
                         activityLockKey,
                         lockState.acquiredActivityLock(),
-                        lockState.acquiredGlobalLock(),
+                        lockState.acquiredConcurrencySlot(),
                         lockOwner);
                 return;
             }
@@ -327,7 +342,7 @@ public class ProductActivityManualSyncService {
                     activityId,
                     activityLockKey,
                     lockState.acquiredActivityLock(),
-                    lockState.acquiredGlobalLock(),
+                    lockState.acquiredConcurrencySlot(),
                     lockOwner);
             activeJobsByActivity.remove(activityId, jobLog);
             return;
@@ -339,7 +354,7 @@ public class ProductActivityManualSyncService {
                 activityLockKey,
                 lockOwner,
                 lockState.acquiredActivityLock(),
-                lockState.acquiredGlobalLock());
+                lockState.acquiredConcurrencySlot());
         } finally {
             if (enteredUpstreamSlot) {
                 releaseManualUpstreamSlot(jobLog.getJobId());
@@ -397,7 +412,7 @@ public class ProductActivityManualSyncService {
             String activityLockKey,
             String lockOwner,
             boolean acquiredActivityLock,
-            boolean acquiredGlobalLock) {
+            boolean acquiredConcurrencySlot) {
         try {
             ResolvedSyncOptions syncOptions = resolveSyncOptions(jobLog.getRequestParamsJson());
             colonelActivityService.syncActivitySummaryFromUpstream(activityId, appId);
@@ -405,7 +420,7 @@ public class ProductActivityManualSyncService {
                     refreshActivityProducts(activityId, appId, syncOptions, progress -> {
                         updateRunningProgress(jobLog, progress);
                         // 心跳续租：每次进度更新时续租锁，防止长任务期间锁 TTL 过期
-                        renewManualSyncLocks(activityLockKey, lockOwner, acquiredActivityLock, acquiredGlobalLock);
+                        renewManualSyncLocks(activityLockKey, lockOwner, acquiredActivityLock, acquiredConcurrencySlot);
                     });
             if (result.complete() && syncOptions.priorityStatuses().isEmpty()) {
                 activityMapper.touchLastSyncAt(activityId, LocalDateTime.now());
@@ -428,7 +443,7 @@ public class ProductActivityManualSyncService {
             finishFailedJob(jobLog, ex);
             log.warn("ProductActivityManualSync failed, activityId={}", activityId, ex);
         } finally {
-            releaseManualSyncLocks(activityId, activityLockKey, acquiredActivityLock, acquiredGlobalLock, lockOwner);
+            releaseManualSyncLocks(activityId, activityLockKey, acquiredActivityLock, acquiredConcurrencySlot, lockOwner);
             activeJobsByActivity.remove(activityId, jobLog);
         }
     }
@@ -437,18 +452,23 @@ public class ProductActivityManualSyncService {
             String activityLockKey,
             String lockOwner,
             boolean acquiredActivityLock,
-            boolean acquiredGlobalLock) {
+            boolean acquiredConcurrencySlot) {
+        long extendMs = MANUAL_SYNC_LOCK_TTL.toMillis();
+        if (acquiredConcurrencySlot && concurrencyLimiter != null) {
+            try {
+                boolean slotRenewed = concurrencyLimiter.renew(lockOwner, MANUAL_SYNC_LOCK_TTL);
+                if (!slotRenewed) {
+                    log.warn("ProductActivityManualSync concurrency slot renew failed, lockOwner={}", lockOwner);
+                }
+            } catch (Exception ex) {
+                log.warn("ProductActivityManualSync concurrency slot renew error, lockOwner={}, message={}",
+                        lockOwner, ex.getMessage());
+            }
+        }
         if (jobLockService == null) {
             return;
         }
-        long extendMs = MANUAL_SYNC_LOCK_TTL.toMillis();
         try {
-            if (acquiredGlobalLock) {
-                boolean globalRenewed = jobLockService.renew(JobLockKeys.PRODUCT_BACKFILL_GLOBAL, lockOwner, extendMs);
-                if (!globalRenewed) {
-                    log.warn("ProductActivityManualSync global lock renew failed, lockOwner={}", lockOwner);
-                }
-            }
             if (acquiredActivityLock) {
                 boolean activityRenewed = jobLockService.renew(activityLockKey, lockOwner, extendMs);
                 if (!activityRenewed) {
@@ -513,42 +533,27 @@ public class ProductActivityManualSyncService {
         if (jobLockService == null) {
             return ManualSyncLockState.acquired(activityLockKey, false, false);
         }
-        // P0 修复 (R1): 改用 tryAcquire(..., owner) 替代 read-then-act
-        // 修复前 bug: safeCurrentLockOwner 是只读检查, 与后续 tryAcquire 不是原子操作,
-        // 期间 backfill 释放锁后, manual 仍以为锁被持有, 错误返回 QUEUED 之外的路径。
-        // 修复后: 原子 tryAcquire 失败直接返回 locked, 后续 activity lock 不再获取,
-        // 同步路径不会执行 (避免绕过 global 锁的并发写入)。
-        // 锁持续到 refresh 完成, 由调用方 (runQueuedSync) 在 finally 块通过 releaseManualSyncLocks 统一释放.
-        boolean globalAcquired = jobLockService.tryAcquire(
-                JobLockKeys.PRODUCT_BACKFILL_GLOBAL, MANUAL_SYNC_LOCK_TTL, lockOwner);
-        if (!globalAcquired) {
-            String globalLockOwner = safeCurrentLockOwner(JobLockKeys.PRODUCT_BACKFILL_GLOBAL);
+        // 手动同步按活动隔离，不能再依赖覆盖所有活动的全局回补锁，否则不同活动无法并发拉取。
+        // 全局回补仍由 ProductActivityBackfillService 独占；同一活动通过活动锁保持写入互斥。
+        boolean acquiredActivityLock = jobLockService.tryAcquire(activityLockKey, MANUAL_SYNC_LOCK_TTL, lockOwner);
+        if (!acquiredActivityLock) {
             return ManualSyncLockState.locked(
                     activityLockKey,
-                    JobLockKeys.PRODUCT_BACKFILL_GLOBAL,
-                    globalLockOwner,
-                    safeCurrentLockTtlSeconds(JobLockKeys.PRODUCT_BACKFILL_GLOBAL),
-                    "商品回补全局锁被占用，活动商品同步已排队等待执行");
+                    activityLockKey,
+                    safeCurrentLockOwner(activityLockKey),
+                    safeCurrentLockTtlSeconds(activityLockKey),
+                    "当前活动商品同步锁被占用，请等待当前活动任务完成后重试");
         }
-        boolean acquiredActivityLock = false;
-        try {
-            acquiredActivityLock = jobLockService.tryAcquire(activityLockKey, MANUAL_SYNC_LOCK_TTL, lockOwner);
-            if (!acquiredActivityLock) {
-                return ManualSyncLockState.locked(
-                        activityLockKey,
-                        activityLockKey,
-                        safeCurrentLockOwner(activityLockKey),
-                        safeCurrentLockTtlSeconds(activityLockKey),
-                        "当前活动商品同步锁被占用，请等待当前活动任务完成后重试");
-            }
-            // P0 修复: acquiredGlobalLock=true 表示已成功抢到 global lock, 触发方在 finally 块统一释放
-            return ManualSyncLockState.acquired(activityLockKey, true, true);
-        } finally {
-            if (!acquiredActivityLock) {
-                // P0 修复 (R2): 活动锁获取失败时必须释放已持有的全局锁，传 acquiredGlobalLock=true
-                releaseManualSyncLocks(activityId, activityLockKey, false, true, lockOwner);
-            }
+        if (concurrencyLimiter != null && !concurrencyLimiter.tryAcquire(lockOwner, MANUAL_SYNC_LOCK_TTL)) {
+            releaseManualSyncLocks(activityId, activityLockKey, true, false, lockOwner);
+            return ManualSyncLockState.locked(
+                    activityLockKey,
+                    DistributedConcurrencyLimiter.SLOTS_KEY,
+                    null,
+                    0L,
+                    "活动商品同步并发槽已满，任务保持排队");
         }
+        return ManualSyncLockState.acquired(activityLockKey, true, concurrencyLimiter != null);
     }
 
     private synchronized boolean tryEnterManualUpstreamSlot(String jobId) {
@@ -579,22 +584,28 @@ public class ProductActivityManualSyncService {
             String activityId,
             String activityLockKey,
             boolean acquiredActivityLock,
-            boolean acquiredGlobalLock,
+            boolean acquiredConcurrencySlot,
             String lockOwner) {
-        if (jobLockService == null) {
+        if (jobLockService == null && !(acquiredConcurrencySlot && concurrencyLimiter != null)) {
             return;
         }
-        try {
-            if (acquiredActivityLock) {
+        if (acquiredActivityLock && jobLockService != null) {
+            try {
                 jobLockService.releaseWithOwner(activityLockKey, lockOwner);
+            } catch (Exception ex) {
+                log.warn("ProductActivityManualSync activity lock release failed, activityId={}, message={}",
+                        activityId,
+                        ex.getMessage());
             }
-            if (acquiredGlobalLock) {
-                jobLockService.releaseWithOwner(JobLockKeys.PRODUCT_BACKFILL_GLOBAL, lockOwner);
+        }
+        if (acquiredConcurrencySlot && concurrencyLimiter != null) {
+            try {
+                concurrencyLimiter.release(lockOwner);
+            } catch (Exception ex) {
+                log.warn("ProductActivityManualSync concurrency slot release failed, activityId={}, message={}",
+                        activityId,
+                        ex.getMessage());
             }
-        } catch (Exception ex) {
-            log.warn("ProductActivityManualSync lock release failed, activityId={}, message={}",
-                    activityId,
-                    ex.getMessage());
         }
     }
 
@@ -948,7 +959,7 @@ public class ProductActivityManualSyncService {
             boolean acquired,
             String activityLockKey,
             boolean acquiredActivityLock,
-            boolean acquiredGlobalLock,
+            boolean acquiredConcurrencySlot,
             String lockKey,
             String lockOwner,
             long lockTtlSeconds,
@@ -956,12 +967,12 @@ public class ProductActivityManualSyncService {
         private static ManualSyncLockState acquired(
                 String activityLockKey,
                 boolean acquiredActivityLock,
-                boolean acquiredGlobalLock) {
+                boolean acquiredConcurrencySlot) {
             return new ManualSyncLockState(
                     true,
                     activityLockKey,
                     acquiredActivityLock,
-                    acquiredGlobalLock,
+                    acquiredConcurrencySlot,
                     null,
                     null,
                     0L,
