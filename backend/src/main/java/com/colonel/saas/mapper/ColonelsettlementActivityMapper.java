@@ -228,4 +228,12 @@ public interface ColonelsettlementActivityMapper {
     int touchLastSyncAt(
             @Param("activityId") String activityId,
             @Param("syncedAt") LocalDateTime syncedAt);
+
+    /**
+     * P8-阻断#4 修复: 单独更新活动状态同步时间戳,
+     * 仅在 ColonelActivityListSyncService 成功落库活动状态时调用。
+     */
+    int touchActivityStatusSyncedAt(
+            @Param("activityId") String activityId,
+            @Param("syncedAt") LocalDateTime syncedAt);
 }

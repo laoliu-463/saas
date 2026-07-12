@@ -324,6 +324,7 @@ public class ColonelActivityController extends BaseController {
             hintPayload.put("errorCode", UpstreamErrorCode.DATA_NOT_READY.name());
             hintPayload.put("message", "该活动尚未同步商品，请先点击「同步商品」");
             hintPayload.put("lastSyncAt", null);
+            hintPayload.put("activityStatusSyncedAt", null);
             return ok(hintPayload);
         } catch (DouyinApiException e) {
             // refresh=true 路径调用抖音，捕获 DouyinApiException 映射为带 errorCode 的 BusinessException
@@ -381,6 +382,9 @@ public class ColonelActivityController extends BaseController {
                 }
                 if (assignment.getLastSyncAt() != null) {
                     item.put("lastSyncAt", assignment.getLastSyncAt());
+                }
+                if (assignment.getActivityStatusSyncedAt() != null) {
+                    item.put("activityStatusSyncedAt", assignment.getActivityStatusSyncedAt());
                 }
             }
             enriched.add(item);
@@ -513,14 +517,15 @@ public class ColonelActivityController extends BaseController {
     // ==================== 活动列表异步同步 ====================
 
     @Operation(summary = "触发活动列表异步同步", description = "异步拉取抖店活动列表，更新本地活动状态/名称/时间窗口。返回 jobId 用于轮询状态。")
-    @PostMapping("/list-sync")
+    @PostMapping("/sync")
     @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER})
     public ApiResult<?> triggerActivityListSync(
             @RequestAttribute(value = "userId", required = false) UUID userId) {
         ColonelActivityListSyncService.SyncTriggerResult result = activityListSyncService.triggerSync(userId);
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("jobId", result.jobId());
-        payload.put("status", result.status());
+        payload.put("syncStatus", result.status());
+        payload.put("reused", result.reused());
         if (result.message() != null) {
             payload.put("message", result.message());
         }
@@ -528,7 +533,7 @@ public class ColonelActivityController extends BaseController {
     }
 
     @Operation(summary = "查询活动列表同步任务状态", description = "根据 jobId 轮询活动列表同步进度。")
-    @GetMapping("/list-sync/{jobId}")
+    @GetMapping("/sync-jobs/{jobId}")
     public ApiResult<?> getActivityListSyncStatus(@PathVariable String jobId) {
         ColonelActivityListSyncService.SyncJobStatus status = activityListSyncService.getJobStatus(jobId);
         if (status == null) {

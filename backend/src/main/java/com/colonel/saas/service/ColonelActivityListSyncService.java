@@ -97,10 +97,10 @@ public class ColonelActivityListSyncService {
      */
     public SyncTriggerResult triggerSync(UUID triggeredBy) {
         if (!enabled) {
-            return new SyncTriggerResult(null, "DISABLED", "活动列表同步已关闭");
+            return SyncTriggerResult.disabled();
         }
         if (running.get()) {
-            return new SyncTriggerResult(null, "RUNNING", "上一次活动列表同步尚未完成，请稍后查看");
+            return SyncTriggerResult.running();
         }
 
         String jobId = "act-list-" + UUID.randomUUID().toString().substring(0, 8);
@@ -119,7 +119,7 @@ public class ColonelActivityListSyncService {
         jobLogMapper.insert(jobLog);
 
         syncExecutor.submit(() -> executeSync(jobId));
-        return new SyncTriggerResult(jobId, "QUEUED", null);
+        return SyncTriggerResult.queued(jobId);
     }
 
     /**
@@ -232,9 +232,23 @@ public class ColonelActivityListSyncService {
             return;
         }
         accumulator.fetchedRows += items.size();
+        // P8 修复回退: 仅 pageSize 兜底 (上游 total 不可信, 与原行为一致)
+        if (items.size() < normalizedPageSize()) {
+            accumulator.complete = true;
+        }
         for (DouyinActivityGateway.ActivityItem item : items) {
             try {
                 activityService.syncFromGatewayItem(item);
+                // P8-阻断#4: 活动状态成功落库后, 单独更新 activity_status_synced_at
+                if (item != null && item.activityId() > 0L) {
+                    try {
+                        activityMapper.touchActivityStatusSyncedAt(
+                                String.valueOf(item.activityId()), LocalDateTime.now());
+                    } catch (Exception ex) {
+                        log.warn("ColonelActivityListSync touchActivityStatusSyncedAt failed, jobId={}, activityId={}",
+                                jobId, item.activityId(), ex);
+                    }
+                }
                 accumulator.synced++;
             } catch (Exception ex) {
                 log.warn("ColonelActivityListSync item failed, jobId={}, activityId={}", jobId,
@@ -242,9 +256,7 @@ public class ColonelActivityListSyncService {
                 accumulator.failed++;
             }
         }
-        if (items.size() < normalizedPageSize()) {
-            accumulator.complete = true;
-        }
+        // (P8-阻断#3 已回退, 见上方 pageSize 兜底 - 唯一判断点)
     }
 
     private List<PageFetchResult> fetchPageWindow(String jobId, int startPage, int endPage)
@@ -350,6 +362,7 @@ public class ColonelActivityListSyncService {
         private int pagesFetched;
         private int synced;
         private int failed;
+        private long upstreamTotal = -1L;  // 上游 total, -1 = 未知
         private boolean complete;
         private boolean fetchFailed;
         private String errorMessage;
@@ -369,7 +382,20 @@ public class ColonelActivityListSyncService {
         }
     }
 
-    public record SyncTriggerResult(String jobId, String status, String message) {}
+    public record SyncTriggerResult(String jobId, String status, String message, boolean reused) {
+        public static SyncTriggerResult disabled() {
+            return new SyncTriggerResult(null, "DISABLED", "活动列表同步已关闭", false);
+        }
+        public static SyncTriggerResult running() {
+            return new SyncTriggerResult(null, "RUNNING", "上一次活动列表同步尚未完成，请稍后查看", true);
+        }
+        public static SyncTriggerResult queued(String jobId) {
+            return new SyncTriggerResult(jobId, "QUEUED", null, false);
+        }
+        public static SyncTriggerResult reused(String jobId) {
+            return new SyncTriggerResult(jobId, "QUEUED", "复用现有活跃任务", true);
+        }
+    }
 
     public record SyncJobStatus(
             String jobId,

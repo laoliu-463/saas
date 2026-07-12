@@ -75,6 +75,9 @@ public final class ActivityAssignmentListSupport {
         if (row.getLastSyncAt() != null) {
             item.put("lastSyncAt", row.getLastSyncAt());
         }
+        if (row.getActivityStatusSyncedAt() != null) {
+            item.put("activityStatusSyncedAt", row.getActivityStatusSyncedAt());
+        }
         if (row.getRecruiterUserId() != null) {
             String assigneeName = userNameResolver.apply(row.getRecruiterUserId());
             item.put("activityAssigneeId", row.getRecruiterUserId());

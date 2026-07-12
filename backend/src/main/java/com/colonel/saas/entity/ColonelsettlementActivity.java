@@ -112,6 +112,15 @@ public class ColonelsettlementActivity extends BaseEntity {
     private LocalDateTime lastSyncAt;
 
     /**
+     * 活动状态独立同步时间 (P8-阻断#4 修复)
+     * <p>对应数据库列：{@code activity_status_synced_at}，
+     * 仅在 {@link com.colonel.saas.service.ColonelActivityListSyncService} 成功落库活动
+     * 列表/状态条目时更新；商品同步不写此字段。</p>
+     */
+    @TableField("activity_status_synced_at")
+    private LocalDateTime activityStatusSyncedAt;
+
+    /**
      * 保护期月数
      * <p>对应数据库列：{@code months_of_protection}，活动的业绩保护期时长（月），
      * 保护期内产生的订单业绩归属于原团长</p>

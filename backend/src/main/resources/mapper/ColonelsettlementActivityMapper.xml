@@ -379,6 +379,14 @@
           AND activity_id = #{activityId}
     </update>
 
+    <update id="touchActivityStatusSyncedAt">
+        UPDATE colonel_activity
+        SET activity_status_synced_at = #{syncedAt},
+            update_time = #{syncedAt}
+        WHERE deleted = 0
+          AND activity_id = #{activityId}
+    </update>
+
     <!-- 仅取 extra_data 字段，用于 colonel_buyin_id 回源查询 -->
     <select id="selectExtraDataByActivityId" resultType="map">
         SELECT extra_data
