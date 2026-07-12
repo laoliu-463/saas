@@ -13,7 +13,6 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * 定时任务分布式锁服务，基于 Redis SET NX + TTL 实现，测试环境 Redis 不可用时回退进程内锁。
@@ -39,14 +38,19 @@ public class DistributedJobLockService {
             "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end",
             Long.class);
 
+    /** Lua 原子续租脚本：仅当 key 存在且 value == owner 时延长 TTL，否则返回 0 */
+    private static final DefaultRedisScript<Long> RENEW_WITH_OWNER_SCRIPT = new DefaultRedisScript<>(
+            "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('pexpire', KEYS[1], ARGV[2]) else return 0 end",
+            Long.class);
+
     /** Redis 操作模板，用于执行 SET NX 分布式锁命令 */
     private final RedisTemplate<String, Object> redisTemplate;
 
     /** 测试模式开关，决定 Redis 不可用时是否回退到本地锁 */
     private final boolean testEnabled;
 
-    /** 进程内本地锁映射，仅在测试模式下作为 Redis 的降级替代 */
-    private final ConcurrentHashMap<String, AtomicBoolean> localLocks = new ConcurrentHashMap<>();
+    /** 进程内本地锁映射（key → owner），仅在测试模式下作为 Redis 的降级替代。owner 为空串表示无 owner 锁。 */
+    private final ConcurrentHashMap<String, String> localLocks = new ConcurrentHashMap<>();
 
     public DistributedJobLockService(
             RedisTemplate<String, Object> redisTemplate,
@@ -119,9 +123,7 @@ public class DistributedJobLockService {
             if (testEnabled) {
                 log.warn("Redis unavailable in test mode when acquiring job lock {}, fallback to local lock: {}",
                         lockKey, ex.getMessage());
-                return localLocks
-                        .computeIfAbsent(lockKey, ignored -> new AtomicBoolean(false))
-                        .compareAndSet(false, true);
+                return localLocks.putIfAbsent(lockKey, "") == null;
             }
             throw ex;
         }
@@ -150,9 +152,39 @@ public class DistributedJobLockService {
             if (testEnabled) {
                 log.warn("Redis unavailable in test mode when acquiring job lock {}, fallback to local lock: {}",
                         lockKey, ex.getMessage());
-                return localLocks
-                        .computeIfAbsent(lockKey, ignored -> new AtomicBoolean(false))
-                        .compareAndSet(false, true);
+                return localLocks.putIfAbsent(lockKey, lockOwner) == null;
+            }
+            throw ex;
+        }
+    }
+
+    /**
+     * 原子续租：仅当 Redis 锁值与 owner 一致时延长 TTL。
+     *
+     * <p>使用 Lua 脚本保证原子性：若 key 存在且 value == owner，则更新 TTL；否则失败。</p>
+     *
+     * @param lockKey     锁键名，不可为空
+     * @param owner       锁持有方标识，不可为空
+     * @param extendTtlMs 续租时长（毫秒），必须为正数
+     * @return {@code true} 表示续租成功
+     */
+    public boolean renew(String lockKey, String owner, long extendTtlMs) {
+        if (!StringUtils.hasText(lockKey) || !StringUtils.hasText(owner) || extendTtlMs <= 0) {
+            return false;
+        }
+        try {
+            Long result = redisTemplate.execute(
+                    RENEW_WITH_OWNER_SCRIPT,
+                    List.of(lockKey),
+                    owner,
+                    String.valueOf(extendTtlMs));
+            return result != null && result > 0;
+        } catch (RedisConnectionFailureException | RedisCommandExecutionException ex) {
+            if (testEnabled) {
+                log.warn("Redis unavailable in test mode when renewing job lock {}, fallback to local check: {}",
+                        lockKey, ex.getMessage());
+                String currentOwner = localLocks.get(lockKey);
+                return currentOwner != null && currentOwner.equals(owner);
             }
             throw ex;
         }
@@ -191,10 +223,7 @@ public class DistributedJobLockService {
             return;
         }
         // 注意：先释放本地锁，再清理 Redis 锁
-        AtomicBoolean local = localLocks.get(lockKey);
-        if (local != null) {
-            local.set(false);
-        }
+        localLocks.remove(lockKey);
         try {
             redisTemplate.delete(lockKey);
         } catch (RedisConnectionFailureException | RedisCommandExecutionException ex) {
@@ -232,9 +261,10 @@ public class DistributedJobLockService {
             release(lockKey);
             return;
         }
-        AtomicBoolean local = localLocks.get(lockKey);
-        if (local != null) {
-            local.set(false);
+        // 本地 fallback：仅当 owner 匹配时释放
+        String localOwner = localLocks.get(lockKey);
+        if (localOwner != null && localOwner.equals(owner)) {
+            localLocks.remove(lockKey, owner);
         }
         try {
             redisTemplate.execute(RELEASE_WITH_OWNER_SCRIPT, List.of(lockKey), owner);
@@ -260,8 +290,8 @@ public class DistributedJobLockService {
             return value == null ? null : String.valueOf(value);
         } catch (RedisConnectionFailureException | RedisCommandExecutionException ex) {
             if (testEnabled) {
-                AtomicBoolean local = localLocks.get(lockKey);
-                return local != null && local.get() ? "local" : null;
+                String localOwner = localLocks.get(lockKey);
+                return localOwner != null ? (localOwner.isEmpty() ? "local" : localOwner) : null;
             }
             throw ex;
         }
@@ -279,8 +309,7 @@ public class DistributedJobLockService {
             return ttl == null ? 0L : ttl;
         } catch (RedisConnectionFailureException | RedisCommandExecutionException ex) {
             if (testEnabled) {
-                AtomicBoolean local = localLocks.get(lockKey);
-                return local != null && local.get() ? -1L : 0L;
+                return localLocks.containsKey(lockKey) ? -1L : 0L;
             }
             throw ex;
         }

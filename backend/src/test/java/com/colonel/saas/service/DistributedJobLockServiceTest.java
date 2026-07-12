@@ -70,4 +70,38 @@ class DistributedJobLockServiceTest {
         when(redisTemplate.delete("job:lock")).thenThrow(new RedisCommandExecutionException("down"));
         service.release("job:lock");
     }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void renew_shouldExecuteLuaScriptOnRedis() {
+        DistributedJobLockService service = new DistributedJobLockService(redisTemplate, false);
+        when(redisTemplate.execute(any(org.springframework.data.redis.core.script.RedisScript.class), any(java.util.List.class), any(), any()))
+                .thenReturn(1L);
+
+        boolean success = service.renew("job:lock", "owner1", 5000);
+        assertThat(success).isTrue();
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void renew_shouldFallbackToLocalCheckInTestMode() {
+        DistributedJobLockService service = new DistributedJobLockService(redisTemplate, true);
+        // 首先通过 tryAcquire 获取本地锁
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.setIfAbsent(eq("job:lock"), eq("owner1"), any(Duration.class)))
+                .thenThrow(new RedisConnectionFailureException("down", null));
+
+        boolean acquired = service.tryAcquire("job:lock", Duration.ofMinutes(5), "owner1");
+        assertThat(acquired).isTrue();
+
+        // 模拟 Redis 挂掉导致续期触发本地校验
+        when(redisTemplate.execute(any(org.springframework.data.redis.core.script.RedisScript.class), any(java.util.List.class), any(), any()))
+                .thenThrow(new RedisConnectionFailureException("down", null));
+
+        boolean renewed = service.renew("job:lock", "owner1", 5000);
+        assertThat(renewed).isTrue();
+
+        boolean renewedWrongOwner = service.renew("job:lock", "owner2", 5000);
+        assertThat(renewedWrongOwner).isFalse();
+    }
 }

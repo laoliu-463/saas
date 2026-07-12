@@ -19,6 +19,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
@@ -39,11 +40,13 @@ class ProductActivitySyncJobTest {
 
     @BeforeEach
     void setUp() {
-        lenient().when(jobLockService.tryAcquire(any(), any(Duration.class)))
+        lenient().when(jobLockService.tryAcquire(any(), any(Duration.class), anyString()))
                 .thenReturn(true);
-        lenient().when(jobLockService.tryAcquire(eq(JobLockKeys.PRODUCT_BACKFILL_GLOBAL), any(Duration.class)))
+        lenient().when(jobLockService.tryAcquire(anyString(), any(Duration.class), anyString()))
                 .thenReturn(true);
-        lenient().when(jobLockService.tryAcquire(eq(JobLockKeys.PRODUCT_ACTIVITY_SYNC), any(Duration.class)))
+        lenient().when(jobLockService.tryAcquire(eq(JobLockKeys.PRODUCT_BACKFILL_GLOBAL), any(Duration.class), anyString()))
+                .thenReturn(true);
+        lenient().when(jobLockService.tryAcquire(eq(JobLockKeys.PRODUCT_ACTIVITY_SYNC), any(Duration.class), anyString()))
                 .thenReturn(true);
         lenient().when(productService.refreshActivitySnapshots(any(DouyinProductGateway.ActivityProductQueryRequest.class)))
                 .thenReturn(new ProductService.ActivityProductRefreshResult(3, 1, 1, 2, 0));
@@ -61,14 +64,14 @@ class ProductActivitySyncJobTest {
     @Test
     void syncAll_shouldReturnWhenLockNotAcquired() {
         ProductActivitySyncJob job = job(true, "");
-        when(jobLockService.tryAcquire(eq(JobLockKeys.PRODUCT_ACTIVITY_SYNC), any(Duration.class))).thenReturn(false);
+        when(jobLockService.tryAcquire(eq(JobLockKeys.PRODUCT_ACTIVITY_SYNC), any(Duration.class), anyString())).thenReturn(false);
 
         job.syncAll();
 
-        verify(jobLockService).tryAcquire(eq(JobLockKeys.PRODUCT_ACTIVITY_SYNC), any(Duration.class));
+        verify(jobLockService).tryAcquire(eq(JobLockKeys.PRODUCT_ACTIVITY_SYNC), any(Duration.class), anyString());
         verifyNoInteractions(activityMapper, productService);
-        verify(jobLockService, never()).release(JobLockKeys.PRODUCT_ACTIVITY_SYNC);
-        verify(jobLockService).release(JobLockKeys.PRODUCT_BACKFILL_GLOBAL);
+        verify(jobLockService, never()).releaseWithOwner(eq(JobLockKeys.PRODUCT_ACTIVITY_SYNC), anyString());
+        verify(jobLockService).releaseWithOwner(eq(JobLockKeys.PRODUCT_BACKFILL_GLOBAL), anyString());
     }
 
     @Test
@@ -81,8 +84,8 @@ class ProductActivitySyncJobTest {
         verify(productService, times(2)).refreshActivitySnapshots(any(DouyinProductGateway.ActivityProductQueryRequest.class));
         verify(activityMapper).touchLastSyncAt(eq("ACT-1"), any(LocalDateTime.class));
         verify(activityMapper).touchLastSyncAt(eq("ACT-2"), any(LocalDateTime.class));
-        verify(jobLockService).release(JobLockKeys.PRODUCT_ACTIVITY_SYNC);
-        verify(jobLockService).release(JobLockKeys.PRODUCT_BACKFILL_GLOBAL);
+        verify(jobLockService).releaseWithOwner(eq(JobLockKeys.PRODUCT_ACTIVITY_SYNC), anyString());
+        verify(jobLockService).releaseWithOwner(eq(JobLockKeys.PRODUCT_BACKFILL_GLOBAL), anyString());
     }
 
     @Test
@@ -97,8 +100,8 @@ class ProductActivitySyncJobTest {
         verify(productService, times(2)).refreshActivitySnapshots(any(DouyinProductGateway.ActivityProductQueryRequest.class));
         verify(activityMapper, never()).touchLastSyncAt(eq("ACT-1"), any(LocalDateTime.class));
         verify(activityMapper).touchLastSyncAt(eq("ACT-2"), any(LocalDateTime.class));
-        verify(jobLockService).release(JobLockKeys.PRODUCT_ACTIVITY_SYNC);
-        verify(jobLockService).release(JobLockKeys.PRODUCT_BACKFILL_GLOBAL);
+        verify(jobLockService).releaseWithOwner(eq(JobLockKeys.PRODUCT_ACTIVITY_SYNC), anyString());
+        verify(jobLockService).releaseWithOwner(eq(JobLockKeys.PRODUCT_BACKFILL_GLOBAL), anyString());
     }
 
     @Test
@@ -122,8 +125,8 @@ class ProductActivitySyncJobTest {
         job.syncAll();
 
         verify(activityMapper, never()).touchLastSyncAt(eq("ACT-1"), any(LocalDateTime.class));
-        verify(jobLockService).release(JobLockKeys.PRODUCT_ACTIVITY_SYNC);
-        verify(jobLockService).release(JobLockKeys.PRODUCT_BACKFILL_GLOBAL);
+        verify(jobLockService).releaseWithOwner(eq(JobLockKeys.PRODUCT_ACTIVITY_SYNC), anyString());
+        verify(jobLockService).releaseWithOwner(eq(JobLockKeys.PRODUCT_BACKFILL_GLOBAL), anyString());
     }
 
     @Test
@@ -145,8 +148,8 @@ class ProductActivitySyncJobTest {
                 .containsExactly(20, 20);
         verify(activityMapper).touchLastSyncAt(eq("ACT-10"), any(LocalDateTime.class));
         verify(activityMapper).touchLastSyncAt(eq("ACT-20"), any(LocalDateTime.class));
-        verify(jobLockService).release(JobLockKeys.PRODUCT_ACTIVITY_SYNC);
-        verify(jobLockService).release(JobLockKeys.PRODUCT_BACKFILL_GLOBAL);
+        verify(jobLockService).releaseWithOwner(eq(JobLockKeys.PRODUCT_ACTIVITY_SYNC), anyString());
+        verify(jobLockService).releaseWithOwner(eq(JobLockKeys.PRODUCT_BACKFILL_GLOBAL), anyString());
     }
 
     private ProductActivitySyncJob job(boolean enabled, String whitelistActivities) {

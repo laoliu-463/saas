@@ -12,6 +12,7 @@ import com.colonel.saas.domain.product.policy.ProductDisplayPolicy;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.service.activity.ActivityAccessService;
+import com.colonel.saas.service.ColonelActivityListSyncService;
 import com.colonel.saas.service.ColonelsettlementActivityService;
 import com.colonel.saas.service.ProductActivityManualSyncService;
 import com.colonel.saas.service.ProductService;
@@ -70,6 +71,8 @@ class ColonelActivityControllerTest {
     private UserDomainFacade userDomainFacade;
     @Mock
     private ColonelsettlementActivityMapper colonelActivityMapper;
+    @Mock
+    private ColonelActivityListSyncService activityListSyncService;
 
     private ActivityAccessService activityAccessService;
     private ColonelActivityController controller;
@@ -91,7 +94,8 @@ class ColonelActivityControllerTest {
                 productActivityManualSyncService,
                 userDomainFacade,
                 activityAccessService,
-                new ProductDisplayPolicy()
+                new ProductDisplayPolicy(),
+                activityListSyncService
         );
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
@@ -148,7 +152,8 @@ class ColonelActivityControllerTest {
                 productActivityManualSyncService,
                 userDomainFacade,
                 activityAccessService,
-                new ProductDisplayPolicy());
+                new ProductDisplayPolicy(),
+                activityListSyncService);
         MockMvc localMvc = MockMvcBuilders.standaloneSetup(localController)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
@@ -686,7 +691,8 @@ class ColonelActivityControllerTest {
                     productActivityManualSyncService,
                     userDomainFacade,
                     activityAccessService,
-                    new ProductDisplayPolicy());
+                    new ProductDisplayPolicy(),
+                    activityListSyncService);
 
             // refresh=true：触发 syncActivitySummaryFromUpstream + refreshActivitySnapshots
             assertThatThrownBy(() -> errorController.listProducts(

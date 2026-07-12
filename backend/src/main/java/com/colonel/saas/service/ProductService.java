@@ -2062,7 +2062,6 @@ public class ProductService implements CopyPromotionSupportPort {
     public record ActivityProductRefreshProgress(int pagesFetched) {
     }
 
-    @Transactional(rollbackFor = Exception.class)
     public ActivityProductRefreshResult refreshActivitySnapshots(ActivityProductRefreshRequest request) {
         if (request == null) {
             return refreshActivitySnapshots((DouyinProductGateway.ActivityProductQueryRequest) null);
@@ -2070,7 +2069,6 @@ public class ProductService implements CopyPromotionSupportPort {
         return refreshActivitySnapshots(toActivityProductQueryRequest(request));
     }
 
-    @Transactional(rollbackFor = Exception.class)
     public ActivityProductRefreshResult refreshActivitySnapshots(DouyinProductGateway.ActivityProductQueryRequest request) {
         return refreshActivitySnapshots(
                 request,
@@ -2078,7 +2076,6 @@ public class ProductService implements CopyPromotionSupportPort {
                 productSyncActivityProductMaxRowsPerActivity);
     }
 
-    @Transactional(rollbackFor = Exception.class)
     public ActivityProductRefreshResult refreshActivitySnapshots(
             DouyinProductGateway.ActivityProductQueryRequest request,
             long pageIntervalMs) {
@@ -2089,7 +2086,6 @@ public class ProductService implements CopyPromotionSupportPort {
                 pageIntervalMs);
     }
 
-    @Transactional(rollbackFor = Exception.class)
     public ActivityProductRefreshResult refreshActivitySnapshots(
             DouyinProductGateway.ActivityProductQueryRequest request,
             int maxPagesPerActivity,
@@ -2110,7 +2106,7 @@ public class ProductService implements CopyPromotionSupportPort {
         return refreshActivitySnapshots(request, maxPagesPerActivity, maxRowsPerActivity, pageIntervalMs, null);
     }
 
-    @Transactional(rollbackFor = Exception.class)
+    // 事务外编排：每页 upsert 由 upsertSnapshotsWithStats(@Transactional) 独立提交
     public ActivityProductRefreshResult refreshActivitySnapshots(
             DouyinProductGateway.ActivityProductQueryRequest request,
             int maxPagesPerActivity,
@@ -2164,7 +2160,6 @@ public class ProductService implements CopyPromotionSupportPort {
                 request.page());
     }
 
-    @Transactional(rollbackFor = Exception.class)
     public ActivityProductRefreshResult refreshActivitySnapshotsByStatusPartitions(
             DouyinProductGateway.ActivityProductQueryRequest request,
             int maxPagesPerActivity,
@@ -2182,7 +2177,6 @@ public class ProductService implements CopyPromotionSupportPort {
                 progressConsumer);
     }
 
-    @Transactional(rollbackFor = Exception.class)
     public ActivityProductRefreshResult refreshActivitySnapshotsByStatusPartitions(
             DouyinProductGateway.ActivityProductQueryRequest request,
             List<Integer> requestedStatuses,

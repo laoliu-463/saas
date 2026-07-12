@@ -3,6 +3,7 @@ package com.colonel.saas.controller;
 import com.colonel.saas.annotation.RequireRoles;
 import com.colonel.saas.auth.service.SysUserService;
 import com.colonel.saas.common.base.BaseController;
+import com.colonel.saas.service.ColonelActivityListSyncService;
 import lombok.extern.slf4j.Slf4j;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.exception.UpstreamErrorCode;
@@ -67,6 +68,7 @@ public class ColonelActivityController extends BaseController {
     private final UserDomainFacade userDomainFacade;
     private final ActivityAccessService activityAccessService;
     private final ProductDisplayPolicy productDisplayPolicy;
+    private final ColonelActivityListSyncService activityListSyncService;
 
     public ColonelActivityController(
             ProductService productService,
@@ -76,7 +78,8 @@ public class ColonelActivityController extends BaseController {
             ProductActivityManualSyncService productActivityManualSyncService,
             UserDomainFacade userDomainFacade,
             ActivityAccessService activityAccessService,
-            ProductDisplayPolicy productDisplayPolicy) {
+            ProductDisplayPolicy productDisplayPolicy,
+            ColonelActivityListSyncService activityListSyncService) {
         this.productService = productService;
         this.shortTtlCacheService = shortTtlCacheService;
         this.sysUserService = sysUserService;
@@ -85,6 +88,7 @@ public class ColonelActivityController extends BaseController {
         this.userDomainFacade = userDomainFacade;
         this.activityAccessService = activityAccessService;
         this.productDisplayPolicy = productDisplayPolicy;
+        this.activityListSyncService = activityListSyncService;
     }
 
     @Operation(summary = "团长活动列表", description = "查询机构创建的团长活动列表，并回填本地分配信息。默认仅查本地 DB；DB 为空时返回 needSync=true 提示先同步活动，永不在线调抖音。")
@@ -288,23 +292,24 @@ public class ColonelActivityController extends BaseController {
             // 3) refresh=false 且 DB 无快照 → 返回 needSync=true + DATA_NOT_READY 提示
             //    **永不在线调抖音** —— 这是 504 根因
             if (Boolean.TRUE.equals(refresh)) {
-                ActivityProductRefreshRequest queryRequest = new ActivityProductRefreshRequest(
-                        appId, activityId, searchType, sortType, count, cooperationInfo, cooperationType,
-                        productInfo, status, retrieveMode, cursor, page);
-                colonelActivityService.syncActivitySummaryFromUpstream(activityId, appId);
-                ProductService.ActivityProductRefreshResult refreshResult =
-                        productService.refreshActivitySnapshots(queryRequest);
-                Map<String, Object> payload = productService.buildActivityProductListViewFromDb(
-                        activityId, count, cursor, productInfo, bizStatus, status, sortBy, goodsTags, productTags);
-                Map<String, Object> syncStats = new LinkedHashMap<>();
-                syncStats.put("syncedProductCount", refreshResult.syncedProductCount());
-                syncStats.put("libraryEntryCount", refreshResult.libraryEntryCount());
-                syncStats.put("createdCount", refreshResult.createdCount());
-                syncStats.put("updatedCount", refreshResult.updatedCount());
-                syncStats.put("skippedCount", refreshResult.skippedCount());
-                syncStats.put("autoLibraryEligible", refreshResult.libraryEntryCount() > 0);
-                payload.put("syncStats", syncStats);
-                return ok(payload);
+                // P0 修复：refresh=true 直接写库绕过了锁协议，已迁移到异步 POST 同步接口。
+                // 返回已有快照数据 + 提示，引导前端使用 POST /colonel/activities/{id}/products/sync
+                if (productService.hasActivitySnapshots(activityId)) {
+                    Map<String, Object> payload = productService.buildActivityProductListViewFromDb(
+                            activityId, count, cursor, productInfo, bizStatus, status, sortBy, goodsTags, productTags);
+                    payload.put("refreshDeprecated", Boolean.TRUE);
+                    payload.put("message", "refresh=true 已废弃，请使用「同步商品」按钮触发异步同步");
+                    return ok(payload);
+                }
+                Map<String, Object> hintPayload = new LinkedHashMap<>();
+                hintPayload.put("items", java.util.List.of());
+                hintPayload.put("total", 0L);
+                hintPayload.put("activityId", activityId);
+                hintPayload.put("needSync", Boolean.TRUE);
+                hintPayload.put("refreshDeprecated", Boolean.TRUE);
+                hintPayload.put("errorCode", UpstreamErrorCode.DATA_NOT_READY.name());
+                hintPayload.put("message", "该活动尚未同步商品，请先点击「同步商品」");
+                return ok(hintPayload);
             }
             if (productService.hasActivitySnapshots(activityId)) {
                 return ok(productService.buildActivityProductListViewFromDb(
@@ -503,5 +508,32 @@ public class ColonelActivityController extends BaseController {
         public void setPriorityStatuses(List<Integer> priorityStatuses) {
             this.priorityStatuses = priorityStatuses;
         }
+    }
+
+    // ==================== 活动列表异步同步 ====================
+
+    @Operation(summary = "触发活动列表异步同步", description = "异步拉取抖店活动列表，更新本地活动状态/名称/时间窗口。返回 jobId 用于轮询状态。")
+    @PostMapping("/list-sync")
+    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER})
+    public ApiResult<?> triggerActivityListSync(
+            @RequestAttribute(value = "userId", required = false) UUID userId) {
+        ColonelActivityListSyncService.SyncTriggerResult result = activityListSyncService.triggerSync(userId);
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("jobId", result.jobId());
+        payload.put("status", result.status());
+        if (result.message() != null) {
+            payload.put("message", result.message());
+        }
+        return ok(payload);
+    }
+
+    @Operation(summary = "查询活动列表同步任务状态", description = "根据 jobId 轮询活动列表同步进度。")
+    @GetMapping("/list-sync/{jobId}")
+    public ApiResult<?> getActivityListSyncStatus(@PathVariable String jobId) {
+        ColonelActivityListSyncService.SyncJobStatus status = activityListSyncService.getJobStatus(jobId);
+        if (status == null) {
+            throw BusinessException.notFound("同步任务不存在");
+        }
+        return ok(status);
     }
 }

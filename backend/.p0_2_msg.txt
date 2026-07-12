@@ -1,0 +1,18 @@
+fix(product-sync): P0-R2 + P0-R3 修复活动锁统一 + owner-safe release (P0 任务 #2+#3)
+
+诊断: 2026-07-12 商品同步死锁事件 - 手动/定时同步使用不同锁 key
+(manual: productBackfillActivityLock, sync: productActivitySyncLock)
+且 tryAcquire/release 无 owner, 跨任务可误释放对方锁。
+
+修复:
+- JobLockKeys 新增 productActivitySyncLock(activityId) 共享锁 key
+  手动与定时同步使用同一把 per-activity 锁
+- ProductActivitySyncJob.syncAll 改用 tryAcquire(..., owner) + releaseWithOwner
+  - global lock / activity sync lock / per-activity lock 都用 owner-safe API
+  - 每个 job 生成唯一 jobOwner (sync-job:threadId:nanoTime)
+- ProductActivitySyncJobTest 同步更新: verify 改为 releaseWithOwner(eq(KEY), anyString())
+
+测试:
+- ProductActivitySyncJobTest: 6/6 PASS
+- *ProductActivity*Test: 36/36 PASS
+- ProductActivityManualSyncServiceTest: 10/10 PASS

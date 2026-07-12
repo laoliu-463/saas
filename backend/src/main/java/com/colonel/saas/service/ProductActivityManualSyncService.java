@@ -402,7 +402,11 @@ public class ProductActivityManualSyncService {
             ResolvedSyncOptions syncOptions = resolveSyncOptions(jobLog.getRequestParamsJson());
             colonelActivityService.syncActivitySummaryFromUpstream(activityId, appId);
             ProductService.ActivityProductRefreshResult result =
-                    refreshActivityProducts(activityId, appId, syncOptions, progress -> updateRunningProgress(jobLog, progress));
+                    refreshActivityProducts(activityId, appId, syncOptions, progress -> {
+                        updateRunningProgress(jobLog, progress);
+                        // 心跳续租：每次进度更新时续租锁，防止长任务期间锁 TTL 过期
+                        renewManualSyncLocks(activityLockKey, lockOwner, acquiredActivityLock, acquiredGlobalLock);
+                    });
             if (result.complete() && syncOptions.priorityStatuses().isEmpty()) {
                 activityMapper.touchLastSyncAt(activityId, LocalDateTime.now());
             }
@@ -426,6 +430,35 @@ public class ProductActivityManualSyncService {
         } finally {
             releaseManualSyncLocks(activityId, activityLockKey, acquiredActivityLock, acquiredGlobalLock, lockOwner);
             activeJobsByActivity.remove(activityId, jobLog);
+        }
+    }
+
+    private void renewManualSyncLocks(
+            String activityLockKey,
+            String lockOwner,
+            boolean acquiredActivityLock,
+            boolean acquiredGlobalLock) {
+        if (jobLockService == null) {
+            return;
+        }
+        long extendMs = MANUAL_SYNC_LOCK_TTL.toMillis();
+        try {
+            if (acquiredGlobalLock) {
+                boolean globalRenewed = jobLockService.renew(JobLockKeys.PRODUCT_BACKFILL_GLOBAL, lockOwner, extendMs);
+                if (!globalRenewed) {
+                    log.warn("ProductActivityManualSync global lock renew failed, lockOwner={}", lockOwner);
+                }
+            }
+            if (acquiredActivityLock) {
+                boolean activityRenewed = jobLockService.renew(activityLockKey, lockOwner, extendMs);
+                if (!activityRenewed) {
+                    log.warn("ProductActivityManualSync activity lock renew failed, lockKey={}, lockOwner={}",
+                            activityLockKey, lockOwner);
+                }
+            }
+        } catch (Exception ex) {
+            log.warn("ProductActivityManualSync lock renew error, lockOwner={}, message={}",
+                    lockOwner, ex.getMessage());
         }
     }
 
@@ -512,7 +545,8 @@ public class ProductActivityManualSyncService {
             return ManualSyncLockState.acquired(activityLockKey, true, true);
         } finally {
             if (!acquiredActivityLock) {
-                releaseManualSyncLocks(activityId, activityLockKey, false, false, lockOwner);
+                // P0 修复 (R2): 活动锁获取失败时必须释放已持有的全局锁，传 acquiredGlobalLock=true
+                releaseManualSyncLocks(activityId, activityLockKey, false, true, lockOwner);
             }
         }
     }

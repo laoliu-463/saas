@@ -72,7 +72,8 @@ public final class JobLockKeys {
     public static final String PRODUCT_DISPLAY_REFRESH = "product:display:refresh:job:lock";
     /** 上校合作伙伴数据同步任务锁 */
     public static final String COLONEL_PARTNER_SYNC = "colonel:partner:sync:job:lock";
-
+    /** 活动列表异步同步任务锁（独立于商品同步的 PRODUCT_ACTIVITY_SYNC 和 PRODUCT_BACKFILL_GLOBAL） */
+    public static final String COLONEL_ACTIVITY_LIST_SYNC = "colonel:activity:list-sync:job:lock";
     /**
      * 单活动 backfill 写锁 key 生成。
      *
@@ -81,6 +82,19 @@ public final class JobLockKeys {
      */
     public static String productBackfillActivityLock(String activityId) {
         return PRODUCT_BACKFILL_ACTIVITY_PREFIX + activityId + ":job:lock";
+    }
+
+    /**
+     * 商品活动同步锁 key 前缀（P0-R2 修复）：
+     * 手动同步与定时同步使用同一把 per-activity 锁，确保并发互斥。
+     */
+    public static final String PRODUCT_ACTIVITY_SYNC_LOCK_PREFIX = "product:activity:sync:activity:";
+
+    /**
+     * 商品活动同步锁 key（手动与定时共用）。
+     */
+    public static String productActivitySyncLock(String activityId) {
+        return PRODUCT_ACTIVITY_SYNC_LOCK_PREFIX + activityId + ":job:lock";
     }
     /** 分区自动维护任务锁 */
     public static final String PARTITION_MAINTENANCE = "partition:maintenance:job:lock";
