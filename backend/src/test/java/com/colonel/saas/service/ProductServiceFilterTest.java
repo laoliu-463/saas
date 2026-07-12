@@ -154,6 +154,7 @@ class ProductServiceFilterTest {
     @Test
     void getSelectedLibraryPage_shouldExposeDualCommissionDisplayFields() {
         ProductOperationState selectedState = state("10001", "9001");
+        selectedState.setAuditPayload("{\"doubleCommission\":true}");
         Page<ProductOperationState> statePage = new Page<>(1, 200, 1);
         statePage.setRecords(List.of(selectedState));
 
@@ -167,7 +168,7 @@ class ProductServiceFilterTest {
         when(operationStateMapper.selectPage(any(Page.class), any())).thenReturn(statePage);
         when(snapshotMapper.selectBatchIds(any())).thenReturn(List.of(snapshot));
 
-        var result = service.getSelectedLibraryPage(1, 10, filter().build());
+        var result = service.getSelectedLibraryPage(1, 10, filter().doubleCommission("1").build());
 
         assertThat(result.getRecords()).singleElement().satisfies(product -> {
             assertThat(product.getActivityCosRatioText()).isEqualTo("25.00%");
