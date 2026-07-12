@@ -494,6 +494,8 @@ class ColonelActivityControllerTest {
 
     @Test
     void listProducts_refreshTrueShouldBypassExistingSnapshotsAndRefreshFromGateway() throws Exception {
+        // P0 修复后: refresh=true 直接调 gateway 绕过了锁协议 (导致 7-12 死锁),
+        // 新行为: refresh=true 仅返回现有 DB 快照 + refreshDeprecated=true + 引导前端用异步同步 API
         Map<String, Object> itemView = new LinkedHashMap<>();
         itemView.put("productId", 9002L);
         itemView.put("title", "防晒霜");
@@ -506,9 +508,8 @@ class ColonelActivityControllerTest {
         listView.put("nextCursor", "fresh-cursor");
         listView.put("items", List.of(itemView));
 
+        when(productService.hasActivitySnapshots("100018")).thenReturn(true);
         when(productService.buildActivityProductListViewFromDb("100018", 20, null, null, null, null, null, null, null)).thenReturn(listView);
-        when(productService.refreshActivitySnapshots(any(ActivityProductRefreshRequest.class))).thenReturn(
-                new ProductService.ActivityProductRefreshResult(1, 1, 1, 0, 0));
 
         mockMvc.perform(get("/colonel/activities/{activityId}/products", "100018")
                         .param("count", "20")
@@ -519,32 +520,35 @@ class ColonelActivityControllerTest {
                 .andExpect(jsonPath("$.data.activityId").value(100018))
                 .andExpect(jsonPath("$.data.items[0].productId").value(9002))
                 .andExpect(jsonPath("$.data.nextCursor").value("fresh-cursor"))
-                .andExpect(jsonPath("$.data.syncStats.libraryEntryCount").value(1))
-                .andExpect(jsonPath("$.data.syncStats.autoLibraryEligible").value(true));
+                .andExpect(jsonPath("$.data.refreshDeprecated").value(true))
+                .andExpect(jsonPath("$.data.message").exists());
 
-        verify(productService, never()).hasActivitySnapshots("100018");
-        verify(colonelActivityService).syncActivitySummaryFromUpstream(eq("100018"), eq(null));
-        ArgumentCaptor<ActivityProductRefreshRequest> requestCaptor =
-                ArgumentCaptor.forClass(ActivityProductRefreshRequest.class);
-        verify(productService).refreshActivitySnapshots(requestCaptor.capture());
-        assertThat(requestCaptor.getValue()).isEqualTo(new ActivityProductRefreshRequest(
-                null,
-                "100018",
-                4L,
-                1L,
-                20,
-                null,
-                0,
-                null,
-                null,
-                1L,
-                null,
-                null));
-        verify(productService, never()).upsertSnapshots(eq("100018"), any());
+        // 关键: refresh=true 不再调 gateway / refreshActivitySnapshots
+        verify(productService, never()).refreshActivitySnapshots(any(ActivityProductRefreshRequest.class));
+        verify(colonelActivityService, never()).syncActivitySummaryFromUpstream(eq("100018"), eq(null));
+        verify(productService).hasActivitySnapshots("100018");
         verify(productService).buildActivityProductListViewFromDb("100018", 20, null, null, null, null, null, null, null);
-        InOrder inOrder = inOrder(productService);
-        inOrder.verify(productService).refreshActivitySnapshots(any(ActivityProductRefreshRequest.class));
-        inOrder.verify(productService).buildActivityProductListViewFromDb("100018", 20, null, null, null, null, null, null, null);
+    }
+
+    @Test
+    void listProducts_refreshTrueWithoutSnapshotsShouldReturnNeedSync() throws Exception {
+        // P0 修复后: 没有 snapshot 时, refresh=true 也不调 gateway, 返回 needSync 引导前端异步同步
+        when(productService.hasActivitySnapshots("100018")).thenReturn(false);
+
+        mockMvc.perform(get("/colonel/activities/{activityId}/products", "100018")
+                        .param("count", "20")
+                        .param("refresh", "true")
+                        .requestAttr("roleCodes", List.of(RoleCodes.ADMIN)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.needSync").value(true))
+                .andExpect(jsonPath("$.data.refreshDeprecated").value(true))
+                .andExpect(jsonPath("$.data.total").value(0))
+                .andExpect(jsonPath("$.data.items").isArray());
+
+        verify(productService, never()).refreshActivitySnapshots(any(ActivityProductRefreshRequest.class));
+        verify(colonelActivityService, never()).syncActivitySummaryFromUpstream(eq("100018"), eq(null));
+        verify(productService, never()).buildActivityProductListViewFromDb(any(), anyInt(), any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -677,12 +681,10 @@ class ColonelActivityControllerTest {
 
         for (ErrorCase item : cases) {
             ProductService localProductService = mock(ProductService.class);
+            // P0 修复后: refresh=true 不再调 gateway, 直接返回 deprecated hint
             when(localProductService.hasActivitySnapshots("100018")).thenReturn(false);
             when(localProductService.buildActivityProductListViewFromDb(eq("100018"), any(), any(), any(), any(), any(), any(), any(), any()))
                     .thenReturn(Map.of("items", List.of(), "total", 0));
-            // refresh=true 路径调用的是 refreshActivitySnapshots（不是 queryActivityProducts）
-            when(localProductService.refreshActivitySnapshots(any(ActivityProductRefreshRequest.class)))
-                    .thenThrow(item.exception());
             ColonelActivityController errorController = new ColonelActivityController(
                     localProductService,
                     new ShortTtlCacheService(),
@@ -694,8 +696,9 @@ class ColonelActivityControllerTest {
                     new ProductDisplayPolicy(),
                     activityListSyncService);
 
-            // refresh=true：触发 syncActivitySummaryFromUpstream + refreshActivitySnapshots
-            assertThatThrownBy(() -> errorController.listProducts(
+            // P0 修复后: refresh=true 不调 gateway, 返回 needSync + refreshDeprecated
+            // 不再抛 DouyinApiException, 而是 ok(...) with hint
+            com.colonel.saas.common.result.ApiResult<?> apiResult = errorController.listProducts(
                     "100018",
                     4L,
                     1L,
@@ -709,15 +712,21 @@ class ColonelActivityControllerTest {
                     null,
                     null,
                     null,
-                    true, // refresh=true 触发上游调用
+                    true, // refresh=true 但已废弃, 不调 gateway
                     null,
                     null,
                     null,
                     null,
                     null,
-                    List.of(RoleCodes.ADMIN)))
-                    .isInstanceOf(BusinessException.class)
-                    .hasMessageContaining(item.messageContains());
+                    List.of(RoleCodes.ADMIN));
+            assertThat(apiResult.getCode()).isEqualTo(200);
+            Object data = apiResult.getData();
+            assertThat(data).isInstanceOf(Map.class);
+            Map<?, ?> payload = (Map<?, ?>) data;
+            assertThat(payload).containsEntry("refreshDeprecated", Boolean.TRUE);
+            assertThat(payload).containsKey("items");
+            // 关键: 不调 refreshActivitySnapshots, 因此 gateway 异常不应冒泡
+            verify(localProductService, never()).refreshActivitySnapshots(any(ActivityProductRefreshRequest.class));
         }
     }
 
