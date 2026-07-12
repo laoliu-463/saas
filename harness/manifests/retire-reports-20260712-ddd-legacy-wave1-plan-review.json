@@ -1,0 +1,10 @@
+{
+  "items": [
+    { "path": "harness/reports/evidence-20260630-130352.md", "action": "archive", "category": "report-headroom", "reason": "preserve historical evidence and reserve reviewed wave 1 plan evidence capacity" },
+    { "path": "harness/reports/evidence-20260704-132320.md", "action": "archive", "category": "report-headroom", "reason": "preserve historical evidence and reserve reviewed wave 1 plan evidence capacity" },
+    { "path": "harness/reports/evidence-20260704-133639.md", "action": "archive", "category": "report-headroom", "reason": "preserve historical evidence and reserve reviewed wave 1 plan evidence capacity" },
+    { "path": "harness/reports/evidence-20260704-134935.md", "action": "archive", "category": "report-headroom", "reason": "preserve historical evidence and reserve reviewed wave 1 plan evidence capacity" },
+    { "path": "harness/reports/evidence-20260704-140842.md", "action": "archive", "category": "report-headroom", "reason": "preserve historical evidence and reserve reviewed wave 1 plan evidence capacity" },
+    { "path": "harness/reports/evidence-20260711-151508.md", "action": "archive", "category": "report-headroom", "reason": "preserve historical evidence and reserve reviewed wave 1 plan evidence capacity" }
+  ]
+}

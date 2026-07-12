@@ -23,7 +23,7 @@
 | --- | --- | --- | --- |
 | Talent release | `codex/ddd-entrypoint-talent-release` | `.worktrees/ddd-entrypoint-talent-release` | talent release application/port/adapter, `TalentClaimReleaseJob`, talent release tests |
 | Order HTTP sync | `codex/ddd-entrypoint-order-http-sync` | `.worktrees/ddd-entrypoint-order-http-sync` | `OrderController`, order controller/contract tests only |
-| Product sync job | `codex/ddd-entrypoint-product-sync-job` | `.worktrees/ddd-entrypoint-product-sync-job` | product sync application/port/adapter, `ProductActivitySyncJob`, product sync tests |
+| Product sync job | `codex/ddd-entrypoint-product-sync-job` | `.worktrees/ddd-entrypoint-product-sync-job` | product sync request/result DTO, application/port/adapter, `ProductActivitySyncJob`, product sync tests |
 | Dashboard query | `codex/ddd-entrypoint-dashboard-query` | `.worktrees/ddd-entrypoint-dashboard-query` | analytics query application/port/adapter, `DashboardController`, dashboard tests |
 
 ### Task 1: Talent claim-release job boundary
@@ -162,6 +162,8 @@ OrderSyncService.SyncResult result = orderSyncApplicationService.execute(
 
 Do not remove `OrderSyncService` yet because `getLastSyncTime()` remains a separate later slice.
 
+This Wave 1 slice intentionally does not claim the order Port/Adapter migration complete. Moving `OrderSyncJob`, webhook `syncByOrderIds`, `getLastSyncTime`, and the application's direct Legacy dependency requires an application-owned `SyncOutcome` plus parity checks for the refactor switch and Redis checkpoint behavior; that is a separate order write set in the next wave.
+
 - [ ] **Step 4: Update controller tests without weakening behavior assertions**
 
 Mock `OrderSyncApplicationService`, return an `OrderSyncResult` created from the same legacy fixtures, and verify exact `OrderSyncCommand` fields and execution-context task/source. Keep HTTP paths, role annotations, response fields, and operation-log assertions unchanged.
@@ -179,6 +181,7 @@ Commit: `refactor(order): route HTTP sync through application service`
 **Files:**
 - Create: `backend/src/main/java/com/colonel/saas/domain/product/application/port/ProductActivitySyncPort.java`
 - Create: `backend/src/main/java/com/colonel/saas/domain/product/application/ProductActivitySyncApplicationService.java`
+- Create: `backend/src/main/java/com/colonel/saas/domain/product/application/dto/ActivityProductRefreshResult.java`
 - Create: `backend/src/main/java/com/colonel/saas/domain/product/infrastructure/LegacyProductActivitySyncAdapter.java`
 - Modify: `backend/src/main/java/com/colonel/saas/job/ProductActivitySyncJob.java`
 - Create: `backend/src/test/java/com/colonel/saas/architecture/DddProductActivitySyncEntrypointTest.java`
@@ -209,10 +212,26 @@ Expected: FAIL because the job still depends on `ProductService`.
 - [ ] **Step 3: Add a narrow pass-through port and adapter**
 
 ```java
+public record ActivityProductRefreshResult(
+        int syncedProductCount,
+        int libraryEntryCount,
+        int createdCount,
+        int updatedCount,
+        int skippedCount,
+        int pagesFetched,
+        int fetchedRows,
+        int distinctProductIds,
+        int duplicateProductIds,
+        String stoppedReason,
+        boolean stillHasNextWhenStopped,
+        boolean complete) {
+}
+```
+
+```java
 @FunctionalInterface
 public interface ProductActivitySyncPort {
-    ProductService.ActivityProductRefreshResult refreshActivitySnapshots(
-            DouyinProductGateway.ActivityProductQueryRequest request);
+    ActivityProductRefreshResult refreshActivitySnapshots(ActivityProductRefreshRequest request);
 }
 ```
 
@@ -225,8 +244,7 @@ public class ProductActivitySyncApplicationService {
         this.productActivitySyncPort = productActivitySyncPort;
     }
 
-    public ProductService.ActivityProductRefreshResult refreshActivitySnapshots(
-            DouyinProductGateway.ActivityProductQueryRequest request) {
+    public ActivityProductRefreshResult refreshActivitySnapshots(ActivityProductRefreshRequest request) {
         return productActivitySyncPort.refreshActivitySnapshots(request);
     }
 }
@@ -242,16 +260,21 @@ public class LegacyProductActivitySyncAdapter implements ProductActivitySyncPort
     }
 
     @Override
-    public ProductService.ActivityProductRefreshResult refreshActivitySnapshots(
-            DouyinProductGateway.ActivityProductQueryRequest request) {
-        return productService.refreshActivitySnapshots(request);
+    public ActivityProductRefreshResult refreshActivitySnapshots(ActivityProductRefreshRequest request) {
+        ProductService.ActivityProductRefreshResult result = productService.refreshActivitySnapshots(request);
+        return new ActivityProductRefreshResult(
+                result.syncedProductCount(), result.libraryEntryCount(),
+                result.createdCount(), result.updatedCount(), result.skippedCount(),
+                result.pagesFetched(), result.fetchedRows(), result.distinctProductIds(),
+                result.duplicateProductIds(), result.stoppedReason(),
+                result.stillHasNextWhenStopped(), result.complete());
     }
 }
 ```
 
 - [ ] **Step 4: Route only the job call and preserve operational controls**
 
-Replace the job dependency and call target only. Do not change enable flags, lock ordering, activity-level locks, QPS sleep, page-size limits, completion handling, `touchLastSyncAt`, exception handling, or logging fields. Update the job test and add an adapter delegation test.
+Replace the job dependency and call target, and make `buildQueryRequest` return the existing application DTO `ActivityProductRefreshRequest` with the same 12 values currently passed to the Gateway request. Do not change enable flags, lock ordering, activity-level locks, QPS sleep, page-size limits, completion handling, `touchLastSyncAt`, exception handling, or logging fields. Update the job test and add an adapter delegation/mapping test.
 
 - [ ] **Step 5: Run GREEN and commit**
 
@@ -371,5 +394,5 @@ Update the DDD matrix and state files only with verified outcomes. Commit integr
 
 - Spec coverage: four independent READY/NEEDS_GLUE slices preserve the approved Legacy chain and establish the repeatable migration pattern for later Controller/Job/Listener entries.
 - Placeholder scan: clean; every production edit has an exact file, method, command, and expected result.
-- Type consistency: every planned method uses existing `TalentService`, `OrderSyncApplicationService`, `ProductService`, and `DashboardService` signatures; external HTTP and job signatures remain unchanged.
+- Type consistency: every planned method preserves existing service signatures at the Legacy adapter boundary; the product Port uses application-owned request/result DTOs, and external HTTP/job signatures remain unchanged.
 - Out of scope: remaining Talent/Product/Order/Data/Outbox/frontend entrypoints form Wave 2+ and are not claimed complete by this plan or Wave 1 evidence.
