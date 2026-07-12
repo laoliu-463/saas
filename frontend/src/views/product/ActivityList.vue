@@ -74,7 +74,7 @@
           </n-button>
           <n-button
             type="primary"
-            :loading="loading"
+            :loading="syncingActivities"
             data-testid="activity-sync-latest"
             @click="syncLatestActivities"
           >
@@ -154,7 +154,7 @@ import { NButton, NModal, NForm, NFormItem, NSelect, NSpace, useMessage } from '
 import { useRouter } from 'vue-router'
 import PageHeader from '../../components/PageHeader.vue'
 import PageEmpty from '../../components/PageEmpty.vue'
-import { assignColonelActivity, getColonelActivityPage } from '../../api/activity'
+import { assignColonelActivity, getColonelActivityPage, triggerActivityListSync, getActivitySyncJob } from '../../api/activity'
 import { getActivityProducts } from '../../api/activityProduct'
 import { getDouyinInstitutionInfo } from '../../api/douyin'
 import { exportActivities } from '../../api/data'
@@ -202,6 +202,7 @@ const showRecruiterEmptyHint = computed(() => !isAdminUser.value && !loading.val
 
 const loading = ref(false)
 const syncingProducts = ref(false)
+const syncingActivities = ref(false)
 const exporting = ref(false)
 const data = ref<ActivityRow[]>([])
 const checkedRowKeys = ref<Array<string | number>>([])
@@ -563,9 +564,64 @@ const resetFilters = () => {
   fetchData()
 }
 
-const syncLatestActivities = () => {
-  pagination.page = 1
-  fetchData()
+const syncLatestActivities = async () => {
+  syncingActivities.value = true
+  try {
+    const res: any = await triggerActivityListSync()
+    const jobId = res?.data?.jobId || res?.jobId
+    if (!jobId) {
+      if (res?.data?.status === 'RUNNING' || res?.status === 'RUNNING') {
+        message.warning('当前已有活动同步任务正在运行中，请稍后再试')
+      } else {
+        message.warning(res?.data?.message || res?.message || '触发同步失败')
+      }
+      syncingActivities.value = false
+      return
+    }
+
+    message.info('活动同步已提交，正在同步中...')
+
+    let attempts = 0
+    const maxAttempts = 40 // 40 * 1.5s = 60s 超时时间
+    const interval = setInterval(async () => {
+      attempts++
+      if (attempts > maxAttempts) {
+        clearInterval(interval)
+        syncingActivities.value = false
+        message.warning('同步任务已超时，请稍后刷新列表查看')
+        return
+      }
+
+      try {
+        const jobRes: any = await getActivitySyncJob(jobId)
+        const jobStatus = jobRes?.data || jobRes
+        const status = jobStatus.status
+
+        if (status === 'SUCCESS' || status === 'PARTIAL') {
+          clearInterval(interval)
+          syncingActivities.value = false
+          const synced = jobStatus.activitiesSynced || 0
+          if (status === 'PARTIAL') {
+            message.warning(`同步完成，但有部分活动失败。成功同步 ${synced} 个活动`)
+          } else {
+            message.success(`同步成功，共更新 ${synced} 个活动`)
+          }
+          pagination.page = 1
+          await fetchData()
+        } else if (status === 'FAILED' || status === 'FAILED_LOCKED' || status === 'ABANDONED') {
+          clearInterval(interval)
+          syncingActivities.value = false
+          message.error(jobStatus.errorMessage || '同步任务执行失败，可能锁被占用')
+        }
+      } catch (err) {
+        // 轮询请求本身失败时允许容错，继续尝试
+        console.error('轮询同步状态失败:', err)
+      }
+    }, 1500)
+  } catch (err: any) {
+    notifyApiFailure(err, message, { fallbackMessage: '同步活动列表失败' })
+    syncingActivities.value = false
+  }
 }
 
 const syncSelectedActivityProducts = async () => {

@@ -129,7 +129,7 @@ export function formatActivitySyncTime(value: unknown): string {
 }
 
 export function resolveActivitySyncTime(row: ActivityRow): string {
-  return formatActivitySyncTime(row.lastSyncAt ?? row.last_sync_at)
+  return formatActivitySyncTime(row.activityStatusSyncedAt ?? row.activity_status_synced_at ?? row.lastSyncAt ?? row.last_sync_at)
 }
 
 /**

@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { assignColonelActivity, getColonelActivityPage } from './activity'
+import { assignColonelActivity, getColonelActivityPage, triggerActivityListSync, getActivitySyncJob } from './activity'
 import request from '../utils/request'
 
 vi.mock('../utils/request', () => ({
   default: {
     get: vi.fn(),
-    put: vi.fn()
+    put: vi.fn(),
+    post: vi.fn()
   }
 }))
 
@@ -27,4 +28,17 @@ describe('activity api', () => {
       assigneeId: '22222222-2222-2222-2222-222222222222'
     })
   })
+
+  it('triggerActivityListSync posts to sync list endpoint', async () => {
+    vi.mocked(request.post).mockResolvedValue({ data: { jobId: 'job-123' } })
+    await triggerActivityListSync()
+    expect(request.post).toHaveBeenCalledWith('/colonel/activities/list-sync')
+  })
+
+  it('getActivitySyncJob gets job status', async () => {
+    vi.mocked(request.get).mockResolvedValue({ data: { status: 'SUCCESS' } })
+    await getActivitySyncJob('job-123')
+    expect(request.get).toHaveBeenCalledWith('/colonel/activities/list-sync/job-123')
+  })
 })
+
