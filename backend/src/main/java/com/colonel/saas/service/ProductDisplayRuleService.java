@@ -264,11 +264,25 @@ public class ProductDisplayRuleService {
                 .filter(StringUtils::hasText)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
         long calcCostMs = elapsedMs(calcStartedAt);
-        long updateStartedAt = System.nanoTime();
-        /* 逐个商品执行展示去重规则 */
-        for (String productId : productIds) {
-            applyForProductId(productId, operator);
+
+        if (productIds.isEmpty()) {
+            DisplayRuleActivityStats stats = countActivityDisplayStats(normalizedActivityId);
+            long totalCostMs = elapsedMs(totalStartedAt);
+            log.info("[ProductDisplayRule] activityId={}, relations={}, productIds={}, displaying={}, hidden={}, totalCostMs={}, queryCostMs={}, calcCostMs={}, updateCostMs={}",
+                    normalizedActivityId,
+                    states.size(),
+                    0,
+                    stats.displaying(),
+                    stats.hidden(),
+                    totalCostMs,
+                    queryCostMs,
+                    calcCostMs,
+                    0);
+            return;
         }
+
+        long updateStartedAt = System.nanoTime();
+        applyForProductIdsBatch(productIds, operator);
         long updateCostMs = elapsedMs(updateStartedAt);
         DisplayRuleActivityStats stats = countActivityDisplayStats(normalizedActivityId);
         long totalCostMs = elapsedMs(totalStartedAt);
@@ -282,6 +296,30 @@ public class ProductDisplayRuleService {
                 queryCostMs,
                 calcCostMs,
                 updateCostMs);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void applyForProductIds(java.util.Collection<String> productIds) {
+        applyForProductIds(productIds, DisplayRuleOperatorContext.system());
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void applyForProductIds(
+            java.util.Collection<String> productIds,
+            DisplayRuleOperatorContext operator) {
+        LinkedHashSet<String> normalizedProductIds = productIds == null
+                ? new LinkedHashSet<>()
+                : productIds.stream()
+                        .filter(StringUtils::hasText)
+                        .map(String::trim)
+                        .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (normalizedProductIds.isEmpty()) {
+            return;
+        }
+        long startedAt = System.nanoTime();
+        int processed = applyForProductIdsBatch(normalizedProductIds, operator);
+        log.info("[ProductDisplayRule] product batch completed, requestedProductIds={}, processedProductIds={}, totalCostMs={}",
+                normalizedProductIds.size(), processed, elapsedMs(startedAt));
     }
 
     /**
@@ -339,6 +377,33 @@ public class ProductDisplayRuleService {
                 .eq(ProductSnapshot::getActivityId, normalizedActivityId)
                 .orderByAsc(ProductSnapshot::getProductId)
                 .last("LIMIT " + normalizedLimit));
+        return repairSnapshots(normalizedActivityId, snapshots, dryRun);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public LibraryRepairResult repairLibraryStateForActivityProducts(
+            String activityId,
+            java.util.Collection<String> productIds,
+            boolean dryRun,
+            int limit) {
+        if (!StringUtils.hasText(activityId) || productIds == null || productIds.isEmpty()) {
+            return LibraryRepairResult.empty(StringUtils.hasText(activityId) ? activityId.trim() : null, dryRun);
+        }
+        String normalizedActivityId = activityId.trim();
+        int normalizedLimit = normalizeRepairLimit(limit);
+        List<String> normalizedProductIds = productIds.stream()
+                .filter(StringUtils::hasText)
+                .map(String::trim)
+                .distinct()
+                .limit(normalizedLimit)
+                .toList();
+        if (normalizedProductIds.isEmpty()) {
+            return LibraryRepairResult.empty(normalizedActivityId, dryRun);
+        }
+        List<ProductSnapshot> snapshots = snapshotMapper.selectList(new LambdaQueryWrapper<ProductSnapshot>()
+                .eq(ProductSnapshot::getActivityId, normalizedActivityId)
+                .in(ProductSnapshot::getProductId, normalizedProductIds)
+                .orderByAsc(ProductSnapshot::getProductId));
         return repairSnapshots(normalizedActivityId, snapshots, dryRun);
     }
 
@@ -782,7 +847,48 @@ public class ProductDisplayRuleService {
     private void applyForStates(String productId, List<ProductOperationState> states, DisplayRuleOperatorContext operator) {
         Map<String, ProductSnapshot> snapshotMap = loadSnapshots(states);
         hydrateProtectionMonths(snapshotMap);
+        applyForStates(productId, states, snapshotMap, operator, LocalDateTime.now());
+    }
+
+    private int applyForProductIdsBatch(
+            java.util.Collection<String> productIds,
+            DisplayRuleOperatorContext operator) {
+        /*
+         * 批量加载这些商品在所有活动中的运营状态和快照，再按商品逐个执行同一套规则。
+         * 不改变候选排序、决策、更新和事件顺序，只消除逐商品重复查询。
+         */
+        List<ProductOperationState> allStates = operationStateMapper.selectList(
+                new LambdaQueryWrapper<ProductOperationState>()
+                        .in(ProductOperationState::getProductId, productIds)
+                        .orderByAsc(ProductOperationState::getProductId)
+                        .orderByAsc(ProductOperationState::getCreateTime)
+                        .orderByAsc(ProductOperationState::getId));
+        Map<String, ProductSnapshot> snapshotMap = loadSnapshots(allStates);
+        hydrateProtectionMonths(snapshotMap);
+        Map<String, List<ProductOperationState>> statesByProductId = allStates.stream()
+                .filter(state -> StringUtils.hasText(state.getProductId()))
+                .collect(Collectors.groupingBy(
+                        ProductOperationState::getProductId,
+                        java.util.LinkedHashMap::new,
+                        Collectors.toList()));
         LocalDateTime now = LocalDateTime.now();
+        int processed = 0;
+        for (String productId : productIds) {
+            List<ProductOperationState> productStates = statesByProductId.get(productId);
+            if (productStates != null && !productStates.isEmpty()) {
+                applyForStates(productId, productStates, snapshotMap, operator, now);
+                processed++;
+            }
+        }
+        return processed;
+    }
+
+    private void applyForStates(
+            String productId,
+            List<ProductOperationState> states,
+            Map<String, ProductSnapshot> snapshotMap,
+            DisplayRuleOperatorContext operator,
+            LocalDateTime now) {
         UUID oldDisplayRelationId = states.stream()
                 .filter(state -> ProductDisplayStatus.DISPLAYING.name().equals(state.getDisplayStatus()))
                 .map(ProductOperationState::getId)

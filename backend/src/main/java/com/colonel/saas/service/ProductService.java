@@ -2214,7 +2214,9 @@ public class ProductService implements CopyPromotionSupportPort {
         long normalizedPageIntervalMs = constrainedStatuses
                 ? normalizedProductActivityPrioritySyncPageIntervalMs(pageIntervalMs)
                 : normalizedProductActivitySyncPageIntervalMs(pageIntervalMs);
-        if (!statusPartitionPreflightSafe(request, statuses, pageSize, normalizedMaxPages, normalizedMaxRows)) {
+        StatusPartitionPreflight preflight = statusPartitionPreflight(
+                request, statuses, pageSize, normalizedMaxPages, normalizedMaxRows);
+        if (!preflight.safe()) {
             log.info("Activity product status-partition sync fallback to serial, activityId={}, statuses={}, pageSize={}, maxPages={}, maxRows={}",
                     request.activityId(), statuses, pageSize, normalizedMaxPages, normalizedMaxRows);
             if (constrainedStatuses) {
@@ -2246,7 +2248,8 @@ public class ProductService implements CopyPromotionSupportPort {
                                     normalizedPageIntervalMs,
                                     pageCounter,
                                     progressPageCounter,
-                                    progressConsumer),
+                                    progressConsumer,
+                                    preflight.firstPages().get(status)),
                             executor))
                     .toList();
             partitions = futures.stream()
@@ -2399,16 +2402,23 @@ public class ProductService implements CopyPromotionSupportPort {
         }
 
         int repairLimit = Math.min(Math.max(10000, pageResult.distinctProductIds()), 50000);
-        ProductDisplayRuleService.LibraryRepairResult repairResult =
-                productDisplayRuleService.repairLibraryStateForActivity(request.activityId(), false, repairLimit);
-        log.info("Activity product library state repair after refresh, activityId={}, scanned={}, promoting={}, willSelectToLibrary={}, willDisplay={}, unchanged={}",
+        ProductDisplayRuleService.LibraryRepairResult repairResult = pageResult.complete()
+                ? productDisplayRuleService.repairLibraryStateForActivity(request.activityId(), false, repairLimit)
+                : productDisplayRuleService.repairLibraryStateForActivityProducts(
+                        request.activityId(), pageResult.productIds(), false, repairLimit);
+        log.info("Activity product library state repair after refresh, activityId={}, scope={}, scanned={}, promoting={}, willSelectToLibrary={}, willDisplay={}, unchanged={}",
                 request.activityId(),
+                pageResult.complete() ? "FULL_ACTIVITY" : "FETCHED_PRODUCTS",
                 repairResult.scanned(),
                 repairResult.promoting(),
                 repairResult.willSelectToLibrary(),
                 repairResult.willDisplay(),
                 repairResult.unchanged());
-        productDisplayRuleService.applyForActivityId(request.activityId());
+        if (pageResult.complete()) {
+            productDisplayRuleService.applyForActivityId(request.activityId());
+        } else {
+            productDisplayRuleService.applyForProductIds(pageResult.productIds());
+        }
         evictActivityProductCache(request.activityId());
         ColonelsettlementActivity activity = colonelActivityMapper.selectByActivityId(request.activityId());
         String syncStatus = pageResult.complete() ? "SUCCESS" : syncStatusForStopReason(pageResult.stopReason());
@@ -2450,7 +2460,7 @@ public class ProductService implements CopyPromotionSupportPort {
                 pageResult.complete());
     }
 
-    private boolean statusPartitionPreflightSafe(
+    private StatusPartitionPreflight statusPartitionPreflight(
             DouyinProductGateway.ActivityProductQueryRequest request,
             List<Integer> statuses,
             int pageSize,
@@ -2459,6 +2469,7 @@ public class ProductService implements CopyPromotionSupportPort {
         long estimatedRows = 0L;
         long estimatedPages = 0L;
         java.util.concurrent.atomic.AtomicInteger preflightPageCounter = new java.util.concurrent.atomic.AtomicInteger();
+        Map<Integer, DouyinProductGateway.ActivityProductListResult> firstPages = new LinkedHashMap<>();
         for (Integer status : statuses) {
             DouyinProductGateway.ActivityProductListResult firstPage;
             try {
@@ -2471,27 +2482,28 @@ public class ProductService implements CopyPromotionSupportPort {
                 }
                 log.warn("Activity product status-partition preflight failed, fallback to serial, activityId={}, status={}, errorCode={}, subCode={}, message={}",
                         request.activityId(), status, ex.getErrorCode(), ex.getSubCode(), ex.getErrorMsg());
-                return false;
+                return StatusPartitionPreflight.unsafe();
             } catch (RuntimeException ex) {
                 log.warn("Activity product status-partition preflight failed, fallback to serial, activityId={}, status={}, message={}",
                         request.activityId(), status, ex.getMessage());
-                return false;
+                return StatusPartitionPreflight.unsafe();
             }
             if (firstPage.total() == null) {
                 log.info("Activity product status-partition preflight missing total, activityId={}, status={}",
                         request.activityId(), status);
-                return false;
+                return StatusPartitionPreflight.unsafe();
             }
+            firstPages.put(status, firstPage);
             long total = Math.max(firstPage.total(), 0L);
             estimatedRows += total;
             estimatedPages += Math.max(1L, (total + pageSize - 1L) / pageSize);
             if (estimatedRows > maxRows || estimatedPages > maxPages) {
                 log.info("Activity product status-partition preflight exceeds safety bound, activityId={}, status={}, estimatedRows={}, estimatedPages={}, maxRows={}, maxPages={}",
                         request.activityId(), status, estimatedRows, estimatedPages, maxRows, maxPages);
-                return false;
+                return StatusPartitionPreflight.unsafe();
             }
         }
-        return true;
+        return new StatusPartitionPreflight(true, Map.copyOf(firstPages));
     }
 
     private ActivityProductStatusPartitionFetch fetchActivityProductStatusPartition(
@@ -2503,12 +2515,21 @@ public class ProductService implements CopyPromotionSupportPort {
             long pageIntervalMs,
             java.util.concurrent.atomic.AtomicInteger pageCounter,
             java.util.concurrent.atomic.AtomicInteger progressPageCounter,
-            java.util.function.Consumer<ActivityProductRefreshProgress> progressConsumer) {
+            java.util.function.Consumer<ActivityProductRefreshProgress> progressConsumer,
+            DouyinProductGateway.ActivityProductListResult preflightFirstPage) {
         List<List<DouyinProductGateway.ActivityProductItem>> pages = new ArrayList<>();
+        java.util.concurrent.atomic.AtomicBoolean reusePreflightFirstPage =
+                new java.util.concurrent.atomic.AtomicBoolean(preflightFirstPage != null);
         ActivityProductPaginationRunner.Result result = ActivityProductPaginationRunner.run(
                 activityProductRequestWithStatus(request, status, pageSize, null),
                 new ActivityProductPaginationRunner.Options(pageSize, maxPages, maxRows, true),
-                pageRequest -> queryActivityProductsWithRetry(pageRequest, pageCounter.getAndIncrement()),
+                pageRequest -> {
+                    if (!StringUtils.hasText(pageRequest.cursor())
+                            && reusePreflightFirstPage.compareAndSet(true, false)) {
+                        return preflightFirstPage;
+                    }
+                    return queryActivityProductsWithRetry(pageRequest, pageCounter.getAndIncrement());
+                },
                 page -> {
                     pages.add(List.copyOf(page.items()));
                     notifyActivityProductRefreshProgress(progressConsumer, progressPageCounter.incrementAndGet());
@@ -2516,6 +2537,15 @@ public class ProductService implements CopyPromotionSupportPort {
                 },
                 pageNo -> sleepBeforeNextActivityProductPage(request.activityId(), pageNo - 1, pageIntervalMs));
         return new ActivityProductStatusPartitionFetch(status, result, pages);
+    }
+
+    private record StatusPartitionPreflight(
+            boolean safe,
+            Map<Integer, DouyinProductGateway.ActivityProductListResult> firstPages) {
+
+        static StatusPartitionPreflight unsafe() {
+            return new StatusPartitionPreflight(false, Map.of());
+        }
     }
 
     private DouyinProductGateway.ActivityProductQueryRequest activityProductRequestWithStatus(

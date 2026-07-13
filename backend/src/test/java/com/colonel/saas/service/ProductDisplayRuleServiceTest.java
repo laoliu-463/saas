@@ -110,6 +110,57 @@ class ProductDisplayRuleServiceTest {
     }
 
     @Test
+    void applyForActivityId_shouldBatchLoadStatesAndSnapshotsWhileKeepingCrossActivityCandidates() {
+        String activityId = "60010";
+        String firstProductId = "9020";
+        String secondProductId = "9021";
+        ProductOperationState firstCurrent = libraryState(activityId, firstProductId, 3000L, false, LocalDateTime.now());
+        ProductOperationState secondCurrent = libraryState(activityId, secondProductId, 2000L, false, LocalDateTime.now());
+        ProductOperationState firstOtherActivity = libraryState("60011", firstProductId, 1000L, false, LocalDateTime.now().minusDays(1));
+
+        when(operationStateMapper.selectList(any()))
+                .thenReturn(List.of(firstCurrent, secondCurrent))
+                .thenReturn(List.of(firstCurrent, firstOtherActivity, secondCurrent))
+                .thenReturn(List.of(firstCurrent, firstOtherActivity, secondCurrent));
+        when(snapshotMapper.selectList(any())).thenReturn(List.of(
+                snapshot(activityId, firstProductId, 3000L, 1),
+                snapshot("60011", firstProductId, 1000L, 1),
+                snapshot(activityId, secondProductId, 2000L, 1)
+        ));
+        when(productBizStatusService.readBizStatus(any())).thenReturn(ProductBizStatus.APPROVED);
+
+        service.applyForActivityId(activityId);
+
+        // selected-state query + one batched cross-activity state query + final stats query
+        verify(operationStateMapper, times(3)).selectList(any());
+        verify(snapshotMapper, times(1)).selectList(any());
+        verify(operationStateMapper).updateById(argThat(state ->
+                state.getId().equals(firstOtherActivity.getId())
+                        && ProductDisplayStatus.HIDDEN.name().equals(state.getDisplayStatus())));
+    }
+
+    @Test
+    void applyForProductIds_shouldBatchLoadCrossActivityCandidates() {
+        String productId = "9022";
+        ProductOperationState stronger = libraryState("60012", productId, 3000L, false, LocalDateTime.now());
+        ProductOperationState weaker = libraryState("60013", productId, 1000L, false, LocalDateTime.now().minusDays(1));
+        when(operationStateMapper.selectList(any())).thenReturn(List.of(stronger, weaker));
+        when(snapshotMapper.selectList(any())).thenReturn(List.of(
+                snapshot("60012", productId, 3000L, 1),
+                snapshot("60013", productId, 1000L, 1)
+        ));
+        when(productBizStatusService.readBizStatus(any())).thenReturn(ProductBizStatus.APPROVED);
+
+        service.applyForProductIds(List.of(productId));
+
+        verify(operationStateMapper, times(1)).selectList(any());
+        verify(snapshotMapper, times(1)).selectList(any());
+        verify(operationStateMapper).updateById(argThat(state ->
+                state.getId().equals(weaker.getId())
+                        && ProductDisplayStatus.HIDDEN.name().equals(state.getDisplayStatus())));
+    }
+
+    @Test
     void applyForProductId_upstreamPromotingWithoutLocalApprovalShouldEnterDisplayCompetition() {
         String productId = "9013";
         ProductOperationState locallyApproved = libraryState("60003", productId, 2000L, false, LocalDateTime.now());
@@ -227,6 +278,26 @@ class ProductDisplayRuleServiceTest {
                         ProductDisplayStatus.PENDING.name(),
                         ProductDisplayStatus.PENDING.name(),
                         ProductDisplayRuleService.REPAIR_REASON_UPSTREAM_PROMOTING_AUTO_LIBRARY);
+        verify(operationStateMapper, never()).updateById(any(ProductOperationState.class));
+    }
+
+    @Test
+    void repairLibraryStateForActivityProducts_shouldRepairRequestedActivityProducts() {
+        String activityId = "3859423";
+        ProductOperationState pending = pendingState(activityId, "99012");
+        ProductSnapshot snapshot = snapshot(activityId, "99012", 2000L, 1);
+        when(snapshotMapper.selectList(any())).thenReturn(List.of(snapshot));
+        when(operationStateMapper.selectList(any())).thenReturn(List.of(pending));
+
+        ProductDisplayRuleService.LibraryRepairResult result = service.repairLibraryStateForActivityProducts(
+                activityId,
+                List.of("99012", "99013"),
+                true,
+                1000);
+
+        assertThat(result.activityId()).isEqualTo(activityId);
+        assertThat(result.scanned()).isEqualTo(1);
+        verify(snapshotMapper, times(1)).selectList(any());
         verify(operationStateMapper, never()).updateById(any(ProductOperationState.class));
     }
 

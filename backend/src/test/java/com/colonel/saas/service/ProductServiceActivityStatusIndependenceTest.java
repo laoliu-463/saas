@@ -117,6 +117,8 @@ class ProductServiceActivityStatusIndependenceTest {
         when(operationStateMapper.updateById(any(ProductOperationState.class))).thenReturn(1);
         when(productDisplayRuleService.repairLibraryStateForActivity(any(), eq(false), anyInt()))
                 .thenReturn(ProductDisplayRuleService.LibraryRepairResult.empty(null, false));
+        when(productDisplayRuleService.repairLibraryStateForActivityProducts(any(), any(), eq(false), anyInt()))
+                .thenReturn(ProductDisplayRuleService.LibraryRepairResult.empty(null, false));
     }
 
     private void initTableInfo(Class<?> entityClass) {
@@ -792,6 +794,7 @@ class ProductServiceActivityStatusIndependenceTest {
 
         assertThat(result.complete()).isTrue();
         assertThat(result.distinctProductIds()).isEqualTo(6);
+        assertThat(requests).hasSize(6);
         assertThat(requests)
                 .extracting(DouyinProductGateway.ActivityProductQueryRequest::status)
                 .contains(0, 1, 2, 3, 4, 6);
@@ -1008,6 +1011,12 @@ class ProductServiceActivityStatusIndependenceTest {
                 null);
 
         assertThat(result.complete()).isFalse();
+        verify(productDisplayRuleService).repairLibraryStateForActivityProducts(
+                eq(activityId), argThat(ids -> ids.containsAll(List.of("10001", "10002", "20001", "20002", "20003"))), eq(false), eq(10000));
+        verify(productDisplayRuleService, never()).repairLibraryStateForActivity(eq(activityId), eq(false), anyInt());
+        verify(productDisplayRuleService).applyForProductIds(
+                argThat(ids -> ids.containsAll(List.of("10001", "10002", "20001", "20002", "20003"))));
+        verify(productDisplayRuleService, never()).applyForActivityId(activityId);
         verify(snapshotMapper).update(isNull(), argThat(wrapper -> {
             String sql = wrapper.getSqlSegment();
             return sql.contains("activity_id")
@@ -1083,4 +1092,3 @@ class ProductServiceActivityStatusIndependenceTest {
         }));
     }
 }
-

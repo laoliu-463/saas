@@ -177,17 +177,19 @@ class ColonelActivityControllerTest {
         // 改造后：即使是 admin + all filter，也走 DB，不调抖音（504 根因修复）
         Map<String, Object> dbPayload = new LinkedHashMap<>();
         dbPayload.put("total", 21L);
-        dbPayload.put("activityList", List.of(Map.of(
-                "activityId", "3916506",
-                "activityName", "星链达客-zy",
-                "status", 3,
-                "activityStatus", 3,
-                "activityStartTime", "2026-05-06",
-                "startTime", "2026-05-06",
-                "activityEndTime", "2026-08-03",
-                "endTime", "2026-08-03",
-                "statusText", "报名中"
-        )));
+        Map<String, Object> activityRow = new LinkedHashMap<>();
+        activityRow.put("activityId", "3916506");
+        activityRow.put("activityName", "星链达客-zy");
+        activityRow.put("status", 3);
+        activityRow.put("activityStatus", 3);
+        activityRow.put("activityStartTime", "2026-05-06");
+        activityRow.put("startTime", "2026-05-06");
+        activityRow.put("activityEndTime", "2026-08-03");
+        activityRow.put("endTime", "2026-08-03");
+        activityRow.put("statusText", "报名中");
+        activityRow.put("lastSyncAt", LocalDateTime.of(2026, 7, 12, 23, 20));
+        activityRow.put("activityStatusSyncedAt", LocalDateTime.of(2026, 7, 12, 23, 19));
+        dbPayload.put("activityList", List.of(activityRow));
         when(colonelActivityService.buildAssignmentListPage(
                 eq(1L),
                 eq(20L),
@@ -196,7 +198,6 @@ class ColonelActivityControllerTest {
                 eq(null),
                 eq(null),
                 any())).thenReturn(dbPayload);
-
         mockMvc.perform(get("/colonel/activities")
                         .param("page", "1")
                         .param("pageSize", "20")
@@ -206,7 +207,9 @@ class ColonelActivityControllerTest {
                 .andExpect(jsonPath("$.data.total").value(21))
                 .andExpect(jsonPath("$.data.activityList[0].activityId").value("3916506"))
                 .andExpect(jsonPath("$.data.activityList[0].status").value(3))
-                .andExpect(jsonPath("$.data.activityList[0].statusText").value("报名中"));
+                .andExpect(jsonPath("$.data.activityList[0].statusText").value("报名中"))
+                .andExpect(jsonPath("$.data.activityList[0].lastSyncAt").exists())
+                .andExpect(jsonPath("$.data.activityList[0].activityStatusSyncedAt").exists());
 
     }
 

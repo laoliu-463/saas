@@ -29,16 +29,15 @@ describe('activity api', () => {
     })
   })
 
-  it('triggerActivityListSync posts to sync list endpoint', async () => {
+  it('triggerActivityListSync posts to the activity sync endpoint', async () => {
     vi.mocked(request.post).mockResolvedValue({ data: { jobId: 'job-123' } })
     await triggerActivityListSync()
-    expect(request.post).toHaveBeenCalledWith('/colonel/activities/list-sync')
+    expect(request.post).toHaveBeenCalledWith('/colonel/activities/sync')
   })
 
   it('getActivitySyncJob gets job status', async () => {
     vi.mocked(request.get).mockResolvedValue({ data: { status: 'SUCCESS' } })
     await getActivitySyncJob('job-123')
-    expect(request.get).toHaveBeenCalledWith('/colonel/activities/list-sync/job-123')
+    expect(request.get).toHaveBeenCalledWith('/colonel/activities/sync-jobs/job-123')
   })
 })
-

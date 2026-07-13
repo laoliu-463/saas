@@ -54,6 +54,11 @@ if [ ! -f "`$activity_migration" ]; then
   echo "Required activity schema migration not found: `$activity_migration"
   exit 1
 fi
+activity_list_sync_migration="backend/src/main/resources/db/alter-colonel-activity-list-sync.sql"
+if [ ! -f "`$activity_list_sync_migration" ]; then
+  echo "Required activity list sync migration not found: `$activity_list_sync_migration"
+  exit 1
+fi
 config_migration="backend/src/main/resources/db/alter-v2-config-20260523.sql"
 if [ ! -f "`$config_migration" ]; then
   echo "Required V2 config migration not found: `$config_migration"
@@ -72,9 +77,12 @@ fi
 echo "Applying required activity schema migration ..."
 docker cp "`$activity_migration" "`$pg_container:/tmp/V20260529_001__alter-colonel-activity-add-recruiter-fields.sql"
 compose exec -T postgres-real-pre sh -lc 'psql -U "`$POSTGRES_USER" -d "`$POSTGRES_DB" -v ON_ERROR_STOP=1 -f /tmp/V20260529_001__alter-colonel-activity-add-recruiter-fields.sql' </dev/null
-schema_count="`$(compose exec -T postgres-real-pre sh -lc 'psql -U "`$POSTGRES_USER" -d "`$POSTGRES_DB" -c "\d public.colonel_activity"' </dev/null | grep -E '^[[:space:]]*(recruiter_user_id|recruiter_dept_id|assigned_at|assigned_by|activity_status_code|activity_status_text)[[:space:]]' | wc -l | tr -d '[:space:]')"
-if [ "`$schema_count" != "6" ]; then
-  echo "colonel_activity schema guard failed: expected 6 required columns, got `$schema_count"
+echo "Applying required activity list sync schema migration ..."
+docker cp "`$activity_list_sync_migration" "`$pg_container:/tmp/alter-colonel-activity-list-sync.sql"
+compose exec -T postgres-real-pre sh -lc 'psql -U "`$POSTGRES_USER" -d "`$POSTGRES_DB" -v ON_ERROR_STOP=1 -f /tmp/alter-colonel-activity-list-sync.sql' </dev/null
+schema_count="`$(compose exec -T postgres-real-pre sh -lc 'psql -U "`$POSTGRES_USER" -d "`$POSTGRES_DB" -tAc "SELECT count(*) FROM information_schema.columns WHERE table_schema = '\''public'\'' AND table_name = '\''colonel_activity'\'' AND column_name IN ('\''recruiter_user_id'\'', '\''recruiter_dept_id'\'', '\''assigned_at'\'', '\''assigned_by'\'', '\''activity_status_code'\'', '\''activity_status_text'\'', '\''activity_status_synced_at'\'')"' </dev/null | tr -d '[:space:]')"
+if [ "`$schema_count" != "7" ]; then
+  echo "colonel_activity schema guard failed: expected 7 required columns, got `$schema_count"
   exit 1
 fi
 echo "Activity schema guard passed."

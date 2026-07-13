@@ -244,7 +244,9 @@
             assigned_at AS assignedAt,
             assigned_by AS assignedBy,
             activity_status_code AS activityStatusCode,
-            activity_status_text AS activityStatusText
+            activity_status_text AS activityStatusText,
+            last_sync_at AS lastSyncAt,
+            activity_status_synced_at AS activityStatusSyncedAt
         FROM colonel_activity
         WHERE deleted = 0
           AND activity_id IN
@@ -310,6 +312,7 @@
         commission_rate AS commissionRate,
         service_rate AS serviceRate,
         last_sync_at AS lastSyncAt,
+        activity_status_synced_at AS activityStatusSyncedAt,
         create_time AS createTime,
         update_time AS updateTime
     </sql>

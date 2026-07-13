@@ -63,10 +63,9 @@ export const assignColonelActivity = (
 /**
  * 触发活动列表异步同步
  */
-export const triggerActivityListSync = () => request.post('/colonel/activities/list-sync');
+export const triggerActivityListSync = () => request.post('/colonel/activities/sync');
 
 /**
  * 获取活动列表同步异步任务状态
  */
-export const getActivitySyncJob = (jobId: string) => request.get(`/colonel/activities/list-sync/${jobId}`);
-
+export const getActivitySyncJob = (jobId: string) => request.get(`/colonel/activities/sync-jobs/${jobId}`);
