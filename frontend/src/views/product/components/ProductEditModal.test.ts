@@ -22,38 +22,20 @@ vi.mock('naive-ui', async (importOriginal) => {
 describe('ProductEditModal', () => {
   it('renders as a right-side drawer instead of a centered modal', () => {
     const wrapper = mount(ProductEditModal, {
-      props: {
-        show: true,
-        row: null
-      },
+      props: { show: true, row: null },
       global: {
         stubs: {
           NDrawer: {
             props: ['show', 'width', 'placement'],
             template: '<aside data-testid="drawer" :data-width="width" :data-placement="placement"><slot /></aside>'
           },
-          NDrawerContent: {
-            template: '<section><slot name="header" /><slot /><slot name="footer" /></section>'
-          },
+          NDrawerContent: { template: '<section><slot name="header" /><slot /><slot name="footer" /></section>' },
           NForm: { template: '<form><slot /></form>' },
-          NFormItem: {
-            props: ['label'],
-            template: '<div class="form-item"><label>{{ label }}</label><slot /></div>'
-          },
-          NSelect: { template: '<div />' },
-          NInput: {
-            props: ['value', 'readonly'],
-            template: '<input v-bind="$attrs" :value="value" :readonly="readonly" />'
-          },
-          NCheckbox: {
-            props: ['checked', 'disabled'],
-            template: '<label><input type="checkbox" :checked="checked" :disabled="disabled" /><slot /></label>'
-          },
+          NFormItem: { props: ['label'], template: '<div class="form-item"><label>{{ label }}</label><slot /></div>' },
+          NInput: { props: ['value', 'readonly'], template: '<input v-bind="$attrs" :value="value" :readonly="readonly" />' },
+          NCheckbox: { props: ['checked', 'disabled'], template: '<label><input type="checkbox" :checked="checked" :disabled="disabled" /><slot /></label>' },
           NSpace: { template: '<div><slot /></div>' },
-          NButton: {
-            emits: ['click'],
-            template: '<button v-bind="$attrs" @click="$emit(\'click\')"><slot /></button>'
-          }
+          NButton: { emits: ['click'], template: '<button v-bind="$attrs" @click="$emit(\'click\')"><slot /></button>' }
         }
       }
     })
@@ -83,26 +65,12 @@ describe('ProductEditModal', () => {
       props: { show: true, row },
       global: {
         stubs: {
-          NDrawer: {
-            props: ['show', 'width', 'placement'],
-            template: '<aside><slot /></aside>'
-          },
-          NDrawerContent: {
-            template: '<section><slot name="header" /><slot /><slot name="footer" /></section>'
-          },
+          NDrawer: { props: ['show', 'width', 'placement'], template: '<aside><slot /></aside>' },
+          NDrawerContent: { template: '<section><slot name="header" /><slot /><slot name="footer" /></section>' },
           NForm: { template: '<form><slot /></form>' },
-          NFormItem: {
-            props: ['label'],
-            template: '<div class="form-item"><label>{{ label }}</label><slot /></div>'
-          },
-          NInput: {
-            props: ['value', 'readonly'],
-            template: '<input v-bind="$attrs" :value="value" :readonly="readonly" />'
-          },
-          NCheckbox: {
-            props: ['checked', 'disabled'],
-            template: '<label><input type="checkbox" :checked="checked" :disabled="disabled" /><slot /></label>'
-          },
+          NFormItem: { props: ['label'], template: '<div class="form-item"><label>{{ label }}</label><slot /></div>' },
+          NInput: { props: ['value', 'readonly'], template: '<input v-bind="$attrs" :value="value" :readonly="readonly" />' },
+          NCheckbox: { props: ['checked', 'disabled'], template: '<label><input type="checkbox" :checked="checked" :disabled="disabled" /><slot /></label>' },
           NSpace: { template: '<div><slot /></div>' },
           NButton: { template: '<button><slot /></button>' }
         }
@@ -147,10 +115,7 @@ describe('ProductEditModal', () => {
           NInput: { props: ['value'], template: '<input v-bind="$attrs" :value="value" />' },
           NCheckbox: { props: ['checked', 'disabled'], template: '<input type="checkbox" />' },
           NSpace: { template: '<div><slot /></div>' },
-          NButton: {
-            emits: ['click'],
-            template: '<button @click="$emit(\'click\')"><slot /></button>'
-          }
+          NButton: { emits: ['click'], template: '<button @click="$emit(\'click\')"><slot /></button>' }
         }
       }
     })

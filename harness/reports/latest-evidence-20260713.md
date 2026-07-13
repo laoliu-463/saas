@@ -39,3 +39,19 @@ PARTIAL. The frontend drawer refactor is build- and unit-tested and is loaded by
 - The edit API call remains unverified against an authenticated real-pre session.
 - Start/end time and exclusive-price status are displayed from existing product data and are not submitted as editable fields.
 - Existing unrelated dirty files were not staged or modified.
+
+## 本任务补充证据：商品库服务费率与双佣展示
+
+- 代码范围：`ProductService.java`、`ProductServiceFilterTest.java`、`product-library-display.ts`、`product-library-display.test.ts`、`ProductSelectionCard.vue` 及对应测试。
+- 根因证据：后端原逻辑把 `activity_ad_cos_ratio`（投放佣金）作为服务费兜底；前端原逻辑把百分制 `1.00` 按小数比例乘 100，显示成 `100%`，且把缺失值与真实 `0` 混淆。
+- 修复口径：普通商品只读取上游 `service_ratio`；双佣商品读取 `ad_service_ratio`；缺失服务费返回空值，不再伪造 `0%`；显式上游 `0` 保留为 `0%`。
+- 双佣展示：商品卡与详情抽屉分别展示 `双佣金`、`投放期佣`、`投放服务费`；普通商品不展示投放字段。
+- 前端定向测试：73/73 PASS；前端全量测试：93 files / 695 tests PASS；typecheck PASS；生产构建 PASS。
+- 后端定向测试：`ProductServiceFilterTest` 26/26 PASS；固定 real-pre agent-do 后端 package PASS、前端 build PASS。
+- 容器与健康：real-pre backend/frontend 重建重启 PASS；backend `/api/system/health` 200/UP；frontend `/healthz` 200。
+- 真实业务验证：`runtime/qa/out/real-pre-preflight-20260713-144159/report.md` 为 FAIL/BLOCKED_AUTH；admin 登录 5 次 HTTP 401，token 不可用，未执行认证商品库业务流。
+- 远端部署：未执行；用户未要求。代码提交：`67c6a0fb`；随后已合并远端分支历史，未强推。
+
+### 本任务结论
+
+PARTIAL：代码、测试、构建、容器和健康检查通过；真实 real-pre 商品库页面/API 验收受 admin 401 阻塞，不能声明线上业务流已通过。
