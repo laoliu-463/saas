@@ -1,36 +1,41 @@
-# Evidence Report — 商品编辑右侧抽屉
+# Evidence Report
 
-## 结论
+## Metadata
 
-PARTIAL
+- Time: 2026-07-13 14:25 +08:00
+- Environment: real-pre
+- Scope: frontend
+- Branch: codex/ddd-user-role-application
+- Base commit before this task: 2105cf40
+- Worktree: dirty before and after; unrelated existing changes preserved
+- Remote deploy: not requested, not executed
 
-## 证据
+## Changes
 
-- 时间：2026-07-13；环境：本地 `real-pre`；分支：`codex/ddd-user-role-application`。
-- 代码 commit：`0d1a1391`（`feat(product): edit product in right drawer`）。
-- 修改文件：`frontend/src/views/product/components/ProductEditModal.vue`、对应测试文件。
-- 定向测试：1 passed；前端全量测试：90 files / 686 tests passed。
-- 类型检查：`npm run typecheck` PASS。
-- 前端生产构建：`npm run build` PASS。
-- 后端构建：`mvn -f backend/pom.xml -DskipTests package` PASS。
-- Harness 固定入口已重建并重启 real-pre backend/frontend；PostgreSQL、Redis、backend、frontend 均 healthy。
-- 健康检查：backend `/api/system/health` 返回 200 / `UP`；frontend `/healthz` 返回 200。
-- Harness 限制检查：`check-harness-limits.ps1` PASS；`git diff --check` PASS。
-- 代码图谱已增量更新，未发现本次组件新增调用方。
+- `frontend/src/views/product/components/ProductEditModal.vue`
+- `frontend/src/views/product/components/ProductEditModal.test.ts`
+- Right-side drawer fields reduced to exclusive-price status, exclusive-price remark, ad-support flag, reward remark, participation requirements, start time and end time.
+- Start/end time are read-only snapshot facts; hand-card, tags, script, selling points and remark inputs were removed.
 
-## 阻塞
+## Verification
 
-- `npm run e2e:real-pre:p0:preflight` FAIL：管理员登录连续 5 次 HTTP 401。
-- 因管理员 token 不可用，real-pre env guard 失败，抖音 token readiness 为 `BLOCKED_AUTH`，真实业务流未执行。
-- 该阻塞需要有效 real-pre 管理员凭据；本任务未读取、修改或输出密钥。
+| Check | Result | Evidence |
+|---|---|---|
+| Component test | PASS | 3/3 `ProductEditModal` tests |
+| Frontend test suite | PASS | 92 files, 692 tests |
+| Typecheck | PASS | `npm --prefix frontend run typecheck` |
+| Frontend build | PASS | `npm --prefix frontend run build` |
+| Docker rebuild/restart | PASS after retry | First attempt hit a Docker name conflict; retry rebuilt and started all four real-pre services |
+| Local health | PASS | `verify-local.ps1 -Env real-pre -Scope frontend`; frontend `/healthz` HTTP 200; compose services healthy |
+| real-pre preflight | FAIL/BLOCKED | `runtime/qa/out/real-pre-preflight-20260713-142240/report.md`; admin login HTTP 401, admin token unavailable |
+| Product edit API/E2E | BLOCKED | No admin token, so authenticated product-save smoke was not executed |
 
-## 其他状态
+## Conclusion
 
-- 远端部署：未执行，用户未要求。
-- 工作区：仍有用户已有 Harness 报告删除、未跟踪报告和日志文件；本次只选择性提交商品源码/测试。
-- 回滚：回退 commit `0d1a1391`，恢复原 `n-modal` 组件实现；无需数据库回滚。
+PARTIAL. The frontend drawer refactor is build- and unit-tested and is loaded by the local real-pre frontend container. Authenticated real-pre business verification is blocked by the existing admin login 401; no claim is made that the live product-save request has passed.
 
-## 下一步
+## Residual risks
 
-- 提供有效 real-pre 管理员凭据后，重新执行 preflight 和商品页面浏览器验收。
-- 在浏览器确认商品管理页点击“编辑商品”后从右侧打开、保存成功并刷新列表。
+- The edit API call remains unverified against an authenticated real-pre session.
+- Start/end time and exclusive-price status are displayed from existing product data and are not submitted as editable fields.
+- Existing unrelated dirty files were not staged or modified.
