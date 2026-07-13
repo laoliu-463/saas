@@ -8,6 +8,7 @@ export const fetchProductFilterOptions = () =>
 
 export interface ProductManageApprovePayload {
   remark?: string
+  exclusivePriceAmount?: number
   exclusivePriceRemark?: string
   shippingInfo?: string
   sellingPoints?: string[]

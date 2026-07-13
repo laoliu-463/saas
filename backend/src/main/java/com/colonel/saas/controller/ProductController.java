@@ -44,6 +44,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -155,6 +156,23 @@ public class ProductController extends BaseController {
             @RequestAttribute(value = "userId", required = false) UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId) {
         return ok(productSampleSettingService.update(relationId, request, userId, deptId));
+    }
+
+    /**
+     * 编辑商品推广补充信息。
+     *
+     * <p>该接口只更新商品运营状态中的 audit_payload，不改变审核、上架和推广状态。
+     * 允许编辑的字段由商品服务统一校验，专属价金额使用元并保留两位小数。</p>
+     */
+    @Operation(summary = "编辑商品推广补充信息", description = "更新专属价金额、专属价说明、投流开关、奖励说明和参与要求。")
+    @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF})
+    @PutMapping("/{relationId}")
+    public ApiResult<Product> updateProductSupplement(
+            @Parameter(description = "商品关系 ID，使用 product_snapshot.id。") @PathVariable UUID relationId,
+            @RequestBody(required = false) Map<String, Object> request,
+            @RequestAttribute(value = "userId", required = false) UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId) {
+        return ok(productService.updateAuditSupplement(relationId, request, userId, deptId));
     }
 
     /**
@@ -786,8 +804,19 @@ public class ProductController extends BaseController {
     }
 
     public static class AuditSupplementRequest {
+        @Schema(description = "专属价金额，单位元。", example = "129.00")
+        private BigDecimal exclusivePriceAmount;
+
         @Schema(description = "专属价说明。", example = "直播间专属价 129 元，日常到手价 149 元。")
         private String exclusivePriceRemark;
+
+        public BigDecimal getExclusivePriceAmount() {
+            return exclusivePriceAmount;
+        }
+
+        public void setExclusivePriceAmount(BigDecimal exclusivePriceAmount) {
+            this.exclusivePriceAmount = exclusivePriceAmount;
+        }
 
         @Schema(description = "发货信息。", example = "48 小时内发货，江浙沪次日达。")
         private String shippingInfo;
@@ -953,6 +982,9 @@ public class ProductController extends BaseController {
 
         public Map<String, Object> toSupplementMap() {
             Map<String, Object> supplement = new LinkedHashMap<>();
+            if (exclusivePriceAmount != null) {
+                supplement.put("exclusivePriceAmount", exclusivePriceAmount);
+            }
             putText(supplement, "exclusivePriceRemark", exclusivePriceRemark);
             putText(supplement, "shippingInfo", shippingInfo);
             putText(supplement, "promotionScript", promotionScript);

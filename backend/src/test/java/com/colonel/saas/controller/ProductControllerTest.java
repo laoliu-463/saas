@@ -26,6 +26,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.web.bind.annotation.RequestParam;
 
 import jakarta.validation.constraints.Max;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.lang.reflect.Method;
 import java.util.Arrays;
@@ -100,6 +101,28 @@ class ProductControllerTest {
                 "updateSampleSetting", UUID.class, Map.class, UUID.class, UUID.class);
         assertThat(method.getAnnotation(org.springframework.web.bind.annotation.PutMapping.class).value())
                 .containsExactly("/{relationId}/sample-setting");
+    }
+
+    @Test
+    void updateProductSupplement_shouldDelegateToServiceWithAmountField() throws NoSuchMethodException {
+        UUID relationId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+        Product product = new Product();
+        product.setId(relationId);
+        Map<String, Object> request = Map.of(
+                "exclusivePriceAmount", new BigDecimal("129.00"),
+                "exclusivePriceRemark", "直播间专属价");
+        when(productService.updateAuditSupplement(relationId, request, userId, deptId)).thenReturn(product);
+
+        var response = productController.updateProductSupplement(relationId, request, userId, deptId);
+
+        assertThat(response.getData()).isSameAs(product);
+        verify(productService).updateAuditSupplement(relationId, request, userId, deptId);
+        Method method = ProductController.class.getMethod(
+                "updateProductSupplement", UUID.class, Map.class, UUID.class, UUID.class);
+        assertThat(method.getAnnotation(org.springframework.web.bind.annotation.PutMapping.class).value())
+                .containsExactly("/{relationId}");
     }
 
     @Test
@@ -194,6 +217,7 @@ class ProductControllerTest {
 
         ProductController.ProductManageApproveRequest request = new ProductController.ProductManageApproveRequest();
         request.setRemark("素材完整");
+        request.setExclusivePriceAmount(new BigDecimal("129.00"));
         request.setExclusivePriceRemark("直播间专属价 129 元");
         request.setShippingInfo("48 小时内发货");
         request.setSellingPoints(Arrays.asList("高复购", "夏季场景强"));
@@ -211,6 +235,7 @@ class ProductControllerTest {
         ArgumentCaptor<Map<String, Object>> supplementCaptor = ArgumentCaptor.forClass(Map.class);
         verify(productService).auditProduct(eq(relationId), eq(true), eq("素材完整"), supplementCaptor.capture());
         assertThat(supplementCaptor.getValue())
+                .containsEntry("exclusivePriceAmount", new BigDecimal("129.00"))
                 .containsEntry("exclusivePriceRemark", "直播间专属价 129 元")
                 .containsEntry("shippingInfo", "48 小时内发货")
                 .containsEntry("promotionScript", "主打复购和囤货场景")

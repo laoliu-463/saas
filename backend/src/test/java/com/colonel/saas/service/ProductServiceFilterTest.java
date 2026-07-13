@@ -5,6 +5,7 @@ import com.colonel.saas.common.enums.ProductBizStatus;
 import com.colonel.saas.constant.ProductDisplayStatus;
 import com.colonel.saas.domain.order.facade.OrderReadFacade;
 import com.colonel.saas.domain.order.facade.PromotionLinkRecordFacade;
+import com.colonel.saas.entity.Product;
 import com.colonel.saas.entity.ProductOperationState;
 import com.colonel.saas.entity.ProductSnapshot;
 import com.colonel.saas.gateway.douyin.DouyinActivityGateway;
@@ -24,6 +25,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -125,6 +127,53 @@ class ProductServiceFilterTest {
 
         assertThat(result.getTotal()).isEqualTo(1);
         assertThat(result.getRecords()).singleElement().extracting("productId").isEqualTo("9001");
+    }
+
+    @Test
+    void getSelectedLibraryPage_shouldTreatExclusivePriceAmountAsEnabled() {
+        ProductOperationState selectedState = state("10001", "9001");
+        selectedState.setAuditPayload("{\"exclusivePriceAmount\":\"129.5\"}");
+        ProductOperationState ignoredState = state("10002", "9002");
+        Page<ProductOperationState> statePage = new Page<>(1, 200, 2);
+        statePage.setRecords(List.of(selectedState, ignoredState));
+
+        ProductSnapshot selected = snapshot("10001", "9001", "玩具乐器", 9900L);
+        ProductSnapshot ignored = snapshot("10002", "9002", "美妆", 8800L);
+        when(operationStateMapper.selectPage(any(Page.class), any())).thenReturn(statePage);
+        when(snapshotMapper.selectBatchIds(any())).thenReturn(List.of(selected, ignored));
+
+        var result = service.getSelectedLibraryPage(1, 10, filter().exclusivePrice("1").build());
+
+        assertThat(result.getTotal()).isEqualTo(1);
+        assertThat(result.getRecords()).singleElement().extracting("productId").isEqualTo("9001");
+    }
+
+    @Test
+    void updateAuditSupplement_shouldPersistAndReadBackExclusivePriceAmount() {
+        ProductSnapshot snapshot = snapshot("10001", "9001", "玩具乐器", 9900L);
+        ProductOperationState state = state("10001", "9001");
+        state.setAuditPayload("{\"exclusivePrice\":true}");
+        when(snapshotMapper.selectById(snapshot.getId())).thenReturn(snapshot);
+        when(operationStateMapper.selectOne(any())).thenReturn(state);
+        when(operationStateMapper.updateById(any())).thenReturn(1);
+
+        Product result = service.updateAuditSupplement(
+                snapshot.getId(),
+                Map.of(
+                        "exclusivePriceAmount", "129.5",
+                        "exclusivePriceRemark", "直播间专属价",
+                        "supportsAds", false,
+                        "rewardRemark", "满额奖励",
+                        "participationRequirements", "有成交记录"),
+                UUID.randomUUID(),
+                UUID.randomUUID());
+
+        assertThat(result.getAuditSupplement())
+                .containsEntry("exclusivePriceAmount", new BigDecimal("129.50"))
+                .containsEntry("exclusivePriceRemark", "直播间专属价")
+                .containsEntry("supportsAds", false);
+        assertThat(state.getAuditPayload()).contains("\"exclusivePriceAmount\":129.50");
+        verify(operationStateMapper).updateById(state);
     }
 
     @Test
@@ -921,6 +970,7 @@ class ProductServiceFilterTest {
         FilterBuilder commissionMin(String value) { this.commissionMin = value; return this; }
         FilterBuilder commissionMax(String value) { this.commissionMax = value; return this; }
         FilterBuilder materialDownload(String value) { this.materialDownload = value; return this; }
+        FilterBuilder exclusivePrice(String value) { this.exclusivePrice = value; return this; }
         FilterBuilder handCard(String value) { this.handCard = value; return this; }
         FilterBuilder doubleCommission(String value) { this.doubleCommission = value; return this; }
         FilterBuilder notInLibrary(String value) { this.notInLibrary = value; return this; }

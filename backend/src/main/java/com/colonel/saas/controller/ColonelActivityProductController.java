@@ -35,6 +35,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -848,6 +849,10 @@ public class ColonelActivityProductController extends BaseController {
      * </p>
      */
     public static class AuditRequest {
+        /** 专属价金额：单位为元，最多保留两位小数 */
+        @Schema(description = "专属价金额，单位元。", example = "129.00")
+        private BigDecimal exclusivePriceAmount;
+
         /** 是否审核通过：true 表示通过，false 表示驳回 */
         @Schema(description = "是否审核通过。", example = "true")
         private boolean approved;
@@ -930,6 +935,14 @@ public class ColonelActivityProductController extends BaseController {
 
         public void setReason(String reason) {
             this.reason = reason;
+        }
+
+        public BigDecimal getExclusivePriceAmount() {
+            return exclusivePriceAmount;
+        }
+
+        public void setExclusivePriceAmount(BigDecimal exclusivePriceAmount) {
+            this.exclusivePriceAmount = exclusivePriceAmount;
         }
 
         public String getExclusivePriceRemark() {
@@ -1063,6 +1076,9 @@ public class ColonelActivityProductController extends BaseController {
          */
         public Map<String, Object> toSupplementMap() {
             Map<String, Object> supplement = new LinkedHashMap<>();
+            if (exclusivePriceAmount != null) {
+                supplement.put("exclusivePriceAmount", exclusivePriceAmount);
+            }
             putText(supplement, "exclusivePriceRemark", exclusivePriceRemark);
             putText(supplement, "shippingInfo", shippingInfo);
             putText(supplement, "promotionScript", promotionScript);

@@ -148,6 +148,12 @@ public class ProductService implements CopyPromotionSupportPort {
     private static final int UPSTREAM_PRODUCT_STATUS_PROMOTING = 1;
     /** 审核入库去重窗口：近 3 个月内同商品 ID 不允许重复进入商品库。 */
     private static final int AUDIT_LIBRARY_DUPLICATE_WINDOW_MONTHS = 3;
+    private static final Set<String> EDITABLE_AUDIT_SUPPLEMENT_KEYS = Set.of(
+            "exclusivePriceAmount",
+            "exclusivePriceRemark",
+            "supportsAds",
+            "rewardRemark",
+            "participationRequirements");
     /** 上游推广中商品自动进入商品库时写入的审核备注。 */
     private static final String AUTO_APPROVE_PROMOTING_REMARK = "上游状态为推广中，系统自动入库展示";
     /** 抖店团长 buyin 通常为 17–20 位；捕获组上限 30 位，并在数字后截断避免粘连字段。 */
@@ -1234,7 +1240,8 @@ public class ProductService implements CopyPromotionSupportPort {
 
     private boolean matchesExclusivePriceFilter(ProductOperationState state, String expected) {
         Map<String, Object> supplement = parseAuditPayload(state == null ? null : state.getAuditPayload());
-        boolean enabled = Boolean.TRUE.equals(readBoolean(supplement, "exclusivePrice"))
+        boolean enabled = readDecimal(supplement, "exclusivePriceAmount") != null
+                || Boolean.TRUE.equals(readBoolean(supplement, "exclusivePrice"))
                 || StringUtils.hasText(readString(supplement, "exclusivePriceRemark"))
                 || readProductTags(state).contains("专属价");
         return "1".equals(expected) ? enabled : !enabled;
@@ -1634,6 +1641,78 @@ public class ProductService implements CopyPromotionSupportPort {
     public Product getById(UUID id) {
         ProductSnapshot snapshot = getSnapshotById(id);
         return toLegacyProduct(snapshot);
+    }
+
+    /**
+     * 更新商品审核补充信息，不改变商品审核、上架或推广状态。
+     *
+     * <p>编辑接口只允许更新商品侧边栏开放的字段，避免把商品状态机字段
+     * 或第三方同步字段混入 audit_payload。</p>
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public Product updateAuditSupplement(
+            UUID id,
+            Map<String, Object> supplementPatch,
+            UUID operatorId,
+            UUID operatorDeptId) {
+        ProductSnapshot snapshot = getSnapshotById(id);
+        if (supplementPatch == null || supplementPatch.isEmpty()) {
+            throw BusinessException.conflict("商品补充信息不能为空");
+        }
+        for (String key : supplementPatch.keySet()) {
+            if (!EDITABLE_AUDIT_SUPPLEMENT_KEYS.contains(key)) {
+                throw BusinessException.conflict("不支持编辑商品字段：" + key);
+            }
+        }
+
+        ProductOperationState state = getOrInitOperationState(snapshot.getActivityId(), snapshot.getProductId());
+        Map<String, Object> current = new LinkedHashMap<>(parseAuditPayload(state.getAuditPayload()));
+        Map<String, Object> normalizedPatch = normalizeAuditSupplement(supplementPatch);
+        if (supplementPatch.containsKey("exclusivePriceAmount")
+                && !isBlankPatchValue(supplementPatch.get("exclusivePriceAmount"))
+                && !normalizedPatch.containsKey("exclusivePriceAmount")) {
+            throw BusinessException.conflict("专属价金额必须是非负数字，最多保留两位小数");
+        }
+
+        for (String key : EDITABLE_AUDIT_SUPPLEMENT_KEYS) {
+            if (supplementPatch.containsKey(key) && isBlankPatchValue(supplementPatch.get(key))) {
+                current.remove(key);
+            }
+        }
+        current.putAll(normalizedPatch);
+
+        state.setAuditPayload(writeAuditPayload(current));
+        state.setLastOperationAt(LocalDateTime.now());
+        if (state.getId() == null) {
+            state.setId(UUID.randomUUID());
+            operationStateMapper.insert(state);
+        } else {
+            persistOperationState(state);
+        }
+
+        ProductBizStatus currentStatus = productBizStatusService.readBizStatus(state);
+        Map<String, Object> logPayload = new LinkedHashMap<>();
+        logPayload.put("eventLabel", "编辑商品补充信息");
+        logPayload.put("changedFields", new ArrayList<>(supplementPatch.keySet()));
+        productBizStatusService.logStatusChange(
+                snapshot.getActivityId(),
+                snapshot.getProductId(),
+                "EDIT_AUDIT_SUPPLEMENT",
+                currentStatus,
+                currentStatus,
+                operatorId,
+                operatorDeptId,
+                logPayload,
+                "编辑商品补充信息",
+                true,
+                null);
+        productDisplayRuleService.applyForProductId(snapshot.getProductId());
+        evictActivityProductCache(snapshot.getActivityId());
+        return getById(id);
+    }
+
+    private boolean isBlankPatchValue(Object value) {
+        return value == null || (value instanceof String text && !StringUtils.hasText(text));
     }
 
     // P8.5 修复: @Transactional 仅保留在真正做事的方法上 (Spring AOP self-invocation 绕过代理)
@@ -5774,6 +5853,8 @@ public class ProductService implements CopyPromotionSupportPort {
             return Map.of();
         }
         Map<String, Object> summary = new LinkedHashMap<>();
+        copyAuditSummaryField(summary, auditSupplement, "exclusivePriceAmount");
+        copyAuditSummaryField(summary, auditSupplement, "exclusivePriceRemark");
         copyAuditSummaryField(summary, auditSupplement, "sampleThresholdRemark");
         copyAuditSummaryField(summary, auditSupplement, "promotionScript");
         copyAuditSummaryField(summary, auditSupplement, "shippingInfo");
@@ -5868,6 +5949,7 @@ public class ProductService implements CopyPromotionSupportPort {
             return Map.of();
         }
         Map<String, Object> normalized = new LinkedHashMap<>();
+        putNormalizedDecimal(normalized, "exclusivePriceAmount", supplement.get("exclusivePriceAmount"));
         putNormalizedText(normalized, "exclusivePriceRemark", supplement.get("exclusivePriceRemark"));
         putNormalizedText(normalized, "shippingInfo", supplement.get("shippingInfo"));
         putNormalizedText(normalized, "promotionScript", supplement.get("promotionScript"));
@@ -5953,6 +6035,28 @@ public class ProductService implements CopyPromotionSupportPort {
         } catch (NumberFormatException ex) {
             payload.put(key, value);
         }
+    }
+
+    private void putNormalizedDecimal(Map<String, Object> payload, String key, Object rawValue) {
+        if (rawValue == null) {
+            return;
+        }
+        BigDecimal value;
+        try {
+            if (rawValue instanceof BigDecimal decimal) {
+                value = decimal;
+            } else if (rawValue instanceof Number number) {
+                value = new BigDecimal(String.valueOf(number));
+            } else {
+                value = new BigDecimal(String.valueOf(rawValue).trim());
+            }
+        } catch (NumberFormatException ex) {
+            return;
+        }
+        if (value.compareTo(BigDecimal.ZERO) < 0) {
+            return;
+        }
+        payload.put(key, value.setScale(2, RoundingMode.HALF_UP));
     }
 
     private void putNormalizedBoolean(Map<String, Object> payload, String key, Object rawValue) {
