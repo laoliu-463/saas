@@ -2,6 +2,7 @@ package com.colonel.saas.job;
 
 import com.colonel.saas.gateway.douyin.DouyinProductGateway;
 import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
+import com.colonel.saas.service.DistributedConcurrencyLimiter;
 import com.colonel.saas.service.DistributedJobLockService;
 import com.colonel.saas.service.ProductService;
 import org.junit.jupiter.api.BeforeEach;
@@ -15,12 +16,18 @@ import org.springframework.test.util.ReflectionTestUtils;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -36,6 +43,8 @@ class ProductActivitySyncJobTest {
     @Mock
     private DistributedJobLockService jobLockService;
     @Mock
+    private DistributedConcurrencyLimiter concurrencyLimiter;
+    @Mock
     private ColonelsettlementActivityMapper activityMapper;
 
     @BeforeEach
@@ -50,6 +59,7 @@ class ProductActivitySyncJobTest {
                 .thenReturn(true);
         lenient().when(productService.refreshActivitySnapshots(any(DouyinProductGateway.ActivityProductQueryRequest.class)))
                 .thenReturn(new ProductService.ActivityProductRefreshResult(3, 1, 1, 2, 0));
+        lenient().when(concurrencyLimiter.tryAcquire(anyString(), any(Duration.class))).thenReturn(true);
     }
 
     @Test
@@ -152,8 +162,93 @@ class ProductActivitySyncJobTest {
         verify(jobLockService).releaseWithOwner(eq(JobLockKeys.PRODUCT_BACKFILL_GLOBAL), anyString());
     }
 
+    @Test
+    void syncAll_shouldRunTwoActivitiesConcurrentlyWithoutExceedingConfiguredParallelism() throws Exception {
+        ExecutorService executor = Executors.newFixedThreadPool(3);
+        CountDownLatch firstTwoStarted = new CountDownLatch(2);
+        CountDownLatch releaseWorkers = new CountDownLatch(1);
+        AtomicInteger activeWorkers = new AtomicInteger();
+        AtomicInteger maxActiveWorkers = new AtomicInteger();
+        try {
+            ProductActivitySyncJob job = job(true, "ACT-1,ACT-2,ACT-3", executor, concurrencyLimiter);
+            ReflectionTestUtils.setField(job, "parallelism", 2);
+            when(productService.refreshActivitySnapshots(any(DouyinProductGateway.ActivityProductQueryRequest.class)))
+                    .thenAnswer(invocation -> {
+                        int active = activeWorkers.incrementAndGet();
+                        maxActiveWorkers.accumulateAndGet(active, Math::max);
+                        firstTwoStarted.countDown();
+                        try {
+                            releaseWorkers.await(2, TimeUnit.SECONDS);
+                            return new ProductService.ActivityProductRefreshResult(3, 1, 1, 2, 0);
+                        } finally {
+                            activeWorkers.decrementAndGet();
+                        }
+                    });
+
+            var jobFuture = executor.submit(job::syncAll);
+            assertThat(firstTwoStarted.await(1, TimeUnit.SECONDS)).isTrue();
+            releaseWorkers.countDown();
+            jobFuture.get(3, TimeUnit.SECONDS);
+
+            assertThat(maxActiveWorkers.get()).isEqualTo(2);
+            verify(productService, times(3)).refreshActivitySnapshots(
+                    any(DouyinProductGateway.ActivityProductQueryRequest.class));
+            verify(concurrencyLimiter, times(3)).tryAcquire(anyString(), any(Duration.class));
+            verify(concurrencyLimiter, times(3)).releaseWithOwner(anyString());
+        } finally {
+            releaseWorkers.countDown();
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void syncAll_shouldReleaseActivityLockWhenConcurrencySlotReleaseFails() {
+        ProductActivitySyncJob job = new ProductActivitySyncJob(
+                productService,
+                jobLockService,
+                activityMapper,
+                0,
+                Runnable::run,
+                concurrencyLimiter);
+        ReflectionTestUtils.setField(job, "enabled", true);
+        ReflectionTestUtils.setField(job, "batchSize", 20);
+        ReflectionTestUtils.setField(job, "pageSize", 20);
+        ReflectionTestUtils.setField(job, "maxActivitiesPerRun", 20);
+        ReflectionTestUtils.setField(job, "whitelistActivities", "ACT-1");
+        doThrow(new RuntimeException("redis release failed"))
+                .when(concurrencyLimiter).releaseWithOwner(anyString());
+
+        job.syncAll();
+
+        verify(jobLockService).releaseWithOwner(
+                eq(JobLockKeys.productBackfillActivityLock("ACT-1")),
+                anyString());
+        verify(jobLockService).releaseWithOwner(eq(JobLockKeys.PRODUCT_ACTIVITY_SYNC), anyString());
+        verify(jobLockService).releaseWithOwner(eq(JobLockKeys.PRODUCT_BACKFILL_GLOBAL), anyString());
+    }
+
     private ProductActivitySyncJob job(boolean enabled, String whitelistActivities) {
         ProductActivitySyncJob job = new ProductActivitySyncJob(productService, jobLockService, activityMapper, 0);
+        ReflectionTestUtils.setField(job, "enabled", enabled);
+        ReflectionTestUtils.setField(job, "batchSize", 20);
+        ReflectionTestUtils.setField(job, "pageSize", 20);
+        ReflectionTestUtils.setField(job, "maxActivitiesPerRun", 20);
+        ReflectionTestUtils.setField(job, "whitelistActivities", whitelistActivities);
+        return job;
+    }
+
+    private ProductActivitySyncJob job(
+            boolean enabled,
+            String whitelistActivities,
+            ExecutorService executor,
+            DistributedConcurrencyLimiter limiter) {
+        ProductActivitySyncJob job = new ProductActivitySyncJob(
+                productService,
+                jobLockService,
+                activityMapper,
+                0,
+                executor,
+                limiter);
         ReflectionTestUtils.setField(job, "enabled", enabled);
         ReflectionTestUtils.setField(job, "batchSize", 20);
         ReflectionTestUtils.setField(job, "pageSize", 20);

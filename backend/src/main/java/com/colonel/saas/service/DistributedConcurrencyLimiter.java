@@ -123,6 +123,13 @@ public class DistributedConcurrencyLimiter {
     }
 
     /**
+     * 显式 owner 语义的释放入口，供业务任务锁门禁识别。
+     */
+    public void releaseWithOwner(String owner) {
+        release(owner);
+    }
+
+    /**
      * 按 owner 续租；租约已不存在时返回 false，调用方不得继续无锁运行。
      */
     public boolean renew(String owner, Duration leaseTtl) {

@@ -39,7 +39,7 @@
 | 1 | 新增 | `backend/src/main/java/com/colonel/saas/job/ProductActivitySyncJob.java` | 新建 job 类，抄 `ProductPinCleanupJob.java` 模板：cron + Redis 分布式锁 + try/finally release |
 | 2 | 修改 | `backend/src/main/java/com/colonel/saas/job/JobLockKeys.java` | 新增常量 `PRODUCT_ACTIVITY_SYNC = "product:activity:sync"` |
 | 3 | 修改 | `backend/src/main/java/com/colonel/saas/mapper/ColonelsettlementActivityMapper.java` + XML | 新增 `selectActiveActivityIds(@Param("limit") int limit, @Param("lastSyncedBefore") LocalDateTime threshold)` 和 `touchLastSyncAt(@Param("activityId") String, @Param("syncedAt") LocalDateTime)` 两个方法 |
-| 4 | 修改 | `backend/src/main/resources/application.yml` | 新增 `product.activity.sync.{enabled,cron,batch-size,whitelist-activities}` 四个配置项（**默认 enabled=false**，让运维按需开） |
+| 4 | 修改 | `backend/src/main/resources/application.yml` | 增加 `product.activity.sync.{enabled,cron,batch-size,parallelism,whitelist-activities}` 配置；`parallelism` 运行时限制为 1~2、默认 2，`enabled` 默认 false |
 | 5 | 新增 | `backend/src/test/java/com/colonel/saas/job/ProductActivitySyncJobTest.java` | mock ProductService + DistributedJobLockService，验证：锁、灰度白名单、单活动异常隔离、disabled 跳过 |
 | 6 | 修改 | `docs/V1-商品域现状审计.md` | 在 P-10 / 修复任务清单中追加"定时同步 job 已实装"；更新 6/1 重审的 §5 P-10 描述 |
 | 7 | 新增 | `docs/接口/活动商品定时同步-API契约.md`（可选） | 仅当 job 暴露管理端点（启用/禁用/触发）时；默认不开 |
@@ -121,7 +121,7 @@ public class ProductActivitySyncJob {
 | 触发粒度 | 按**活动**扫（非按商品） | 复用 `refreshActivitySnapshots` 现有签名；保证与 controller 行为一致；触发 `applyForActivityId` 全活动展示对账 |
 | 跑批频率 | 默认 2 小时（`0 0 */2 * * ?`） | 抖店 buyin 接口 QPS 限制 + 30 分钟级实时性诉求折中；real-pre 灰度期间调高到 30 分钟 |
 | 灰度策略 | `whitelist-activities` 配置项 | real-pre 阶段必先放 1~2 个活动跑 1 周，观察 QPS + 异常率 |
-| QPS 限流 | `Thread.sleep(2000)` 串行 | 简单可控；后续可改 token bucket |
+| QPS 限流 | 活动按最多 2 路分批并发，批次间隔 2 秒，并共享 Redis 上游并发槽 | 手动/定时跨实例总并发默认不超过 2；后续可改动态 token bucket |
 | `last_sync_at` 字段 | 用 `colonelsettlement_activity` 现存 `last_sync_at`（已存在） | 避免加列；通过 `WHERE last_sync_at < now() - 30min` 控制扫到"最近没扫过"的活动 |
 | `touchLastSyncAt` 是否与 sync 同一事务 | **否** | sync 失败时不应 touch，否则下次扫不到；审计字段独立 |
 | `display_status` 联动 | 不在本 job 直接改 | `refreshActivitySnapshots` 内部已经会调 `productDisplayRuleService.applyForActivityId`，避免重复 |
@@ -154,10 +154,10 @@ product:
 
 ## 五、边界与假设
 
-- [V1 必做] 假设抖店 buyin `queryActivityProducts` 接口 QPS ≤ 10；`Thread.sleep(2000)` + `batch-size=20` 给出 ≤ 0.5 QPS 的保守限流。
+- [V1 必做] 当前没有 buyin QPS 压测证据；活动级并发固定限制为 1~2，并通过共享 Redis owner 租约槽限制定时/手动跨实例总并发，不能宣称 QPS 已验证。
 - [V1 必做] 假设 `colonelsettlement_activity.last_sync_at` 字段已存在（commit `7d538a3` 已加，见 `db/alter-colonel-activity-recruiter-assignment.sql`）；若未存在则需先 alter。
 - [V1 必做] 假设现有 `DistributedJobLockService.tryAcquire` / `release` 已稳定（`ProductPinCleanupJob` 已在生产用）。
-- [V1 简化] 单 job 串行扫所有活动；若活动数 > 100，应改为分片并行 + 每片独立锁；本期简化不做。
+- [V1 简化] 单 job 已支持最多 2 个不同活动受控并发；大规模分片、动态限流和失败补偿仍不在本期范围。
 - [V1 不做] 商品**详情**级同步（价格、佣金、SKU 库存）属于 P-12「商品详情定时同步」，本方案不覆盖。
 - [V2 预留] 抖店 webhook 监听 + MQ 事件 + 商品详情级同步 全部进 V2。
 

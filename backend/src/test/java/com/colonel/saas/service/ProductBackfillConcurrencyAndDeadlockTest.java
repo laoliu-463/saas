@@ -27,6 +27,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -72,7 +73,8 @@ class ProductBackfillConcurrencyAndDeadlockTest {
     @Test
     void backfill_lockNotAcquired_shouldReturnFailedLockedAndNotWriteBusiness() {
         // 全局锁被占，backfill 必须立刻放弃、不进入真实写库、status=FAILED_LOCKED。
-        when(jobLockService.tryAcquire(eq(JobLockKeys.PRODUCT_BACKFILL_GLOBAL), any(Duration.class))).thenReturn(false);
+        when(jobLockService.tryAcquire(eq(JobLockKeys.PRODUCT_BACKFILL_GLOBAL), any(Duration.class), anyString()))
+                .thenReturn(false);
         when(jobLockService.currentLockValue(JobLockKeys.PRODUCT_BACKFILL_GLOBAL))
                 .thenReturn("{\"ownerJobId\":\"owner-global-1\",\"ownerActivityId\":\"ACT-1\",\"scope\":\"CUSTOM_ACTIVITY_IDS\",\"acquiredAt\":\"2026-06-15T19:00:00\"}");
         when(jobLockService.currentLockTtlSeconds(JobLockKeys.PRODUCT_BACKFILL_GLOBAL)).thenReturn(1200L);
@@ -107,9 +109,14 @@ class ProductBackfillConcurrencyAndDeadlockTest {
     @Test
     void backfill_activityLockHeld_shouldSkipActivityAndContinueOthers() {
         // 全局锁能拿，activity 锁一个能拿一个不能拿。
-        when(jobLockService.tryAcquire(eq(JobLockKeys.PRODUCT_BACKFILL_GLOBAL), any(Duration.class))).thenReturn(true);
-        when(jobLockService.tryAcquire(eq(JobLockKeys.productBackfillActivityLock("ACT-1")), any(Duration.class))).thenReturn(false);
-        when(jobLockService.tryAcquire(eq(JobLockKeys.productBackfillActivityLock("ACT-2")), any(Duration.class))).thenReturn(true);
+        when(jobLockService.tryAcquire(eq(JobLockKeys.PRODUCT_BACKFILL_GLOBAL), any(Duration.class), anyString()))
+                .thenReturn(true);
+        when(jobLockService.tryAcquire(
+                eq(JobLockKeys.productBackfillActivityLock("ACT-1")), any(Duration.class), anyString()))
+                .thenReturn(false);
+        when(jobLockService.tryAcquire(
+                eq(JobLockKeys.productBackfillActivityLock("ACT-2")), any(Duration.class), anyString()))
+                .thenReturn(true);
         when(jobLockService.currentLockValue(JobLockKeys.productBackfillActivityLock("ACT-1")))
                 .thenReturn("{\"ownerJobId\":\"owner-activity-1\",\"ownerActivityId\":\"ACT-1\",\"scope\":\"CUSTOM_ACTIVITY_IDS\",\"acquiredAt\":\"2026-06-15T19:10:00\"}");
         when(jobLockService.currentLockTtlSeconds(JobLockKeys.productBackfillActivityLock("ACT-1"))).thenReturn(600L);
@@ -155,7 +162,7 @@ class ProductBackfillConcurrencyAndDeadlockTest {
     @Test
     void backfill_deadlockRetry_shouldRetryUpToMaxThenSucceed() {
         DouyinProductGateway.ActivityProductItem item = newItem(3859423L);
-        when(jobLockService.tryAcquire(any(), any(Duration.class))).thenReturn(true);
+        when(jobLockService.tryAcquire(any(), any(Duration.class), anyString())).thenReturn(true);
         when(activityMapper.selectActivityIdsForProductSyncProbe(any(), anyInt(), any(), any()))
                 .thenReturn(List.of("ACT-1"));
         when(snapshotMapper.countActiveRowsByActivityIds(List.of("ACT-1"))).thenReturn(0L);
@@ -190,7 +197,7 @@ class ProductBackfillConcurrencyAndDeadlockTest {
     @Test
     void backfill_lockNotAvailableSqlState_shouldAlsoRetry() {
         DouyinProductGateway.ActivityProductItem item = newItem(3859423L);
-        when(jobLockService.tryAcquire(any(), any(Duration.class))).thenReturn(true);
+        when(jobLockService.tryAcquire(any(), any(Duration.class), anyString())).thenReturn(true);
         when(activityMapper.selectActivityIdsForProductSyncProbe(any(), anyInt(), any(), any()))
                 .thenReturn(List.of("ACT-1"));
         when(snapshotMapper.countActiveRowsByActivityIds(List.of("ACT-1"))).thenReturn(0L);
@@ -214,7 +221,7 @@ class ProductBackfillConcurrencyAndDeadlockTest {
     void backfill_deadlockRetryExhausted_shouldFailWithoutRefetchingPage() {
         ReflectionTestUtils.setField(service, "deadlockRetryMax", 1);
         DouyinProductGateway.ActivityProductItem item = newItem(3859423L);
-        when(jobLockService.tryAcquire(any(), any(Duration.class))).thenReturn(true);
+        when(jobLockService.tryAcquire(any(), any(Duration.class), anyString())).thenReturn(true);
         when(activityMapper.selectActivityIdsForProductSyncProbe(any(), anyInt(), any(), any()))
                 .thenReturn(List.of("ACT-1"));
         when(snapshotMapper.countActiveRowsByActivityIds(List.of("ACT-1"))).thenReturn(0L);

@@ -21,6 +21,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -65,8 +66,9 @@ class ProductLibraryDisplayRegressionTest {
 
     @Test
     void backfill_displayRefreshNone_shouldNotTriggerDisplayRuleService() {
-        org.mockito.Mockito.lenient().when(jobLockService.tryAcquire(eq(JobLockKeys.PRODUCT_BACKFILL_GLOBAL), any(Duration.class))).thenReturn(true);
-        org.mockito.Mockito.lenient().when(jobLockService.tryAcquire(any(), any(Duration.class))).thenReturn(true);
+        org.mockito.Mockito.lenient().when(jobLockService.tryAcquire(
+                eq(JobLockKeys.PRODUCT_BACKFILL_GLOBAL), any(Duration.class), anyString())).thenReturn(true);
+        org.mockito.Mockito.lenient().when(jobLockService.tryAcquire(any(), any(Duration.class), anyString())).thenReturn(true);
         org.mockito.Mockito.lenient().when(activityMapper.selectActivityIdsForProductSyncProbe(any(), anyInt(), any(), any()))
                 .thenReturn(List.of("ACT-1"));
         org.mockito.Mockito.lenient().when(snapshotMapper.countActiveRowsByActivityIds(List.of("ACT-1"))).thenReturn(0L);
@@ -95,8 +97,9 @@ class ProductLibraryDisplayRegressionTest {
 
     @Test
     void backfill_displayRefreshDeferred_shouldCallDisplayRuleAfterBatch() {
-        org.mockito.Mockito.lenient().when(jobLockService.tryAcquire(eq(JobLockKeys.PRODUCT_BACKFILL_GLOBAL), any(Duration.class))).thenReturn(true);
-        org.mockito.Mockito.lenient().when(jobLockService.tryAcquire(any(), any(Duration.class))).thenReturn(true);
+        org.mockito.Mockito.lenient().when(jobLockService.tryAcquire(
+                eq(JobLockKeys.PRODUCT_BACKFILL_GLOBAL), any(Duration.class), anyString())).thenReturn(true);
+        org.mockito.Mockito.lenient().when(jobLockService.tryAcquire(any(), any(Duration.class), anyString())).thenReturn(true);
         org.mockito.Mockito.lenient().when(activityMapper.selectActivityIdsForProductSyncProbe(any(), anyInt(), any(), any()))
                 .thenReturn(List.of("ACT-1"));
         org.mockito.Mockito.lenient().when(snapshotMapper.countActiveRowsByActivityIds(List.of("ACT-1"))).thenReturn(0L);
@@ -126,8 +129,9 @@ class ProductLibraryDisplayRegressionTest {
 
     @Test
     void backfill_displayRefreshImmediate_shouldCallDisplayRuleDuringActivityLoop() {
-        org.mockito.Mockito.lenient().when(jobLockService.tryAcquire(eq(JobLockKeys.PRODUCT_BACKFILL_GLOBAL), any(Duration.class))).thenReturn(true);
-        org.mockito.Mockito.lenient().when(jobLockService.tryAcquire(any(), any(Duration.class))).thenReturn(true);
+        org.mockito.Mockito.lenient().when(jobLockService.tryAcquire(
+                eq(JobLockKeys.PRODUCT_BACKFILL_GLOBAL), any(Duration.class), anyString())).thenReturn(true);
+        org.mockito.Mockito.lenient().when(jobLockService.tryAcquire(any(), any(Duration.class), anyString())).thenReturn(true);
         org.mockito.Mockito.lenient().when(activityMapper.selectActivityIdsForProductSyncProbe(any(), anyInt(), any(), any()))
                 .thenReturn(List.of("ACT-1"));
         org.mockito.Mockito.lenient().when(snapshotMapper.countActiveRowsByActivityIds(List.of("ACT-1"))).thenReturn(0L);

@@ -89,6 +89,7 @@ product:
       enabled: ${PRODUCT_ACTIVITY_SYNC_ENABLED:false}
       cron: "${PRODUCT_ACTIVITY_SYNC_CRON:0 */5 * * * ?}"
       batch-size: ${PRODUCT_ACTIVITY_SYNC_BATCH_SIZE:20}
+      parallelism: ${PRODUCT_ACTIVITY_SYNC_PARALLELISM:2}
       whitelist-activities: "${PRODUCT_ACTIVITY_SYNC_WHITELIST_ACTIVITIES:}"
   sync:
     activityProduct:
