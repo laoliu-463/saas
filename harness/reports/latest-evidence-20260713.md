@@ -2,56 +2,43 @@
 
 ## Metadata
 
-- Time: 2026-07-13 15:08 +08:00
+- Time: 2026-07-13 15:40 +08:00
 - Environment: real-pre
-- Scope: frontend
+- Scope: full (商品编辑前端抽屉与后端保存契约)
 - Branch: codex/ddd-user-role-application
-- Base commit before this task: 2105cf40
-- Worktree: dirty before and after; unrelated existing changes preserved
+- Commit: 84fa7622
+- Worktree: dirty; unrelated QuickSampleModal、Harness 报告清理和 JVM 日志变更保留，未暂存
 - Remote deploy: not requested, not executed
 
 ## Changes
 
-- `frontend/src/views/product/components/ProductEditModal.vue`
-- `frontend/src/views/product/components/ProductEditModal.test.ts`
-- Right-side drawer fields reduced to exclusive-price amount input (yuan), exclusive-price remark, ad-support flag, reward remark, participation requirements, start time and end time.
-- Start/end time are read-only snapshot facts; hand-card, tags, script, selling points and remark inputs were removed.
+- 右侧商品编辑抽屉保留：专属价金额（元，用户输入）、专属价说明、是否支持投流、奖励说明、参与要求、开始时间、结束时间；开始/结束时间为只读商品快照事实；移除手卡。
+- 新增 `PUT /api/products/{relationId}` 商品编辑保存入口，只允许更新上述可编辑补充字段中的五项：专属价金额、专属价说明、投流开关、奖励说明、参与要求。
+- `exclusivePriceAmount` 后端按非负金额、两位小数归一化，写入 `audit_payload`；旧 `exclusivePrice` 布尔字段仍兼容读取；详情摘要和专属价筛选同步支持金额字段。
+- 审核请求 DTO 同步支持专属价金额，避免审核保存链路丢字段。
 
 ## Verification
 
 | Check | Result | Evidence |
 |---|---|---|
-| Component test | PASS | 3/3 `ProductEditModal` tests |
-| Frontend test suite | PASS | 92 files, 692 tests |
-| Typecheck | PASS | `npm --prefix frontend run typecheck` |
-| Frontend build | PASS | `npm --prefix frontend run build` |
-| Docker rebuild/restart | PASS after retry | First attempt hit a Docker name conflict; retry rebuilt and started all four real-pre services |
-| Local health | PASS | `verify-local.ps1 -Env real-pre -Scope frontend`; frontend `/healthz` HTTP 200; compose services healthy |
-| real-pre preflight | FAIL/BLOCKED | `runtime/qa/out/real-pre-preflight-20260713-150835/report.md`; admin login HTTP 401, admin token unavailable |
-| Product edit API/E2E | BLOCKED | No admin token, so authenticated product-save smoke was not executed |
+| Frontend component test | PASS | `ProductEditModal.test.ts`: 3/3 |
+| Frontend typecheck | PASS | `npm run typecheck` |
+| Frontend build | PASS | `npm run build` |
+| Backend targeted tests | PASS | 55/55: ProductController 26、AuditRequest 1、ProductServiceFilter 28 |
+| Backend package | PASS | `mvn -DskipTests package` |
+| Docker restart | PASS | `restart-compose.ps1 -Env real-pre -Scope backend`；backend 镜像重建并重启 |
+| Local health | PASS | `verify-local.ps1 -Env real-pre -Scope full`；backend 200/UP、frontend `/healthz` 200；compose backend/frontend healthy |
+| Harness limits | PASS | `check-harness-limits.ps1` |
+| real-pre preflight | FAIL/BLOCKED_AUTH | `runtime/qa/out/real-pre-preflight-20260713-153535/report.md`；admin 登录 HTTP 401，token 不可用；数据库 schema readiness PASS |
+| Product edit API/E2E | BLOCKED | 无管理员 token，未执行认证后的商品保存业务流 |
+| Git commit/push | PASS | `84fa7622` 已推送到当前分支上游 |
 
 ## Conclusion
 
-PARTIAL. The frontend drawer refactor and amount input are build- and unit-tested and are loaded by the local real-pre frontend container. Authenticated real-pre business verification is blocked by the existing admin login 401. The frontend submits `exclusivePriceAmount`, but the current backend contract does not yet expose a corresponding persistence field/edit endpoint.
+PARTIAL。商品编辑前后端代码、定向测试、构建、容器重启和本地健康检查均通过；真实 real-pre 认证业务验证因配置管理员登录持续 HTTP 401 阻塞，不能声明已完成真实页面/API 闭环验收。
 
 ## Residual risks
 
-- The edit API call remains unverified against an authenticated real-pre session.
-- Start/end time remain read-only snapshot facts. `exclusivePriceAmount` is currently a frontend request field pending backend contract support.
-- Existing unrelated dirty files were not staged or modified.
-
-## 本任务补充证据：商品库服务费率与双佣展示
-
-- 代码范围：`ProductService.java`、`ProductServiceFilterTest.java`、`product-library-display.ts`、`product-library-display.test.ts`、`ProductSelectionCard.vue` 及对应测试。
-- 根因证据：后端原逻辑把 `activity_ad_cos_ratio`（投放佣金）作为服务费兜底；前端原逻辑把百分制 `1.00` 按小数比例乘 100，显示成 `100%`，且把缺失值与真实 `0` 混淆。
-- 修复口径：普通商品只读取上游 `service_ratio`；双佣商品读取 `ad_service_ratio`；缺失服务费返回空值，不再伪造 `0%`；显式上游 `0` 保留为 `0%`。
-- 双佣展示：商品卡与详情抽屉分别展示 `双佣金`、`投放期佣`、`投放服务费`；普通商品不展示投放字段。
-- 前端定向测试：73/73 PASS；前端全量测试：93 files / 695 tests PASS；typecheck PASS；生产构建 PASS。
-- 后端定向测试：`ProductServiceFilterTest` 26/26 PASS；固定 real-pre agent-do 后端 package PASS、前端 build PASS。
-- 容器与健康：real-pre backend/frontend 重建重启 PASS；backend `/api/system/health` 200/UP；frontend `/healthz` 200。
-- 真实业务验证：`runtime/qa/out/real-pre-preflight-20260713-144159/report.md` 为 FAIL/BLOCKED_AUTH；admin 登录 5 次 HTTP 401，token 不可用，未执行认证商品库业务流。
-- 远端部署：未执行；用户未要求。代码提交：`67c6a0fb`；随后已合并远端分支历史，未强推。
-
-### 本任务结论
-
-PARTIAL：代码、测试、构建、容器和健康检查通过；真实 real-pre 商品库页面/API 验收受 admin 401 阻塞，不能声明线上业务流已通过。
+- 需要有效的 real-pre 管理员凭据后，补跑商品编辑抽屉保存、刷新回显和权限边界验证。
+- 未执行远端部署；本轮仅验证本地 real-pre。
+- 当前工作区仍有与本任务无关的 QuickSampleModal、Harness 历史报告和 JVM 日志变更，未纳入本次提交。
