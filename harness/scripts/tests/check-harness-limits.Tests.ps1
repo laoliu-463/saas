@@ -197,6 +197,26 @@ Describe 'check-harness-limits baseline-aware governance' {
         $result.Output | Should Not Match 'TEXT_LINE_COUNT_EXCEEDED'
     }
 
+    It 'allows an unchanged legacy text blob to move into archive' {
+        $repo = New-GovernanceTestRepo -Name 'legacy-archive-move'
+        Add-TextFile -Repo $repo -RelativePath 'harness\reports\evidence-legacy.md' -Lines 221
+        Save-Baseline -Repo $repo
+
+        $archivePath = Join-Path $repo 'harness\archive\by-date\2026-07-13\evidence\evidence-legacy.md'
+        New-Item -ItemType Directory -Path (Split-Path -Parent $archivePath) -Force | Out-Null
+        Move-Item -LiteralPath (Join-Path $repo 'harness\reports\evidence-legacy.md') -Destination $archivePath
+
+        $result = Invoke-GovernanceCheck -Repo $repo -OwnedFiles @(
+            'harness/reports/evidence-legacy.md',
+            'harness/archive/by-date/2026-07-13/evidence/evidence-legacy.md'
+        )
+
+        $result.ExitCode | Should Be 0
+        $result.Output | Should Match 'TASK_GATE=PASS'
+        $result.Output | Should Match 'REPOSITORY_HEALTH=PASS'
+        $result.Output | Should Not Match 'TEXT_LINE_COUNT_EXCEEDED'
+    }
+
     It 'blocks a new non-whitelisted root directory' {
         $repo = New-GovernanceTestRepo -Name 'root-whitelist'
         Save-Baseline -Repo $repo

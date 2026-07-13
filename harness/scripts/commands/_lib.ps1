@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Stop"
 
 function Get-HarnessRepoRoot {
-    return (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..\..\..")).Path
+    return (Get-Item -LiteralPath (Join-Path $PSScriptRoot "..\..\..")).FullName
 }
 
 function Get-HarnessBashPath {
@@ -56,9 +56,10 @@ function Write-HarnessStage {
 function Assert-HarnessRepoRoot {
     param([Parameter(Mandatory = $true)][string]$RepoRoot)
 
-    $current = (Resolve-Path -LiteralPath (Get-Location)).Path
-    if ($current -ne $RepoRoot) {
-        throw "Current path must be project root. current=$current expected=$RepoRoot"
+    $current = (Get-Item -LiteralPath (Get-Location).Path).FullName
+    $expected = (Get-Item -LiteralPath $RepoRoot).FullName
+    if (-not $current.Equals($expected, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Current path must be project root. current=$current expected=$expected"
     }
     foreach ($path in @("backend", "frontend")) {
         if (-not (Test-Path -LiteralPath (Join-Path $RepoRoot $path))) {
@@ -301,8 +302,8 @@ function Get-HarnessRepoRelativePath {
         [Parameter(Mandatory = $true)][string]$Path
     )
 
-    $root = (Resolve-Path -LiteralPath $RepoRoot).Path.TrimEnd('\')
-    $resolved = (Resolve-Path -LiteralPath $Path).Path
+    $root = (Get-Item -LiteralPath $RepoRoot).FullName.TrimEnd('\')
+    $resolved = (Get-Item -LiteralPath $Path).FullName
     $prefix = $root + '\'
     if (-not $resolved.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)) {
         throw "Path is outside repository. path=$resolved root=$root"

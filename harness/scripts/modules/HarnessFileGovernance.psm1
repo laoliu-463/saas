@@ -16,8 +16,10 @@ function Get-RepoRelativeGovernancePath {
         [Parameter(Mandatory = $true)][string]$FullPath
     )
 
-    $root = (Resolve-Path -LiteralPath $RepoRoot).Path.TrimEnd('\')
-    $resolved = (Resolve-Path -LiteralPath $FullPath).Path
+    # Get-Item expands Windows 8.3 path segments consistently. Resolve-Path may
+    # keep a short repo root while Get-ChildItem returns long child paths.
+    $root = (Get-Item -LiteralPath $RepoRoot).FullName.TrimEnd('\')
+    $resolved = (Get-Item -LiteralPath $FullPath).FullName
     $prefix = $root + '\'
     if (-not $resolved.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)) {
         throw "Path is outside repository: $resolved"
@@ -77,7 +79,8 @@ function New-DirectoryMetricsFromPaths {
 function New-SnapshotFromPaths {
     param(
         [Parameter(Mandatory = $true)][AllowEmptyCollection()][string[]]$Paths,
-        [hashtable]$TextLineCounts = @{}
+        [hashtable]$TextLineCounts = @{},
+        [hashtable]$BlobIds = @{}
     )
 
     $normalizedPaths = @($Paths | ForEach-Object { ConvertTo-GovernancePath -Path $_ } | Sort-Object -Unique)
@@ -91,6 +94,7 @@ function New-SnapshotFromPaths {
         Files = $normalizedPaths
         DirectoryMetrics = New-DirectoryMetricsFromPaths -Paths $normalizedPaths
         TextLineCounts = $TextLineCounts
+        BlobIds = $BlobIds
         RootDirectories = $rootDirs
     }
 }
@@ -124,11 +128,45 @@ function Get-HarnessBaselineSnapshot {
         [Parameter(Mandatory = $true)][string]$BaselineRef
     )
 
-    $paths = @(& git -C $RepoRoot -c core.quotepath=false ls-tree -r --name-only $BaselineRef -- harness 2>$null)
+    $treeLines = @(& git -C $RepoRoot -c core.quotepath=false ls-tree -r $BaselineRef -- harness 2>$null)
     if ($LASTEXITCODE -ne 0) {
         throw "Cannot read Harness baseline ref: $BaselineRef"
     }
-    return New-SnapshotFromPaths -Paths $paths
+
+    $paths = @()
+    $blobIds = @{}
+    foreach ($line in $treeLines) {
+        $tabIndex = $line.IndexOf("`t")
+        if ($tabIndex -lt 0) { continue }
+        $metadata = @($line.Substring(0, $tabIndex) -split '\s+')
+        if ($metadata.Count -lt 3) { continue }
+        $path = ConvertTo-GovernancePath -Path $line.Substring($tabIndex + 1)
+        $paths += $path
+        $blobIds[$path] = $metadata[2]
+    }
+    return New-SnapshotFromPaths -Paths $paths -BlobIds $blobIds
+}
+
+function Test-IsUnchangedLegacyArchiveBlob {
+    param(
+        [Parameter(Mandatory = $true)][string]$RepoRoot,
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)]$BaselineSnapshot
+    )
+
+    if ($Path -notlike 'harness/archive/*') { return $false }
+    if ($BaselineSnapshot.PSObject.Properties.Name -notcontains 'BlobIds') { return $false }
+    if ($BaselineSnapshot.BlobIds.Count -eq 0) { return $false }
+
+    $fullPath = Join-Path $RepoRoot $Path.Replace('/', '\')
+    if (-not (Test-Path -LiteralPath $fullPath -PathType Leaf)) { return $false }
+    $blobOutput = @(& git -C $RepoRoot hash-object -- $fullPath 2>$null)
+    $hashExitCode = $LASTEXITCODE
+    $blobId = if ($blobOutput.Count -gt 0) { $blobOutput[0] } else { '' }
+    if ($hashExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($blobId)) {
+        throw "Cannot hash archived Harness file: $Path"
+    }
+    return @($BaselineSnapshot.BlobIds.Values) -contains $blobId.Trim()
 }
 
 function New-GovernanceFinding {
@@ -240,7 +278,9 @@ function Compare-HarnessFileGovernance {
         if (Test-IsGovernanceTextFile -Path $path) {
             $lines = (Get-Content -LiteralPath $fullPath | Measure-Object -Line).Lines
             if ($lines -gt 200) {
-                $violations += New-GovernanceFinding -Code 'TEXT_LINE_COUNT_EXCEEDED' -Path $path -Message "Text line count $lines exceeds 200."
+                if (-not (Test-IsUnchangedLegacyArchiveBlob -RepoRoot $RepoRoot -Path $path -BaselineSnapshot $BaselineSnapshot)) {
+                    $violations += New-GovernanceFinding -Code 'TEXT_LINE_COUNT_EXCEEDED' -Path $path -Message "Text line count $lines exceeds 200."
+                }
             }
             elseif ($lines -ge 160) {
                 $warnings += New-GovernanceFinding -Code 'TEXT_LINE_COUNT_WARNING' -Path $path -Message "Text line count reached warning level $lines."
@@ -260,7 +300,9 @@ function Compare-HarnessFileGovernance {
     }
     foreach ($path in $CurrentSnapshot.TextLineCounts.Keys) {
         if ($CurrentSnapshot.TextLineCounts[$path] -gt 200) {
-            $historicalDebt += New-GovernanceFinding -Code 'TEXT_LINE_COUNT_EXCEEDED' -Path $path -Message "Repository text line count $($CurrentSnapshot.TextLineCounts[$path]) exceeds 200."
+            if (-not (Test-IsUnchangedLegacyArchiveBlob -RepoRoot $RepoRoot -Path $path -BaselineSnapshot $BaselineSnapshot)) {
+                $historicalDebt += New-GovernanceFinding -Code 'TEXT_LINE_COUNT_EXCEEDED' -Path $path -Message "Repository text line count $($CurrentSnapshot.TextLineCounts[$path]) exceeds 200."
+            }
         }
     }
 

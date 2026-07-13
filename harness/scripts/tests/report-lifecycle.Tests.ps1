@@ -72,7 +72,15 @@ Describe 'stable Harness report lifecycle' {
     It 'rejects report key path traversal' {
         $repo = New-ReportTestRepo -Name 'path-traversal'
 
-        { New-HarnessReportPath -RepoRoot $repo -ReportKey '..\escape' } | Should Throw
+        $thrown = $false
+        try {
+            [void](New-HarnessReportPath -RepoRoot $repo -ReportKey '..\escape')
+        }
+        catch {
+            $thrown = $true
+            $_.Exception.Message | Should Match 'must not contain path segments'
+        }
+        $thrown | Should Be $true
     }
 
     It 'lists only owned changed files in git dry-run' {
