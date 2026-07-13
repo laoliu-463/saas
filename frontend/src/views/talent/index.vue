@@ -47,6 +47,7 @@
 
     <n-card :bordered="false" class="main-card app-panel">
       <n-data-table
+        v-if="data.length > 0"
         remote
         data-testid="talent-table"
         :columns="columns"
@@ -60,8 +61,8 @@
       />
 
       <PageEmpty
-        v-if="!loading && data.length === 0"
-        title="当前视图暂无达人"
+        v-else-if="!loading"
+        title="目前暂无达人"
         description="可调整经营筛选条件，或通过左侧菜单切换达人池。"
         icon="CRM"
       >
