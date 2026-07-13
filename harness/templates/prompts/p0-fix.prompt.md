@@ -13,13 +13,13 @@
 9. 执行业务验证。
 10. 生成 evidence report。
 11. 执行安全 Git 提交与推送。
-12. 生成 retro summary。
+12. 在 evidence 内联 retro 结论；只有可执行改进才单独生成 retro。
 13. 输出阶段性结论和剩余风险。
 
 默认命令：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\agent-do.ps1 -Env real-pre -Scope full -Message "fix: describe p0 fix"
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\agent-do.ps1 -Env real-pre -Scope full -ReportKey task-key -OwnedFiles 'path1;path2' -Message "fix: describe p0 fix"
 ```
 
 禁止事项：

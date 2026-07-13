@@ -2,7 +2,7 @@
 
 > **受保护范围扩展**（2026-06-03 HARNESS-DEBT-GOVERNANCE-ITERATION）：
 > 除 `.env*` 真实文件、密钥、证书、私钥、Docker Compose、数据库 migration、源码、脚本与 Git 元数据外，
-> `harness/reports/*.md` 全部报告（evidence / retro / retire / diagnose / domain-* / git-* / p-*-* / func-*）默认**受保护**；
+> `harness/reports/current/*.md` 当前摘要和 `runtime/qa/out/` 唯一原始证据默认**受保护**；
 > 任何归档 / 删除必须按 `harness/rules/runbooks/governance/debt-governance.md` 的"Report Rotation"流程走 manifest。
 
 ## 目标
@@ -13,7 +13,7 @@
 
 - 当前事实主源：`AGENTS.md`、`CLAUDE.md`、`docs/README.md`、`docs/00-*.md` 到 `docs/11-*.md`、`docs/领域/`、`docs/流程/`、`docs/对接/`、`docs/验收/`、`docs/决策/`。
 - Harness 主源：`harness/README.md`、`AGENT_CONTRACT.md`、`CURRENT_STATE.md`、`TASK_ROUTING.md`、`FORBIDDEN_SCOPE.md`、五子系统目录。
-- 最近和关键 evidence / retro 报告。
+- 当前稳定 evidence 和包含可执行改进的 retro。
 - 能证明上线、回滚、真实联调或业务闭环的证据。
 
 ## 归档什么
@@ -21,7 +21,7 @@
 - 已被当前主源替代但仍有参考价值的旧方案。
 - 历史审计、历史 runbook、过期计划。
 - 不确定是否仍有价值的文档，先归档，不直接删除。
-- 归档统一走 manifest，目标为 `harness/archive/retired-content/<timestamp>/` 或既有 `docs/archive/**`。
+- 归档统一走 manifest，并按日期/主题/`archiveGroup` 分桶；单个分桶不得突破 50/50。
 
 ## 删除什么
 

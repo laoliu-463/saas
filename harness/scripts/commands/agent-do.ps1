@@ -10,6 +10,9 @@ param(
     [ValidateSet("off", "plan", "archive", "delete")]
     [string]$ContentMaintenance = "plan",
     [string]$ContentMaintenanceManifest = "",
+    [string]$ReportKey = "agent-do",
+    [AllowEmptyCollection()][string[]]$OwnedFiles = @(),
+    [string]$RetroSummary = "No actionable Harness improvement was recorded; no standalone retro is required.",
     [switch]$AllowSourceCodeRetire,
     [switch]$SkipBusinessValidation,
     [switch]$DryRun
@@ -21,10 +24,13 @@ $ErrorActionPreference = "Stop"
 
 $config = Get-HarnessEnvConfig -Env $TargetEnv
 $deployRemoteValue = Convert-HarnessBool -Value $DeployRemote
+$ownedFilesValue = @(Expand-HarnessOwnedFiles -OwnedFiles $OwnedFiles)
 $buildResult = "not collected"
 $healthResult = "not collected"
 $businessResult = "not collected"
 $contentMaintenanceResult = "not collected"
+$contentMaintenanceOwnedFiles = @()
+$taskOwnedFiles = @($ownedFilesValue)
 $remoteResult = "remote not deployed"
 $conclusion = "PARTIAL"
 
@@ -34,7 +40,14 @@ try {
     Write-Host "Scope: $Scope"
     Write-Host "DeployRemote: $deployRemoteValue"
     Write-Host "ContentMaintenance: $ContentMaintenance"
+    Write-Host "ReportKey: $ReportKey"
+    Write-Host "OwnedFiles: $($ownedFilesValue.Count)"
     Write-Host "DryRun: $($DryRun.IsPresent)"
+
+    $allChangedFiles = @(Get-HarnessChangedFiles)
+    if (-not $DryRun -and $allChangedFiles.Count -gt 0 -and $ownedFilesValue.Count -eq 0) {
+        throw "OwnedFiles is required when the worktree has changes."
+    }
 
     & (Join-Path $PSScriptRoot "safety-check.ps1") -Env $TargetEnv -Scope $Scope -DryRun:$DryRun
 
@@ -177,6 +190,8 @@ try {
         $retireParams = @{
             Action = $contentAction
             Reason = $Message
+            RepoRoot = $config.RepoRoot
+            PassThruResult = $true
         }
         if (-not [string]::IsNullOrWhiteSpace($ContentMaintenanceManifest)) {
             $retireParams["Manifest"] = $ContentMaintenanceManifest
@@ -187,9 +202,14 @@ try {
         if ($DryRun) {
             $retireParams["DryRun"] = $true
         }
-        & (Join-Path $PSScriptRoot "retire-content.ps1") @retireParams
+        $retireResult = & (Join-Path $PSScriptRoot "retire-content.ps1") @retireParams
+        if ($null -ne $retireResult -and $retireResult.PSObject.Properties.Name -contains "OwnedFiles") {
+            $contentMaintenanceOwnedFiles = @($retireResult.OwnedFiles)
+        }
         $contentMaintenanceResult = "Content maintenance: $contentAction. Manifest=$ContentMaintenanceManifest. DryRun=$($DryRun.IsPresent)."
     }
+
+    $taskOwnedFiles = @($ownedFilesValue + $contentMaintenanceOwnedFiles | Sort-Object -Unique)
 
     if ($Scope -eq "docs" -or $SkipBusinessValidation -or $deployRemoteValue) {
         $conclusion = "PARTIAL"
@@ -198,7 +218,23 @@ try {
         $conclusion = "PASS"
     }
 
-    & (Join-Path $PSScriptRoot "collect-evidence.ps1") `
+    Write-HarnessStage "Harness file governance"
+    $governanceArgs = @(
+        "-NoProfile", "-ExecutionPolicy", "Bypass",
+        "-File", (Join-Path $config.RepoRoot "harness\scripts\check-harness-limits.ps1"),
+        "-RepoRoot", $config.RepoRoot,
+        "-BaselineRef", "HEAD",
+        "-NoReport"
+    )
+    if ($taskOwnedFiles.Count -gt 0) {
+        $governanceArgs += @("-OwnedFiles", ($taskOwnedFiles -join ";"))
+    }
+    & powershell @governanceArgs
+    if ($LASTEXITCODE -ne 0) {
+        throw "Harness file governance failed."
+    }
+
+    $reportPath = & (Join-Path $PSScriptRoot "collect-evidence.ps1") `
         -Env $TargetEnv `
         -Scope $Scope `
         -BuildResult $buildResult `
@@ -208,14 +244,25 @@ try {
         -RemoteResult $remoteResult `
         -Conclusion $conclusion `
         -DeployRemote $deployRemoteValue `
+        -ReportKey $ReportKey `
+        -OwnedFiles $taskOwnedFiles `
+        -RetroSummary $RetroSummary `
         -DryRun:$DryRun
 
-    & (Join-Path $PSScriptRoot "git-push-safe.ps1") -Message $Message -DryRun:$DryRun
+    $commitOwnedFiles = @($taskOwnedFiles)
+    if (-not $DryRun -and (Test-Path -LiteralPath $reportPath)) {
+        $commitOwnedFiles += Get-HarnessRepoRelativePath -RepoRoot $config.RepoRoot -Path $reportPath
+    }
+    & (Join-Path $PSScriptRoot "git-push-safe.ps1") `
+        -RepoRoot $config.RepoRoot `
+        -Message $Message `
+        -OwnedFiles $commitOwnedFiles `
+        -DryRun:$DryRun
 
     if ($deployRemoteValue) {
         & (Join-Path $PSScriptRoot "deploy-remote.ps1") -Env real-pre -DryRun:$DryRun
         $remoteResult = "Remote deploy: PASS"
-        & (Join-Path $PSScriptRoot "collect-evidence.ps1") `
+        $remoteReportPath = & (Join-Path $PSScriptRoot "collect-evidence.ps1") `
             -Env $TargetEnv `
             -Scope $Scope `
             -BuildResult $buildResult `
@@ -225,17 +272,19 @@ try {
             -RemoteResult $remoteResult `
             -Conclusion "PASS" `
             -DeployRemote $true `
+            -ReportKey $ReportKey `
+            -OwnedFiles $taskOwnedFiles `
+            -RetroSummary $RetroSummary `
             -DryRun:$DryRun
+        if (-not $DryRun -and (Test-Path -LiteralPath $remoteReportPath)) {
+            $remoteReportRelative = Get-HarnessRepoRelativePath -RepoRoot $config.RepoRoot -Path $remoteReportPath
+            & (Join-Path $PSScriptRoot "git-push-safe.ps1") `
+                -RepoRoot $config.RepoRoot `
+                -Message "docs(harness): record remote deployment evidence" `
+                -OwnedFiles @($remoteReportRelative)
+        }
         $conclusion = "PASS"
     }
-
-    & (Join-Path $PSScriptRoot "new-retro.ps1") `
-        -Env $TargetEnv `
-        -Scope $Scope `
-        -UsedAgentDo $true `
-        -DeployRemote $deployRemoteValue `
-        -Notes "agent-do completed; review whether HARNESS_CHANGELOG.md needs an entry." `
-        -DryRun:$DryRun
 
     Write-Host "Review HARNESS_CHANGELOG.md and update it when Harness behavior changed." -ForegroundColor Yellow
 
@@ -256,6 +305,9 @@ catch {
             -RemoteResult $remoteResult `
             -Conclusion "FAIL" `
             -DeployRemote $deployRemoteValue `
+            -ReportKey $ReportKey `
+            -OwnedFiles $taskOwnedFiles `
+            -RetroSummary "agent-do failed: $failure" `
             -DryRun:$DryRun
     }
     catch {

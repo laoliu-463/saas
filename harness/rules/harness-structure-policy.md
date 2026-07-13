@@ -18,13 +18,15 @@
 
 `README.md` 和 `INDEX.md` 是一级文件，不计入目录白名单。
 
-## 硬限制
+## 分层预算与硬限制
 
-- 任意目录的直接文件数不超过 50。
-- 任意目录的直接子目录数不超过 50。
-- 脚本以外的文本文件不超过 200 行。
+- 活跃目录的直接文件/子目录 40 预警、50 硬上限。
+- 非脚本文本 160 行预警、200 行硬上限；脚本改由测试、语法检查和职责边界约束。
+- `reports/` 根目标直接文件数不超过 20；当前摘要写入 `reports/current/latest-<topic>.md`。
 - `README.md` 建议不超过 120 行。
 - 禁止用空目录或占位 README 制造表面合规。
+
+本地以 `HEAD` 为基线。历史超限保持或下降只影响 `REPOSITORY_HEALTH`，不阻断当前任务；新增/恶化硬违规使 `TASK_GATE=FAIL`。归档分桶继续遵守 50/50，历史不可变证据原样迁移不追溯 200 行限制。
 
 ## 收敛动作
 
@@ -50,7 +52,7 @@
 任务结束前运行：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File harness/scripts/check-harness-limits.ps1
+powershell -ExecutionPolicy Bypass -File harness/scripts/check-harness-limits.ps1 -BaselineRef HEAD
 ```
 
 检查失败时不得把 Harness 结构结论写成 PASS。

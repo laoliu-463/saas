@@ -1,53 +1,36 @@
 param(
-    [Parameter(Mandatory = $true)]
-    [string]$Message,
+    [Parameter(Mandatory = $true)][string]$Message,
+    [AllowEmptyCollection()][string[]]$OwnedFiles = @(),
+    [string]$RepoRoot = '',
     [switch]$DryRun
 )
 
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot '_lib.ps1')
 
-. (Join-Path $PSScriptRoot "_lib.ps1")
-
-$repoRoot = Get-HarnessRepoRoot
+if ([string]::IsNullOrWhiteSpace($RepoRoot)) { $RepoRoot = Get-HarnessRepoRoot }
+$RepoRoot = (Resolve-Path -LiteralPath $RepoRoot).Path
 
 function Get-ChangedFiles {
-    $OutputEncoding = [System.Text.Encoding]::UTF8
-    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-    $lines = & git -c core.quotepath=false status --porcelain=v1
-    if ($LASTEXITCODE -ne 0) {
-        throw "git status failed."
-    }
+    $lines = @(& git -c core.quotepath=false status --porcelain=v1)
+    if ($LASTEXITCODE -ne 0) { throw 'git status failed.' }
     $files = @()
     foreach ($line in $lines) {
-        if ($line.Length -lt 4) {
-            continue
-        }
+        if ($line.Length -lt 4) { continue }
         $path = $line.Substring(3).Trim().Trim('"')
-        if ($path -match "\s+->\s+") {
-            $path = ($path -split "\s+->\s+")[-1].Trim().Trim('"')
-        }
-        if ($path) {
-            $files += $path
-        }
+        if ($path -match '\s+->\s+') { $path = ($path -split '\s+->\s+')[-1].Trim().Trim('"') }
+        if ($path) { $files += $path.Replace('\', '/') }
     }
-    return $files | Sort-Object -Unique
+    return @($files | Sort-Object -Unique)
 }
 
 function Assert-NoSensitiveFile {
     param([string[]]$Files)
-
     foreach ($file in $Files) {
         $name = Split-Path -Leaf $file
         $lower = $file.ToLowerInvariant()
-        $isEnv = ($name -like ".env*" -and -not $name.EndsWith(".example"))
-        $blocked = $isEnv `
-            -or $lower.EndsWith(".pem") `
-            -or $lower.EndsWith(".key") `
-            -or $lower.EndsWith(".p12") `
-            -or $lower.EndsWith(".jks") `
-            -or $name.ToLowerInvariant().StartsWith("credentials") `
-            -or $name.ToLowerInvariant().StartsWith("secrets")
-        if ($blocked) {
+        $isEnv = ($name -like '.env*' -and -not $name.EndsWith('.example'))
+        if ($isEnv -or $lower -match '\.(pem|key|p12|jks)$' -or $name -match '^(credentials|secrets)') {
             throw "Sensitive file must not be committed: $file"
         }
     }
@@ -55,141 +38,88 @@ function Assert-NoSensitiveFile {
 
 function Assert-NoPlainSecrets {
     param([string[]]$Files)
-
-    $pattern = @'
-(password|secret|token|client_secret|jwt_secret)\s*[:=]\s*['"]?[A-Za-z0-9_\-/.+=]{12,}
-'@.Trim()
+    $pattern = '(password|secret|token|client_secret|jwt_secret)\s*[:=]\s*[''\"]?[A-Za-z0-9_\-/.+=]{12,}'
     foreach ($file in $Files) {
-        $path = Join-Path $repoRoot $file
-        $exists = $false
-        try { $exists = Test-Path -LiteralPath $path } catch { continue }
-        if (-not $exists) {
-            continue
-        }
+        $path = Join-Path $RepoRoot $file
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { continue }
         $name = Split-Path -Leaf $file
-        if ($name -like "*.md" -or $name -like "*.prompt.md" -or $name -like "*.skill.md") {
-            continue
-        }
-        $extension = [System.IO.Path]::GetExtension($file).ToLowerInvariant()
-        $isCodeFile = @('.ts', '.tsx', '.js', '.jsx', '.vue', '.java', '.kt', '.py', '.sh', '.ps1').Contains($extension)
-        $hits = Select-String -LiteralPath $path -Pattern $pattern -ErrorAction SilentlyContinue
-        foreach ($hit in $hits) {
+        if ($name -like '*.md' -or $name -like '*.prompt.md' -or $name -like '*.skill.md') { continue }
+        foreach ($hit in @(Select-String -LiteralPath $path -Pattern $pattern -ErrorAction SilentlyContinue)) {
             $line = $hit.Line
-            $hasSkipKeyword = $false
-            $skipKeywords = @('REDACTED', 'placeholder', 'example', 'change-me', '__FILL_ME_')
-            foreach ($kw in $skipKeywords) {
-                if ($line.Contains($kw)) {
-                    $hasSkipKeyword = $true
-                    break
-                }
-            }
-            $hasInterpolation = $line.Contains('$' + '{')
-            $rhs = ($line -split '[:=]', 2)[1].Trim()
-            $isRuntimeExpression = $isCodeFile -and (-not ($rhs.StartsWith("'") -or $rhs.StartsWith('"'))) -and ($rhs.Contains('.') -or $rhs.Contains('('))
-            if ($hasSkipKeyword -eq $true -or $hasInterpolation -eq $true -or $isRuntimeExpression -eq $true) {
-                continue
-            }
+            if ($line -match 'REDACTED|placeholder|example|change-me|__FILL_ME_' -or $line.Contains('$' + '{')) { continue }
             throw "Potential plaintext secret in $file line $($hit.LineNumber)."
         }
     }
 }
 
-Write-HarnessStage "Git push safe"
-Assert-HarnessRepoRoot -RepoRoot $repoRoot
-
+Write-HarnessStage 'Git push safe'
 if ([string]::IsNullOrWhiteSpace($Message) -or $Message.Trim().Length -lt 8) {
-    throw "Commit message is required and must be readable."
+    throw 'Commit message is required and must be readable.'
 }
 
-Push-Location $repoRoot
+Push-Location $RepoRoot
 try {
-    Write-Host "Current git status:"
-    git status --short
-    if ($LASTEXITCODE -ne 0) {
-        throw "git status failed."
-    }
+    & git rev-parse --is-inside-work-tree | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "Not a Git worktree: $RepoRoot" }
 
     $changedFiles = @(Get-ChangedFiles)
     if ($changedFiles.Count -eq 0) {
-        Write-Host "No changes to commit." -ForegroundColor Yellow
+        Write-Host 'No changes to commit.' -ForegroundColor Yellow
         return
     }
 
-    Assert-NoSensitiveFile -Files $changedFiles
-    Assert-NoPlainSecrets -Files $changedFiles
+    $owned = @(Expand-HarnessOwnedFiles -OwnedFiles $OwnedFiles)
+    if ($owned.Count -eq 0) { throw 'OwnedFiles is required when the worktree has changes.' }
+    $ownedSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($file in $owned) { [void]$ownedSet.Add($file) }
+
+    $stagedBefore = @(& git -c core.quotepath=false diff --cached --name-only)
+    foreach ($file in $stagedBefore) {
+        if (-not $ownedSet.Contains($file.Replace('\', '/'))) {
+            throw "Staged file is outside OwnedFiles: $file"
+        }
+    }
+
+    $ownedChanged = @($changedFiles | Where-Object { $ownedSet.Contains($_) })
+    if ($ownedChanged.Count -eq 0) {
+        Write-Host 'No owned changes to commit.' -ForegroundColor Yellow
+        return
+    }
+    Assert-NoSensitiveFile -Files $ownedChanged
+    Assert-NoPlainSecrets -Files $ownedChanged
 
     if ($DryRun) {
-        Write-Host "DRY-RUN changed files:"
-        $changedFiles | ForEach-Object { Write-Host "- $_" }
-        Write-Host "DRY-RUN would stage the listed files explicitly, commit with message `"$Message`", then push"
+        Write-Host 'DRY-RUN owned changed files:'
+        foreach ($file in $ownedChanged) { Write-Host "- $file" }
+        Write-Host "DRY-RUN would commit with message `"$Message`" and push the current upstream."
         return
     }
 
-    $filesToAdd = [System.Collections.Generic.List[string]]::new()
-    $filesToRemove = [System.Collections.Generic.List[string]]::new()
+    foreach ($file in $ownedChanged) {
+        & git add -- $file
+        if ($LASTEXITCODE -ne 0) { throw "git staging failed: $file" }
+    }
 
-    foreach ($file in $changedFiles) {
-        if (Test-Path -LiteralPath $file) {
-            $filesToAdd.Add($file)
-        } else {
-            $filesToRemove.Add($file)
+    $stagedFiles = @(& git -c core.quotepath=false diff --cached --name-only)
+    foreach ($file in $stagedFiles) {
+        if (-not $ownedSet.Contains($file.Replace('\', '/'))) {
+            throw "Staged file is outside OwnedFiles: $file"
         }
-    }
-
-    if ($filesToAdd.Count -gt 0) {
-        Write-Host "Batch adding $($filesToAdd.Count) files..."
-        git add -f -- $filesToAdd
-        if ($LASTEXITCODE -ne 0) {
-            throw "git staging failed for batch add."
-        }
-    }
-
-    if ($filesToRemove.Count -gt 0) {
-        Write-Host "Batch removing $($filesToRemove.Count) files from cache..."
-        $prevErrorActionPreference = $ErrorActionPreference
-        $ErrorActionPreference = "Continue"
-        try {
-            git rm --cached -f -- $filesToRemove 2>$null
-        } catch {}
-        $ErrorActionPreference = $prevErrorActionPreference
-    }
-
-    $stagedFiles = & git -c core.quotepath=false diff --cached --name-only
-    if ($LASTEXITCODE -ne 0) {
-        throw "git diff --cached failed."
     }
     Assert-NoSensitiveFile -Files $stagedFiles
     Assert-NoPlainSecrets -Files $stagedFiles
+    & git diff --cached --check
+    if ($LASTEXITCODE -ne 0) { throw 'git diff --cached --check failed.' }
 
-    git diff --cached --check
-    if ($LASTEXITCODE -ne 0) {
-        throw "git diff --cached --check failed."
-    }
-
-    git commit -m $Message
-    if ($LASTEXITCODE -ne 0) {
-        throw "git commit failed."
-    }
-
-    $commit = (& git rev-parse --short HEAD).Trim()
-    Write-Host "Commit: $commit" -ForegroundColor Green
+    & git commit -m $Message
+    if ($LASTEXITCODE -ne 0) { throw 'git commit failed.' }
 
     $branch = (& git branch --show-current).Trim()
-    if ([string]::IsNullOrWhiteSpace($branch)) {
-        throw "Cannot determine current branch for push."
-    }
-
-    git push gitee $branch
-    if ($LASTEXITCODE -ne 0) {
-        throw "git push gitee failed. Check remote and credentials."
-    }
-
-    git push origin $branch
-    if ($LASTEXITCODE -ne 0) {
-        throw "git push origin failed. Check remote and credentials."
-    }
-
-    Write-Host "Git push completed." -ForegroundColor Green
+    if ([string]::IsNullOrWhiteSpace($branch)) { throw 'Cannot determine current branch for push.' }
+    & git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>$null | Out-Null
+    if ($LASTEXITCODE -eq 0) { & git push } else { & git push --set-upstream origin $branch }
+    if ($LASTEXITCODE -ne 0) { throw 'git push failed. Check upstream and credentials.' }
+    Write-Host "Git push completed: $((& git rev-parse --short HEAD).Trim())" -ForegroundColor Green
 }
 finally {
     Pop-Location

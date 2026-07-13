@@ -18,7 +18,7 @@
 4. 执行固定入口：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\agent-do.ps1 -Env real-pre -Scope backend -Message "fix: backend change"
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\agent-do.ps1 -Env real-pre -Scope backend -ReportKey task-key -OwnedFiles 'path1;path2' -Message "fix: backend change"
 ```
 
 ## 验证标准
@@ -27,7 +27,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\a
 - backend 容器已重启。
 - `/api/system/health` 返回 `UP`。
 - 对应 API/SQL/日志能证明业务结果。
-- evidence report 和 retro summary 已生成。
+- 稳定 evidence 已生成并包含内联 retro 结论。
 
 ## 常见失败原因
 
@@ -47,5 +47,4 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\a
 
 - 代码 diff。
 - 测试/日志/API/SQL 证据。
-- `harness/reports/evidence-*.md`。
-- `harness/reports/retro-*.md`。
+- `harness/reports/current/latest-<report-key>.md`（含内联 retro 结论）。

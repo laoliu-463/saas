@@ -12,7 +12,7 @@
 
 ## 操作步骤
 
-1. 运行对应 Scope 的 `agent-do.ps1`；docs-only 使用 `-Scope docs`。
+1. 运行对应 Scope 的 `agent-do.ps1`；必须提供稳定 `-ReportKey` 和显式 `-OwnedFiles`，docs-only 使用 `-Scope docs`。
 2. 若只需要旧内容候选，执行：
 
 ```powershell
@@ -25,8 +25,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\r
 
 ## 验证标准
 
-- evidence report 已生成。
-- retro summary 已生成。
+- 稳定 evidence 已生成并包含内联 retro 结论。
+- 只有存在可执行改进时才生成独立 retro。
 - 旧内容候选或“本轮无需 GC”的理由已记录。
 - 没有把未执行构建/重启/E2E 写成通过。
 
@@ -40,11 +40,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\r
 
 - 不删除 `.env*`、密钥、证书、Docker Compose、Git 元数据、数据库 migration。
 - 不移动不确定是否仍有价值的业务需求文档。
-- 不覆盖历史 evidence report。
+- 不在 `reports/` 根生成时间戳 evidence/retro/content-retire。
 
 ## 产出物位置
 
-- `harness/reports/evidence-*.md`
-- `harness/reports/retro-*.md`
-- `harness/reports/content-retire-*.md`
+- `harness/reports/current/latest-<report-key>.md`
+- 可选 `harness/reports/current/latest-retro-<report-key>.md`
+- `harness/reports/current/latest-content-retire.md`
 - 必要时 `harness/archive/retired-content/**`

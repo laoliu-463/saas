@@ -4,7 +4,10 @@ param(
     [string]$Manifest = "",
     [string]$Reason = "post-task content maintenance",
     [string]$ArchiveRoot = "harness/archive/retired-content",
+    [string]$RepoRoot = "",
+    [string]$ReportKey = "content-retire",
     [switch]$AllowSourceCode,
+    [switch]$PassThruResult,
     [switch]$DryRun
 )
 
@@ -19,8 +22,8 @@ function Assert-PathInside {
         [Parameter(Mandatory = $true)][string]$Label
     )
 
-    $resolvedPath = (Resolve-Path -LiteralPath $Path).Path
-    $resolvedRoot = (Resolve-Path -LiteralPath $Root).Path
+    $resolvedPath = (Get-Item -LiteralPath $Path).FullName
+    $resolvedRoot = (Get-Item -LiteralPath $Root).FullName
     $rootPrefix = $resolvedRoot.TrimEnd("\") + "\"
     if ($resolvedPath -ne $resolvedRoot -and -not $resolvedPath.StartsWith($rootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
         throw "$Label is outside allowed root. path=$resolvedPath root=$resolvedRoot"
@@ -34,8 +37,8 @@ function Get-RepoRelativePath {
         [Parameter(Mandatory = $true)][string]$Path
     )
 
-    $resolvedRoot = (Resolve-Path -LiteralPath $RepoRoot).Path.TrimEnd("\")
-    $resolvedPath = (Resolve-Path -LiteralPath $Path).Path
+    $resolvedRoot = (Get-Item -LiteralPath $RepoRoot).FullName.TrimEnd("\")
+    $resolvedPath = (Get-Item -LiteralPath $Path).FullName
     if ($resolvedPath -eq $resolvedRoot) {
         return "."
     }
@@ -195,16 +198,11 @@ function Format-CandidatesBlock {
 
 Write-HarnessStage "Content retirement"
 
-$repoRoot = Get-HarnessRepoRoot
+$repoRoot = if ([string]::IsNullOrWhiteSpace($RepoRoot)) { Get-HarnessRepoRoot } else { (Get-Item -LiteralPath $RepoRoot).FullName }
 Assert-HarnessRepoRoot -RepoRoot $repoRoot
 
-$reportsDir = Join-Path $repoRoot "harness\reports"
-if (-not (Test-Path -LiteralPath $reportsDir)) {
-    New-Item -ItemType Directory -Force -Path $reportsDir | Out-Null
-}
-
 $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
-$reportPath = Join-Path $reportsDir "content-retire-$stamp.md"
+$reportPath = New-HarnessReportPath -RepoRoot $repoRoot -ReportKey $ReportKey
 $archiveRootPath = if ([System.IO.Path]::IsPathRooted($ArchiveRoot)) {
     $ArchiveRoot
 }
@@ -214,6 +212,7 @@ else {
 
 $operations = @()
 $candidates = @()
+$generatedOwnedFiles = @()
 
 if ([string]::IsNullOrWhiteSpace($Manifest)) {
     if ($Action -ne "Plan") {
@@ -244,6 +243,15 @@ else {
             throw "Source-like path requires -AllowSourceCode: $relativePath"
         }
 
+        $hasArchiveGroup = @($item.PSObject.Properties.Name) -contains "archiveGroup"
+        $archiveGroup = ""
+        if ($hasArchiveGroup) {
+            $archiveGroup = ([string]$item.archiveGroup).Trim().ToLowerInvariant()
+            if ([string]::IsNullOrWhiteSpace($archiveGroup) -or $archiveGroup -notmatch '^[a-z0-9][a-z0-9-]{0,63}$') {
+                throw "archiveGroup must be one safe path segment: $($item.archiveGroup)"
+            }
+        }
+
         $sourcePath = Join-Path $repoRoot $relativePath
         if (-not (Test-Path -LiteralPath $sourcePath)) {
             throw "Retire target not found: $relativePath"
@@ -261,6 +269,7 @@ else {
             reason = if ($item.reason) { $item.reason } else { $Reason }
             isDirectory = $isDirectory
             source = $sourceResolved
+            archiveGroup = $archiveGroup
         }
     }
 }
@@ -272,14 +281,25 @@ if ($Action -eq "Archive" -and $operations.Count -gt 0) {
         Assert-PathInside -Path $archiveRootPath -Root $repoRoot -Label "Archive root" | Out-Null
     }
     $archiveBatchPath = Join-Path $archiveRootPath $stamp
+    $destinations = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     foreach ($operation in $operations) {
-        $destination = Join-Path $archiveBatchPath $operation.path
+        $destination = if ([string]::IsNullOrWhiteSpace($operation.archiveGroup)) {
+            Join-Path $archiveBatchPath $operation.path
+        }
+        else {
+            Join-Path (Join-Path $archiveBatchPath $operation.archiveGroup) (Split-Path -Leaf $operation.path)
+        }
+        if (-not $destinations.Add($destination)) {
+            throw "Archive destination collision: $destination"
+        }
         $destinationParent = Split-Path -Parent $destination
-        $destinationRelative = $destination.Substring(((Resolve-Path -LiteralPath $repoRoot).Path.TrimEnd("\") + "\").Length)
+        $destinationRelative = $destination.Substring(((Get-Item -LiteralPath $repoRoot).FullName.TrimEnd("\") + "\").Length)
         $applied += "ARCHIVE $($operation.path) -> $destinationRelative"
         if (-not $DryRun) {
             New-Item -ItemType Directory -Force -Path $destinationParent | Out-Null
             Move-Item -LiteralPath $operation.source -Destination $destination
+            $generatedOwnedFiles += $operation.path.Replace('\', '/')
+            $generatedOwnedFiles += $destinationRelative.Replace('\', '/')
         }
     }
 }
@@ -289,6 +309,7 @@ elseif ($Action -eq "Delete" -and $operations.Count -gt 0) {
         if (-not $DryRun) {
             Assert-PathInside -Path $operation.source -Root $repoRoot -Label "Delete target" | Out-Null
             Remove-Item -LiteralPath $operation.source -Force -Recurse:$operation.isDirectory
+            $generatedOwnedFiles += $operation.path.Replace('\', '/')
         }
     }
 }
@@ -342,7 +363,17 @@ if ($DryRun) {
     Write-Host $content
 }
 else {
-    Set-Content -LiteralPath $reportPath -Value $content -Encoding UTF8
+    [void](Write-HarnessFileIfChanged -Path $reportPath -Content $content)
+    $generatedOwnedFiles += Get-HarnessRepoRelativePath -RepoRoot $repoRoot -Path $reportPath
 }
 
 Write-Host "Content retirement report: $reportPath" -ForegroundColor Green
+if ($PassThruResult) {
+    Write-Output ([pscustomobject]@{
+        ReportPath = $reportPath
+        OwnedFiles = @($generatedOwnedFiles | Sort-Object -Unique)
+    })
+}
+else {
+    Write-Output $reportPath
+}

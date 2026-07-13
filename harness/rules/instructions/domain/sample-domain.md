@@ -42,4 +42,4 @@
 
 ## 失败后必须写入 feedback
 
-- 状态机非法流转、订单样本不足、事件消费失败或幂等缺口写入 `harness/feedback/` 或 evidence report。
+- 状态机非法流转、订单样本不足、事件消费失败或幂等缺口写入稳定 evidence；需持续跟踪时登记 `KNOWN_ISSUES.md`。

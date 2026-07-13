@@ -12,5 +12,5 @@
 默认命令：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\agent-do.ps1 -Env real-pre -Scope full -DeployRemote false -Message "chore: release check"
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\agent-do.ps1 -Env real-pre -Scope full -ReportKey release-check -OwnedFiles 'path1;path2' -DeployRemote false -Message "chore: release check"
 ```

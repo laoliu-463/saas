@@ -26,8 +26,8 @@
 
 | 类型 | 路径 |
 | --- | --- |
-| Harness evidence | `harness/reports/evidence-*.md` |
-| Harness retro | `harness/reports/retro-*.md` |
+| Harness evidence | `harness/reports/current/latest-<report-key>.md` |
+| Harness retro | 默认内联 evidence；可执行改进可用 `reports/current/latest-retro-<report-key>.md` |
 | QA 输出 | `runtime/qa/out/` |
 | Playwright 报告 | `playwright-report/` |
 | 测试结果 | `test-results/` |

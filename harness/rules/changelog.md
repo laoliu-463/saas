@@ -7,6 +7,13 @@
 
 ## 最近版本摘要
 
+### v0.8.0 — 2026-07-13
+- 实施 ADR-013：活跃目录 40/50、非脚本文本 160/200、reports 根目标 20，并区分 `TASK_GATE` 与 `REPOSITORY_HEALTH`。
+- Evidence 与 content-retire 改为 `reports/current/latest-<key>.md` 稳定路径；retro 默认内联，仅可执行改进单独落盘。
+- `agent-do` / `git-push-safe` 只处理显式 OwnedFiles，并自动合并本轮生成的 evidence、content-retire 报告和归档目标；gitee 保持只读。
+- 使用 manifest 将 reports 根 75 份时间戳报告分三组归档，直接文件数从 87 降至 12；关闭 DEBT-014、DEBT-026、DEBT-027。
+- 实现 commits：`2c304397`、`b38c9405`、`d1ef7289`、`b3140bb0`；最终证据：`reports/current/latest-harness-file-governance.md`。
+
 ### v0.7.7 — 2026-07-13
 - 实现 commit：`7ca6d5ff`；证据：`reports/current/latest-evidence-20260713-harness-redundancy-cleanup.md`。
 - 删除 26 个已被主源替代、未接入运行时或零引用的 Harness/.claude 文件，删除依据见 `manifests/harness-redundancy-cleanup-20260713.json`。

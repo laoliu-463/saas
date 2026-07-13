@@ -47,4 +47,4 @@
 
 ## 失败后必须写入 feedback
 
-- 计算输入不完整、重复消费、冲正错误或汇总漂移写入 `harness/feedback/` 或 evidence report。
+- 计算输入不完整、重复消费、冲正错误或汇总漂移写入稳定 evidence；需持续跟踪时登记 `KNOWN_ISSUES.md`。

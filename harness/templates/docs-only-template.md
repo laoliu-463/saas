@@ -2,7 +2,7 @@
 
 > 仅用于 docs-only / harness-only 任务（仅修改 `harness/` `docs/` `AGENTS.md` `CLAUDE.md` 报告 / 状态文件）。
 > 不修改后端 / 前端 / SQL / Docker / env / 数据库。
-> 完整 11 节模板见 `harness/feedback/evidence-report-template.md`。
+> 完整 11 节模板见 `harness/templates/evidence-report-template.md`。
 
 ```md
 # Evidence Report — Docs-only
@@ -10,6 +10,8 @@
 ## 1. 基本信息
 
 - 任务 ID：
+- ReportKey：
+- OwnedFiles（仓库相对路径）：
 - 任务标题：
 - 任务类型：docs-only
 - 选择 Gate：Gate 0
@@ -51,8 +53,8 @@
 ## 6. 报告
 
 - 旧内容候选 / 归档 / 删除：retire-content Plan（可选）
-- evidence：本文件
-- retro：`harness/reports/retro-YYYYMMDD-HHMMSS-<task>.md`
+- evidence：`harness/reports/current/latest-<report-key>.md`（本文件）
+- retro：内联结论；只有存在责任人、下一动作和验证方式时才生成独立报告
 
 ## 7. 远端部署
 
@@ -73,13 +75,13 @@
 ## 10. 提交与推送
 
 - commit hash：
-- push gitee / origin：✅ / ❌（gitee + origin 都必须）
+- push current upstream：✅ / ❌（无 upstream 时使用 `origin/<current-branch>`；gitee 只读）
 - Git Exit Gate 终态：DONE_CLEAN / DONE_WITH_REGISTERED_DIRTY / PARTIAL_DIRTY_REMAINING / BLOCKED_DIRTY_UNKNOWN
 ```
 
 ## 关联
 
-- `harness/feedback/evidence-report-template.md`（11 节完整版）
-- `harness/feedback/retro-summary-template.md`
+- `harness/templates/evidence-report-template.md`（11 节完整版）
+- `harness/templates/retro-summary-template.md`
 - `harness/rules/governance/COMPLETION_GATES.md`（Gate 0）
 - `harness/rules/governance/session-exit-gate.md`

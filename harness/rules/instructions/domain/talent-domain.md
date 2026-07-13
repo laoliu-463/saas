@@ -41,4 +41,4 @@
 
 ## 失败后必须写入 feedback
 
-- 达人事实缺失、地址联动失败、越权或第三方接口阻塞写入 `harness/feedback/` 或 evidence report。
+- 达人事实缺失、地址联动失败、越权或第三方接口阻塞写入稳定 evidence；需持续跟踪时登记 `KNOWN_ISSUES.md`。

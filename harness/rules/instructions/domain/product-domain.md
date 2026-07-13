@@ -44,4 +44,4 @@
 
 ## 失败后必须写入 feedback
 
-- 商品库漂移、转链失败、映射缺失或审核字段丢失写入 `harness/feedback/` 或 evidence report。
+- 商品库漂移、转链失败、映射缺失或审核字段丢失写入稳定 evidence；需持续跟踪时登记 `KNOWN_ISSUES.md`。

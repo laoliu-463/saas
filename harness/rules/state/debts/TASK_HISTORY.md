@@ -2,7 +2,7 @@
 
 ## 作用
 
-本文件只记录对后续 Agent 有路由价值的任务摘要。详细证据以 `harness/reports/evidence-*.md`、`retro-*.md` 和 `HARNESS_CHANGELOG.md` 为准。
+本文件只记录对后续 Agent 有路由价值的任务摘要。新任务证据以 `harness/reports/current/latest-<report-key>.md` 和 `harness/rules/changelog.md` 为准；下表旧路径保留历史事实，不回写。
 
 | 日期 | 任务 | 结果 | 证据 |
 | --- | --- | --- | --- |

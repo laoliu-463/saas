@@ -1,7 +1,13 @@
 # 任务后复盘模板
 
+> 默认把简短结论写入 evidence。只有存在明确责任人、下一动作和验证方式时，才使用本模板生成 `reports/current/latest-retro-<report-key>.md`。
+
 ```md
 # Harness Retro Summary
+
+- Owner：
+- Next action：
+- Verification：
 
 ## 1. 本次是否按流程执行
 
@@ -69,4 +75,10 @@
 - 新脚本：
 - 新 Eval：
 - 新 Runbook：
+
+## 12. 关闭条件
+
+- 完成日期：
+- 验证证据：
+- 未完成时的阻塞原因：
 ```

@@ -50,4 +50,4 @@ npm run e2e:real-pre:roles
 - `runtime/qa/out/**`
 - `playwright-report/**`
 - `test-results/playwright/**`
-- `harness/reports/evidence-*.md`
+- `harness/reports/current/latest-<report-key>.md`

@@ -22,5 +22,5 @@
 只有用户明确要求远端部署时，才允许执行：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\agent-do.ps1 -Env real-pre -Scope full -DeployRemote true -Message "deploy: real-pre update"
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\agent-do.ps1 -Env real-pre -Scope full -ReportKey task-key -OwnedFiles 'path1;path2' -DeployRemote true -Message "deploy: real-pre update"
 ```
