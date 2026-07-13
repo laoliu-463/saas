@@ -1,79 +1,86 @@
 <template>
-  <n-modal
+  <n-drawer
     v-model:show="visible"
-    preset="card"
-    title="快速寄样"
-    style="width: 640px"
-    data-testid="quick-sample-modal"
+    placement="right"
+    :width="520"
+    data-testid="quick-sample-drawer"
     @after-leave="resetForm"
   >
-    <n-alert type="info" :bordered="false" data-testid="quick-sample-external-hint">
-      抖店外部寄样暂未接通，已为你创建系统内寄样申请（LOCAL_FALLBACK）。
-    </n-alert>
-    <n-form label-placement="left" label-width="96">
-      <n-form-item v-if="isAdmin" label="渠道" required>
-        <n-select
-          v-model:value="form.channelUserId"
-          :options="channelOptions"
-          :loading="channelLoading"
-          filterable
-          clearable
-          placeholder="选择渠道"
-          data-testid="quick-sample-channel"
-          @update:value="handleChannelChange"
-        />
-      </n-form-item>
-      <n-form-item :label="talentFieldLabel" required>
-        <n-select
-          v-model:value="form.talentIds"
-          :options="talentOptions"
-          :loading="talentLoading"
-          multiple
-          :placeholder="talentPlaceholder"
-          :disabled="isAdmin && !form.channelUserId"
-          data-testid="quick-sample-talents"
-        >
-          <template #empty>
-            {{ talentEmptyHint }}
-          </template>
-        </n-select>
-      </n-form-item>
-      <n-form-item label="商品规格">
-        <ProductSpecSelector
-          v-model="form.skuId"
-          :skus="skuOptions"
-          :loading="skuLoading"
-          value-field="skuId"
-          data-testid="quick-sample-spec"
-          @select="handleSkuSelect"
-        />
-      </n-form-item>
-      <n-form-item label="数量" required>
-        <n-input-number v-model:value="form.quantity" :min="1" :max="100" style="width: 160px" />
-      </n-form-item>
-      <n-form-item label="收货人">
-        <n-input v-model:value="form.recipientName" placeholder="收货人姓名" data-testid="quick-sample-recipient-name" />
-      </n-form-item>
-      <n-form-item label="联系电话">
-        <n-input v-model:value="form.recipientPhone" placeholder="收货人手机号" data-testid="quick-sample-recipient-phone" />
-      </n-form-item>
-      <n-form-item label="收货地址">
-        <n-input v-model:value="form.recipientAddress" type="textarea" rows="2" data-testid="quick-sample-address" />
-      </n-form-item>
-      <n-form-item label="备注">
-        <n-input v-model:value="form.remark" type="textarea" rows="2" data-testid="quick-sample-remark" />
-      </n-form-item>
-    </n-form>
+    <n-drawer-content title="快速寄样" closable :native-scrollbar="false">
+      <div class="quick-sample-drawer__product" data-testid="quick-sample-product-context">
+        <span class="quick-sample-drawer__product-label">当前商品</span>
+        <strong>{{ props.product?.title || '未命名商品' }}</strong>
+      </div>
 
-    <template #footer>
-      <n-space justify="end">
-        <n-button @click="visible = false">取消</n-button>
-        <n-button type="primary" :loading="submitting" data-testid="quick-sample-submit" @click="submit">
-          提交申请
-        </n-button>
-      </n-space>
-    </template>
-  </n-modal>
+      <n-alert type="info" :bordered="false" data-testid="quick-sample-external-hint">
+        抖店外部寄样暂未接通，已为你创建系统内寄样申请（LOCAL_FALLBACK）。
+      </n-alert>
+
+      <n-form label-placement="top">
+        <n-form-item v-if="isAdmin" label="渠道" required>
+          <n-select
+            v-model:value="form.channelUserId"
+            :options="channelOptions"
+            :loading="channelLoading"
+            filterable
+            clearable
+            placeholder="先选择渠道"
+            data-testid="quick-sample-channel"
+            @update:value="handleChannelChange"
+          />
+        </n-form-item>
+        <n-form-item :label="talentFieldLabel" required>
+          <n-select
+            v-model:value="form.talentIds"
+            :options="talentOptions"
+            :loading="talentLoading"
+            multiple
+            :placeholder="talentPlaceholder"
+            :disabled="isAdmin && !form.channelUserId"
+            data-testid="quick-sample-talents"
+          >
+            <template #empty>
+              {{ talentEmptyHint }}
+            </template>
+          </n-select>
+        </n-form-item>
+        <n-form-item label="商品规格">
+          <ProductSpecSelector
+            v-model="form.skuId"
+            :skus="skuOptions"
+            :loading="skuLoading"
+            value-field="skuId"
+            data-testid="quick-sample-spec"
+            @select="handleSkuSelect"
+          />
+        </n-form-item>
+        <n-form-item label="数量" required>
+          <n-input-number v-model:value="form.quantity" :min="1" :max="100" style="width: 160px" />
+        </n-form-item>
+        <n-form-item label="收货人">
+          <n-input v-model:value="form.recipientName" placeholder="收货人姓名" data-testid="quick-sample-recipient-name" />
+        </n-form-item>
+        <n-form-item label="联系电话">
+          <n-input v-model:value="form.recipientPhone" placeholder="收货人手机号" data-testid="quick-sample-recipient-phone" />
+        </n-form-item>
+        <n-form-item label="收货地址">
+          <n-input v-model:value="form.recipientAddress" type="textarea" rows="2" data-testid="quick-sample-address" />
+        </n-form-item>
+        <n-form-item label="备注">
+          <n-input v-model:value="form.remark" type="textarea" rows="2" data-testid="quick-sample-remark" />
+        </n-form-item>
+      </n-form>
+
+      <template #footer>
+        <n-space justify="end">
+          <n-button @click="visible = false">取消</n-button>
+          <n-button type="primary" :loading="submitting" data-testid="quick-sample-submit" @click="submit">
+            提交申请
+          </n-button>
+        </n-space>
+      </template>
+    </n-drawer-content>
+  </n-drawer>
 </template>
 
 <script setup lang="ts">
@@ -338,3 +345,29 @@ const submit = async () => {
   }
 }
 </script>
+
+<style scoped>
+.quick-sample-drawer__product {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 10px;
+  background: var(--card-color, #f8fafc);
+}
+
+.quick-sample-drawer__product-label {
+  color: var(--text-color-3, #64748b);
+  font-size: 12px;
+}
+
+.quick-sample-drawer__product strong {
+  overflow: hidden;
+  color: var(--text-color-1, #1e293b);
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+</style>

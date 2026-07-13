@@ -3,7 +3,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import type { AxiosResponse } from 'axios'
 import { applyQuickSample } from '../../../api/product'
-import { getTalentShippingAddress } from '../../../api/talent'
+import { getTalentByChannel, getTalentShippingAddress } from '../../../api/talent'
 import QuickSampleModal from './QuickSampleModal.vue'
 
 const messageApi = vi.hoisted(() => ({
@@ -11,6 +11,11 @@ const messageApi = vi.hoisted(() => ({
   success: vi.fn(),
   warning: vi.fn(),
   info: vi.fn()
+}))
+
+const authState = vi.hoisted(() => ({
+  isAdmin: false,
+  roleCodes: ['channel_staff']
 }))
 
 const mockAxiosResponse = <T,>(data: T) => ({ data } as AxiosResponse<T>)
@@ -43,13 +48,13 @@ vi.mock('../../sample/sample-user-filter-options', () => ({
   loadSampleChannelOptions: vi.fn().mockResolvedValue([
     {
       label: '渠道甲 (channel_a)',
-      value: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+      value: '11111111-1111-4111-8111-111111111111'
     }
   ])
 }))
 
 vi.mock('../../../stores/auth', () => ({
-  useAuthStore: () => ({ isAdmin: false, roleCodes: ['channel_staff'] })
+  useAuthStore: () => authState
 }))
 
 vi.mock('naive-ui', async (importOriginal) => {
@@ -63,6 +68,8 @@ vi.mock('naive-ui', async (importOriginal) => {
 describe('QuickSampleModal', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    authState.isAdmin = false
+    authState.roleCodes = ['channel_staff']
     vi.mocked(applyQuickSample).mockResolvedValue(
       mockAxiosResponse({ successCount: 1, failureCount: 0, items: [] })
     )
@@ -76,7 +83,8 @@ describe('QuickSampleModal', () => {
       },
       global: {
         stubs: {
-          NModal: { template: '<div data-testid="quick-sample-modal"><slot /><slot name="footer" /></div>', props: ['show'] },
+          NDrawer: { template: '<div data-testid="quick-sample-drawer"><slot /></div>', props: ['show'] },
+          NDrawerContent: { template: '<div><slot /><slot name="footer" /></div>', props: ['title'] },
           NForm: { template: '<form><slot /></form>' },
           NFormItem: { template: '<div><slot /></div>', props: ['label'] },
           NAlert: { template: '<div><slot /></div>' },
@@ -90,9 +98,60 @@ describe('QuickSampleModal', () => {
       }
     })
 
-    expect(wrapper.find('[data-testid="quick-sample-modal"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="quick-sample-drawer"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="quick-sample-talents"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="quick-sample-submit"]').exists()).toBe(true)
+  })
+
+  it('loads talents owned by the selected channel for an admin', async () => {
+    authState.isAdmin = true
+    authState.roleCodes = ['admin']
+    const channelUserId = '11111111-1111-4111-8111-111111111111'
+    vi.mocked(getTalentByChannel).mockResolvedValue([
+      { nickname: '渠道达人', douyinUid: 'TALENT-1' }
+    ] as any)
+
+    const wrapper = mount(QuickSampleModal, {
+      props: {
+        show: true,
+        product: { id: '11111111-1111-1111-1111-111111111111', title: '测试商品' }
+      },
+      global: {
+        stubs: {
+          NDrawer: { template: '<div data-testid="quick-sample-drawer"><slot /></div>', props: ['show'] },
+          NDrawerContent: { template: '<div><slot /><slot name="footer" /></div>', props: ['title'] },
+          NForm: { template: '<form><slot /></form>' },
+          NFormItem: { template: '<div><slot /></div>', props: ['label'] },
+          NAlert: { template: '<div><slot /></div>' },
+          NSelect: {
+            props: ['options', 'loading'],
+            emits: ['update:value'],
+            template: '<button :data-testid="$attrs[\'data-testid\']" @click="$emit(\'update:value\', $attrs[\'data-testid\'] === \'quick-sample-channel\' ? \'11111111-1111-4111-8111-111111111111\' : [\'TALENT-1\'])">select</button>'
+          },
+          ProductSpecSelector: { template: '<select data-testid="quick-sample-spec" />' },
+          NInput: { template: '<input />' },
+          NInputNumber: true,
+          NButton: { emits: ['click'], template: '<button v-bind="$attrs" @click="$emit(\'click\')"><slot /></button>' },
+          NSpace: { template: '<div><slot /></div>' }
+        }
+      }
+    })
+
+    await flushPromises()
+    await wrapper.get('[data-testid="quick-sample-channel"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="quick-sample-talents"]').trigger('click')
+    await wrapper.get('[data-testid="quick-sample-submit"]').trigger('click')
+    await flushPromises()
+
+    expect(getTalentByChannel).toHaveBeenCalledWith(channelUserId)
+    expect(applyQuickSample).toHaveBeenCalledWith(
+      '11111111-1111-1111-1111-111111111111',
+      expect.objectContaining({
+        channelUserId,
+        talentIds: ['TALENT-1']
+      })
+    )
   })
 
   it('submits the selected skuId with the sku specification name', async () => {
@@ -108,7 +167,8 @@ describe('QuickSampleModal', () => {
       },
       global: {
         stubs: {
-          NModal: { template: '<div data-testid="quick-sample-modal"><slot /><slot name="footer" /></div>', props: ['show'] },
+          NDrawer: { template: '<div data-testid="quick-sample-drawer"><slot /></div>', props: ['show'] },
+          NDrawerContent: { template: '<div><slot /><slot name="footer" /></div>', props: ['title'] },
           NForm: { template: '<form><slot /></form>' },
           NFormItem: { template: '<div><slot /></div>', props: ['label'] },
           NAlert: { template: '<div><slot /></div>' },
@@ -168,7 +228,8 @@ describe('QuickSampleModal', () => {
       },
       global: {
         stubs: {
-          NModal: { template: '<div data-testid="quick-sample-modal"><slot /><slot name="footer" /></div>', props: ['show'] },
+          NDrawer: { template: '<div data-testid="quick-sample-drawer"><slot /></div>', props: ['show'] },
+          NDrawerContent: { template: '<div><slot /><slot name="footer" /></div>', props: ['title'] },
           NForm: { template: '<form><slot /></form>' },
           NFormItem: { template: '<div><slot /></div>', props: ['label'] },
           NAlert: { template: '<div><slot /></div>' },
@@ -221,7 +282,8 @@ describe('QuickSampleModal', () => {
       },
       global: {
         stubs: {
-          NModal: { template: '<div data-testid="quick-sample-modal"><slot /><slot name="footer" /></div>', props: ['show'] },
+          NDrawer: { template: '<div data-testid="quick-sample-drawer"><slot /></div>', props: ['show'] },
+          NDrawerContent: { template: '<div><slot /><slot name="footer" /></div>', props: ['title'] },
           NForm: { template: '<form><slot /></form>' },
           NFormItem: { template: '<div><slot /></div>', props: ['label'] },
           NAlert: { template: '<div><slot /></div>' },
