@@ -1,38 +1,54 @@
 <template>
-  <n-modal :show="show" preset="dialog" title="编辑商品" style="width: 640px" @update:show="updateShow">
-    <n-form label-placement="top">
-      <n-form-item label="商品标签">
-        <n-select v-model:value="form.productTags" multiple tag filterable :options="tagOptions" placeholder="输入或选择商品标签" />
-      </n-form-item>
-      <n-form-item label="货品标签">
-        <n-select v-model:value="form.goodsTags" multiple tag filterable :options="tagOptions" placeholder="输入或选择货品标签" />
-      </n-form-item>
-      <n-form-item label="推广话术">
-        <n-input v-model:value="form.promotionScript" type="textarea" :rows="3" />
-      </n-form-item>
-      <n-form-item label="卖点">
-        <n-input v-model:value="form.sellingPoints" type="textarea" :rows="3" />
-      </n-form-item>
-      <n-form-item label="投流规则">
-        <n-space vertical>
-          <n-checkbox v-model:checked="form.supportsAds">支持投流</n-checkbox>
-          <n-input v-model:value="form.adsRule" type="textarea" :rows="2" />
-        </n-space>
-      </n-form-item>
-      <n-form-item label="手卡素材">
-        <n-input v-model:value="form.handCardUrl" placeholder="手卡素材 URL" />
-      </n-form-item>
-      <n-form-item label="备注">
-        <n-input v-model:value="form.remark" type="textarea" :rows="2" />
-      </n-form-item>
-    </n-form>
-    <template #action>
+  <n-drawer
+    :show="show"
+    :width="DRAWER_WIDTH_PX.md"
+    placement="right"
+    data-testid="product-edit-drawer"
+    @update:show="updateShow"
+  >
+    <n-drawer-content closable>
+      <template #header>
+        <div class="drawer-header">
+          <div class="drawer-title">编辑商品</div>
+          <div class="drawer-subtitle">补充商品标签、推广素材和投流信息</div>
+        </div>
+      </template>
+
+      <n-form label-placement="top">
+        <n-form-item label="商品标签">
+          <n-select v-model:value="form.productTags" multiple tag filterable :options="tagOptions" placeholder="输入或选择商品标签" />
+        </n-form-item>
+        <n-form-item label="货品标签">
+          <n-select v-model:value="form.goodsTags" multiple tag filterable :options="tagOptions" placeholder="输入或选择货品标签" />
+        </n-form-item>
+        <n-form-item label="推广话术">
+          <n-input v-model:value="form.promotionScript" type="textarea" :rows="3" />
+        </n-form-item>
+        <n-form-item label="卖点">
+          <n-input v-model:value="form.sellingPoints" type="textarea" :rows="3" />
+        </n-form-item>
+        <n-form-item label="投流规则">
+          <n-space vertical>
+            <n-checkbox v-model:checked="form.supportsAds">支持投流</n-checkbox>
+            <n-input v-model:value="form.adsRule" type="textarea" :rows="2" />
+          </n-space>
+        </n-form-item>
+        <n-form-item label="手卡素材">
+          <n-input v-model:value="form.handCardUrl" placeholder="手卡素材 URL" />
+        </n-form-item>
+        <n-form-item label="备注">
+          <n-input v-model:value="form.remark" type="textarea" :rows="2" />
+        </n-form-item>
+      </n-form>
+
+      <template #footer>
       <n-space justify="end">
         <n-button @click="updateShow(false)">取消</n-button>
         <n-button type="primary" :loading="submitting" @click="submit">保存</n-button>
       </n-space>
-    </template>
-  </n-modal>
+      </template>
+    </n-drawer-content>
+  </n-drawer>
 </template>
 
 <script setup lang="ts">
@@ -42,6 +58,7 @@ import { notifyApiFailure } from '../../../utils/requestError'
 import { updateProduct } from '../../../api/productManage'
 import type { ProductManageRow } from '../../../types/productManage'
 import { resolveProductRelationId } from '../product-relation-id'
+import { DRAWER_WIDTH_PX } from '../../../constants/ui'
 
 const props = defineProps<{
   show: boolean
@@ -124,3 +141,23 @@ watch(() => [props.show, props.row], () => {
   if (props.show) resetForm()
 })
 </script>
+
+<style scoped>
+.drawer-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.drawer-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.drawer-subtitle {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+</style>
