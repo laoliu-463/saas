@@ -70,6 +70,7 @@
 ## Harness Engineering
 
 - [V1 必做] [../harness/README.md](../harness/README.md)：AI Agent 固定执行入口、脚本、skills、runbooks、任务和 evidence reports。
+- [V2 必做] [决策/ADR-013-Harness分层文件门禁.md](决策/ADR-013-Harness分层文件门禁.md)：Harness 文件预算、基线感知门禁和报告生命周期的已批准设计。
 - [V1 必做] [../harness/rules/state/snapshots/01-当前项目状态.md](../harness/rules/state/snapshots/01-当前项目状态.md)：当前技术栈、V2 闭环、real-pre 状态和旧文档冲突处理。
 - [V1 必做] [../harness/rules/governance/task-routing.md](../harness/rules/governance/task-routing.md)：任务分流到领域、验证和执行 Scope。
 - [V1 必做] [../harness/rules/governance/forbidden-scope.md](../harness/rules/governance/forbidden-scope.md)：real-pre、Git 密钥和模块边界禁止项。
