@@ -1,36 +1,42 @@
 param(
-    [Alias("Env")]
-    [ValidateSet("test", "real-pre")]
-    [string]$TargetEnv = "real-pre",
-    [ValidateSet("backend", "frontend", "full", "docs", "apifox")]
-    [string]$Scope = "full",
+    [Alias('Env')][ValidateSet('test', 'real-pre')][string]$TargetEnv = 'real-pre',
+    [ValidateSet('backend', 'frontend', 'full', 'docs', 'apifox')][string]$Scope = 'full',
     [object]$UsedAgentDo = $true,
     [object]$DeployRemote = $false,
-    [string]$Notes = "not collected",
+    [string]$Notes = '',
+    [string]$RepoRoot = '',
+    [string]$ReportKey = 'agent-do',
+    [switch]$Actionable,
+    [string]$Owner = '',
+    [string]$NextAction = '',
+    [string]$Verification = '',
     [switch]$DryRun
 )
 
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot '_lib.ps1')
 
-. (Join-Path $PSScriptRoot "_lib.ps1")
+if (-not $Actionable) {
+    Write-Output 'Retro not generated: no actionable Harness improvement was provided; keep the summary inline in evidence.'
+    return
+}
+if ([string]::IsNullOrWhiteSpace($Owner)) { throw 'Owner is required for an actionable standalone retro.' }
+if ([string]::IsNullOrWhiteSpace($NextAction)) { throw 'NextAction is required for an actionable standalone retro.' }
+if ([string]::IsNullOrWhiteSpace($Verification)) { throw 'Verification is required for an actionable standalone retro.' }
 
-$repoRoot = Get-HarnessRepoRoot
+if ([string]::IsNullOrWhiteSpace($RepoRoot)) { $RepoRoot = Get-HarnessRepoRoot }
+$RepoRoot = (Resolve-Path -LiteralPath $RepoRoot).Path
 $usedAgentDoValue = Convert-HarnessBool -Value $UsedAgentDo
 $deployRemoteValue = Convert-HarnessBool -Value $DeployRemote
-$reportsDir = Join-Path $repoRoot "harness\reports"
-if (-not (Test-Path -LiteralPath $reportsDir)) {
-    New-Item -ItemType Directory -Force -Path $reportsDir | Out-Null
-}
-$stamp = Get-Date -Format "yyyyMMdd-HHmmss"
-$reportPath = Join-Path $reportsDir "retro-$stamp.md"
-$now = Get-Date -Format "yyyy-MM-dd HH:mm:ss zzz"
-$branch = Get-HarnessGitValue -Arguments @("branch", "--show-current")
-$commit = Get-HarnessGitValue -Arguments @("rev-parse", "--short", "HEAD")
+$reportPath = New-HarnessReportPath -RepoRoot $RepoRoot -ReportKey "retro-$(ConvertTo-HarnessReportKey -ReportKey $ReportKey)"
+$now = Get-Date -Format 'yyyy-MM-dd HH:mm:ss zzz'
+$branch = (& git -C $RepoRoot branch --show-current 2>$null).Trim()
+$commit = (& git -C $RepoRoot rev-parse --short HEAD 2>$null).Trim()
 
 $content = @"
-# Harness Retro Summary
+# Harness Actionable Retro
 
-## 1. Harness execution
+## Metadata
 
 - Time: $now
 - Environment: $TargetEnv
@@ -40,57 +46,28 @@ $content = @"
 - Used agent-do.ps1: $usedAgentDoValue
 - Deploy remote requested: $deployRemoteValue
 
-## 2. Repeated probing
+## Owner
 
-Not collected automatically. Review command history manually if needed.
+$Owner
 
-## 3. Script failures
+## Next Action
 
-Not collected automatically. Check latest evidence report and terminal output.
+$NextAction
 
-## 4. Verification sufficiency
+## Verification
 
-Scope=$Scope. If Scope=docs, build/restart/business E2E may be intentionally skipped and must not be treated as PASS for code.
+$Verification
 
-## 5. Harness issues exposed
+## Notes
 
 $Notes
-
-## 6. Files to upgrade
-
-- AGENTS.md: update only if execution rules changed.
-- CURRENT_STATE.md: update if project state changed.
-- TASK_ROUTING.md: update if routing gaps appeared.
-- commands: update if script behavior failed or was ambiguous.
-- evals: update if validation could not prove business result.
-- skills: update if debugging workflow was incomplete.
-- runbooks: update if humans/agents cannot execute directly.
-
-## 7. Need new script
-
-Review manually.
-
-## 8. Need new Eval
-
-Review manually.
-
-## 9. Need update AGENTS.md
-
-Review manually.
-
-## 10. Must fix before next task
-
-- Do not claim completion without evidence.
-- Keep HARNESS_CHANGELOG.md current when Harness files change.
 "@
 
-Write-HarnessStage "New retro"
-Write-Host "Retro path: $reportPath"
+Write-HarnessStage 'New actionable retro'
 if ($DryRun) {
-    Write-Host "DRY-RUN retro content:"
     Write-Host $content
 }
 else {
-    Set-Content -LiteralPath $reportPath -Value $content -Encoding UTF8
+    [void](Write-HarnessFileIfChanged -Path $reportPath -Content $content)
 }
-Write-Host "Retro summary generated: $reportPath" -ForegroundColor Green
+Write-Output $reportPath

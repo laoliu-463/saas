@@ -264,6 +264,65 @@ function Get-HarnessGitValue {
     return ""
 }
 
+function ConvertTo-HarnessReportKey {
+    param([Parameter(Mandatory = $true)][string]$ReportKey)
+
+    $key = $ReportKey.Trim().ToLowerInvariant()
+    if ($key.Contains('..') -or $key.Contains('/') -or $key.Contains('\')) {
+        throw "ReportKey must not contain path segments: $ReportKey"
+    }
+    if ($key -notmatch '^[a-z0-9][a-z0-9-]{0,63}$') {
+        throw "ReportKey must use lowercase letters, digits, and hyphens with a maximum length of 64: $ReportKey"
+    }
+    return $key
+}
+
+function Expand-HarnessOwnedFiles {
+    param([AllowEmptyCollection()][string[]]$OwnedFiles = @())
+
+    $expanded = @()
+    foreach ($item in $OwnedFiles) {
+        if ([string]::IsNullOrWhiteSpace($item)) { continue }
+        foreach ($candidate in @($item -split ';')) {
+            $path = $candidate.Trim().Trim('"').Replace('\', '/')
+            if ([string]::IsNullOrWhiteSpace($path)) { continue }
+            if ([System.IO.Path]::IsPathRooted($path) -or $path -match '(^|/)\.\.(/|$)' -or $path -match '[*?]') {
+                throw "Owned file must be a repository-relative literal path: $candidate"
+            }
+            $expanded += $path.TrimStart('./')
+        }
+    }
+    return @($expanded | Sort-Object -Unique)
+}
+
+function Get-HarnessRepoRelativePath {
+    param(
+        [Parameter(Mandatory = $true)][string]$RepoRoot,
+        [Parameter(Mandatory = $true)][string]$Path
+    )
+
+    $root = (Resolve-Path -LiteralPath $RepoRoot).Path.TrimEnd('\')
+    $resolved = (Resolve-Path -LiteralPath $Path).Path
+    $prefix = $root + '\'
+    if (-not $resolved.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Path is outside repository. path=$resolved root=$root"
+    }
+    return $resolved.Substring($prefix.Length).Replace('\', '/')
+}
+
+function Write-HarnessFileIfChanged {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Content
+    )
+
+    $existing = if (Test-Path -LiteralPath $Path) { Get-Content -Raw -LiteralPath $Path } else { $null }
+    if ($existing -eq $Content) { return $false }
+    New-Item -ItemType Directory -Path (Split-Path -Parent $Path) -Force | Out-Null
+    Set-Content -LiteralPath $Path -Value $Content -Encoding UTF8
+    return $true
+}
+
 function Get-HarnessComposeArgs {
     param([Parameter(Mandatory = $true)]$Config)
 
@@ -276,14 +335,17 @@ function Get-HarnessComposeArgs {
 }
 
 function New-HarnessReportPath {
-    param([Parameter(Mandatory = $true)][string]$RepoRoot)
+    param(
+        [Parameter(Mandatory = $true)][string]$RepoRoot,
+        [Parameter(Mandatory = $true)][string]$ReportKey
+    )
 
-    $reportsDir = Join-Path $RepoRoot "harness\reports"
+    $key = ConvertTo-HarnessReportKey -ReportKey $ReportKey
+    $reportsDir = Join-Path $RepoRoot "harness\reports\current"
     if (-not (Test-Path -LiteralPath $reportsDir)) {
         New-Item -ItemType Directory -Force -Path $reportsDir | Out-Null
     }
-    $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
-    return Join-Path $reportsDir "evidence-$stamp.md"
+    return Join-Path $reportsDir "latest-$key.md"
 }
 
 function Convert-HarnessBool {
