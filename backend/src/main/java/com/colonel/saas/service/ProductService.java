@@ -2364,7 +2364,8 @@ public class ProductService implements CopyPromotionSupportPort {
                 pageSize,
                 normalizedMaxPages,
                 normalizedMaxRows,
-                Math.min(normalizedParallelism, statuses.size()));
+                Math.min(normalizedParallelism, statuses.size()),
+                constrainedStatuses);
         if (!preflight.safe()) {
             log.info("Activity product status-partition sync fallback to serial, activityId={}, statuses={}, pageSize={}, maxPages={}, maxRows={}",
                     request.activityId(), statuses, pageSize, normalizedMaxPages, normalizedMaxRows);
@@ -2378,6 +2379,19 @@ public class ProductService implements CopyPromotionSupportPort {
                         progressConsumer);
             }
             return refreshActivitySnapshots(request, normalizedMaxPages, normalizedMaxRows, normalizedPageIntervalMs, progressConsumer);
+        }
+
+        if (preflight.pageMode()) {
+            return refreshActivitySnapshotsByPagePartitions(
+                    request,
+                    statuses,
+                    pageSize,
+                    normalizedMaxPages,
+                    normalizedMaxRows,
+                    normalizedPageIntervalMs,
+                    normalizedParallelism,
+                    progressConsumer,
+                    preflight);
         }
 
         java.util.concurrent.ExecutorService executor =
@@ -2527,6 +2541,213 @@ public class ProductService implements CopyPromotionSupportPort {
                 complete);
     }
 
+    private ActivityProductRefreshResult refreshActivitySnapshotsByPagePartitions(
+            DouyinProductGateway.ActivityProductQueryRequest request,
+            List<Integer> statuses,
+            int pageSize,
+            int maxPages,
+            int maxRows,
+            long pageIntervalMs,
+            int parallelism,
+            java.util.function.Consumer<ActivityProductRefreshProgress> progressConsumer,
+            StatusPartitionPreflight preflight) {
+        java.util.concurrent.atomic.AtomicInteger remainingRows =
+                new java.util.concurrent.atomic.AtomicInteger(maxRows);
+        java.util.concurrent.atomic.AtomicInteger progressPageCounter = new java.util.concurrent.atomic.AtomicInteger();
+        int workerCount = Math.min(Math.max(parallelism, 1), statuses.size());
+        java.util.concurrent.ExecutorService executor =
+                java.util.concurrent.Executors.newFixedThreadPool(workerCount);
+        List<ActivityProductPageFetch> fetchedPages = new ArrayList<>();
+        try {
+            List<java.util.concurrent.CompletableFuture<ActivityProductPageFetch>> futures = new ArrayList<>();
+            for (Integer status : statuses) {
+                DouyinProductGateway.ActivityProductListResult firstPage = preflight.firstPages().get(status);
+                long total = firstPage == null || firstPage.total() == null
+                        ? 0L
+                        : Math.max(firstPage.total(), 0L);
+                int pageCount = Math.min(maxPages, Math.max(1, (int) Math.min(Integer.MAX_VALUE,
+                        (total + pageSize - 1L) / pageSize)));
+                futures.addAll(java.util.stream.IntStream.rangeClosed(1, pageCount)
+                        .mapToObj(pageNo -> java.util.concurrent.CompletableFuture.supplyAsync(
+                                () -> fetchActivityProductPage(
+                                        request,
+                                        status,
+                                        pageSize,
+                                        pageNo,
+                                        remainingRows,
+                                        firstPage),
+                                executor))
+                        .toList());
+            }
+            for (java.util.concurrent.CompletableFuture<ActivityProductPageFetch> future : futures) {
+                fetchedPages.add(future.join());
+            }
+        } catch (java.util.concurrent.CompletionException ex) {
+            Throwable cause = ex.getCause() == null ? ex : ex.getCause();
+            if (cause instanceof DouyinApiException douyinApiException
+                    && isDouyinRateLimited(douyinApiException)) {
+                throw douyinApiException;
+            }
+            log.warn("Activity product page-mode partition failed, fallback to cursor mode, activityId={}, statuses={}, message={}",
+                    request.activityId(), statuses, cause.getMessage());
+            return refreshActivitySnapshotsByStatusesSerial(
+                    request,
+                    statuses,
+                    maxPages,
+                    maxRows,
+                    pageIntervalMs,
+                    progressConsumer);
+        } finally {
+            executor.shutdownNow();
+        }
+
+        Map<Integer, List<ActivityProductPageFetch>> pagesByStatus = fetchedPages.stream()
+                .collect(Collectors.groupingBy(
+                        ActivityProductPageFetch::status,
+                        LinkedHashMap::new,
+                        Collectors.toList()));
+        List<ActivityProductStatusPartitionFetch> partitions = new ArrayList<>();
+        int createdCount = 0;
+        int updatedCount = 0;
+        int skippedCount = 0;
+        int libraryEntryCount = 0;
+        for (Integer status : statuses) {
+            List<ActivityProductPageFetch> statusPages = pagesByStatus.getOrDefault(status, List.of()).stream()
+                    .sorted(java.util.Comparator.comparingInt(ActivityProductPageFetch::pageNo))
+                    .toList();
+            List<List<DouyinProductGateway.ActivityProductItem>> pageItems = pageLibraryRefreshEnabled
+                    ? List.of()
+                    : new ArrayList<>();
+            Set<String> productIds = new LinkedHashSet<>();
+            List<ActivityProductPaginationRunner.PageSummary> pageSamples = new ArrayList<>();
+            int fetchedRows = 0;
+            int duplicateProductIds = 0;
+            boolean hasNext = false;
+            for (ActivityProductPageFetch pageFetch : statusPages) {
+                DouyinProductGateway.ActivityProductListResult page = pageFetch.page();
+                List<DouyinProductGateway.ActivityProductItem> items = page.items() == null ? List.of() : page.items();
+                int duplicateInPage = 0;
+                for (DouyinProductGateway.ActivityProductItem item : items) {
+                    String productId = String.valueOf(item.productId());
+                    if (StringUtils.hasText(productId) && !productIds.add(productId)) {
+                        duplicateProductIds++;
+                        duplicateInPage++;
+                    }
+                }
+                fetchedRows += items.size();
+                hasNext = pageFetch.pageNo() < pageFetch.pageCount();
+                pageSamples.add(new ActivityProductPaginationRunner.PageSummary(
+                        pageFetch.pageNo(),
+                        null,
+                        null,
+                        items.size(),
+                        hasNext,
+                        items.isEmpty() ? null : String.valueOf(items.get(0).productId()),
+                        items.isEmpty() ? null : String.valueOf(items.get(items.size() - 1).productId()),
+                        duplicateInPage,
+                        pageFetch.elapsedMs()));
+                if (pageLibraryRefreshEnabled) {
+                    ActivitySnapshotUpsertStats stats = upsertAndRefreshActivityProductPage(
+                            request.activityId(), items, pageFetch.pageNo());
+                    createdCount += stats.createdCount();
+                    updatedCount += stats.updatedCount();
+                    skippedCount += stats.skippedCount();
+                    libraryEntryCount += stats.libraryEntryCount();
+                } else {
+                    pageItems.add(List.copyOf(items));
+                }
+                notifyActivityProductRefreshProgress(progressConsumer, progressPageCounter.incrementAndGet());
+            }
+            if (!pageLibraryRefreshEnabled) {
+                for (List<DouyinProductGateway.ActivityProductItem> items : pageItems) {
+                    ActivitySnapshotUpsertStats stats = upsertSnapshotsWithStats(request.activityId(), items);
+                    createdCount += stats.createdCount();
+                    updatedCount += stats.updatedCount();
+                    skippedCount += stats.skippedCount();
+                    libraryEntryCount += stats.libraryEntryCount();
+                }
+            }
+            DouyinProductGateway.ActivityProductListResult firstPage = preflight.firstPages().get(status);
+            int expectedRows = firstPage == null || firstPage.total() == null
+                    ? fetchedRows
+                    : Math.max(firstPage.total().intValue(), 0);
+            boolean complete = expectedRows <= fetchedRows && !hasNext;
+            ActivityProductPaginationRunner.StopReason stopReason = complete
+                    ? ActivityProductPaginationRunner.StopReason.DONE_NO_MORE
+                    : remainingRows.get() <= 0
+                    ? ActivityProductPaginationRunner.StopReason.MAX_ROWS_REACHED
+                    : statusPages.size() >= maxPages
+                    ? ActivityProductPaginationRunner.StopReason.MAX_PAGES_REACHED
+                    : ActivityProductPaginationRunner.StopReason.EMPTY_PAGE_WITH_HAS_NEXT;
+            ActivityProductPaginationRunner.Result result = new ActivityProductPaginationRunner.Result(
+                    statusPages.size(),
+                    fetchedRows,
+                    productIds.size(),
+                    duplicateProductIds,
+                    0,
+                    0,
+                    0,
+                    0,
+                    stopReason,
+                    !complete,
+                    complete,
+                    null,
+                    List.copyOf(pageSamples),
+                    List.of(),
+                    Set.copyOf(productIds));
+            if (result.complete()) {
+                int staleDeletedCount = reconcileStatusPartitionSnapshots(
+                        request.activityId(), status, result.productIds());
+                if (staleDeletedCount > 0) {
+                    log.info("Activity product page-mode stale snapshots marked deleted, activityId={}, status={}, staleDeletedCount={}",
+                            request.activityId(), status, staleDeletedCount);
+                }
+            }
+            partitions.add(new ActivityProductStatusPartitionFetch(status, result, pageItems));
+        }
+        ActivityProductPaginationRunner.Result pageResult = aggregateStatusPartitionResults(
+                partitions,
+                createdCount,
+                updatedCount,
+                skippedCount,
+                libraryEntryCount);
+        log.info("Activity product page-mode status-partition sync merged, activityId={}, statuses={}, parallelism={}, pagesFetched={}, fetchedRows={}, complete={}",
+                request.activityId(), statuses, workerCount, pageResult.pagesFetched(), pageResult.fetchedRows(), pageResult.complete());
+        return finishActivityProductRefresh(request, pageResult, pageIntervalMs, false);
+    }
+
+    private ActivityProductPageFetch fetchActivityProductPage(
+            DouyinProductGateway.ActivityProductQueryRequest request,
+            Integer status,
+            int pageSize,
+            int pageNo,
+            java.util.concurrent.atomic.AtomicInteger remainingRows,
+            DouyinProductGateway.ActivityProductListResult firstPage) {
+        if (pageNo > 1 && remainingRows.get() <= 0) {
+            return new ActivityProductPageFetch(status, pageNo, 0, new DouyinProductGateway.ActivityProductListResult(
+                    firstPage != null && firstPage.test(),
+                    firstPage == null ? 0L : firstPage.activityId(),
+                    firstPage == null ? null : firstPage.institutionId(),
+                    firstPage == null ? 0L : firstPage.total(),
+                    null,
+                    List.of()), 0L);
+        }
+        long startedAt = System.nanoTime();
+        DouyinProductGateway.ActivityProductListResult page = pageNo == 1
+                ? firstPage
+                : reserveActivityProductRows(
+                        queryActivityProductsWithRetry(
+                                activityProductPageRequestWithStatus(request, status, pageSize, pageNo),
+                                pageNo - 1),
+                        remainingRows);
+        return new ActivityProductPageFetch(status, pageNo, pageCountFor(firstPage, pageSize), page, elapsedMs(startedAt));
+    }
+
+    private int pageCountFor(DouyinProductGateway.ActivityProductListResult firstPage, int pageSize) {
+        long total = firstPage == null || firstPage.total() == null ? 0L : Math.max(firstPage.total(), 0L);
+        return Math.max(1, (int) Math.min(Integer.MAX_VALUE, (total + pageSize - 1L) / pageSize));
+    }
+
     private List<Integer> normalizeActivityProductStatusPartitions(List<Integer> requestedStatuses) {
         if (requestedStatuses == null || requestedStatuses.isEmpty()) {
             return List.of();
@@ -2544,12 +2765,22 @@ public class ProductService implements CopyPromotionSupportPort {
             DouyinProductGateway.ActivityProductQueryRequest request,
             ActivityProductPaginationRunner.Result pageResult,
             long normalizedPageIntervalMs) {
+        return finishActivityProductRefresh(request, pageResult, normalizedPageIntervalMs, true);
+    }
+
+    private ActivityProductRefreshResult finishActivityProductRefresh(
+            DouyinProductGateway.ActivityProductQueryRequest request,
+            ActivityProductPaginationRunner.Result pageResult,
+            long normalizedPageIntervalMs,
+            boolean reconcileWholeActivity) {
         int createdCount = pageResult.createdCount();
         int updatedCount = pageResult.updatedCount();
         int skippedCount = pageResult.skippedCount();
         int libraryEntryCount = pageResult.libraryEntryCount();
 
-        int staleDeletedCount = reconcileActivitySnapshotsAfterCompleteRefresh(request, pageResult);
+        int staleDeletedCount = reconcileWholeActivity
+                ? reconcileActivitySnapshotsAfterCompleteRefresh(request, pageResult)
+                : 0;
         if (staleDeletedCount > 0) {
             log.info("Activity product stale snapshots marked deleted, activityId={}, status={}, staleDeletedCount={}",
                     request.activityId(), request.status(), staleDeletedCount);
@@ -2620,7 +2851,8 @@ public class ProductService implements CopyPromotionSupportPort {
             int pageSize,
             int maxPages,
             int maxRows,
-            int parallelism) {
+            int parallelism,
+            boolean pageMode) {
         long estimatedRows = 0L;
         long estimatedPages = 0L;
         java.util.concurrent.atomic.AtomicInteger preflightPageCounter = new java.util.concurrent.atomic.AtomicInteger();
@@ -2630,7 +2862,9 @@ public class ProductService implements CopyPromotionSupportPort {
                 java.util.concurrent.Executors.newFixedThreadPool(preflightParallelism);
         List<java.util.concurrent.Future<DouyinProductGateway.ActivityProductListResult>> futures = statuses.stream()
                 .map(status -> executor.submit(() -> queryActivityProductsWithRetry(
-                        activityProductRequestWithStatus(request, status, pageSize, null),
+                        pageMode
+                                ? activityProductPageRequestWithStatus(request, status, pageSize, 1L)
+                                : activityProductRequestWithStatus(request, status, pageSize, null),
                         preflightPageCounter.getAndIncrement())))
                 .toList();
         try {
@@ -2665,6 +2899,11 @@ public class ProductService implements CopyPromotionSupportPort {
                             request.activityId(), status);
                     return StatusPartitionPreflight.unsafe();
                 }
+                if (pageMode && StringUtils.hasText(firstPage.nextCursor())) {
+                    log.info("Activity product page-mode preflight received cursor response, fallback to cursor mode, activityId={}, status={}",
+                            request.activityId(), status);
+                    return new StatusPartitionPreflight(true, Map.copyOf(firstPages), false);
+                }
                 firstPages.put(status, firstPage);
                 long total = Math.max(firstPage.total(), 0L);
                 estimatedRows += total;
@@ -2675,7 +2914,7 @@ public class ProductService implements CopyPromotionSupportPort {
                     return StatusPartitionPreflight.unsafe();
                 }
             }
-            return new StatusPartitionPreflight(true, Map.copyOf(firstPages));
+            return new StatusPartitionPreflight(true, Map.copyOf(firstPages), pageMode);
         } finally {
             executor.shutdownNow();
         }
@@ -2767,10 +3006,11 @@ public class ProductService implements CopyPromotionSupportPort {
 
     private record StatusPartitionPreflight(
             boolean safe,
-            Map<Integer, DouyinProductGateway.ActivityProductListResult> firstPages) {
+            Map<Integer, DouyinProductGateway.ActivityProductListResult> firstPages,
+            boolean pageMode) {
 
         static StatusPartitionPreflight unsafe() {
-            return new StatusPartitionPreflight(false, Map.of());
+            return new StatusPartitionPreflight(false, Map.of(), false);
         }
     }
 
@@ -2792,6 +3032,26 @@ public class ProductService implements CopyPromotionSupportPort {
                 request.retrieveMode(),
                 cursor,
                 null);
+    }
+
+    private DouyinProductGateway.ActivityProductQueryRequest activityProductPageRequestWithStatus(
+            DouyinProductGateway.ActivityProductQueryRequest request,
+            Integer status,
+            int pageSize,
+            long page) {
+        return new DouyinProductGateway.ActivityProductQueryRequest(
+                request.appId(),
+                request.activityId(),
+                request.searchType(),
+                request.sortType(),
+                pageSize,
+                request.cooperationInfo(),
+                request.cooperationType(),
+                request.productInfo(),
+                status,
+                0L,
+                null,
+                page);
     }
 
     private ActivityProductPaginationRunner.Result aggregateStatusPartitionResults(
@@ -2853,6 +3113,14 @@ public class ProductService implements CopyPromotionSupportPort {
             int status,
             ActivityProductPaginationRunner.Result result,
             List<List<DouyinProductGateway.ActivityProductItem>> pages) {
+    }
+
+    private record ActivityProductPageFetch(
+            int status,
+            int pageNo,
+            int pageCount,
+            DouyinProductGateway.ActivityProductListResult page,
+            long elapsedMs) {
     }
 
     private int reconcileActivitySnapshotsAfterCompleteRefresh(

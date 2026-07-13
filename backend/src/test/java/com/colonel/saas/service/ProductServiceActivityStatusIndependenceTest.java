@@ -844,6 +844,56 @@ class ProductServiceActivityStatusIndependenceTest {
     }
 
     @Test
+    void refreshActivitySnapshotsByStatusPartitions_shouldParallelizeBoundedPageModeForPriorityStatuses() {
+        String activityId = "ACT017";
+        List<DouyinProductGateway.ActivityProductQueryRequest> requests =
+                new java.util.concurrent.CopyOnWriteArrayList<>();
+        when(douyinProductGateway.queryActivityProducts(any())).thenAnswer(invocation -> {
+            DouyinProductGateway.ActivityProductQueryRequest request = invocation.getArgument(0);
+            requests.add(request);
+            int status = request.status();
+            long page = request.page() == null ? 1L : request.page();
+            long base = status == 0 ? 10_000L : 20_000L;
+            long offset = (page - 1L) * 2L;
+            return new DouyinProductGateway.ActivityProductListResult(
+                    false,
+                    17L,
+                    30001L,
+                    4L,
+                    null,
+                    List.of(
+                            item(base + offset + 1L, "分页商品" + status + "-" + page + "-1", status, statusText(status)),
+                            item(base + offset + 2L, "分页商品" + status + "-" + page + "-2", status, statusText(status))));
+        });
+        when(operationStateMapper.selectOne(any())).thenReturn(null);
+        when(productBizStatusService.initStateIfAbsent(any(), eq(activityId), any(), any(), any(), any()))
+                .thenAnswer(invocation -> state(activityId, invocation.getArgument(2)));
+        when(snapshotMapper.update(isNull(), any())).thenReturn(0);
+
+        ProductService.ActivityProductRefreshResult result = productService.refreshActivitySnapshotsByStatusPartitions(
+                new DouyinProductGateway.ActivityProductQueryRequest(
+                        null, activityId, 4L, 1L, 2, null, null, null, null, 1L, null, null),
+                List.of(0, 1),
+                100,
+                100,
+                300L,
+                2,
+                null);
+
+        assertThat(result.complete()).isTrue();
+        assertThat(result.fetchedRows()).isEqualTo(8);
+        assertThat(result.distinctProductIds()).isEqualTo(8);
+        assertThat(requests).hasSize(4);
+        assertThat(requests).allMatch(request -> Long.valueOf(0L).equals(request.retrieveMode())
+                && request.cursor() == null
+                && request.page() != null);
+        assertThat(requests).extracting(DouyinProductGateway.ActivityProductQueryRequest::page)
+                .containsExactlyInAnyOrder(1L, 1L, 2L, 2L);
+        verify(productDisplayRuleService).repairLibraryStateForActivity(activityId, false, 10000);
+        verify(productDisplayRuleService).applyForActivityId(activityId);
+    }
+
+    @Test
     void refreshActivitySnapshotsByStatusPartitions_shouldFallbackToSerialWhenUpstreamRejectsStatusFilter() {
         String activityId = "ACT012";
         List<DouyinProductGateway.ActivityProductQueryRequest> requests = new ArrayList<>();

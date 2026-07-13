@@ -22,6 +22,10 @@ CREATE INDEX IF NOT EXISTS idx_ps_library_promoting_join_sort
     ON product_snapshot (activity_id, product_id, sync_time DESC)
     WHERE deleted = 0 AND status = 1;
 
+CREATE INDEX IF NOT EXISTS idx_ps_activity_active_count
+    ON product_snapshot (activity_id)
+    WHERE deleted = 0;
+
 CREATE INDEX IF NOT EXISTS idx_ps_library_product_exact
     ON product_snapshot (product_id)
     WHERE deleted = 0 AND status = 1;
