@@ -16,6 +16,7 @@
 ## Blockers
 
 - real-pre preflight cannot obtain an admin token because the configured admin login returns HTTP 401. Authenticated product-edit business verification remains BLOCKED.
+- The existing backend edit contract has no persisted exclusive-price amount field; this iteration only verifies the frontend `exclusivePriceAmount` input and request payload.
 
 ## Harness observation
 
@@ -24,4 +25,5 @@
 ## Follow-up
 
 - No Harness behavior was changed in this task.
+- Add the backend `exclusivePriceAmount` contract and edit endpoint before claiming amount persistence is complete.
 - Consider adding an explicit changed-file allowlist to `git-push-safe.ps1` before using the non-dry-run agent-do entry in a mixed dirty worktree.

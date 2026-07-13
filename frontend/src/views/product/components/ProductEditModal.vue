@@ -16,7 +16,18 @@
 
       <n-form label-placement="top">
         <n-form-item label="专属价">
-          <n-checkbox :checked="form.exclusivePrice" disabled>支持专属价</n-checkbox>
+          <n-input-number
+            v-model:value="form.exclusivePriceAmount"
+            data-testid="product-edit-exclusive-price"
+            :min="0"
+            :precision="2"
+            :step="0.01"
+            clearable
+            style="width: 100%"
+            placeholder="输入专属价金额"
+          >
+            <template #suffix>元</template>
+          </n-input-number>
         </n-form-item>
         <n-form-item label="专属价说明">
           <n-input
@@ -97,7 +108,7 @@ const message = useMessage()
 const submitting = ref(false)
 
 const form = reactive({
-  exclusivePrice: false,
+  exclusivePriceAmount: null as number | null,
   exclusivePriceRemark: '',
   supportsAds: false,
   rewardRemark: '',
@@ -118,6 +129,14 @@ function firstText(...values: unknown[]): string {
   return values.map(textValue).find(Boolean) || ''
 }
 
+function moneyValue(value: unknown): number | null {
+  if (typeof value === 'boolean' || value === null || value === undefined || value === '') {
+    return null
+  }
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
 function booleanValue(value: unknown): boolean {
   if (typeof value === 'boolean') return value
   if (typeof value === 'string') return value.trim().toLowerCase() === 'true' || value.trim() === '1'
@@ -131,9 +150,8 @@ function relationId() {
 function resetForm() {
   const row = props.row
   const supplement = asRecord(row?.auditSupplement)
-  const productTags = Array.isArray(row?.productTags) ? row.productTags : []
 
-  form.exclusivePrice = booleanValue(supplement.exclusivePrice) || productTags.includes('专属价')
+  form.exclusivePriceAmount = moneyValue(supplement.exclusivePriceAmount)
   form.exclusivePriceRemark = textValue(supplement.exclusivePriceRemark)
   form.supportsAds = booleanValue(supplement.supportsAds)
   form.rewardRemark = textValue(supplement.rewardRemark)
@@ -155,6 +173,7 @@ async function submit() {
   submitting.value = true
   try {
     const res = await updateProduct(id, {
+      exclusivePriceAmount: form.exclusivePriceAmount,
       exclusivePriceRemark: form.exclusivePriceRemark,
       supportsAds: form.supportsAds,
       rewardRemark: form.rewardRemark,
