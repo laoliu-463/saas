@@ -1633,7 +1633,7 @@ public class ProductService implements CopyPromotionSupportPort {
         return toLegacyProduct(snapshot);
     }
 
-    @Transactional(rollbackFor = Exception.class)
+    // P8.5 修复: @Transactional 仅保留在真正做事的方法上 (Spring AOP self-invocation 绕过代理)
     public Product bindActivity(UUID id, UUID activityId) {
         return bindActivity(id, activityId, null, null);
     }
@@ -1650,14 +1650,14 @@ public class ProductService implements CopyPromotionSupportPort {
         return getById(id);
     }
 
-    @Transactional(rollbackFor = Exception.class)
+    // P8.5 修复: @Transactional 仅保留在真正做事的方法上
     public Product assignProduct(UUID id, UUID assigneeId) {
         ProductSnapshot snapshot = getSnapshotById(id);
         assignProduct(snapshot.getActivityId(), snapshot.getProductId(), assigneeId, null, null);
         return getById(id);
     }
 
-    @Transactional(rollbackFor = Exception.class)
+    // P8.5 修复: @Transactional 仅保留在真正做事的方法上
     public Product auditProduct(UUID id, boolean approved, String reason) {
         return auditProduct(id, approved, reason, null);
     }
@@ -2097,7 +2097,7 @@ public class ProductService implements CopyPromotionSupportPort {
                 normalizedProductActivitySyncPageIntervalMs());
     }
 
-    @Transactional(rollbackFor = Exception.class)
+    // P8.5 修复: @Transactional 仅保留在真正做事的方法上 (Spring AOP self-invocation 绕过代理)
     public ActivityProductRefreshResult refreshActivitySnapshots(
             DouyinProductGateway.ActivityProductQueryRequest request,
             int maxPagesPerActivity,
