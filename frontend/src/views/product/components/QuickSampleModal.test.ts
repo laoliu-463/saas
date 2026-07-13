@@ -75,7 +75,7 @@ describe('QuickSampleModal', () => {
     )
   })
 
-  it('renders quick sample form fields', () => {
+  it('renders quick sample form fields', async () => {
     const wrapper = mount(QuickSampleModal, {
       props: {
         show: true,
@@ -99,7 +99,18 @@ describe('QuickSampleModal', () => {
     })
 
     expect(wrapper.find('[data-testid="quick-sample-drawer"]').exists()).toBe(true)
-    expect(wrapper.find('[data-testid="quick-sample-talents"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="quick-sample-drawer"]').attributes('width')).toBe('min(920px, calc(100vw - 24px))')
+    expect(wrapper.find('[data-testid="quick-sample-external-hint"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="quick-sample-step-1"]').text()).toContain('选择合作对象')
+    expect(wrapper.find('[data-testid="quick-sample-step-2"]').text()).toContain('选择商品规格')
+    expect(wrapper.find('[data-testid="quick-sample-cooperation-section"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="quick-sample-spec-section"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="quick-sample-cooperation-section"]').text()).toContain('已选 0/20')
+    expect(wrapper.find('[data-testid="quick-sample-spec-section"]').text()).toContain('测试商品')
+    expect(wrapper.find('[data-testid="quick-sample-spec-section"]').text()).toContain('商品规格')
+    expect(wrapper.find('[data-testid="quick-sample-spec-section"]').text()).toContain('备注')
+    await wrapper.get('[data-testid="quick-sample-remark-edit"]').trigger('click')
+    expect(wrapper.find('[data-testid="quick-sample-remark"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="quick-sample-submit"]').exists()).toBe(true)
   })
 
@@ -140,6 +151,7 @@ describe('QuickSampleModal', () => {
     await flushPromises()
     await wrapper.get('[data-testid="quick-sample-channel"]').trigger('click')
     await flushPromises()
+    await wrapper.get('[data-testid="quick-sample-add-talent"]').trigger('click')
     await wrapper.get('[data-testid="quick-sample-talents"]').trigger('click')
     await wrapper.get('[data-testid="quick-sample-submit"]').trigger('click')
     await flushPromises()
@@ -191,6 +203,7 @@ describe('QuickSampleModal', () => {
     })
     await flushPromises()
 
+    await wrapper.get('[data-testid="quick-sample-add-talent"]').trigger('click')
     await wrapper.get('[data-testid="quick-sample-talents"]').trigger('click')
     await wrapper.get('[data-testid="quick-sample-spec"]').trigger('click')
     await wrapper.get('[data-testid="quick-sample-submit"]').trigger('click')
@@ -248,6 +261,7 @@ describe('QuickSampleModal', () => {
     })
     await flushPromises()
 
+    await wrapper.get('[data-testid="quick-sample-add-talent"]').trigger('click')
     await wrapper.get('[data-testid="quick-sample-talents"]').trigger('click')
     await wrapper.get('[data-testid="quick-sample-submit"]').trigger('click')
     await flushPromises()
@@ -302,6 +316,7 @@ describe('QuickSampleModal', () => {
     })
     await flushPromises()
 
+    await wrapper.get('[data-testid="quick-sample-add-talent"]').trigger('click')
     await wrapper.get('[data-testid="quick-sample-talents"]').trigger('click')
     await wrapper.get('[data-testid="quick-sample-submit"]').trigger('click')
     await flushPromises()

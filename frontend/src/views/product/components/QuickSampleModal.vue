@@ -2,83 +2,189 @@
   <n-drawer
     v-model:show="visible"
     placement="right"
-    :width="520"
+    width="min(920px, calc(100vw - 24px))"
     data-testid="quick-sample-drawer"
     @after-leave="resetForm"
   >
-    <n-drawer-content title="快速寄样" closable :native-scrollbar="false">
-      <div class="quick-sample-drawer__product" data-testid="quick-sample-product-context">
-        <span class="quick-sample-drawer__product-label">当前商品</span>
-        <strong>{{ props.product?.title || '未命名商品' }}</strong>
+    <n-drawer-content :native-scrollbar="false">
+      <div class="quick-sample-drawer">
+        <header class="quick-sample-header">
+          <h2 class="quick-sample-header__title">
+            <span class="quick-sample-header__mark" aria-hidden="true"><i /><i /></span>
+            批量申样
+          </h2>
+          <div class="quick-sample-header__actions">
+            <n-button size="large" data-testid="quick-sample-close" @click="visible = false">关闭</n-button>
+            <n-button
+              type="primary"
+              size="large"
+              :loading="submitting"
+              data-testid="quick-sample-submit"
+              @click="submit"
+            >
+              提交
+            </n-button>
+          </div>
+        </header>
+
+        <main class="quick-sample-body">
+          <div class="quick-sample-steps" aria-label="批量申样步骤">
+            <div class="quick-sample-step quick-sample-step--active" data-testid="quick-sample-step-1">
+              <span class="quick-sample-step__number">1</span>
+              <div>
+                <strong>第一步</strong>
+                <span>选择合作对象</span>
+              </div>
+            </div>
+            <span class="quick-sample-step__line" aria-hidden="true" />
+            <div class="quick-sample-step" data-testid="quick-sample-step-2">
+              <span class="quick-sample-step__number">2</span>
+              <div>
+                <strong>第二步</strong>
+                <span>选择商品规格</span>
+              </div>
+            </div>
+          </div>
+
+          <n-form label-placement="top">
+            <section class="quick-sample-section" data-testid="quick-sample-cooperation-section">
+              <h3 class="quick-sample-section__title">选择合作对象</h3>
+
+              <n-form-item v-if="isAdmin" label="媒介" required>
+                <n-select
+                  v-model:value="form.channelUserId"
+                  :options="channelOptions"
+                  :loading="channelLoading"
+                  filterable
+                  clearable
+                  placeholder="请选择媒介"
+                  data-testid="quick-sample-channel"
+                  @update:value="handleChannelChange"
+                />
+              </n-form-item>
+
+              <div class="quick-sample-talent-action">
+                <n-button
+                  text
+                  type="primary"
+                  size="large"
+                  :disabled="isAdmin && !form.channelUserId"
+                  data-testid="quick-sample-add-talent"
+                  @click="openTalentPicker"
+                >
+                  <template #icon><span class="quick-sample-talent-action__plus">＋</span></template>
+                  添加合作达人
+                </n-button>
+                <span class="quick-sample-talent-action__count">（已选 {{ selectedTalentCount }}/20）</span>
+              </div>
+
+              <div v-if="talentPickerVisible" class="quick-sample-talent-picker">
+                <n-form-item :label="talentFieldLabel" required>
+                  <n-select
+                    v-model:value="form.talentIds"
+                    :options="talentOptions"
+                    :loading="talentLoading"
+                    multiple
+                    :placeholder="talentPlaceholder"
+                    data-testid="quick-sample-talents"
+                  >
+                    <template #empty>
+                      {{ talentEmptyHint }}
+                    </template>
+                  </n-select>
+                </n-form-item>
+              </div>
+            </section>
+
+            <section class="quick-sample-section" data-testid="quick-sample-spec-section">
+              <h3 class="quick-sample-section__title">选择商品规格</h3>
+
+              <div class="quick-sample-product-table" role="table" aria-label="商品规格">
+                <div class="quick-sample-product-table__head" role="row">
+                  <span role="columnheader">商品信息</span>
+                  <span role="columnheader">商品规格</span>
+                  <span role="columnheader">备注</span>
+                </div>
+                <div class="quick-sample-product-table__row" role="row">
+                  <div class="quick-sample-product-info" role="cell">
+                    <div class="quick-sample-product-info__cover">
+                      <img v-if="productCover" :src="productCover" :alt="productTitle" />
+                      <span v-else aria-hidden="true">商品</span>
+                    </div>
+                    <div class="quick-sample-product-info__text">
+                      <strong class="quick-sample-product-info__title" :title="productTitle">
+                        <span class="quick-sample-product-info__douyin" aria-hidden="true">♪</span>
+                        {{ productTitle }}
+                      </strong>
+                      <span>商品ID：{{ productId || '—' }}</span>
+                      <span>店铺：{{ productShopName || '—' }}</span>
+                    </div>
+                  </div>
+
+                  <div class="quick-sample-product-spec" role="cell">
+                    <ProductSpecSelector
+                      v-model="form.skuId"
+                      :skus="skuOptions"
+                      :loading="skuLoading"
+                      value-field="skuId"
+                      placeholder="选择规格"
+                      data-testid="quick-sample-spec"
+                      @select="handleSkuSelect"
+                    />
+                    <n-input-number
+                      v-model:value="form.quantity"
+                      :min="1"
+                      :max="100"
+                      size="small"
+                      data-testid="quick-sample-quantity"
+                      aria-label="寄样数量"
+                    />
+                  </div>
+
+                  <div class="quick-sample-product-remark" role="cell">
+                    <n-button
+                      v-if="!remarkEditing"
+                      text
+                      type="primary"
+                      data-testid="quick-sample-remark-edit"
+                      @click="remarkEditing = true"
+                    >
+                      编辑
+                    </n-button>
+                    <div v-else class="quick-sample-product-remark__editor">
+                      <n-input
+                        v-model:value="form.remark"
+                        type="textarea"
+                        :autosize="{ minRows: 2, maxRows: 4 }"
+                        placeholder="请输入备注"
+                        data-testid="quick-sample-remark"
+                      />
+                      <n-button text size="small" data-testid="quick-sample-remark-done" @click="remarkEditing = false">
+                        完成
+                      </n-button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="quick-sample-section quick-sample-section--optional" data-testid="quick-sample-address-section">
+              <h3 class="quick-sample-section__title">收货信息</h3>
+              <div class="quick-sample-address-grid">
+                <n-form-item label="收货人">
+                  <n-input v-model:value="form.recipientName" placeholder="收货人姓名" data-testid="quick-sample-recipient-name" />
+                </n-form-item>
+                <n-form-item label="联系电话">
+                  <n-input v-model:value="form.recipientPhone" placeholder="收货人手机号" data-testid="quick-sample-recipient-phone" />
+                </n-form-item>
+                <n-form-item label="收货地址">
+                  <n-input v-model:value="form.recipientAddress" type="textarea" rows="2" data-testid="quick-sample-address" />
+                </n-form-item>
+              </div>
+            </section>
+          </n-form>
+        </main>
       </div>
-
-      <n-alert type="info" :bordered="false" data-testid="quick-sample-external-hint">
-        抖店外部寄样暂未接通，已为你创建系统内寄样申请（LOCAL_FALLBACK）。
-      </n-alert>
-
-      <n-form label-placement="top">
-        <n-form-item v-if="isAdmin" label="渠道" required>
-          <n-select
-            v-model:value="form.channelUserId"
-            :options="channelOptions"
-            :loading="channelLoading"
-            filterable
-            clearable
-            placeholder="先选择渠道"
-            data-testid="quick-sample-channel"
-            @update:value="handleChannelChange"
-          />
-        </n-form-item>
-        <n-form-item :label="talentFieldLabel" required>
-          <n-select
-            v-model:value="form.talentIds"
-            :options="talentOptions"
-            :loading="talentLoading"
-            multiple
-            :placeholder="talentPlaceholder"
-            :disabled="isAdmin && !form.channelUserId"
-            data-testid="quick-sample-talents"
-          >
-            <template #empty>
-              {{ talentEmptyHint }}
-            </template>
-          </n-select>
-        </n-form-item>
-        <n-form-item label="商品规格">
-          <ProductSpecSelector
-            v-model="form.skuId"
-            :skus="skuOptions"
-            :loading="skuLoading"
-            value-field="skuId"
-            data-testid="quick-sample-spec"
-            @select="handleSkuSelect"
-          />
-        </n-form-item>
-        <n-form-item label="数量" required>
-          <n-input-number v-model:value="form.quantity" :min="1" :max="100" style="width: 160px" />
-        </n-form-item>
-        <n-form-item label="收货人">
-          <n-input v-model:value="form.recipientName" placeholder="收货人姓名" data-testid="quick-sample-recipient-name" />
-        </n-form-item>
-        <n-form-item label="联系电话">
-          <n-input v-model:value="form.recipientPhone" placeholder="收货人手机号" data-testid="quick-sample-recipient-phone" />
-        </n-form-item>
-        <n-form-item label="收货地址">
-          <n-input v-model:value="form.recipientAddress" type="textarea" rows="2" data-testid="quick-sample-address" />
-        </n-form-item>
-        <n-form-item label="备注">
-          <n-input v-model:value="form.remark" type="textarea" rows="2" data-testid="quick-sample-remark" />
-        </n-form-item>
-      </n-form>
-
-      <template #footer>
-        <n-space justify="end">
-          <n-button @click="visible = false">取消</n-button>
-          <n-button type="primary" :loading="submitting" data-testid="quick-sample-submit" @click="submit">
-            提交申请
-          </n-button>
-        </n-space>
-      </template>
     </n-drawer-content>
   </n-drawer>
 </template>
@@ -101,7 +207,6 @@ import { loadSampleChannelOptions } from '../../sample/sample-user-filter-option
 import ProductSpecSelector from './ProductSpecSelector.vue'
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
-
 const props = defineProps<{ product: any | null }>()
 const emit = defineEmits<{ success: [] }>()
 
@@ -116,9 +221,9 @@ const talentLoadFailed = ref(false)
 const talentOptions = ref<Array<{ label: string; value: string }>>([])
 /** 管理员可以选渠道并查询该渠道的达人，非管理员只能选自己的私海 */
 const isAdmin = computed(() => authStore.isAdmin)
-const talentFieldLabel = computed(() => (isAdmin.value ? '选择达人' : '私海达人'))
+const talentFieldLabel = computed(() => (isAdmin.value ? '合作达人' : '私海达人'))
 const talentPlaceholder = computed(() =>
-  isAdmin.value ? '请先选择渠道，再选择达人' : '选择当前渠道已认领达人'
+  isAdmin.value ? '请选择合作达人' : '选择当前渠道已认领达人'
 )
 const talentEmptyHint = computed(() => {
   if (talentLoading.value) return '加载中…'
@@ -166,8 +271,30 @@ const form = ref({
   remark: ''
 })
 
+const talentPickerVisible = ref(false)
+const remarkEditing = ref(false)
+const selectedTalentCount = computed(() => form.value.talentIds.length)
+const productTitle = computed(() => String(
+  props.product?.title || props.product?.productName || props.product?.name || '未命名商品'
+).trim())
+const productId = computed(() => String(props.product?.productId || '').trim())
+const productShopName = computed(() => String(
+  props.product?.shopName || props.product?.merchantName || ''
+).trim())
+const productCover = computed(() => String(
+  props.product?.cover || props.product?.imageUrl || props.product?.card?.imageUrl || ''
+).trim())
+
 const handleSkuSelect = (sku: any | null) => {
   form.value.specification = String(sku?.skuName || '').trim()
+}
+
+const openTalentPicker = () => {
+  if (isAdmin.value && !form.value.channelUserId) {
+    message.warning('请先选择媒介')
+    return
+  }
+  talentPickerVisible.value = true
 }
 
 const mapTalentSelectOptions = (records: any[]) =>
@@ -228,6 +355,8 @@ const loadTalents = async () => {
 const handleChannelChange = () => {
   // 切换渠道时清空已选达人，重新加载该渠道的达人
   form.value.talentIds = []
+  talentOptions.value = []
+  talentPickerVisible.value = false
   clearAddressFields()
   if (form.value.channelUserId) {
     loadTalents()
@@ -285,6 +414,8 @@ watch(() => form.value.talentIds, async (talentIds) => {
 const resetForm = () => {
   form.value = { channelUserId: '', talentIds: [], skuId: '', specification: '', quantity: 1, recipientName: '', recipientPhone: '', recipientAddress: '', remark: '' }
   skuOptions.value = []
+  talentPickerVisible.value = false
+  remarkEditing.value = false
 }
 
 const submit = async () => {
@@ -347,27 +478,425 @@ const submit = async () => {
 </script>
 
 <style scoped>
-.quick-sample-drawer__product {
+.quick-sample-drawer {
+  min-height: 100%;
+  color: var(--text-color-1, #172033);
+  background: var(--body-color, #fff);
+}
+
+.quick-sample-drawer :deep(.n-drawer-body-content) {
+  padding: 0;
+}
+
+.quick-sample-header {
+  position: sticky;
+  z-index: 10;
+  top: 0;
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-bottom: 16px;
-  padding: 12px 14px;
-  border: 1px solid var(--border-color, #e5e7eb);
-  border-radius: 10px;
-  background: var(--card-color, #f8fafc);
+  align-items: center;
+  justify-content: space-between;
+  min-height: 94px;
+  padding: 16px 32px;
+  border-bottom: 1px solid var(--divider-color, #edf0f3);
+  background: var(--body-color, #fff);
 }
 
-.quick-sample-drawer__product-label {
-  color: var(--text-color-3, #64748b);
-  font-size: 12px;
+.quick-sample-header__title {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 0;
+  color: var(--text-color-1, #172033);
+  font-size: 26px;
+  font-weight: 700;
 }
 
-.quick-sample-drawer__product strong {
+.quick-sample-header__mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.quick-sample-header__mark i {
+  display: block;
+  width: 5px;
+  height: 28px;
+  border-radius: 4px;
+  background: var(--primary-color, #f5222d);
+}
+
+.quick-sample-header__mark i:last-child {
+  height: 18px;
+}
+
+.quick-sample-header__actions {
+  display: flex;
+  gap: 16px;
+}
+
+.quick-sample-header__actions :deep(.n-button) {
+  min-width: 120px;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.quick-sample-body {
+  width: min(1440px, 100%);
+  margin: 0 auto;
+  padding: 34px 32px 56px;
+  box-sizing: border-box;
+}
+
+.quick-sample-steps {
+  display: flex;
+  align-items: center;
+  margin-bottom: 28px;
+}
+
+.quick-sample-step {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 14px;
+  color: var(--text-color-3, #a0a6ad);
+}
+
+.quick-sample-step__number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 62px;
+  height: 62px;
+  border-radius: 50%;
+  color: var(--text-color-3, #8a919a);
+  background: #f0f1f3;
+  font-size: 24px;
+}
+
+.quick-sample-step--active {
+  color: var(--text-color-1, #172033);
+}
+
+.quick-sample-step--active .quick-sample-step__number {
+  color: #fff;
+  background: var(--primary-color, #f5222d);
+}
+
+.quick-sample-step strong,
+.quick-sample-step span:not(.quick-sample-step__number) {
+  display: block;
+  line-height: 1.45;
+}
+
+.quick-sample-step strong {
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.quick-sample-step span:not(.quick-sample-step__number) {
+  margin-top: 4px;
+  font-size: 18px;
+}
+
+.quick-sample-step__line {
+  flex: 1;
+  min-width: 80px;
+  height: 1px;
+  margin: 0 28px;
+  background: var(--divider-color, #e7e9ec);
+}
+
+.quick-sample-section {
+  margin-bottom: 28px;
+  padding: 22px 20px 24px;
+  border: 1px solid var(--border-color, #e4e7eb);
+  border-radius: 18px;
+  background: var(--card-color, #fff);
+  box-shadow: 0 2px 10px rgb(24 32 45 / 3%);
+}
+
+.quick-sample-section__title {
+  margin: 0 0 22px;
+  color: var(--text-color-1, #172033);
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.quick-sample-section :deep(.n-form-item) {
+  margin-bottom: 18px;
+}
+
+.quick-sample-section :deep(.n-form-item-label) {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.quick-sample-section :deep(.n-base-selection) {
+  min-height: 44px;
+}
+
+.quick-sample-talent-action {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.quick-sample-talent-action :deep(.n-button) {
+  color: var(--primary-color, #f5222d);
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.quick-sample-talent-action__plus {
+  font-size: 26px;
+  line-height: 1;
+}
+
+.quick-sample-talent-action__count {
+  color: var(--text-color-2, #606873);
+  font-size: 18px;
+}
+
+.quick-sample-talent-picker {
+  max-width: 620px;
+  margin-top: 12px;
+  padding: 16px;
+  border-radius: 12px;
+  background: var(--hover-color, #f8f9fb);
+}
+
+.quick-sample-product-table {
   overflow: hidden;
-  color: var(--text-color-1, #1e293b);
+  border: 1px solid var(--border-color, #e6e9ed);
+  border-radius: 14px;
+}
+
+.quick-sample-product-table__head,
+.quick-sample-product-table__row {
+  display: grid;
+  grid-template-columns: minmax(360px, 1.6fr) minmax(280px, 1fr) minmax(180px, .55fr);
+  align-items: stretch;
+}
+
+.quick-sample-product-table__head {
+  min-height: 70px;
+  align-items: center;
+  padding: 0 16px;
+  color: var(--text-color-1, #172033);
+  background: var(--hover-color, #fafafa);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.quick-sample-product-table__row {
+  min-height: 164px;
+  padding: 16px;
+  border-top: 1px solid var(--divider-color, #edf0f3);
+}
+
+.quick-sample-product-table__head > span + span,
+.quick-sample-product-table__row > div + div {
+  padding-left: 18px;
+  border-left: 1px solid var(--divider-color, #edf0f3);
+}
+
+.quick-sample-product-info {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  min-width: 0;
+}
+
+.quick-sample-product-info__cover {
+  display: flex;
+  flex: 0 0 128px;
+  align-items: center;
+  justify-content: center;
+  width: 128px;
+  height: 128px;
+  overflow: hidden;
+  border: 1px solid var(--border-color, #e3e6ea);
+  border-radius: 4px;
+  color: var(--text-color-3, #9ba1a8);
+  background: var(--hover-color, #f7f8fa);
   font-size: 14px;
+}
+
+.quick-sample-product-info__cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.quick-sample-product-info__text {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--text-color-2, #69717d);
+  font-size: 17px;
+}
+
+.quick-sample-product-info__title {
+  overflow: hidden;
+  color: var(--primary-color, #f5222d);
+  font-size: 20px;
+  font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.quick-sample-product-info__douyin {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-right: 5px;
+  border-radius: 5px;
+  color: #fff;
+  background: #101217;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.quick-sample-product-spec,
+.quick-sample-product-remark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.quick-sample-product-spec :deep(.n-select) {
+  flex: 1;
+  min-width: 0;
+}
+
+.quick-sample-product-spec :deep(.n-base-selection__placeholder) {
+  color: var(--primary-color, #f5222d);
+  font-size: 18px;
+}
+
+.quick-sample-product-remark {
+  align-items: flex-start;
+  padding-top: 22px;
+}
+
+.quick-sample-product-remark > :deep(.n-button) {
+  color: var(--primary-color, #f5222d);
+  font-size: 18px;
+}
+
+.quick-sample-product-remark__editor {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.quick-sample-product-remark__editor :deep(.n-button) {
+  color: var(--primary-color, #f5222d);
+}
+
+.quick-sample-section--optional {
+  padding-bottom: 4px;
+}
+
+.quick-sample-address-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+}
+
+@media (max-width: 900px) {
+  .quick-sample-header {
+    min-height: 76px;
+    padding: 12px 18px;
+  }
+
+  .quick-sample-header__title {
+    gap: 9px;
+    font-size: 20px;
+  }
+
+  .quick-sample-header__actions {
+    gap: 8px;
+  }
+
+  .quick-sample-header__actions :deep(.n-button) {
+    min-width: 78px;
+    font-size: 15px;
+  }
+
+  .quick-sample-body {
+    padding: 22px 16px 36px;
+  }
+
+  .quick-sample-step__number {
+    width: 44px;
+    height: 44px;
+    font-size: 18px;
+  }
+
+  .quick-sample-step strong {
+    font-size: 16px;
+  }
+
+  .quick-sample-step span:not(.quick-sample-step__number) {
+    font-size: 13px;
+  }
+
+  .quick-sample-step__line {
+    min-width: 20px;
+    margin: 0 10px;
+  }
+
+  .quick-sample-section {
+    padding: 18px 14px;
+    border-radius: 12px;
+  }
+
+  .quick-sample-section__title {
+    font-size: 20px;
+  }
+
+  .quick-sample-product-table__head {
+    display: none;
+  }
+
+  .quick-sample-product-table__row {
+    display: block;
+    padding: 14px;
+  }
+
+  .quick-sample-product-table__row > div + div {
+    margin-top: 16px;
+    padding: 16px 0 0;
+    border-top: 1px solid var(--divider-color, #edf0f3);
+    border-left: 0;
+  }
+
+  .quick-sample-product-info__cover {
+    flex-basis: 88px;
+    width: 88px;
+    height: 88px;
+  }
+
+  .quick-sample-product-info__title {
+    font-size: 16px;
+  }
+
+  .quick-sample-product-info__text {
+    font-size: 14px;
+  }
+
+  .quick-sample-address-grid {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
 }
 </style>
