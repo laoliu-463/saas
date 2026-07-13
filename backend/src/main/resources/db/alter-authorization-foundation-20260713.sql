@@ -16,9 +16,13 @@ CREATE TABLE IF NOT EXISTS sys_permission (
     update_time         TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     create_by           UUID,
     update_by           UUID,
-    remark              VARCHAR(255),
+    remark              VARCHAR(500),
     CONSTRAINT ck_sys_permission_status CHECK (status IN (0, 1)),
     CONSTRAINT ck_sys_permission_deleted CHECK (deleted IN (0, 1)),
+    CONSTRAINT ck_sys_permission_resource_code
+        CHECK (resource_code ~ '^[a-z][a-z0-9-]{0,62}$'),
+    CONSTRAINT ck_sys_permission_action_code
+        CHECK (action_code ~ '^[a-z][a-z0-9-]{0,62}$'),
     CONSTRAINT ck_sys_permission_code_parts CHECK (
         permission_code = resource_code || ':' || action_code
         AND permission_code = LOWER(permission_code)
@@ -36,9 +40,9 @@ CREATE TABLE IF NOT EXISTS sys_role_permission (
     create_time   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     create_by     UUID,
     CONSTRAINT fk_sys_role_permission_role
-        FOREIGN KEY (role_id) REFERENCES sys_role(id) ON DELETE CASCADE,
+        FOREIGN KEY (role_id) REFERENCES sys_role(id),
     CONSTRAINT fk_sys_role_permission_permission
-        FOREIGN KEY (permission_id) REFERENCES sys_permission(id) ON DELETE CASCADE,
+        FOREIGN KEY (permission_id) REFERENCES sys_permission(id),
     PRIMARY KEY (role_id, permission_id)
 );
 
@@ -54,7 +58,7 @@ CREATE TABLE IF NOT EXISTS sys_role_domain_scope (
     create_by   UUID,
     update_by   UUID,
     CONSTRAINT fk_sys_role_domain_scope_role
-        FOREIGN KEY (role_id) REFERENCES sys_role(id) ON DELETE CASCADE,
+        FOREIGN KEY (role_id) REFERENCES sys_role(id),
     CONSTRAINT ck_sys_role_domain_scope_scope
         CHECK (scope_code IN ('SELF', 'GROUP', 'ALL')),
     PRIMARY KEY (role_id, domain_code)
@@ -67,7 +71,7 @@ CREATE TABLE IF NOT EXISTS sys_authz_change_log (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     change_action   VARCHAR(64) NOT NULL,
     target_type     VARCHAR(64) NOT NULL,
-    target_id       VARCHAR(128) NOT NULL,
+    target_id       UUID NOT NULL,
     actor_user_id   UUID,
     before_snapshot JSONB,
     after_snapshot  JSONB,
