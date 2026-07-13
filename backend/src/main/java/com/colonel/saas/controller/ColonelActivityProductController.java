@@ -402,30 +402,6 @@ public class ColonelActivityProductController extends BaseController {
     }
 
     /**
-     * 将活动商品加入共享商品库。
-     * <p>
-     * 将当前选品结果沉淀到共享商品库，供机构内全员查看和复用。
-     * </p>
-     *
-     * @param activityId 团长活动 ID
-     * @param productId  商品 ID
-     * @param userId     当前操作用户 ID
-     * @param deptId     当前操作用户所属部门 ID
-     * @return 操作结果 Map，包含入库后的商品信息
-     */
-    @Operation(summary = "加入商品库", description = "将当前选品结果沉淀到共享商品库，供全员查看。")
-    @RequireRoles({RoleCodes.BIZ_STAFF})
-    @PostMapping("/{productId}/library-entry")
-    public ApiResult<Map<String, Object>> putIntoLibrary(
-            @Parameter(description = "团长活动 ID。") @PathVariable String activityId,
-            @Parameter(description = "商品 ID。") @PathVariable String productId,
-            @RequestAttribute(value = "userId", required = false) UUID userId,
-            @RequestAttribute(value = "deptId", required = false) UUID deptId) {
-        // 委托 ProductService 将商品加入共享商品库
-        return ok(productService.putIntoLibrary(activityId, productId, userId, deptId));
-    }
-
-    /**
      * 批量分配招商组长。
      * <p>
      * 批量为多个活动商品指定同一个招商组长。采用部分失败容错机制：
@@ -458,32 +434,6 @@ public class ColonelActivityProductController extends BaseController {
         // Step 2: 批量执行分配，通过 runProductBatch 实现部分失败容错
         return ok(runProductBatch(request.getProductIds(), productId ->
                 productService.assignProduct(activityId, productId, request.getAssigneeId(), userId, deptId)));
-    }
-
-    /**
-     * 批量加入共享商品库。
-     * <p>
-     * 批量将多个活动商品沉淀到共享商品库，供机构内全员复用。
-     * 采用部分失败容错机制，单个商品入库失败不影响其他商品。
-     * </p>
-     *
-     * @param activityId 团长活动 ID
-     * @param request    批量商品 ID 请求体
-     * @param userId     当前操作用户 ID
-     * @param deptId     当前操作用户所属部门 ID
-     * @return 批量操作结果，包含 total/succeeded/failed 计数及每个商品的执行详情
-     */
-    @Operation(summary = "批量加入商品库", description = "批量将活动商品沉淀为共享商品库展示资产；单个商品失败不影响其他商品。")
-    @RequireRoles({RoleCodes.BIZ_STAFF})
-    @PostMapping("/batch-library-entry")
-    public ApiResult<Map<String, Object>> batchPutIntoLibrary(
-            @Parameter(description = "团长活动 ID。") @PathVariable String activityId,
-            @Valid @RequestBody BatchProductIdsRequest request,
-            @RequestAttribute(value = "userId", required = false) UUID userId,
-            @RequestAttribute(value = "deptId", required = false) UUID deptId) {
-        // 批量执行入库操作，通过 runProductBatch 实现部分失败容错
-        return ok(runProductBatch(request.getProductIds(), productId ->
-                productService.putIntoLibrary(activityId, productId, userId, deptId)));
     }
 
     /**
