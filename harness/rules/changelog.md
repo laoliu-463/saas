@@ -8,6 +8,7 @@
 ## 最近版本摘要
 
 ### v0.7.7 — 2026-07-13
+- 实现 commit：`7ca6d5ff`；证据：`reports/current/latest-evidence-20260713-harness-redundancy-cleanup.md`。
 - 删除 26 个已被主源替代、未接入运行时或零引用的 Harness/.claude 文件，删除依据见 `manifests/harness-redundancy-cleanup-20260713.json`。
 - 结构、保留和报告政策各收敛为 `rules/` 根目录单一主源；环境说明收敛为 `rules/environment/envs/` 下 5 个入口。
 - 当前文档和模板统一使用 `harness/rules/`、`harness/scripts/commands/` 路径；历史 ADR 中明确描述旧记录的路径保持不变。
