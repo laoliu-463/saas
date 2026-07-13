@@ -18,7 +18,7 @@
 4. 后端相关修改走：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\agent-do.ps1 -Env real-pre -Scope backend -Message "fix: database change"
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\agent-do.ps1 -Env real-pre -Scope backend -ReportKey task-key -OwnedFiles 'path1;path2' -Message "fix: database change"
 ```
 
 ## 验证标准

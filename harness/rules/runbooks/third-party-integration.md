@@ -47,4 +47,4 @@ npm run e2e:real-pre:p0:preflight
 - `runtime/qa/out/real-pre-*`
 - 后端日志摘要。
 - `docs/验收/验收证据索引.md`；Harness 侧只在 `harness/rules/state/snapshots/04-real-pre证据索引.md` 保留执行摘要。
-- `harness/reports/evidence-*.md`。
+- `harness/reports/current/latest-<report-key>.md`。

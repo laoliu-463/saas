@@ -69,7 +69,8 @@ if (-not $NoReport) {
     $reportPath = Join-Path $reportDir 'latest-harness-limits-check.md'
     $existing = if (Test-Path -LiteralPath $reportPath) { Get-Content -Raw -LiteralPath $reportPath } else { '' }
     if ($existing -ne $content) {
-        Set-Content -LiteralPath $reportPath -Value $content -Encoding UTF8
+        $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+        [System.IO.File]::WriteAllText($reportPath, $content, $utf8NoBom)
     }
 }
 

@@ -114,7 +114,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\r
 ## 8. 关联文档
 
 - `harness/rules/state/debts/HARNESS_DEBT.md`
-- `harness/feedback/garbage-collection-policy.md`
+- `harness/templates/garbage-collection-policy.md`
 - `harness/rules/skills/workflow/post-task-gc.md`
 - `harness/rules/changelog.md`
 - `harness/rules/state/snapshots/01-当前项目状态.md`

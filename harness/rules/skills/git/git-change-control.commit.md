@@ -27,7 +27,7 @@ git diff --cached --check
 - 对应 Scope 测试通过
 - `git diff --cached --check` 通过
 - commit message 符合规范
-- evidence report 已生成
+- 稳定 evidence 已生成并绑定本任务 owned set
 - staged 文件清单已写入报告
 
 禁止 commit：包含 unknown / 跨 Scope / 环境敏感 / 临时文件。
@@ -44,11 +44,13 @@ git branch --show-current
 git log -1 --oneline
 ```
 
-双 Remote 推送（Gitee + GitHub）：
+推送当前 upstream；无 upstream 时设置到 `origin`：
 ```powershell
-git push gitee feature/<branch>
-git push origin feature/<branch>
+git push
+git push --set-upstream origin <current-branch>
 ```
+
+`gitee` 为只读镜像，不作为自动推送目标。优先使用 `git-push-safe.ps1 -OwnedFiles <paths>` 完成 scoped staging、commit 和 push。
 
 每次 push 必须记录：commit hash、remote、branch、结果、时间戳。
 

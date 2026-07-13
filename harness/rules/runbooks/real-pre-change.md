@@ -18,7 +18,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\s
 ## 构建
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\agent-do.ps1 -Env real-pre -Scope full -Message "说明本次 real-pre 修改"
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\agent-do.ps1 -Env real-pre -Scope full -ReportKey task-key -OwnedFiles 'path1;path2' -Message "说明本次 real-pre 修改"
 ```
 
 若只改后端或前端，将 `-Scope` 改为 `backend` 或 `frontend`。
@@ -48,11 +48,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\a
 
 ## 证据报告
 
-检查 `harness/reports/evidence-*.md`，未采集项必须保留“未采集 / 阻塞原因”。
+检查 `harness/reports/current/latest-<report-key>.md`，未采集项必须保留“未采集 / 阻塞原因”。
 
 ## Retro summary
 
-执行或确认 retro 已生成。若本次暴露 Harness 问题，更新对应 Harness 文件并追加 `harness/rules/changelog.md`。
+确认 evidence 已写入内联 retro 结论。只有存在责任人、下一动作和验证方式时才生成独立 retro；Harness 行为变化时追加 `harness/rules/changelog.md`。
 
 ## 失败回滚
 

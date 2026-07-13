@@ -40,4 +40,4 @@
 
 ## 失败后必须写入 feedback
 
-- 权限规则冲突、数据范围缺口、越权风险写入 `harness/feedback/` 或 evidence report。
+- 权限规则冲突、数据范围缺口、越权风险写入稳定 evidence；需持续跟踪时登记 `KNOWN_ISSUES.md`。

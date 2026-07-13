@@ -6,8 +6,9 @@
 任务完成
 -> content retirement plan
 -> evidence report
--> retro summary
+-> inline retro conclusion
 -> 判断 Harness 是否暴露问题
+-> 有可执行改进时生成 standalone retro
 -> 如果暴露问题，升级对应 Harness 文件
 -> 更新 HARNESS_CHANGELOG.md
 -> 更新 CURRENT_STATE.md
@@ -21,8 +22,8 @@
 | Scope | 明确本轮是 `docs`、`backend`、`frontend` 还是 `full` |
 | 构建 / 重启 / 健康 | 代码修改必须执行；`Scope=docs` 必须明确跳过原因 |
 | 业务验证 | 必须有脚本、API、SQL、日志或截图证据；样本不足不能写 PASS |
-| Evidence | 生成 `harness/reports/evidence-*.md` |
-| Retro | 生成 `harness/reports/retro-*.md` |
+| Evidence | 覆盖 `harness/reports/current/latest-<report-key>.md` |
+| Retro | 默认内联；仅有责任人、动作和验证方式时独立生成 |
 | 状态更新 | 项目状态变化时更新 `CURRENT_STATE.md` 或 `state/*.md` |
 | 旧内容维护 | 运行 `retire-content.ps1 -Action Plan` 或说明本轮无需 GC |
 

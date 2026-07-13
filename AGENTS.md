@@ -39,7 +39,7 @@ V2 核心闭环以三条主链为准：
 8. 禁止口头说“建议重启”，必须实际执行可用脚本。
 9. 禁止把未验证项写成已完成。
 10. 禁止把 `BLOCKED`、`PENDING`、`PARTIAL` 写成 `PASS`。
-11. 每次任务后必须生成 retro summary，或明确说明本次无需 Harness 升级。
+11. 每次任务的 evidence 必须包含 retro 结论；只有存在可执行改进时才生成独立 retro。
 
 文档 / Harness 变更可使用 `Scope=docs`，此时跳过构建、重启和健康检查，但仍必须执行安全检查、生成 evidence report，并说明未执行项。
 
@@ -78,13 +78,13 @@ V2 核心闭环以三条主链为准：
 默认执行入口：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\agent-do.ps1 -Env real-pre -Scope full -Message "说明本次修改"
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\agent-do.ps1 -Env real-pre -Scope full -ReportKey task-key -OwnedFiles 'path1;path2' -Message "说明本次修改"
 ```
 
 文档 / Harness 变更：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\agent-do.ps1 -Env real-pre -Scope docs -Message "docs: update harness"
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\agent-do.ps1 -Env real-pre -Scope docs -ReportKey task-key -OwnedFiles 'path1;path2' -Message "docs: update harness"
 ```
 
 其他任务的 Scope 与必读文档见 `harness/INDEX.md`，后续 Agent 不允许临时发明构建、重启、部署流程。若确需绕过，必须说明原因和风险。
@@ -92,7 +92,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\a
 用户明确要求远端部署时才允许增加：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\agent-do.ps1 -Env real-pre -Scope full -DeployRemote true -Message "deploy: real-pre update"
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\agent-do.ps1 -Env real-pre -Scope full -ReportKey task-key -OwnedFiles 'path1;path2' -DeployRemote true -Message "deploy: real-pre update"
 ```
 
 ## 6. 禁止事项
@@ -150,7 +150,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\a
 
 ## 7. Definition of Done
 
-任务同时满足以下全部条件，才允许声明完成：代码或文档已修改；构建通过（或 `Scope=docs` 明确跳过）；对应 Docker 容器已重启（或 `Scope=docs` 明确不需要）；健康检查通过（或明确说明阻塞原因）；相关业务验证通过（或明确说明 `BLOCKED` / `PENDING` / `FAIL` 证据）；evidence report 已生成；retro summary 已生成（或明确说明本次无需 Harness 升级）；Git commit 已生成并 push 到当前分支上游（或用户明确要求本轮不提交 / 不推送）；如要求远端部署则已完成；剩余风险已列出。
+任务同时满足以下全部条件，才允许声明完成：代码或文档已修改；构建通过（或 `Scope=docs` 明确跳过）；对应 Docker 容器已重启（或 `Scope=docs` 明确不需要）；健康检查通过（或明确说明阻塞原因）；相关业务验证通过（或明确说明 `BLOCKED` / `PENDING` / `FAIL` 证据）；稳定 evidence 已生成并含 retro 结论；Git commit 已生成并 push 到当前分支上游（或用户明确要求本轮不提交 / 不推送）；如要求远端部署则已完成；剩余风险已列出。
 
 没有完成这些步骤，不允许声明任务完成。
 
@@ -159,9 +159,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\a
 证据报告统一生成到：
 
 ```text
-harness/reports/latest-evidence-YYYYMMDD.md
+harness/reports/current/latest-<report-key>.md
 ```
-(注意：必须遵循每目录不超过 50 个文件的限制，及时合并或归档旧报告至 `harness/archive/`)
+
+`ReportKey` 必须稳定且不含路径；`OwnedFiles` 必须逐项列出当前任务拥有的仓库相对路径，多个路径用分号分隔。报告覆盖同主题当前摘要，不再在 `reports/` 根生成时间戳副本。Retro 默认内联 evidence；只有存在责任人、改进动作和验证方式时才单独生成。
 
 报告必须包含（脚本能采集多少写多少，采集不到必须写"未采集 / 阻塞原因"，不得编造）：
 
@@ -174,16 +175,16 @@ harness/reports/latest-evidence-YYYYMMDD.md
 - `.claude/`：保留为 Claude 工作台和历史 Agent 工作流文档。
 - `harness/`：统一执行系统与工程化基座，负责门禁规则、任务卡、报告、自动化脚本和资产清理清单。
 
-## 10. Harness 核心约束与结构 (50/50/200 规则)
+## 10. Harness 分层文件门禁
 
-所有 Agent 介入本工程时，对 `harness/` 目录进行任何文件创建与修改，**必须绝对服从以下硬性约束**，并在任务结束时通过合规自检：
+所有 Agent 修改 `harness/` 时必须遵守 ADR-013 的分层、基线感知门禁：
 
 1. **结构限制**：`harness/` 当前白名单为 9 个一级目录：`rules/`、`tasks/`、`probes/`、`reports/`、`scripts/`、`manifests/`、`archive/`、`templates/`、`engineering/`。
-2. **数量限制**：任何一级目录或子目录，其**直接文件数量不得超过 50 个**，其**直接子目录数量不得超过 50 个**。
-3. **行数限制**：除脚本文件（.ps1, .sh, .py, .js, .ts 等）外，所有文本文件（如 .md, .txt, .json）**内容不得超过 200 行**。
-4. **清理职责**：超限时必须主动合并、提炼摘要或归档至 `archive/`（打包旧数据）。任务结束后必须复查，且每周或每个迭代开始前定期执行清理复查。禁止在 `reports/` 等日常目录内堆积历史报告。
-5. **合规自检**：在声明修改完成前，推荐执行以下脚本进行检验：
-   `powershell -ExecutionPolicy Bypass -File harness/scripts/check-harness-limits.ps1`
+2. **活跃知识预算**：直接文件和子目录 40 预警、50 硬上限；非脚本文本 160 行预警、200 行硬上限。脚本由测试、语法检查和职责边界约束。
+3. **报告预算**：`reports/` 根目标不超过 20 个直接文件；当前摘要写入 `reports/current/latest-<topic>.md`，原始输出写入 `runtime/qa/out/<run-id>/`。
+4. **基线语义**：本地以 `HEAD` 为基线。历史超限保持或减少不阻断当前任务，新增或恶化必须失败；报告同时区分 `TASK_GATE` 和 `REPOSITORY_HEALTH`。
+5. **归档职责**：归档或删除必须有 manifest；archive 分桶继续遵守 50/50。历史不可变证据原样迁移可豁免行数追溯，新摘要仍不得超过 200 行。
+6. **合规自检**：声明完成前执行 `powershell -ExecutionPolicy Bypass -File harness/scripts/check-harness-limits.ps1 -BaselineRef HEAD`。
 
 如果发现旧文档与当前事实冲突，写入 `docs/决策/ADR-010-仓库阶段口径拍板为V2.md`（阶段口径）或 `docs/决策/ADR-002-V1范围优先级.md`（范围标记），不要自行拍板。
 

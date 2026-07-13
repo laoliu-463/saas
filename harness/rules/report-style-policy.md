@@ -1,6 +1,6 @@
 # Harness 报告风格政策
 
-> 适用于当前 evidence、retro、GC、审计和 Session Exit 报告。单文件不得超过 200 行。
+> 适用于当前 evidence、可执行 retro、GC、审计和 Session Exit 报告。活跃报告 160 行预警、200 行硬上限。
 
 ## 必须内容
 
@@ -29,10 +29,12 @@
 
 ## 命名与位置
 
-- 当前摘要：`reports/latest-<topic>.md`。
+- 当前摘要：`reports/current/latest-<topic>.md`，同主题覆盖更新。
+- 既有固定工具的根目录 `latest-*` 可兼容保留，但不得生成时间戳副本或按运行次数增长。
 - 任务原始证据：`runtime/qa/out/<run-id>/`。
 - 历史报告：`archive/<date>/<topic>/`。
 - 禁止在 `reports/` 根长期保留大量时间戳 evidence、retro 和 content-retire。
+- Retro 默认内联 evidence；独立 retro 必须写明责任人、下一动作和验证方式。
 
 ## 反模式
 

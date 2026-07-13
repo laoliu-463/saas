@@ -21,9 +21,9 @@
 - Create: `harness/manifests/reports-root-retirement-20260713.json` — 75 个已跟踪时间戳报告清单。
 - Modify: `AGENTS.md`、`harness/README.md`、`harness/INDEX.md`、`harness/scripts/README.md` 和相关 canonical rules/templates — 新入口和状态口径。
 
-### Task 1: 用测试锁定基线感知门禁
+### Task 1: 用测试锁定基线感知门禁（已完成）
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 在 `check-harness-limits.Tests.ps1` 创建临时 Git 仓库，复用以下调用约定：
 
@@ -37,13 +37,13 @@ $resultText | Should Match $expectedStatus
 
 覆盖：`89→89` 为 task PASS/repository PARTIAL、`89→90` FAIL、`89→88` task PASS、40/50 文件预警/上限、160/200 行预警/上限、新根时间戳报告 FAIL、脚本超过 200 行 PASS、额外一级目录 FAIL。
 
-- [ ] **Step 2: 运行红测**
+- [x] **Step 2: 运行红测**
 
 Run: `powershell -NoProfile -Command "Invoke-Pester -Script harness/scripts/tests/check-harness-limits.Tests.ps1 -EnableExit"`
 
 Expected: FAIL，原因是 checker 尚无 `RepoRoot/BaselineRef/OwnedFiles/NoReport` 参数和分层状态。
 
-- [ ] **Step 3: 实现最小检查模块和 CLI**
+- [x] **Step 3: 实现最小检查模块和 CLI**
 
 模块导出以下稳定接口：
 
@@ -58,22 +58,22 @@ Export-ModuleMember -Function @(
 
 结果对象固定包含 `TaskGate`、`RepositoryHealth`、`Violations`、`Warnings`、`HistoricalDebt`。任务新增/恶化硬违规退出 1；仅历史债务退出 0，并将报告稳定写入 `harness/reports/current/latest-harness-limits-check.md`。
 
-- [ ] **Step 4: 运行绿测和语法检查**
+- [x] **Step 4: 运行绿测和语法检查**
 
 Run: `powershell -NoProfile -Command "Invoke-Pester -Script harness/scripts/tests/check-harness-limits.Tests.ps1 -EnableExit"`
 
 Expected: 全部 PASS。随后用 PowerShell Parser 检查模块、checker，Expected: 0 parse errors。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```powershell
 git add -- harness/scripts/modules/HarnessFileGovernance.psm1 harness/scripts/check-harness-limits.ps1 harness/scripts/tests/check-harness-limits.Tests.ps1
 git commit -m "feat(harness): enforce baseline-aware file budgets"
 ```
 
-### Task 2: 稳定报告路径和显式文件所有权
+### Task 2: 稳定报告路径和显式文件所有权（已完成）
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 `report-lifecycle.Tests.ps1` 必须验证：
 
@@ -88,34 +88,34 @@ $dryRun = & powershell -NoProfile -File $gitPush -Message 'test: owned files' `
 
 另测空 `OwnedFiles` 在有变更时失败、预先暂存非 owned 文件时失败、report key 路径穿越被拒绝。
 
-- [ ] **Step 2: 运行红测**
+- [x] **Step 2: 运行红测**
 
 Run: `powershell -NoProfile -Command "Invoke-Pester -Script harness/scripts/tests/report-lifecycle.Tests.ps1 -EnableExit"`
 
 Expected: FAIL，原因是当前 report path 使用时间戳且 git-push-safe 接管全工作区。
 
-- [ ] **Step 3: 实现稳定路径和 scoped staging**
+- [x] **Step 3: 实现稳定路径和 scoped staging**
 
 `_lib.ps1` 新增 `ConvertTo-HarnessReportKey`、`Resolve-HarnessOwnedFiles`、稳定 `New-HarnessReportPath`。`git-push-safe.ps1` 接收 `[string[]]$OwnedFiles`，只扫描、暂存、校验并提交这些路径；推送当前 upstream，不再强制写只读镜像。
 
 `collect-evidence.ps1` 接收 `ReportKey/OwnedFiles/RetroSummary`，只记录 owned files 并返回报告路径。`agent-do.ps1` 在非 dry-run 且有变更时要求 `OwnedFiles`，把 evidence 自动加入 owned set，在提交前合并 retro；删除结尾无条件 `new-retro`。远端部署后若更新 evidence，执行单独的 evidence-only scoped commit。
 
-- [ ] **Step 4: 运行绿测和 agent-do dry-run**
+- [x] **Step 4: 运行绿测和 agent-do dry-run**
 
 Run: Pester report lifecycle；随后执行 `agent-do.ps1 -Scope docs -ReportKey harness-file-governance -OwnedFiles docs/方案/PLAN-005-Harness分层文件门禁实施.md -ContentMaintenance off -DryRun`。
 
 Expected: 测试 PASS；dry-run 只列 owned file 和稳定 current report。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```powershell
 git add -- harness/scripts/commands/_lib.ps1 harness/scripts/commands/agent-do.ps1 harness/scripts/commands/collect-evidence.ps1 harness/scripts/commands/new-retro.ps1 harness/scripts/commands/git-push-safe.ps1 harness/scripts/tests/report-lifecycle.Tests.ps1
 git commit -m "feat(harness): scope reports and git staging"
 ```
 
-### Task 3: 分组归档历史根报告
+### Task 3: 分组归档历史根报告（已完成）
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 在临时仓库 manifest 中定义 `archiveGroup`，验证：
 
@@ -125,35 +125,35 @@ git commit -m "feat(harness): scope reports and git staging"
 
 dry-run 输出必须包含 `.../<batch>/evidence/evidence-20260713-000000.md`；`../escape`、绝对路径和空 group 必须失败。
 
-- [ ] **Step 2: 红测、最小实现、绿测**
+- [x] **Step 2: 红测、最小实现、绿测**
 
 Run: `powershell -NoProfile -Command "Invoke-Pester -Script harness/scripts/tests/retire-content.Tests.ps1 -EnableExit"`
 
 Expected: 先 FAIL；实现 `archiveGroup` 边界校验和分组目标后全部 PASS。retire 报告改写稳定路径 `reports/current/latest-content-retire.md`。
 
-- [ ] **Step 3: 创建 manifest 并先 dry-run**
+- [x] **Step 3: 创建 manifest 并先 dry-run**
 
 manifest 只包含 `git ls-tree HEAD` 中 `harness/reports/` 根的 75 个 `evidence-*`、`retro-*`、`content-retire-*`；分别使用三个 group。执行 Archive dry-run，Expected: 75 条操作、0 个缺失、每组不超过 50。
 
-- [ ] **Step 4: 执行归档并复查**
+- [x] **Step 4: 执行归档并复查**
 
 ArchiveRoot: `harness/archive/by-date/2026-07-13/harness-report-root`。执行后 `reports/` 根直接文件目标为 12；三个归档组分别不超过 30；所有 manifest 源路径均不存在、目标均存在。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 显式暂存 retire 脚本、测试、manifest、移动文件和稳定 content-retire 报告，提交 `chore(harness): archive timestamped root reports`。
 
-### Task 4: 对齐规则与入口
+### Task 4: 对齐规则与入口（已完成）
 
-- [ ] **Step 1: 更新 canonical 文档**
+- [x] **Step 1: 更新 canonical 文档**
 
 把 40/50、160/200、reports root 20、baseline 语义、current 稳定报告、owned files 写入结构/保留/报告政策；将 active 文档中的 `evidence-*`、`retro-*`、`content-retire-*` 和旧 agent-do 示例改为新入口。历史状态中的旧证据路径不改写。
 
-- [ ] **Step 2: 更新状态**
+- [x] **Step 2: 更新状态**
 
 `HARNESS_DEBT.md` 将 DEBT-026、DEBT-027 标记为 fixed，并登记 commit/evidence；`harness/rules/changelog.md` 记录实现。压缩接近 200 行的 active 文档，保证 Harness 非脚本文本不超过 200 行。
 
-- [ ] **Step 3: 验证并提交**
+- [x] **Step 3: 验证并提交**
 
 Run: `rg` 确认 active 入口无旧时间戳生成指令；运行全部 Pester、PowerShell Parser、`check-harness-limits.ps1 -BaselineRef HEAD`。
 

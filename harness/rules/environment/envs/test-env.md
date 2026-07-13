@@ -26,5 +26,5 @@
 ```powershell
 npm run start:test
 npm run e2e:v1-p0
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\agent-do.ps1 -Env test -Scope full -Message "test: regression"
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\agent-do.ps1 -Env test -Scope full -ReportKey task-key -OwnedFiles 'path1;path2' -Message "test: regression"
 ```

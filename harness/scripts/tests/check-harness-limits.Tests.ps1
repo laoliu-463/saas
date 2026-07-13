@@ -240,4 +240,20 @@ Describe 'check-harness-limits baseline-aware governance' {
         $result.Output | Should Match 'harness/rules/new-topic/too-long.md'
         $result.Output | Should Match 'TEXT_LINE_COUNT_EXCEEDED'
     }
+
+    It 'writes a stable report with exactly one trailing newline' {
+        $repo = New-GovernanceTestRepo -Name 'stable-report-newline'
+        Save-Baseline -Repo $repo
+
+        $output = & powershell -NoProfile -ExecutionPolicy Bypass -File $checker `
+            -RepoRoot $repo -BaselineRef HEAD 2>&1
+        $exitCode = $LASTEXITCODE
+        $reportPath = Join-Path $repo 'harness\reports\current\latest-harness-limits-check.md'
+        $bytes = [System.IO.File]::ReadAllBytes($reportPath)
+
+        $exitCode | Should Be 0
+        ($output -join "`n") | Should Match 'TASK_GATE=PASS'
+        $bytes[$bytes.Length - 1] | Should Be 10
+        $bytes[$bytes.Length - 2] | Should Not Be 10
+    }
 }

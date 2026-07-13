@@ -12,9 +12,8 @@
 -> 判断 keep / update / archive / delete
 -> 需要归档或删除时编写 manifest
 -> 执行 Archive 或 Delete
--> 生成 content-retire 报告
--> evidence report 记录结果
--> retro summary 判断是否需要更新规则
+-> 覆盖稳定 content-retire 报告
+-> evidence 记录结果并内联 retro 结论
 ```
 
 默认只执行：
@@ -38,9 +37,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\r
 ## 归档规则
 
 - 归档必须使用 manifest。
-- 默认归档到 `harness/archive/retired-content/<timestamp>/`。
+- 默认归档到按日期/主题分桶的 `harness/archive/` 子目录；同一分桶直接文件和子目录均不得超过 50。
 - 归档前必须确认新主源已存在，并且引用入口已更新。
-- 归档报告写入 `harness/reports/content-retire-*.md`。
+- 归档报告覆盖 `harness/reports/current/latest-content-retire.md`。
+- 同批多类文件用单段 `archiveGroup` 分组，禁止 `..`、绝对路径和多级 group。
 
 ## 删除规则
 
@@ -60,6 +60,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\r
     {
       "path": "doc/计划.md",
       "action": "archive",
+      "archiveGroup": "historical-plan",
       "category": "historical-plan",
       "reason": "旧 FastAPI/Celery/V2 口径，仅作历史背景"
     },

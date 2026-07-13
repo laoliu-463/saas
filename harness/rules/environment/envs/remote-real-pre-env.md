@@ -21,7 +21,7 @@
 ## 固定入口
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\agent-do.ps1 -Env real-pre -Scope full -DeployRemote true -Message "deploy: real-pre update"
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\agent-do.ps1 -Env real-pre -Scope full -ReportKey task-key -OwnedFiles 'path1;path2' -DeployRemote true -Message "deploy: real-pre update"
 ```
 
 回滚规则见 `../../runbooks/rollback.md`。远端分支、冻结窗口和完整 E2E 要求必须在每次部署前重新取证，不在本文件写成固定事实。

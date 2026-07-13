@@ -43,4 +43,4 @@
 
 ## 失败后必须写入 feedback
 
-- 指标漂移、越权展示、重算归因或只读边界破坏写入 `harness/feedback/` 或 evidence report。
+- 指标漂移、越权展示、重算归因或只读边界破坏写入稳定 evidence；需持续跟踪时登记 `KNOWN_ISSUES.md`。

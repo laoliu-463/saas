@@ -12,7 +12,7 @@
 
 | 顺序 | 批次 | 内容 | 部署 |
 |---|---|---|---|
-| 1 | reports | `harness/reports/*.md` | 否 |
+| 1 | reports | `harness/reports/current/latest-<key>.md`（仅需独立 evidence batch 时） | 否 |
 | 2 | harness-docs | 状态文件、规则文件 | 否 |
 | 3 | cleanup-retire | 归档/删除/.gitignore | 否 |
 | 4 | backend | `backend/src/` | 视任务 |
@@ -35,7 +35,7 @@ git diff --name-only
 编号、文件清单、验证命令、风险、回滚方案。
 
 ### C. Scope 隔离
-逐文件 `git add -- <file>`，每次 add 后检查 `git diff --cached --name-only`。
+优先使用 `git-push-safe.ps1 -OwnedFiles '<path1>;<path2>'`；手工回退时逐文件 `git add -- <file>`，每次 add 后检查 `git diff --cached --name-only`。
 
 ### D. 审查 9 项
 1. staged 属于单一任务/batch
@@ -53,11 +53,13 @@ git diff --name-only
 git commit -m "<type>(<scope>): <task-id> <description>"
 ```
 
-### F. 双 Remote 推送
+### F. 推送当前 upstream
 ```powershell
-git push gitee feature/<branch>
-git push origin feature/<branch>
+git push
+# 无 upstream 时：git push --set-upstream origin <current-branch>
 ```
+
+`gitee` 为只读镜像，不自动推送。
 
 ### G. 报告收口
 更新 `harness/rules/state/snapshots/01-当前项目状态.md`、`harness/rules/state/snapshots/DOMAIN_STATUS.md`、`harness/rules/changelog.md`。
@@ -73,4 +75,4 @@ git push origin feature/<branch>
 ## 5. 关联文件
 
 - [git-change-control.md](git-change-control.md)
-- [post-task-gc.md](post-task-gc.md)
+- [post-task-gc.md](../workflow/post-task-gc.md)

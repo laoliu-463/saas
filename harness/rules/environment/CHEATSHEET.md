@@ -39,7 +39,7 @@ docker compose -f docker-compose.real-pre.yml restart backend-real-pre
 docker compose -f docker-compose.real-pre.yml logs backend --tail=200
 
 # 跑所有 harness 验证
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\agent-do.ps1 -Env real-pre -Scope full -Message "task"
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\agent-do.ps1 -Env real-pre -Scope full -ReportKey task-key -OwnedFiles 'path1;path2' -Message "task"
 ```
 
 ## 4. 远端信息（受控）

@@ -32,9 +32,9 @@
 
 ### 3.2 推荐保留
 
-- 正式报告（`harness/reports/`）。
+- 稳定当前报告（`harness/reports/current/`）。
 - QA 输出（`runtime/qa/out/`）。
-- Evidence / Retro。
+- Evidence；独立 Retro 仅保留可执行改进。
 - 计划文档。
 - 可复用脚本。
 
@@ -55,10 +55,9 @@ Remove-Item -Path "<file>" -Force -ErrorAction SilentlyContinue
 
 ### 4.1 报告文件清单
 
-- 任务主报告：`harness/reports/<task-id>-<timestamp>.md`。
-- Evidence 报告：`harness/reports/evidence-<timestamp>.md`。
-- Retro 报告：`harness/reports/retro-<timestamp>.md`。
-- 状态收口报告：`harness/reports/git-batch-<N>-<scope>-<timestamp>.md`。
+- 当前任务摘要：`harness/reports/current/latest-<report-key>.md`。
+- 可执行 Retro：`harness/reports/current/latest-retro-<report-key>.md`（可选）。
+- 原始命令、日志、SQL、JSON：`runtime/qa/out/<run-id>/`。
 
 ### 4.2 报告必须完成
 
@@ -71,9 +70,9 @@ Remove-Item -Path "<file>" -Force -ErrorAction SilentlyContinue
 
 ### 4.3 报告提交原则
 
-- 报告文件本身**不**与业务代码 commit 混在一起。
-- 报告通常作为独立 Batch（如 `GIT-BATCH-N` reports 批次）提交。
-- 报告被 commit 之前必须确认已经过 `git diff --cached --check`。
+- `agent-do` 在验证完成后生成 evidence，并把它加入同一任务的显式 owned set。
+- 不得为同一任务额外制造 reports 批次；远端部署后更新 evidence 时可做 evidence-only scoped commit。
+- 提交前必须确认 `git diff --cached --check` 通过且 staged 文件均属于 owned set。
 
 ## 5. 状态文件检查
 
@@ -127,7 +126,7 @@ Remove-Item -Path "<file>" -Force -ErrorAction SilentlyContinue
 
 下一任务队列的入口：
 
-- `harness/reports/sync-plan-*.md`（如已有）。
+- `harness/reports/current/latest-<task-queue>.md`（如确有本地队列主源）。
 - `harness/rules/state/snapshots/KNOWN_ISSUES.md`。
 - `harness/rules/state/snapshots/DECISIONS.md`（如为决策类）。
 - 任务主报告（任务内 Batch 计划）。
@@ -166,7 +165,7 @@ git ls-files | Where-Object { (Get-Item $_ -ErrorAction SilentlyContinue).Length
 git diff --stat -- harness/
 
 # 5. 报告文件 untracked 检查
-git ls-files --others --exclude-standard harness/reports/
+git ls-files --others --exclude-standard harness/reports/current/
 ```
 
 ## 9. 与其他文件的关系
@@ -193,5 +192,5 @@ post-task-gc 完成必须满足：
 - 无 unknown dirty。
 - 所有 dirty 已分类并登记。
 - 状态文件已更新。
-- 已生成报告（如适用）。
+- 已生成或覆盖一份稳定 evidence（如适用）。
 - 下一任务队列已更新。

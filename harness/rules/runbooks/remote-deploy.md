@@ -20,7 +20,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\d
 或由总入口触发：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\agent-do.ps1 -Env real-pre -Scope full -DeployRemote true -Message "说明本次部署"
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\agent-do.ps1 -Env real-pre -Scope full -ReportKey task-key -OwnedFiles 'path1;path2' -DeployRemote true -Message "说明本次部署"
 ```
 
 ## 固定远端流程

@@ -99,15 +99,15 @@
 
 **必做动作**：
 
-1. 生成 `harness/reports/evidence-YYYYMMDD-HHMMSS-<task>.md`（按 `harness/feedback/evidence-report-template.md`；docs-only 可用 `harness/feedback/docs-only-template.md`）。
-2. 生成 `harness/reports/retro-YYYYMMDD-HHMMSS-<task>.md`（按 `harness/feedback/retro-summary-template.md`）。
+1. 生成或覆盖 `harness/reports/current/latest-<report-key>.md`（docs-only 可参考 `harness/templates/docs-only-template.md`）。
+2. 在 evidence 中写 retro 结论；仅当存在责任人、改进动作和验证方式时，按 `harness/templates/retro-summary-template.md` 生成独立 retro。
 3. 更新 `harness/rules/state/snapshots/01-当前项目状态.md` 的相关状态（如有变化）。
 4. 更新 `harness/rules/state/snapshots/DOMAIN_STATUS.md` 中本轮涉及领域的状态。
 5. 更新 `harness/rules/changelog.md` 一行。
 6. 更新 `harness/rules/state/debts/HARNESS_DEBT.md`（如本轮有新增 / 关闭 DEBT）。
-7. 判断是否需要运行 `retire-content.ps1 -Action Plan`（如产生新报告或旧报告可归档）。
+7. 判断是否需要运行 `retire-content.ps1 -Action Plan`；归档/删除必须有 manifest。
 
-**输出**：四份以上文件更新 + 至少 2 份报告。
+**输出**：一份稳定 evidence；状态、债务、changelog 只在事实发生变化时更新，禁止为满足数量而制造文件。
 
 **禁止**：未生成 evidence 就声明完成。
 
@@ -122,9 +122,9 @@
 1. `git status --short`（必须显式记录输出）。
 2. `git diff --check`（必须无输出）。
 3. `git diff --cached --check`（无 staged；如有必须 check 通过）。
-4. 逐文件 `git add -- <file>`（**禁止** `git add .` / `-A` / `<dir>/`）。
+4. 通过 `agent-do.ps1 -ReportKey <key> -OwnedFiles '<path1>;<path2>'` 只暂存任务拥有的文件；手工回退时才逐文件 `git add -- <file>`。
 5. 检查 commit message 含 type + scope（如 `docs(harness): ...` / `fix(order): ...`）。
-6. 推送：先 `git push gitee feature/<branch>`，再 `git push origin feature/<branch>`。
+6. 推送当前 upstream；无 upstream 时设置 `origin/<current-branch>`。`gitee` 只读，不自动推送。
 7. 远端部署场景：先 `git fetch` + `git checkout` + `git pull --ff-only`，确认 `git rev-parse HEAD` 等于目标 commit、`git status --short` 为空。
 
 **输出**：commit hash + 远端同步结果 + 终态 (`DONE_CLEAN` / `DONE_WITH_REGISTERED_DIRTY` / `PARTIAL_DIRTY_REMAINING` / `BLOCKED_DIRTY_UNKNOWN`)。

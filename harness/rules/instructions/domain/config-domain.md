@@ -41,4 +41,4 @@
 
 ## 失败后必须写入 feedback
 
-- 规则执行落错领域、配置审计缺失或数据范围误用写入 `harness/feedback/` 或 evidence report。
+- 规则执行落错领域、配置审计缺失或数据范围误用写入稳定 evidence；需持续跟踪时登记 `KNOWN_ISSUES.md`。

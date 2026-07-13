@@ -19,20 +19,18 @@
 
 ## 标准流程
 
-1. 记录时间、环境、分支、commit。
-2. 记录工作区状态。
-3. 记录构建命令和结果。
-4. 记录 Docker 状态。
-5. 记录健康检查。
-6. 记录业务验证。
-7. 若部署远端，记录远端步骤和健康检查。
-8. 给出 `PASS` / `PARTIAL` / `FAIL` 结论。
-9. 列出未采集项和剩余风险。
+1. 为任务确定稳定 `ReportKey` 和显式 `OwnedFiles`。
+2. 记录时间、环境、分支、commit。
+3. 记录工作区状态、构建、Docker、健康和业务验证。
+4. 若部署远端，记录远端步骤和健康检查。
+5. 给出 `PASS` / `PARTIAL` / `FAIL` 结论。
+6. 列出未采集项、剩余风险和内联 retro 结论。
 
 ## 验证方式
 
-- `harness/scripts/commands/collect-evidence.ps1` 生成 `harness/reports/evidence-*.md`。
+- `collect-evidence.ps1 -ReportKey <key> -OwnedFiles <paths>` 覆盖 `harness/reports/current/latest-<key>.md`。
 - 报告中未采集项必须写“未采集 / 阻塞原因”。
+- 独立 retro 仅用于含责任人、动作和验证方式的可执行改进。
 
 ## 输出格式
 

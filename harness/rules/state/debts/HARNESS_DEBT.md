@@ -37,7 +37,7 @@
 | DEBT-011 | P2 | State | QUALITY_LEDGER 与 DOMAIN_STATUS 重复 | in-progress | HARNESS-DEBT-GOVERNANCE-ITERATION | QUALITY_LEDGER 顶部指针 |
 | DEBT-012 | P2 | Instruction | doc/ + harness/ + README.md 三方并存 | fixed | HARNESS-REDUNDANCY-CLEANUP-20260713 | `7ca6d5ff`；当前引用扫描仅保留明确历史记录 |
 | DEBT-013 | P2 | Environment | 12 个 ad-hoc log 未 .gitignore 排除 | fixed | HARNESS-DEBT-GC-001 | harness/reports/harness-debt-gc-001-inventory-20260604-001052.md |
-| DEBT-014 | P2 | Reports | reports/ 72 份未触发归档 | wontfix | HARNESS-DEBT-GC-001 | harness/reports/harness-debt-gc-001-inventory-20260604-001052.md |
+| DEBT-014 | P2 | Reports | reports/ 72 份未触发归档 | fixed | HARNESS-FILE-GOVERNANCE-20260713 | `d1ef7289`；`reports/current/latest-content-retire.md`；本轮 evidence |
 | DEBT-015 | P2 | doc | 旧 instructions 治理说明与主源重叠 | fixed | HARNESS-REDUNDANCY-CLEANUP-20260713 | `7ca6d5ff`；9 个重复治理文件已删除 |
 | DEBT-016 | P2 | Plan | DDD_DOMAIN_TASK_MATRIX 未更新 | deferred | DDD 任务 | — |
 | DEBT-017 | P2 | Feedback | garbage-collection-policy 未列 reports/ 为受保护 | in-progress | HARNESS-DEBT-GOVERNANCE-ITERATION | GC 政策顶部声明 |
@@ -49,8 +49,8 @@
 | DEBT-023 | P3 | State | 缺 Harness 内部债务登记文件 | in-progress | HARNESS-DEBT-GOVERNANCE-ITERATION | state/HARNESS_DEBT.md（本文件） |
 | DEBT-024 | P3 | Environment | .env.real-pre.example 引用不统一 | deferred | 后续 | — |
 | DEBT-025 | P3 | Plans | 缺 harness 自身迭代路线图 | in-progress | HARNESS-DEBT-GOVERNANCE-ITERATION | plans/HARNESS_ITERATION_ROADMAP.md |
-| DEBT-026 | P0 | Git/Tool | `agent-do` 无条件调用全工作区自动暂存/推送，与单任务逐文件 Gate 和 gitee 只读口径冲突 | open | HARNESS-AGENT-DO-SAFE-GIT | `harness/reports/git-intake-20260710-125023.md` |
-| DEBT-027 | P1 | Reports/Tool | `retire-content Archive` 将超 200 行报告原样移入 archive，导致 limits 继续失败 | open | HARNESS-RETIRE-PACK-001 | `harness/reports/content-retire-20260710-125326.md` |
+| DEBT-026 | P0 | Git/Tool | `agent-do` 无条件调用全工作区自动暂存/推送，与单任务逐文件 Gate 和 gitee 只读口径冲突 | fixed | HARNESS-FILE-GOVERNANCE-20260713 | `b38c9405`、`b3140bb0`；24 项 Pester；本轮 evidence |
+| DEBT-027 | P1 | Reports/Tool | `retire-content Archive` 将超 200 行报告原样移入 archive，导致 limits 继续失败 | fixed | HARNESS-FILE-GOVERNANCE-20260713 | `d1ef7289`；unchanged blob archive 测试；本轮 evidence |
 
 ## 4. 关闭条件
 
