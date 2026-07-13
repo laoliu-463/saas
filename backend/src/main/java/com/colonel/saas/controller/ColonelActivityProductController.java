@@ -113,58 +113,19 @@ public class ColonelActivityProductController extends BaseController {
     }
 
     /**
-     * 查询活动商品详情。
-     * <p>
-     * 根据活动 ID 和商品 ID，查询单个商品的业务详情视图，包含商品基本信息、
-     * 审核状态、分配信息、推广链接等业务字段。
-     * </p>
-     *
-     * @param activityId 团长活动 ID
-     * @param productId  商品 ID
-     * @return 包含商品业务详情的 Map
-     */
-    @Operation(summary = "活动商品详情", description = "查询指定活动下单个商品的业务详情。")
-    @GetMapping("/{productId}")
-    public ApiResult<Map<String, Object>> detail(
-            @Parameter(description = "团长活动 ID。") @PathVariable String activityId,
-            @Parameter(description = "商品 ID。") @PathVariable String productId) {
-        // 委托 ProductService 从数据库构建商品业务详情视图
-        return ok(productService.getActivityProductDetail(activityId, productId));
-    }
-
-    /**
-     * 查询活动商品的 SKU 规格列表。
-     * <p>
-     * 调用抖店 {@code buyin.productSkus.v2} 接口查询商品下所有规格 SKU 信息。
-     * </p>
-     *
-     * @param activityId 团长活动 ID（路径变量，用于路径匹配，实际查询以 productId 为主）
-     * @param productId  商品 ID
-     * @return SKU 规格列表，每项包含规格名称、价格、库存等信息
-     */
-    @Operation(summary = "活动商品 SKU 列表", description = "调用抖店 buyin.productSkus.v2 查询商品规格 SKU。")
-    @GetMapping("/{productId}/skus")
-    public ApiResult<List<Map<String, Object>>> skus(
-            @Parameter(description = "团长活动 ID。") @PathVariable String activityId,
-            @Parameter(description = "商品 ID。") @PathVariable String productId) {
-        // 委托 ProductService 调用上游抖店 API 查询 SKU 规格
-        return ok(productService.listActivityProductSkus(productId));
-    }
-
-    /**
-     * 为活动商品绑定（或修正）关联活动。
-     * <p>
-     * 将商品关联到指定的团长活动，用于补绑或修正之前错误的活动关联关系。
-     * 仅业务团长和团长负责人可操作。
-     * </p>
-     *
-     * @param activityId 当前路由中的团长活动 ID
-     * @param productId  商品 ID
-     * @param request    绑定请求体，包含目标活动 ID
-     * @param userId     当前操作用户 ID
-     * @param deptId     当前操作用户所属部门 ID
-     * @return 操作结果 Map
-     */
+         * 为活动商品绑定（或修正）关联活动。
+         * <p>
+         * 将商品关联到指定的团长活动，用于补绑或修正之前错误的活动关联关系。
+         * 仅业务团长和团长负责人可操作。
+         * </p>
+         *
+         * @param activityId 当前路由中的团长活动 ID
+         * @param productId  商品 ID
+         * @param request    绑定请求体，包含目标活动 ID
+         * @param userId     当前操作用户 ID
+         * @param deptId     当前操作用户所属部门 ID
+         * @return 操作结果 Map
+         */
     @Operation(summary = "活动商品绑定活动", description = "为活动商品补绑或修正关联活动。")
     @RequireRoles({RoleCodes.BIZ_LEADER})
     @PutMapping("/{productId}/bind-activity")
@@ -441,44 +402,18 @@ public class ColonelActivityProductController extends BaseController {
     }
 
     /**
-     * 分页查询活动商品的操作日志。
-     * <p>
-     * 查询指定商品在指定活动下的所有操作日志，按时间倒序排列，
-     * 包括分配、审核、转链、置顶等各类操作记录。
-     * </p>
-     *
-     * @param activityId 团长活动 ID
-     * @param productId  商品 ID
-     * @param page       页码，从 1 开始
-     * @param size       每页条数
-     * @return 分页的操作日志结果
-     */
-    @Operation(summary = "活动商品操作日志", description = "分页查询活动商品操作日志。")
-    @GetMapping("/{productId}/operation-logs")
-    public ApiResult<PageResult<ProductOperationLog>> operationLogs(
-            @Parameter(description = "团长活动 ID。") @PathVariable String activityId,
-            @Parameter(description = "商品 ID。") @PathVariable String productId,
-            @Parameter(description = "页码，从 1 开始。") @RequestParam(defaultValue = "1") long page,
-            @Parameter(description = "每页条数。") @RequestParam(defaultValue = "20") long size) {
-        // 委托 ProductService 分页查询操作日志
-        IPage<ProductOperationLog> result = productService.getOperationLogs(activityId, productId, page, size);
-        return okPage(result);
-    }
-
-
-    /**
-     * 招商置顶商品。
-     * <p>
-     * 将商品置顶 24 小时，每位招商人员最多同时置顶 10 个商品（业务规则 P-05）。
-     * 置顶后的商品在活动商品列表中优先展示。
-     * </p>
-     *
-     * @param activityId 团长活动 ID
-     * @param productId  商品 ID
-     * @param userId     当前操作用户 ID
-     * @return 操作结果 Map，包含置顶状态和置顶截止时间
-     */
-    @Operation(summary = "招商置顶商品", description = "置顶 24 小时，每位招商最多 10 个规格（P-05）。")
+         * 招商置顶商品。
+         * <p>
+         * 将商品置顶 24 小时，每位招商人员最多同时置顶 10 个商品（业务规则 P-05）。
+         * 置顶后的商品在活动商品列表中优先展示。
+         * </p>
+         *
+         * @param activityId 团长活动 ID
+         * @param productId  商品 ID
+         * @param userId     当前操作用户 ID
+         * @return 操作结果 Map，包含置顶状态和置顶截止时间
+         */
+        @Operation(summary = "招商置顶商品", description = "置顶 24 小时，每位招商最多 10 个规格（P-05）。")
     @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF})
     @PostMapping("/{productId}/pin")
     public ApiResult<Map<String, Object>> pinProduct(
