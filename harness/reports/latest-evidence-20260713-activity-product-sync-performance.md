@@ -3,10 +3,11 @@
 ## 结论
 
 - 本地 `real-pre`：`PASS`。
-- 远端部署：`PENDING`，等待本报告随代码提交后执行固定部署脚本。
+- 远端 `real-pre`：`PASS`。
 - 分支：`codex/ddd-user-role-application`。
 - 验证前 HEAD：`0b7ef13e8b42277444623de28a2995346876b73f`。
 - 代码提交：`cecf54a928251010c62b23e143b28beb7ca3fba8`。
+- 最终部署提交：`387b3e104f8f8e51d92c02ec9a32fed1c9cbfb9b`。
 - 工作区：非干净；存在用户其他任务改动，本次只允许选择性提交本任务文件。
 
 ## 修改与根因
@@ -45,6 +46,17 @@
 - 每轮拉取 23 条；终态 `PARTIAL` 是请求行数上限导致，不能写成 `SUCCESS`。
 - 多线程日志存在状态分片并发执行；`parallelism=2`。
 - 本轮商品库修复仅扫描 23 条；展示规则仅重算 23 个商品，耗时 32-54ms。
+- 合并 owner-safe 锁治理提交并重启后复测：2520ms，仍小于 5 秒。
+
+## 远端部署证据
+
+- 固定脚本：`harness/scripts/commands/deploy-remote.ps1 -Env real-pre`，PASS。
+- 远端 Git：`387b3e104f8f8e51d92c02ec9a32fed1c9cbfb9b`。
+- 远端 Maven 构建、前端构建、backend/frontend 镜像重建：PASS。
+- 远端 backend、frontend、PostgreSQL、Redis：全部 healthy。
+- 远端 backend `/api/system/health`：`{"status":"UP"}`。
+- 远端 frontend `/healthz`：`ok`。
+- `colonel_activity` 必需 7 个字段门禁：7/7。
 
 ## 风险与回滚
 
