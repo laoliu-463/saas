@@ -62,7 +62,8 @@ public class StaleProductSyncJobReconcileJob {
         List<ProductSyncJobLog> staleBeforeLock = jobLogMapper.selectStaleRunningJobs(threshold);
         reconcileStaleManualJobs(staleBeforeLock, reconciledAt);
 
-        if (!jobLockService.tryAcquire(JobLockKeys.PRODUCT_BACKFILL_GLOBAL, LOCK_TTL)) {
+        String owner = "stale-reconcile:" + Thread.currentThread().getId() + ":" + System.nanoTime();
+        if (!jobLockService.tryAcquire(JobLockKeys.PRODUCT_BACKFILL_GLOBAL, LOCK_TTL, owner)) {
             log.debug("StaleProductSyncJobReconcileJob skipped, lock held");
             return;
         }
@@ -83,7 +84,7 @@ public class StaleProductSyncJobReconcileJob {
             log.info("StaleProductSyncJobReconcileJob finished, threshold={}, scanned={}, abandoned={}",
                     threshold, stale.size(), abandoned);
         } finally {
-            jobLockService.release(JobLockKeys.PRODUCT_BACKFILL_GLOBAL);
+            jobLockService.releaseWithOwner(JobLockKeys.PRODUCT_BACKFILL_GLOBAL, owner);
         }
     }
 

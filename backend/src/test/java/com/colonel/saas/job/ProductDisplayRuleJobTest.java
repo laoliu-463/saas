@@ -11,6 +11,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.time.Duration;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
@@ -27,9 +28,9 @@ class ProductDisplayRuleJobTest {
 
     @BeforeEach
     void grantLock() {
-        lenient().when(jobLockService.tryAcquire(eq(JobLockKeys.PRODUCT_BACKFILL_GLOBAL), any(Duration.class)))
+        lenient().when(jobLockService.tryAcquire(eq(JobLockKeys.PRODUCT_BACKFILL_GLOBAL), any(Duration.class), anyString()))
                 .thenReturn(true);
-        lenient().when(jobLockService.tryAcquire(eq(JobLockKeys.PRODUCT_DISPLAY_REFRESH), any(Duration.class)))
+        lenient().when(jobLockService.tryAcquire(eq(JobLockKeys.PRODUCT_DISPLAY_REFRESH), any(Duration.class), anyString()))
                 .thenReturn(true);
     }
 
@@ -41,19 +42,19 @@ class ProductDisplayRuleJobTest {
         job.reconcileDisplayStatus();
 
         verify(displayRuleService).reconcileAll();
-        verify(jobLockService).release(JobLockKeys.PRODUCT_DISPLAY_REFRESH);
-        verify(jobLockService).release(JobLockKeys.PRODUCT_BACKFILL_GLOBAL);
+        verify(jobLockService).releaseWithOwner(eq(JobLockKeys.PRODUCT_DISPLAY_REFRESH), anyString());
+        verify(jobLockService).releaseWithOwner(eq(JobLockKeys.PRODUCT_BACKFILL_GLOBAL), anyString());
     }
 
     @Test
     void reconcileDisplayStatus_shouldSkipWhenLockNotAcquired() {
         ProductDisplayRuleJob job = new ProductDisplayRuleJob(displayRuleService, jobLockService);
-        when(jobLockService.tryAcquire(eq(JobLockKeys.PRODUCT_DISPLAY_REFRESH), any(Duration.class))).thenReturn(false);
+        when(jobLockService.tryAcquire(eq(JobLockKeys.PRODUCT_DISPLAY_REFRESH), any(Duration.class), anyString())).thenReturn(false);
 
         job.reconcileDisplayStatus();
 
         verify(displayRuleService, never()).reconcileAll();
-        verify(jobLockService, never()).release(JobLockKeys.PRODUCT_DISPLAY_REFRESH);
-        verify(jobLockService).release(JobLockKeys.PRODUCT_BACKFILL_GLOBAL);
+        verify(jobLockService, never()).releaseWithOwner(eq(JobLockKeys.PRODUCT_DISPLAY_REFRESH), anyString());
+        verify(jobLockService).releaseWithOwner(eq(JobLockKeys.PRODUCT_BACKFILL_GLOBAL), anyString());
     }
 }

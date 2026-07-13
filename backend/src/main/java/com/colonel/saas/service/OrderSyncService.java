@@ -286,7 +286,8 @@ public class OrderSyncService {
         long now = Instant.now().getEpochSecond();
         long endTime = now - lagSeconds;
         long startTime = Math.max(0L, endTime - PAY_RECENT_WINDOW_SECONDS);
-        if (!jobLockService.tryAcquireStrict(JobLockKeys.ORDER_SYNC_PAY_RECENT, SYNC_LOCK_TTL)) {
+        String owner = "order-sync:" + SYNC_MODE_PAY_RECENT + ":" + Thread.currentThread().getId() + ":" + System.nanoTime();
+        if (!jobLockService.tryAcquire(JobLockKeys.ORDER_SYNC_PAY_RECENT, SYNC_LOCK_TTL, owner)) {
             log.info("Order sync skipped, mode={}, timeType={}, reason=locked",
                     SYNC_MODE_PAY_RECENT, GATEWAY_TIME_TYPE_UPDATE);
             return new SyncResult(startTime, endTime, 0, 0, 0, true);
@@ -297,7 +298,7 @@ public class OrderSyncService {
             persistPayRecentLastSyncTime(endTime);
             return result;
         } finally {
-            jobLockService.release(JobLockKeys.ORDER_SYNC_PAY_RECENT);
+            jobLockService.releaseWithOwner(JobLockKeys.ORDER_SYNC_PAY_RECENT, owner);
         }
     }
 
@@ -313,7 +314,8 @@ public class OrderSyncService {
         long now = Instant.now().getEpochSecond();
         long endTime = now - settleLagSeconds;
         long startTime = resolveSettleStartTime(endTime);
-        if (!jobLockService.tryAcquireStrict(JobLockKeys.ORDER_SYNC_SETTLE, SYNC_LOCK_TTL)) {
+        String owner = "order-sync:" + SYNC_MODE_SETTLE + ":" + Thread.currentThread().getId() + ":" + System.nanoTime();
+        if (!jobLockService.tryAcquire(JobLockKeys.ORDER_SYNC_SETTLE, SYNC_LOCK_TTL, owner)) {
             log.info("Order sync skipped, mode={}, timeType={}, reason=locked",
                     SYNC_MODE_SETTLE, GATEWAY_TIME_TYPE_SETTLE);
             return new SyncResult(startTime, endTime, 0, 0, 0, true);
@@ -331,7 +333,7 @@ public class OrderSyncService {
             }
             return result;
         } finally {
-            jobLockService.release(JobLockKeys.ORDER_SYNC_SETTLE);
+            jobLockService.releaseWithOwner(JobLockKeys.ORDER_SYNC_SETTLE, owner);
         }
     }
 
@@ -370,7 +372,8 @@ public class OrderSyncService {
         long startTime = resolveInstituteHotStartTime(endTime);
         Long latestBefore = persistenceService.findLatestPayTimeEpochSeconds().orElse(null);
         Duration lockTtl = Duration.ofSeconds(Math.max(30L, instituteHotLockTtlSeconds));
-        if (!jobLockService.tryAcquireStrict(JobLockKeys.ORDER_SYNC_INSTITUTE_HOT, lockTtl)) {
+        String owner = "order-sync:" + SYNC_MODE_INSTITUTE_HOT_RECENT + ":" + Thread.currentThread().getId() + ":" + System.nanoTime();
+        if (!jobLockService.tryAcquire(JobLockKeys.ORDER_SYNC_INSTITUTE_HOT, lockTtl, owner)) {
             log.info("task={} snapshotAt={} startTime={} endTime={} reason=locked",
                     SYNC_MODE_INSTITUTE_HOT_RECENT, snapshotAt, startTime, endTime);
             return new SyncResult(startTime, endTime, 0, 0, 0, true);
@@ -400,7 +403,7 @@ public class OrderSyncService {
             }
             return result;
         } finally {
-            jobLockService.release(JobLockKeys.ORDER_SYNC_INSTITUTE_HOT);
+            jobLockService.releaseWithOwner(JobLockKeys.ORDER_SYNC_INSTITUTE_HOT, owner);
         }
     }
 
@@ -483,7 +486,8 @@ public class OrderSyncService {
     }
 
     private SyncResult syncInstituteRange(long startTime, long endTime, String mode) {
-        if (!jobLockService.tryAcquireStrict(JobLockKeys.ORDER_SYNC_INSTITUTE, SYNC_LOCK_TTL)) {
+        String owner = "order-sync:" + Thread.currentThread().getId() + ":" + System.nanoTime();
+        if (!jobLockService.tryAcquire(JobLockKeys.ORDER_SYNC_INSTITUTE, SYNC_LOCK_TTL, owner)) {
             log.info("ORDER_SYNC_INSTITUTE api={} mode={} reason=locked",
                     API_INSTITUTE_ORDER_COLONEL, mode);
             return new SyncResult(startTime, endTime, 0, 0, 0, true);
@@ -506,7 +510,7 @@ public class OrderSyncService {
             persistInstituteLastSyncTime(endTime);
             return result;
         } finally {
-            jobLockService.release(JobLockKeys.ORDER_SYNC_INSTITUTE);
+            jobLockService.releaseWithOwner(JobLockKeys.ORDER_SYNC_INSTITUTE, owner);
         }
     }
 
@@ -640,13 +644,14 @@ public class OrderSyncService {
         if (normalizedOrderIds.isEmpty()) {
             throw BusinessException.param("orderIds is required");
         }
-        if (!acquireSyncLock()) {
+        String owner = "order-sync:specific:" + Thread.currentThread().getId() + ":" + System.nanoTime();
+        if (!acquireSyncLock(owner)) {
             throw BusinessException.conflict("Order sync is busy");
         }
         try {
             return syncSpecificOrders(normalizedOrderIds);
         } finally {
-            releaseSyncLock();
+            releaseSyncLock(owner);
         }
     }
 
@@ -674,7 +679,8 @@ public class OrderSyncService {
         if (startTime <= 0 || endTime <= 0 || startTime >= endTime) {
             throw BusinessException.param("Invalid sync time range");
         }
-        if (!acquireSyncLock()) {
+        String owner = "order-sync:incremental:" + Thread.currentThread().getId() + ":" + System.nanoTime();
+        if (!acquireSyncLock(owner)) {
             return new SyncResult(startTime, endTime, 0, 0, 0, true);
         }
         try {
@@ -683,7 +689,7 @@ public class OrderSyncService {
             persistLastSyncTime(endTime);
             return result;
         } finally {
-            releaseSyncLock();
+            releaseSyncLock(owner);
         }
     }
 
@@ -701,9 +707,9 @@ public class OrderSyncService {
         }
     }
 
-    /** 获取订单同步分布式锁（严格模式）。 */
-    private boolean acquireSyncLock() {
-        return jobLockService.tryAcquireStrict(JobLockKeys.ORDER_SYNC, SYNC_LOCK_TTL);
+    /** 获取订单同步分布式锁（owner-safe）。 */
+    private boolean acquireSyncLock(String owner) {
+        return jobLockService.tryAcquire(JobLockKeys.ORDER_SYNC, SYNC_LOCK_TTL, owner);
     }
 
     /** 将同步截止时间写入 Redis（同时更新本地缓存），test 模式下 Redis 不可用时仅保留本地值。 */
@@ -720,9 +726,9 @@ public class OrderSyncService {
         }
     }
 
-    /** 释放订单同步分布式锁。 */
-    private void releaseSyncLock() {
-        jobLockService.release(JobLockKeys.ORDER_SYNC);
+    /** 释放订单同步分布式锁（owner-safe）。 */
+    private void releaseSyncLock(String owner) {
+        jobLockService.releaseWithOwner(JobLockKeys.ORDER_SYNC, owner);
     }
 
     /**

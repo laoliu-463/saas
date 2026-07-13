@@ -126,21 +126,21 @@ class OrderSyncServiceTest {
 
     @Test
     void syncPayRecentWindow_shouldUseIndependentLockKey() {
-        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_PAY_RECENT), any(Duration.class)))
+        when(jobLockService.tryAcquire(eq(JobLockKeys.ORDER_SYNC_PAY_RECENT), any(Duration.class), anyString()))
                 .thenReturn(true);
 
         service.syncPayRecentWindow();
 
         // PAY_RECENT path acquires ORDER_SYNC_PAY_RECENT, never ORDER_SYNC
-        verify(jobLockService).tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_PAY_RECENT), any(Duration.class));
-        verify(jobLockService, never()).tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC), any(Duration.class));
-        verify(jobLockService).release(JobLockKeys.ORDER_SYNC_PAY_RECENT);
-        verify(jobLockService, never()).release(JobLockKeys.ORDER_SYNC);
+        verify(jobLockService).tryAcquire(eq(JobLockKeys.ORDER_SYNC_PAY_RECENT), any(Duration.class), anyString());
+        verify(jobLockService, never()).tryAcquire(eq(JobLockKeys.ORDER_SYNC), any(Duration.class), anyString());
+        verify(jobLockService).releaseWithOwner(eq(JobLockKeys.ORDER_SYNC_PAY_RECENT), anyString());
+        verify(jobLockService, never()).releaseWithOwner(eq(JobLockKeys.ORDER_SYNC), anyString());
     }
 
     @Test
     void syncPayRecentWindow_shouldReturnLockedWithoutPersistingWaterlineWhenLockBusy() {
-        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_PAY_RECENT), any(Duration.class)))
+        when(jobLockService.tryAcquire(eq(JobLockKeys.ORDER_SYNC_PAY_RECENT), any(Duration.class), anyString()))
                 .thenReturn(false);
 
         OrderSyncService.SyncResult result = service.syncPayRecentWindow();
@@ -154,7 +154,7 @@ class OrderSyncServiceTest {
 
     @Test
     void syncPayRecentWindow_shouldPersistWaterlineToPayRecentKeyOnly() {
-        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_PAY_RECENT), any(Duration.class)))
+        when(jobLockService.tryAcquire(eq(JobLockKeys.ORDER_SYNC_PAY_RECENT), any(Duration.class), anyString()))
                 .thenReturn(true);
 
         service.syncPayRecentWindow();
@@ -166,7 +166,7 @@ class OrderSyncServiceTest {
 
     @Test
     void syncPayRecentWindow_shouldUseSixHourWindow() {
-        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_PAY_RECENT), any(Duration.class)))
+        when(jobLockService.tryAcquire(eq(JobLockKeys.ORDER_SYNC_PAY_RECENT), any(Duration.class), anyString()))
                 .thenReturn(true);
 
         service.syncPayRecentWindow();
@@ -182,15 +182,15 @@ class OrderSyncServiceTest {
 
     @Test
     void syncByTimeRange_shouldUseDefaultIncrementalLockAndKey() {
-        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC), any(Duration.class)))
+        when(jobLockService.tryAcquire(eq(JobLockKeys.ORDER_SYNC), any(Duration.class), anyString()))
                 .thenReturn(true);
 
         long now = java.time.Instant.now().getEpochSecond();
         service.syncByTimeRange(now - 600, now);
 
         // Default incremental path uses ORDER_SYNC, never PAY_RECENT
-        verify(jobLockService).tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC), any(Duration.class));
-        verify(jobLockService, never()).tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_PAY_RECENT), any(Duration.class));
+        verify(jobLockService).tryAcquire(eq(JobLockKeys.ORDER_SYNC), any(Duration.class), anyString());
+        verify(jobLockService, never()).tryAcquire(eq(JobLockKeys.ORDER_SYNC_PAY_RECENT), any(Duration.class), anyString());
         // Default incremental writes to order:sync:last_time, never pay_recent key
         verify(valueOperations).set(eq("order:sync:last_time"), any());
         verify(valueOperations, never()).set(eq("order:sync:pay_recent_last_time"), any());
@@ -198,7 +198,7 @@ class OrderSyncServiceTest {
 
     @Test
     void syncByTimeRange_shouldAllowOfficialSettlementWindowBeyondTwoHundredPagesByDefault() {
-        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC), any(Duration.class)))
+        when(jobLockService.tryAcquire(eq(JobLockKeys.ORDER_SYNC), any(Duration.class), anyString()))
                 .thenReturn(true);
         AtomicInteger pageCounter = new AtomicInteger();
         when(instituteSettlementGateway.fetch(any(SettlementOrderQuery.class)))
@@ -227,12 +227,12 @@ class OrderSyncServiceTest {
     @Test
     void syncPayRecentAndIncremental_shouldNotShareWaterline() {
         // PAY_RECENT runs first
-        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_PAY_RECENT), any(Duration.class)))
+        when(jobLockService.tryAcquire(eq(JobLockKeys.ORDER_SYNC_PAY_RECENT), any(Duration.class), anyString()))
                 .thenReturn(true);
         service.syncPayRecentWindow();
 
         // Then incremental runs in same process
-        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC), any(Duration.class)))
+        when(jobLockService.tryAcquire(eq(JobLockKeys.ORDER_SYNC), any(Duration.class), anyString()))
                 .thenReturn(true);
         long now = java.time.Instant.now().getEpochSecond();
         service.syncByTimeRange(now - 600, now);
@@ -244,21 +244,21 @@ class OrderSyncServiceTest {
 
     @Test
     void syncInstituteOrdersRecentWindow_shouldUseIndependentLockKey() {
-        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_INSTITUTE), any(Duration.class)))
+        when(jobLockService.tryAcquire(eq(JobLockKeys.ORDER_SYNC_INSTITUTE), any(Duration.class), anyString()))
                 .thenReturn(true);
 
         service.syncInstituteOrdersRecentWindow();
 
         // INSTITUTE path acquires ORDER_SYNC_INSTITUTE, never ORDER_SYNC or PAY_RECENT
-        verify(jobLockService).tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_INSTITUTE), any(Duration.class));
-        verify(jobLockService, never()).tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC), any(Duration.class));
-        verify(jobLockService, never()).tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_PAY_RECENT), any(Duration.class));
-        verify(jobLockService).release(JobLockKeys.ORDER_SYNC_INSTITUTE);
+        verify(jobLockService).tryAcquire(eq(JobLockKeys.ORDER_SYNC_INSTITUTE), any(Duration.class), anyString());
+        verify(jobLockService, never()).tryAcquire(eq(JobLockKeys.ORDER_SYNC), any(Duration.class), anyString());
+        verify(jobLockService, never()).tryAcquire(eq(JobLockKeys.ORDER_SYNC_PAY_RECENT), any(Duration.class), anyString());
+        verify(jobLockService).releaseWithOwner(eq(JobLockKeys.ORDER_SYNC_INSTITUTE), anyString());
     }
 
     @Test
     void syncInstituteOrdersRecentWindow_shouldReturnLockedWhenBusy() {
-        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_INSTITUTE), any(Duration.class)))
+        when(jobLockService.tryAcquire(eq(JobLockKeys.ORDER_SYNC_INSTITUTE), any(Duration.class), anyString()))
                 .thenReturn(false);
 
         OrderSyncService.SyncResult result = service.syncInstituteOrdersRecentWindow();
@@ -270,7 +270,7 @@ class OrderSyncServiceTest {
 
     @Test
     void syncInstituteOrdersRecentWindow_shouldPersistWaterlineToInstituteKeyOnly() {
-        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_INSTITUTE), any(Duration.class)))
+        when(jobLockService.tryAcquire(eq(JobLockKeys.ORDER_SYNC_INSTITUTE), any(Duration.class), anyString()))
                 .thenReturn(true);
 
         service.syncInstituteOrdersRecentWindow();
@@ -282,7 +282,7 @@ class OrderSyncServiceTest {
 
     @Test
     void syncInstituteOrdersRecentWindow_shouldUseFullWindowWhenNoWaterline() {
-        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_INSTITUTE), any(Duration.class)))
+        when(jobLockService.tryAcquire(eq(JobLockKeys.ORDER_SYNC_INSTITUTE), any(Duration.class), anyString()))
                 .thenReturn(true);
         when(valueOperations.get("order:sync:institute_recent_last_time")).thenReturn(null);
 
@@ -298,7 +298,7 @@ class OrderSyncServiceTest {
 
     @Test
     void syncInstituteOrdersRecentWindow_shouldUseIncrementalWindowWhenWaterlineExists() {
-        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_INSTITUTE), any(Duration.class)))
+        when(jobLockService.tryAcquire(eq(JobLockKeys.ORDER_SYNC_INSTITUTE), any(Duration.class), anyString()))
                 .thenReturn(true);
         long endTime = java.time.Instant.now().getEpochSecond() - 30L;
         when(valueOperations.get("order:sync:institute_recent_last_time"))
@@ -316,7 +316,7 @@ class OrderSyncServiceTest {
 
     @Test
     void syncInstituteFullBackfillWindow_shouldUseTwentyFourHourWindow() {
-        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_INSTITUTE), any(Duration.class)))
+        when(jobLockService.tryAcquire(eq(JobLockKeys.ORDER_SYNC_INSTITUTE), any(Duration.class), anyString()))
                 .thenReturn(true);
 
         service.syncInstituteFullBackfillWindow();
@@ -331,7 +331,7 @@ class OrderSyncServiceTest {
 
     @Test
     void syncInstituteOrdersRecentWindow_shouldCallListInstituteOrdersNotListSettlement() {
-        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_INSTITUTE), any(Duration.class)))
+        when(jobLockService.tryAcquire(eq(JobLockKeys.ORDER_SYNC_INSTITUTE), any(Duration.class), anyString()))
                 .thenReturn(true);
 
         service.syncInstituteOrdersRecentWindow();
@@ -361,7 +361,7 @@ class OrderSyncServiceTest {
 
     @Test
     void syncInstituteOrdersRecentWindow_shouldPersistFactAndEstimateTrackOnly() {
-        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_INSTITUTE), any(Duration.class)))
+        when(jobLockService.tryAcquire(eq(JobLockKeys.ORDER_SYNC_INSTITUTE), any(Duration.class), anyString()))
                 .thenReturn(true);
         when(douyinOrderGateway.listInstituteOrders(any(DouyinOrderGateway.DouyinOrderQueryRequest.class)))
                 .thenReturn(new DouyinOrderGateway.OrderListResult(List.of(instituteOrderItem()), false, "0", Map.of()));
@@ -399,7 +399,7 @@ class OrderSyncServiceTest {
 
     @Test
     void syncInstituteOrdersRecentWindow_shouldContinueWhenDataCursorExistsDespiteHasMoreFalse() {
-        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_INSTITUTE), any(Duration.class)))
+        when(jobLockService.tryAcquire(eq(JobLockKeys.ORDER_SYNC_INSTITUTE), any(Duration.class), anyString()))
                 .thenReturn(true);
         when(douyinOrderGateway.listInstituteOrders(any(DouyinOrderGateway.DouyinOrderQueryRequest.class)))
                 .thenReturn(
@@ -433,7 +433,7 @@ class OrderSyncServiceTest {
 
     @Test
     void syncInstituteOrdersRecentWindow_shouldContinueWhenHasMoreFalseButNextCursorExists() {
-        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_INSTITUTE), any(Duration.class)))
+        when(jobLockService.tryAcquire(eq(JobLockKeys.ORDER_SYNC_INSTITUTE), any(Duration.class), anyString()))
                 .thenReturn(true);
         when(douyinOrderGateway.listInstituteOrders(any(DouyinOrderGateway.DouyinOrderQueryRequest.class)))
                 .thenReturn(
@@ -460,7 +460,7 @@ class OrderSyncServiceTest {
 
     @Test
     void syncInstituteOrdersRecentWindow_shouldStopWhenCursorRepeats() {
-        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_INSTITUTE), any(Duration.class)))
+        when(jobLockService.tryAcquire(eq(JobLockKeys.ORDER_SYNC_INSTITUTE), any(Duration.class), anyString()))
                 .thenReturn(true);
         when(douyinOrderGateway.listInstituteOrders(any(DouyinOrderGateway.DouyinOrderQueryRequest.class)))
                 .thenReturn(
@@ -487,7 +487,7 @@ class OrderSyncServiceTest {
     @Test
     void syncInstituteOrdersRecentWindow_shouldStopWhenMaxPagesReached() {
         ReflectionTestUtils.setField(service, "maxPages", 2);
-        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_INSTITUTE), any(Duration.class)))
+        when(jobLockService.tryAcquire(eq(JobLockKeys.ORDER_SYNC_INSTITUTE), any(Duration.class), anyString()))
                 .thenReturn(true);
         AtomicInteger counter = new AtomicInteger();
         when(douyinOrderGateway.listInstituteOrders(any(DouyinOrderGateway.DouyinOrderQueryRequest.class)))
@@ -520,7 +520,7 @@ class OrderSyncServiceTest {
     @Test
     void syncInstituteOrdersRecentWindow_shouldStopWhenMaxOrdersReached() {
         ReflectionTestUtils.setField(service, "maxOrders", 1);
-        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_INSTITUTE), any(Duration.class)))
+        when(jobLockService.tryAcquire(eq(JobLockKeys.ORDER_SYNC_INSTITUTE), any(Duration.class), anyString()))
                 .thenReturn(true);
         when(douyinOrderGateway.listInstituteOrders(any(DouyinOrderGateway.DouyinOrderQueryRequest.class)))
                 .thenReturn(pageWithRawCursor(
@@ -551,19 +551,19 @@ class OrderSyncServiceTest {
 
     @Test
     void syncInstituteOrdersHotRecent_shouldUseIndependentHotLockKey() {
-        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_INSTITUTE_HOT), any(Duration.class)))
+        when(jobLockService.tryAcquire(eq(JobLockKeys.ORDER_SYNC_INSTITUTE_HOT), any(Duration.class), anyString()))
                 .thenReturn(true);
 
         service.syncInstituteOrdersHotRecent();
 
-        verify(jobLockService).tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_INSTITUTE_HOT), any(Duration.class));
-        verify(jobLockService, never()).tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_INSTITUTE), any(Duration.class));
-        verify(jobLockService).release(JobLockKeys.ORDER_SYNC_INSTITUTE_HOT);
+        verify(jobLockService).tryAcquire(eq(JobLockKeys.ORDER_SYNC_INSTITUTE_HOT), any(Duration.class), anyString());
+        verify(jobLockService, never()).tryAcquire(eq(JobLockKeys.ORDER_SYNC_INSTITUTE), any(Duration.class), anyString());
+        verify(jobLockService).releaseWithOwner(eq(JobLockKeys.ORDER_SYNC_INSTITUTE_HOT), anyString());
     }
 
     @Test
     void syncInstituteOrdersHotRecent_shouldReturnLockedWithoutPersistingWhenBusy() {
-        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_INSTITUTE_HOT), any(Duration.class)))
+        when(jobLockService.tryAcquire(eq(JobLockKeys.ORDER_SYNC_INSTITUTE_HOT), any(Duration.class), anyString()))
                 .thenReturn(false);
 
         OrderSyncService.SyncResult result = service.syncInstituteOrdersHotRecent();
@@ -575,7 +575,7 @@ class OrderSyncServiceTest {
 
     @Test
     void syncInstituteOrdersHotRecent_shouldPersistHotWaterlineOnlyOnSuccess() {
-        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_INSTITUTE_HOT), any(Duration.class)))
+        when(jobLockService.tryAcquire(eq(JobLockKeys.ORDER_SYNC_INSTITUTE_HOT), any(Duration.class), anyString()))
                 .thenReturn(true);
 
         service.syncInstituteOrdersHotRecent();
@@ -586,7 +586,7 @@ class OrderSyncServiceTest {
 
     @Test
     void syncInstituteOrdersHotRecent_shouldNotPersistWaterlineOnFailure() {
-        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_INSTITUTE_HOT), any(Duration.class)))
+        when(jobLockService.tryAcquire(eq(JobLockKeys.ORDER_SYNC_INSTITUTE_HOT), any(Duration.class), anyString()))
                 .thenReturn(true);
         when(douyinOrderGateway.listInstituteOrders(any(DouyinOrderGateway.DouyinOrderQueryRequest.class)))
                 .thenThrow(new RuntimeException("upstream failed"));
@@ -624,7 +624,7 @@ class OrderSyncServiceTest {
     @Test
     void syncInstituteOrdersHotRecent_shouldUseHotLagNotGlobalLag() {
         ReflectionTestUtils.setField(service, "lagSeconds", 60L);
-        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_INSTITUTE_HOT), any(Duration.class)))
+        when(jobLockService.tryAcquire(eq(JobLockKeys.ORDER_SYNC_INSTITUTE_HOT), any(Duration.class), anyString()))
                 .thenReturn(true);
 
         service.syncInstituteOrdersHotRecent();
@@ -640,7 +640,7 @@ class OrderSyncServiceTest {
     @Test
     void syncInstituteOrdersHotRecent_shouldStopWhenHotMaxPagesReached() {
         ReflectionTestUtils.setField(service, "instituteHotMaxPages", 2);
-        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_INSTITUTE_HOT), any(Duration.class)))
+        when(jobLockService.tryAcquire(eq(JobLockKeys.ORDER_SYNC_INSTITUTE_HOT), any(Duration.class), anyString()))
                 .thenReturn(true);
         AtomicInteger counter = new AtomicInteger();
         when(douyinOrderGateway.listInstituteOrders(any(DouyinOrderGateway.DouyinOrderQueryRequest.class)))
@@ -672,7 +672,7 @@ class OrderSyncServiceTest {
 
     @Test
     void syncInstituteOrdersRecentWindow_shouldUpsertDuplicateOrderOnlyOnceAcrossPages() {
-        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_INSTITUTE), any(Duration.class)))
+        when(jobLockService.tryAcquire(eq(JobLockKeys.ORDER_SYNC_INSTITUTE), any(Duration.class), anyString()))
                 .thenReturn(true);
         when(douyinOrderGateway.listInstituteOrders(any(DouyinOrderGateway.DouyinOrderQueryRequest.class)))
                 .thenReturn(
@@ -733,7 +733,7 @@ class OrderSyncServiceTest {
 
     @Test
     void syncPayRecentWindow_shouldKeepUpdateTimeTypeForInstituteSettlementSource() {
-        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_PAY_RECENT), any(Duration.class)))
+        when(jobLockService.tryAcquire(eq(JobLockKeys.ORDER_SYNC_PAY_RECENT), any(Duration.class), anyString()))
                 .thenReturn(true);
 
         service.syncPayRecentWindow();
@@ -746,7 +746,7 @@ class OrderSyncServiceTest {
 
     @Test
     void syncByTimeRange_shouldKeepUpdateTimeTypeForInstituteSettlementSource() {
-        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC), any(Duration.class)))
+        when(jobLockService.tryAcquire(eq(JobLockKeys.ORDER_SYNC), any(Duration.class), anyString()))
                 .thenReturn(true);
 
         long now = java.time.Instant.now().getEpochSecond();
@@ -759,19 +759,19 @@ class OrderSyncServiceTest {
 
     @Test
     void syncSettlementSettleWindow_shouldUseIndependentLockAndCheckpointKey() {
-        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_SETTLE), any(Duration.class)))
+        when(jobLockService.tryAcquire(eq(JobLockKeys.ORDER_SYNC_SETTLE), any(Duration.class), anyString()))
                 .thenReturn(true);
 
         service.syncSettlementSettleWindow();
 
-        verify(jobLockService).tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_SETTLE), any(Duration.class));
-        verify(jobLockService, never()).tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC), any(Duration.class));
+        verify(jobLockService).tryAcquire(eq(JobLockKeys.ORDER_SYNC_SETTLE), any(Duration.class), anyString());
+        verify(jobLockService, never()).tryAcquire(eq(JobLockKeys.ORDER_SYNC), any(Duration.class), anyString());
         verify(valueOperations, never()).set(eq("order:sync:settle_last_time"), any());
     }
 
     @Test
     void syncSettlementSettleWindow_shouldUseConfiguredInstituteSettlementTimeType() {
-        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_SETTLE), any(Duration.class)))
+        when(jobLockService.tryAcquire(eq(JobLockKeys.ORDER_SYNC_SETTLE), any(Duration.class), anyString()))
                 .thenReturn(true);
 
         service.syncSettlementSettleWindow();
@@ -786,7 +786,7 @@ class OrderSyncServiceTest {
     @Test
     void syncSettlementSettleWindow_shouldUse2704OnlyWhenConfiguredAsFallbackSource() {
         ReflectionTestUtils.setField(service, "settlementSource", "colonelMultiSettlementOrders");
-        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_SETTLE), any(Duration.class)))
+        when(jobLockService.tryAcquire(eq(JobLockKeys.ORDER_SYNC_SETTLE), any(Duration.class), anyString()))
                 .thenReturn(true);
 
         service.syncSettlementSettleWindow();
@@ -797,7 +797,7 @@ class OrderSyncServiceTest {
 
     @Test
     void syncInstituteOrdersRecentWindow_shouldWriteSettlementWhen6468Settled() {
-        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_INSTITUTE), any(Duration.class)))
+        when(jobLockService.tryAcquire(eq(JobLockKeys.ORDER_SYNC_INSTITUTE), any(Duration.class), anyString()))
                 .thenReturn(true);
         when(douyinOrderGateway.listInstituteOrders(any(DouyinOrderGateway.DouyinOrderQueryRequest.class)))
                 .thenReturn(new DouyinOrderGateway.OrderListResult(
@@ -822,7 +822,7 @@ class OrderSyncServiceTest {
 
     @Test
     void syncSettlementSettleWindow_shouldNotPersistOrdersWhenUpstreamEmpty() {
-        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_SETTLE), any(Duration.class)))
+        when(jobLockService.tryAcquire(eq(JobLockKeys.ORDER_SYNC_SETTLE), any(Duration.class), anyString()))
                 .thenReturn(true);
 
         service.syncSettlementSettleWindow();
@@ -832,7 +832,7 @@ class OrderSyncServiceTest {
 
     @Test
     void syncSettlementSettleWindow_shouldPersistInstituteSettlementFields() {
-        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_SETTLE), any(Duration.class)))
+        when(jobLockService.tryAcquire(eq(JobLockKeys.ORDER_SYNC_SETTLE), any(Duration.class), anyString()))
                 .thenReturn(true);
         DouyinOrderGateway.DouyinOrderItem item = settlementOrderItemWithPhase("SETTLE_PHASE_1", "phase-99");
         when(instituteSettlementGateway.fetch(any(SettlementOrderQuery.class)))
@@ -857,7 +857,7 @@ class OrderSyncServiceTest {
 
     @Test
     void syncSettlementSettleWindow_shouldNotAdvanceCheckpointWhenUpstreamEmpty() {
-        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_SETTLE), any(Duration.class)))
+        when(jobLockService.tryAcquire(eq(JobLockKeys.ORDER_SYNC_SETTLE), any(Duration.class), anyString()))
                 .thenReturn(true);
 
         service.syncSettlementSettleWindow();
@@ -867,7 +867,7 @@ class OrderSyncServiceTest {
 
     @Test
     void syncSettlementSettleWindow_shouldAdvanceCheckpointWhenOrdersFetched() {
-        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_SETTLE), any(Duration.class)))
+        when(jobLockService.tryAcquire(eq(JobLockKeys.ORDER_SYNC_SETTLE), any(Duration.class), anyString()))
                 .thenReturn(true);
         DouyinOrderGateway.DouyinOrderItem item = instituteOrderItem("SETTLE_ORDER_1");
         when(instituteSettlementGateway.fetch(any(SettlementOrderQuery.class)))
@@ -884,7 +884,7 @@ class OrderSyncServiceTest {
 
     @Test
     void syncSettlementSettleWindow_shouldNotAdvanceCheckpointWhenGatewayFails() {
-        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC_SETTLE), any(Duration.class)))
+        when(jobLockService.tryAcquire(eq(JobLockKeys.ORDER_SYNC_SETTLE), any(Duration.class), anyString()))
                 .thenReturn(true);
         when(instituteSettlementGateway.fetch(any(SettlementOrderQuery.class)))
                 .thenThrow(new RuntimeException("upstream down"));
@@ -897,7 +897,7 @@ class OrderSyncServiceTest {
 
     @Test
     void syncByOrderIds_shouldUseInstituteSettlementGatewayAndNotFallbackTo2704ByDefault() {
-        when(jobLockService.tryAcquireStrict(eq(JobLockKeys.ORDER_SYNC), any(Duration.class)))
+        when(jobLockService.tryAcquire(eq(JobLockKeys.ORDER_SYNC), any(Duration.class), anyString()))
                 .thenReturn(true);
 
         service.syncByOrderIds(List.of("ORDER-1603-1"));

@@ -324,7 +324,8 @@ public class ProductActivityBackfillService {
     private BackfillResult runRealBackfillWithLocks(String jobId, NormalizedRequest request, ProductSyncJobLog jobLog) {
         // 真实写库必须先拿 PRODUCT_BACKFILL_GLOBAL 锁，与 ProductActivitySyncJob 互斥。
         String globalLockKey = JobLockKeys.PRODUCT_BACKFILL_GLOBAL;
-        if (!jobLockService.tryAcquire(globalLockKey, BACKFILL_LOCK_TTL)) {
+        String globalOwner = "backfill:global:" + jobId;
+        if (!jobLockService.tryAcquire(globalLockKey, BACKFILL_LOCK_TTL, globalOwner)) {
             String errorMessage = buildFailedLockErrorMessage(jobId, null, "GLOBAL", globalLockKey, "全局回填锁被占用");
             log.warn("ProductActivityBackfillService skipped, global backfill lock held, jobId={}, error={}", jobId, errorMessage);
             BackfillResult locked = buildLockedResult(jobId, request);
@@ -355,7 +356,8 @@ public class ProductActivityBackfillService {
             for (String activityId : sortedActivityIds) {
                 jobLog = updateProgressMetadata(jobLog, activityId);
                 String activityLockKey = JobLockKeys.productBackfillActivityLock(activityId);
-                if (!jobLockService.tryAcquire(activityLockKey, BACKFILL_LOCK_TTL)) {
+                String activityOwner = "backfill:activity:" + jobId + ":" + activityId;
+                if (!jobLockService.tryAcquire(activityLockKey, BACKFILL_LOCK_TTL, activityOwner)) {
                     totalLockWaitCount++;
                     String errorMessage = buildFailedLockErrorMessage(
                             jobId,
@@ -430,7 +432,7 @@ public class ProductActivityBackfillService {
                             activityId, jobId, stopReason, failureMessage, ex);
                     upsertFailedActivityState(activityId, request.scope(), stopReason, failureMessage);
                 } finally {
-                    jobLockService.release(activityLockKey);
+                    jobLockService.releaseWithOwner(activityLockKey, activityOwner);
                 }
             }
 
@@ -478,13 +480,14 @@ public class ProductActivityBackfillService {
             finishJob(jobLog, result, status, finalErrorMessage, totalLockWaitCount, totalDeadlockRetryCount);
             return result;
         } finally {
-            jobLockService.release(globalLockKey);
+            jobLockService.releaseWithOwner(globalLockKey, globalOwner);
         }
     }
 
     private void triggerDeferredDisplayRefresh(List<String> activityIds) {
         String lockKey = JobLockKeys.PRODUCT_DISPLAY_REFRESH;
-        if (!jobLockService.tryAcquire(lockKey, BACKFILL_LOCK_TTL)) {
+        String lockOwner = "backfill:display:" + Thread.currentThread().getId() + ":" + System.nanoTime();
+        if (!jobLockService.tryAcquire(lockKey, BACKFILL_LOCK_TTL, lockOwner)) {
             log.warn("ProductActivityBackfillService skip display refresh, lock held");
             return;
         }
@@ -499,7 +502,7 @@ public class ProductActivityBackfillService {
                 }
             }
         } finally {
-            jobLockService.release(lockKey);
+            jobLockService.releaseWithOwner(lockKey, lockOwner);
         }
     }
 
