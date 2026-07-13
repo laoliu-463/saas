@@ -7,8 +7,8 @@
 ## 必读文件
 
 - `AGENTS.md`
-- `harness/AGENT_CONTRACT.md`
-- `harness/FORBIDDEN_SCOPE.md`
+- `harness/rules/policies/agent-contract.md`
+- `harness/rules/governance/forbidden-scope.md`
 - `docs/09-测试验收总览.md`
 - 当前变更涉及的领域、流程、接口、数据和权限文档
 
@@ -45,4 +45,3 @@ P2：
 建议验证：
 剩余风险：
 ```
-

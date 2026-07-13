@@ -1,15 +1,15 @@
 # Deployment State
 
-> **主源说明**：本文件保留精简口径。远端部署的完整环境说明以 `harness/environment/remote-real-pre-env.md` 为准；
-> 命令决策表以 `harness/runbooks/scope-command-matrix.md` 为准。如本文件与上述文件冲突，必须以主源为准并在 `HARNESS_CHANGELOG.md` 记录。
+> **主源说明**：远端部署以 `harness/rules/environment/envs/remote-real-pre-env.md` 为准；
+> 命令决策表以 `harness/rules/runbooks/governance/scope-command-matrix.md` 为准。冲突应登记到 `harness/rules/changelog.md`。
 
 ## 当前部署口径
 
 | 环境 | 状态 | 证据主源 | 说明 |
 | --- | --- | --- | --- |
-| test | 可用于 mock / P0 回归 | `harness/environment/test-env.md`、`docker-compose.test.yml` | 仅在显式要求或专项测试中使用 |
-| 本地 real-pre | 默认工程修改环境 | `harness/environment/real-pre-env.md`、`docker-compose.real-pre.yml` | 前端 `3001`，后端 `8081` |
-| 远端 real-pre | 允许受控部署，但需用户明确要求 | `harness/environment/remote-real-pre-env.md`、`docs/10-部署运行总览.md` | 不等于正式全量上线 |
+| test | 可用于 mock / P0 回归 | `harness/rules/environment/envs/test-env.md`、`docker-compose.test.yml` | 仅在显式要求或专项测试中使用 |
+| 本地 real-pre | 默认工程修改环境 | `harness/rules/environment/envs/real-pre-env.md`、`docker-compose.real-pre.yml` | 前端 `3001`，后端 `8081` |
+| 远端 real-pre | 允许受控部署，但需用户明确要求 | `harness/rules/environment/envs/remote-real-pre-env.md`、`docs/10-部署运行总览.md` | 不等于正式全量上线 |
 
 ## 当前限制
 
@@ -22,5 +22,5 @@
 只有用户明确要求远端部署时，才允许执行：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.ps1 -Env real-pre -Scope full -DeployRemote true -Message "deploy: real-pre update"
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\agent-do.ps1 -Env real-pre -Scope full -DeployRemote true -Message "deploy: real-pre update"
 ```

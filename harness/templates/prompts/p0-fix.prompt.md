@@ -19,7 +19,7 @@
 默认命令：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.ps1 -Env real-pre -Scope full -Message "fix: describe p0 fix"
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\agent-do.ps1 -Env real-pre -Scope full -Message "fix: describe p0 fix"
 ```
 
 禁止事项：

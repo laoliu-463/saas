@@ -1,7 +1,7 @@
 # Runbook: Task Lifecycle
 
 > 任何任务（docs-only / backend / frontend / full / deploy / diagnosis）必须按本 runbook 走完七个 Gate。
-> 本 runbook 是 `harness/AGENT_CONTRACT.md` + `harness/COMPLETION_GATES.md` + `harness/SESSION_EXIT_GATE.md` 的执行流程视图。
+> 本 runbook 是 `harness/rules/policies/agent-contract.md`、`harness/rules/governance/COMPLETION_GATES.md` 和 `harness/rules/governance/session-exit-gate.md` 的执行流程视图。
 
 ## 0. 三件套关系
 
@@ -19,12 +19,12 @@
 **必做动作**：
 
 1. 读取 `CLAUDE.md` + `docs/README.md`。
-2. 读取 `harness/CURRENT_STATE.md`。
-3. 读取 `harness/TASK_ROUTING.md` 找到对应任务类型必读文件。
+2. 读取 `harness/rules/state/snapshots/01-当前项目状态.md`。
+3. 读取 `harness/rules/governance/task-routing.md` 找到对应任务类型必读文件。
 4. 执行 `git status --short` / `git log -1` / `git branch --show-current` / `git remote -v`，并记录到本轮 Intake 段落。
 5. 判断任务类型：`docs | backend | frontend | full | deploy | diagnosis`。
 6. 判断涉及领域（参见 `harness/DOMAIN_MAP.md`）。
-7. 阅读 `harness/FORBIDDEN_SCOPE.md`，明确本任务**禁止**做哪些事。
+7. 阅读 `harness/rules/governance/forbidden-scope.md`，明确本任务**禁止**做哪些事。
 8. 判断是否需要：
    - 重启本地容器？
    - 远端部署？
@@ -46,7 +46,7 @@
 2. 列出 Forbidden Change Set（必须显式说明：env、密钥、`.env.real-pre`、`*.key`、未授权的 `backend/` `frontend/` `docs/`）。
 3. 列出可能被误改的文件（如多份报告同时修改某一处文字）。
 4. 明确：`git add .` / `git add -A` / `git add <dir>/` **禁止**。
-5. 把当前 `git status --short` 中的 dirty 归入十种分类之一（参见 `harness/skills/git-change-control.md` 第 3 节）。
+5. 把当前 `git status --short` 中的 dirty 归入十种分类之一（参见 `harness/rules/skills/git/git-change-control.md` 第 3 节）。
 
 **输出**：Allowed / Forbidden / Risky 三段；dirty 分类表。
 
@@ -85,7 +85,7 @@
 | deploy | 部署前 commit 对齐 + 部署后 health + 日志 + API 验证 + DB 只读对账 |
 | diagnosis | 复现 → 证据链 → 阶段性结论（未修复） |
 
-详细命令矩阵见 `harness/runbooks/scope-command-matrix.md`。
+详细命令矩阵见 `harness/rules/runbooks/governance/scope-command-matrix.md`。
 
 **输出**：每条命令的 PASS / FAIL / SKIP 表 + 证据路径。
 
@@ -101,10 +101,10 @@
 
 1. 生成 `harness/reports/evidence-YYYYMMDD-HHMMSS-<task>.md`（按 `harness/feedback/evidence-report-template.md`；docs-only 可用 `harness/feedback/docs-only-template.md`）。
 2. 生成 `harness/reports/retro-YYYYMMDD-HHMMSS-<task>.md`（按 `harness/feedback/retro-summary-template.md`）。
-3. 更新 `harness/CURRENT_STATE.md` 的"已完成"段落（如有状态变化）。
-4. 更新 `harness/state/DOMAIN_STATUS.md` 中本轮涉及领域的状态。
-5. 更新 `harness/HARNESS_CHANGELOG.md` 一行。
-6. 更新 `harness/state/HARNESS_DEBT.md`（如本轮有新增 / 关闭 DEBT）。
+3. 更新 `harness/rules/state/snapshots/01-当前项目状态.md` 的相关状态（如有变化）。
+4. 更新 `harness/rules/state/snapshots/DOMAIN_STATUS.md` 中本轮涉及领域的状态。
+5. 更新 `harness/rules/changelog.md` 一行。
+6. 更新 `harness/rules/state/debts/HARNESS_DEBT.md`（如本轮有新增 / 关闭 DEBT）。
 7. 判断是否需要运行 `retire-content.ps1 -Action Plan`（如产生新报告或旧报告可归档）。
 
 **输出**：四份以上文件更新 + 至少 2 份报告。
@@ -137,7 +137,7 @@
 
 **目的**：确认仓库可交接，下一 Agent 可直接接手。
 
-**必做动作**（按 `harness/SESSION_EXIT_GATE.md`）：
+**必做动作**（按 `harness/rules/governance/session-exit-gate.md`）：
 
 1. **Build Clean**：`git diff --name-only` 不含 `backend/src/main/` `frontend/src/`（docs-only）。
 2. **Test Clean**：本轮相关测试 PASS / 明确 BLOCKED。
@@ -166,14 +166,14 @@
 
 ## 关联文档
 
-- `harness/AGENT_CONTRACT.md`
-- `harness/TASK_ROUTING.md`
-- `harness/COMPLETION_GATES.md`
-- `harness/SESSION_EXIT_GATE.md`
-- `harness/FORBIDDEN_SCOPE.md`
-- `harness/skills/git-change-control.md`
-- `harness/skills/git-batch-submit.md`
-- `harness/skills/post-task-gc.md`
-- `harness/runbooks/scope-command-matrix.md`
-- `harness/runbooks/closeout-and-gc.md`
-- `harness/runbooks/debt-governance.md`
+- `harness/rules/policies/agent-contract.md`
+- `harness/rules/governance/task-routing.md`
+- `harness/rules/governance/COMPLETION_GATES.md`
+- `harness/rules/governance/session-exit-gate.md`
+- `harness/rules/governance/forbidden-scope.md`
+- `harness/rules/skills/git/git-change-control.md`
+- `harness/rules/skills/git/git-batch-submit.md`
+- `harness/rules/skills/workflow/post-task-gc.md`
+- `harness/rules/runbooks/governance/scope-command-matrix.md`
+- `harness/rules/runbooks/governance/closeout-and-gc.md`
+- `harness/rules/runbooks/governance/debt-governance.md`

@@ -7,7 +7,7 @@
 ## 前置检查
 
 1. 读取 `docs/08-第三方对接总览.md`、当前对接项对应 `docs/对接/*.md`。
-2. 读取 `docs/验收/real-pre联调手册.md` 和 `harness/skills/real-pre-debug.skill.md`。
+2. 读取 `docs/验收/real-pre联调手册.md` 和 `harness/rules/skills/ddd/real-pre-debug.skill.md`。
 3. 执行 safety-check，确认 real-pre 未 mock 化。
 
 ## 操作步骤
@@ -46,5 +46,5 @@ npm run e2e:real-pre:p0:preflight
 
 - `runtime/qa/out/real-pre-*`
 - 后端日志摘要。
-- `docs/验收/验收证据索引.md` 或 `harness/state/real-pre-evidence-index.md`。
+- `docs/验收/验收证据索引.md`；Harness 侧只在 `harness/rules/state/snapshots/04-real-pre证据索引.md` 保留执行摘要。
 - `harness/reports/evidence-*.md`。

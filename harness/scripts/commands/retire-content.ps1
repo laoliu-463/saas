@@ -81,7 +81,7 @@ function Test-SourceLikePath {
     return $lower.StartsWith("backend\src\") `
         -or $lower.StartsWith("frontend\src\") `
         -or $lower.StartsWith("scripts\") `
-        -or $lower.StartsWith("harness\commands\") `
+        -or $lower.StartsWith("harness\scripts\commands\") `
         -or $lower.EndsWith(".java") `
         -or $lower.EndsWith(".vue") `
         -or $lower.EndsWith(".ts") `
@@ -111,7 +111,7 @@ function Get-AutoCandidates {
 
     $candidates = @()
 
-    $stateDocDir = Join-Path $RepoRoot "harness\doc\04-state"
+    $stateDocDir = Join-Path $RepoRoot "harness\rules\state\snapshots"
     $debtRegisterItem = Get-ChildItem -LiteralPath $stateDocDir -Filter "05-*.md" -File -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($debtRegisterItem -and (Test-Path -LiteralPath $debtRegisterItem.FullName)) {
         $content = Get-Content -Raw -Encoding UTF8 -LiteralPath $debtRegisterItem.FullName
@@ -133,7 +133,7 @@ function Get-AutoCandidates {
                 if ($candidatePath -and -not ($candidatePath.Contains("*"))) {
                     $full = Join-Path $RepoRoot $candidatePath
                     if (Test-Path -LiteralPath $full) {
-                        $candidates += New-PlanCandidate -Path $candidatePath -Category "document-debt" -SuggestedAction "review/resolve-from-debt-register" -Evidence "listed in harness/doc/04-state/05 document debt register"
+                        $candidates += New-PlanCandidate -Path $candidatePath -Category "document-debt" -SuggestedAction "review/resolve-from-debt-register" -Evidence "listed in harness/rules/state/snapshots/05-*.md debt register"
                     }
                 }
             }

@@ -35,8 +35,8 @@
 
 ## 完成后必须更新的 state
 
-- `harness/state/DOMAIN_STATUS.md` 的用户域状态。
-- 相关 evidence report 和 `harness/state/KNOWN_ISSUES.md`。
+- `harness/rules/state/snapshots/DOMAIN_STATUS.md` 的用户域状态。
+- 相关 evidence report 和 `harness/rules/state/snapshots/KNOWN_ISSUES.md`。
 
 ## 失败后必须写入 feedback
 

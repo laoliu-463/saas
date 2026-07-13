@@ -21,13 +21,13 @@
 npm --prefix frontend run build
 mvn -f backend/pom.xml test
 npm run e2e:v1-p0
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\safety-check.ps1 -Env real-pre -Scope docs -DryRun
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\safety-check.ps1 -Env real-pre -Scope docs -DryRun
 ```
 
 ## 待确认
 
 - 本机 Java、Maven、Node 版本以实际命令输出为准；本文不硬编码。
-- `frontend/pnpm-lock.yaml` 存在，但当前根脚本和 Harness 入口使用 `npm`。如切换包管理器，必须同步更新 `harness/tools/README.md` 与执行脚本。
+- `frontend/pnpm-lock.yaml` 存在，但当前根脚本和 Harness 入口使用 `npm`。如切换包管理器，必须同步更新执行脚本和本环境说明。
 
 ## 禁止事项
 

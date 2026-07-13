@@ -4,15 +4,15 @@
 
 | 脚本 | 当前路径 | 当前职责 | 状态 |
 | --- | --- | --- | --- |
-| `agent-do.ps1` | `harness/commands/agent-do.ps1` | 串联安全检查、构建、重启、健康检查、业务验证、证据、Git、远端部署、复盘 | 已存在 |
-| `safety-check.ps1` | `harness/commands/safety-check.ps1` | 敏感文件、real-pre 开关、危险命令引用检查 | 已存在 |
-| `restart-compose.ps1` | `harness/commands/restart-compose.ps1` | 按 env/scope 执行 `docker compose up -d --build` | 已存在 |
-| `verify-local.ps1` | `harness/commands/verify-local.ps1` | 本地 HTTP 健康检查 | 已存在 |
-| `collect-evidence.ps1` | `harness/commands/collect-evidence.ps1` | 生成 evidence report | 已存在 |
-| `retire-content.ps1` | `harness/commands/retire-content.ps1` | 生成旧内容维护计划，按 manifest 归档或删除旧内容 | 已存在 |
-| `deploy-remote.ps1` | `harness/commands/deploy-remote.ps1` | 远端 real-pre 拉取、重建、健康检查 | 已存在 |
-| `new-retro.ps1` | `harness/commands/new-retro.ps1` | 生成任务后复盘 | 已存在 |
-| `git-push-safe.ps1` | `harness/commands/git-push-safe.ps1` | 敏感文件检查、提交、推送 | 已存在 |
+| `agent-do.ps1` | `harness/scripts/commands/agent-do.ps1` | 串联安全检查、构建、重启、健康检查、业务验证、证据、Git、远端部署、复盘 | 已存在 |
+| `safety-check.ps1` | `harness/scripts/commands/safety-check.ps1` | 敏感文件、real-pre 开关、危险命令引用检查 | 已存在 |
+| `restart-compose.ps1` | `harness/scripts/commands/restart-compose.ps1` | 按 env/scope 执行 `docker compose up -d --build` | 已存在 |
+| `verify-local.ps1` | `harness/scripts/commands/verify-local.ps1` | 本地 HTTP 健康检查 | 已存在 |
+| `collect-evidence.ps1` | `harness/scripts/commands/collect-evidence.ps1` | 生成 evidence report | 已存在 |
+| `retire-content.ps1` | `harness/scripts/commands/retire-content.ps1` | 生成旧内容维护计划，按 manifest 归档或删除旧内容 | 已存在 |
+| `deploy-remote.ps1` | `harness/scripts/commands/deploy-remote.ps1` | 远端 real-pre 拉取、重建、健康检查 | 已存在 |
+| `new-retro.ps1` | `harness/scripts/commands/new-retro.ps1` | 生成任务后复盘 | 已存在 |
+| `git-push-safe.ps1` | `harness/scripts/commands/git-push-safe.ps1` | 敏感文件检查、提交、推送 | 已存在 |
 
 ## 未来 agent-do.ps1 应继续做什么
 

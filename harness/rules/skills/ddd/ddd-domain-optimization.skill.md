@@ -6,12 +6,12 @@
 
 ## 必读文件
 
-- `harness/AGENT_CONTRACT.md`
-- `harness/TASK_ROUTING.md`
-- `harness/FORBIDDEN_SCOPE.md`
-- `harness/plans/DDD_OPTIMIZATION_ROADMAP.md`
-- `harness/plans/DDD_DOMAIN_TASK_MATRIX.md`
-- 当前领域对应的 `harness/instructions/*.md`
+- `harness/rules/policies/agent-contract.md`
+- `harness/rules/governance/task-routing.md`
+- `harness/rules/governance/forbidden-scope.md`
+- `harness/rules/runbooks/ddd/DDD_OPTIMIZATION_ROADMAP.md`
+- `harness/rules/runbooks/ddd/DDD_DOMAIN_TASK_MATRIX.md`
+- 当前领域对应的 `harness/rules/instructions/domain/*.md`
 - 当前领域对应的 `docs/领域/*.md`
 
 ## 禁止事项

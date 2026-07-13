@@ -5,7 +5,6 @@
 - `docs/验收/real-pre联调手册.md`
 - `docs/验收/验收证据索引.md`
 - `docs/10-部署运行总览.md`
-- `harness/state/real-pre-evidence-index.md`
 - `harness/reports/`
 - `runtime/qa/out/`
 
@@ -38,4 +37,3 @@
 - 真实渠道订单归因样本不足。
 - 寄样自动完成缺可归因真实订单样本。
 - 商品库历史推广中入库 / repair 需持续验证。
-

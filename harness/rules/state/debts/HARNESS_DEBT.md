@@ -1,16 +1,16 @@
 # Harness Debt Register
 
 > 集中登记 harness 自身的债务、清理进度与关闭条件。
-> 业务域债务保留在 `state/p0-p1-register.md` 与 `state/KNOWN_ISSUES.md`，本文件**只管 harness 工程债务**。
+> 业务域债务保留在 `../snapshots/03-P0-P1问题台账.md` 与 `../snapshots/KNOWN_ISSUES.md`，本文件**只管 Harness 工程债务**。
 
 ## 1. 与既有 state 文件的分工
 
 | 文件 | 主责 |
 | --- | --- |
-| `state/KNOWN_ISSUES.md` | 业务问题卡片，含证据 / 修复状态 |
-| `state/p0-p1-register.md` | 业务 P0/P1/P2 风险表 |
-| `state/known-risks.md` | 风险分类视图 |
-| `state/HARNESS_DEBT.md` (本文件) | **Harness 自身的工程债务**（harness / docs / scripts / 临时产物） |
+| `../snapshots/KNOWN_ISSUES.md` | 业务问题卡片，含证据 / 修复状态 |
+| `../snapshots/03-P0-P1问题台账.md` | 业务 P0/P1 风险摘要 |
+| `../snapshots/04-real-pre证据索引.md` | real-pre 执行证据摘要 |
+| `HARNESS_DEBT.md`（本文件） | Harness 自身的工程债务 |
 
 ## 2. 状态口径
 
@@ -24,25 +24,25 @@
 
 | ID | 级别 | 子系统 | 标题 | 状态 | 处理任务 | 证据 |
 | --- | --- | --- | --- | --- | --- | --- |
-| DEBT-001 | P1 | Instruction | 任务生命周期缺显式 runbook | in-progress | HARNESS-DEBT-GOVERNANCE-ITERATION | runbooks/task-lifecycle.md |
-| DEBT-002 | P1 | Instruction | safety-rules.md 与 FORBIDDEN_SCOPE.md 重叠 | in-progress | HARNESS-DEBT-GOVERNANCE-ITERATION | instructions/safety-rules.md 顶部指针 |
-| DEBT-003 | P1 | Tool | Scope → Command 决策表分散 | in-progress | HARNESS-DEBT-GOVERNANCE-ITERATION | runbooks/scope-command-matrix.md |
+| DEBT-001 | P1 | Instruction | 任务生命周期缺显式 runbook | in-progress | HARNESS-DEBT-GOVERNANCE-ITERATION | `rules/runbooks/governance/task-lifecycle.md` 已存在，待执行闭环验证 |
+| DEBT-002 | P1 | Instruction | safety-rules.md 与 forbidden-scope.md 重叠 | in-progress | HARNESS-REDUNDANCY-CLEANUP-20260713 | 重复文件已删除；待 evidence/commit 后关闭 |
+| DEBT-003 | P1 | Tool | Scope → Command 决策表分散 | in-progress | HARNESS-DEBT-GOVERNANCE-ITERATION | `rules/runbooks/governance/scope-command-matrix.md` |
 | DEBT-004 | P1 | State | KNOWN_ISSUES / p0-p1-register / known-risks 分工隐式 | in-progress | HARNESS-DEBT-GOVERNANCE-ITERATION | 三文件顶部互引 |
 | DEBT-005 | P1 | State | DEPLOYMENT_STATE.md 与 environment/remote-real-pre-env.md 部分重叠 | in-progress | HARNESS-DEBT-GOVERNANCE-ITERATION | DEPLOYMENT_STATE.md 顶部指针 |
 | DEBT-006 | P1 | State | TASK_HISTORY.md 自 2026-06-02 后未补 | in-progress | HARNESS-DEBT-GOVERNANCE-ITERATION | TASK_HISTORY.md 追加 |
 | DEBT-007 | P1 | Feedback | 缺 docs-only 最小化 evidence/retro 模板 | in-progress | HARNESS-DEBT-GOVERNANCE-ITERATION | feedback/docs-only-template.md |
 | DEBT-008 | P1 | Environment | 本地端口 / 健康检查 URL 分散 | in-progress | HARNESS-DEBT-GOVERNANCE-ITERATION | environment/CHEATSHEET.md |
 | DEBT-009 | P1 | Tool | VALIDATION_STATE 与 TASK_ROUTING 验证入口表未互引 | in-progress | HARNESS-DEBT-GOVERNANCE-ITERATION | 两处顶部互引 |
-| DEBT-010 | P2 | State | CURRENT_STATE.md 缺目录级索引 | in-progress | HARNESS-DEBT-GOVERNANCE-ITERATION | CURRENT_STATE.md 顶部目录 |
+| DEBT-010 | P2 | State | CURRENT_STATE.md 缺目录级索引 | in-progress | HARNESS-REDUNDANCY-CLEANUP-20260713 | 旧入口已删除，当前主源为 `rules/state/snapshots/01-当前项目状态.md`；待 evidence/commit 后关闭 |
 | DEBT-011 | P2 | State | QUALITY_LEDGER 与 DOMAIN_STATUS 重复 | in-progress | HARNESS-DEBT-GOVERNANCE-ITERATION | QUALITY_LEDGER 顶部指针 |
-| DEBT-012 | P2 | Instruction | doc/ + harness/ + README.md 三方并存 | in-progress | HARNESS-DEBT-GOVERNANCE-ITERATION | harness/README.md 顶部声明 |
+| DEBT-012 | P2 | Instruction | doc/ + harness/ + README.md 三方并存 | in-progress | HARNESS-REDUNDANCY-CLEANUP-20260713 | 当前入口已收敛，待全仓引用检查和 evidence 后关闭 |
 | DEBT-013 | P2 | Environment | 12 个 ad-hoc log 未 .gitignore 排除 | fixed | HARNESS-DEBT-GC-001 | harness/reports/harness-debt-gc-001-inventory-20260604-001052.md |
 | DEBT-014 | P2 | Reports | reports/ 72 份未触发归档 | wontfix | HARNESS-DEBT-GC-001 | harness/reports/harness-debt-gc-001-inventory-20260604-001052.md |
-| DEBT-015 | P2 | doc | doc/01-instructions/05 与 instructions/* 重叠 | in-progress | HARNESS-DEBT-GOVERNANCE-ITERATION | doc 顶部加指针 |
+| DEBT-015 | P2 | doc | 旧 instructions 治理说明与主源重叠 | in-progress | HARNESS-REDUNDANCY-CLEANUP-20260713 | 9 个重复治理文件已删除，待 evidence/commit 后关闭 |
 | DEBT-016 | P2 | Plan | DDD_DOMAIN_TASK_MATRIX 未更新 | deferred | DDD 任务 | — |
 | DEBT-017 | P2 | Feedback | garbage-collection-policy 未列 reports/ 为受保护 | in-progress | HARNESS-DEBT-GOVERNANCE-ITERATION | GC 政策顶部声明 |
 | DEBT-018 | P2 | Quality | QUALITY_LEDGER 中 Harness 等级仍为 B | in-progress | HARNESS-DEBT-GOVERNANCE-ITERATION | QUALITY_LEDGER 升级 A- |
-| DEBT-019 | P2 | Environment | 缺环境速查表 | in-progress | HARNESS-DEBT-GOVERNANCE-ITERATION | environment/CHEATSHEET.md |
+| DEBT-019 | P2 | Environment | 缺环境速查表 | in-progress | HARNESS-REDUNDANCY-CLEANUP-20260713 | `rules/environment/CHEATSHEET.md` 已校正，待 evidence/commit 后关闭 |
 | DEBT-020 | P3 | Tool | agent-do.ps1 缺 -Scope harness | deferred | HARNESS-AGENT-DO-HARDEN | — |
 | DEBT-021 | P3 | Feedback | 缺"未变更文件"自动化检测 | deferred | 后续 | — |
 | DEBT-022 | P3 | Tool | safety-check scope 列表不全 | deferred | HARNESS-AGENT-DO-HARDEN | — |
@@ -59,7 +59,7 @@
 1. 有修复 commit hash（如果修改了文件）。
 2. 有验证命令 + 输出（哪怕是 `safety-check docs -DryRun`）。
 3. 有 evidence 报告路径。
-4. 状态字段已更新到本表 + `HARNESS_CHANGELOG.md`。
+4. 状态字段已更新到本表和 `harness/rules/changelog.md`。
 5. 若涉及部署：明确"已部署"或"无需部署"。
 
 ## 5. 写入规则

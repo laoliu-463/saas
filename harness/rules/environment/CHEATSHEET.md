@@ -1,7 +1,7 @@
 # Harness Environment Cheatsheet
 
 > 单一速查表。本地端口、健康检查 URL、env 含义、远端路径。
-> 详细说明仍以 `harness/environment/<env>.md` 为准；本表做"5 秒找到答案"。
+> 详细说明以 `harness/rules/environment/envs/*.md` 为准；本表只做快速索引。
 
 ## 1. 本地端口与服务
 
@@ -39,7 +39,7 @@ docker compose -f docker-compose.real-pre.yml restart backend-real-pre
 docker compose -f docker-compose.real-pre.yml logs backend --tail=200
 
 # 跑所有 harness 验证
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.ps1 -Env real-pre -Scope full -Message "task"
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\agent-do.ps1 -Env real-pre -Scope full -Message "task"
 ```
 
 ## 4. 远端信息（受控）
@@ -68,10 +68,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.
 
 ```powershell
 # docs-only
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\safety-check.ps1 -Env real-pre -Scope docs -DryRun
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\safety-check.ps1 -Env real-pre -Scope docs -DryRun
 
 # 部署前
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\verify-local.ps1 -Scope full
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\verify-local.ps1 -Env real-pre -Scope full
 ```
 
 ## 7. 禁止命令
@@ -87,11 +87,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\verify-lo
 
 ## 8. 关联文档
 
-- `harness/environment/README.md`
-- `harness/environment/test-env.md`
-- `harness/environment/real-pre-env.md`
-- `harness/environment/remote-real-pre-env.md`
-- `harness/environment/docker-compose-map.md`
-- `harness/environment/local-dev-env.md`
-- `harness/runbooks/scope-command-matrix.md`
-- `harness/runbooks/remote-deploy.md`
+- `harness/rules/environment/README.md`
+- `harness/rules/environment/envs/test-env.md`
+- `harness/rules/environment/envs/real-pre-env.md`
+- `harness/rules/environment/envs/remote-real-pre-env.md`
+- `harness/rules/environment/envs/docker-compose-map.md`
+- `harness/rules/environment/envs/local-dev-env.md`
+- `harness/rules/runbooks/governance/scope-command-matrix.md`
+- `harness/rules/runbooks/remote-deploy.md`

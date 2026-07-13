@@ -23,7 +23,7 @@
 | 2026-06-03 | GIT-HARNESS-001 Git 工作区治理与批次提交门禁 | DONE（docs-only） | `harness/reports/git-harness-001-worktree-governance-20260603-*.md` |
 | 2026-06-03 | P-FIX-002D-REMOTE 远端商品同步 5min 周期验证 | DONE | `harness/reports/p-fix-002d-remote-deploy-verify-20260603-132805.md` |
 | 2026-06-03 | P-FIX-002-CONFIG-RESIDUAL 配置残留清理 | DONE | `harness/reports/p-fix-002-config-residual-20260603-152000.md` |
-| 2026-06-02 | Harness Engineering 保守整理：入口一致性、任务路由、环境/状态/runbook/反馈补齐 | DONE | `harness/HARNESS_CHANGELOG.md` v0.1.x |
+| 2026-06-02 | Harness Engineering 保守整理：入口一致性、任务路由、环境/状态/runbook/反馈补齐 | DONE | `harness/rules/changelog.md` v0.1.x |
 
 ## 记录规则
 

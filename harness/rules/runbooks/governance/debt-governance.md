@@ -69,11 +69,11 @@ DEBT 关闭必须同时满足：
 
 ```powershell
 # 1. 生成候选计划
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\retire-content.ps1 -Action Plan
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\retire-content.ps1 -Action Plan
 
 # 2. 写 manifest（参考 archive/retired-content/20260603-reports-archive/）
 # 3. 显式归档
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\retire-content.ps1 -Action Archive -Manifest <path>
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\retire-content.ps1 -Action Archive -Manifest <path>
 ```
 
 **禁止**：
@@ -113,10 +113,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\retire-co
 
 ## 8. 关联文档
 
-- `harness/state/HARNESS_DEBT.md`
+- `harness/rules/state/debts/HARNESS_DEBT.md`
 - `harness/feedback/garbage-collection-policy.md`
-- `harness/skills/post-task-gc.md`
-- `harness/HARNESS_CHANGELOG.md`
-- `harness/CURRENT_STATE.md`
-- `harness/runbooks/closeout-and-gc.md`
-- `harness/runbooks/task-lifecycle.md`
+- `harness/rules/skills/workflow/post-task-gc.md`
+- `harness/rules/changelog.md`
+- `harness/rules/state/snapshots/01-当前项目状态.md`
+- `harness/rules/runbooks/governance/closeout-and-gc.md`
+- `harness/rules/runbooks/governance/task-lifecycle.md`

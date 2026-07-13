@@ -18,7 +18,7 @@
 4. 后端相关修改走：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.ps1 -Env real-pre -Scope backend -Message "fix: database change"
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\agent-do.ps1 -Env real-pre -Scope backend -Message "fix: database change"
 ```
 
 ## 验证标准
@@ -46,4 +46,4 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.
 - migration / repair diff。
 - SQL 取证摘要。
 - evidence report。
-- 必要时更新 `harness/state/KNOWN_ISSUES.md` 或 `docs/决策/*.md`。
+- 必要时更新 `harness/rules/state/snapshots/KNOWN_ISSUES.md` 或 `docs/决策/*.md`。

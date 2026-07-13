@@ -37,7 +37,7 @@
 
 ## 完成后必须更新的 state
 
-- `harness/state/DOMAIN_STATUS.md` 的寄样域状态。
+- `harness/rules/state/snapshots/DOMAIN_STATUS.md` 的寄样域状态。
 - 寄样状态、订单事件、真实样本和自动完成相关 evidence。
 
 ## 失败后必须写入 feedback

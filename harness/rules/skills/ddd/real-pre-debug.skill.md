@@ -9,8 +9,8 @@
 - `docs/08-第三方对接总览.md`
 - `docs/10-部署运行总览.md`
 - `docs/验收/real-pre联调手册.md`
-- `.claude/hooks/real-pre环境守卫.md`
-- `harness/FORBIDDEN_SCOPE.md`
+- `harness/rules/environment/envs/real-pre-env.md`
+- `harness/rules/governance/forbidden-scope.md`
 - 当前对接项对应的 `docs/对接/*.md`
 
 ## 禁止事项
@@ -23,7 +23,7 @@
 
 ## 标准流程
 
-1. 执行 `harness/commands/safety-check.ps1 -Env real-pre`。
+1. 执行 `harness/scripts/commands/safety-check.ps1 -Env real-pre`。
 2. 检查 Docker 服务状态：PostgreSQL、Redis、backend、frontend。
 3. 检查后端健康：`http://127.0.0.1:8081/api/system/health`。
 4. 检查前端健康：`http://127.0.0.1:3001/healthz` 或 `/login`。
@@ -54,4 +54,3 @@ DB/API 证据：
 阶段性结论：
 下一步：
 ```
-

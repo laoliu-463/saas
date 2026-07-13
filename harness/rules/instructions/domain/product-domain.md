@@ -39,7 +39,7 @@
 
 ## 完成后必须更新的 state
 
-- `harness/state/DOMAIN_STATUS.md` 的商品域状态。
+- `harness/rules/state/snapshots/DOMAIN_STATUS.md` 的商品域状态。
 - 商品库、活动商品、转链和映射相关 evidence。
 
 ## 失败后必须写入 feedback

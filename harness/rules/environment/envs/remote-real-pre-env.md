@@ -1,31 +1,27 @@
 # Remote Real-pre Environment
 
-## 仓库事实
+## 当前事实
 
-当前部署文档记录的远端入口：
+| 项 | 当前值 |
+| --- | --- |
+| SSH Host | `saas` |
+| Repo dir | `/opt/saas/app` |
+| Env file | `/opt/saas/env/.env.real-pre` |
+| Compose | `docker-compose.real-pre.yml` |
+| 后端健康 | `http://127.0.0.1:8081/api/system/health` |
+| 前端健康 | `http://127.0.0.1:3001/healthz` |
 
-- SSH Host：`saas`
-- Repo dir：`/opt/saas/app`
-- Env file：`/opt/saas/env/.env.real-pre`
-- Compose：`docker-compose.real-pre.yml`
-- 后端健康：`http://127.0.0.1:8081/api/system/health`
-- 前端健康：`http://127.0.0.1:3001/healthz`
+## 部署前提
 
-用户默认模板中写 `RemoteDir=/opt/saas`；当前仓库事实是代码目录 `/opt/saas/app`。脚本默认采用仓库事实，可通过参数覆盖。
+- 用户明确要求远端部署。
+- 本地修改已按任务范围提交和推送。
+- 远端工作区干净并与目标 commit 对齐。
+- 不清库、不删除 volume、不切换 mock。
 
-## 部署入口
+## 固定入口
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\deploy-remote.ps1 -Env real-pre -RemoteHost saas -RemoteDir /opt/saas/app
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\agent-do.ps1 -Env real-pre -Scope full -DeployRemote true -Message "deploy: real-pre update"
 ```
 
-## 回滚
-
-远端回滚见 `harness/runbooks/rollback.md`。real-pre 回滚禁止清库和删除 volume。
-
-## 待确认项
-
-- 远端分支是否仍为 `feature/auth-system`。
-- 远端是否每次部署后强制执行完整 P0 / roles。
-- 远端真实写入开关是否有临时冻结窗口。
-
+回滚规则见 `../../runbooks/rollback.md`。远端分支、冻结窗口和完整 E2E 要求必须在每次部署前重新取证，不在本文件写成固定事实。

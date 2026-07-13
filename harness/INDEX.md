@@ -12,9 +12,7 @@
 - [engineering/](./engineering/)   ← **Matt Pocock engineering skill 配置**（v2.0, 2026-06-19）
 
 ## 最新报告
-- [reports/latest-harness-inventory.md](./reports/latest-harness-inventory.md)
 - [reports/latest-harness-limits-check.md](./reports/latest-harness-limits-check.md)
-- [reports/latest-harness-gc-report.md](./reports/latest-harness-gc-report.md)
 
 ## 清理计划
 - [manifests/harness-gc-plan-20260612.md](./manifests/harness-gc-plan-20260612.md)

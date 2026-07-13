@@ -42,11 +42,11 @@
 
 ## 5. 状态更新
 
-- `harness/CURRENT_STATE.md`：updated / not needed
-- `harness/state/DOMAIN_STATUS.md`：updated / not needed
-- `harness/HARNESS_CHANGELOG.md`：updated
-- `harness/state/HARNESS_DEBT.md`：updated / not needed
-- `harness/state/KNOWN_ISSUES.md`：updated / not needed
+- `harness/rules/state/snapshots/01-当前项目状态.md`：updated / not needed
+- `harness/rules/state/snapshots/DOMAIN_STATUS.md`：updated / not needed
+- `harness/rules/changelog.md`：updated
+- `harness/rules/state/debts/HARNESS_DEBT.md`：updated / not needed
+- `harness/rules/state/snapshots/KNOWN_ISSUES.md`：updated / not needed
 
 ## 6. 报告
 
@@ -57,7 +57,7 @@
 ## 7. 远端部署
 
 - 是否涉及远端：❌
-- 若用户明确要求：见 `harness/runbooks/remote-deploy.md`
+- 若用户明确要求：见 `harness/rules/runbooks/remote-deploy.md`
 
 ## 8. 结论
 
@@ -81,5 +81,5 @@
 
 - `harness/feedback/evidence-report-template.md`（11 节完整版）
 - `harness/feedback/retro-summary-template.md`
-- `harness/COMPLETION_GATES.md`（Gate 0）
-- `harness/SESSION_EXIT_GATE.md`
+- `harness/rules/governance/COMPLETION_GATES.md`（Gate 0）
+- `harness/rules/governance/session-exit-gate.md`

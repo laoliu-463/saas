@@ -3,7 +3,7 @@
 > **受保护范围扩展**（2026-06-03 HARNESS-DEBT-GOVERNANCE-ITERATION）：
 > 除 `.env*` 真实文件、密钥、证书、私钥、Docker Compose、数据库 migration、源码、脚本与 Git 元数据外，
 > `harness/reports/*.md` 全部报告（evidence / retro / retire / diagnose / domain-* / git-* / p-*-* / func-*）默认**受保护**；
-> 任何归档 / 删除必须按 `harness/runbooks/debt-governance.md` 的"Report Rotation"流程走 manifest。
+> 任何归档 / 删除必须按 `harness/rules/runbooks/governance/debt-governance.md` 的"Report Rotation"流程走 manifest。
 
 ## 目标
 
@@ -32,7 +32,7 @@
 ## 合并什么
 
 - 同一事实的重复入口，保留当前主源，旧入口改成索引或归档。
-- 重复的环境说明，合并到 `harness/environment/*.md` 和 `docs/10-部署运行总览.md`。
+- 重复的环境说明，合并到 `harness/rules/environment/envs/*.md` 和 `docs/10-部署运行总览.md`。
 - 重复的验收说明，合并到 `docs/09-测试验收总览.md`、`docs/验收/*.md` 和 `harness/evals/*.md`。
 
 ## 禁止删除什么
@@ -54,7 +54,7 @@
 ## 默认命令
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\retire-content.ps1 -Action Plan
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\retire-content.ps1 -Action Plan
 ```
 
 归档和删除必须显式提供 manifest，不能靠口头描述执行。

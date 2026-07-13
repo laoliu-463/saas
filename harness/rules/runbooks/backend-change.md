@@ -6,7 +6,7 @@
 
 ## 前置检查
 
-1. 读取 `AGENTS.md`、`CLAUDE.md`、`docs/README.md`、`harness/TASK_ROUTING.md`。
+1. 读取 `AGENTS.md`、`CLAUDE.md`、`docs/README.md`、`harness/rules/governance/task-routing.md`。
 2. 按领域读取 `docs/领域/*.md`、相关流程、`docs/05-API契约总表.md`、`docs/06-数据模型总表.md`。
 3. 修改前使用 code-review-graph 查影响半径；图谱不足时再用 `rg`。
 
@@ -18,7 +18,7 @@
 4. 执行固定入口：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.ps1 -Env real-pre -Scope backend -Message "fix: backend change"
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\agent-do.ps1 -Env real-pre -Scope backend -Message "fix: backend change"
 ```
 
 ## 验证标准

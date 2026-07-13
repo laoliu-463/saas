@@ -81,11 +81,11 @@ Remove-Item -Path "<file>" -Force -ErrorAction SilentlyContinue
 
 | 文件 | 何时更新 |
 | --- | --- |
-| `harness/CURRENT_STATE.md` | 每次任务完成 / Session Exit |
-| `harness/state/DOMAIN_STATUS.md` | 每次任务完成（含 Session Exit 时的领域状态） |
-| `harness/state/KNOWN_ISSUES.md` | 新问题登记 / 修复记录 |
-| `harness/state/DECISIONS.md` | 新决策索引 |
-| `harness/HARNESS_CHANGELOG.md` | Harness 版本变更或新决策记录 |
+| `harness/rules/state/snapshots/01-当前项目状态.md` | 状态发生变化时 |
+| `harness/rules/state/snapshots/DOMAIN_STATUS.md` | 领域状态发生变化时 |
+| `harness/rules/state/snapshots/KNOWN_ISSUES.md` | 新问题登记 / 修复记录 |
+| `harness/rules/state/snapshots/DECISIONS.md` | 新决策索引 |
+| `harness/rules/changelog.md` | Harness 行为变化或新决策记录 |
 | `harness/QUALITY_LEDGER.md` | 模块质量变化 |
 
 ### 5.2 状态文件不能与业务代码 commit 混在一起
@@ -128,8 +128,8 @@ Remove-Item -Path "<file>" -Force -ErrorAction SilentlyContinue
 下一任务队列的入口：
 
 - `harness/reports/sync-plan-*.md`（如已有）。
-- `harness/state/KNOWN_ISSUES.md`。
-- `harness/state/DECISIONS.md`（如为决策类）。
+- `harness/rules/state/snapshots/KNOWN_ISSUES.md`。
+- `harness/rules/state/snapshots/DECISIONS.md`（如为决策类）。
 - 任务主报告（任务内 Batch 计划）。
 
 ### 7.2 必须记录
@@ -171,10 +171,10 @@ git ls-files --others --exclude-standard harness/reports/
 
 ## 9. 与其他文件的关系
 
-- `harness/skills/git-change-control.md`：必须遵守全部 Git Gate。
-- `harness/skills/git-batch-submit.md`：批次提交流程。
-- `harness/SESSION_EXIT_GATE.md`：会话退出前必须先完成本流程。
-- `harness/AGENT_CONTRACT.md`：必须遵守总规则。
+- `harness/rules/skills/git/git-change-control.md`：必须遵守全部 Git Gate。
+- `harness/rules/skills/git/git-batch-submit.md`：批次提交流程。
+- `harness/rules/governance/session-exit-gate.md`：会话退出前必须先完成本流程。
+- `harness/rules/policies/agent-contract.md`：必须遵守总规则。
 
 ## 10. 禁止事项
 

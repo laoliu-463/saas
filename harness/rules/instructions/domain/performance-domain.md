@@ -42,7 +42,7 @@
 
 ## 完成后必须更新的 state
 
-- `harness/state/DOMAIN_STATUS.md` 的业绩域状态。
+- `harness/rules/state/snapshots/DOMAIN_STATUS.md` 的业绩域状态。
 - 业绩计算、冲正和 dashboard 对账相关 evidence。
 
 ## 失败后必须写入 feedback

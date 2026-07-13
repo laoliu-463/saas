@@ -6,11 +6,11 @@
 
 ## 必读文件
 
-- `harness/FORBIDDEN_SCOPE.md`
+- `harness/rules/governance/forbidden-scope.md`
 - `harness/DOMAIN_MAP.md`
 - `docs/03-领域架构总览.md`
 - 当前领域 `docs/领域/*.md`
-- 当前领域 `harness/instructions/*.md`
+- 当前领域 `harness/rules/instructions/domain/*.md`
 
 ## 检查清单
 

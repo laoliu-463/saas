@@ -36,7 +36,7 @@
 
 ## 完成后必须更新的 state
 
-- `harness/state/DOMAIN_STATUS.md` 的达人域状态。
+- `harness/rules/state/snapshots/DOMAIN_STATUS.md` 的达人域状态。
 - 达人资料、地址、标签、跟进和接口缺口相关 evidence。
 
 ## 失败后必须写入 feedback

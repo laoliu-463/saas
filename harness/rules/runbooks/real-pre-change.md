@@ -6,11 +6,11 @@ real-pre 代码、配置、联调或验收相关变更。
 
 ## 修改前检查
 
-1. 读取 `AGENTS.md`、`harness/CURRENT_STATE.md`、`docs/10-部署运行总览.md`、`docs/验收/real-pre联调手册.md`。
+1. 读取 `AGENTS.md`、`harness/rules/state/snapshots/01-当前项目状态.md`、`docs/10-部署运行总览.md`、`docs/验收/real-pre联调手册.md`。
 2. 执行：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\safety-check.ps1 -Env real-pre
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\safety-check.ps1 -Env real-pre
 ```
 
 3. 确认不清库、不 mock、不删除 volume。
@@ -18,7 +18,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\safety-ch
 ## 构建
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.ps1 -Env real-pre -Scope full -Message "说明本次 real-pre 修改"
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\agent-do.ps1 -Env real-pre -Scope full -Message "说明本次 real-pre 修改"
 ```
 
 若只改后端或前端，将 `-Scope` 改为 `backend` 或 `frontend`。
@@ -38,9 +38,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.
 
 按任务对应 skill 执行：
 
-- 订单归因：`harness/skills/order-attribution.skill.md`
-- 寄样自动完成：`harness/skills/sample-lifecycle.skill.md`
-- 商品库：`harness/skills/product-library.skill.md`
+- 订单归因：`harness/rules/skills/ddd/order-attribution.skill.md`
+- 寄样自动完成：`harness/rules/skills/ddd/sample-lifecycle.skill.md`
+- 商品库：`harness/rules/skills/ddd/product-library.skill.md`
 
 ## Git 提交
 
@@ -52,7 +52,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.
 
 ## Retro summary
 
-执行或确认 `harness/reports/retro-*.md` 已生成。若本次暴露 Harness 问题，更新对应 Harness 文件并追加 `harness/HARNESS_CHANGELOG.md`。
+执行或确认 retro 已生成。若本次暴露 Harness 问题，更新对应 Harness 文件并追加 `harness/rules/changelog.md`。
 
 ## 失败回滚
 

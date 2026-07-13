@@ -1,31 +1,30 @@
 # Test Environment
 
-## 用途
-
-`test` 是本地 mock / seed 回归环境，可用于 P0 基线、权限回归、前后端构建和 E2E。
+`test` 是本地 mock / seed 回归环境，不能证明 real-pre 真实闭环。
 
 ## 配置
 
-- Compose：`docker-compose.test.yml`
-- Env：`.env.test`
-- 前端默认端口：`3000`
-- 后端默认端口：`8080`
-- 后端健康：`/api/system/health`
+| 项 | 当前事实 |
+| --- | --- |
+| Compose | `docker-compose.test.yml` |
+| Env | `.env.test` |
+| Project | `saas-test` |
+| 后端 / 前端 | `backend` / `frontend` |
+| PostgreSQL / Redis | `postgres` / `redis` |
+| 后端 / 前端端口 | `8080` / `3000` |
+| 后端健康 | `http://127.0.0.1:8080/api/system/health` |
 
-## 允许事项
+## 允许与禁止
 
-- 允许使用 mock / seed 数据。
-- 允许执行 P0 回归和浏览器 E2E。
-- 允许在不影响 real-pre 的前提下重启 test 容器。
-
-## 禁止事项
-
-- test 结果不能证明 real-pre 真实闭环。
-- test 里的 mock 订单不能证明真实渠道归因。
+- 允许 mock、seed、P0 回归和浏览器 E2E。
+- 允许在测试库准备验证数据。
+- 禁止用 mock 订单证明真实渠道归因。
+- 禁止把 test 开关复制到 real-pre。
 
 ## 常用命令
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.ps1 -Env test -Scope full -Message "fix: test change"
+npm run start:test
+npm run e2e:v1-p0
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\agent-do.ps1 -Env test -Scope full -Message "test: regression"
 ```
-

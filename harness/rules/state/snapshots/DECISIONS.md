@@ -15,9 +15,9 @@
 | 分析模块边界 | `docs/决策/ADR-005-分析模块只读汇总.md` | 分析模块不重算业绩 |
 | real-pre 环境 | `docs/决策/ADR-006-real-pre作为上线前联调环境.md` | real-pre 是真实上游 / 生产形态联调环境 |
 | 服务费收入 / 收益双轨公式 | `docs/决策/ADR-002-V1范围优先级.md` | 预估服务费收入 = 预估订单额 × 服务费率（未扣除技术服务费）；结算服务费收入以官方结算服务费字段为准，不用订单额重算且不扣技术服务费；预估服务费收益 = 预估服务费收入 - 预估服务费支出 - 技术服务费；结算服务费收益 = 结算服务费收入 - 结算服务费支出 |
-| DDD 增量合并 | `harness/plans/DDD_OPTIMIZATION_ROADMAP.md` | 本项目已有 Harness，本次只增量合并 DDD 计划，不重建 Harness |
+| DDD 增量合并 | `harness/rules/runbooks/ddd/DDD_OPTIMIZATION_ROADMAP.md` | 本项目已有 Harness，本次只增量合并 DDD 计划，不重建 Harness |
 | 用户域 dept_type 标准 | `harness/reports/user-domain-u2_5b-dept-type-minimal-fix-20260603-101503.md` | `sys_dept.dept_type` Java / seed 标准统一为 `department/recruiter_group/channel_group/ops_group`，旧 `recruiter/channel/dept` 仅允许出现在 migration 兼容映射中 |
-| Git 工作区治理与批次提交门禁 | `harness/reports/git-harness-001-worktree-governance-20260603-*.md` + `harness/skills/git-change-control.md` | 远端部署必须只使用已提交 commit；本地 dirty 文件禁止直接部署；所有任务必须有任务编号；所有提交必须按任务编号或 batch 编号拆分；任何任务提交前禁止使用 `git add .`；工作区不干净时，新任务必须先执行 Git Intake Gate |
+| Git 工作区治理与批次提交门禁 | `harness/reports/git-harness-001-worktree-governance-20260603-*.md` + `harness/rules/skills/git/git-change-control.md` | 远端部署必须只使用已提交 commit；本地 dirty 文件禁止直接部署；所有任务必须有任务编号；所有提交必须按任务编号或 batch 编号拆分；任何任务提交前禁止使用 `git add .`；工作区不干净时，新任务必须先执行 Git Intake Gate |
 
 ## 2026-06-02 DDD 优化决策摘要
 
@@ -45,4 +45,4 @@
 
 1. 先收集源码、接口、数据、日志或团队输入证据。
 2. 涉及业务规则或架构边界时，不在本文件直接拍板。
-3. 新增 ADR 后，在本文件补一行索引，并更新 `harness/HARNESS_CHANGELOG.md`。
+3. 新增 ADR 后，在本文件补一行索引，并更新 `harness/rules/changelog.md`。

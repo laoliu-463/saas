@@ -12,7 +12,7 @@
 
 ## 目录
 
-[V1 必做] `hooks/`：变更、测试、提交前守卫。
+[V1 必做] 运行时 Hook 以 `.claude/settings.json` 为准；工程门禁统一使用 `harness/rules/`，不在 `.claude/` 维护第二套守卫文档。
 
 [V1 必做] `skills/`：面向任务的智能体技能。
 
@@ -36,7 +36,6 @@
 
 [V1 必做] 智能体必须先查 `memory/项目事实.md` 和相关领域合同，再执行命令。
 
-[V1 必做] 任何 real-pre 操作必须先读 `hooks/real-pre环境守卫.md` 与 `mcp/安全边界.md`。
+[V1 必做] 任何 real-pre 操作必须先读 `harness/rules/governance/forbidden-scope.md`、`harness/rules/environment/envs/real-pre-env.md` 与 `mcp/安全边界.md`。
 
 [V1 必做] 所有验收输出必须更新或引用 `.claude/qa/证据索引.md` 与 `docs/验收/验收证据索引.md`。
-

@@ -1,6 +1,6 @@
 # Completion Gates - Git 子门禁
 
-> 主文件：[COMPLETION_GATES.md](../COMPLETION_GATES.md)
+> 主文件：[COMPLETION_GATES.md](COMPLETION_GATES.md)
 > 详细 Git 规则见：[git-change-control.md](../skills/git/git-change-control.md)
 
 任何 Gate 都必须按 `harness/rules/skills/git/git-change-control.md` 执行下列 Git 子门禁。

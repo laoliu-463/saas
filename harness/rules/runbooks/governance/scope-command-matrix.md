@@ -6,7 +6,7 @@
 ## 1. 主入口（90% 场景）
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.ps1 -Env real-pre -Scope <SCOPE> -Message "<msg>" [-DeployRemote true] [-DryRun]
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\agent-do.ps1 -Env real-pre -Scope <SCOPE> -Message "<msg>" [-DeployRemote true] [-DryRun]
 ```
 
 `<SCOPE>` 决定后续自动调用哪些子命令。
@@ -42,32 +42,32 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.
 
 | Scope | 必读 |
 | --- | --- |
-| docs | `AGENTS.md`、`CLAUDE.md`、`harness/CURRENT_STATE.md`、`harness/TASK_ROUTING.md`、`harness/FORBIDDEN_SCOPE.md` |
-| backend | docs + `harness/instructions/<domain>.md` + 对应 `docs/领域/*.md` + `docs/05-API契约总表.md` + `docs/06-数据模型总表.md` |
-| frontend | docs + `harness/skills/frontend-ux.skill.md` + 对应 API |
+| docs | `AGENTS.md`、`CLAUDE.md`、`harness/rules/state/snapshots/01-当前项目状态.md`、`harness/rules/governance/task-routing.md`、`harness/rules/governance/forbidden-scope.md` |
+| backend | docs + `harness/rules/instructions/domain/<domain>.md` + 对应 `docs/领域/*.md` + `docs/05-API契约总表.md` + `docs/06-数据模型总表.md` |
+| frontend | docs + `harness/rules/skills/workflow/frontend-ux.skill.md` + 对应 API |
 | full | backend + frontend 全套 |
-| deploy | `harness/environment/remote-real-pre-env.md` + `harness/runbooks/remote-deploy.md` |
-| diagnosis | `harness/CURRENT_STATE.md` + `harness/state/KNOWN_ISSUES.md` + 对应 domain 文档 |
+| deploy | `harness/rules/environment/envs/remote-real-pre-env.md` + `harness/rules/runbooks/remote-deploy.md` |
+| diagnosis | `harness/rules/state/snapshots/01-当前项目状态.md` + `harness/rules/state/snapshots/KNOWN_ISSUES.md` + 对应 domain 文档 |
 
 ## 6. 验证命令最小集
 
 ```powershell
 # docs
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\safety-check.ps1 -Env real-pre -Scope docs -DryRun
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\verify-local.ps1 -Scope docs
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\safety-check.ps1 -Env real-pre -Scope docs -DryRun
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\verify-local.ps1 -Env real-pre -Scope docs
 git diff --check
 
 # backend
 mvn -f backend/pom.xml test
 mvn -f backend/pom.xml -DskipTests package
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\safety-check.ps1 -Env real-pre -Scope backend
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\restart-compose.ps1 -Env real-pre -Scope backend
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\safety-check.ps1 -Env real-pre -Scope backend
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\restart-compose.ps1 -Env real-pre -Scope backend
 curl http://localhost:8081/api/system/health
 
 # frontend
 npm --prefix frontend run build
 npm --prefix frontend run test
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\safety-check.ps1 -Env real-pre -Scope frontend
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\safety-check.ps1 -Env real-pre -Scope frontend
 curl http://localhost:3001/healthz
 ```
 
@@ -86,8 +86,8 @@ curl http://localhost:3001/healthz
 
 ## 8. 关联文档
 
-- `harness/commands/*.ps1`
-- `harness/TASK_ROUTING.md`
-- `harness/COMPLETION_GATES.md`
-- `harness/runbooks/task-lifecycle.md`
-- `harness/environment/CHEATSHEET.md`
+- `harness/scripts/commands/*.ps1`
+- `harness/rules/governance/task-routing.md`
+- `harness/rules/governance/COMPLETION_GATES.md`
+- `harness/rules/runbooks/governance/task-lifecycle.md`
+- `harness/rules/environment/CHEATSHEET.md`

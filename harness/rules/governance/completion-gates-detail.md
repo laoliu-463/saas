@@ -1,6 +1,6 @@
 # Completion Gates - 详细定义
 
-> 主文件：[COMPLETION_GATES.md](../COMPLETION_GATES.md)
+> 主文件：[COMPLETION_GATES.md](COMPLETION_GATES.md)
 
 ## Gate 0：Docs Only
 

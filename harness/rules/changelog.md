@@ -1,11 +1,17 @@
 # Harness Changelog（索引）
 
-> 任务 ID：HARNESS-DOC-GC-OPTIMIZE-002
-> 更新时间：2026-07-10
+> 任务 ID：HARNESS-REDUNDANCY-CLEANUP-20260713
+> 更新时间：2026-07-13
 > 详细历史（含每版修改文件、行为变化、证据）：`archive/20260610/harness-changelog-full.md`
-> 治理政策：`rules/policies/retention-policy.md` 第 2 节（changelog 索引 ≤200 行）
+> 治理政策：`file-retention-policy.md`（changelog 索引 ≤200 行）
 
 ## 最近版本摘要
+
+### v0.7.7 — 2026-07-13
+- 删除 26 个已被主源替代、未接入运行时或零引用的 Harness/.claude 文件，删除依据见 `manifests/harness-redundancy-cleanup-20260713.json`。
+- 结构、保留和报告政策各收敛为 `rules/` 根目录单一主源；环境说明收敛为 `rules/environment/envs/` 下 5 个入口。
+- 当前文档和模板统一使用 `harness/rules/`、`harness/scripts/commands/` 路径；历史 ADR 中明确描述旧记录的路径保持不变。
+- 修正 `retire-content.ps1` 的文档债务扫描路径和 Harness 脚本保护路径。
 
 ### v0.7.6 — 2026-07-10
 - 完成 137 项 dirty 的路径级 Git Intake 分类并固化单任务批次顺序，`unknown_paths=0`，仍按受保护 previous-partial 处理。

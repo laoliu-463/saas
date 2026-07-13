@@ -14,13 +14,13 @@
 ## 执行入口
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\deploy-remote.ps1 -Env real-pre -RemoteHost saas -RemoteDir /opt/saas/app
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\deploy-remote.ps1 -Env real-pre -RemoteHost saas -RemoteDir /opt/saas/app
 ```
 
 或由总入口触发：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\commands\agent-do.ps1 -Env real-pre -Scope full -DeployRemote true -Message "说明本次部署"
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\agent-do.ps1 -Env real-pre -Scope full -DeployRemote true -Message "说明本次部署"
 ```
 
 ## 固定远端流程

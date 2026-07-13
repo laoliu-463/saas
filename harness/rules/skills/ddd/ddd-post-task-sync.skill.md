@@ -6,10 +6,10 @@
 
 ## 必读文件
 
-- `harness/AGENT_CONTRACT.md`
-- `harness/state/DOMAIN_STATUS.md`
+- `harness/rules/policies/agent-contract.md`
+- `harness/rules/state/snapshots/DOMAIN_STATUS.md`
 - `harness/feedback/feedback-loop.md`
-- `harness/skills/evidence-report.skill.md`
+- `harness/rules/skills/workflow/evidence-report.skill.md`
 
 ## 标准流程
 

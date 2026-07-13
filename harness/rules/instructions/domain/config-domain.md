@@ -36,7 +36,7 @@
 
 ## 完成后必须更新的 state
 
-- `harness/state/DOMAIN_STATUS.md` 的配置域状态。
+- `harness/rules/state/snapshots/DOMAIN_STATUS.md` 的配置域状态。
 - 相关 evidence report 和配置域风险记录。
 
 ## 失败后必须写入 feedback

@@ -6,7 +6,7 @@
 
 ## 必读文件
 
-- `harness/AGENT_CONTRACT.md`
+- `harness/rules/policies/agent-contract.md`
 - `docs/09-测试验收总览.md`
 - `docs/验收/验收证据索引.md`
 
@@ -31,7 +31,7 @@
 
 ## 验证方式
 
-- `harness/commands/collect-evidence.ps1` 生成 `harness/reports/evidence-*.md`。
+- `harness/scripts/commands/collect-evidence.ps1` 生成 `harness/reports/evidence-*.md`。
 - 报告中未采集项必须写“未采集 / 阻塞原因”。
 
 ## 输出格式
@@ -43,4 +43,3 @@
 未采集项：
 剩余风险：
 ```
-
