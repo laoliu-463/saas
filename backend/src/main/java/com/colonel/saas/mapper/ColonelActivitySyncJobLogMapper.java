@@ -36,4 +36,21 @@ public interface ColonelActivitySyncJobLogMapper {
      */
     int reconcileStaleJobs(
             @Param("staleBefore") LocalDateTime staleBefore);
+
+    /**
+     * P8.4 修复: 原子 claim 一个活跃任务 (PostgreSQL ON CONFLICT DO UPDATE).
+     *
+     * <p>配合 partial unique index {@code idx_colonel_activity_sync_job_log_active_scope}
+     * (sync_type, scope) WHERE status IN ('QUEUED', 'RUNNING'):
+     * <ul>
+     *   <li>同 scope 无活跃任务: 插入新行, status=QUEUED, 返回 true</li>
+     *   <li>同 scope 已有活跃任务: 复用旧 job_id, status 不变, 返回 false</li>
+     * </ul>
+     */
+    boolean tryClaimActiveJob(
+            @Param("jobId") String jobId,
+            @Param("syncType") String syncType,
+            @Param("scope") String scope,
+            @Param("triggeredBy") UUID triggeredBy,
+            @Param("createdAt") LocalDateTime createdAt);
 }

@@ -25,6 +25,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_colonel_activity_sync_job_log_job_id
 CREATE INDEX IF NOT EXISTS idx_colonel_activity_sync_job_log_status
     ON colonel_activity_sync_job_log(status, create_time);
 
+-- P8.4 修复: partial unique index 防止同 scope 出现多个活跃任务
+-- (用 WHERE 子句限定只对 QUEUED/RUNNING 状态约束, 历史 SUCCESS/FAILED 不影响)
+CREATE UNIQUE INDEX IF NOT EXISTS idx_colonel_activity_sync_job_log_active_scope
+    ON colonel_activity_sync_job_log(sync_type, scope)
+    WHERE status IN ('QUEUED', 'RUNNING') AND deleted = 0;
+
 COMMENT ON TABLE colonel_activity_sync_job_log IS '活动列表异步同步任务日志';
 
 -- colonel_activity 增加活动状态独立同步时间

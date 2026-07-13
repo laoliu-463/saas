@@ -64,5 +64,18 @@
            AND update_time &lt; #{staleBefore}
            AND deleted = 0
     </update>
+    <insert id="tryClaimActiveJob">
+        INSERT INTO colonel_activity_sync_job_log (
+            id, job_id, sync_type, status, scope, triggered_by,
+            activities_total, activities_synced, activities_failed,
+            create_time, update_time, deleted
+        ) VALUES (
+            #{jobId}::uuid, #{jobId}, #{syncType}, 'QUEUED', #{scope}, #{triggeredBy},
+            0, 0, 0,
+            #{createdAt}, #{createdAt}, 0
+        )
+        ON CONFLICT (sync_type, scope) WHERE status IN ('QUEUED', 'RUNNING') AND deleted = 0
+        DO NOTHING
+    </insert>
 
 </mapper>

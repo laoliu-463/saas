@@ -104,19 +104,15 @@ public class ColonelActivityListSyncService {
         }
 
         String jobId = "act-list-" + UUID.randomUUID().toString().substring(0, 8);
-        ColonelActivitySyncJobLog jobLog = new ColonelActivitySyncJobLog();
-        jobLog.setId(UUID.randomUUID());
-        jobLog.setJobId(jobId);
-        jobLog.setSyncType("ACTIVITY_LIST");
-        jobLog.setStatus("QUEUED");
-        jobLog.setTriggeredBy(triggeredBy);
-        jobLog.setActivitiesTotal(0);
-        jobLog.setActivitiesSynced(0);
-        jobLog.setActivitiesFailed(0);
-        jobLog.setCreateTime(LocalDateTime.now());
-        jobLog.setUpdateTime(LocalDateTime.now());
-        jobLog.setDeleted(0);
-        jobLogMapper.insert(jobLog);
+        String scope = "ACTIVITY_LIST_GLOBAL";  // 活动列表同步全局唯一
+        // P8.4 修复: 原子 claim 活跃任务 (PostgreSQL ON CONFLICT DO NOTHING)
+        // 配合 partial unique index idx_colonel_activity_sync_job_log_active_scope
+        boolean claimed = jobLogMapper.tryClaimActiveJob(
+                jobId, "ACTIVITY_LIST", scope, triggeredBy, LocalDateTime.now());
+        if (!claimed) {
+            // 同 scope 已有活跃任务, 返回 RUNNING 提示 (前端调 GET 查最新)
+            return SyncTriggerResult.running();
+        }
 
         syncExecutor.submit(() -> executeSync(jobId));
         return SyncTriggerResult.queued(jobId);
@@ -229,12 +225,23 @@ public class ColonelActivityListSyncService {
         List<DouyinActivityGateway.ActivityItem> items = page.result.activityList();
         if (items.isEmpty()) {
             accumulator.complete = true;
+            accumulator.stopReason = "UPSTREAM_EMPTY";
             return;
         }
         accumulator.fetchedRows += items.size();
-        // P8 修复回退: 仅 pageSize 兜底 (上游 total 不可信, 与原行为一致)
-        if (items.size() < normalizedPageSize()) {
+        // P8.3 修复: 用上游 total 决定同步是否完成 (按用户修正清单)
+        // 第 1 页记录 expectedTotal, 累计 fetchedRows >= expectedTotal 立即 complete
+        if (page.result.total() > 0L && accumulator.expectedTotal < 0L) {
+            accumulator.expectedTotal = page.result.total();
+        }
+        if (accumulator.expectedTotal > 0L && accumulator.fetchedRows >= accumulator.expectedTotal) {
+            // 总数达到上游给出的 total, 立即 complete
             accumulator.complete = true;
+            accumulator.stopReason = "UPSTREAM_TOTAL";
+        } else if (items.size() < normalizedPageSize()) {
+            // 上游未返回 total 或总数未达: 兜底 pageSize
+            accumulator.complete = true;
+            accumulator.stopReason = "PAGE_SIZE_BOUNDARY";
         }
         for (DouyinActivityGateway.ActivityItem item : items) {
             try {
@@ -362,10 +369,11 @@ public class ColonelActivityListSyncService {
         private int pagesFetched;
         private int synced;
         private int failed;
-        private long upstreamTotal = -1L;  // 上游 total, -1 = 未知
+        private long expectedTotal = -1L;       // 上游 total, -1 = 未知
         private boolean complete;
         private boolean fetchFailed;
         private String errorMessage;
+        private String stopReason;               // SUCCESS / MAX_PAGES_REACHED / UPSTREAM_TOTAL
 
         private boolean isSuccessful() {
             return complete && !fetchFailed && failed == 0;
