@@ -213,14 +213,40 @@ describe('product-library-display', () => {
     expect(card.campaignCommissionRate).toBe('8.00%')
   })
 
-  it('normalizeProductCard formats decimal service fee rate as percent', () => {
+  it('treats upstream percentage service fee values as percentages, not decimal ratios', () => {
+    const card = normalizeProductCard({
+      productId: '9003',
+      title: '双佣费率商品',
+      cosType: 1,
+      cosTypeText: '双佣金',
+      adServiceRatio: '1.00',
+      serviceFeeRate: 1
+    })
+
+    expect(card.serviceFeeRate).toBe('1%')
+    expect(card.campaignServiceFeeRate).toBe('1.00%')
+  })
+
+  it('does not treat advertising commission as ordinary service fee when service fee is missing', () => {
+    const card = normalizeProductCard({
+      productId: '9004',
+      title: '缺失服务费商品',
+      serviceFeeRate: null,
+      activityAdCosRatio: 500
+    })
+
+    expect(card.serviceFeeRate).toBe('-')
+    expect(card.campaignServiceFeeRate).toBe('-')
+  })
+
+  it('normalizeProductCard formats backend percentage service fee rate as percent', () => {
     const card = normalizeProductCard({
       productId: '9002',
       title: '费率商品',
       serviceFeeRate: 0.08
     })
 
-    expect(card.serviceFeeRate).toBe('8.00%')
+    expect(card.serviceFeeRate).toBe('0.08%')
   })
 
   it('normalizeProductCard does not throw on empty payload', () => {

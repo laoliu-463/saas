@@ -1486,6 +1486,9 @@ public class ProductService implements CopyPromotionSupportPort {
 
     private boolean matchesServiceFeeFilter(ProductSnapshot snapshot, String serviceFee) {
         BigDecimal rate = resolveServiceFeeRate(snapshot);
+        if (rate == null) {
+            return false;
+        }
         return switch (serviceFee) {
             case "gt20" -> rate.compareTo(BigDecimal.valueOf(20)) >= 0;
             case "10_20" -> rate.compareTo(BigDecimal.TEN) >= 0 && rate.compareTo(BigDecimal.valueOf(20)) < 0;
@@ -6043,7 +6046,7 @@ public class ProductService implements CopyPromotionSupportPort {
         if (commissionRate.compareTo(BigDecimal.valueOf(20)) >= 0) {
             tags.add("高佣");
         }
-        if (serviceFeeRate.compareTo(BigDecimal.TEN) >= 0) {
+        if (serviceFeeRate != null && serviceFeeRate.compareTo(BigDecimal.TEN) >= 0) {
             tags.add("高服务费");
         }
         if (platformSales >= 1_000) {
@@ -6084,7 +6087,7 @@ public class ProductService implements CopyPromotionSupportPort {
         if (commissionRate.compareTo(BigDecimal.ZERO) <= 0) {
             tags.add("佣金异常");
         }
-        if (serviceFeeRate.compareTo(BigDecimal.ZERO) <= 0) {
+        if (serviceFeeRate == null || serviceFeeRate.compareTo(BigDecimal.ZERO) <= 0) {
             tags.add("服务费异常");
         }
         if (state == null || state.getAssigneeId() == null) {
@@ -6102,11 +6105,32 @@ public class ProductService implements CopyPromotionSupportPort {
     }
 
     private BigDecimal resolveServiceFeeRate(ProductSnapshot snapshot) {
-        BigDecimal rate = parsePercentValue(snapshot.getAdServiceRatio());
-        if (rate.compareTo(BigDecimal.ZERO) > 0) {
-            return rate;
+        if (snapshot == null) {
+            return null;
         }
-        return normalizeRatioNumber(snapshot.getActivityAdCosRatio());
+
+        Map<String, Object> payload = parseSnapshotPayload(snapshot.getRawPayload());
+        boolean doubleCommission = Integer.valueOf(1).equals(snapshot.getCosType());
+
+        // 普通佣金商品的服务费字段是上游 service_ratio；双佣商品的服务费字段是
+        // ad_service_ratio。activity_ad_cos_ratio 是投放佣金率，不能作为服务费兜底。
+        if (doubleCommission) {
+            BigDecimal adServiceRate = parsePercentValueOrNull(snapshot.getAdServiceRatio());
+            if (adServiceRate != null) {
+                return adServiceRate;
+            }
+            adServiceRate = parsePercentValueOrNull(readString(payload, "ad_service_ratio", "adServiceRatio"));
+            if (adServiceRate != null) {
+                return adServiceRate;
+            }
+        } else {
+            BigDecimal normalServiceRate = parsePercentValueOrNull(readString(payload, "service_ratio", "serviceRatio"));
+            if (normalServiceRate != null) {
+                return normalServiceRate;
+            }
+        }
+
+        return null;
     }
 
     private BigDecimal normalizeRatioNumber(Long raw) {
@@ -6121,8 +6145,13 @@ public class ProductService implements CopyPromotionSupportPort {
     }
 
     private BigDecimal parsePercentValue(String raw) {
+        BigDecimal parsed = parsePercentValueOrNull(raw);
+        return parsed == null ? BigDecimal.ZERO : parsed;
+    }
+
+    private BigDecimal parsePercentValueOrNull(String raw) {
         if (!StringUtils.hasText(raw)) {
-            return BigDecimal.ZERO;
+            return null;
         }
         String normalized = raw.trim()
                 .replace("%", "")
@@ -6132,7 +6161,7 @@ public class ProductService implements CopyPromotionSupportPort {
         try {
             return new BigDecimal(normalized).setScale(2, RoundingMode.HALF_UP);
         } catch (NumberFormatException ex) {
-            return BigDecimal.ZERO;
+            return null;
         }
     }
 

@@ -267,6 +267,7 @@ describe('ProductSelectionCard hover drawer', () => {
     expect(imageBadge.text()).toBe('双佣金')
     expect(metrics.text()).toContain('双佣金')
     expect(metrics.text()).toContain('投放期佣 8.00%')
+    expect(metrics.text()).toContain('投放服务费 8%')
   })
 
   it('普通佣金商品不展示佣金类型角标', () => {

@@ -178,6 +178,13 @@
             >
               投放期佣 {{ campaignCommissionRateText }}
             </span>
+            <span
+              v-if="campaignServiceFeeRateText"
+              class="selection-card__metric-tag selection-card__metric-tag--campaign"
+              :title="`投放服务费 ${campaignServiceFeeRateText}`"
+            >
+              投放服务费 {{ campaignServiceFeeRateText }}
+            </span>
             <span class="selection-card__metric-tag">
               {{ card.specs?.length ? card.specs.length + '规格' : '单规格' }}
             </span>

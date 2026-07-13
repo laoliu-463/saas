@@ -181,6 +181,66 @@ class ProductServiceFilterTest {
     }
 
     @Test
+    void getSelectedLibraryPage_shouldReadNormalServiceFeeFromUpstreamServiceRatio() {
+        ProductOperationState selectedState = state("10001", "9001");
+        Page<ProductOperationState> statePage = new Page<>(1, 200, 1);
+        statePage.setRecords(List.of(selectedState));
+
+        ProductSnapshot snapshot = snapshot("10001", "9001", "玩具乐器", 9900L);
+        snapshot.setCosType(0);
+        snapshot.setRawPayload("{\"service_ratio\":\"1.00\",\"activity_ad_cos_ratio\":\"500\"}");
+
+        when(operationStateMapper.selectPage(any(Page.class), any())).thenReturn(statePage);
+        when(snapshotMapper.selectBatchIds(any())).thenReturn(List.of(snapshot));
+
+        var result = service.getSelectedLibraryPage(1, 10, filter().build());
+
+        assertThat(result.getRecords()).singleElement()
+                .extracting("serviceFeeRate")
+                .isEqualTo(new java.math.BigDecimal("1.00"));
+    }
+
+    @Test
+    void getSelectedLibraryPage_shouldNotUseAdvertisingCommissionAsServiceFeeFallback() {
+        ProductOperationState selectedState = state("10001", "9001");
+        Page<ProductOperationState> statePage = new Page<>(1, 200, 1);
+        statePage.setRecords(List.of(selectedState));
+
+        ProductSnapshot snapshot = snapshot("10001", "9001", "玩具乐器", 9900L);
+        snapshot.setCosType(0);
+        snapshot.setRawPayload("{\"activity_ad_cos_ratio\":\"500\"}");
+
+        when(operationStateMapper.selectPage(any(Page.class), any())).thenReturn(statePage);
+        when(snapshotMapper.selectBatchIds(any())).thenReturn(List.of(snapshot));
+
+        var result = service.getSelectedLibraryPage(1, 10, filter().build());
+
+        assertThat(result.getRecords()).singleElement()
+                .extracting("serviceFeeRate")
+                .isNull();
+    }
+
+    @Test
+    void getSelectedLibraryPage_shouldPreserveExplicitZeroServiceFeeFromUpstream() {
+        ProductOperationState selectedState = state("10001", "9001");
+        Page<ProductOperationState> statePage = new Page<>(1, 200, 1);
+        statePage.setRecords(List.of(selectedState));
+
+        ProductSnapshot snapshot = snapshot("10001", "9001", "玩具乐器", 9900L);
+        snapshot.setCosType(0);
+        snapshot.setRawPayload("{\"service_ratio\":\"0\",\"activity_ad_cos_ratio\":\"500\"}");
+
+        when(operationStateMapper.selectPage(any(Page.class), any())).thenReturn(statePage);
+        when(snapshotMapper.selectBatchIds(any())).thenReturn(List.of(snapshot));
+
+        var result = service.getSelectedLibraryPage(1, 10, filter().build());
+
+        assertThat(result.getRecords()).singleElement()
+                .extracting("serviceFeeRate")
+                .isEqualTo(new java.math.BigDecimal("0.00"));
+    }
+
+    @Test
     void getSelectedLibraryPage_shouldFilterByLivePriceRange() {
         ProductOperationState state1 = state("10001", "9001");
         ProductOperationState state2 = state("10002", "9002");

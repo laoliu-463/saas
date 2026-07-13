@@ -445,6 +445,12 @@ const formatRateText = (value: unknown): string => {
   return text.includes('%') ? text : `${text}%`
 }
 
+const formatServiceFeeRateText = (value: unknown): string => {
+  const text = normalizeText(value as string | number | null | undefined)
+  if (!text) return ''
+  return text.includes('%') ? text : `${text}%`
+}
+
 const formatBasisPointRate = (value: unknown): string => {
   if (value === null || value === undefined || value === '') return ''
   const text = normalizeText(value as string | number | null | undefined)
@@ -465,13 +471,12 @@ const formatMoneyText = (value: unknown): string => {
 }
 
 const resolveServiceFeeRateText = (raw: any): string => {
-  const labeled = normalizeText(
-    raw?.adServiceRatio || raw?.ad_service_ratio || raw?.serviceFeeRateText || raw?.dailyServiceFeeRateText || raw?.serviceFeeRate
+  const normalized = normalizeText(raw?.serviceFeeRateText ?? raw?.serviceFeeRate)
+  if (normalized) return formatServiceFeeRateText(normalized)
+  const upstream = normalizeText(
+    raw?.serviceRatio ?? raw?.service_ratio ?? raw?.adServiceRatio ?? raw?.ad_service_ratio
   )
-  if (labeled) return formatRateText(labeled)
-  const estimated = normalizeText(raw?.estimatedServiceFee || raw?.estimatedServiceFeeAmount)
-  if (estimated) return estimated.startsWith('¥') ? estimated : `¥${estimated}`
-  return '-'
+  return upstream ? formatServiceFeeRateText(upstream) : '-'
 }
 
 const resolveCommissionType = (raw: any) => {
@@ -479,12 +484,15 @@ const resolveCommissionType = (raw: any) => {
     raw?.cosTypeText || raw?.cos_type_text || raw?.commissionTypeText || raw?.commission_type_text
   )
   const cosType = Number(raw?.cosType ?? raw?.cos_type)
-  const isDoubleCommission = Boolean(
-    raw?.doubleCommission === true ||
-      raw?.dualCommission === true ||
-      cosType === 1 ||
-      label.includes('双佣')
-  )
+  const isTruthyFlag = (value: unknown) =>
+    value === true || value === 1 || value === '1' || String(value ?? '').trim().toLowerCase() === 'true'
+  const isDoubleCommission =
+    isTruthyFlag(raw?.doubleCommission) ||
+    isTruthyFlag(raw?.dualCommission) ||
+    isTruthyFlag(raw?.dualCommissionEnabled) ||
+    isTruthyFlag(raw?.dual_commission_enabled) ||
+    cosType === 1 ||
+    label.includes('双佣')
   return {
     label: label || (isDoubleCommission ? '双佣金' : ''),
     isDoubleCommission
@@ -509,18 +517,21 @@ export function normalizeProductCard(raw: any): ProductCardView {
   const promotionUrl =
     normalizeText(raw?.promotionLink || raw?.promoteLink || raw?.shortLink || raw?.promotionUrl) || ''
   const commissionType = resolveCommissionType(raw)
-  const campaignCommissionRate =
-    formatRateText(
-      raw?.campaignCommissionRateText || raw?.deliveryCommissionRateText || raw?.putCommissionRateText
-    )
+  const campaignCommissionRate = commissionType.isDoubleCommission
+    ? formatRateText(
+        raw?.campaignCommissionRateText || raw?.deliveryCommissionRateText || raw?.putCommissionRateText
+      )
+    : '-'
   const activityAdCommissionRate = formatBasisPointRate(raw?.activityAdCosRatio ?? raw?.activity_ad_cos_ratio)
-  const campaignServiceFeeRate = formatRateText(
-    raw?.campaignServiceFeeRateText ||
-      raw?.putServiceFeeRateText ||
-      raw?.adServiceRatio ||
-      raw?.ad_service_ratio ||
-      supplement?.specialCommissionRatio
-  )
+  const campaignServiceFeeRate = commissionType.isDoubleCommission
+    ? formatServiceFeeRateText(
+        raw?.campaignServiceFeeRateText ||
+          raw?.putServiceFeeRateText ||
+          raw?.adServiceRatio ||
+          raw?.ad_service_ratio ||
+          supplement?.specialCommissionRatio
+      )
+    : '-'
 
   return {
     id: relationId,
@@ -541,7 +552,9 @@ export function normalizeProductCard(raw: any): ProductCardView {
     serviceFeeRate: resolveServiceFeeRateText(raw),
     commissionTypeLabel: commissionType.label,
     isDoubleCommission: commissionType.isDoubleCommission,
-    campaignCommissionRate: campaignCommissionRate !== '-' ? campaignCommissionRate : activityAdCommissionRate || '-',
+    campaignCommissionRate: commissionType.isDoubleCommission
+      ? campaignCommissionRate !== '-' ? campaignCommissionRate : activityAdCommissionRate || '-'
+      : '-',
     campaignServiceFeeRate,
     totalSales: Number.isFinite(sales) ? sales : 0,
     totalSalesText: formatTotalSalesWan(sales),
