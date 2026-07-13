@@ -334,7 +334,7 @@ import type {
 
 type ProductAction = 'audit' | 'assign' | 'auditOwner'
 type AssignDialogMode = 'businessOwner' | 'auditOwner'
-type ProductSyncMode = 'FULL' | 'PRIORITY_1000'
+type ProductSyncMode = 'FULL' | 'PRIORITY_100'
 
 interface ProductSyncActivityConfirmPayload {
   activityId: string

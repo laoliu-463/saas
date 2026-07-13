@@ -553,16 +553,16 @@ describe('activityProduct API', () => {
 
     it('passes priority sync options to sync endpoint', () => {
       syncActivityProducts('ACT-1', {
-        syncMode: 'PRIORITY_1000',
-        maxRowsPerActivity: 1000,
+        syncMode: 'PRIORITY_100',
+        maxRowsPerActivity: 100,
         priorityStatuses: [0, 1]
       })
 
       expect(request.post).toHaveBeenCalledWith(
         '/colonel/activities/ACT-1/products/sync',
         {
-          syncMode: 'PRIORITY_1000',
-          maxRowsPerActivity: 1000,
+          syncMode: 'PRIORITY_100',
+          maxRowsPerActivity: 100,
           priorityStatuses: [0, 1]
         },
         { timeout: 30000 }

@@ -86,14 +86,14 @@ describe('ProductSyncActivityDialog', () => {
   it('emits priority sync options when priority mode is selected', async () => {
     const wrapper = mountDialog({ defaultActivityId: 'ACT001' })
 
-    await wrapper.get('[data-testid="sync-mode-priority-1000"] input').setValue(true)
+    await wrapper.get('[data-testid="sync-mode-priority-100"] input').setValue(true)
     await wrapper.findAll('button').find((button) => button.text() === '开始同步')?.trigger('click')
 
     expect(wrapper.emitted('confirm')).toEqual([[
       {
         activityId: 'ACT001',
-        syncMode: 'PRIORITY_1000',
-        maxRowsPerActivity: 1000,
+        syncMode: 'PRIORITY_100',
+        maxRowsPerActivity: 100,
         priorityStatuses: [0, 1]
       }
     ]])

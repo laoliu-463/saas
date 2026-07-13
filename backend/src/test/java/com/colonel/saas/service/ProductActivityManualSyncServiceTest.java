@@ -189,7 +189,7 @@ class ProductActivityManualSyncServiceTest {
     }
 
     @Test
-    void trigger_shouldRunPrioritySyncWithRequestedRowsAndStatuses() {
+    void trigger_shouldCapPrioritySyncAt100RowsAndKeepLegacyModeCompatible() {
         when(productService.refreshActivitySnapshotsByStatusPartitions(
                         any(DouyinProductGateway.ActivityProductQueryRequest.class),
                         anyList(),
@@ -219,7 +219,7 @@ class ProductActivityManualSyncServiceTest {
                 requestCaptor.capture(),
                 eq(List.of(0, 1)),
                 eq(3000),
-                eq(1000),
+                eq(100),
                 eq(100L),
                 eq(2),
                 any());

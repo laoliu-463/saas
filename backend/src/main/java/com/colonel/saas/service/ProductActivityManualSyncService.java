@@ -44,6 +44,7 @@ public class ProductActivityManualSyncService {
     private static final long PRIORITY_MANUAL_PAGE_INTERVAL_MS = 100L;
     private static final int DEFAULT_MANUAL_MAX_PAGES_PER_ACTIVITY = 3000;
     private static final int DEFAULT_MANUAL_MAX_ROWS_PER_ACTIVITY = 50000;
+    private static final int PRIORITY_SYNC_MAX_ROWS_PER_ACTIVITY = 100;
     private static final int MAX_MANUAL_MAX_PAGES_PER_ACTIVITY = 5000;
     private static final int MAX_MANUAL_MAX_ROWS_PER_ACTIVITY = 50000;
     private static final int PROGRESS_UPDATE_PAGE_INTERVAL = 10;
@@ -56,7 +57,9 @@ public class ProductActivityManualSyncService {
     private static final String STATUS_PARTIAL = "PARTIAL";
     private static final String STATUS_FAILED = "FAILED";
     private static final String SYNC_MODE_FULL = "FULL";
-    private static final String SYNC_MODE_PRIORITY_1000 = "PRIORITY_1000";
+    private static final String SYNC_MODE_PRIORITY_100 = "PRIORITY_100";
+    /** 兼容旧版本前端/队列记录；解析后同样强制限制为 100 条。 */
+    private static final String SYNC_MODE_PRIORITY_1000_LEGACY = "PRIORITY_1000";
     private static final List<Integer> DEFAULT_PRIORITY_SYNC_STATUSES = List.of(0, 1);
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
@@ -755,7 +758,7 @@ public class ProductActivityManualSyncService {
 
     private long normalizedPageIntervalMs(ResolvedSyncOptions options) {
         if (options != null
-                && SYNC_MODE_PRIORITY_1000.equals(options.syncMode())
+                && isPrioritySyncMode(options.syncMode())
                 && !options.priorityStatuses().isEmpty()) {
             return Math.min(normalizedManualPageIntervalMs(), PRIORITY_MANUAL_PAGE_INTERVAL_MS);
         }
@@ -768,7 +771,7 @@ public class ProductActivityManualSyncService {
 
     private int normalizedStatusPartitionParallelism(ResolvedSyncOptions options) {
         if (options != null
-                && SYNC_MODE_PRIORITY_1000.equals(options.syncMode())
+                && isPrioritySyncMode(options.syncMode())
                 && options.priorityStatuses().size() > 1) {
             return Math.min(2, options.priorityStatuses().size());
         }
@@ -821,6 +824,18 @@ public class ProductActivityManualSyncService {
         return Math.min(Math.max(configured, 1), MAX_MANUAL_MAX_ROWS_PER_ACTIVITY);
     }
 
+    private int normalizedPriorityMaxRowsPerActivity(Integer requestedMaxRowsPerActivity) {
+        int requested = requestedMaxRowsPerActivity == null
+                ? PRIORITY_SYNC_MAX_ROWS_PER_ACTIVITY
+                : requestedMaxRowsPerActivity;
+        return Math.min(Math.max(requested, 1), PRIORITY_SYNC_MAX_ROWS_PER_ACTIVITY);
+    }
+
+    private boolean isPrioritySyncMode(String syncMode) {
+        return SYNC_MODE_PRIORITY_100.equals(syncMode)
+                || SYNC_MODE_PRIORITY_1000_LEGACY.equals(syncMode);
+    }
+
     private ResolvedSyncOptions resolveSyncOptions(SyncOptions options) {
         if (options == null) {
             return new ResolvedSyncOptions(
@@ -831,11 +846,10 @@ public class ProductActivityManualSyncService {
         String syncMode = StringUtils.hasText(options.syncMode())
                 ? options.syncMode().trim().toUpperCase()
                 : SYNC_MODE_FULL;
-        if (SYNC_MODE_PRIORITY_1000.equals(syncMode)) {
+        if (isPrioritySyncMode(syncMode)) {
             return new ResolvedSyncOptions(
-                    SYNC_MODE_PRIORITY_1000,
-                    normalizedManualMaxRowsPerActivity(
-                            options.maxRowsPerActivity() == null ? 1000 : options.maxRowsPerActivity()),
+                    SYNC_MODE_PRIORITY_100,
+                    normalizedPriorityMaxRowsPerActivity(options.maxRowsPerActivity()),
                     normalizePriorityStatuses(options.priorityStatuses(), DEFAULT_PRIORITY_SYNC_STATUSES));
         }
         return new ResolvedSyncOptions(

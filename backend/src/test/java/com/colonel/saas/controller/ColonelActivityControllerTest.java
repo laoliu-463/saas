@@ -591,20 +591,20 @@ class ColonelActivityControllerTest {
         mockMvc.perform(post("/colonel/activities/{activityId}/products/sync", "100018")
                         .requestAttr("roleCodes", List.of(RoleCodes.ADMIN))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"syncMode\":\"PRIORITY_1000\",\"maxRowsPerActivity\":1000,\"priorityStatuses\":[0,1]}"))
+                        .content("{\"syncMode\":\"PRIORITY_100\",\"maxRowsPerActivity\":100,\"priorityStatuses\":[0,1]}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.syncStatus").value("QUEUED"))
-                .andExpect(jsonPath("$.data.syncMode").value("PRIORITY_1000"))
-                .andExpect(jsonPath("$.data.maxRowsPerActivity").value(1000))
+                .andExpect(jsonPath("$.data.syncMode").value("PRIORITY_100"))
+                .andExpect(jsonPath("$.data.maxRowsPerActivity").value(100))
                 .andExpect(jsonPath("$.data.priorityStatuses[0]").value(0))
                 .andExpect(jsonPath("$.data.priorityStatuses[1]").value(1));
 
         ArgumentCaptor<ProductActivityManualSyncService.SyncOptions> optionsCaptor =
                 ArgumentCaptor.forClass(ProductActivityManualSyncService.SyncOptions.class);
         verify(productActivityManualSyncService).trigger(eq("100018"), eq(null), eq(null), optionsCaptor.capture());
-        assertThat(optionsCaptor.getValue().syncMode()).isEqualTo("PRIORITY_1000");
-        assertThat(optionsCaptor.getValue().maxRowsPerActivity()).isEqualTo(1000);
+        assertThat(optionsCaptor.getValue().syncMode()).isEqualTo("PRIORITY_100");
+        assertThat(optionsCaptor.getValue().maxRowsPerActivity()).isEqualTo(100);
         assertThat(optionsCaptor.getValue().priorityStatuses()).containsExactly(0, 1);
     }
 

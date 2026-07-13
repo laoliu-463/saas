@@ -27,7 +27,7 @@ const ACTIVITY_PRODUCT_SYNC_TIMEOUT_MS = 30000;
 const ACTIVITY_PRODUCT_SYNC_JOB_TIMEOUT_MS = 15000;
 
 export interface ActivityProductSyncRequest {
-  syncMode?: 'FULL' | 'PRIORITY_1000';
+  syncMode?: 'FULL' | 'PRIORITY_100';
   maxRowsPerActivity?: number;
   priorityStatuses?: number[];
 }

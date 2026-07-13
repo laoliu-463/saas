@@ -18,8 +18,8 @@
             <n-radio value="FULL" data-testid="sync-mode-full">
               同步全部商品
             </n-radio>
-            <n-radio value="PRIORITY_1000" data-testid="sync-mode-priority-1000">
-              先同步 1000 个优先商品（待审核、推广中）
+            <n-radio value="PRIORITY_100" data-testid="sync-mode-priority-100">
+              先同步 100 个优先商品（待审核、推广中）
             </n-radio>
           </n-space>
         </n-radio-group>
@@ -39,7 +39,7 @@
 import { computed, ref, watch } from 'vue'
 import type { AssignedActivityOption } from '../assigned-activity-options'
 
-type ProductSyncMode = 'FULL' | 'PRIORITY_1000'
+type ProductSyncMode = 'FULL' | 'PRIORITY_100'
 
 interface ProductSyncActivityConfirmPayload {
   activityId: string
@@ -95,8 +95,8 @@ const submit = () => {
   emit('confirm', {
     activityId: selectedActivityId.value,
     syncMode: selectedSyncMode.value,
-    maxRowsPerActivity: selectedSyncMode.value === 'PRIORITY_1000' ? 1000 : undefined,
-    priorityStatuses: selectedSyncMode.value === 'PRIORITY_1000' ? [0, 1] : undefined
+    maxRowsPerActivity: selectedSyncMode.value === 'PRIORITY_100' ? 100 : undefined,
+    priorityStatuses: selectedSyncMode.value === 'PRIORITY_100' ? [0, 1] : undefined
   })
 }
 
