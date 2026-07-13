@@ -55,6 +55,15 @@ export interface ProductCooperationSetting {
 }
 
 export interface ProductSampleSetting {
+  supportFreeSample?: boolean
+  freeSample?: boolean
+  hasSampleThreshold?: boolean
+  minWindowSales30d?: string | number
+  minSales30d?: string | number
+  minFans?: string | number
+  minTalentLevel?: string | number
+  sampleBoxCount?: string | number
+  sampleQuantity?: string | number
   allowSample?: boolean
   sampleType?: string
   responsibleParty?: string
