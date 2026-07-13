@@ -34,6 +34,15 @@
       查询较慢，请稍候…
     </n-alert>
 
+    <n-alert
+      v-if="activitySyncHint"
+      :type="activitySyncHintType"
+      class="page-alert app-page-alert"
+      data-testid="activity-product-sync-hint"
+    >
+      {{ activitySyncHint }}
+    </n-alert>
+
     <section
       v-if="isActivityProductMode"
       class="activity-workbench"
@@ -308,12 +317,14 @@ import { useDelayedFlag } from '../../utils/delayedFlag'
 import { tryCopyText } from '../../utils/clipboard'
 import {
   ACTIVITY_PRODUCT_SYNC_MAX_POLLS,
+  getActivityProductSyncNotice,
   getActivityProductSyncPollDelayMs,
   POST_SYNC_REFRESH_DELAYS_MS,
   isActivityProductSyncSuccess,
   isActivityProductSyncTerminal,
   shouldPollActivityProductSyncJob,
-  shouldSchedulePostSyncRefresh
+  shouldSchedulePostSyncRefresh,
+  type ActivityProductSyncNoticeType
 } from './activity-sync'
 import type {
   ProductActionKey,
@@ -356,6 +367,8 @@ const authStore = useAuthStore()
 
 const loading = ref(false)
 const syncing = ref(false)
+const activitySyncHint = ref('')
+const activitySyncHintType = ref<ActivityProductSyncNoticeType>('info')
 const postSyncRefreshTimers: number[] = []
 let postSyncPollTimer: number | null = null
 const loadingMore = ref(false)
@@ -1065,6 +1078,12 @@ const clearPostSyncRefreshTimers = () => {
   }
 }
 
+const setActivitySyncHint = (syncStatus?: string, fallback?: { type: ActivityProductSyncNoticeType; text: string }) => {
+  const notice = fallback || getActivityProductSyncNotice(syncStatus)
+  activitySyncHintType.value = notice.type
+  activitySyncHint.value = notice.text
+}
+
 const refreshProductsAfterActivitySync = async (activityId: string) => {
   const selectedActivityId = normalizeText(activityId)
   if (!selectedActivityId) return
@@ -1103,19 +1122,23 @@ const pollActivityProductSyncJob = async (
     const data = res?.data || {}
     const syncStatus = String(data.syncStatus || '')
     if (isActivityProductSyncSuccess(syncStatus)) {
+      setActivitySyncHint(syncStatus)
       message.success('商品同步完成，已更新商品列表')
       await refreshProductsAfterActivitySync(activityId)
       return
     }
     if (isActivityProductSyncTerminal(syncStatus)) {
-      const warning = syncStatus === 'PARTIAL'
-        ? '商品同步部分完成，已刷新当前可用数据'
-        : '商品同步失败，请稍后重试或查看后台日志'
-      message.warning(warning)
+      const notice = getActivityProductSyncNotice(syncStatus)
+      setActivitySyncHint(syncStatus)
+      message.warning(notice.text)
       await refreshProductsAfterActivitySync(activityId)
       return
     }
     if (attempt >= ACTIVITY_PRODUCT_SYNC_MAX_POLLS) {
+      setActivitySyncHint('', {
+        type: 'warning',
+        text: '商品同步仍在后台执行，商品状态会继续更新，可稍后刷新列表。'
+      })
       message.warning('商品同步仍在后台执行，可稍后手动刷新列表')
       return
     }
@@ -1124,6 +1147,10 @@ const pollActivityProductSyncJob = async (
     await refreshProductsAfterActivitySync(activityId)
   } catch (_error: any) {
     if (attempt >= ACTIVITY_PRODUCT_SYNC_MAX_POLLS) {
+      setActivitySyncHint('', {
+        type: 'warning',
+        text: '暂时无法确认商品同步结果，请稍后手动刷新列表。'
+      })
       message.warning('暂时无法确认商品同步结果，请稍后手动刷新列表')
       return
     }
@@ -1176,6 +1203,7 @@ const syncActivityProductsFromRemote = async (payload: ProductSyncActivityConfir
   fallbackActivityId.value = selectedActivityId
   clearBatchSelection()
   syncing.value = true
+  setActivitySyncHint('', { type: 'info', text: '正在提交商品同步请求，已完成的商品状态会实时刷新到列表。' })
   try {
     const res: any = await syncActivityProducts(selectedActivityId, syncRequest, {
       suppressErrorNotice: true
@@ -1188,27 +1216,33 @@ const syncActivityProductsFromRemote = async (payload: ProductSyncActivityConfir
       const pendingMessage = syncStatus === 'QUEUED'
         ? '商品同步已排队，开始执行后会自动刷新列表'
         : '商品同步已提交，完成后自动刷新列表'
+      setActivitySyncHint(syncStatus)
       message.info(pendingMessage)
       scheduleActivityProductSyncJobPolling(selectedActivityId, jobId)
       return
     }
     if (syncStatus === 'LOCKED') {
+      setActivitySyncHint('', { type: 'warning', text: normalizeText(data.message) || '后台商品同步正在执行，请稍后重试。' })
       message.warning(normalizeText(data.message) || '后台商品同步正在执行，请稍后重试')
       return
     }
     if (syncStatus === 'QUEUE_FULL') {
+      setActivitySyncHint(syncStatus)
       message.warning(normalizeText(data.message) || '活动商品同步队列已满，请稍后重试')
       return
     }
     if (isActivityProductSyncSuccess(syncStatus)) {
+      setActivitySyncHint(syncStatus)
       message.success('商品同步完成，已更新商品列表')
       await refreshProductsAfterActivitySync(selectedActivityId)
       return
     }
+    setActivitySyncHint(syncStatus)
     message.success('商品同步已提交，正在自动刷新列表')
     await refreshProductsAfterActivitySync(selectedActivityId)
     schedulePostSyncRefreshes(selectedActivityId, syncStatus)
   } catch (error: any) {
+    setActivitySyncHint('', { type: 'warning', text: '发起商品同步失败，请稍后重试。' })
     notifyApiFailure(error, message, { fallbackMessage: '发起商品同步失败' })
   } finally {
     syncing.value = false

@@ -3,6 +3,7 @@ import {
   batchSyncActivityProducts,
   formatActivityProductSyncMessage,
   ACTIVITY_PRODUCT_SYNC_MAX_POLLS,
+  getActivityProductSyncNotice,
   getActivityProductSyncPollDelayMs,
   POST_SYNC_REFRESH_DELAYS_MS,
   isActivityProductSyncSuccess,
@@ -103,6 +104,21 @@ describe('activity-sync', () => {
     expect(isActivityProductSyncTerminal('QUEUE_FULL')).toBe(true)
     expect(isActivityProductSyncTerminal('RUNNING')).toBe(false)
     expect(isActivityProductSyncTerminal('QUEUED')).toBe(false)
+  })
+
+  it('provides persistent page notices for sync progress and terminal states', () => {
+    expect(getActivityProductSyncNotice('RUNNING')).toEqual({
+      type: 'info',
+      text: '商品同步进行中，已完成的商品状态会实时刷新到列表。'
+    })
+    expect(getActivityProductSyncNotice('SUCCESS')).toEqual({
+      type: 'success',
+      text: '商品同步完成，商品状态已更新。'
+    })
+    expect(getActivityProductSyncNotice('FAILED')).toEqual({
+      type: 'warning',
+      text: '商品同步未完成，请稍后重试或查看后台日志。'
+    })
   })
 
   it('treats queue full as a failed batch item instead of submitted work', () => {
