@@ -91,3 +91,15 @@ jmeter.log
 harness/archive/*
 !harness/archive/INDEX.md
 harness/**/*.tmp
+
+# Local admin credentials (NEVER commit)
+login.json
+login.*.json
+
+# Local scratch directory (NEVER commit)
+scratch/
+
+# High-risk real-pre integration tests (NEVER commit)
+AllActivitiesSyncAndInspect*.java
+*SyncAndInspect*.java
+backend/src/test/java/com/colonel/saas/service/AllActivitiesSync*

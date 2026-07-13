@@ -1,6 +1,12 @@
-# 活动与商品同步可靠性修复设计
+# 活动与商品同步可靠性修复设计 (FACTS - 已实施部分)
 
 **日期：** 2026-07-12
+**最后更新：** 2026-07-13
+**状态：** 阶段 A 锁协议 ✅ / 阶段 B 活动 API ✅ / 阶段 C 事务重构 ✅ / 远端部署 ✅ (commit 676de811)
+
+## 历史背景
+本设计是 2026-07-12 死锁事件的修复规划, 包含已实施部分和仍待设计部分.
+**已实施部分**见本文件 (FACTS 标记). **仍待设计部分**参见 `2026-07-12-activity-product-sync-concurrency-DESIGN.md`.
 
 ## 目标
 
@@ -30,6 +36,8 @@
 - 同期 `alliance.instituteColonelActivityList` 成功 2 次，相关上游错误为 0。
 
 结论：活动状态问题是本地同步入口、分页和同步时间语义缺口，不是当前证据下的上游故障。
+
+**P8.3 修复 (commit 5b3b74c2)**：分页按上游 total 提前停 + 保留 pageSize 兜底 (上游 total 不可信场景). 新增 stopReason 区分 UPSTREAM_TOTAL / PAGE_SIZE_BOUNDARY / UPSTREAM_EMPTY.
 
 ## 方案决定
 
@@ -64,6 +72,8 @@ PRODUCT_BACKFILL_GLOBAL
 - 本轮不引入 Redis 多 key Lua 或商品级海量锁；全局入口和固定顺序已能覆盖跨活动共享商品。
 
 ### 租约边界
+
+**阶段 A heartbeat / fencing token**: 仍待设计 (本次实施仅 owner-safe release, 未做续租). 详见 `2026-07-12-activity-product-sync-concurrency-DESIGN.md`.
 
 仅扩大固定 TTL 不能形成严格互斥。阶段 A 增加 owner-checked `renewWithOwner`，由持锁任务按租约比例续租；续租失败时停止开始新的上游页/数据库 batch，按已有提交量收口状态。锁协调器负责启动、停止 heartbeat 和逆序释放。启动配置校验保证续租间隔小于 TTL，并为续租失败写结构化日志和测试。
 
