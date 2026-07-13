@@ -6,6 +6,7 @@ import ProductLibrary from './ProductLibrary.vue'
 import { DEFAULT_PRODUCT_FILTERS } from './product-filters'
 import { getProductLibraryCategories, getProducts } from '../../api/product'
 import { ROLE_CODES } from '../../constants/rbac'
+import { PRODUCT_LIBRARY_ROW_HEIGHT } from './product-library-layout'
 
 const messageMock = vi.hoisted(() => ({
   success: vi.fn(),
@@ -475,7 +476,7 @@ describe('ProductLibrary infinite scroll', () => {
     await waitForScheduledViewportUpdate()
     expect(wrapper.findAll('[data-testid="product-card"]').map((card) => card.text())).toContain('product-1')
 
-    scrollRoot.scrollTop = 25 * 431
+    scrollRoot.scrollTop = 25 * PRODUCT_LIBRARY_ROW_HEIGHT
     scrollRoot.dispatchEvent(new Event('scroll'))
     await waitForScheduledViewportUpdate()
 

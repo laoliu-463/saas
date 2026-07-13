@@ -227,6 +227,23 @@ describe('ProductSelectionCard hover drawer', () => {
     expect(metricsGrid.text()).toContain('-') // service fee rate
   })
 
+  it('为商品库虚拟网格暴露包含多指标标签的卡片高度', () => {
+    const wrapper = mountCard({
+      card: {
+        ...baseCard,
+        productName: '很长的商品名称用于验证卡片内容是否被遮挡以及指标换行',
+        commissionTypeLabel: '双佣金',
+        isDoubleCommission: true,
+        campaignCommissionRate: '8.00%',
+        campaignServiceFeeRate: '8%',
+        specs: [{ id: '1' }]
+      }
+    })
+
+    const style = wrapper.find('[data-testid="product-selection-card"]').attributes('style') || ''
+    expect(style).toContain('--selection-card-height: 432px')
+  })
+
   it('商品图片使用懒加载和异步解码，降低批量渲染压力', () => {
     const wrapper = mountCard({ card: { ...baseCard, imageUrl: 'https://example.test/product.jpg' } })
     const image = wrapper.find('.selection-card__img')

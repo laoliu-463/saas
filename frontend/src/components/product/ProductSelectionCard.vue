@@ -6,7 +6,7 @@
        并提供逐字段复制按钮。
 
   布局：
-    - 默认态：252px × 415px 固定尺寸（响应式断点降为 4 列 / 3 列 / 1 列）
+    - 默认态：252px × 432px 固定尺寸（响应式断点降为 4 列 / 3 列 / 1 列）
     - 顶部图片区（aspect-ratio 1:1）+ 底部标题+销量+核心指标
     - 鼠标悬浮：图片区浮现“复制简介”和“快速寄样”按钮，且从卡片底部覆盖弹出字段抽屉，不改变商品网格布局
 
@@ -26,6 +26,7 @@
   <article
     class="selection-card"
     :class="{ 'is-expanded': expanded, 'hover-mode': supportsHover }"
+    :style="cardStyle"
     data-testid="product-selection-card"
     @mouseenter="handleMouseEnter"
     @mouseleave="handleMouseLeave"
@@ -256,6 +257,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { NCollapseTransition, useMessage } from 'naive-ui'
 import type { ProductCardView } from '../../views/product/product-library-display'
+import { PRODUCT_LIBRARY_CARD_HEIGHT } from '../../views/product/product-library-layout'
 
 const props = withDefaults(
   defineProps<{
@@ -291,6 +293,9 @@ type InfoField = {
 }
 
 const message = useMessage()
+const cardStyle = {
+  '--selection-card-height': `${PRODUCT_LIBRARY_CARD_HEIGHT}px`
+}
 const imageVisible = ref(Boolean(props.card.imageUrl))
 /**
  * 设备能力：mount 时一次性探测，之后不再变动。
@@ -536,15 +541,15 @@ const copyField = async (text: string | undefined, label: string) => {
 <style scoped>
 /* ============================================================
    容器
-   - 默认主卡保持 252×415 紧凑高度（响应式断点由父级 grid 控制列数）
+   - 默认主卡保持 252×432 紧凑高度（响应式断点由父级 grid 控制列数）
    - 桌面详情抽屉 absolute 覆盖下方卡片，不参与商品网格布局
    ============================================================ */
 .selection-card {
   position: relative;
   width: min(252px, 100%);
   max-width: 252px;
-  height: 415px;
-  min-height: 415px;
+  height: var(--selection-card-height, 432px);
+  min-height: var(--selection-card-height, 432px);
   box-sizing: border-box;
   container-type: inline-size;
   background: #fff;
@@ -572,7 +577,7 @@ const copyField = async (text: string | undefined, label: string) => {
    ============================================================ */
 .selection-card__body {
   width: 100%;
-  height: 415px;
+  height: var(--selection-card-height, 432px);
   border-radius: 12px;
   overflow: hidden;
   display: flex;

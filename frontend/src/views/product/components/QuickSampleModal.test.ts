@@ -88,7 +88,15 @@ describe('QuickSampleModal', () => {
           NForm: { template: '<form><slot /></form>' },
           NFormItem: { template: '<div><slot /></div>', props: ['label'] },
           NAlert: { template: '<div><slot /></div>' },
-          NSelect: { props: ['options', 'value', 'loading'], template: '<select data-testid="quick-sample-talents" />' },
+          NSelect: {
+            props: {
+              options: Array,
+              value: [String, Array],
+              loading: Boolean,
+              filterable: Boolean
+            },
+            template: '<select data-testid="quick-sample-talents" :data-filterable="String(filterable)" />'
+          },
           ProductSpecSelector: { template: '<select data-testid="quick-sample-spec" />' },
           NInput: { template: '<input />' },
           NInputNumber: true,
@@ -99,7 +107,7 @@ describe('QuickSampleModal', () => {
     })
 
     expect(wrapper.find('[data-testid="quick-sample-drawer"]').exists()).toBe(true)
-    expect(wrapper.find('[data-testid="quick-sample-drawer"]').attributes('width')).toBe('min(920px, calc(100vw - 24px))')
+    expect(wrapper.find('[data-testid="quick-sample-drawer"]').attributes('width')).toBe('640')
     expect(wrapper.find('[data-testid="quick-sample-external-hint"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="quick-sample-step-1"]').text()).toContain('选择合作对象')
     expect(wrapper.find('[data-testid="quick-sample-step-2"]').text()).toContain('选择商品规格')
@@ -109,6 +117,8 @@ describe('QuickSampleModal', () => {
     expect(wrapper.find('[data-testid="quick-sample-spec-section"]').text()).toContain('测试商品')
     expect(wrapper.find('[data-testid="quick-sample-spec-section"]').text()).toContain('商品规格')
     expect(wrapper.find('[data-testid="quick-sample-spec-section"]').text()).toContain('备注')
+    await wrapper.get('[data-testid="quick-sample-add-talent"]').trigger('click')
+    expect(wrapper.get('[data-testid="quick-sample-talents"]').attributes('data-filterable')).toBe('true')
     await wrapper.get('[data-testid="quick-sample-remark-edit"]').trigger('click')
     expect(wrapper.find('[data-testid="quick-sample-remark"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="quick-sample-submit"]').exists()).toBe(true)

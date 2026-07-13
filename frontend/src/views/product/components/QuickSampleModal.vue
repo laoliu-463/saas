@@ -2,31 +2,19 @@
   <n-drawer
     v-model:show="visible"
     placement="right"
-    width="min(920px, calc(100vw - 24px))"
+    :width="DRAWER_WIDTH_PX.md"
     data-testid="quick-sample-drawer"
     @after-leave="resetForm"
   >
-    <n-drawer-content :native-scrollbar="false">
-      <div class="quick-sample-drawer">
-        <header class="quick-sample-header">
-          <h2 class="quick-sample-header__title">
-            <span class="quick-sample-header__mark" aria-hidden="true"><i /><i /></span>
-            批量申样
-          </h2>
-          <div class="quick-sample-header__actions">
-            <n-button size="large" data-testid="quick-sample-close" @click="visible = false">关闭</n-button>
-            <n-button
-              type="primary"
-              size="large"
-              :loading="submitting"
-              data-testid="quick-sample-submit"
-              @click="submit"
-            >
-              提交
-            </n-button>
-          </div>
-        </header>
+    <n-drawer-content closable>
+      <template #header>
+        <div class="drawer-header">
+          <div class="drawer-title">批量申样</div>
+          <div class="drawer-subtitle">选择渠道、合作达人和商品规格</div>
+        </div>
+      </template>
 
+      <div class="quick-sample-drawer">
         <main class="quick-sample-body">
           <div class="quick-sample-steps" aria-label="批量申样步骤">
             <div class="quick-sample-step quick-sample-step--active" data-testid="quick-sample-step-1">
@@ -85,6 +73,9 @@
                     :options="talentOptions"
                     :loading="talentLoading"
                     multiple
+                    filterable
+                    clearable
+                    max-tag-count="responsive"
                     :placeholder="talentPlaceholder"
                     data-testid="quick-sample-talents"
                   >
@@ -185,6 +176,20 @@
           </n-form>
         </main>
       </div>
+
+      <template #footer>
+        <n-space justify="end" :size="8">
+          <n-button data-testid="quick-sample-close" @click="visible = false">关闭</n-button>
+          <n-button
+            type="primary"
+            :loading="submitting"
+            data-testid="quick-sample-submit"
+            @click="submit"
+          >
+            提交
+          </n-button>
+        </n-space>
+      </template>
     </n-drawer-content>
   </n-drawer>
 </template>
@@ -203,6 +208,7 @@ import {
   toPrivateTalentSelectOption
 } from '../../../api/talent'
 import { useAuthStore } from '../../../stores/auth'
+import { DRAWER_WIDTH_PX } from '../../../constants/ui'
 import { loadSampleChannelOptions } from '../../sample/sample-user-filter-options'
 import ProductSpecSelector from './ProductSpecSelector.vue'
 
@@ -480,6 +486,7 @@ const submit = async () => {
 <style scoped>
 .quick-sample-drawer {
   min-height: 100%;
+  container-type: inline-size;
   color: var(--text-color-1, #172033);
   background: var(--body-color, #fff);
 }
@@ -488,69 +495,35 @@ const submit = async () => {
   padding: 0;
 }
 
-.quick-sample-header {
-  position: sticky;
-  z-index: 10;
-  top: 0;
+.drawer-header {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 94px;
-  padding: 16px 32px;
-  border-bottom: 1px solid var(--divider-color, #edf0f3);
-  background: var(--body-color, #fff);
+  flex-direction: column;
+  gap: 4px;
 }
 
-.quick-sample-header__title {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 0;
-  color: var(--text-color-1, #172033);
-  font-size: 22px;
-  font-weight: 700;
-}
-
-.quick-sample-header__mark {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.quick-sample-header__mark i {
-  display: block;
-  width: 4px;
-  height: 24px;
-  border-radius: 4px;
-  background: var(--primary-color, #f5222d);
-}
-
-.quick-sample-header__mark i:last-child {
-  height: 15px;
-}
-
-.quick-sample-header__actions {
-  display: flex;
-  gap: 10px;
-}
-
-.quick-sample-header__actions :deep(.n-button) {
-  min-width: 96px;
+.drawer-title {
+  color: var(--text-primary, #172033);
   font-size: 16px;
   font-weight: 600;
 }
 
+.drawer-subtitle {
+  color: var(--text-muted, #69717d);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .quick-sample-body {
-  width: min(1440px, 100%);
+  width: 100%;
   margin: 0 auto;
-  padding: 26px 24px 44px;
+  padding: 16px 16px 24px;
   box-sizing: border-box;
 }
 
 .quick-sample-steps {
   display: flex;
   align-items: center;
-  margin-bottom: 22px;
+  margin-bottom: 16px;
 }
 
 .quick-sample-step {
@@ -565,12 +538,12 @@ const submit = async () => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 48px;
-  height: 48px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   color: var(--text-color-3, #8a919a);
   background: #f0f1f3;
-  font-size: 18px;
+  font-size: 15px;
 }
 
 .quick-sample-step--active {
@@ -589,26 +562,26 @@ const submit = async () => {
 }
 
 .quick-sample-step strong {
-  font-size: 18px;
+  font-size: 14px;
   font-weight: 600;
 }
 
 .quick-sample-step span:not(.quick-sample-step__number) {
   margin-top: 2px;
-  font-size: 14px;
+  font-size: 12px;
 }
 
 .quick-sample-step__line {
   flex: 1;
-  min-width: 48px;
+  min-width: 20px;
   height: 1px;
-  margin: 0 18px;
+  margin: 0 10px;
   background: var(--divider-color, #e7e9ec);
 }
 
 .quick-sample-section {
-  margin-bottom: 20px;
-  padding: 18px 16px 20px;
+  margin-bottom: 16px;
+  padding: 14px 12px 16px;
   border: 1px solid var(--border-color, #e4e7eb);
   border-radius: 12px;
   background: var(--card-color, #fff);
@@ -616,9 +589,9 @@ const submit = async () => {
 }
 
 .quick-sample-section__title {
-  margin: 0 0 16px;
+  margin: 0 0 12px;
   color: var(--text-color-1, #172033);
-  font-size: 18px;
+  font-size: 15px;
   font-weight: 700;
 }
 
@@ -667,7 +640,7 @@ const submit = async () => {
 }
 
 .quick-sample-product-table {
-  overflow: hidden;
+  overflow: visible;
   border: 1px solid var(--border-color, #e6e9ed);
   border-radius: 14px;
 }
@@ -675,7 +648,7 @@ const submit = async () => {
 .quick-sample-product-table__head,
 .quick-sample-product-table__row {
   display: grid;
-  grid-template-columns: minmax(360px, 1.6fr) minmax(280px, 1fr) minmax(180px, .55fr);
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, .9fr) minmax(80px, .55fr);
   align-items: stretch;
 }
 
@@ -690,8 +663,8 @@ const submit = async () => {
 }
 
 .quick-sample-product-table__row {
-  min-height: 132px;
-  padding: 12px;
+  min-height: 104px;
+  padding: 10px;
   border-top: 1px solid var(--divider-color, #edf0f3);
 }
 
@@ -704,17 +677,17 @@ const submit = async () => {
 .quick-sample-product-info {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   min-width: 0;
 }
 
 .quick-sample-product-info__cover {
   display: flex;
-  flex: 0 0 96px;
+  flex: 0 0 72px;
   align-items: center;
   justify-content: center;
-  width: 96px;
-  height: 96px;
+  width: 72px;
+  height: 72px;
   overflow: hidden;
   border: 1px solid var(--border-color, #e3e6ea);
   border-radius: 4px;
@@ -733,15 +706,15 @@ const submit = async () => {
   display: flex;
   min-width: 0;
   flex-direction: column;
-  gap: 5px;
+  gap: 3px;
   color: var(--text-color-2, #69717d);
-  font-size: 14px;
+  font-size: 12px;
 }
 
 .quick-sample-product-info__title {
   overflow: hidden;
   color: var(--primary-color, #f5222d);
-  font-size: 16px;
+  font-size: 13px;
   font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -766,13 +739,18 @@ const submit = async () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
 }
 
 .quick-sample-product-spec :deep(.n-select) {
   flex: 1;
   min-width: 0;
+}
+
+.quick-sample-product-spec :deep(.n-input-number) {
+  flex: 0 0 68px;
+  width: 68px;
 }
 
 .quick-sample-product-spec :deep(.n-base-selection__placeholder) {
@@ -812,91 +790,60 @@ const submit = async () => {
   gap: 12px;
 }
 
-@media (max-width: 900px) {
-  .quick-sample-header {
-    min-height: 76px;
-    padding: 12px 18px;
-  }
-
-  .quick-sample-header__title {
-    gap: 9px;
-    font-size: 20px;
-  }
-
-  .quick-sample-header__actions {
-    gap: 8px;
-  }
-
-  .quick-sample-header__actions :deep(.n-button) {
-    min-width: 78px;
-    font-size: 15px;
-  }
-
-  .quick-sample-body {
-    padding: 22px 16px 36px;
-  }
-
-  .quick-sample-step__number {
-    width: 44px;
-    height: 44px;
-    font-size: 18px;
-  }
-
-  .quick-sample-step strong {
-    font-size: 16px;
-  }
-
-  .quick-sample-step span:not(.quick-sample-step__number) {
-    font-size: 13px;
-  }
-
-  .quick-sample-step__line {
-    min-width: 20px;
-    margin: 0 10px;
-  }
-
-  .quick-sample-section {
-    padding: 18px 14px;
-    border-radius: 12px;
-  }
-
-  .quick-sample-section__title {
-    font-size: 18px;
-  }
-
+@container (max-width: 520px) {
   .quick-sample-product-table__head {
     display: none;
   }
 
   .quick-sample-product-table__row {
     display: block;
-    padding: 14px;
+    padding: 12px;
   }
 
   .quick-sample-product-table__row > div + div {
-    margin-top: 16px;
-    padding: 16px 0 0;
+    margin-top: 12px;
+    padding: 12px 0 0;
     border-top: 1px solid var(--divider-color, #edf0f3);
     border-left: 0;
-  }
-
-  .quick-sample-product-info__cover {
-    flex-basis: 88px;
-    width: 88px;
-    height: 88px;
-  }
-
-  .quick-sample-product-info__title {
-    font-size: 16px;
-  }
-
-  .quick-sample-product-info__text {
-    font-size: 14px;
   }
 
   .quick-sample-address-grid {
     grid-template-columns: 1fr;
     gap: 0;
+  }
+}
+
+@media (max-width: 900px) {
+  .quick-sample-body {
+    padding: 14px 12px 20px;
+  }
+
+  .quick-sample-step__number {
+    width: 34px;
+    height: 34px;
+    font-size: 14px;
+  }
+
+  .quick-sample-step strong {
+    font-size: 13px;
+  }
+
+  .quick-sample-step span:not(.quick-sample-step__number) {
+    font-size: 11px;
+  }
+
+  .quick-sample-step__line {
+    min-width: 16px;
+    margin: 0 8px;
+  }
+
+  .quick-sample-section {
+    padding: 12px 10px 14px;
+    border-radius: 12px;
+  }
+
+  .quick-sample-section__title {
+    font-size: 14px;
   }
 }
 </style>
