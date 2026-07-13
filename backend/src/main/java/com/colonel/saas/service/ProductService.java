@@ -2359,7 +2359,12 @@ public class ProductService implements CopyPromotionSupportPort {
                 ? normalizedProductActivityPrioritySyncPageIntervalMs(pageIntervalMs)
                 : normalizedProductActivitySyncPageIntervalMs(pageIntervalMs);
         StatusPartitionPreflight preflight = statusPartitionPreflight(
-                request, statuses, pageSize, normalizedMaxPages, normalizedMaxRows);
+                request,
+                statuses,
+                pageSize,
+                normalizedMaxPages,
+                normalizedMaxRows,
+                Math.min(normalizedParallelism, statuses.size()));
         if (!preflight.safe()) {
             log.info("Activity product status-partition sync fallback to serial, activityId={}, statuses={}, pageSize={}, maxPages={}, maxRows={}",
                     request.activityId(), statuses, pageSize, normalizedMaxPages, normalizedMaxRows);
@@ -2379,6 +2384,8 @@ public class ProductService implements CopyPromotionSupportPort {
                 java.util.concurrent.Executors.newFixedThreadPool(Math.min(normalizedParallelism, statuses.size()));
         java.util.concurrent.atomic.AtomicInteger pageCounter = new java.util.concurrent.atomic.AtomicInteger();
         java.util.concurrent.atomic.AtomicInteger progressPageCounter = new java.util.concurrent.atomic.AtomicInteger();
+        java.util.concurrent.atomic.AtomicInteger remainingRows =
+                new java.util.concurrent.atomic.AtomicInteger(normalizedMaxRows);
         List<ActivityProductStatusPartitionFetch> partitions;
         try {
             List<java.util.concurrent.CompletableFuture<ActivityProductStatusPartitionFetch>> futures = statuses.stream()
@@ -2389,6 +2396,7 @@ public class ProductService implements CopyPromotionSupportPort {
                                     pageSize,
                                     normalizedMaxPages,
                                     normalizedMaxRows,
+                                    remainingRows,
                                     normalizedPageIntervalMs,
                                     pageCounter,
                                     progressPageCounter,
@@ -2611,45 +2619,66 @@ public class ProductService implements CopyPromotionSupportPort {
             List<Integer> statuses,
             int pageSize,
             int maxPages,
-            int maxRows) {
+            int maxRows,
+            int parallelism) {
         long estimatedRows = 0L;
         long estimatedPages = 0L;
         java.util.concurrent.atomic.AtomicInteger preflightPageCounter = new java.util.concurrent.atomic.AtomicInteger();
         Map<Integer, DouyinProductGateway.ActivityProductListResult> firstPages = new LinkedHashMap<>();
-        for (Integer status : statuses) {
-            DouyinProductGateway.ActivityProductListResult firstPage;
-            try {
-                firstPage = queryActivityProductsWithRetry(
+        int preflightParallelism = Math.min(Math.max(parallelism, 1), statuses.size());
+        java.util.concurrent.ExecutorService executor =
+                java.util.concurrent.Executors.newFixedThreadPool(preflightParallelism);
+        List<java.util.concurrent.Future<DouyinProductGateway.ActivityProductListResult>> futures = statuses.stream()
+                .map(status -> executor.submit(() -> queryActivityProductsWithRetry(
                         activityProductRequestWithStatus(request, status, pageSize, null),
-                        preflightPageCounter.getAndIncrement());
-            } catch (DouyinApiException ex) {
-                if (isDouyinRateLimited(ex)) {
-                    throw ex;
+                        preflightPageCounter.getAndIncrement())))
+                .toList();
+        try {
+            for (int index = 0; index < statuses.size(); index++) {
+                Integer status = statuses.get(index);
+                DouyinProductGateway.ActivityProductListResult firstPage;
+                try {
+                    firstPage = futures.get(index).get();
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
+                    log.warn("Activity product status-partition preflight interrupted, fallback to serial, activityId={}, status={}",
+                            request.activityId(), status);
+                    return StatusPartitionPreflight.unsafe();
+                } catch (java.util.concurrent.ExecutionException ex) {
+                    Throwable cause = ex.getCause() == null ? ex : ex.getCause();
+                    if (cause instanceof DouyinApiException douyinApiException
+                            && isDouyinRateLimited(douyinApiException)) {
+                        throw douyinApiException;
+                    }
+                    if (cause instanceof DouyinApiException douyinApiException) {
+                        log.warn("Activity product status-partition preflight failed, fallback to serial, activityId={}, status={}, errorCode={}, subCode={}, message={}",
+                                request.activityId(), status, douyinApiException.getErrorCode(),
+                                douyinApiException.getSubCode(), douyinApiException.getErrorMsg());
+                    } else {
+                        log.warn("Activity product status-partition preflight failed, fallback to serial, activityId={}, status={}, message={}",
+                                request.activityId(), status, cause.getMessage());
+                    }
+                    return StatusPartitionPreflight.unsafe();
                 }
-                log.warn("Activity product status-partition preflight failed, fallback to serial, activityId={}, status={}, errorCode={}, subCode={}, message={}",
-                        request.activityId(), status, ex.getErrorCode(), ex.getSubCode(), ex.getErrorMsg());
-                return StatusPartitionPreflight.unsafe();
-            } catch (RuntimeException ex) {
-                log.warn("Activity product status-partition preflight failed, fallback to serial, activityId={}, status={}, message={}",
-                        request.activityId(), status, ex.getMessage());
-                return StatusPartitionPreflight.unsafe();
+                if (firstPage.total() == null) {
+                    log.info("Activity product status-partition preflight missing total, activityId={}, status={}",
+                            request.activityId(), status);
+                    return StatusPartitionPreflight.unsafe();
+                }
+                firstPages.put(status, firstPage);
+                long total = Math.max(firstPage.total(), 0L);
+                estimatedRows += total;
+                estimatedPages += Math.max(1L, (total + pageSize - 1L) / pageSize);
+                if (estimatedRows > maxRows || estimatedPages > maxPages) {
+                    log.info("Activity product status-partition preflight exceeds safety bound, activityId={}, status={}, estimatedRows={}, estimatedPages={}, maxRows={}, maxPages={}",
+                            request.activityId(), status, estimatedRows, estimatedPages, maxRows, maxPages);
+                    return StatusPartitionPreflight.unsafe();
+                }
             }
-            if (firstPage.total() == null) {
-                log.info("Activity product status-partition preflight missing total, activityId={}, status={}",
-                        request.activityId(), status);
-                return StatusPartitionPreflight.unsafe();
-            }
-            firstPages.put(status, firstPage);
-            long total = Math.max(firstPage.total(), 0L);
-            estimatedRows += total;
-            estimatedPages += Math.max(1L, (total + pageSize - 1L) / pageSize);
-            if (estimatedRows > maxRows || estimatedPages > maxPages) {
-                log.info("Activity product status-partition preflight exceeds safety bound, activityId={}, status={}, estimatedRows={}, estimatedPages={}, maxRows={}, maxPages={}",
-                        request.activityId(), status, estimatedRows, estimatedPages, maxRows, maxPages);
-                return StatusPartitionPreflight.unsafe();
-            }
+            return new StatusPartitionPreflight(true, Map.copyOf(firstPages));
+        } finally {
+            executor.shutdownNow();
         }
-        return new StatusPartitionPreflight(true, Map.copyOf(firstPages));
     }
 
     private ActivityProductStatusPartitionFetch fetchActivityProductStatusPartition(
@@ -2658,6 +2687,7 @@ public class ProductService implements CopyPromotionSupportPort {
             int pageSize,
             int maxPages,
             int maxRows,
+            java.util.concurrent.atomic.AtomicInteger remainingRows,
             long pageIntervalMs,
             java.util.concurrent.atomic.AtomicInteger pageCounter,
             java.util.concurrent.atomic.AtomicInteger progressPageCounter,
@@ -2674,9 +2704,11 @@ public class ProductService implements CopyPromotionSupportPort {
                 pageRequest -> {
                     if (!StringUtils.hasText(pageRequest.cursor())
                             && reusePreflightFirstPage.compareAndSet(true, false)) {
-                        return preflightFirstPage;
+                        return reserveActivityProductRows(preflightFirstPage, remainingRows);
                     }
-                    return queryActivityProductsWithRetry(pageRequest, pageCounter.getAndIncrement());
+                    return reserveActivityProductRows(
+                            queryActivityProductsWithRetry(pageRequest, pageCounter.getAndIncrement()),
+                            remainingRows);
                 },
                 page -> {
                     if (pageLibraryRefreshEnabled) {
@@ -2695,6 +2727,42 @@ public class ProductService implements CopyPromotionSupportPort {
                 },
                 pageNo -> sleepBeforeNextActivityProductPage(request.activityId(), pageNo - 1, pageIntervalMs));
         return new ActivityProductStatusPartitionFetch(status, result, pages);
+    }
+
+    private DouyinProductGateway.ActivityProductListResult reserveActivityProductRows(
+            DouyinProductGateway.ActivityProductListResult page,
+            java.util.concurrent.atomic.AtomicInteger remainingRows) {
+        if (page == null || page.items() == null || page.items().isEmpty() || remainingRows == null) {
+            return page;
+        }
+        int grantedRows = reserveRows(remainingRows, page.items().size());
+        List<DouyinProductGateway.ActivityProductItem> items = grantedRows <= 0
+                ? List.of()
+                : List.copyOf(page.items().subList(0, grantedRows));
+        return new DouyinProductGateway.ActivityProductListResult(
+                page.test(),
+                page.activityId(),
+                page.institutionId(),
+                page.total(),
+                page.nextCursor(),
+                items);
+    }
+
+    private int reserveRows(
+            java.util.concurrent.atomic.AtomicInteger remainingRows,
+            int requestedRows) {
+        int normalizedRequestedRows = Math.max(requestedRows, 0);
+        while (normalizedRequestedRows > 0) {
+            int currentRemainingRows = remainingRows.get();
+            if (currentRemainingRows <= 0) {
+                return 0;
+            }
+            int grantedRows = Math.min(currentRemainingRows, normalizedRequestedRows);
+            if (remainingRows.compareAndSet(currentRemainingRows, currentRemainingRows - grantedRows)) {
+                return grantedRows;
+            }
+        }
+        return 0;
     }
 
     private record StatusPartitionPreflight(

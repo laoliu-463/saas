@@ -1046,10 +1046,12 @@ class ProductServiceActivityStatusIndependenceTest {
 
         assertThat(result.complete()).isFalse();
         verify(productDisplayRuleService).repairLibraryStateForActivityProducts(
-                eq(activityId), argThat(ids -> ids.containsAll(List.of("10001", "10002", "20001", "20002", "20003"))), eq(false), eq(10000));
+                eq(activityId), argThat(ids -> ids.size() == 3
+                        && ids.stream().allMatch(id -> List.of("10001", "10002", "20001", "20002", "20003").contains(id))), eq(false), eq(10000));
         verify(productDisplayRuleService, never()).repairLibraryStateForActivity(eq(activityId), eq(false), anyInt());
         verify(productDisplayRuleService).applyForProductIds(
-                argThat(ids -> ids.containsAll(List.of("10001", "10002", "20001", "20002", "20003"))));
+                argThat(ids -> ids.size() == 3
+                        && ids.stream().allMatch(id -> List.of("10001", "10002", "20001", "20002", "20003").contains(id))));
         verify(productDisplayRuleService, never()).applyForActivityId(activityId);
         verify(snapshotMapper).update(isNull(), argThat(wrapper -> {
             String sql = wrapper.getSqlSegment();
@@ -1112,7 +1114,7 @@ class ProductServiceActivityStatusIndependenceTest {
                 null);
 
         assertThat(result.complete()).isFalse();
-        assertThat(result.distinctProductIds()).isEqualTo(8);
+        assertThat(result.distinctProductIds()).isEqualTo(6);
 
         verify(snapshotMapper).update(isNull(), argThat(wrapper -> {
 
