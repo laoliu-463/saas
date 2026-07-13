@@ -10,6 +10,22 @@ const routeState = reactive({
   query: { view: 'MY_TALENTS' } as Record<string, string>
 })
 
+const routerMocks = vi.hoisted(() => ({
+  replace: vi.fn(),
+  push: vi.fn()
+}))
+
+const TalentCreateModalStub = {
+  name: 'TalentCreateModalStub',
+  template: '<div data-testid="talent-create-modal" />'
+}
+
+function normalizeRouterQuery(query: Record<string, unknown>) {
+  return Object.fromEntries(
+    Object.entries(query).filter(([, value]) => value !== undefined && value !== null && value !== '')
+  )
+}
+
 vi.mock('../../api/talent', () => ({
   blacklistTalent: vi.fn(),
   claimTalent: vi.fn(),
@@ -29,10 +45,7 @@ vi.mock('../../stores/auth', () => ({
 
 vi.mock('vue-router', () => ({
   useRoute: () => routeState,
-  useRouter: () => ({
-    replace: vi.fn().mockResolvedValue(undefined),
-    push: vi.fn()
-  })
+  useRouter: () => routerMocks
 }))
 
 vi.mock('naive-ui', () => ({
@@ -52,7 +65,7 @@ const stubs = {
   },
   TalentMetricFilters: { template: '<section />' },
   TalentDetailModal: { template: '<div />' },
-  TalentCreateModal: { template: '<div />' },
+  TalentCreateModal: TalentCreateModalStub,
   TalentBatchImportModal: { template: '<div />' },
   TalentStatusActions: { template: '<div />' },
   NCard: { template: '<section><slot /></section>' },
@@ -65,6 +78,9 @@ const stubs = {
 describe('TalentPage empty state', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    routeState.fullPath = '/talent?view=MY_TALENTS'
+    routeState.query = { view: 'MY_TALENTS' }
+    routerMocks.replace.mockResolvedValue(undefined)
     vi.mocked(getTalentPage).mockResolvedValue({
       data: { records: [], total: 0 }
     } as any)
@@ -77,5 +93,58 @@ describe('TalentPage empty state', () => {
 
     expect(wrapper.get('[data-testid="talent-empty"]').text()).toBe('目前暂无达人')
     expect(wrapper.find('[data-testid="talent-table"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('does not refetch after the page normalizes its own route query', async () => {
+    routerMocks.replace.mockImplementation(async ({ query }: { query: Record<string, string> }) => {
+      const normalizedQuery = normalizeRouterQuery(query)
+      routeState.query = normalizedQuery as Record<string, string>
+      routeState.fullPath = `/talent?${new URLSearchParams(normalizedQuery as Record<string, string>).toString()}`
+    })
+
+    const wrapper = mount(TalentPage, { global: { stubs } })
+
+    await flushPromises()
+
+    expect(getTalentPage).toHaveBeenCalledTimes(1)
+    wrapper.unmount()
+  })
+
+  it('does not refetch when route normalization updates after router.replace resolves', async () => {
+    let replaceCalls = 0
+    routerMocks.replace.mockImplementation(({ query }: { query: Record<string, string> }) => {
+      replaceCalls += 1
+      if (replaceCalls === 1) {
+        setTimeout(() => {
+          const normalizedQuery = normalizeRouterQuery(query)
+          routeState.query = normalizedQuery as Record<string, string>
+          routeState.fullPath = `/talent?${new URLSearchParams(normalizedQuery as Record<string, string>).toString()}`
+        }, 0)
+      }
+      return Promise.resolve()
+    })
+
+    const wrapper = mount(TalentPage, { global: { stubs } })
+
+    await flushPromises()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    await flushPromises()
+
+    expect(getTalentPage).toHaveBeenCalledTimes(1)
+    wrapper.unmount()
+  })
+
+  it('switches to the team public view after creating an unclaimed talent', async () => {
+    const wrapper = mount(TalentPage, { global: { stubs } })
+
+    await flushPromises()
+    vi.mocked(getTalentPage).mockClear()
+
+    wrapper.findComponent(TalentCreateModalStub).vm.$emit('success')
+    await flushPromises()
+
+    expect(getTalentPage).toHaveBeenCalledWith(expect.objectContaining({ view: 'TEAM_PUBLIC' }))
+    wrapper.unmount()
   })
 })

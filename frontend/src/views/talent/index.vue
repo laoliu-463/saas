@@ -166,6 +166,7 @@ const availableViewOptions = computed(() =>
 )
 const activeView = ref(resolveView(route.query.view))
 const syncingRoute = ref(false)
+const pendingRouteSignature = ref('')
 const pageOrderTalentCount = computed(() => data.value.filter((item) => Number(item.orderCount || 0) > 0).length)
 const pageServiceFeeText = computed(() => {
   const total = data.value.reduce((sum, item) => sum + Number(item.serviceFeeContribution || 0), 0)
@@ -185,16 +186,38 @@ function syncFromRoute() {
   pagination.pageSize = normalizePageSize(route.query.size)
 }
 
+function routeQuerySignature(query: Record<string, unknown>) {
+  return Object.keys(query)
+    .filter((key) => query[key] !== undefined && query[key] !== null && query[key] !== '')
+    .sort()
+    .map((key) => `${key}=${normalizeRouteValue(query[key])}`)
+    .join('&')
+}
+
+function normalizeRouteValue(value: unknown) {
+  if (Array.isArray(value)) return value.map((item) => String(item ?? '')).join(',')
+  return String(value ?? '')
+}
+
 async function syncRoute() {
+  const query = {
+    ...toRouteQuery(activeView.value),
+    page: String(pagination.page),
+    size: String(pagination.pageSize)
+  }
+  const nextSignature = routeQuerySignature(query)
+  if (routeQuerySignature(route.query) === nextSignature) {
+    pendingRouteSignature.value = ''
+    return
+  }
+
+  pendingRouteSignature.value = nextSignature
   syncingRoute.value = true
   try {
-    await router.replace({
-      query: {
-        ...toRouteQuery(activeView.value),
-        page: String(pagination.page),
-        size: String(pagination.pageSize)
-      }
-    })
+    await router.replace({ query })
+  } catch (error) {
+    pendingRouteSignature.value = ''
+    throw error
   } finally {
     syncingRoute.value = false
   }
@@ -282,8 +305,11 @@ function handlePageSizeChange(pageSize: number) {
 }
 
 function handleCreated() {
+  if (availableViewOptions.value.some((item) => item.value === 'TEAM_PUBLIC')) {
+    activeView.value = 'TEAM_PUBLIC'
+  }
   pagination.page = 1
-  fetchData()
+  void fetchData()
 }
 
 function handleFilterPatch(patch: Partial<TalentFiltersState>) {
@@ -472,11 +498,18 @@ const columns: DataTableColumns<TalentListItem> = [
 watch(
   () => route.fullPath,
   (_path, previousPath) => {
-    if (previousPath === undefined || syncingRoute.value) {
+    if (previousPath === undefined) {
+      return
+    }
+    if (pendingRouteSignature.value && pendingRouteSignature.value === routeQuerySignature(route.query)) {
+      pendingRouteSignature.value = ''
+      return
+    }
+    if (syncingRoute.value) {
       return
     }
     syncFromRoute()
-    fetchData()
+    void fetchData()
   }
 )
 

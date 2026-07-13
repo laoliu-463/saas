@@ -4,6 +4,7 @@ import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.entity.Talent;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -50,6 +51,23 @@ class TalentDtoTest {
         assertThat(talent.getCategories()).isEqualTo("美妆");
         assertThat(talent.getContactPhone()).isEqualTo("13800000000");
         assertThat(talent.getIntro()).isEqualTo("简介");
+    }
+
+    @Test
+    void createRequest_shouldMapManualPrefillFieldsWhenConvertingToTalent() {
+        TalentCreateRequest request = new TalentCreateRequest();
+        request.setDouyinNo(" douyin-no ");
+        request.setDouyinAccount(" account-no ");
+        request.setDataSource(" manual ");
+        request.setSyncStatus(" success ");
+        request.setUnsupportedFields(List.of("talentLevel", "sales30d"));
+
+        Talent talent = request.toTalent();
+
+        assertThat(talent.getDouyinAccount()).isEqualTo("account-no");
+        assertThat(talent.getDataSource()).isEqualTo("manual");
+        assertThat(talent.getSyncStatus()).isEqualTo("success");
+        assertThat(talent.getUnsupportedFields()).containsExactly("talentLevel", "sales30d");
     }
 
     @Test

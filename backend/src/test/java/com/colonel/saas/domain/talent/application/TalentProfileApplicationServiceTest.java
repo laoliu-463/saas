@@ -23,6 +23,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -89,6 +90,24 @@ class TalentProfileApplicationServiceTest {
         assertThatThrownBy(() -> service.updateTags(talentId, List.of("美妆"), UUID.randomUUID()))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("达人不存在");
+    }
+
+    @Test
+    void createSkipsEnrichmentWhenProfileWasPrefilled() {
+        Talent request = new Talent();
+        request.setDouyinUid("dy_prefilled");
+        request.setDataSource("manual");
+        request.setSyncStatus("success");
+
+        when(talentMapper.selectOne(any())).thenReturn(null);
+        when(talentMapper.insert(any(Talent.class))).thenReturn(1);
+        when(talentMapper.updateById(any(Talent.class))).thenReturn(1);
+
+        Talent result = service.create(request);
+
+        assertThat(result.getLastSyncTime()).isNotNull();
+        verify(talentEnrichOrchestrator, never()).enrich(any(Talent.class), eq(false));
+        verify(talentEnrichTaskMapper, never()).insert(any(TalentEnrichTask.class));
     }
 
     @Test

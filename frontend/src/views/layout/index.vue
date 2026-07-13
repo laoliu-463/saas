@@ -28,8 +28,8 @@
           <!-- 路由视图：使用动态组件 + transition 实现页面切换动画 -->
           <router-view v-slot="{ Component }">
             <transition name="page-fade" mode="out-in">
-              <!-- :key 绑定 fullPath 确保路由变化时触发动画重新播放 -->
-              <component :is="Component" v-if="Component" :key="route.fullPath" />
+              <!-- 查询参数变化由页面自身处理，不能用 fullPath 重建页面，否则会销毁弹窗和表单状态。 -->
+              <component :is="Component" v-if="Component" :key="route.path" />
             </transition>
           </router-view>
         </div>

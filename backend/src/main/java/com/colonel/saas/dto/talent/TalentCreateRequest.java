@@ -8,6 +8,9 @@ import jakarta.validation.constraints.Size;
 import lombok.Data;
 import org.springframework.util.StringUtils;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * 达人创建请求 DTO。
  * <p>
@@ -66,6 +69,21 @@ public class TalentCreateRequest {
     @Size(max = 1000, message = "达人简介不能超过 1000 个字符")
     private String intro;
 
+    /** 抖音账号展示值，手动创建时可由前端预填 */
+    @Size(max = 128, message = "抖音账号不能超过 128 个字符")
+    private String douyinAccount;
+
+    /** 资料来源，例如 manual */
+    @Size(max = 64, message = "资料来源不能超过 64 个字符")
+    private String dataSource;
+
+    /** 资料同步状态，例如 success */
+    @Size(max = 64, message = "资料同步状态不能超过 64 个字符")
+    private String syncStatus;
+
+    /** 当前创建请求明确未提供的资料字段 */
+    private List<@Size(max = 64, message = "未支持字段名不能超过 64 个字符") String> unsupportedFields;
+
     /**
      * 校验达人身份标识是否至少提供了一种。
      * <p>
@@ -106,6 +124,10 @@ public class TalentCreateRequest {
         talent.setCategories(trimToNull(categories));
         talent.setContactPhone(trimToNull(contactPhone));
         talent.setIntro(trimToNull(intro));
+        talent.setDouyinAccount(trimToNull(douyinAccount));
+        talent.setDataSource(trimToNull(dataSource));
+        talent.setSyncStatus(trimToNull(syncStatus));
+        talent.setUnsupportedFields(unsupportedFields == null ? null : new ArrayList<>(unsupportedFields));
         return talent;
     }
 
