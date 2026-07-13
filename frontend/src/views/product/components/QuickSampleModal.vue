@@ -504,10 +504,10 @@ const submit = async () => {
 .quick-sample-header__title {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 10px;
   margin: 0;
   color: var(--text-color-1, #172033);
-  font-size: 26px;
+  font-size: 22px;
   font-weight: 700;
 }
 
@@ -519,45 +519,45 @@ const submit = async () => {
 
 .quick-sample-header__mark i {
   display: block;
-  width: 5px;
-  height: 28px;
+  width: 4px;
+  height: 24px;
   border-radius: 4px;
   background: var(--primary-color, #f5222d);
 }
 
 .quick-sample-header__mark i:last-child {
-  height: 18px;
+  height: 15px;
 }
 
 .quick-sample-header__actions {
   display: flex;
-  gap: 16px;
+  gap: 10px;
 }
 
 .quick-sample-header__actions :deep(.n-button) {
-  min-width: 120px;
-  font-size: 18px;
+  min-width: 96px;
+  font-size: 16px;
   font-weight: 600;
 }
 
 .quick-sample-body {
   width: min(1440px, 100%);
   margin: 0 auto;
-  padding: 34px 32px 56px;
+  padding: 26px 24px 44px;
   box-sizing: border-box;
 }
 
 .quick-sample-steps {
   display: flex;
   align-items: center;
-  margin-bottom: 28px;
+  margin-bottom: 22px;
 }
 
 .quick-sample-step {
   display: flex;
   flex: 0 0 auto;
   align-items: center;
-  gap: 14px;
+  gap: 10px;
   color: var(--text-color-3, #a0a6ad);
 }
 
@@ -565,12 +565,12 @@ const submit = async () => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 62px;
-  height: 62px;
+  width: 48px;
+  height: 48px;
   border-radius: 50%;
   color: var(--text-color-3, #8a919a);
   background: #f0f1f3;
-  font-size: 24px;
+  font-size: 18px;
 }
 
 .quick-sample-step--active {
@@ -589,50 +589,50 @@ const submit = async () => {
 }
 
 .quick-sample-step strong {
-  font-size: 22px;
+  font-size: 18px;
   font-weight: 600;
 }
 
 .quick-sample-step span:not(.quick-sample-step__number) {
-  margin-top: 4px;
-  font-size: 18px;
+  margin-top: 2px;
+  font-size: 14px;
 }
 
 .quick-sample-step__line {
   flex: 1;
-  min-width: 80px;
+  min-width: 48px;
   height: 1px;
-  margin: 0 28px;
+  margin: 0 18px;
   background: var(--divider-color, #e7e9ec);
 }
 
 .quick-sample-section {
-  margin-bottom: 28px;
-  padding: 22px 20px 24px;
+  margin-bottom: 20px;
+  padding: 18px 16px 20px;
   border: 1px solid var(--border-color, #e4e7eb);
-  border-radius: 18px;
+  border-radius: 12px;
   background: var(--card-color, #fff);
   box-shadow: 0 2px 10px rgb(24 32 45 / 3%);
 }
 
 .quick-sample-section__title {
-  margin: 0 0 22px;
+  margin: 0 0 16px;
   color: var(--text-color-1, #172033);
-  font-size: 24px;
+  font-size: 18px;
   font-weight: 700;
 }
 
 .quick-sample-section :deep(.n-form-item) {
-  margin-bottom: 18px;
+  margin-bottom: 14px;
 }
 
 .quick-sample-section :deep(.n-form-item-label) {
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 600;
 }
 
 .quick-sample-section :deep(.n-base-selection) {
-  min-height: 44px;
+  min-height: 40px;
 }
 
 .quick-sample-talent-action {
@@ -644,24 +644,24 @@ const submit = async () => {
 
 .quick-sample-talent-action :deep(.n-button) {
   color: var(--primary-color, #f5222d);
-  font-size: 20px;
+  font-size: 16px;
   font-weight: 600;
 }
 
 .quick-sample-talent-action__plus {
-  font-size: 26px;
+  font-size: 20px;
   line-height: 1;
 }
 
 .quick-sample-talent-action__count {
   color: var(--text-color-2, #606873);
-  font-size: 18px;
+  font-size: 14px;
 }
 
 .quick-sample-talent-picker {
-  max-width: 620px;
-  margin-top: 12px;
-  padding: 16px;
+  max-width: 560px;
+  margin-top: 10px;
+  padding: 12px;
   border-radius: 12px;
   background: var(--hover-color, #f8f9fb);
 }
@@ -680,18 +680,18 @@ const submit = async () => {
 }
 
 .quick-sample-product-table__head {
-  min-height: 70px;
+  min-height: 52px;
   align-items: center;
   padding: 0 16px;
   color: var(--text-color-1, #172033);
   background: var(--hover-color, #fafafa);
-  font-size: 18px;
+  font-size: 14px;
   font-weight: 700;
 }
 
 .quick-sample-product-table__row {
-  min-height: 164px;
-  padding: 16px;
+  min-height: 132px;
+  padding: 12px;
   border-top: 1px solid var(--divider-color, #edf0f3);
 }
 
@@ -704,17 +704,17 @@ const submit = async () => {
 .quick-sample-product-info {
   display: flex;
   align-items: center;
-  gap: 18px;
+  gap: 12px;
   min-width: 0;
 }
 
 .quick-sample-product-info__cover {
   display: flex;
-  flex: 0 0 128px;
+  flex: 0 0 96px;
   align-items: center;
   justify-content: center;
-  width: 128px;
-  height: 128px;
+  width: 96px;
+  height: 96px;
   overflow: hidden;
   border: 1px solid var(--border-color, #e3e6ea);
   border-radius: 4px;
@@ -733,15 +733,15 @@ const submit = async () => {
   display: flex;
   min-width: 0;
   flex-direction: column;
-  gap: 8px;
+  gap: 5px;
   color: var(--text-color-2, #69717d);
-  font-size: 17px;
+  font-size: 14px;
 }
 
 .quick-sample-product-info__title {
   overflow: hidden;
   color: var(--primary-color, #f5222d);
-  font-size: 20px;
+  font-size: 16px;
   font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -751,13 +751,13 @@ const submit = async () => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
-  margin-right: 5px;
-  border-radius: 5px;
+  width: 18px;
+  height: 18px;
+  margin-right: 4px;
+  border-radius: 4px;
   color: #fff;
   background: #101217;
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 700;
 }
 
@@ -766,7 +766,7 @@ const submit = async () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  gap: 8px;
   min-width: 0;
 }
 
@@ -777,17 +777,17 @@ const submit = async () => {
 
 .quick-sample-product-spec :deep(.n-base-selection__placeholder) {
   color: var(--primary-color, #f5222d);
-  font-size: 18px;
+  font-size: 14px;
 }
 
 .quick-sample-product-remark {
   align-items: flex-start;
-  padding-top: 22px;
+  padding-top: 16px;
 }
 
 .quick-sample-product-remark > :deep(.n-button) {
   color: var(--primary-color, #f5222d);
-  font-size: 18px;
+  font-size: 14px;
 }
 
 .quick-sample-product-remark__editor {
@@ -809,7 +809,7 @@ const submit = async () => {
 .quick-sample-address-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 18px;
+  gap: 12px;
 }
 
 @media (max-width: 900px) {
@@ -861,7 +861,7 @@ const submit = async () => {
   }
 
   .quick-sample-section__title {
-    font-size: 20px;
+    font-size: 18px;
   }
 
   .quick-sample-product-table__head {
