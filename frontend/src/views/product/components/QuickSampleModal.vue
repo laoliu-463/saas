@@ -225,6 +225,9 @@ const channelOptions = ref<Array<{ label: string; value: string }>>([])
 const talentLoading = ref(false)
 const talentLoadFailed = ref(false)
 const talentOptions = ref<Array<{ label: string; value: string }>>([])
+/** 下拉选项提交的是抖音 UID，收货地址接口需要达人记录 UUID。 */
+const talentRecordIdByValue = ref<Record<string, string>>({})
+const addressTalentValue = ref('')
 /** 管理员可以选渠道并查询该渠道的达人，非管理员只能选自己的私海 */
 const isAdmin = computed(() => authStore.isAdmin)
 const talentFieldLabel = computed(() => (isAdmin.value ? '合作达人' : '私海达人'))
@@ -303,10 +306,22 @@ const openTalentPicker = () => {
   talentPickerVisible.value = true
 }
 
-const mapTalentSelectOptions = (records: any[]) =>
-  records
-    .map((item: any) => toPrivateTalentSelectOption(item))
+const mapTalentSelectOptions = (records: any[]) => {
+  const recordIdMap: Record<string, string> = {}
+  const options = records
+    .map((item: any) => {
+      const option = toPrivateTalentSelectOption(item)
+      const optionValue = String(option?.value || '').trim()
+      const recordId = String(item?.id || '').trim()
+      if (optionValue && UUID_PATTERN.test(recordId)) {
+        recordIdMap[optionValue] = recordId
+      }
+      return option
+    })
     .filter((item: { label: string; value: string }) => item.label && item.value)
+  talentRecordIdByValue.value = recordIdMap
+  return options
+}
 
 const loadChannels = async () => {
   channelLoading.value = true
@@ -322,6 +337,7 @@ const loadChannels = async () => {
 const loadTalents = async () => {
   talentLoading.value = true
   talentLoadFailed.value = false
+  talentRecordIdByValue.value = {}
   try {
     if (isAdmin.value) {
       // 管理员：必须先选渠道才能选达人
@@ -362,6 +378,8 @@ const handleChannelChange = () => {
   // 切换渠道时清空已选达人，重新加载该渠道的达人
   form.value.talentIds = []
   talentOptions.value = []
+  talentRecordIdByValue.value = {}
+  addressTalentValue.value = ''
   talentPickerVisible.value = false
   clearAddressFields()
   if (form.value.channelUserId) {
@@ -402,16 +420,26 @@ watch(visible, (show) => {
 
 /** 选择达人后自动加载默认收货地址 */
 watch(() => form.value.talentIds, async (talentIds) => {
-  if (!talentIds || talentIds.length === 0) return
-  const talentId = talentIds[0]
-  if (!talentId || !UUID_PATTERN.test(talentId)) return
+  const selectedTalentValue = String(talentIds?.[0] || '').trim()
+  if (!selectedTalentValue) {
+    addressTalentValue.value = ''
+    clearAddressFields()
+    return
+  }
+  // 多选时收货信息跟随第一位达人；同一位达人下用户手动修改后不重复覆盖。
+  if (selectedTalentValue === addressTalentValue.value) return
+  addressTalentValue.value = selectedTalentValue
+  clearAddressFields()
+
+  const talentRecordId = talentRecordIdByValue.value[selectedTalentValue]
+  if (!talentRecordId) return
   try {
-    const addr = await getTalentShippingAddress(talentId)
-    if (!form.value.recipientName && !form.value.recipientPhone && !form.value.recipientAddress) {
-      form.value.recipientName = addr?.recipientName || ''
-      form.value.recipientPhone = addr?.recipientPhone || ''
-      form.value.recipientAddress = addr?.recipientAddress || ''
-    }
+    const addr = await getTalentShippingAddress(talentRecordId)
+    // 避免快速切换达人时，前一个请求的响应覆盖当前达人的地址。
+    if (String(form.value.talentIds?.[0] || '').trim() !== selectedTalentValue) return
+    form.value.recipientName = addr?.recipientName || ''
+    form.value.recipientPhone = addr?.recipientPhone || ''
+    form.value.recipientAddress = addr?.recipientAddress || ''
   } catch {
     // 加载地址失败不阻断寄样流程
   }
@@ -420,6 +448,8 @@ watch(() => form.value.talentIds, async (talentIds) => {
 const resetForm = () => {
   form.value = { channelUserId: '', talentIds: [], skuId: '', specification: '', quantity: 1, recipientName: '', recipientPhone: '', recipientAddress: '', remark: '' }
   skuOptions.value = []
+  talentRecordIdByValue.value = {}
+  addressTalentValue.value = ''
   talentPickerVisible.value = false
   remarkEditing.value = false
 }

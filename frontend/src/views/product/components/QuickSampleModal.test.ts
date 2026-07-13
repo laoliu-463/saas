@@ -37,7 +37,11 @@ vi.mock('../../../api/talent', () => ({
   getTalentPrivate: vi.fn().mockResolvedValue({ data: [] }),
   getTalentByChannel: vi.fn().mockResolvedValue([]),
   getTalentShippingAddress: vi.fn().mockResolvedValue({ recipientName: null, recipientPhone: null, recipientAddress: null }),
-  parsePrivateTalentPoolResponse: vi.fn(() => [{ id: 'TALENT-1', nickname: '达人一', douyinUid: 'TALENT-1' }]),
+  parsePrivateTalentPoolResponse: vi.fn(() => [{
+    id: '22222222-2222-4222-8222-222222222222',
+    nickname: '达人一',
+    douyinUid: 'TALENT-1'
+  }]),
   toPrivateTalentSelectOption: vi.fn((item: any) => ({
     label: item.nickname,
     value: item.douyinUid || item.id
@@ -172,6 +176,64 @@ describe('QuickSampleModal', () => {
       expect.objectContaining({
         channelUserId,
         talentIds: ['TALENT-1']
+      })
+    )
+  })
+
+  it('prefills shipping address with the talent record id while keeping the submit value', async () => {
+    vi.mocked(getTalentShippingAddress).mockResolvedValueOnce({
+      recipientName: '张三',
+      recipientPhone: '13800138000',
+      recipientAddress: '北京市朝阳区测试路 1 号'
+    })
+
+    const wrapper = mount(QuickSampleModal, {
+      props: {
+        show: false,
+        product: { id: '11111111-1111-1111-1111-111111111111', title: '测试商品' }
+      },
+      global: {
+        stubs: {
+          NDrawer: { template: '<div data-testid="quick-sample-drawer"><slot /></div>', props: ['show'] },
+          NDrawerContent: { template: '<div><slot /><slot name="footer" /></div>', props: ['title'] },
+          NForm: { template: '<form><slot /></form>' },
+          NFormItem: { template: '<div><slot /></div>', props: ['label'] },
+          NAlert: { template: '<div><slot /></div>' },
+          NSelect: {
+            props: ['options', 'loading'],
+            emits: ['update:value'],
+            template: '<button data-testid="quick-sample-talents" @click="$emit(\'update:value\', [\'TALENT-1\'])">talent</button>'
+          },
+          ProductSpecSelector: { template: '<select data-testid="quick-sample-spec" />' },
+          NInput: { template: '<input />' },
+          NInputNumber: true,
+          NButton: { emits: ['click'], template: '<button v-bind="$attrs" @click="$emit(\'click\')"><slot /></button>' },
+          NSpace: { template: '<div><slot /></div>' }
+        }
+      }
+    })
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+
+    await wrapper.get('[data-testid="quick-sample-add-talent"]').trigger('click')
+    await wrapper.get('[data-testid="quick-sample-talents"]').trigger('click')
+    await flushPromises()
+
+    expect(getTalentShippingAddress).toHaveBeenCalledWith('22222222-2222-4222-8222-222222222222')
+    const state = wrapper.vm as any
+    expect(state.form.recipientName).toBe('张三')
+    expect(state.form.recipientPhone).toBe('13800138000')
+    expect(state.form.recipientAddress).toBe('北京市朝阳区测试路 1 号')
+
+    await wrapper.get('[data-testid="quick-sample-submit"]').trigger('click')
+    await flushPromises()
+    expect(applyQuickSample).toHaveBeenCalledWith(
+      '11111111-1111-1111-1111-111111111111',
+      expect.objectContaining({
+        talentIds: ['TALENT-1'],
+        recipientName: '张三',
+        recipientPhone: '13800138000',
+        recipientAddress: '北京市朝阳区测试路 1 号'
       })
     )
   })
