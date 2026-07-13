@@ -57,6 +57,18 @@ Explicitly do not modify in this phase:
 - controllers, frontend permission store, menus, or existing external API responses
 - live local/remote `real-pre` schema or data
 
+## Command execution convention
+
+All command blocks assume the shell starts at the isolated worktree root. Every Maven command must run with `backend` as the current directory because architecture and source-contract tests resolve `src/...` paths relative to the process working directory. Use this shape for every Maven invocation:
+
+```powershell
+Push-Location backend
+mvn <arguments>
+Pop-Location
+```
+
+Do not run Maven from the worktree root through `-f` indirection. In a block that also stages or commits files, `Pop-Location` must appear before `git add`, `git commit`, or any other root-relative Git command so Git always runs from the worktree root.
+
 ### Task 0: Establish a reproducible baseline
 
 **Files:** no changes
@@ -77,18 +89,26 @@ Expected: the branch is an isolated `codex/` branch, the worktree has no unrelat
 Run:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\check-harness-limits.ps1
+$baseReports = git ls-tree -r --name-only ab201aa5 -- harness/reports |
+    Where-Object { $_ -match '^harness/reports/[^/]+$' }
+$baseReports.Count
+
+$currentReports = Get-ChildItem .\harness\reports -File
+$currentReports.Count
+
 Get-Content -Raw .\harness\reports\latest-harness-limits-check.md
 ```
 
-Expected on planning commit `ef76f09a`: `FAIL`. The fixed design base `ab201aa5` contains 85 direct `harness/reports` files, and the planning Harness added 4 tracked reports, so the reproducible current count is 89. The 71-file value in the older `latest-harness-limits-check.md` is stale. This exception was surfaced before implementation; it permits development to continue but forbids a final `PASS` until a separate housekeeping batch fixes it. Do not archive unrelated reports in the RBAC commit.
+Expected on planning commit `ef76f09a`: `FAIL`. The fixed design base `ab201aa5` contains 85 direct `harness/reports` files, and the planning Harness added 4 tracked reports, so the reproducible current count is 89. The 71-file value in the older `latest-harness-limits-check.md` is stale and is read only as evidence of that discrepancy. `harness/scripts/check-harness-limits.ps1` currently hardcodes `D:\Projects\SAAS\harness` and writes the main worktree report; until a separate Harness-governance change fixes that defect, it is forbidden to invoke the script from an isolated worktree. This inherited exception permits development to continue but forbids a final `PASS` until a separate housekeeping batch fixes it. Do not archive or modify unrelated reports in the RBAC commit.
 
 - [ ] **Step 3: Run the current user/security characterization set**
 
 Run:
 
 ```powershell
-mvn -f backend/pom.xml -q -DforkCount=0 test "-Dtest=SysUserRoleAssignmentApplicationServiceTest,CurrentUserPermissionPolicyTest,DataScopePolicyTest,DddArchitectureRedlineGuardTest"
+Push-Location backend
+mvn -q -DforkCount=0 test "-Dtest=SysUserRoleAssignmentApplicationServiceTest,CurrentUserPermissionPolicyTest,DataScopePolicyTest,DddArchitectureRedlineGuardTest"
+Pop-Location
 ```
 
 Expected: Maven exits `0`. If a test fails, stop and report the baseline failure before editing code.
@@ -159,7 +179,9 @@ class DddAuthorizationSchemaContractTest {
 Run:
 
 ```powershell
-mvn -f backend/pom.xml -q -DforkCount=0 test "-Dtest=DddAuthorizationSchemaContractTest"
+Push-Location backend
+mvn -q -DforkCount=0 test "-Dtest=DddAuthorizationSchemaContractTest"
+Pop-Location
 ```
 
 Expected: failure because the migration file and the new authorization tables do not exist.
@@ -258,7 +280,9 @@ Do not seed role-permission mappings. Those mappings are business decisions rese
 Run:
 
 ```powershell
-mvn -f backend/pom.xml -q -DforkCount=0 test "-Dtest=DddAuthorizationSchemaContractTest"
+Push-Location backend
+mvn -q -DforkCount=0 test "-Dtest=DddAuthorizationSchemaContractTest"
+Pop-Location
 git add backend/src/main/resources/db/alter-authorization-foundation-20260713.sql backend/src/main/resources/db/init-db.sql backend/src/main/resources/db/migrate-all.sql backend/src/test/resources/db/mapper-integration-schema.sql backend/src/test/java/com/colonel/saas/architecture/DddAuthorizationSchemaContractTest.java
 git commit -m "feat(auth): define authorization foundation schema"
 ```
@@ -334,7 +358,9 @@ Also test that `PermissionCode` accepts `resource:action` lowercase syntax and r
 Run:
 
 ```powershell
-mvn -f backend/pom.xml -q -DforkCount=0 test "-Dtest=AuthorizationDecisionPolicyTest"
+Push-Location backend
+mvn -q -DforkCount=0 test "-Dtest=AuthorizationDecisionPolicyTest"
+Pop-Location
 ```
 
 Expected: test compilation fails because the new types do not exist.
@@ -434,7 +460,9 @@ The policy must filter by the requested permission before calculating the widest
 Run:
 
 ```powershell
-mvn -f backend/pom.xml -q -DforkCount=0 test "-Dtest=AuthorizationDecisionPolicyTest"
+Push-Location backend
+mvn -q -DforkCount=0 test "-Dtest=AuthorizationDecisionPolicyTest"
+Pop-Location
 git add backend/src/main/java/com/colonel/saas/domain/user/api backend/src/main/java/com/colonel/saas/domain/user/domain backend/src/main/java/com/colonel/saas/domain/user/policy/AuthorizationDecisionPolicy.java backend/src/test/java/com/colonel/saas/domain/user/policy/AuthorizationDecisionPolicyTest.java
 git commit -m "feat(auth): add fail-closed decision policy"
 ```
@@ -485,7 +513,9 @@ Also cover active subject mapping, a subject row with no grant, and empty/null m
 Run:
 
 ```powershell
-mvn -f backend/pom.xml -q -DforkCount=0 test "-Dtest=SysAuthorizationSnapshotStoreAdapterTest"
+Push-Location backend
+mvn -q -DforkCount=0 test "-Dtest=SysAuthorizationSnapshotStoreAdapterTest"
+Pop-Location
 ```
 
 Expected: test compilation fails because the port, rows, mapper, and adapter do not exist.
@@ -567,7 +597,9 @@ Return `Optional.empty()` when the mapper returns no rows. Build the subject fro
 Run:
 
 ```powershell
-mvn -f backend/pom.xml -q -DforkCount=0 test "-Dtest=SysAuthorizationSnapshotStoreAdapterTest,DddArchitectureRedlineGuardTest"
+Push-Location backend
+mvn -q -DforkCount=0 test "-Dtest=SysAuthorizationSnapshotStoreAdapterTest,DddArchitectureRedlineGuardTest"
+Pop-Location
 git add backend/src/main/java/com/colonel/saas/domain/user/port/AuthorizationSnapshotStore.java backend/src/main/java/com/colonel/saas/mapper/projection backend/src/main/java/com/colonel/saas/mapper/AuthorizationSnapshotMapper.java backend/src/main/java/com/colonel/saas/domain/user/infrastructure/SysAuthorizationSnapshotStoreAdapter.java backend/src/test/java/com/colonel/saas/domain/user/infrastructure/SysAuthorizationSnapshotStoreAdapterTest.java
 git commit -m "feat(auth): add authorization snapshot adapter"
 ```
@@ -621,7 +653,9 @@ Also verify that null user IDs deny and malformed permission codes throw `Illega
 Run:
 
 ```powershell
-mvn -f backend/pom.xml -q -DforkCount=0 test "-Dtest=AuthorizationApplicationServiceTest"
+Push-Location backend
+mvn -q -DforkCount=0 test "-Dtest=AuthorizationApplicationServiceTest"
+Pop-Location
 ```
 
 Expected: test compilation fails because the facade and service do not exist.
@@ -683,7 +717,9 @@ public AuthorizationDecisionPolicy authorizationDecisionPolicy() {
 Run:
 
 ```powershell
-mvn -f backend/pom.xml -q -DforkCount=0 test "-Dtest=AuthorizationApplicationServiceTest,AuthorizationDecisionPolicyTest"
+Push-Location backend
+mvn -q -DforkCount=0 test "-Dtest=AuthorizationApplicationServiceTest,AuthorizationDecisionPolicyTest"
+Pop-Location
 git add backend/src/main/java/com/colonel/saas/domain/user/facade/AuthorizationFacade.java backend/src/main/java/com/colonel/saas/domain/user/application/AuthorizationApplicationService.java backend/src/main/java/com/colonel/saas/config/DomainPolicyConfig.java backend/src/test/java/com/colonel/saas/domain/user/application/AuthorizationApplicationServiceTest.java
 git commit -m "feat(auth): expose dormant authorization facade"
 ```
@@ -774,7 +810,9 @@ class AuthorizationSchemaMigrationIntegrationTest extends BaseIntegrationTest {
 Run:
 
 ```powershell
-mvn -f backend/pom.xml -q -DforkCount=0 test "-Dtest=AuthorizationSchemaMigrationIntegrationTest,AuthorizationSnapshotStoreIntegrationTest"
+Push-Location backend
+mvn -q -DforkCount=0 test "-Dtest=AuthorizationSchemaMigrationIntegrationTest,AuthorizationSnapshotStoreIntegrationTest"
+Pop-Location
 git add backend/src/test/java/com/colonel/saas/testsupport/BaseIntegrationTest.java backend/src/test/java/com/colonel/saas/domain/user/infrastructure/AuthorizationSchemaMigrationIntegrationTest.java backend/src/test/java/com/colonel/saas/domain/user/infrastructure/AuthorizationSnapshotStoreIntegrationTest.java
 git commit -m "test(auth): verify authorization persistence facts"
 ```
@@ -822,7 +860,9 @@ This is intentionally temporary. Phase 2 must replace it with explicit allowed s
 Run:
 
 ```powershell
-mvn -f backend/pom.xml -q -DforkCount=0 test "-Dtest=DddAuthorizationSchemaContractTest,DddAuthorizationDormancyContractTest,AuthorizationDecisionPolicyTest,AuthorizationApplicationServiceTest,SysAuthorizationSnapshotStoreAdapterTest,AuthorizationSnapshotStoreIntegrationTest,AuthorizationSchemaMigrationIntegrationTest,DddArchitectureRedlineGuardTest"
+Push-Location backend
+mvn -q -DforkCount=0 test "-Dtest=DddAuthorizationSchemaContractTest,DddAuthorizationDormancyContractTest,AuthorizationDecisionPolicyTest,AuthorizationApplicationServiceTest,SysAuthorizationSnapshotStoreAdapterTest,AuthorizationSnapshotStoreIntegrationTest,AuthorizationSchemaMigrationIntegrationTest,DddArchitectureRedlineGuardTest"
+Pop-Location
 ```
 
 Expected: Maven exits `0`; no existing authorization class is required in the new test set.
@@ -832,7 +872,9 @@ Expected: Maven exits `0`; no existing authorization class is required in the ne
 Run:
 
 ```powershell
-mvn -f backend/pom.xml -q -DskipTests compile
+Push-Location backend
+mvn -q -DskipTests compile
+Pop-Location
 ```
 
 Expected: Maven exits `0`.
