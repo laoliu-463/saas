@@ -30,9 +30,28 @@ if ($OwnedFiles.Count -eq 0) {
     $derived = @()
     foreach ($line in $statusLines) {
         if ($line.Length -lt 4) { continue }
-        $path = $line.Substring(3).Trim().Trim('"')
-        if ($path -match '\s+->\s+') { $path = ($path -split '\s+->\s+')[-1].Trim().Trim('"') }
-        if ($path -like 'harness/*' -or $path -like 'harness\*') { $derived += $path }
+        $rawPath = $line.Substring(3).Trim()
+        $candidates = if ($rawPath -match '\s+->\s+') {
+            @($rawPath -split '\s+->\s+' | ForEach-Object { $_.Trim().Trim('"') })
+        }
+        else {
+            @($rawPath.Trim('"'))
+        }
+
+        foreach ($candidate in $candidates) {
+            $normalized = $candidate.Replace('\', '/')
+            if ($normalized -notlike 'harness/*') { continue }
+            $fullPath = Join-Path $RepoRoot $normalized.Replace('/', '\')
+            if (Test-Path -LiteralPath $fullPath -PathType Container) {
+                $canonicalRoot = (Get-Item -LiteralPath $RepoRoot).FullName.TrimEnd('\') + '\'
+                foreach ($file in @(Get-ChildItem -LiteralPath $fullPath -Recurse -File -Force)) {
+                    $derived += $file.FullName.Substring($canonicalRoot.Length).Replace('\', '/')
+                }
+            }
+            else {
+                $derived += $normalized
+            }
+        }
     }
     $OwnedFiles = @($derived | Sort-Object -Unique)
 }

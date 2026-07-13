@@ -29,6 +29,8 @@ $buildResult = "not collected"
 $healthResult = "not collected"
 $businessResult = "not collected"
 $contentMaintenanceResult = "not collected"
+$contentMaintenanceOwnedFiles = @()
+$taskOwnedFiles = @($ownedFilesValue)
 $remoteResult = "remote not deployed"
 $conclusion = "PARTIAL"
 
@@ -188,6 +190,8 @@ try {
         $retireParams = @{
             Action = $contentAction
             Reason = $Message
+            RepoRoot = $config.RepoRoot
+            PassThruResult = $true
         }
         if (-not [string]::IsNullOrWhiteSpace($ContentMaintenanceManifest)) {
             $retireParams["Manifest"] = $ContentMaintenanceManifest
@@ -198,9 +202,14 @@ try {
         if ($DryRun) {
             $retireParams["DryRun"] = $true
         }
-        & (Join-Path $PSScriptRoot "retire-content.ps1") @retireParams
+        $retireResult = & (Join-Path $PSScriptRoot "retire-content.ps1") @retireParams
+        if ($null -ne $retireResult -and $retireResult.PSObject.Properties.Name -contains "OwnedFiles") {
+            $contentMaintenanceOwnedFiles = @($retireResult.OwnedFiles)
+        }
         $contentMaintenanceResult = "Content maintenance: $contentAction. Manifest=$ContentMaintenanceManifest. DryRun=$($DryRun.IsPresent)."
     }
+
+    $taskOwnedFiles = @($ownedFilesValue + $contentMaintenanceOwnedFiles | Sort-Object -Unique)
 
     if ($Scope -eq "docs" -or $SkipBusinessValidation -or $deployRemoteValue) {
         $conclusion = "PARTIAL"
@@ -217,8 +226,8 @@ try {
         "-BaselineRef", "HEAD",
         "-NoReport"
     )
-    if ($ownedFilesValue.Count -gt 0) {
-        $governanceArgs += @("-OwnedFiles", ($ownedFilesValue -join ";"))
+    if ($taskOwnedFiles.Count -gt 0) {
+        $governanceArgs += @("-OwnedFiles", ($taskOwnedFiles -join ";"))
     }
     & powershell @governanceArgs
     if ($LASTEXITCODE -ne 0) {
@@ -236,11 +245,11 @@ try {
         -Conclusion $conclusion `
         -DeployRemote $deployRemoteValue `
         -ReportKey $ReportKey `
-        -OwnedFiles $ownedFilesValue `
+        -OwnedFiles $taskOwnedFiles `
         -RetroSummary $RetroSummary `
         -DryRun:$DryRun
 
-    $commitOwnedFiles = @($ownedFilesValue)
+    $commitOwnedFiles = @($taskOwnedFiles)
     if (-not $DryRun -and (Test-Path -LiteralPath $reportPath)) {
         $commitOwnedFiles += Get-HarnessRepoRelativePath -RepoRoot $config.RepoRoot -Path $reportPath
     }
@@ -264,7 +273,7 @@ try {
             -Conclusion "PASS" `
             -DeployRemote $true `
             -ReportKey $ReportKey `
-            -OwnedFiles $ownedFilesValue `
+            -OwnedFiles $taskOwnedFiles `
             -RetroSummary $RetroSummary `
             -DryRun:$DryRun
         if (-not $DryRun -and (Test-Path -LiteralPath $remoteReportPath)) {
@@ -297,7 +306,7 @@ catch {
             -Conclusion "FAIL" `
             -DeployRemote $deployRemoteValue `
             -ReportKey $ReportKey `
-            -OwnedFiles $ownedFilesValue `
+            -OwnedFiles $taskOwnedFiles `
             -RetroSummary "agent-do failed: $failure" `
             -DryRun:$DryRun
     }

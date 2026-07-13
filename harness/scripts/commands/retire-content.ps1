@@ -7,6 +7,7 @@ param(
     [string]$RepoRoot = "",
     [string]$ReportKey = "content-retire",
     [switch]$AllowSourceCode,
+    [switch]$PassThruResult,
     [switch]$DryRun
 )
 
@@ -211,6 +212,7 @@ else {
 
 $operations = @()
 $candidates = @()
+$generatedOwnedFiles = @()
 
 if ([string]::IsNullOrWhiteSpace($Manifest)) {
     if ($Action -ne "Plan") {
@@ -296,6 +298,8 @@ if ($Action -eq "Archive" -and $operations.Count -gt 0) {
         if (-not $DryRun) {
             New-Item -ItemType Directory -Force -Path $destinationParent | Out-Null
             Move-Item -LiteralPath $operation.source -Destination $destination
+            $generatedOwnedFiles += $operation.path.Replace('\', '/')
+            $generatedOwnedFiles += $destinationRelative.Replace('\', '/')
         }
     }
 }
@@ -305,6 +309,7 @@ elseif ($Action -eq "Delete" -and $operations.Count -gt 0) {
         if (-not $DryRun) {
             Assert-PathInside -Path $operation.source -Root $repoRoot -Label "Delete target" | Out-Null
             Remove-Item -LiteralPath $operation.source -Force -Recurse:$operation.isDirectory
+            $generatedOwnedFiles += $operation.path.Replace('\', '/')
         }
     }
 }
@@ -359,7 +364,16 @@ if ($DryRun) {
 }
 else {
     [void](Write-HarnessFileIfChanged -Path $reportPath -Content $content)
+    $generatedOwnedFiles += Get-HarnessRepoRelativePath -RepoRoot $repoRoot -Path $reportPath
 }
 
 Write-Host "Content retirement report: $reportPath" -ForegroundColor Green
-Write-Output $reportPath
+if ($PassThruResult) {
+    Write-Output ([pscustomobject]@{
+        ReportPath = $reportPath
+        OwnedFiles = @($generatedOwnedFiles | Sort-Object -Unique)
+    })
+}
+else {
+    Write-Output $reportPath
+}

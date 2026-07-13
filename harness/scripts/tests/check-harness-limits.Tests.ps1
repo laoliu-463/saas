@@ -227,4 +227,17 @@ Describe 'check-harness-limits baseline-aware governance' {
         $result.ExitCode | Should Be 1
         $result.Output | Should Match 'ROOT_DIRECTORY_NOT_ALLOWED'
     }
+
+    It 'expands an untracked directory when owned files are derived' {
+        $repo = New-GovernanceTestRepo -Name 'untracked-directory'
+        Save-Baseline -Repo $repo
+        Add-TextFile -Repo $repo -RelativePath 'harness\rules\new-topic\too-long.md' -Lines 201
+
+        $result = Invoke-GovernanceCheck -Repo $repo
+
+        $result.ExitCode | Should Be 1
+        $result.Output | Should Match 'TASK_GATE=FAIL'
+        $result.Output | Should Match 'harness/rules/new-topic/too-long.md'
+        $result.Output | Should Match 'TEXT_LINE_COUNT_EXCEEDED'
+    }
 }

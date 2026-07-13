@@ -190,6 +190,8 @@ Describe 'stable Harness report lifecycle' {
         $content | Should Match 'check-harness-limits\.ps1'
         $content | Should Match 'collect-evidence\.ps1[\s\S]+-OwnedFiles'
         $content | Should Match 'git-push-safe\.ps1[\s\S]+-OwnedFiles'
+        $content | Should Match 'contentMaintenanceOwnedFiles'
+        $content | Should Match 'taskOwnedFiles'
         $content | Should Not Match 'new-retro\.ps1'
     }
 }

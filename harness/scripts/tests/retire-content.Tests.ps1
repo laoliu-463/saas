@@ -46,7 +46,8 @@ function Write-RetireFixture {
 function Invoke-RetireContent {
     param(
         [string]$Repo,
-        [switch]$DryRun
+        [switch]$DryRun,
+        [switch]$PassThruResult
     )
 
     $arguments = @(
@@ -58,6 +59,7 @@ function Invoke-RetireContent {
         '-ArchiveRoot', 'harness/archive/by-date/2026-07-13/harness-report-root'
     )
     if ($DryRun) { $arguments += '-DryRun' }
+    if ($PassThruResult) { $arguments += '-PassThruResult' }
     $previousPreference = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     Push-Location $Repo
@@ -106,5 +108,30 @@ Describe 'retire-content grouped archive' {
         $archived.Count | Should Be 1
         $archived[0].Directory.Name | Should Be 'evidence'
         (Join-Path $repo 'harness\reports\current\latest-content-retire.md') | Should Exist
+    }
+
+    It 'returns the exact generated owned files for agent-do' {
+        $repo = New-RetireTestRepo -Name 'grouped-owned-files'
+        $sourceRelative = Write-RetireFixture -Repo $repo -ArchiveGroup 'evidence'
+
+        Push-Location $repo
+        try {
+            $result = & $retireContent `
+                -RepoRoot $repo `
+                -Action Archive `
+                -Manifest 'harness/manifests/test-retire.json' `
+                -ArchiveRoot 'harness/archive/by-date/2026-07-13/harness-report-root' `
+                -PassThruResult
+        }
+        finally {
+            Pop-Location
+        }
+
+        $expectedReportPath = (Get-Item -LiteralPath (Join-Path $repo 'harness\reports\current\latest-content-retire.md')).FullName
+        $result.ReportPath | Should Be $expectedReportPath
+        $result.OwnedFiles.Count | Should Be 3
+        ($result.OwnedFiles -contains $sourceRelative) | Should Be $true
+        ($result.OwnedFiles -join "`n") | Should Match 'harness/archive/.*/evidence/evidence-20260713-000000.md'
+        ($result.OwnedFiles -contains 'harness/reports/current/latest-content-retire.md') | Should Be $true
     }
 }
