@@ -5,7 +5,7 @@ export const POST_SYNC_REFRESH_DELAYS_MS = [1500, 4000, 8000, 15000]
 export const ACTIVITY_PRODUCT_SYNC_MAX_POLLS = 89
 
 export const getActivityProductSyncPollDelayMs = (attempt: number) => {
-  if (attempt < 10) return 1000
+  if (attempt < 10) return 500
   if (attempt < 30) return 3000
   return 10000
 }

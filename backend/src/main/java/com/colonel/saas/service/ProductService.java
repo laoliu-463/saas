@@ -74,6 +74,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.regex.Matcher;
@@ -207,6 +208,8 @@ public class ProductService implements CopyPromotionSupportPort {
     private final ProductLibraryApplicationService productLibraryApplicationService;
     /** 活动商品列表 Redis 短 TTL 缓存；单元测试未注入时自动回退 DB 直查。 */
     private ActivityProductRedisCacheService activityProductRedisCacheService;
+    /** 同一活动的分页写入与展示状态刷新必须串行，避免状态分区并发更新相同商品。 */
+    private final Map<String, Object> activityPageRefreshLocks = new ConcurrentHashMap<>();
     @Value("${douyin.real.promotion-write-enabled:false}")
     private boolean realPromotionWriteEnabled;
     @Value("${douyin.real.allow-promotion-write:false}")
@@ -225,6 +228,9 @@ public class ProductService implements CopyPromotionSupportPort {
     private int productSyncActivityProductMaxPagesPerActivity;
     @Value("${product.sync.activityProduct.maxRowsPerActivity:50000}")
     private int productSyncActivityProductMaxRowsPerActivity;
+    /** 上游每页落库后是否立即刷新商品库展示状态。生产默认开启；手工构造的单测保持旧编排。 */
+    @Value("${product.sync.activityProduct.page-library-refresh-enabled:true}")
+    private boolean pageLibraryRefreshEnabled;
 
     @Autowired
     public ProductService(
@@ -1947,6 +1953,60 @@ public class ProductService implements CopyPromotionSupportPort {
         return new ActivitySnapshotUpsertStats(created, updated, skipped, libraryEntryCount, unchanged);
     }
 
+    /**
+     * 将单个上游分页结果推进到商品库可见状态。
+     *
+     * <p>状态分区同步可能由多个线程拉取同一活动；按活动加锁后串行执行
+     * 快照写入、展示状态修复和去重规则，避免同一商品在不同 status 分区之间
+     * 交叉覆盖。锁粒度只覆盖当前活动，不阻塞其它活动同步。</p>
+     */
+    private ActivitySnapshotUpsertStats upsertAndRefreshActivityProductPage(
+            String activityId,
+            List<DouyinProductGateway.ActivityProductItem> items,
+            int pageNo) {
+        Object lock = activityPageRefreshLocks.computeIfAbsent(
+                activityId == null ? "" : activityId.trim(),
+                ignored -> new Object());
+        synchronized (lock) {
+            long startedAt = System.nanoTime();
+            ActivitySnapshotUpsertStats stats = upsertSnapshotsWithStats(activityId, items);
+            LinkedHashSet<String> productIds = items == null
+                    ? new LinkedHashSet<>()
+                    : items.stream()
+                            .filter(java.util.Objects::nonNull)
+                            .map(item -> String.valueOf(item.productId()))
+                            .filter(StringUtils::hasText)
+                            .collect(Collectors.toCollection(LinkedHashSet::new));
+            if (productIds.isEmpty()) {
+                return stats;
+            }
+
+            long repairStartedAt = System.nanoTime();
+            productDisplayRuleService.repairLibraryStateForActivityProducts(
+                    activityId,
+                    productIds,
+                    false,
+                    productIds.size());
+            long repairCostMs = elapsedMs(repairStartedAt);
+
+            long displayStartedAt = System.nanoTime();
+            productDisplayRuleService.applyForProductIds(productIds);
+            long displayCostMs = elapsedMs(displayStartedAt);
+            evictActivityProductCache(activityId);
+
+            log.info("Activity product page library visibility refreshed, activityId={}, page={}, productCount={}, createdCount={}, updatedCount={}, repairCostMs={}, displayCostMs={}, totalCostMs={}",
+                    activityId,
+                    pageNo,
+                    productIds.size(),
+                    stats.createdCount(),
+                    stats.updatedCount(),
+                    repairCostMs,
+                    displayCostMs,
+                    elapsedMs(startedAt));
+            return stats;
+        }
+    }
+
     private UpstreamProductLibraryDecision applyUpstreamProductLibraryDecision(
             ProductOperationState state,
             DouyinProductGateway.ActivityProductItem item) {
@@ -2213,7 +2273,9 @@ public class ProductService implements CopyPromotionSupportPort {
                         true),
                 pageRequest -> queryActivityProductsWithRetry(pageRequest, pageCounter.getAndIncrement()),
                 page -> {
-                    ActivitySnapshotUpsertStats stats = upsertSnapshotsWithStats(request.activityId(), page.items());
+                    ActivitySnapshotUpsertStats stats = pageLibraryRefreshEnabled
+                            ? upsertAndRefreshActivityProductPage(request.activityId(), page.items(), page.pageNo())
+                            : upsertSnapshotsWithStats(request.activityId(), page.items());
                     notifyActivityProductRefreshProgress(progressConsumer, progressPageCounter.incrementAndGet());
                     return new ActivityProductPaginationRunner.PageWriteStats(
                             stats.createdCount(),
@@ -2352,12 +2414,14 @@ public class ProductService implements CopyPromotionSupportPort {
         int skippedCount = 0;
         int libraryEntryCount = 0;
         for (ActivityProductStatusPartitionFetch partition : partitions) {
-            for (List<DouyinProductGateway.ActivityProductItem> pageItems : partition.pages()) {
-                ActivitySnapshotUpsertStats stats = upsertSnapshotsWithStats(request.activityId(), pageItems);
-                createdCount += stats.createdCount();
-                updatedCount += stats.updatedCount();
-                skippedCount += stats.skippedCount();
-                libraryEntryCount += stats.libraryEntryCount();
+            if (!pageLibraryRefreshEnabled) {
+                for (List<DouyinProductGateway.ActivityProductItem> pageItems : partition.pages()) {
+                    ActivitySnapshotUpsertStats stats = upsertSnapshotsWithStats(request.activityId(), pageItems);
+                    createdCount += stats.createdCount();
+                    updatedCount += stats.updatedCount();
+                    skippedCount += stats.skippedCount();
+                    libraryEntryCount += stats.libraryEntryCount();
+                }
             }
             if (partition.result() != null && partition.result().complete()) {
                 int staleDeletedCount = reconcileStatusPartitionSnapshots(
@@ -2599,7 +2663,9 @@ public class ProductService implements CopyPromotionSupportPort {
             java.util.concurrent.atomic.AtomicInteger progressPageCounter,
             java.util.function.Consumer<ActivityProductRefreshProgress> progressConsumer,
             DouyinProductGateway.ActivityProductListResult preflightFirstPage) {
-        List<List<DouyinProductGateway.ActivityProductItem>> pages = new ArrayList<>();
+        List<List<DouyinProductGateway.ActivityProductItem>> pages = pageLibraryRefreshEnabled
+                ? List.of()
+                : new ArrayList<>();
         java.util.concurrent.atomic.AtomicBoolean reusePreflightFirstPage =
                 new java.util.concurrent.atomic.AtomicBoolean(preflightFirstPage != null);
         ActivityProductPaginationRunner.Result result = ActivityProductPaginationRunner.run(
@@ -2613,6 +2679,16 @@ public class ProductService implements CopyPromotionSupportPort {
                     return queryActivityProductsWithRetry(pageRequest, pageCounter.getAndIncrement());
                 },
                 page -> {
+                    if (pageLibraryRefreshEnabled) {
+                        ActivitySnapshotUpsertStats stats = upsertAndRefreshActivityProductPage(
+                                request.activityId(), page.items(), page.pageNo());
+                        notifyActivityProductRefreshProgress(progressConsumer, progressPageCounter.incrementAndGet());
+                        return new ActivityProductPaginationRunner.PageWriteStats(
+                                stats.createdCount(),
+                                stats.updatedCount(),
+                                stats.skippedCount(),
+                                stats.libraryEntryCount());
+                    }
                     pages.add(List.copyOf(page.items()));
                     notifyActivityProductRefreshProgress(progressConsumer, progressPageCounter.incrementAndGet());
                     return ActivityProductPaginationRunner.PageWriteStats.ZERO;

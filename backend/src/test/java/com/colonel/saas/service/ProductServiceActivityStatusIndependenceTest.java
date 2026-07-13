@@ -732,6 +732,40 @@ class ProductServiceActivityStatusIndependenceTest {
     }
 
     @Test
+    void refreshActivitySnapshots_whenPageRefreshEnabled_shouldPublishPageStateBeforeFullReconcile() {
+        String activityId = "ACT016";
+        ReflectionTestUtils.setField(productService, "pageLibraryRefreshEnabled", true);
+        when(douyinProductGateway.queryActivityProducts(any()))
+                .thenReturn(new DouyinProductGateway.ActivityProductListResult(
+                        false,
+                        16L,
+                        30001L,
+                        1L,
+                        null,
+                        List.of(item(16L, "分页即时刷新商品"))));
+        when(operationStateMapper.selectOne(any())).thenReturn(null);
+        when(productBizStatusService.initStateIfAbsent(any(), eq(activityId), eq("16"), any(), any(), any()))
+                .thenReturn(state(activityId, "16"));
+        when(productDisplayRuleService.repairLibraryStateForActivityProducts(
+                eq(activityId), any(), eq(false), eq(1)))
+                .thenReturn(ProductDisplayRuleService.LibraryRepairResult.empty(activityId, false));
+        when(productDisplayRuleService.repairLibraryStateForActivity(activityId, false, 10000))
+                .thenReturn(ProductDisplayRuleService.LibraryRepairResult.empty(activityId, false));
+
+        ProductService.ActivityProductRefreshResult result = productService.refreshActivitySnapshots(
+                new DouyinProductGateway.ActivityProductQueryRequest(
+                        null, activityId, 4L, 1L, 20, null, null, null, null, 1L, null, null));
+
+        assertThat(result.syncedProductCount()).isEqualTo(1);
+        InOrder inOrder = inOrder(productDisplayRuleService);
+        inOrder.verify(productDisplayRuleService).repairLibraryStateForActivityProducts(
+                eq(activityId), argThat(ids -> ids.contains("16")), eq(false), eq(1));
+        inOrder.verify(productDisplayRuleService).applyForProductIds(argThat(ids -> ids.contains("16")));
+        inOrder.verify(productDisplayRuleService).repairLibraryStateForActivity(activityId, false, 10000);
+        inOrder.verify(productDisplayRuleService).applyForActivityId(activityId);
+    }
+
+    @Test
     void refreshActivitySnapshots_shouldMarkMissingSnapshotsDeletedForCompletedStatusRefresh() {
         String activityId = "ACT010";
         when(douyinProductGateway.queryActivityProducts(any()))

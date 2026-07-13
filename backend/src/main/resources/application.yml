@@ -85,6 +85,11 @@ performance:
 
 product:
   activity:
+    cache:
+      redis:
+        # 商品管理页允许短暂复用读模型，但状态传播链路的可见延迟上限为 1 秒。
+        enabled: ${PRODUCT_ACTIVITY_CACHE_REDIS_ENABLED:true}
+        ttl-ms: ${PRODUCT_ACTIVITY_CACHE_REDIS_TTL_MS:250}
     sync:
       enabled: ${PRODUCT_ACTIVITY_SYNC_ENABLED:false}
       cron: "${PRODUCT_ACTIVITY_SYNC_CRON:0 */5 * * * ?}"
@@ -109,6 +114,7 @@ product:
       manual-queue-max-size: ${PRODUCT_SYNC_ACTIVITY_PRODUCT_MANUAL_QUEUE_MAX_SIZE:100}
       manual-upstream-max-concurrency: ${PRODUCT_SYNC_ACTIVITY_PRODUCT_MANUAL_UPSTREAM_MAX_CONCURRENCY:2}
       manual-upstream-min-start-interval-ms: ${PRODUCT_SYNC_ACTIVITY_PRODUCT_MANUAL_UPSTREAM_MIN_START_INTERVAL_MS:300}
+      page-library-refresh-enabled: ${PRODUCT_SYNC_ACTIVITY_PRODUCT_PAGE_LIBRARY_REFRESH_ENABLED:true}
     # Phase 4-1.5 deadlock 修复：商品全量回补的并发/事务/重试配置。
     backfill:
       writeBatchSize: ${PRODUCT_SYNC_BACKFILL_WRITE_BATCH_SIZE:100}

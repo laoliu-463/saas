@@ -1119,6 +1119,9 @@ const pollActivityProductSyncJob = async (
       message.warning('商品同步仍在后台执行，可稍后手动刷新列表')
       return
     }
+    // 同步任务按上游分页持续落库；任务未结束时也刷新本地读模型，
+    // 让已完成的商品状态尽快出现在商品管理页，而不是等整轮同步结束。
+    await refreshProductsAfterActivitySync(activityId)
   } catch (_error: any) {
     if (attempt >= ACTIVITY_PRODUCT_SYNC_MAX_POLLS) {
       message.warning('暂时无法确认商品同步结果，请稍后手动刷新列表')

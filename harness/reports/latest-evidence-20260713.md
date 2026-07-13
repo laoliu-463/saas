@@ -1,44 +1,60 @@
-# Evidence Report
+# 商品管理性能优化证据
 
-## Metadata
+## 元数据
 
-- Time: 2026-07-13 15:40 +08:00
-- Environment: real-pre
-- Scope: full (商品编辑前端抽屉与后端保存契约)
-- Branch: codex/ddd-user-role-application
-- Commit: 84fa7622
-- Worktree: dirty; unrelated QuickSampleModal、Harness 报告清理和 JVM 日志变更保留，未暂存
-- Remote deploy: not requested, not executed
+- 时间：2026-07-13 21:45（Asia/Shanghai）
+- 环境：本地 real-pre
+- 分支：codex/ddd-user-role-application
+- commit：34878940（证据采集时基线为 2e54714f）
+- 远端部署：未执行（用户未要求）
+- 结论：PARTIAL
 
-## Changes
+## 修改范围
 
-- 右侧商品编辑抽屉保留：专属价金额（元，用户输入）、专属价说明、是否支持投流、奖励说明、参与要求、开始时间、结束时间；开始/结束时间为只读商品快照事实；移除手卡。
-- 新增 `PUT /api/products/{relationId}` 商品编辑保存入口，只允许更新上述可编辑补充字段中的五项：专属价金额、专属价说明、投流开关、奖励说明、参与要求。
-- `exclusivePriceAmount` 后端按非负金额、两位小数归一化，写入 `audit_payload`；旧 `exclusivePrice` 布尔字段仍兼容读取；详情摘要和专属价筛选同步支持金额字段。
-- 审核请求 DTO 同步支持专属价金额，避免审核保存链路丢字段。
+- 活动商品每页上游结果落库后，立即刷新该页商品库展示状态并失效活动缓存。
+- 同一活动的分页状态刷新串行，不同活动仍可并行。
+- 活动商品列表/状态计数 Redis 短 TTL 调整为 250ms，写入后按活动版本失效。
+- 前端同步任务进行中每 500ms 刷新一次本地商品列表，不再等待整轮同步完成。
 
-## Verification
+## 构建与测试
 
-| Check | Result | Evidence |
-|---|---|---|
-| Frontend component test | PASS | `ProductEditModal.test.ts`: 3/3 |
-| Frontend typecheck | PASS | `npm run typecheck` |
-| Frontend build | PASS | `npm run build` |
-| Backend targeted tests | PASS | 55/55: ProductController 26、AuditRequest 1、ProductServiceFilter 28 |
-| Backend package | PASS | `mvn -DskipTests package` |
-| Docker restart | PASS | `restart-compose.ps1 -Env real-pre -Scope backend`；backend 镜像重建并重启 |
-| Local health | PASS | `verify-local.ps1 -Env real-pre -Scope full`；backend 200/UP、frontend `/healthz` 200；compose backend/frontend healthy |
-| Harness limits | PASS | `check-harness-limits.ps1` |
-| real-pre preflight | FAIL/BLOCKED_AUTH | `runtime/qa/out/real-pre-preflight-20260713-153535/report.md`；admin 登录 HTTP 401，token 不可用；数据库 schema readiness PASS |
-| Product edit API/E2E | BLOCKED | 无管理员 token，未执行认证后的商品保存业务流 |
-| Git commit/push | PASS | `84fa7622` 已推送到当前分支上游 |
+- 后端：`mvn -f backend/pom.xml -DskipTests package` PASS。
+- 前端：`npm --prefix frontend ci`、`npm --prefix frontend run build` PASS。
+- 后端回归：`ProductServiceActivityStatusIndependenceTest`、`ActivityProductRedisCacheServiceTest` PASS。
+- 前端回归：`activity-sync.test.ts` 6/6 PASS；`npm run typecheck` PASS。
+- 一次并发 Maven 清理导致的类文件缺失已重跑排除，不作为代码失败证据。
 
-## Conclusion
+## 容器与健康检查
 
-PARTIAL。商品编辑前后端代码、定向测试、构建、容器重启和本地健康检查均通过；真实 real-pre 认证业务验证因配置管理员登录持续 HTTP 401 阻塞，不能声明已完成真实页面/API 闭环验收。
+- real-pre backend/frontend 已通过 Compose `up -d --build` 重建并重启。
+- backend：HTTP 200，`{"status":"UP"}`。
+- frontend：`/healthz` HTTP 200。
+- PostgreSQL、Redis：healthy。
 
-## Residual risks
+## 真实业务验证
 
-- 需要有效的 real-pre 管理员凭据后，补跑商品编辑抽屉保存、刷新回显和权限边界验证。
-- 未执行远端部署；本轮仅验证本地 real-pre。
-- 当前工作区仍有与本任务无关的 QuickSampleModal、Harness 历史报告和 JVM 日志变更，未纳入本次提交。
+- real-pre 预检：BLOCKED_AUTH。
+- admin login 连续 5 次 HTTP 401；因此没有管理员 token，抖音 token readiness 和需要登录的业务流未执行。
+- 该阻塞来自现有 real-pre 认证前置条件，不能用 mock 数据替代。
+
+## 真实同步链路观测
+
+- 定时同步在 real-pre 实际运行，活动 `3929906`：12 页、223 行，21:45:10 完成；活动 `3929905`：28 页、543 行，21:45:33 完成。
+- 单页真实观测：上游页响应完成后，商品库状态刷新日志 `totalCostMs` 约 97–342ms；示例：活动 `3929905` 第 1 页 297ms、第 22 页 176ms。
+- 前端轮询间隔已降为 500ms，故已落库页无需等待整轮同步即可被页面重新读取。
+- 注意：上游接口自身日志出现约 431–1041ms，当前证据能证明“上游页返回后到商品状态刷新”小于 1 秒，不能证明包含上游网络往返的所有请求都稳定小于 1 秒。
+
+## 数据库只读验证
+
+- 活动 `3929905`：543 条快照，最新同步时间 `2026-07-13 13:45:33.236179`。
+- 活动 `3929906`：223 条快照，最新同步时间 `2026-07-13 13:45:10.677779`。
+- 活动商品列表查询 EXPLAIN ANALYZE：543 行活动数据，执行时间 5.366ms。
+- 活动状态计数查询 EXPLAIN ANALYZE：执行时间 0.814ms。
+- Redis 认证可用，活动版本键已存在；250ms 列表缓存因短 TTL 在采集时已自然过期，符合配置预期。
+- Harness 限制检查：FAIL，`harness/reports` 当前直接文件 82 个，超过 50 个；该历史超限未在本轮删除或归档，避免触碰并发任务资产。
+
+## 剩余风险与下一步
+
+- 管理员账号 401 阻塞了登录后的真实页面/E2E 断言，需要恢复合法 real-pre 账号或由用户提供可用测试账号后复测。
+- 上游 API 偶发超过 1 秒，若目标是“从请求发起到页面可见”严格小于 1 秒，还需要单独优化上游调用耗时或增加可观测的端到端时间戳；本轮未凭经验承诺该指标。
+- 商品库复杂筛选的全量内存回退路径不在本轮活动商品状态主链路修改范围内，应单独建立压测基线。

@@ -42,7 +42,7 @@ public class ActivityProductRedisCacheService {
             RedisTemplate<String, Object> redisTemplate,
             ObjectMapper objectMapper,
             @Value("${product.activity.cache.redis.enabled:true}") boolean enabled,
-            @Value("${product.activity.cache.redis.ttl-ms:5000}") long ttlMs) {
+            @Value("${product.activity.cache.redis.ttl-ms:250}") long ttlMs) {
         this.redisTemplate = redisTemplate;
         this.objectMapper = objectMapper;
         this.enabled = enabled;
