@@ -402,57 +402,6 @@ public class ColonelActivityProductController extends BaseController {
     }
 
     /**
-         * 招商置顶商品。
-         * <p>
-         * 将商品置顶 24 小时，每位招商人员最多同时置顶 10 个商品（业务规则 P-05）。
-         * 置顶后的商品在活动商品列表中优先展示。
-         * </p>
-         *
-         * @param activityId 团长活动 ID
-         * @param productId  商品 ID
-         * @param userId     当前操作用户 ID
-         * @return 操作结果 Map，包含置顶状态和置顶截止时间
-         */
-        @Operation(summary = "招商置顶商品", description = "置顶 24 小时，每位招商最多 10 个规格（P-05）。")
-    @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF})
-    @PostMapping("/{productId}/pin")
-    public ApiResult<Map<String, Object>> pinProduct(
-            @Parameter(description = "团长活动 ID。") @PathVariable String activityId,
-            @Parameter(description = "商品 ID。") @PathVariable String productId,
-            @RequestAttribute("userId") UUID userId) {
-        // 委托 ProductPinService 执行置顶操作，返回置顶状态
-        var state = productPinService.pin(activityId, productId, userId);
-        return ok(Map.of(
-                "activityId", activityId,
-                "productId", productId,
-                "pinned", true,
-                "pinnedUntil", state.getPinnedUntil()));
-    }
-
-    /**
-     * 取消招商置顶。
-     * <p>
-     * 取消当前商品的置顶状态，商品恢复为普通排序。
-     * </p>
-     *
-     * @param activityId 团长活动 ID
-     * @param productId  商品 ID
-     * @param userId     当前操作用户 ID
-     * @return 操作结果 Map，包含取消置顶状态
-     */
-    @Operation(summary = "取消招商置顶", description = "取消当前商品的置顶状态。")
-    @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF})
-    @DeleteMapping("/{productId}/pin")
-    public ApiResult<Map<String, Object>> unpinProduct(
-            @Parameter(description = "团长活动 ID。") @PathVariable String activityId,
-            @Parameter(description = "商品 ID。") @PathVariable String productId,
-            @RequestAttribute("userId") UUID userId) {
-        // 委托 ProductPinService 取消商品置顶
-        productPinService.unpin(activityId, productId, userId);
-        return ok(Map.of("activityId", activityId, "productId", productId, "pinned", false));
-    }
-
-    /**
      * 将活动商品加入共享商品库。
      * <p>
      * 将当前选品结果沉淀到共享商品库，供机构内全员查看和复用。
