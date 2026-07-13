@@ -43,8 +43,8 @@ _Avoid_: 对账, 结算
 _Avoid_: 样品表单, 快递单
 
 **寄样动作权限**:
-寄样域中用于判断当前用户能否申请、审核、删除、推进物流、导出或享有重复申请豁免的动作约束。
-_Avoid_: 用户域角色解析, 前端按钮权限, 数据范围
+寄样域中用于判断当前用户能否申请、审核、删除、推进物流、导出或享有重复申请豁免的业务动作策略。它消费用户域授权决策，并继续检查寄样单归属、状态机和幂等规则。
+_Avoid_: 用户域角色解析, 前端按钮权限, 只做权限编码布尔判断
 
 ### 订单金额事实
 
@@ -134,20 +134,36 @@ _Avoid_: 个人收藏
 _Avoid_: sys_dept, 部门表, 业务组表
 
 **数据范围**:
-用户域输出的 `self/group/all` 可见性范围，用于业务查询侧过滤当前用户可访问的数据。
-_Avoid_: 权限规则, 前端菜单权限, 业务归属
+用户域针对“当前权限 + 当前业务域”输出的 `self/group/all/deny` 可见性范围，由业务域映射为本域查询条件。
+_Avoid_: 全局 dataScope, 权限规则, 前端菜单权限, 业务归属
 
 **当前用户**:
 已通过认证并触发本次操作的系统用户身份，是审计、权限和数据范围解析的输入。
 _Avoid_: 达人, 客户, 操作人文本
 
+**权限编码**:
+业务域拥有的稳定能力标识，格式为 `resource:action`，例如 `sample:approve`。权限编码表达动作入口，不代替对象归属、状态机或幂等判断。
+_Avoid_: 角色编码, 菜单名称, 前端路由, 临时字符串
+
+**角色**:
+用户域中用于管理一组权限和各业务域数据范围的授权集合。角色方便分配，不是业务代码分支条件。
+_Avoid_: 业务身份硬编码, 权限编码, 前端角色矩阵
+
 **角色编码**:
-系统用于鉴权和数据范围解析的稳定角色标识，如 `admin`、`biz_leader`、`channel_staff`。
-_Avoid_: 角色名称, 菜单名称
+角色的稳定管理标识，如 `admin`、`biz_leader`、`channel_staff`。迁移完成后仅用于角色管理和兼容，不作为新业务入口鉴权依据。
+_Avoid_: 权限编码, 角色名称, 菜单名称, 新业务条件分支
 
 **角色编码集合**:
-当前用户拥有的一组稳定角色标识，是业务域判断入口权限时消费的用户域事实集合。
-_Avoid_: 逗号字符串, 前端角色文本, 本地角色解析规则
+当前用户拥有的一组角色标识。它是旧鉴权链的迁移兼容事实，新业务域不得新增依赖。
+_Avoid_: 新授权事实, 逗号字符串, 前端角色文本, 本地角色解析规则
+
+**授权主体**:
+由当前用户、组织归属、账号状态和授权版本组成的可信请求上下文。角色与数据范围不直接从 JWT 作为权威事实读取。
+_Avoid_: JWT 原始 Claims, HttpServletRequest, 前端用户对象
+
+**授权决策**:
+用户域对一个权限编码返回的 `allow/deny` 结果，包含所属业务域、数据范围、稳定原因码和授权版本。业务域仍需执行自身动作策略。
+_Avoid_: 角色匹配结果, 前端按钮状态, 最终业务状态判断
 
 **用户展示名称**:
 业务记录中用于展示系统用户姓名的文本，真实姓名优先，用户名仅作兜底。
@@ -179,14 +195,16 @@ _Avoid_: SDK 直连, 页面直连第三方
 - A **推广链接** can include a **渠道编码** and produces one or more **归因映射**
 - An **联盟订单** is interpreted through **归因映射** during **订单归因**
 - A **寄样单** links one **达人** and one **共享商品库商品**
-- A **寄样动作权限** consumes a **角色编码集合** to decide which actions may be attempted on a **寄样单**
+- A **寄样动作权限** consumes an **授权决策** and the **寄样单** state to decide whether an action is legal
 - A **达人** can appear in **公海** or **私海**
 - A **当前用户** belongs to zero or one primary **组织单元**
 - A **用户展示名称** is derived from one **当前用户** or managed user identity without exposing the full user profile
 - A **负责人归属组织单元** is derived from the assigned system user and does not decide whether that user is a valid assignee
-- A **角色编码** helps resolve one **当前用户** to one **数据范围**
-- A **角色编码集合** belongs to one **当前用户** and should be interpreted by the user-domain permission policy
-- A **数据范围** constrains business-domain queries but does not decide business ownership
+- A **当前用户** is represented as one **授权主体** during a request
+- A **角色** contains many **权限编码** and one **数据范围** per participating business domain
+- An **授权决策** is produced for one **授权主体** and one **权限编码**
+- A **角色编码集合** is legacy compatibility data and must not be added to new business-domain policies
+- A **数据范围** constrains business-domain queries but does not decide business ownership or state transitions
 - The **test 环境** and **real-pre 环境** share one **Gateway 契约**
 
 ## Example dialogue
@@ -202,3 +220,5 @@ _Avoid_: SDK 直连, 页面直连第三方
 - “组长”可能同时指招商组长与渠道组长 — resolved: 讨论权限、分配或菜单时必须明确是 `biz_leader` 还是 `channel_leader`。
 - “用户展示名称”和“用户显示标签”用途不同 — resolved: 业务记录用**用户展示名称**，下拉或筛选项用**用户显示标签**。
 - “寄样权限”容易混用数据范围、前端按钮和后端动作校验 — resolved: 申请、审核、删除、物流、导出和重复申请豁免统一称为**寄样动作权限**；查询可见性仍称为**数据范围**。
+- “角色”与“权限”曾被混作同一入口条件 — resolved: **角色**只负责权限分配，接口检查**权限编码**，业务域基于**授权决策**继续执行动作策略。
+- “数据范围”曾表示 JWT 中的全局最大值 — resolved: 长期模型只使用“当前权限 + 当前业务域”的**数据范围**，缺失时为 deny。
