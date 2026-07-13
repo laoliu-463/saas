@@ -81,7 +81,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\check-harn
 Get-Content -Raw .\harness\reports\latest-harness-limits-check.md
 ```
 
-Expected on the 2026-07-13 planning baseline: `FAIL`, because `harness/reports` has 71 direct files and 13 evidence files exceed 200 lines. This exception was surfaced before implementation; it permits development to continue but forbids a final `PASS` until a separate housekeeping batch fixes it. Do not archive unrelated reports in the RBAC commit.
+Expected on planning commit `ef76f09a`: `FAIL`. The fixed design base `ab201aa5` contains 85 direct `harness/reports` files, and the planning Harness added 4 tracked reports, so the reproducible current count is 89. The 71-file value in the older `latest-harness-limits-check.md` is stale. This exception was surfaced before implementation; it permits development to continue but forbids a final `PASS` until a separate housekeeping batch fixes it. Do not archive unrelated reports in the RBAC commit.
 
 - [ ] **Step 3: Run the current user/security characterization set**
 
