@@ -207,16 +207,18 @@ public class TalentQueryService {
     }
 
     /**
-     * 归一化单批拉取大小，限制在 {@link #TALENT_QUERY_BATCH_SIZE} 以内以控制内存消耗。
+     * 归一化单批拉取大小。
+     * <p>列表结果页大小与扫描批次大小解耦：即使前端只请求 10 条，也使用固定批次读取，
+     * 避免内存过滤场景按结果页大小反复访问数据库。</p>
      *
-     * @param requestedSize 请求的每页条数
+     * @param requestedSize 请求的每页条数（仅用于保持调用契约，批次大小固定受控）
      * @return 归一化后的批次大小
      */
     private long normalizeFetchSize(long requestedSize) {
         if (requestedSize <= 0) {
-            return 10L;
+            return TALENT_QUERY_BATCH_SIZE;
         }
-        return Math.min(requestedSize, TALENT_QUERY_BATCH_SIZE);
+        return TALENT_QUERY_BATCH_SIZE;
     }
 
     /**
@@ -276,8 +278,9 @@ public class TalentQueryService {
         // 第三步：校验数据范围访问权限
         assertCanAccess(talent, currentUserId, currentDeptId, dataScope,
                 claimMaps.activeClaimsByTalent().getOrDefault(resolvedTalentId, List.of()));
+        Map<UUID, String> ownerLabelMap = loadOwnerLabels(claimMaps.allClaims());
         // 第四步：富化卡牌衍生字段
-        enrichTalentCards(List.of(talent), currentUserId, claimMaps);
+        enrichTalentCards(List.of(talent), currentUserId, claimMaps, ownerLabelMap);
 
         // 第五步：根据数据范围判断是否脱敏，组装详情响应
         boolean redactSensitiveFields = shouldRedactSensitiveFields(dataScope);
@@ -287,7 +290,8 @@ public class TalentQueryService {
                 talent,
                 currentUserId,
                 redactSensitiveFields,
-                claimMaps.activeClaimsByTalent().getOrDefault(resolvedTalentId, List.of())));
+                claimMaps.activeClaimsByTalent().getOrDefault(resolvedTalentId, List.of()),
+                ownerLabelMap));
         // 第六步：加载最近寄样记录和订单记录
         response.setSamples(loadSamples(talent));
         response.setOrders(loadOrders(talent, redactSensitiveFields));
@@ -478,6 +482,18 @@ public class TalentQueryService {
         Set<UUID> talentIds = talents.stream().map(Talent::getId).filter(Objects::nonNull).collect(Collectors.toSet());
         ClaimMaps claimMaps = preloadedClaimMaps == null ? loadClaimMaps(talentIds) : preloadedClaimMaps;
         Map<UUID, String> ownerLabelMap = loadOwnerLabels(claimMaps.allClaims());
+        enrichTalentCards(talents, currentUserId, claimMaps, ownerLabelMap);
+    }
+
+    /**
+     * 使用调用方已加载的认领人标签继续富化，避免详情查询重复访问认领与用户表。
+     */
+    private void enrichTalentCards(
+            List<Talent> talents,
+            UUID currentUserId,
+            ClaimMaps claimMaps,
+            Map<UUID, String> ownerLabelMap) {
+        Set<UUID> talentIds = talents.stream().map(Talent::getId).filter(Objects::nonNull).collect(Collectors.toSet());
         Map<UUID, Long> sampleCountMap = loadSampleCounts(
                 talentIds
         );
@@ -686,7 +702,8 @@ public class TalentQueryService {
             Talent talent,
             UUID currentUserId,
             boolean redactSensitiveFields,
-            List<TalentClaim> activeClaims) {
+            List<TalentClaim> activeClaims,
+            Map<UUID, String> ownerLabelMap) {
         TalentDetailResponse.ClaimInfo info = new TalentDetailResponse.ClaimInfo();
         info.setPoolStatus(talent.getPoolStatus());
         info.setOwnerId(talent.getOwnerId() == null ? null : talent.getOwnerId().toString());
@@ -702,7 +719,9 @@ public class TalentQueryService {
             info.setRecipientAddress(claimAddress.getRecipientAddress());
         }
         // 脱敏时隐藏生效认领人列表
-        info.setActiveClaimOwners(redactSensitiveFields ? List.of() : loadActiveClaimOwners(talent.getId(), currentUserId));
+        info.setActiveClaimOwners(redactSensitiveFields
+                ? List.of()
+                : toActiveClaimOwners(activeClaims, currentUserId, ownerLabelMap));
         return info;
     }
 
@@ -890,25 +909,19 @@ public class TalentQueryService {
     /**
      * 加载达人详情页的生效认领人列表。
      * <p>处理流程：</p>
-     * <ol>
-     *   <li>查询该达人所有生效的认领记录</li>
-     *   <li>批量加载认领人显示标签</li>
-     *   <li>映射为 {@link TalentDetailResponse.ClaimOwnerItem}，当前用户标注「（我）」</li>
-     * </ol>
+     * <p>调用方已在详情查询开始阶段加载认领记录和认领人标签，这里只负责 DTO 映射。</p>
      *
-     * @param talentId      达人 ID
+     * @param activeClaims  已加载的生效认领记录
      * @param currentUserId 当前操作用户 ID（可为 null）
      * @return 生效认领人列表，无认领记录时返回空列表
      */
-    private List<TalentDetailResponse.ClaimOwnerItem> loadActiveClaimOwners(UUID talentId, UUID currentUserId) {
-        if (talentId == null) {
-            return List.of();
-        }
-        List<TalentClaim> activeClaims = talentClaimMapper.findActiveByTalentId(talentId);
+    private List<TalentDetailResponse.ClaimOwnerItem> toActiveClaimOwners(
+            List<TalentClaim> activeClaims,
+            UUID currentUserId,
+            Map<UUID, String> ownerLabelMap) {
         if (activeClaims == null || activeClaims.isEmpty()) {
             return List.of();
         }
-        Map<UUID, String> ownerLabelMap = loadOwnerLabels(activeClaims);
         return activeClaims.stream()
                 .map(claim -> {
                     TalentDetailResponse.ClaimOwnerItem item = new TalentDetailResponse.ClaimOwnerItem();

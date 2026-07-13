@@ -50,7 +50,7 @@ vi.mock('vue-router', () => ({
 
 vi.mock('naive-ui', () => ({
   NAvatar: { template: '<span />' },
-  NButton: { template: '<button><slot /></button>' },
+  NButton: { inheritAttrs: false, template: '<button v-bind="$attrs"><slot /></button>' },
   NSpace: { template: '<div><slot /></div>' },
   NTag: { template: '<span><slot /></span>' },
   useDialog: () => ({ warning: vi.fn(), error: vi.fn() }),
@@ -107,6 +107,25 @@ describe('TalentPage empty state', () => {
 
     await flushPromises()
 
+    expect(getTalentPage).toHaveBeenCalledTimes(1)
+    wrapper.unmount()
+  })
+
+  it('deduplicates refreshes while the same list request is pending', async () => {
+    let resolveRequest!: (value: any) => void
+    const pendingRequest = new Promise((resolve) => {
+      resolveRequest = resolve
+    })
+    vi.mocked(getTalentPage).mockReturnValue(pendingRequest as any)
+
+    const wrapper = mount(TalentPage, { global: { stubs } })
+
+    await flushPromises()
+    expect(getTalentPage).toHaveBeenCalledTimes(1)
+
+    await wrapper.get('[data-testid="talent-refresh"]').trigger('click')
+    resolveRequest({ data: { records: [], total: 0 } })
+    await flushPromises()
     expect(getTalentPage).toHaveBeenCalledTimes(1)
     wrapper.unmount()
   })

@@ -167,6 +167,9 @@ const availableViewOptions = computed(() =>
 const activeView = ref(resolveView(route.query.view))
 const syncingRoute = ref(false)
 const pendingRouteSignature = ref('')
+const pageMounted = ref(false)
+let latestListRequestId = 0
+let activeListRequest: { key: string; promise: Promise<void> } | null = null
 const pageOrderTalentCount = computed(() => data.value.filter((item) => Number(item.orderCount || 0) > 0).length)
 const pageServiceFeeText = computed(() => {
   const total = data.value.reduce((sum, item) => sum + Number(item.serviceFeeContribution || 0), 0)
@@ -250,23 +253,55 @@ function handleApplySample(query: Record<string, string>) {
   router.push({ path: '/sample/apply', query })
 }
 
-async function fetchData() {
-  loading.value = true
-  try {
-    const res: any = await getTalentPage({
+function buildListRequest() {
+  const params = {
       page: pagination.page,
       size: pagination.pageSize,
       ...toRequestParams(activeView.value)
-    })
-    const payload = res?.data || {}
-    data.value = Array.isArray(payload.records) ? payload.records : []
-    pagination.itemCount = Number(payload.total || 0)
-    await syncRoute()
-  } catch (error: any) {
-    notifyApiFailure(error, message, { fallbackMessage: '加载达人列表失败' })
-  } finally {
-    loading.value = false
   }
+
+  return {
+    params,
+    key: JSON.stringify(params)
+  }
+}
+
+function fetchData(): Promise<void> {
+  const { params, key } = buildListRequest()
+  if (activeListRequest?.key === key) {
+    return activeListRequest.promise
+  }
+
+  const requestId = ++latestListRequestId
+  let requestPromise!: Promise<void>
+  const requestTask = (async () => {
+    loading.value = true
+    try {
+      await syncRoute()
+      const res: any = await getTalentPage(params)
+      if (requestId !== latestListRequestId) return
+
+      const payload = res?.data || {}
+      data.value = Array.isArray(payload.records) ? payload.records : []
+      pagination.itemCount = Number(payload.total || 0)
+    } catch (error: any) {
+      if (requestId === latestListRequestId) {
+        notifyApiFailure(error, message, { fallbackMessage: '加载达人列表失败' })
+      }
+    } finally {
+      if (requestId === latestListRequestId) {
+        loading.value = false
+      }
+    }
+  })()
+
+  requestPromise = requestTask.finally(() => {
+    if (activeListRequest?.promise === requestPromise) {
+      activeListRequest = null
+    }
+  })
+  activeListRequest = { key, promise: requestPromise }
+  return requestPromise
 }
 
 async function handleWeeklyRefresh() {
@@ -498,7 +533,7 @@ const columns: DataTableColumns<TalentListItem> = [
 watch(
   () => route.fullPath,
   (_path, previousPath) => {
-    if (previousPath === undefined) {
+    if (previousPath === undefined || !pageMounted.value) {
       return
     }
     if (pendingRouteSignature.value && pendingRouteSignature.value === routeQuerySignature(route.query)) {
@@ -519,15 +554,18 @@ watch(
     if (!options.some((item) => item.value === activeView.value)) {
       activeView.value = options[0]?.value || 'TEAM_PUBLIC'
       pagination.page = 1
-      void fetchData()
+      if (pageMounted.value) {
+        void fetchData()
+      }
     }
   },
   { immediate: true }
 )
 
 onMounted(() => {
+  pageMounted.value = true
   syncFromRoute()
-  fetchData()
+  void fetchData()
 })
 </script>
 

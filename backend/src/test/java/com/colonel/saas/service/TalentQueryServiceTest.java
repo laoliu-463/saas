@@ -287,7 +287,6 @@ class TalentQueryServiceTest {
 
         when(talentService.getById(talentId)).thenReturn(talent);
         when(talentClaimMapper.selectList(any())).thenReturn(List.of(claim));
-        when(talentClaimMapper.findActiveByTalentId(talentId)).thenReturn(List.of(claim));
         lenient().when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM sample_request") && sql.contains("talent_id IN")), any(Object[].class)))
                 .thenReturn(List.of());
         lenient().when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM colonelsettlement_order") && sql.contains("GROUP BY") && sql.contains("talent_uid") && sql.contains(" IN ")), any(Object[].class)))
@@ -304,6 +303,34 @@ class TalentQueryServiceTest {
         assertThat(response.getClaim().getRecipientName()).isEqualTo("张三");
         assertThat(response.getClaim().getRecipientPhone()).isEqualTo("13800000000");
         assertThat(response.getClaim().getRecipientAddress()).isEqualTo("上海市浦东新区示例路 1 号");
+    }
+
+    @Test
+    void detail_shouldReusePreloadedClaimsInsteadOfQueryingClaimsAgain() {
+        UUID talentId = UUID.randomUUID();
+        UUID viewerId = UUID.randomUUID();
+
+        Talent talent = new Talent();
+        talent.setId(talentId);
+        talent.setDouyinUid("talent_detail_claim_cache");
+        talent.setNickname("详情查询复用认领数据");
+
+        TalentClaim claim = new TalentClaim();
+        claim.setTalentId(talentId);
+        claim.setUserId(viewerId);
+        claim.setStatus(1);
+        claim.setClaimedAt(LocalDateTime.now().minusHours(1));
+
+        when(talentService.getById(talentId)).thenReturn(talent);
+        when(talentClaimMapper.selectList(any())).thenReturn(List.of(claim));
+        when(userDomainFacade.loadUserDisplayLabelsByIds(any()))
+                .thenReturn(Map.of(viewerId, "详情认领人"));
+
+        TalentDetailResponse response = talentQueryService.detail(talentId, viewerId, null, DataScope.ALL);
+
+        verify(talentClaimMapper, never()).findActiveByTalentId(talentId);
+        assertThat(response.getClaim().getActiveClaimOwners()).hasSize(1);
+        assertThat(response.getClaim().getActiveClaimOwners().get(0).getOwnerName()).contains("详情认领人");
     }
 
     @Test
@@ -334,7 +361,6 @@ class TalentQueryServiceTest {
 
         when(talentService.getById(talentId)).thenReturn(talent);
         when(talentClaimMapper.selectList(any())).thenReturn(List.of(claimB, claimA));
-        when(talentClaimMapper.findActiveByTalentId(talentId)).thenReturn(List.of(claimB, claimA));
         when(userDomainFacade.loadUserDisplayLabelsByIds(any()))
                 .thenReturn(Map.of(ownerA, "渠道A", ownerB, "渠道B"));
         lenient().when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM sample_request") && sql.contains("talent_id IN")), any(Object[].class)))
@@ -399,7 +425,7 @@ class TalentQueryServiceTest {
                 new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(1, 200, 4);
         basePage.setRecords(List.of(publicTalent, privateTalent, blacklistedTalent, sharedTalent));
 
-        when(talentService.page(1, 10, null, null, null, null, DataScope.ALL, myUserId, null)).thenReturn(basePage);
+        when(talentService.page(1, 200, null, null, null, null, DataScope.ALL, myUserId, null)).thenReturn(basePage);
         when(talentClaimMapper.selectList(any())).thenReturn(List.of(activeClaim, otherActiveClaim));
         when(userDomainFacade.loadUserDisplayLabelsByIds(any()))
                 .thenReturn(Map.of(otherUserId, "渠道B"));
@@ -452,7 +478,7 @@ class TalentQueryServiceTest {
                 new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(1, 200, 2);
         basePage.setRecords(List.of(publicTalent, sharedTalent));
 
-        when(talentService.page(1, 10, null, null, null, null, DataScope.ALL, myUserId, null)).thenReturn(basePage);
+        when(talentService.page(1, 200, null, null, null, null, DataScope.ALL, myUserId, null)).thenReturn(basePage);
         when(talentClaimMapper.selectList(any())).thenReturn(List.of(otherActiveClaim));
         when(userDomainFacade.loadUserDisplayLabelsByIds(any()))
                 .thenReturn(Map.of(otherUserId, "渠道B"));
@@ -495,7 +521,7 @@ class TalentQueryServiceTest {
                 new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(1, 200, 2);
         basePage.setRecords(List.of(publicTalent, sharedTalent));
 
-        when(talentService.page(1, 10, null, null, null, null, DataScope.ALL, myUserId, myDeptId)).thenReturn(basePage);
+        when(talentService.page(1, 200, null, null, null, null, DataScope.ALL, myUserId, myDeptId)).thenReturn(basePage);
         when(talentClaimMapper.selectList(any())).thenReturn(List.of(otherActiveClaim));
         when(userDomainFacade.loadUserDisplayLabelsByIds(any()))
                 .thenReturn(Map.of(otherUserId, "渠道同事"));
@@ -555,7 +581,7 @@ class TalentQueryServiceTest {
                 new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(1, 200, 3);
         basePage.setRecords(List.of(myTalent, teammateTalent, publicTalent));
 
-        when(talentService.page(1, 10, null, null, null, null, DataScope.DEPT, myUserId, myDeptId)).thenReturn(basePage);
+        when(talentService.page(1, 200, null, null, null, null, DataScope.DEPT, myUserId, myDeptId)).thenReturn(basePage);
         when(talentClaimMapper.selectList(any())).thenReturn(List.of(myClaim, teammateClaim));
         when(userDomainFacade.loadUserDisplayLabelsByIds(any()))
                 .thenReturn(Map.of(otherUserId, "渠道同事"));
@@ -705,7 +731,6 @@ class TalentQueryServiceTest {
 
         when(talentService.getById(talentId)).thenReturn(talent);
         when(talentClaimMapper.selectList(any())).thenReturn(List.of());
-        when(talentClaimMapper.findActiveByTalentId(talentId)).thenReturn(List.of());
         lenient().when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM sample_request") && sql.contains("talent_id IN")), any(Object[].class)))
                 .thenReturn(List.of());
         lenient().when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM colonelsettlement_order") && sql.contains("GROUP BY") && sql.contains("talent_uid") && sql.contains(" IN ")), any(Object[].class)))
@@ -743,7 +768,7 @@ class TalentQueryServiceTest {
         query.setCategory("食品饮料");
         query.setUserId(myUserId);
 
-        when(talentService.page(1, 10, "食品", null, null, null, DataScope.ALL, myUserId, null)).thenReturn(basePage);
+        when(talentService.page(1, 200, "食品", null, null, null, DataScope.ALL, myUserId, null)).thenReturn(basePage);
         when(talentClaimMapper.selectList(any())).thenReturn(List.of());
         lenient().when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM sample_request") && sql.contains("talent_id IN")), any(Object[].class)))
                 .thenReturn(List.of());
@@ -772,7 +797,7 @@ class TalentQueryServiceTest {
         query.setCategory("玩具乐器");
         query.setUserId(myUserId);
 
-        when(talentService.page(1, 10, null, null, null, null, DataScope.ALL, myUserId, null)).thenReturn(basePage);
+        when(talentService.page(1, 200, null, null, null, null, DataScope.ALL, myUserId, null)).thenReturn(basePage);
         when(talentClaimMapper.selectList(any())).thenReturn(List.of());
         lenient().when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM sample_request") && sql.contains("talent_id IN")), any(Object[].class)))
                 .thenReturn(List.of());
@@ -804,7 +829,7 @@ class TalentQueryServiceTest {
         query.setRegion("广东");
         query.setUserId(myUserId);
 
-        when(talentService.page(1, 10, null, "广东", null, null, DataScope.ALL, myUserId, null)).thenReturn(basePage);
+        when(talentService.page(1, 200, null, "广东", null, null, DataScope.ALL, myUserId, null)).thenReturn(basePage);
         when(talentClaimMapper.selectList(any())).thenReturn(List.of());
         lenient().when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM sample_request") && sql.contains("talent_id IN")), any(Object[].class)))
                 .thenReturn(List.of());
@@ -839,7 +864,7 @@ class TalentQueryServiceTest {
         query.setMinFans(100000L);
         query.setUserId(myUserId);
 
-        when(talentService.page(1, 10, null, "广东", 100000L, null, DataScope.ALL, myUserId, null)).thenReturn(basePage);
+        when(talentService.page(1, 200, null, "广东", 100000L, null, DataScope.ALL, myUserId, null)).thenReturn(basePage);
         when(talentClaimMapper.selectList(any())).thenReturn(List.of());
         lenient().when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM sample_request") && sql.contains("talent_id IN")), any(Object[].class)))
                 .thenReturn(List.of());
@@ -892,6 +917,35 @@ class TalentQueryServiceTest {
     }
 
     @Test
+    void page_shouldUseBoundedBatchSizeForSmallPageRequests() {
+        UUID userId = UUID.randomUUID();
+        Talent talent = new Talent();
+        talent.setId(UUID.randomUUID());
+        talent.setDouyinUid("batch_size_talent");
+        talent.setPoolStatus("PUBLIC");
+
+        com.baomidou.mybatisplus.extension.plugins.pagination.Page<Talent> firstPage =
+                new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(1, 200, 1);
+        firstPage.setRecords(List.of(talent));
+
+        TalentPageQuery query = new TalentPageQuery();
+        query.setPage(1);
+        query.setSize(10);
+        query.setUserId(userId);
+
+        when(talentService.page(1, 200, null, null, null, null, DataScope.ALL, userId, null))
+                .thenReturn(firstPage);
+        when(talentClaimMapper.selectList(any())).thenReturn(List.of());
+
+        var result = talentQueryService.page(query);
+
+        assertThat(result.getRecords()).extracting(Talent::getDouyinUid)
+                .containsExactly("batch_size_talent");
+        verify(talentService).page(1, 200, null, null, null, null, DataScope.ALL, userId, null);
+        verify(talentService, never()).page(1, 10, null, null, null, null, DataScope.ALL, userId, null);
+    }
+
+    @Test
     void page_shouldTraverseAllBatchesInsteadOfStoppingAtOneThousand() {
         UUID myUserId = UUID.randomUUID();
 
@@ -917,8 +971,8 @@ class TalentQueryServiceTest {
         query.setSize(10);
         query.setUserId(myUserId);
 
-        when(talentService.page(1, 10, null, null, null, null, DataScope.ALL, myUserId, null)).thenReturn(firstPage);
-        when(talentService.page(2, 10, null, null, null, null, DataScope.ALL, myUserId, null)).thenReturn(secondPage);
+        when(talentService.page(1, 200, null, null, null, null, DataScope.ALL, myUserId, null)).thenReturn(firstPage);
+        when(talentService.page(2, 200, null, null, null, null, DataScope.ALL, myUserId, null)).thenReturn(secondPage);
         when(talentClaimMapper.selectList(any())).thenReturn(List.of());
         lenient().when(jdbcTemplate.queryForList(argThat(sql -> sql != null && sql.contains("FROM sample_request") && sql.contains("talent_id IN")), any(Object[].class)))
                 .thenReturn(List.of());
