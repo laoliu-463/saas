@@ -19,6 +19,7 @@ import com.colonel.saas.domain.product.application.dto.ProductLibraryCursorPage;
 import com.colonel.saas.domain.product.application.dto.ProductLibraryPageQuery;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
 import com.colonel.saas.service.ProductService;
+import com.colonel.saas.service.ProductSampleSettingService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -101,6 +102,9 @@ public class ProductController extends BaseController {
     /** 团长合作方同步服务，提供团长合作方列表查询（已废弃的筛选项接口使用）。 */
     private final ColonelPartnerSyncService colonelPartnerSyncService;
 
+    /** 商品寄样规则服务，读写商品运营状态中的寄样设置扩展数据。 */
+    private final ProductSampleSettingService productSampleSettingService;
+
     /** 当前用户权限检查器，统一处理角色编码解析与匹配。 */
     private final CurrentUserPermissionChecker currentUserPermissionChecker;
 
@@ -109,12 +113,48 @@ public class ProductController extends BaseController {
             ProductQuickSampleApplicationService productQuickSampleApplicationService,
             ProductLibraryPageQueryService productLibraryPageQueryService,
             ColonelPartnerSyncService colonelPartnerSyncService,
+            ProductSampleSettingService productSampleSettingService,
             CurrentUserPermissionChecker currentUserPermissionChecker) {
         this.productService = productService;
         this.productQuickSampleApplicationService = productQuickSampleApplicationService;
         this.productLibraryPageQueryService = productLibraryPageQueryService;
         this.colonelPartnerSyncService = colonelPartnerSyncService;
+        this.productSampleSettingService = productSampleSettingService;
         this.currentUserPermissionChecker = currentUserPermissionChecker;
+    }
+
+    /**
+     * 查询商品寄样设置。
+     *
+     * <p>relationId 对应商品库列表返回的 {@code product_snapshot.id}，与前端
+     * {@code fetchSampleSetting} 使用的路径保持一致。</p>
+     */
+    @Operation(summary = "查询商品寄样设置", description = "读取商品当前保存的寄样规则及兼容字段。")
+    @GetMapping("/{relationId}/sample-setting")
+    public ApiResult<Map<String, Object>> getSampleSetting(
+            @Parameter(description = "商品关系 ID，使用 product_snapshot.id。") @PathVariable UUID relationId) {
+        return ok(productSampleSettingService.get(relationId));
+    }
+
+    /**
+     * 保存商品寄样设置。
+     *
+     * <p>只更新寄样规则，不改变商品审核、上架和业务状态；请求体使用 Map 是为了
+     * 兼容历史寄样字段与当前表单字段，具体字段校验在服务层完成。</p>
+     */
+    @Operation(summary = "保存商品寄样设置", description = "保存免费寄样开关、达人门槛和样品盒数/数量。")
+    @PutMapping("/{relationId}/sample-setting")
+    public ApiResult<Map<String, Object>> updateSampleSetting(
+            @Parameter(description = "商品关系 ID，使用 product_snapshot.id。") @PathVariable UUID relationId,
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "寄样设置。支持 supportFreeSample、hasSampleThreshold、minSales30d、sampleBoxCount、sampleQuantity 等字段。",
+                    required = true,
+                    content = @Content(examples = @ExampleObject(value = "{\"supportFreeSample\":true,\"hasSampleThreshold\":true,\"minSales30d\":50000,\"sampleBoxCount\":4,\"sampleQuantity\":1}"))
+            )
+            @RequestBody Map<String, Object> request,
+            @RequestAttribute(value = "userId", required = false) UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId) {
+        return ok(productSampleSettingService.update(relationId, request, userId, deptId));
     }
 
     /**

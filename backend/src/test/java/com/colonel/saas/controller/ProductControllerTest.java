@@ -16,6 +16,7 @@ import com.colonel.saas.domain.product.application.dto.ProductLibraryPageQuery;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.service.ProductService;
+import com.colonel.saas.service.ProductSampleSettingService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -51,6 +52,8 @@ class ProductControllerTest {
     private ProductLibraryPageQueryService productLibraryPageQueryService;
     @Mock
     private ColonelPartnerSyncService colonelPartnerSyncService;
+    @Mock
+    private ProductSampleSettingService productSampleSettingService;
 
     private ProductController productController;
 
@@ -61,7 +64,42 @@ class ProductControllerTest {
                 productQuickSampleApplicationService,
                 productLibraryPageQueryService,
                 colonelPartnerSyncService,
+                productSampleSettingService,
                 new CurrentUserPermissionChecker(new CurrentUserPermissionPolicy()));
+    }
+
+    @Test
+    void getSampleSetting_shouldDelegateToService() throws NoSuchMethodException {
+        UUID relationId = UUID.randomUUID();
+        Map<String, Object> setting = Map.of("supportFreeSample", true, "sampleBoxCount", 4);
+        when(productSampleSettingService.get(relationId)).thenReturn(setting);
+
+        var response = productController.getSampleSetting(relationId);
+
+        assertThat(response.getData()).isEqualTo(setting);
+        verify(productSampleSettingService).get(relationId);
+        Method method = ProductController.class.getMethod("getSampleSetting", UUID.class);
+        assertThat(method.getAnnotation(org.springframework.web.bind.annotation.GetMapping.class).value())
+                .containsExactly("/{relationId}/sample-setting");
+    }
+
+    @Test
+    void updateSampleSetting_shouldDelegateToServiceWithOperatorContext() throws NoSuchMethodException {
+        UUID relationId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+        Map<String, Object> request = Map.of("supportFreeSample", true, "sampleQuantity", 1);
+        Map<String, Object> saved = Map.of("supportFreeSample", true, "sampleQuantity", 1);
+        when(productSampleSettingService.update(relationId, request, userId, deptId)).thenReturn(saved);
+
+        var response = productController.updateSampleSetting(relationId, request, userId, deptId);
+
+        assertThat(response.getData()).isEqualTo(saved);
+        verify(productSampleSettingService).update(relationId, request, userId, deptId);
+        Method method = ProductController.class.getMethod(
+                "updateSampleSetting", UUID.class, Map.class, UUID.class, UUID.class);
+        assertThat(method.getAnnotation(org.springframework.web.bind.annotation.PutMapping.class).value())
+                .containsExactly("/{relationId}/sample-setting");
     }
 
     @Test
