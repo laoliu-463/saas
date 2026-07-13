@@ -28,7 +28,31 @@ public class AuthorizationDecisionPolicy {
         }
 
         String domainCode = matchingGrants.get(0).domainCode();
-        if (matchingGrants.stream().anyMatch(grant -> !grant.dataScopeRequired())) {
+        String denialDomainCode = matchingGrants.stream()
+                .map(GrantedRolePermission::domainCode)
+                .filter(code -> code != null && !code.isBlank())
+                .findFirst()
+                .orElse(null);
+        boolean dataScopeRequired = matchingGrants.get(0).dataScopeRequired();
+        boolean domainMetadataValid = domainCode != null
+                && !domainCode.isBlank()
+                && matchingGrants.stream()
+                        .allMatch(grant -> domainCode.equals(grant.domainCode()));
+        boolean dataScopeRequirementConsistent = matchingGrants.stream()
+                .allMatch(grant -> grant.dataScopeRequired() == dataScopeRequired);
+        boolean scopedMetadataValid = !dataScopeRequired
+                || matchingGrants.stream().allMatch(grant -> grant.scope() != null);
+
+        if (!domainMetadataValid
+                || !dataScopeRequirementConsistent
+                || !scopedMetadataValid) {
+            return AuthorizationDecision.deny(
+                    permission,
+                    denialDomainCode,
+                    AuthorizationReason.DOMAIN_SCOPE_MISSING);
+        }
+
+        if (!dataScopeRequired) {
             return AuthorizationDecision.allow(
                     permission,
                     domainCode,

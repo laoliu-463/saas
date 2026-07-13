@@ -8,12 +8,20 @@ import com.colonel.saas.domain.user.domain.AuthorizationSnapshot;
 import com.colonel.saas.domain.user.domain.AuthorizationSubject;
 import com.colonel.saas.domain.user.domain.GrantedRolePermission;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.NullSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class AuthorizationDecisionPolicyTest {
@@ -71,16 +79,63 @@ class AuthorizationDecisionPolicyTest {
     }
 
     @Test
-    void decide_shouldUseWidestScopeAcrossMatchingGrants() {
+    void decide_shouldDenyWhenMatchingGrantsUseDifferentDomains() {
         AuthorizationDecision decision = policy.decide(
                 new PermissionCode("sample:read"),
                 List.of(
                         grant("sample:read", "sample", true, AuthorizationScope.SELF),
-                        grant("sample:read", "sample", true, AuthorizationScope.GROUP),
-                        grant("sample:read", "sample", true, AuthorizationScope.ALL)));
+                        grant("sample:read", "product", true, AuthorizationScope.ALL)));
+
+        assertDomainScopeDenied(decision, "sample");
+    }
+
+    @Test
+    void decide_shouldDenyWhenMatchingGrantsDisagreeOnDataScopeRequirement() {
+        AuthorizationDecision decision = policy.decide(
+                new PermissionCode("sample:read"),
+                List.of(
+                        grant("sample:read", "sample", true, AuthorizationScope.ALL),
+                        grant("sample:read", "sample", false, AuthorizationScope.DENY)));
+
+        assertDomainScopeDenied(decision, "sample");
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(strings = {"", " "})
+    void decide_shouldDenyWhenMatchingGrantHasInvalidDomain(String domainCode) {
+        AuthorizationDecision decision = policy.decide(
+                new PermissionCode("sample:read"),
+                List.of(grant("sample:read", domainCode, true, AuthorizationScope.SELF)));
+
+        assertDomainScopeDenied(decision, null);
+    }
+
+    @Test
+    void decide_shouldDenyWhenScopedMatchingGrantHasNullScope() {
+        AtomicReference<AuthorizationDecision> decision = new AtomicReference<>();
+
+        assertThatCode(() -> decision.set(policy.decide(
+                new PermissionCode("sample:read"),
+                List.of(grant("sample:read", "sample", true, null)))))
+                .doesNotThrowAnyException();
+        assertDomainScopeDenied(decision.get(), "sample");
+    }
+
+    @ParameterizedTest(name = "{0} + {1} -> {2}")
+    @MethodSource("scopeRankCases")
+    void decide_shouldUseWidestScopeAcrossMatchingGrants(
+            AuthorizationScope first,
+            AuthorizationScope second,
+            AuthorizationScope expected) {
+        AuthorizationDecision decision = policy.decide(
+                new PermissionCode("sample:read"),
+                List.of(
+                        grant("sample:read", "sample", true, first),
+                        grant("sample:read", "sample", true, second)));
 
         assertThat(decision.allowed()).isTrue();
-        assertThat(decision.scope()).isEqualTo(AuthorizationScope.ALL);
+        assertThat(decision.scope()).isEqualTo(expected);
     }
 
     @Test
@@ -165,6 +220,22 @@ class AuthorizationDecisionPolicyTest {
         assertThatThrownBy(() -> new AuthorizationSnapshot(null, List.of()))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessage("subject");
+    }
+
+    private static Stream<Arguments> scopeRankCases() {
+        return Stream.of(
+                Arguments.of(AuthorizationScope.DENY, AuthorizationScope.SELF, AuthorizationScope.SELF),
+                Arguments.of(AuthorizationScope.SELF, AuthorizationScope.GROUP, AuthorizationScope.GROUP),
+                Arguments.of(AuthorizationScope.GROUP, AuthorizationScope.ALL, AuthorizationScope.ALL));
+    }
+
+    private void assertDomainScopeDenied(
+            AuthorizationDecision decision,
+            String expectedDomainCode) {
+        assertThat(decision.allowed()).isFalse();
+        assertThat(decision.domainCode()).isEqualTo(expectedDomainCode);
+        assertThat(decision.reason()).isEqualTo(AuthorizationReason.DOMAIN_SCOPE_MISSING);
+        assertThat(decision.scope()).isEqualTo(AuthorizationScope.DENY);
     }
 
     private GrantedRolePermission grant(
