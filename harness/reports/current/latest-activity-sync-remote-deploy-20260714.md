@@ -2,11 +2,11 @@
 
 ## Metadata
 
-- Time: 2026-07-14 09:55:32 +08:00
+- Time: 2026-07-14 10:09:07 +08:00
 - Environment: real-pre
 - Scope: full
 - Branch: codex/ddd-user-role-application
-- Commit: 5ca19bfb
+- Commit: 15373fdd
 - Owned worktree: dirty
 - Deploy remote: false
 
@@ -14,6 +14,8 @@
 
 ~~~text
 backend/.dockerignore
+backend/Dockerfile
+backend/Dockerfile.test
 backend/src/main/java/com/colonel/saas/service/ProductActivitySyncWriteCoordinator.java
 backend/src/main/java/com/colonel/saas/service/ProductService.java
 backend/src/main/resources/db/alter-colonel-activity-list-sync.sql
@@ -33,7 +35,8 @@ scripts/verify-openapi-apifox.sh
 ## Owned Git Status
 
 ~~~text
-M backend/src/main/resources/db/alter-colonel-activity-list-sync.sql
+M backend/Dockerfile
+ M backend/Dockerfile.test
 ~~~
 
 ## Build Result
@@ -47,20 +50,20 @@ Frontend build: PASS (npm --prefix frontend ci; npm --prefix frontend run build)
 ## Docker Status
 
 ~~~text
-NAME                              IMAGE                            COMMAND                  SERVICE             CREATED          STATUS                    PORTS
-saas-active-backend-real-pre-1    colonel-saas/backend:real-pre    "sh -c 'java $JAVA_O…"   backend-real-pre    41 seconds ago   Up 36 seconds (healthy)   127.0.0.1:8081->8080/tcp
-saas-active-frontend-real-pre-1   colonel-saas/frontend:real-pre   "/docker-entrypoint.…"   frontend-real-pre   39 seconds ago   Up 20 seconds (healthy)   127.0.0.1:3001->80/tcp
-saas-active-postgres-real-pre-1   postgres:15-alpine               "docker-entrypoint.s…"   postgres-real-pre   2 days ago       Up 20 hours (healthy)     5432/tcp
-saas-active-redis-real-pre-1      redis:7-alpine                   "docker-entrypoint.s…"   redis-real-pre      4 weeks ago      Up 20 hours (healthy)     6379/tcp
-NAMES                             STATUS                    PORTS
-saas-active-frontend-real-pre-1   Up 21 seconds (healthy)   127.0.0.1:3001->80/tcp
-saas-active-backend-real-pre-1    Up 36 seconds (healthy)   127.0.0.1:8081->8080/tcp
-saas-active-postgres-real-pre-1   Up 20 hours (healthy)     5432/tcp
-campus_frontend                   Up 20 hours               5173/tcp
-campus_backend                    Up 20 hours (healthy)     0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp
-campus_postgres                   Up 20 hours (healthy)     0.0.0.0:5433->5432/tcp, [::]:5433->5432/tcp
-saas-active-redis-real-pre-1      Up 20 hours (healthy)     6379/tcp
-saas-test-backend-1               Up 19 hours (unhealthy)   0.0.0.0:5005->5005/tcp, [::]:5005->5005/tcp, 0.0.0.0:8080->8080/tcp, [::]:8080->8080/tcp
+NAME                              IMAGE                            COMMAND                  SERVICE             CREATED          STATUS                            PORTS
+saas-active-backend-real-pre-1    colonel-saas/backend:real-pre    "sh -c 'java $JAVA_O…"   backend-real-pre    24 seconds ago   Up 19 seconds (healthy)           127.0.0.1:8081->8080/tcp
+saas-active-frontend-real-pre-1   colonel-saas/frontend:real-pre   "/docker-entrypoint.…"   frontend-real-pre   22 seconds ago   Up 4 seconds (health: starting)   127.0.0.1:3001->80/tcp
+saas-active-postgres-real-pre-1   postgres:15-alpine               "docker-entrypoint.s…"   postgres-real-pre   2 days ago       Up 20 hours (healthy)             5432/tcp
+saas-active-redis-real-pre-1      redis:7-alpine                   "docker-entrypoint.s…"   redis-real-pre      4 weeks ago      Up 20 hours (healthy)             6379/tcp
+NAMES                             STATUS                            PORTS
+saas-active-frontend-real-pre-1   Up 4 seconds (health: starting)   127.0.0.1:3001->80/tcp
+saas-active-backend-real-pre-1    Up 19 seconds (healthy)           127.0.0.1:8081->8080/tcp
+saas-active-postgres-real-pre-1   Up 20 hours (healthy)             5432/tcp
+campus_frontend                   Up 20 hours                       5173/tcp
+campus_backend                    Up 20 hours (healthy)             0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp
+campus_postgres                   Up 20 hours (healthy)             0.0.0.0:5433->5432/tcp, [::]:5433->5432/tcp
+saas-active-redis-real-pre-1      Up 20 hours (healthy)             6379/tcp
+saas-test-backend-1               Up 20 hours (unhealthy)           0.0.0.0:5005->5005/tcp, [::]:5005->5005/tcp, 0.0.0.0:8080->8080/tcp, [::]:8080->8080/tcp
 ~~~
 
 ## Health Check Result

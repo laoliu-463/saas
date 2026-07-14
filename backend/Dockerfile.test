@@ -3,7 +3,7 @@
 # Host compiles:  mvn package -DskipTests
 # Container only starts:  java -jar target/colonel-saas.jar
 # ============================================================
-FROM eclipse-temurin:17-jre-alpine
+FROM eclipse-temurin:17-jre
 
 RUN apk add --no-cache bash
 
