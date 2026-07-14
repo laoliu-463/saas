@@ -30,18 +30,21 @@ public class SysUserGroupMembershipApplication {
     private final UserDomainEventPublisher userDomainEventPublisher;
     private final UserPermissionCacheService userPermissionCacheService;
     private final OrgStructureService orgStructureService;
+    private final AuthorizationVersionApplicationService authorizationVersionService;
 
     public SysUserGroupMembershipApplication(
             SysUserMapper sysUserMapper,
             OperationLogService operationLogService,
             UserDomainEventPublisher userDomainEventPublisher,
             UserPermissionCacheService userPermissionCacheService,
-            OrgStructureService orgStructureService) {
+            OrgStructureService orgStructureService,
+            AuthorizationVersionApplicationService authorizationVersionService) {
         this.sysUserMapper = sysUserMapper;
         this.operationLogService = operationLogService;
         this.userDomainEventPublisher = userDomainEventPublisher;
         this.userPermissionCacheService = userPermissionCacheService;
         this.orgStructureService = orgStructureService;
+        this.authorizationVersionService = authorizationVersionService;
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -52,6 +55,12 @@ public class SysUserGroupMembershipApplication {
             UUID previousDeptId = user.getDeptId();
             user.setDeptId(groupAssignment.effectiveDeptId());
             sysUserMapper.updateById(user);
+            if (deptChanged(previousDeptId, user.getDeptId())) {
+                authorizationVersionService.incrementUser(
+                        user.getId(),
+                        "USER_GROUP_MEMBERSHIP_UPDATED",
+                        currentUserId);
+            }
             recordOrgChangeIfNeeded(user, previousDeptId, user.getDeptId(), currentUserId);
             userPermissionCacheService.invalidateUser(user.getId());
             userPermissionCacheService.invalidateDataScopeForGroupChange(previousDeptId, user.getDeptId());
@@ -68,6 +77,12 @@ public class SysUserGroupMembershipApplication {
             UUID previousDeptId = user.getDeptId();
             user.setDeptId(null);
             sysUserMapper.updateById(user);
+            if (deptChanged(previousDeptId, user.getDeptId())) {
+                authorizationVersionService.incrementUser(
+                        user.getId(),
+                        "USER_GROUP_MEMBERSHIP_UPDATED",
+                        currentUserId);
+            }
             recordOrgChangeIfNeeded(user, previousDeptId, null, currentUserId);
             userPermissionCacheService.invalidateUser(user.getId());
             userPermissionCacheService.invalidateDataScopeForGroupChange(previousDeptId, null);

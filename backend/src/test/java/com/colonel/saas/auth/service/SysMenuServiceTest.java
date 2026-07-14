@@ -3,6 +3,7 @@ package com.colonel.saas.auth.service;
 import com.colonel.saas.auth.dto.SysMenuCreateRequest;
 import com.colonel.saas.auth.dto.SysMenuUpdateRequest;
 import com.colonel.saas.common.exception.BusinessException;
+import com.colonel.saas.domain.user.application.AuthorizationVersionApplicationService;
 import com.colonel.saas.entity.SysMenu;
 import com.colonel.saas.entity.SysRole;
 import com.colonel.saas.entity.SysRoleMenu;
@@ -16,6 +17,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -28,6 +30,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -47,6 +51,8 @@ class SysMenuServiceTest {
     OperationLogService operationLogService;
     @Mock
     UserDomainEventPublisher userDomainEventPublisher;
+    @Mock
+    AuthorizationVersionApplicationService authorizationVersionService;
 
     private SysMenuService service;
     private UUID userId;
@@ -61,7 +67,8 @@ class SysMenuServiceTest {
                 sysRoleMapper,
                 sysRoleMenuMapper,
                 operationLogService,
-                userDomainEventPublisher);
+                userDomainEventPublisher,
+                authorizationVersionService);
         userId = UUID.fromString("11111111-1111-1111-1111-111111111111");
         roleId = UUID.fromString("22222222-2222-2222-2222-222222222222");
         rootId = UUID.fromString("33333333-3333-3333-3333-333333333333");
@@ -128,6 +135,13 @@ class SysMenuServiceTest {
         verify(sysRoleMenuMapper).deleteByRoleId(roleId);
         verify(sysRoleMenuMapper, times(2)).insert(captor.capture());
         assertThat(captor.getAllValues()).extracting(SysRoleMenu::getMenuId).containsExactly(menuA, menuB);
+        InOrder factThenVersion = inOrder(sysRoleMenuMapper, authorizationVersionService);
+        factThenVersion.verify(sysRoleMenuMapper).deleteByRoleId(roleId);
+        factThenVersion.verify(sysRoleMenuMapper, times(2)).insert(any(SysRoleMenu.class));
+        factThenVersion.verify(authorizationVersionService).incrementUsersByRole(
+                roleId,
+                "ROLE_MENU_PERMISSIONS_UPDATED",
+                userId);
         verify(operationLogService).recordSystemAction(
                 userId,
                 "角色菜单管理",
@@ -144,6 +158,50 @@ class SysMenuServiceTest {
                 any(),
                 any(),
                 eq(userId));
+    }
+
+    @Test
+    void assignMenusToRole_samePermissionHash_doesNotAdvanceVersion() {
+        SysRole role = new SysRole();
+        role.setId(roleId);
+        role.setRoleCode("biz_staff");
+        when(sysRoleMapper.selectById(roleId)).thenReturn(role);
+        when(sysRoleMenuMapper.findMenuIdsByRoleId(roleId)).thenReturn(List.of(rootId));
+
+        service.assignMenusToRole(roleId, List.of(rootId), userId);
+
+        verify(authorizationVersionService, never()).incrementUsersByRole(any(), any(), any());
+        verify(userDomainEventPublisher, never()).publishRolePermissionUpdated(
+                any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void assignMenusToRole_versionFailurePropagatesBeforeAuditAndDomainEvent() {
+        RuntimeException failure = new RuntimeException("version failed");
+        SysRole role = new SysRole();
+        role.setId(roleId);
+        role.setRoleCode("biz_staff");
+        when(sysRoleMapper.selectById(roleId)).thenReturn(role);
+        when(sysRoleMenuMapper.findMenuIdsByRoleId(roleId)).thenReturn(List.of());
+        doThrow(failure).when(authorizationVersionService).incrementUsersByRole(
+                roleId,
+                "ROLE_MENU_PERMISSIONS_UPDATED",
+                userId);
+
+        assertThatThrownBy(() -> service.assignMenusToRole(roleId, List.of(rootId), userId))
+                .isSameAs(failure);
+
+        InOrder factThenVersion = inOrder(sysRoleMenuMapper, authorizationVersionService);
+        factThenVersion.verify(sysRoleMenuMapper).deleteByRoleId(roleId);
+        factThenVersion.verify(sysRoleMenuMapper).insert(any(SysRoleMenu.class));
+        factThenVersion.verify(authorizationVersionService).incrementUsersByRole(
+                roleId,
+                "ROLE_MENU_PERMISSIONS_UPDATED",
+                userId);
+        verify(operationLogService, never()).recordSystemAction(
+                any(), any(), any(), any(), any(), any(), any(), any());
+        verify(userDomainEventPublisher, never()).publishRolePermissionUpdated(
+                any(), any(), any(), any(), any());
     }
 
     @Test

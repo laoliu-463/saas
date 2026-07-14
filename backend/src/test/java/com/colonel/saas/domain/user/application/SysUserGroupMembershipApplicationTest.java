@@ -11,6 +11,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -22,6 +23,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -38,6 +41,8 @@ class SysUserGroupMembershipApplicationTest {
     private UserPermissionCacheService userPermissionCacheService;
     @Mock
     private OrgStructureService orgStructureService;
+    @Mock
+    private AuthorizationVersionApplicationService authorizationVersionService;
 
     private SysUserGroupMembershipApplication application;
 
@@ -48,7 +53,8 @@ class SysUserGroupMembershipApplicationTest {
                 operationLogService,
                 userDomainEventPublisher,
                 userPermissionCacheService,
-                orgStructureService);
+                orgStructureService,
+                authorizationVersionService);
     }
 
     @Test
@@ -76,6 +82,12 @@ class SysUserGroupMembershipApplicationTest {
         ArgumentCaptor<SysUser> captor = ArgumentCaptor.forClass(SysUser.class);
         verify(sysUserMapper).updateById(captor.capture());
         assertThat(captor.getValue().getDeptId()).isEqualTo(effectiveDeptId);
+        InOrder factThenVersion = inOrder(sysUserMapper, authorizationVersionService);
+        factThenVersion.verify(sysUserMapper).updateById(user);
+        factThenVersion.verify(authorizationVersionService).incrementUser(
+                userId,
+                "USER_GROUP_MEMBERSHIP_UPDATED",
+                currentUserId);
         verify(operationLogService).recordSystemAction(
                 eq(currentUserId), eq("用户管理"), eq("组织归属变更"), eq("PUT"),
                 eq("SysUser"), eq(userId.toString()), eq("alice"), eq("org changed"));
@@ -106,6 +118,12 @@ class SysUserGroupMembershipApplicationTest {
         ArgumentCaptor<SysUser> captor = ArgumentCaptor.forClass(SysUser.class);
         verify(sysUserMapper).updateById(captor.capture());
         assertThat(captor.getValue().getDeptId()).isNull();
+        InOrder factThenVersion = inOrder(sysUserMapper, authorizationVersionService);
+        factThenVersion.verify(sysUserMapper).updateById(user);
+        factThenVersion.verify(authorizationVersionService).incrementUser(
+                userId,
+                "USER_GROUP_MEMBERSHIP_UPDATED",
+                currentUserId);
         verify(operationLogService).recordSystemAction(
                 eq(currentUserId), eq("用户管理"), eq("组织归属变更"), eq("PUT"),
                 eq("SysUser"), eq(userId.toString()), eq("alice"), eq("removed"));
@@ -131,6 +149,59 @@ class SysUserGroupMembershipApplicationTest {
         verify(userDomainEventPublisher, never()).publishUserGroupChanged(any(), any(), any(), any(), any(), any());
         verify(userPermissionCacheService, never()).invalidateUser(any());
         verify(userPermissionCacheService, never()).invalidateDataScopeForGroupChange(any(), any());
+        verify(authorizationVersionService, never()).incrementUser(any(), any(), any());
+    }
+
+    @Test
+    void assignUsersToGroup_sameEffectiveDept_doesNotAdvanceVersion() {
+        UUID groupId = UUID.randomUUID();
+        UUID effectiveDeptId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        SysUser user = user(userId, effectiveDeptId);
+        when(orgStructureService.resolveAssignment(null, groupId))
+                .thenReturn(new OrgStructureService.ResolvedAssignment(effectiveDeptId, null, groupId));
+        when(sysUserMapper.selectById(userId)).thenReturn(user);
+
+        application.assignUsersToGroup(groupId, List.of(userId), UUID.randomUUID());
+
+        verify(sysUserMapper).updateById(user);
+        verify(authorizationVersionService, never()).incrementUser(any(), any(), any());
+    }
+
+    @Test
+    void assignUsersToGroup_versionFailurePropagatesBeforeEventsAndCache() {
+        UUID groupId = UUID.randomUUID();
+        UUID effectiveDeptId = UUID.randomUUID();
+        UUID oldDeptId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID currentUserId = UUID.randomUUID();
+        SysUser user = user(userId, oldDeptId);
+        RuntimeException failure = new RuntimeException("version failed");
+        when(orgStructureService.resolveAssignment(null, groupId))
+                .thenReturn(new OrgStructureService.ResolvedAssignment(effectiveDeptId, null, groupId));
+        when(sysUserMapper.selectById(userId)).thenReturn(user);
+        doThrow(failure).when(authorizationVersionService).incrementUser(
+                userId,
+                "USER_GROUP_MEMBERSHIP_UPDATED",
+                currentUserId);
+
+        assertThatThrownBy(() -> application.assignUsersToGroup(
+                groupId,
+                List.of(userId),
+                currentUserId))
+                .isSameAs(failure);
+
+        InOrder factThenVersion = inOrder(sysUserMapper, authorizationVersionService);
+        factThenVersion.verify(sysUserMapper).updateById(user);
+        factThenVersion.verify(authorizationVersionService).incrementUser(
+                userId,
+                "USER_GROUP_MEMBERSHIP_UPDATED",
+                currentUserId);
+        verify(operationLogService, never()).recordSystemAction(
+                any(), any(), any(), any(), any(), any(), any(), any());
+        verify(userDomainEventPublisher, never()).publishUserGroupChanged(
+                any(), any(), any(), any(), any(), any());
+        verify(userPermissionCacheService, never()).invalidateUser(any());
     }
 
     @Test

@@ -14,6 +14,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.InOrder;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Arrays;
@@ -25,6 +26,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -35,6 +38,7 @@ class SysUserRoleAssignmentApplicationServiceTest {
     @Mock private OperationLogService operationLogService;
     @Mock private UserPermissionCacheService userPermissionCacheService;
     @Mock private UserAccessPolicy userAccessPolicy;
+    @Mock private AuthorizationVersionApplicationService authorizationVersionService;
 
     private SysUserRoleAssignmentApplicationService service;
 
@@ -44,7 +48,8 @@ class SysUserRoleAssignmentApplicationServiceTest {
                 roleAssignmentStore,
                 operationLogService,
                 userPermissionCacheService,
-                userAccessPolicy);
+                userAccessPolicy,
+                authorizationVersionService);
     }
 
     @Test
@@ -69,7 +74,12 @@ class SysUserRoleAssignmentApplicationServiceTest {
                 any(UserAccessPolicy.AccessibleUser.class),
                 eq(currentUserId),
                 eq(DataScope.ALL));
-        verify(roleAssignmentStore).replaceUserRoles(userId, List.of(roleA, roleB));
+        InOrder factThenVersion = inOrder(roleAssignmentStore, authorizationVersionService);
+        factThenVersion.verify(roleAssignmentStore).replaceUserRoles(userId, List.of(roleA, roleB));
+        factThenVersion.verify(authorizationVersionService).incrementUser(
+                userId,
+                "USER_ROLES_REPLACED",
+                currentUserId);
         verify(userPermissionCacheService).invalidateUser(userId);
         verify(userPermissionCacheService).invalidateRole(roleA);
         verify(userPermissionCacheService).invalidateRole(roleB);
@@ -107,7 +117,38 @@ class SysUserRoleAssignmentApplicationServiceTest {
                 .hasMessageContaining("管理员账号已存在");
 
         verify(roleAssignmentStore, never()).replaceUserRoles(any(), any());
+        verify(authorizationVersionService, never()).incrementUser(any(), any(), any());
         verify(userPermissionCacheService, never()).invalidateUser(any());
+    }
+
+    @Test
+    void assignRoles_versionFailurePropagatesBeforeCacheAndAudit() {
+        UUID userId = UUID.randomUUID();
+        UUID currentUserId = UUID.randomUUID();
+        RuntimeException failure = new RuntimeException("version failed");
+
+        when(roleAssignmentStore.findUser(userId)).thenReturn(Optional.of(user(userId, "alice", 0)));
+        doThrow(failure).when(authorizationVersionService).incrementUser(
+                userId,
+                "USER_ROLES_REPLACED",
+                currentUserId);
+
+        assertThatThrownBy(() -> service.assignRoles(
+                userId,
+                new SysUserAssignRolesRequest(List.of()),
+                currentUserId,
+                DataScope.ALL))
+                .isSameAs(failure);
+
+        InOrder factThenVersion = inOrder(roleAssignmentStore, authorizationVersionService);
+        factThenVersion.verify(roleAssignmentStore).replaceUserRoles(userId, List.of());
+        factThenVersion.verify(authorizationVersionService).incrementUser(
+                userId,
+                "USER_ROLES_REPLACED",
+                currentUserId);
+        verify(userPermissionCacheService, never()).invalidateUser(any());
+        verify(operationLogService, never()).recordSystemAction(
+                any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
