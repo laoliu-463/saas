@@ -95,9 +95,9 @@
             />
           </div>
 
-          <div class="sample-setting-placeholder-row" aria-hidden="true">
-            <n-input disabled placeholder="请输入" />
-            <n-input disabled placeholder="请输入" />
+          <div class="sample-setting-placeholder-row">
+            <n-input placeholder="请输入" />
+            <n-input placeholder="请输入" />
           </div>
         </div>
 

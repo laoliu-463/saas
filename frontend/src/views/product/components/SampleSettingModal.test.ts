@@ -61,6 +61,9 @@ describe('SampleSettingModal', () => {
     expect(wrapper.text()).not.toContain('每次寄样数量')
     expect(wrapper.find('[data-testid="sample-setting-drawer"]').exists()).toBe(true)
     expect(fetchSampleSetting).toHaveBeenCalledWith('11111111-1111-1111-1111-111111111111')
+    const editablePlaceholders = wrapper.findAll('input[placeholder="请输入"]')
+    expect(editablePlaceholders).toHaveLength(2)
+    expect(editablePlaceholders.every((input) => !input.attributes('disabled'))).toBe(true)
 
     await wrapper.get('[data-testid="sample-setting-confirm"]').trigger('click')
     await flushPromises()
