@@ -58,19 +58,29 @@
           />
         </n-form-item>
         <n-form-item label="开始时间">
-          <n-input
-            :value="form.startTime"
+          <n-date-picker
+            v-model:formatted-value="form.startTime"
             data-testid="product-edit-start-time"
-            readonly
-            placeholder="暂无开始时间"
+            type="datetime"
+            format="yyyy-MM-dd HH:mm:ss"
+            value-format="yyyy-MM-dd HH:mm:ss"
+            clearable
+            input-readonly
+            style="width: 100%"
+            placeholder="选择开始时间"
           />
         </n-form-item>
         <n-form-item label="结束时间">
-          <n-input
-            :value="form.endTime"
+          <n-date-picker
+            v-model:formatted-value="form.endTime"
             data-testid="product-edit-end-time"
-            readonly
-            placeholder="暂无结束时间"
+            type="datetime"
+            format="yyyy-MM-dd HH:mm:ss"
+            value-format="yyyy-MM-dd HH:mm:ss"
+            clearable
+            input-readonly
+            style="width: 100%"
+            placeholder="选择结束时间"
           />
         </n-form-item>
       </n-form>
@@ -113,8 +123,8 @@ const form = reactive({
   supportsAds: false,
   rewardRemark: '',
   participationRequirements: '',
-  startTime: '',
-  endTime: ''
+  startTime: null as string | null,
+  endTime: null as string | null
 })
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -127,6 +137,18 @@ function textValue(value: unknown): string {
 
 function firstText(...values: unknown[]): string {
   return values.map(textValue).find(Boolean) || ''
+}
+
+function editableTimeValue(value: unknown, endOfDay = false): string {
+  const text = textValue(value).replace('T', ' ')
+  if (!text) return ''
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+    return `${text} ${endOfDay ? '23:59:59' : '00:00:00'}`
+  }
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(text)) {
+    return `${text}:00`
+  }
+  return text
 }
 
 function moneyValue(value: unknown): number | null {
@@ -156,8 +178,13 @@ function resetForm() {
   form.supportsAds = booleanValue(supplement.supportsAds)
   form.rewardRemark = textValue(supplement.rewardRemark)
   form.participationRequirements = textValue(supplement.participationRequirements)
-  form.startTime = firstText(row?.promotionStartTime, row?.activityStartTime)
-  form.endTime = firstText(row?.promotionEndTime, row?.activityEndTime)
+  form.startTime = editableTimeValue(
+    firstText(supplement.promotionStartTime, row?.promotionStartTime, row?.activityStartTime)
+  )
+  form.endTime = editableTimeValue(
+    firstText(supplement.promotionEndTime, row?.promotionEndTime, row?.activityEndTime),
+    true
+  )
 }
 
 function updateShow(value: boolean) {
@@ -177,7 +204,9 @@ async function submit() {
       exclusivePriceRemark: form.exclusivePriceRemark,
       supportsAds: form.supportsAds,
       rewardRemark: form.rewardRemark,
-      participationRequirements: form.participationRequirements
+      participationRequirements: form.participationRequirements,
+      promotionStartTime: form.startTime,
+      promotionEndTime: form.endTime
     })
     message.success('商品信息已保存')
     emit('success', res?.data)

@@ -352,12 +352,16 @@
                         size="small"
                         round
                       >
-                        {{ auditSupplement.supportsAds ? '支持投流' : '暂不支持投流' }}
+                        {{ auditSupplement.supportsAds ? '支持投流' : '不支持投流' }}
                       </n-tag>
                       <span v-else>-</span>
                     </n-descriptions-item>
-                    <n-descriptions-item v-if="auditSupplement.supportsAds" label="投流规则" :span="2">
-                      {{ auditSupplement.adsRule || '暂未补充' }}
+                    <n-descriptions-item
+                      v-if="auditSupplement.supportsAds !== undefined && auditSupplement.supportsAds !== null"
+                      label="投流说明"
+                      :span="2"
+                    >
+                      {{ auditSupplement.adsRule || (auditSupplement.supportsAds ? '暂未补充' : '不支持投流') }}
                     </n-descriptions-item>
                     <n-descriptions-item label="活动时间">
                       {{ auditSupplement.campaignTimeRemark || '-' }}

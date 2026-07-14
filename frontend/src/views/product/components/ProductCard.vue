@@ -36,6 +36,15 @@
               {{ tag.text }}
             </n-tag>
             <n-tag
+              v-if="isFakeDoubleCommission(product)"
+              type="warning"
+              size="small"
+              bordered
+              data-testid="product-fake-double-commission"
+            >
+              不支持投流
+            </n-tag>
+            <n-tag
               v-if="resolveSupportsAds(product)"
               type="info"
               size="small"
@@ -458,6 +467,20 @@ const resolveSupportsAds = (item: any) => {
   if (item?.auditSupplement?.supportsAds === true) return true
   if (item?.auditSupplementSummary?.supportsAds === true) return true
   return false
+}
+
+const hasDoubleCommission = (item: any) =>
+  Boolean(
+    item?.doubleCommission ||
+      item?.dualCommission ||
+      Number(item?.cosType ?? item?.cos_type) === 1 ||
+      String(item?.cosTypeText || item?.cos_type_text || '').includes('双佣')
+  )
+
+const isFakeDoubleCommission = (item: any) => {
+  if (!hasDoubleCommission(item)) return false
+  const supportsAds = item?.supportsAds ?? item?.auditSupplement?.supportsAds ?? item?.auditSupplementSummary?.supportsAds
+  return supportsAds === false
 }
 
 const resolveAdsRule = (item: any) => {

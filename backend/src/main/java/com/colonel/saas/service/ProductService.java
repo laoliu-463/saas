@@ -147,14 +147,18 @@ public class ProductService implements CopyPromotionSupportPort {
     private static final int SELECTED_LIBRARY_CURSOR_VERSION = 1;
     /** 上游商品状态：推广中。 */
     private static final int UPSTREAM_PRODUCT_STATUS_PROMOTING = 1;
-    /** 审核入库去重窗口：近 3 个月内同商品 ID 不允许重复进入商品库。 */
-    private static final int AUDIT_LIBRARY_DUPLICATE_WINDOW_MONTHS = 3;
+    /** 商品库入库去重：已有有效关系的同商品 ID 不允许重复进入商品库。 */
     private static final Set<String> EDITABLE_AUDIT_SUPPLEMENT_KEYS = Set.of(
             "exclusivePriceAmount",
             "exclusivePriceRemark",
             "supportsAds",
             "rewardRemark",
-            "participationRequirements");
+            "participationRequirements",
+            "promotionStartTime",
+            "promotionEndTime");
+    /** 本系统推广时间覆盖的持久化格式；不修改 product_snapshot 中的上游时间事实。 */
+    private static final DateTimeFormatter EDITABLE_PROMOTION_TIME_FORMAT =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     /** 上游推广中商品自动进入商品库时写入的审核备注。 */
     private static final String AUTO_APPROVE_PROMOTING_REMARK = "上游状态为推广中，系统自动入库展示";
     /** 抖店团长 buyin 通常为 17–20 位；捕获组上限 30 位，并在数字后截断避免粘连字段。 */
@@ -1024,7 +1028,8 @@ public class ProductService implements CopyPromotionSupportPort {
         if (StringUtils.hasText(filter.commission()) && !matchesCommissionFilter(snapshot, filter.commission())) {
             return false;
         }
-        if (StringUtils.hasText(filter.hasSample()) && !matchesHasSampleFilter(snapshot, filter.hasSample())) {
+        if (StringUtils.hasText(filter.hasSample())
+                && !matchesHasSampleFilter(snapshot, state, filter.hasSample())) {
             return false;
         }
         if (StringUtils.hasText(filter.assigneeId()) && !matchesAssigneeIdFilter(state, filter.assigneeId())) {
@@ -1453,8 +1458,11 @@ public class ProductService implements CopyPromotionSupportPort {
         };
     }
 
-    private boolean matchesHasSampleFilter(ProductSnapshot snapshot, String hasSample) {
-        boolean hasRule = isSampleRuleAvailable(snapshot);
+    private boolean matchesHasSampleFilter(
+            ProductSnapshot snapshot,
+            ProductOperationState state,
+            String hasSample) {
+        boolean hasRule = isSampleRuleAvailable(snapshot, state);
         return "1".equals(hasSample) ? hasRule : !"0".equals(hasSample) || !hasRule;
     }
 
@@ -1596,8 +1604,8 @@ public class ProductService implements CopyPromotionSupportPort {
         return summary != null && decision.equals(summary.level());
     }
 
-    private boolean isSampleRuleAvailable(ProductSnapshot snapshot) {
-        LocalDateTime promotionEndTime = parseDateTime(snapshot.getPromotionEndTime());
+    private boolean isSampleRuleAvailable(ProductSnapshot snapshot, ProductOperationState state) {
+        LocalDateTime promotionEndTime = resolvePromotionEndTime(snapshot, state);
         boolean activityExpired = promotionEndTime != null && promotionEndTime.isBefore(LocalDateTime.now());
         return !activityExpired && StringUtils.hasText(snapshot.getStatusText());
     }
@@ -1641,7 +1649,7 @@ public class ProductService implements CopyPromotionSupportPort {
         if (!StringUtils.hasText(snapshot.getDetailUrl())) {
             tags.add("无商品链接");
         }
-        LocalDateTime promotionEndTime = parseDateTime(snapshot.getPromotionEndTime());
+        LocalDateTime promotionEndTime = resolvePromotionEndTime(snapshot, state);
         if (promotionEndTime != null && promotionEndTime.isBefore(LocalDateTime.now())) {
             tags.add("活动过期");
         }
@@ -1681,6 +1689,7 @@ public class ProductService implements CopyPromotionSupportPort {
         ProductOperationState state = getOrInitOperationState(snapshot.getActivityId(), snapshot.getProductId());
         Map<String, Object> current = new LinkedHashMap<>(parseAuditPayload(state.getAuditPayload()));
         Map<String, Object> normalizedPatch = normalizeAuditSupplement(supplementPatch);
+        validatePromotionTimePatch(supplementPatch, normalizedPatch, current, snapshot);
         if (supplementPatch.containsKey("exclusivePriceAmount")
                 && !isBlankPatchValue(supplementPatch.get("exclusivePriceAmount"))
                 && !normalizedPatch.containsKey("exclusivePriceAmount")) {
@@ -1693,8 +1702,9 @@ public class ProductService implements CopyPromotionSupportPort {
             }
         }
         current.putAll(normalizedPatch);
+        Map<String, Object> normalizedCurrent = normalizeAuditSupplement(current, snapshot);
 
-        state.setAuditPayload(writeAuditPayload(current));
+        state.setAuditPayload(writeAuditPayload(normalizedCurrent));
         state.setLastOperationAt(LocalDateTime.now());
         if (state.getId() == null) {
             state.setId(UUID.randomUUID());
@@ -1726,6 +1736,47 @@ public class ProductService implements CopyPromotionSupportPort {
 
     private boolean isBlankPatchValue(Object value) {
         return value == null || (value instanceof String text && !StringUtils.hasText(text));
+    }
+
+    private void validatePromotionTimePatch(
+            Map<String, Object> supplementPatch,
+            Map<String, Object> normalizedPatch,
+            Map<String, Object> current,
+            ProductSnapshot snapshot) {
+        String[] timeKeys = {"promotionStartTime", "promotionEndTime"};
+        for (String key : timeKeys) {
+            if (supplementPatch.containsKey(key)
+                    && !isBlankPatchValue(supplementPatch.get(key))
+                    && !normalizedPatch.containsKey(key)) {
+                throw BusinessException.conflict("推广时间格式无效，请使用 yyyy-MM-dd HH:mm:ss");
+            }
+        }
+
+        Map<String, Object> effective = new LinkedHashMap<>(current);
+        for (String key : timeKeys) {
+            if (supplementPatch.containsKey(key) && isBlankPatchValue(supplementPatch.get(key))) {
+                effective.remove(key);
+            }
+        }
+        effective.putAll(normalizedPatch);
+
+        String startText = firstNonBlank(
+                readString(effective, "promotionStartTime"),
+                snapshot.getPromotionStartTime());
+        String endText = firstNonBlank(
+                readString(effective, "promotionEndTime"),
+                snapshot.getPromotionEndTime());
+        LocalDateTime start = parseDateTimeValue(startText);
+        LocalDateTime end = parseDateTimeValue(endText);
+        if (StringUtils.hasText(startText) && start == null) {
+            throw BusinessException.conflict("推广开始时间格式无效，请使用 yyyy-MM-dd HH:mm:ss");
+        }
+        if (StringUtils.hasText(endText) && end == null) {
+            throw BusinessException.conflict("推广结束时间格式无效，请使用 yyyy-MM-dd HH:mm:ss");
+        }
+        if (start != null && end != null && start.isAfter(end)) {
+            throw BusinessException.conflict("推广开始时间不能晚于结束时间");
+        }
     }
 
     // P8.5 修复: @Transactional 仅保留在真正做事的方法上 (Spring AOP self-invocation 绕过代理)
@@ -3765,6 +3816,7 @@ public class ProductService implements CopyPromotionSupportPort {
             existingDetail.put("libraryVisible", true);
             return existingDetail;
         }
+        assertNoExistingLibraryDuplicate(activityId, productId);
         requireUpstreamPromotingForLibraryEntry(snapshot);
         state.setSelectedToLibrary(true);
         state.setSelectedAt(LocalDateTime.now());
@@ -3957,7 +4009,7 @@ public class ProductService implements CopyPromotionSupportPort {
         if (!approved && !StringUtils.hasText(reason)) {
             throw BusinessException.stateInvalid("审核拒绝时必须填写原因");
         }
-        ensureSnapshotExists(activityId, productId);
+        ProductSnapshot snapshot = ensureSnapshotExists(activityId, productId);
         ProductOperationState state = getOrInitOperationState(activityId, productId);
         ProductBizStatus beforeStatus = productBizStatusService.readBizStatus(state);
         if (beforeStatus == null) {
@@ -3965,9 +4017,10 @@ public class ProductService implements CopyPromotionSupportPort {
         }
         String auditPayload = null;
         if (approved) {
-            validateAuditSupplement(supplement);
-            auditPayload = writeAuditPayload(supplement);
-            assertNoRecentLibraryDuplicateForAudit(activityId, productId);
+            Map<String, Object> normalizedSupplement = normalizeAuditSupplement(supplement, snapshot);
+            validateAuditSupplement(normalizedSupplement);
+            auditPayload = writeAuditPayload(normalizedSupplement);
+            assertNoExistingLibraryDuplicate(activityId, productId);
         }
         final String approvedAuditPayload = auditPayload;
         Map<String, Object> payload = new LinkedHashMap<>();
@@ -3984,7 +4037,7 @@ public class ProductService implements CopyPromotionSupportPort {
             payload.put("eventLabel", "审核通过并加入商品库");
             payload.put("selectedToLibrary", true);
             payload.put("libraryVisible", true);
-            payload.put("supplement", normalizeAuditSupplement(supplement));
+            payload.put("supplement", normalizeAuditSupplement(supplement, snapshot));
             productBizStatusService.changeStatus(
                     state,
                     ProductBizStatus.APPROVED,
@@ -4882,6 +4935,28 @@ public class ProductService implements CopyPromotionSupportPort {
         return normalized.setScale(4, RoundingMode.HALF_UP);
     }
 
+    private String resolvePromotionStartTime(ProductSnapshot snapshot, ProductOperationState state) {
+        Map<String, Object> auditSupplement = state == null
+                ? Map.of()
+                : parseAuditPayload(state.getAuditPayload());
+        return firstNonBlank(
+                readString(auditSupplement, "promotionStartTime"),
+                snapshot.getPromotionStartTime());
+    }
+
+    private String resolvePromotionEndTimeText(ProductSnapshot snapshot, ProductOperationState state) {
+        Map<String, Object> auditSupplement = state == null
+                ? Map.of()
+                : parseAuditPayload(state.getAuditPayload());
+        return firstNonBlank(
+                readString(auditSupplement, "promotionEndTime"),
+                snapshot.getPromotionEndTime());
+    }
+
+    private LocalDateTime resolvePromotionEndTime(ProductSnapshot snapshot, ProductOperationState state) {
+        return parseDateTimeValue(resolvePromotionEndTimeText(snapshot, state));
+    }
+
     private LocalDateTime parseDateTimeValue(String value) {
         if (!StringUtils.hasText(value)) {
             return null;
@@ -5223,8 +5298,11 @@ public class ProductService implements CopyPromotionSupportPort {
         product.setCover(snapshot.getCover());
         product.setDetailUrl(snapshot.getDetailUrl());
         product.setShopName(snapshot.getShopName());
-        product.setPromotionStartTime(snapshot.getPromotionStartTime());
-        product.setPromotionEndTime(snapshot.getPromotionEndTime());
+        ProductOperationState state = providedState != null
+                ? providedState
+                : getOperationState(snapshot.getActivityId(), snapshot.getProductId());
+        product.setPromotionStartTime(resolvePromotionStartTime(snapshot, state));
+        product.setPromotionEndTime(resolvePromotionEndTimeText(snapshot, state));
         product.setPriceText(snapshot.getPriceText());
         product.setActivityCosRatio(snapshot.getActivityCosRatio());
         product.setActivityCosRatioText(snapshot.getActivityCosRatioText());
@@ -5236,15 +5314,12 @@ public class ProductService implements CopyPromotionSupportPort {
         product.setServiceFeeRate(serviceFeeRate);
         product.setEstimatedServiceFee(estimateFee(snapshot.getPrice(), serviceFeeRate).toPlainString());
         product.setSales30d(snapshot.getSales() == null ? 0L : snapshot.getSales());
-        product.setHasSampleRule(isSampleRuleAvailable(snapshot));
+        product.setHasSampleRule(isSampleRuleAvailable(snapshot, state));
         product.setSystemTags(buildLibrarySystemTags(snapshot));
         product.setSyncTime(snapshot.getSyncTime());
         product.setCreateTime(snapshot.getCreateTime());
         product.setUpdateTime(snapshot.getUpdateTime());
 
-        ProductOperationState state = providedState != null
-                ? providedState
-                : getOperationState(snapshot.getActivityId(), snapshot.getProductId());
         product.setAlertTags(buildLibraryAlertTags(snapshot, state));
         if (state != null) {
             product.setCheckStatus(state.getAuditStatus());
@@ -5257,6 +5332,8 @@ public class ProductService implements CopyPromotionSupportPort {
             product.setSelectedAt(state.getSelectedAt());
             Map<String, Object> auditSupplement = parseAuditPayload(state.getAuditPayload());
             product.setAuditSupplement(auditSupplement);
+            product.setPromotionStartTime(resolvePromotionStartTime(snapshot, state));
+            product.setPromotionEndTime(resolvePromotionEndTimeText(snapshot, state));
             Boolean supportsAds = readBoolean(auditSupplement, "supportsAds");
             if (supportsAds != null) {
                 product.setSupportsAds(supportsAds);
@@ -5343,8 +5420,17 @@ public class ProductService implements CopyPromotionSupportPort {
         view.put("shopScore", resolveShopScoreFromSnapshot(snapshot));
         view.put("sales", snapshot.getSales());
         view.put("detailUrl", snapshot.getDetailUrl());
-        view.put("promotionStartTime", snapshot.getPromotionStartTime());
-        view.put("promotionEndTime", snapshot.getPromotionEndTime());
+        Map<String, Object> auditSupplement = state == null
+                ? Map.of()
+                : parseAuditPayload(state.getAuditPayload());
+        String promotionStartTime = firstNonBlank(
+                readString(auditSupplement, "promotionStartTime"),
+                snapshot.getPromotionStartTime());
+        String promotionEndTimeText = firstNonBlank(
+                readString(auditSupplement, "promotionEndTime"),
+                snapshot.getPromotionEndTime());
+        view.put("promotionStartTime", promotionStartTime);
+        view.put("promotionEndTime", promotionEndTimeText);
         view.put("activityCosRatio", snapshot.getActivityCosRatio());
         view.put("activityCosRatioText", snapshot.getActivityCosRatioText());
         view.put("cosType", snapshot.getCosType());
@@ -5377,7 +5463,6 @@ public class ProductService implements CopyPromotionSupportPort {
             view.put("selectedAt", state.getSelectedAt());
             view.put("pinned", ProductPinPolicy.isPinned(state, LocalDateTime.now()));
             view.put("pinnedUntil", state.getPinnedUntil());
-            Map<String, Object> auditSupplement = parseAuditPayload(state.getAuditPayload());
             view.put("auditSupplementSummary", buildAuditSupplementSummary(auditSupplement));
             view.put("auditSupplementComplete", isAuditSupplementComplete(auditSupplement));
             Boolean supportsAds = readBoolean(auditSupplement, "supportsAds");
@@ -5400,7 +5485,7 @@ public class ProductService implements CopyPromotionSupportPort {
         BigDecimal serviceFeeRate = resolveServiceFeeRate(snapshot);
         BigDecimal estimatedCommission = estimateFee(snapshot.getPrice(), commissionRate);
         BigDecimal estimatedServiceFee = estimateFee(snapshot.getPrice(), serviceFeeRate);
-        LocalDateTime promotionEndTime = parseDateTime(snapshot.getPromotionEndTime());
+        LocalDateTime promotionEndTime = parseDateTimeValue(promotionEndTimeText);
         long remainingDays = calculateRemainingDays(promotionEndTime);
         boolean activityExpired = promotionEndTime != null && promotionEndTime.isBefore(LocalDateTime.now());
         boolean promotionAvailable = !activityExpired && StringUtils.hasText(snapshot.getDetailUrl());
@@ -6134,24 +6219,21 @@ public class ProductService implements CopyPromotionSupportPort {
         }
     }
 
-    private void assertNoRecentLibraryDuplicateForAudit(String activityId, String productId) {
+    private void assertNoExistingLibraryDuplicate(String activityId, String productId) {
         if (!StringUtils.hasText(productId)) {
             return;
         }
-        LocalDateTime cutoff = LocalDateTime.now().minusMonths(AUDIT_LIBRARY_DUPLICATE_WINDOW_MONTHS);
         LambdaQueryWrapper<ProductOperationState> query = new LambdaQueryWrapper<ProductOperationState>()
                 .eq(ProductOperationState::getProductId, productId.trim())
-                .eq(ProductOperationState::getSelectedToLibrary, true)
-                .ge(ProductOperationState::getSelectedAt, cutoff);
+                .eq(ProductOperationState::getSelectedToLibrary, true);
         if (StringUtils.hasText(activityId)) {
             query.and(w -> w.ne(ProductOperationState::getActivityId, activityId).or().isNull(ProductOperationState::getActivityId));
         }
         List<ProductOperationState> duplicates = operationStateMapper.selectList(query.last("limit 1"));
-        if (duplicates == null || duplicates.isEmpty()) {
-            return;
+        if (duplicates != null && !duplicates.isEmpty()) {
+            throw BusinessException.stateInvalid(
+                    "商品库已存在同商品ID，禁止重复进入商品库：productId=" + productId.trim());
         }
-        throw BusinessException.stateInvalid(
-                "近三个月内商品库已存在同商品ID，禁止重复进入商品库：productId=" + productId.trim());
     }
 
     private void requireText(Map<String, Object> payload, String key, String label, List<String> missing) {
@@ -6406,6 +6488,8 @@ public class ProductService implements CopyPromotionSupportPort {
         putNormalizedText(normalized, "promotionScript", supplement.get("promotionScript"));
         putNormalizedText(normalized, "rewardRemark", supplement.get("rewardRemark"));
         putNormalizedText(normalized, "participationRequirements", supplement.get("participationRequirements"));
+        putNormalizedPromotionTime(normalized, "promotionStartTime", supplement.get("promotionStartTime"));
+        putNormalizedPromotionTime(normalized, "promotionEndTime", supplement.get("promotionEndTime"));
         putNormalizedText(normalized, "campaignTimeRemark", supplement.get("campaignTimeRemark"));
         putNormalizedText(normalized, "sampleThresholdRemark", supplement.get("sampleThresholdRemark"));
         List<String> sellingPoints = normalizeStringList(supplement.get("sellingPoints"));
@@ -6462,11 +6546,40 @@ public class ProductService implements CopyPromotionSupportPort {
         return normalized;
     }
 
+    private Map<String, Object> normalizeAuditSupplement(
+            Map<String, Object> supplement,
+            ProductSnapshot snapshot) {
+        Map<String, Object> normalized = new LinkedHashMap<>(normalizeAuditSupplement(supplement));
+        if (snapshot != null
+                && Integer.valueOf(1).equals(snapshot.getCosType())
+                && Boolean.FALSE.equals(readBoolean(normalized, "supportsAds"))) {
+            normalized.put("adsRule", "不支持投流");
+        }
+        return normalized;
+    }
+
     private void putNormalizedText(Map<String, Object> payload, String key, Object rawValue) {
         String value = rawValue == null ? null : String.valueOf(rawValue).trim();
         if (StringUtils.hasText(value)) {
             payload.put(key, value);
         }
+    }
+
+    private void putNormalizedPromotionTime(Map<String, Object> payload, String key, Object rawValue) {
+        String value = rawValue == null ? null : String.valueOf(rawValue).trim();
+        if (!StringUtils.hasText(value)) {
+            return;
+        }
+        if (value.matches("\\d{4}-\\d{2}-\\d{2}")) {
+            LocalDate date = LocalDate.parse(value, DateTimeFormatter.ISO_LOCAL_DATE);
+            LocalDateTime normalized = "promotionEndTime".equals(key)
+                    ? date.atTime(23, 59, 59)
+                    : date.atStartOfDay();
+            payload.put(key, normalized.format(EDITABLE_PROMOTION_TIME_FORMAT));
+            return;
+        }
+        LocalDateTime parsed = parseDateTimeValue(value);
+        payload.put(key, parsed == null ? value : parsed.format(EDITABLE_PROMOTION_TIME_FORMAT));
     }
 
     private void putNormalizedNumber(Map<String, Object> payload, String key, Object rawValue) {

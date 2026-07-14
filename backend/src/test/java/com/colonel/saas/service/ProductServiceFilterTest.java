@@ -34,6 +34,7 @@ import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyMap;
@@ -164,16 +165,85 @@ class ProductServiceFilterTest {
                         "exclusivePriceRemark", "直播间专属价",
                         "supportsAds", false,
                         "rewardRemark", "满额奖励",
-                        "participationRequirements", "有成交记录"),
+                        "participationRequirements", "有成交记录",
+                        "promotionStartTime", "2026-07-02 08:00:00",
+                        "promotionEndTime", "2026-08-01 20:00:00"),
                 UUID.randomUUID(),
                 UUID.randomUUID());
 
         assertThat(result.getAuditSupplement())
                 .containsEntry("exclusivePriceAmount", new BigDecimal("129.50"))
                 .containsEntry("exclusivePriceRemark", "直播间专属价")
-                .containsEntry("supportsAds", false);
+                .containsEntry("supportsAds", false)
+                .containsEntry("promotionStartTime", "2026-07-02 08:00:00")
+                .containsEntry("promotionEndTime", "2026-08-01 20:00:00");
+        assertThat(result.getPromotionStartTime()).isEqualTo("2026-07-02 08:00:00");
+        assertThat(result.getPromotionEndTime()).isEqualTo("2026-08-01 20:00:00");
         assertThat(state.getAuditPayload()).contains("\"exclusivePriceAmount\":129.50");
         verify(operationStateMapper).updateById(state);
+    }
+
+    @Test
+    void updateAuditSupplement_shouldRejectInvalidPromotionTimeRange() {
+        ProductSnapshot snapshot = snapshot("10001", "9001", "玩具乐器", 9900L);
+        ProductOperationState state = state("10001", "9001");
+        when(snapshotMapper.selectById(snapshot.getId())).thenReturn(snapshot);
+        when(operationStateMapper.selectOne(any())).thenReturn(state);
+
+        assertThatThrownBy(() -> service.updateAuditSupplement(
+                snapshot.getId(),
+                Map.of(
+                        "promotionStartTime", "2026-08-01 20:00:00",
+                        "promotionEndTime", "2026-08-01 08:00:00"),
+                UUID.randomUUID(),
+                UUID.randomUUID()))
+                .hasMessage("推广开始时间不能晚于结束时间");
+        verify(operationStateMapper, never()).updateById(any());
+    }
+
+    @Test
+    void updateAuditSupplement_shouldFallbackToSnapshotTimeWhenOverrideIsCleared() {
+        ProductSnapshot snapshot = snapshot("10001", "9001", "玩具乐器", 9900L);
+        snapshot.setPromotionStartTime("2026-07-01 00:00:00");
+        snapshot.setPromotionEndTime("2026-07-31 23:59:59");
+        ProductOperationState state = state("10001", "9001");
+        state.setAuditPayload("{\"promotionStartTime\":\"2026-07-02 08:00:00\",\"promotionEndTime\":\"2026-08-01 20:00:00\"}");
+        when(snapshotMapper.selectById(snapshot.getId())).thenReturn(snapshot);
+        when(operationStateMapper.selectOne(any())).thenReturn(state);
+        when(operationStateMapper.updateById(any())).thenReturn(1);
+
+        Product result = service.updateAuditSupplement(
+                snapshot.getId(),
+                Map.of("promotionStartTime", "", "promotionEndTime", ""),
+                UUID.randomUUID(),
+                UUID.randomUUID());
+
+        assertThat(result.getPromotionStartTime()).isEqualTo("2026-07-01 00:00:00");
+        assertThat(result.getPromotionEndTime()).isEqualTo("2026-07-31 23:59:59");
+        assertThat(state.getAuditPayload()).isNull();
+        verify(operationStateMapper).updateById(state);
+    }
+
+    @Test
+    void updateAuditSupplement_shouldMarkFakeDoubleCommissionAsNotSupportingAds() {
+        ProductSnapshot snapshot = snapshot("10001", "9001", "玩具乐器", 9900L);
+        snapshot.setCosType(1);
+        ProductOperationState state = state("10001", "9001");
+        state.setAuditPayload("{\"supportsAds\":true,\"adsRule\":\"投流比例1:0.5\"}");
+        when(snapshotMapper.selectById(snapshot.getId())).thenReturn(snapshot);
+        when(operationStateMapper.selectOne(any())).thenReturn(state);
+        when(operationStateMapper.updateById(any())).thenReturn(1);
+
+        Product result = service.updateAuditSupplement(
+                snapshot.getId(),
+                Map.of("supportsAds", false),
+                UUID.randomUUID(),
+                UUID.randomUUID());
+
+        assertThat(result.getAuditSupplement())
+                .containsEntry("supportsAds", false)
+                .containsEntry("adsRule", "不支持投流");
+        assertThat(state.getAuditPayload()).contains("\"adsRule\":\"不支持投流\"");
     }
 
     @Test

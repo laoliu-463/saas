@@ -5,8 +5,6 @@ export interface ProductSampleSettingForm {
   minSales30d: number | null
   minFans: number | null
   minTalentLevel: number | null
-  sampleBoxCount: number
-  sampleQuantity: number
 }
 
 export const DEFAULT_SAMPLE_SETTING: ProductSampleSettingForm = {
@@ -15,13 +13,20 @@ export const DEFAULT_SAMPLE_SETTING: ProductSampleSettingForm = {
   minWindowSales30d: null,
   minSales30d: 50000,
   minFans: null,
-  minTalentLevel: null,
-  sampleBoxCount: 4,
-  sampleQuantity: 1
+  minTalentLevel: 1
 }
+
+export const TALENT_LEVEL_OPTIONS = Array.from({ length: 8 }, (_, value) => ({
+  label: `LV${value}`,
+  value
+}))
 
 const asNumber = (value: unknown): number | null => {
   if (value === null || value === undefined || value === '') return null
+  if (typeof value === 'string') {
+    const level = value.trim().match(/^LV(\d+)$/i)
+    if (level) return Number(level[1])
+  }
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : null
 }
@@ -63,11 +68,8 @@ export function normalizeSampleSetting(source?: Record<string, unknown> | null):
     minSales30d: asNumber(firstValue(setting, 'minSales30d', 'sampleThresholdSales', 'salesRequirement30d'))
       ?? DEFAULT_SAMPLE_SETTING.minSales30d,
     minFans: asNumber(firstValue(setting, 'minFans', 'fansMin')),
-    minTalentLevel: asNumber(firstValue(setting, 'minTalentLevel', 'sampleThresholdLevel', 'talentLevelRequirement')),
-    sampleBoxCount: asNumber(firstValue(setting, 'sampleBoxCount', 'sampleBoxes'))
-      ?? DEFAULT_SAMPLE_SETTING.sampleBoxCount,
-    sampleQuantity: asNumber(firstValue(setting, 'sampleQuantity', 'quantity'))
-      ?? DEFAULT_SAMPLE_SETTING.sampleQuantity
+    minTalentLevel: asNumber(firstValue(setting, 'minTalentLevel', 'sampleThresholdLevel', 'talentLevelRequirement'))
+      ?? DEFAULT_SAMPLE_SETTING.minTalentLevel
   }
 }
 
@@ -79,8 +81,6 @@ export function toSampleSettingPayload(form: ProductSampleSettingForm): Record<s
     minSales30d: form.hasSampleThreshold ? form.minSales30d : null,
     minFans: form.hasSampleThreshold ? form.minFans : null,
     minTalentLevel: form.hasSampleThreshold ? form.minTalentLevel : null,
-    sampleBoxCount: form.sampleBoxCount,
-    sampleQuantity: form.sampleQuantity,
     // 兼容现有商品库筛选和寄样门槛字段。
     allowSample: true,
     sampleType: form.supportFreeSample ? 'FREE' : 'PAID',

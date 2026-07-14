@@ -35,7 +35,17 @@ export const rejectProduct = (relationId: string, data: Record<string, unknown>)
 export const fetchProductDetail = (relationId: string) =>
   request.get(`/products/${relationId}`)
 
-export const updateProduct = (relationId: string, data: Record<string, unknown>) =>
+export interface ProductSupplementUpdatePayload {
+  exclusivePriceAmount?: number | null
+  exclusivePriceRemark?: string
+  supportsAds?: boolean
+  rewardRemark?: string
+  participationRequirements?: string
+  promotionStartTime?: string | null
+  promotionEndTime?: string | null
+}
+
+export const updateProduct = (relationId: string, data: ProductSupplementUpdatePayload) =>
   request.put(`/products/${relationId}`, data)
 
 export const fetchCooperationSetting = (relationId: string) =>

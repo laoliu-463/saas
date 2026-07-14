@@ -3,22 +3,27 @@ import { DEFAULT_SAMPLE_SETTING, normalizeSampleSetting, toSampleSettingPayload 
 
 describe('sample-setting', () => {
   it('uses the requested default sample settings', () => {
-    expect(normalizeSampleSetting()).toEqual(DEFAULT_SAMPLE_SETTING)
+    expect(normalizeSampleSetting()).toMatchObject({
+      supportFreeSample: true,
+      hasSampleThreshold: true,
+      minSales30d: 50000,
+      minTalentLevel: 1
+    })
+    expect(normalizeSampleSetting()).not.toHaveProperty('sampleBoxCount')
+    expect(normalizeSampleSetting()).not.toHaveProperty('sampleQuantity')
+    expect(DEFAULT_SAMPLE_SETTING).not.toHaveProperty('sampleBoxCount')
+    expect(DEFAULT_SAMPLE_SETTING).not.toHaveProperty('sampleQuantity')
   })
 
   it('reads legacy product audit fields into the new form', () => {
     expect(normalizeSampleSetting({
       sampleType: 'PAID',
       sampleThresholdSales: 30000,
-      sampleThresholdLevel: 3,
-      sampleBoxes: 2,
-      quantity: 5
+      sampleThresholdLevel: 3
     })).toMatchObject({
       supportFreeSample: false,
       minSales30d: 30000,
-      minTalentLevel: 3,
-      sampleBoxCount: 2,
-      sampleQuantity: 5
+      minTalentLevel: 3
     })
   })
 
@@ -29,18 +34,37 @@ describe('sample-setting', () => {
       minWindowSales30d: null,
       minSales30d: 50000,
       minFans: null,
-      minTalentLevel: 1,
-      sampleBoxCount: 4,
-      sampleQuantity: 1
+      minTalentLevel: 1
     })
 
     expect(payload).toMatchObject({
       sampleType: 'FREE',
       allowSample: true,
       sampleThresholdSales: 50000,
-      sampleThresholdLevel: 1,
-      sampleBoxCount: 4,
-      sampleQuantity: 1
+      sampleThresholdLevel: 1
+    })
+  })
+
+  it('normalizes LV values from the API into the numeric form state', () => {
+    expect(normalizeSampleSetting({ sampleThresholdLevel: 'LV3' }).minTalentLevel).toBe(3)
+    expect(normalizeSampleSetting({ minTalentLevel: '7' }).minTalentLevel).toBe(7)
+  })
+
+  it('clears threshold values when the threshold switch is off', () => {
+    expect(toSampleSettingPayload({
+      supportFreeSample: false,
+      hasSampleThreshold: false,
+      minWindowSales30d: 100,
+      minSales30d: 50000,
+      minFans: 1000,
+      minTalentLevel: 1
+    })).toMatchObject({
+      minWindowSales30d: null,
+      minSales30d: null,
+      minFans: null,
+      minTalentLevel: null,
+      sampleThresholdSales: null,
+      sampleThresholdLevel: null
     })
   })
 })

@@ -50,6 +50,10 @@
 - 修正 dry-run 文案，不再输出被规则禁止的 `git add -A` 示例。
 - 范围：Harness 脚本；已用 `git-push-safe.ps1 -DryRun` 和 `agent-do.ps1 -Scope docs -DryRun` 验证。
 
+### v0.7.2 — 2026-07-14
+- 商品编辑开始/结束时间改为可选择日期时间；新增本系统推广时间覆盖的后端校验、回显、清空回退和派生状态一致性处理，保持 `product_snapshot` 上游事实不变。
+- 验证：后端定向 57 tests、前端编辑抽屉 3 tests、前后端构建、real-pre 容器重启与本地健康通过；真实业务 preflight 因管理员登录 HTTP 401 为 BLOCKED_AUTH。
+
 ### v0.7.1 — 2026-06-20
 - Harness/docs 路径口径校正：DDD 路线图、任务矩阵、Gate、Domain Map、multi-agent 提示词索引统一指向 `harness/rules/...` 与 `harness/scripts/commands/...`。
 - 范围：docs / harness 规则；不修改业务代码，不声明 DDD 代码重构完成。
