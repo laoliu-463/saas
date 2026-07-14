@@ -29,7 +29,7 @@ import java.util.UUID;
  * <p>功能说明：
  * <ul>
  *   <li>生成 Access Token（短期有效，包含用户身份、部门、数据范围、角色等声明）</li>
- *   <li>生成 Refresh Token（长期有效，仅含用户 ID，用于刷新 Access Token）</li>
+ *   <li>生成 Refresh Token（长期有效，包含用户 ID 和授权版本，用于刷新 Access Token）</li>
  *   <li>解析并验证 JWT 签名和过期时间</li>
  *   <li>计算 Token 的 SHA-256 哈希值，用于黑名单/吊销校验</li>
  *   <li>查询 Token 剩余有效期</li>
@@ -114,25 +114,6 @@ public class JwtTokenProvider {
     }
 
     /**
-     * 生成标准 Access Token（不含待激活标记，默认 pendingActivation = false）。
-     *
-     * @param userId    用户唯一标识
-     * @param deptId    用户所属部门 ID，可为 {@code null}（无部门的用户）
-     * @param dataScope 数据范围枚举编码（参见 {@link com.colonel.saas.common.enums.DataScope}）
-     * @param roleCodes 用户角色编码列表，如 ["admin", "operator"]
-     * @param username  用户登录名
-     * @return 签名后的 JWT 字符串
-     */
-    public String generateAccessToken(
-            UUID userId,
-            UUID deptId,
-            int dataScope,
-            List<String> roleCodes,
-            String username) {
-        return generateAccessToken(userId, deptId, dataScope, roleCodes, username, false);
-    }
-
-    /**
      * 生成 Access Token，支持标记用户是否处于"待激活"状态。
      *
      * <p>Access Token 是短期令牌（默认 2 小时），用于接口鉴权。Token 内包含以下声明：
@@ -144,6 +125,7 @@ public class JwtTokenProvider {
      *   <li>{@code roleCodes} — 角色编码列表</li>
      *   <li>{@code username} — 登录名</li>
      *   <li>{@code pendingActivation} — 是否待激活（新用户首次登录后需改密才可使用业务功能）</li>
+     *   <li>{@code authzVersion} — 签发时用户的授权版本</li>
      * </ul>
      *
      * @param userId            用户唯一标识
@@ -152,6 +134,7 @@ public class JwtTokenProvider {
      * @param roleCodes         用户角色编码列表
      * @param username          用户登录名
      * @param pendingActivation {@code true} 表示用户处于待激活状态，仅允许访问改密等有限接口
+     * @param authzVersion      签发时用户的授权版本，必须大于 0
      * @return 签名后的 JWT 字符串
      */
     public String generateAccessToken(
@@ -160,7 +143,9 @@ public class JwtTokenProvider {
             int dataScope,
             List<String> roleCodes,
             String username,
-            boolean pendingActivation) {
+            boolean pendingActivation,
+            long authzVersion) {
+        validateAuthorizationVersion(authzVersion);
         Instant now = Instant.now();
         Instant expireAt = now.plusSeconds(expireSeconds);
 
@@ -172,6 +157,7 @@ public class JwtTokenProvider {
                 .claim("roleCodes", roleCodes)                 // 角色编码列表，下游用于功能权限判断
                 .claim("username", username)                   // 登录名，方便日志和审计
                 .claim("pendingActivation", pendingActivation) // 待激活标记，控制受限访问策略
+                .claim("authzVersion", authzVersion)           // 授权版本，用于使旧令牌失效
                 .issuedAt(Date.from(now))                      // 签发时间
                 .expiration(Date.from(expireAt))               // 过期时间（签发时间 + expireSeconds）
                 .signWith(secretKey)                           // 使用 HMAC-SHA 密钥签名
@@ -181,13 +167,15 @@ public class JwtTokenProvider {
     /**
      * 生成 Refresh Token。
      *
-     * <p>Refresh Token 是长期令牌（默认 7 天），仅用于刷新 Access Token，不携带业务声明。
-     * 内含唯一标识（jti），支持单 Token 级别的吊销。
+     * <p>Refresh Token 是长期令牌（默认 7 天），仅用于刷新 Access Token。
+     * 内含授权版本和唯一标识（jti），支持授权变更失效与单 Token 级别的吊销。
      *
-     * @param userId 用户唯一标识
+     * @param userId       用户唯一标识
+     * @param authzVersion 签发时用户的授权版本，必须大于 0
      * @return 签名后的 Refresh Token JWT 字符串
      */
-    public String generateRefreshToken(UUID userId) {
+    public String generateRefreshToken(UUID userId, long authzVersion) {
+        validateAuthorizationVersion(authzVersion);
         Instant now = Instant.now();
         Instant expireAt = now.plusSeconds(refreshExpireSeconds);
         // jti（JWT ID）用于唯一标识此 Refresh Token，便于精确吊销
@@ -197,10 +185,17 @@ public class JwtTokenProvider {
                 .subject(userId.toString())        // 用户 ID
                 .id(jti)                           // 唯一标识，用于吊销管理
                 .claim("type", "refresh")          // 标记为 Refresh Token，与 Access Token 区分
+                .claim("authzVersion", authzVersion) // 授权版本，用于使旧令牌失效
                 .issuedAt(Date.from(now))          // 签发时间
                 .expiration(Date.from(expireAt))   // 过期时间（签发时间 + refreshExpireSeconds）
                 .signWith(secretKey)               // HMAC-SHA 签名
                 .compact();
+    }
+
+    private static void validateAuthorizationVersion(long authzVersion) {
+        if (authzVersion < 1) {
+            throw new IllegalArgumentException("authzVersion must be positive");
+        }
     }
 
     /**

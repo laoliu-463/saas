@@ -8,6 +8,8 @@ import com.colonel.saas.auth.dto.RefreshResponse;
 import com.colonel.saas.constant.SysUserStatus;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.result.ResultCode;
+import com.colonel.saas.config.AuthorizationRuntimeProperties;
+import com.colonel.saas.domain.user.api.AuthorizationUnavailableException;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy.RolePermission;
 import com.colonel.saas.entity.OperationLog;
@@ -19,6 +21,7 @@ import com.colonel.saas.security.JwtTokenProvider;
 import com.colonel.saas.service.BusinessRuleConfigService;
 import com.colonel.saas.service.OperationLogService;
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.RequiredTypeException;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -91,6 +94,9 @@ public class AuthService {
     /** 当前用户权限策略，用于统一登录上下文中的数据范围解析 */
     private final CurrentUserPermissionPolicy currentUserPermissionPolicy;
 
+    /** 授权运行时配置，决定刷新令牌是否强制校验授权版本 */
+    private final AuthorizationRuntimeProperties runtimeProperties;
+
     /**
      * 构造注入所有依赖项。
      *
@@ -102,6 +108,7 @@ public class AuthService {
      * @param operationLogService    审计日志服务
      * @param businessRuleConfigService 业务规则配置服务
      * @param currentUserPermissionPolicy 当前用户权限策略
+     * @param runtimeProperties 授权运行时配置
      */
     public AuthService(
             SysUserMapper sysUserMapper,
@@ -111,7 +118,8 @@ public class AuthService {
             RedisTemplate<String, Object> redisTemplate,
             OperationLogService operationLogService,
             BusinessRuleConfigService businessRuleConfigService,
-            CurrentUserPermissionPolicy currentUserPermissionPolicy) {
+            CurrentUserPermissionPolicy currentUserPermissionPolicy,
+            AuthorizationRuntimeProperties runtimeProperties) {
         this.sysUserMapper = sysUserMapper;
         this.sysRoleMapper = sysRoleMapper;
         this.jwtTokenProvider = jwtTokenProvider;
@@ -120,6 +128,7 @@ public class AuthService {
         this.operationLogService = operationLogService;
         this.businessRuleConfigService = businessRuleConfigService;
         this.currentUserPermissionPolicy = currentUserPermissionPolicy;
+        this.runtimeProperties = runtimeProperties;
     }
 
     /**
@@ -194,6 +203,7 @@ public class AuthService {
 
         // 待激活状态的用户登录后需要在前端完成激活流程
         boolean pendingActivation = SysUserStatus.isPendingActivation(user.getStatus());
+        long authzVersion = requireCurrentAuthorizationVersion(user);
 
         String accessToken = jwtTokenProvider.generateAccessToken(
                 user.getId(),
@@ -201,10 +211,11 @@ public class AuthService {
                 dataScope,
                 roleCodes,
                 user.getUsername(),
-                pendingActivation
+                pendingActivation,
+                authzVersion
         );
 
-        String refreshToken = jwtTokenProvider.generateRefreshToken(user.getId());
+        String refreshToken = jwtTokenProvider.generateRefreshToken(user.getId(), authzVersion);
 
         SysUser update = new SysUser();
         update.setId(user.getId());
@@ -277,6 +288,23 @@ public class AuthService {
             throw new BusinessException(ResultCode.UNAUTHORIZED.getCode(), "账号已停用");
         }
 
+        long currentAuthzVersion = requireCurrentAuthorizationVersion(user);
+        boolean requiresVersionValidation = runtimeProperties.requiresVersionValidation();
+        Long tokenAuthzVersion;
+        try {
+            tokenAuthzVersion = claims.get("authzVersion", Long.class);
+        } catch (RequiredTypeException e) {
+            if (requiresVersionValidation) {
+                throw authorizationTokenExpired();
+            }
+            tokenAuthzVersion = null;
+        }
+        if (requiresVersionValidation
+                && (tokenAuthzVersion == null
+                || tokenAuthzVersion.longValue() != currentAuthzVersion)) {
+            throw authorizationTokenExpired();
+        }
+
         boolean pendingActivation = SysUserStatus.isPendingActivation(user.getStatus());
 
         List<SysRole> roles = sysRoleMapper.findByUserId(userId);
@@ -293,9 +321,10 @@ public class AuthService {
                 dataScope,
                 roleCodes,
                 user.getUsername(),
-                pendingActivation
+                pendingActivation,
+                currentAuthzVersion
         );
-        String newRefreshToken = jwtTokenProvider.generateRefreshToken(userId);
+        String newRefreshToken = jwtTokenProvider.generateRefreshToken(userId, currentAuthzVersion);
         long refreshRemaining = jwtTokenProvider.getRemainingSeconds(refreshToken);
         if (refreshRemaining > 0) {
             redisTemplate.opsForValue().set(
@@ -633,6 +662,20 @@ public class AuthService {
                 .map(role -> new RolePermission(role.getRoleCode(), role.getDataScope(), Collections.emptyMap()))
                 .toList();
         return currentUserPermissionPolicy.resolveDataScopeCode(rolePermissions, null, roleCodes);
+    }
+
+    private static long requireCurrentAuthorizationVersion(SysUser user) {
+        Long authzVersion = user.getAuthzVersion();
+        if (authzVersion == null || authzVersion <= 0) {
+            throw new AuthorizationUnavailableException();
+        }
+        return authzVersion;
+    }
+
+    private static BusinessException authorizationTokenExpired() {
+        return new BusinessException(
+                ResultCode.UNAUTHORIZED.getCode(),
+                "授权令牌已失效，请重新登录");
     }
 
     /**

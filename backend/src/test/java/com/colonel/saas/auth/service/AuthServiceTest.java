@@ -6,6 +6,8 @@ import com.colonel.saas.auth.dto.LogoutRequest;
 import com.colonel.saas.auth.dto.RefreshRequest;
 import com.colonel.saas.auth.dto.RefreshResponse;
 import com.colonel.saas.common.exception.BusinessException;
+import com.colonel.saas.config.AuthorizationRuntimeProperties;
+import com.colonel.saas.domain.user.api.AuthorizationUnavailableException;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.entity.OperationLog;
 import com.colonel.saas.entity.SysRole;
@@ -16,6 +18,7 @@ import com.colonel.saas.security.JwtTokenProvider;
 import com.colonel.saas.service.BusinessRuleConfigService;
 import com.colonel.saas.service.OperationLogService;
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.RequiredTypeException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -61,6 +64,8 @@ class AuthServiceTest {
     private OperationLogService operationLogService;
     @Mock
     private BusinessRuleConfigService businessRuleConfigService;
+    @Mock
+    private AuthorizationRuntimeProperties runtimeProperties;
 
     private PasswordEncoder passwordEncoder;
     private AuthService authService;
@@ -78,12 +83,15 @@ class AuthServiceTest {
                 redisTemplate,
                 operationLogService,
                 businessRuleConfigService,
-                new CurrentUserPermissionPolicy());
+                new CurrentUserPermissionPolicy(),
+                runtimeProperties);
     }
 
     private void stubJwtTokenGeneration() {
-        when(jwtTokenProvider.generateAccessToken(any(), any(), any(Integer.class), any(), any(), any(Boolean.class))).thenReturn("jwt.token.here");
-        when(jwtTokenProvider.generateRefreshToken(any())).thenReturn("refresh.token.here");
+        when(jwtTokenProvider.generateAccessToken(
+                any(), any(), any(Integer.class), any(), any(), any(Boolean.class), eq(7L)))
+                .thenReturn("jwt.token.here");
+        when(jwtTokenProvider.generateRefreshToken(any(), eq(7L))).thenReturn("refresh.token.here");
         when(jwtTokenProvider.getExpireSeconds()).thenReturn(3600L);
         when(jwtTokenProvider.getRefreshExpireSeconds()).thenReturn(604800L);
     }
@@ -94,6 +102,7 @@ class AuthServiceTest {
         user.setUsername(username);
         user.setPassword(passwordEncoder.encode("password"));
         user.setStatus(1);
+        user.setAuthzVersion(7L);
         return user;
     }
 
@@ -124,6 +133,9 @@ class AuthServiceTest {
         assertThat(response.getUserId()).isEqualTo(user.getId());
         assertThat(response.getUsername()).isEqualTo("alice");
         assertThat(response.getRoleCodes()).contains("admin");
+        verify(jwtTokenProvider).generateAccessToken(
+                user.getId(), deptId, 3, List.of("admin"), "alice", false, 7L);
+        verify(jwtTokenProvider).generateRefreshToken(user.getId(), 7L);
         verify(sysUserMapper).updateById(any(SysUser.class));
         ArgumentCaptor<OperationLog> logCaptor = ArgumentCaptor.forClass(OperationLog.class);
         verify(operationLogService).record(logCaptor.capture());
@@ -366,6 +378,38 @@ class AuthServiceTest {
                 .hasMessageContaining("账号已停用");
     }
 
+    @Test
+    @DisplayName("登录 - 授权版本缺失时拒绝签发令牌")
+    void login_nullAuthorizationVersion_shouldThrowUnavailable() {
+        SysUser user = createActiveUser("missing-version");
+        user.setAuthzVersion(null);
+        when(sysUserMapper.findByUsername("missing-version")).thenReturn(Optional.of(user));
+        when(sysRoleMapper.findByUserId(user.getId())).thenReturn(List.of());
+
+        LoginRequest request = new LoginRequest();
+        request.setUsername("missing-version");
+        request.setPassword("password");
+
+        assertThatThrownBy(() -> authService.login(request))
+                .isInstanceOf(AuthorizationUnavailableException.class);
+    }
+
+    @Test
+    @DisplayName("登录 - 授权版本非正数时拒绝签发令牌")
+    void login_nonPositiveAuthorizationVersion_shouldThrowUnavailable() {
+        SysUser user = createActiveUser("invalid-version");
+        user.setAuthzVersion(0L);
+        when(sysUserMapper.findByUsername("invalid-version")).thenReturn(Optional.of(user));
+        when(sysRoleMapper.findByUserId(user.getId())).thenReturn(List.of());
+
+        LoginRequest request = new LoginRequest();
+        request.setUsername("invalid-version");
+        request.setPassword("password");
+
+        assertThatThrownBy(() -> authService.login(request))
+                .isInstanceOf(AuthorizationUnavailableException.class);
+    }
+
     // ==================== RefreshToken Tests ====================
 
     @Test
@@ -381,12 +425,15 @@ class AuthServiceTest {
         user.setId(userId);
         user.setStatus(1);
         user.setUsername("testuser");
+        user.setAuthzVersion(7L);
         when(sysUserMapper.selectById(userId)).thenReturn(user);
         when(sysRoleMapper.findByUserId(userId)).thenReturn(List.of());
         when(jwtTokenProvider.getTokenHash("valid.refresh.token")).thenReturn("refreshHash");
         when(redisTemplate.hasKey("auth:refresh:refreshHash")).thenReturn(false);
-        when(jwtTokenProvider.generateAccessToken(eq(userId), any(), any(Integer.class), any(), any(), any(Boolean.class))).thenReturn("new.access.token");
-        when(jwtTokenProvider.generateRefreshToken(userId)).thenReturn("new.refresh.token");
+        when(jwtTokenProvider.generateAccessToken(
+                eq(userId), any(), any(Integer.class), any(), any(), any(Boolean.class), eq(7L)))
+                .thenReturn("new.access.token");
+        when(jwtTokenProvider.generateRefreshToken(userId, 7L)).thenReturn("new.refresh.token");
         when(jwtTokenProvider.getExpireSeconds()).thenReturn(3600L);
         when(jwtTokenProvider.getRefreshExpireSeconds()).thenReturn(604800L);
         when(jwtTokenProvider.getRemainingSeconds("valid.refresh.token")).thenReturn(604800L);
@@ -401,6 +448,9 @@ class AuthServiceTest {
         assertThat(response.getRefreshToken()).isEqualTo("new.refresh.token");
         assertThat(response.getAccessTokenExpiresIn()).isEqualTo(3600L);
         assertThat(response.getRefreshExpiresIn()).isEqualTo(604800L);
+        verify(jwtTokenProvider).generateAccessToken(
+                eq(userId), any(), eq(1), eq(List.of()), eq("testuser"), eq(false), eq(7L));
+        verify(jwtTokenProvider).generateRefreshToken(userId, 7L);
         verify(valueOperations).set("auth:refresh:refreshHash", "1", 604800L, TimeUnit.SECONDS);
     }
 
@@ -417,6 +467,7 @@ class AuthServiceTest {
         user.setId(userId);
         user.setStatus(1);
         user.setUsername("admin");
+        user.setAuthzVersion(7L);
         when(sysUserMapper.selectById(userId)).thenReturn(user);
 
         SysRole role = new SysRole();
@@ -426,8 +477,10 @@ class AuthServiceTest {
 
         when(jwtTokenProvider.getTokenHash("valid.refresh.token")).thenReturn("refreshHash");
         when(redisTemplate.hasKey("auth:refresh:refreshHash")).thenReturn(false);
-        when(jwtTokenProvider.generateAccessToken(eq(userId), any(), any(Integer.class), any(), any(), any(Boolean.class))).thenReturn("new.access.token");
-        when(jwtTokenProvider.generateRefreshToken(userId)).thenReturn("new.refresh.token");
+        when(jwtTokenProvider.generateAccessToken(
+                eq(userId), any(), any(Integer.class), any(), any(), any(Boolean.class), eq(7L)))
+                .thenReturn("new.access.token");
+        when(jwtTokenProvider.generateRefreshToken(userId, 7L)).thenReturn("new.refresh.token");
         when(jwtTokenProvider.getExpireSeconds()).thenReturn(3600L);
         when(jwtTokenProvider.getRefreshExpireSeconds()).thenReturn(604800L);
         when(jwtTokenProvider.getRemainingSeconds("valid.refresh.token")).thenReturn(604800L);
@@ -439,8 +492,80 @@ class AuthServiceTest {
         authService.refreshToken(request);
 
         ArgumentCaptor<Integer> dataScopeCaptor = ArgumentCaptor.forClass(Integer.class);
-        verify(jwtTokenProvider).generateAccessToken(eq(userId), any(), dataScopeCaptor.capture(), any(), any(), any(Boolean.class));
+        verify(jwtTokenProvider).generateAccessToken(
+                eq(userId), any(), dataScopeCaptor.capture(), any(), any(), any(Boolean.class), eq(7L));
         assertThat(dataScopeCaptor.getValue()).isEqualTo(3);
+    }
+
+    @Test
+    @DisplayName("刷新令牌 - LEGACY允许版本不匹配但新令牌使用当前版本")
+    void refreshToken_legacyMode_allowsMismatchedVersionAndSignsCurrentVersion() {
+        UUID userId = UUID.randomUUID();
+        Claims claims = stubRefreshClaimsAndUser(userId, 7L);
+        when(claims.get("authzVersion", Long.class)).thenReturn(6L);
+        stubRefreshTokenRotation(userId, 7L);
+
+        RefreshResponse response = authService.refreshToken(refreshRequest());
+
+        assertThat(response.getAccessToken()).isEqualTo("new.access.token");
+        assertThat(response.getRefreshToken()).isEqualTo("new.refresh.token");
+        verify(jwtTokenProvider).generateAccessToken(
+                eq(userId), any(), any(Integer.class), any(), any(), any(Boolean.class), eq(7L));
+        verify(jwtTokenProvider).generateRefreshToken(userId, 7L);
+    }
+
+    @Test
+    @DisplayName("刷新令牌 - 严格模式拒绝缺失授权版本")
+    void refreshToken_strictMode_rejectsMissingAuthorizationVersion() {
+        UUID userId = UUID.randomUUID();
+        stubRefreshClaimsAndUser(userId, 7L);
+        when(runtimeProperties.requiresVersionValidation()).thenReturn(true);
+
+        assertAuthorizationTokenExpired();
+    }
+
+    @Test
+    @DisplayName("刷新令牌 - 严格模式拒绝低于当前的授权版本")
+    void refreshToken_strictMode_rejectsOlderAuthorizationVersion() {
+        UUID userId = UUID.randomUUID();
+        Claims claims = stubRefreshClaimsAndUser(userId, 7L);
+        when(claims.get("authzVersion", Long.class)).thenReturn(6L);
+        when(runtimeProperties.requiresVersionValidation()).thenReturn(true);
+
+        assertAuthorizationTokenExpired();
+    }
+
+    @Test
+    @DisplayName("刷新令牌 - 严格模式拒绝高于当前的授权版本")
+    void refreshToken_strictMode_rejectsFutureAuthorizationVersion() {
+        UUID userId = UUID.randomUUID();
+        Claims claims = stubRefreshClaimsAndUser(userId, 7L);
+        when(claims.get("authzVersion", Long.class)).thenReturn(8L);
+        when(runtimeProperties.requiresVersionValidation()).thenReturn(true);
+
+        assertAuthorizationTokenExpired();
+    }
+
+    @Test
+    @DisplayName("刷新令牌 - 严格模式把授权版本类型错误稳定映射为401")
+    void refreshToken_strictMode_mapsAuthorizationVersionTypeMismatchToUnauthorized() {
+        UUID userId = UUID.randomUUID();
+        Claims claims = stubRefreshClaimsAndUser(userId, 7L);
+        when(claims.get("authzVersion", Long.class))
+                .thenThrow(new RequiredTypeException("authzVersion is not a Long"));
+        when(runtimeProperties.requiresVersionValidation()).thenReturn(true);
+
+        assertAuthorizationTokenExpired();
+    }
+
+    @Test
+    @DisplayName("刷新令牌 - 当前授权版本非法时拒绝签发")
+    void refreshToken_invalidCurrentAuthorizationVersion_shouldThrowUnavailable() {
+        UUID userId = UUID.randomUUID();
+        stubRefreshClaimsAndUser(userId, 0L);
+
+        assertThatThrownBy(() -> authService.refreshToken(refreshRequest()))
+                .isInstanceOf(AuthorizationUnavailableException.class);
     }
 
     @Test
@@ -454,6 +579,48 @@ class AuthServiceTest {
         assertThatThrownBy(() -> authService.refreshToken(request))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("Refresh Token 无效或已过期");
+    }
+
+    private Claims stubRefreshClaimsAndUser(UUID userId, Long currentAuthzVersion) {
+        Claims claims = org.mockito.Mockito.mock(Claims.class);
+        when(claims.getSubject()).thenReturn(userId.toString());
+        when(claims.get("type", String.class)).thenReturn("refresh");
+        when(jwtTokenProvider.parseClaims("valid.refresh.token")).thenReturn(claims);
+        when(jwtTokenProvider.getTokenHash("valid.refresh.token")).thenReturn("refreshHash");
+
+        SysUser user = new SysUser();
+        user.setId(userId);
+        user.setStatus(1);
+        user.setUsername("testuser");
+        user.setAuthzVersion(currentAuthzVersion);
+        when(sysUserMapper.selectById(userId)).thenReturn(user);
+        return claims;
+    }
+
+    private void stubRefreshTokenRotation(UUID userId, long authzVersion) {
+        when(sysRoleMapper.findByUserId(userId)).thenReturn(List.of());
+        when(jwtTokenProvider.generateAccessToken(
+                eq(userId), any(), any(Integer.class), any(), any(), any(Boolean.class), eq(authzVersion)))
+                .thenReturn("new.access.token");
+        when(jwtTokenProvider.generateRefreshToken(userId, authzVersion)).thenReturn("new.refresh.token");
+        when(jwtTokenProvider.getExpireSeconds()).thenReturn(3600L);
+        when(jwtTokenProvider.getRefreshExpireSeconds()).thenReturn(604800L);
+        when(jwtTokenProvider.getRemainingSeconds("valid.refresh.token")).thenReturn(604800L);
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+    }
+
+    private RefreshRequest refreshRequest() {
+        RefreshRequest request = new RefreshRequest();
+        request.setRefreshToken("valid.refresh.token");
+        return request;
+    }
+
+    private void assertAuthorizationTokenExpired() {
+        assertThatThrownBy(() -> authService.refreshToken(refreshRequest()))
+                .isInstanceOfSatisfying(BusinessException.class, exception -> {
+                    assertThat(exception.getCode()).isEqualTo(401);
+                    assertThat(exception).hasMessage("授权令牌已失效，请重新登录");
+                });
     }
 
     // ==================== Logout Tests ====================
