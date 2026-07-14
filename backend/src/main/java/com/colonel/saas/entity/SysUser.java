@@ -76,6 +76,9 @@ public class SysUser extends com.colonel.saas.common.base.BaseEntity {
     @TableField("status")
     private Integer status = 1;
 
+    @TableField("authz_version")
+    private Long authzVersion = 1L;
+
     /**
      * 是否强制修改密码
      * <p>对应数据库列：{@code force_password_change}，新建待激活用户默认为 true，
