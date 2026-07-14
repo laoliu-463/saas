@@ -32,6 +32,12 @@ security:
   jwt:
     secret: ${JWT_SECRET}
 
+authorization:
+  runtime:
+    default-mode: ${AUTHORIZATION_RUNTIME_DEFAULT_MODE:LEGACY}
+    snapshot-cache-ttl: ${AUTHORIZATION_SNAPSHOT_CACHE_TTL:5m}
+    domain-modes: {}
+
 app:
   cors:
     allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS}

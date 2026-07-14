@@ -2,6 +2,12 @@ security:
   jwt:
     secret: test-jwt-secret-for-unit-testing-only-placeholder-32chars
 
+authorization:
+  runtime:
+    default-mode: ${AUTHORIZATION_RUNTIME_DEFAULT_MODE:LEGACY}
+    snapshot-cache-ttl: ${AUTHORIZATION_SNAPSHOT_CACHE_TTL:5m}
+    domain-modes: {}
+
 spring:
   main:
     banner-mode: off

@@ -72,6 +72,12 @@ security:
     secret: ${JWT_SECRET:test-secret-key-replace-before-real-pre-runtime}
     expire-seconds: ${JWT_EXPIRE_SECONDS:7200}
 
+authorization:
+  runtime:
+    default-mode: ${AUTHORIZATION_RUNTIME_DEFAULT_MODE:LEGACY}
+    snapshot-cache-ttl: ${AUTHORIZATION_SNAPSHOT_CACHE_TTL:5m}
+    domain-modes: {}
+
 performance:
   cache:
     warmup:
