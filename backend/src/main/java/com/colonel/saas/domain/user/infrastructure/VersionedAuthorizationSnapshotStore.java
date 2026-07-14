@@ -8,8 +8,6 @@ import com.colonel.saas.domain.user.port.AuthorizationSnapshotStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Primary;
-import org.springframework.dao.DataAccessException;
-import org.springframework.data.redis.serializer.SerializationException;
 import org.springframework.stereotype.Component;
 
 import java.util.Optional;
@@ -48,7 +46,7 @@ public class VersionedAuthorizationSnapshotStore implements AuthorizationSnapsho
             if (cached.isPresent()) {
                 return cached;
             }
-        } catch (DataAccessException | SerializationException cacheFailure) {
+        } catch (RuntimeException cacheFailure) {
             logCacheFailure("read", cacheKey, cacheFailure);
         }
 
@@ -57,9 +55,10 @@ public class VersionedAuthorizationSnapshotStore implements AuthorizationSnapsho
                     databaseStore.loadActiveSnapshot(userId, authzVersion);
             loaded.ifPresent(snapshot -> writeCache(snapshot, cacheKey));
             return loaded;
-        } catch (AuthorizationUnavailableException unavailable) {
-            throw unavailable;
-        } catch (DataAccessException databaseFailure) {
+        } catch (RuntimeException databaseFailure) {
+            if (databaseFailure instanceof AuthorizationUnavailableException unavailable) {
+                throw unavailable;
+            }
             throw new AuthorizationUnavailableException(databaseFailure);
         }
     }
@@ -67,7 +66,7 @@ public class VersionedAuthorizationSnapshotStore implements AuthorizationSnapsho
     private void writeCache(AuthorizationSnapshot snapshot, String cacheKey) {
         try {
             cache.put(snapshot, properties.getSnapshotCacheTtl());
-        } catch (DataAccessException | SerializationException cacheFailure) {
+        } catch (RuntimeException cacheFailure) {
             logCacheFailure("write", cacheKey, cacheFailure);
         }
     }

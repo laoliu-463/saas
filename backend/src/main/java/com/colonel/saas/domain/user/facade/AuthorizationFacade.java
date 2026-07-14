@@ -1,13 +1,9 @@
 package com.colonel.saas.domain.user.facade;
 
 import com.colonel.saas.domain.user.api.AuthorizationDecision;
-
-import java.util.UUID;
-import java.util.List;
+import com.colonel.saas.domain.user.api.AuthorizationPrincipal;
 
 public interface AuthorizationFacade {
 
-    AuthorizationDecision authorize(UUID userId, String permissionCode);
-
-    List<String> grantedPermissionCodes(UUID userId);
+    AuthorizationDecision authorize(AuthorizationPrincipal principal, String permissionCode);
 }
