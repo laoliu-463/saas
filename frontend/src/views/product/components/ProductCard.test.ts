@@ -128,6 +128,20 @@ describe('ProductCard pin action', () => {
     expect(wrapper.text()).toContain('已入库·列表不可见')
   })
 
+  it('marks a double commission product that does not support ads', () => {
+    const product = {
+      ...baseProps.product,
+      cosType: 1,
+      supportsAds: false
+    }
+    const wrapper = mount(ProductCard, {
+      props: { ...baseProps, product },
+      global: { stubs: naiveStubs }
+    })
+
+    expect(wrapper.get('[data-testid="product-fake-double-commission"]').text()).toBe('不支持投流')
+  })
+
   it('opens ads rule modal when the ads tag is clicked', async () => {
     const product = {
       ...baseProps.product,

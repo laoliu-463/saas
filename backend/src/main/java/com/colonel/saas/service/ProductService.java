@@ -1692,8 +1692,9 @@ public class ProductService implements CopyPromotionSupportPort {
             }
         }
         current.putAll(normalizedPatch);
+        Map<String, Object> normalizedCurrent = normalizeAuditSupplement(current, snapshot);
 
-        state.setAuditPayload(writeAuditPayload(current));
+        state.setAuditPayload(writeAuditPayload(normalizedCurrent));
         state.setLastOperationAt(LocalDateTime.now());
         if (state.getId() == null) {
             state.setId(UUID.randomUUID());
@@ -3957,7 +3958,7 @@ public class ProductService implements CopyPromotionSupportPort {
         if (!approved && !StringUtils.hasText(reason)) {
             throw BusinessException.stateInvalid("审核拒绝时必须填写原因");
         }
-        ensureSnapshotExists(activityId, productId);
+        ProductSnapshot snapshot = ensureSnapshotExists(activityId, productId);
         ProductOperationState state = getOrInitOperationState(activityId, productId);
         ProductBizStatus beforeStatus = productBizStatusService.readBizStatus(state);
         if (beforeStatus == null) {
@@ -3965,8 +3966,9 @@ public class ProductService implements CopyPromotionSupportPort {
         }
         String auditPayload = null;
         if (approved) {
-            validateAuditSupplement(supplement);
-            auditPayload = writeAuditPayload(supplement);
+            Map<String, Object> normalizedSupplement = normalizeAuditSupplement(supplement, snapshot);
+            validateAuditSupplement(normalizedSupplement);
+            auditPayload = writeAuditPayload(normalizedSupplement);
             assertNoExistingLibraryDuplicate(activityId, productId);
         }
         final String approvedAuditPayload = auditPayload;
@@ -3984,7 +3986,7 @@ public class ProductService implements CopyPromotionSupportPort {
             payload.put("eventLabel", "审核通过并加入商品库");
             payload.put("selectedToLibrary", true);
             payload.put("libraryVisible", true);
-            payload.put("supplement", normalizeAuditSupplement(supplement));
+            payload.put("supplement", normalizeAuditSupplement(supplement, snapshot));
             productBizStatusService.changeStatus(
                     state,
                     ProductBizStatus.APPROVED,
@@ -6456,6 +6458,18 @@ public class ProductService implements CopyPromotionSupportPort {
         putNormalizedBoolean(normalized, "notInLibrary", supplement.get("notInLibrary"));
         putNormalizedNumber(normalized, "sampleThresholdSales", supplement.get("sampleThresholdSales"));
         putNormalizedNumber(normalized, "sampleThresholdLevel", supplement.get("sampleThresholdLevel"));
+        return normalized;
+    }
+
+    private Map<String, Object> normalizeAuditSupplement(
+            Map<String, Object> supplement,
+            ProductSnapshot snapshot) {
+        Map<String, Object> normalized = new LinkedHashMap<>(normalizeAuditSupplement(supplement));
+        if (snapshot != null
+                && Integer.valueOf(1).equals(snapshot.getCosType())
+                && Boolean.FALSE.equals(readBoolean(normalized, "supportsAds"))) {
+            normalized.put("adsRule", "不支持投流");
+        }
         return normalized;
     }
 

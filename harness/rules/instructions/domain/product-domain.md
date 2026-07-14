@@ -17,6 +17,7 @@
 - 转链成功后必须落 `pick_source_mapping`。
 - 活动商品以商品自身上游推广中状态作为自动入库和可操作主判断来源。
 - 人工审核通过或直接入库前必须按 `product_id` 拦截商品库中已存在的其他有效关系；批量入库逐条执行同一检查。
+- 上游 `product_snapshot.cos_type=1` 且审核补充明确 `supportsAds=false` 时，必须把 `audit_payload.adsRule` 写为“不支持投流”，双佣金标记不得被当作支持投流。
 - 历史状态断链必须通过商品域 repair 入口修复，不允许裸 SQL 批量直改。
 
 ## 禁止越界

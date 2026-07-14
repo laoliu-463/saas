@@ -628,6 +628,48 @@ class ProductServiceActivityStatusIndependenceTest {
     }
 
     @Test
+    void auditProduct_shouldMarkFakeDoubleCommissionAsNotSupportingAds() throws Exception {
+        String activityId = "ACT_FAKE_DOUBLE";
+        String productId = "FAKE_DOUBLE";
+        UUID operatorId = UUID.randomUUID();
+        UUID operatorDeptId = UUID.randomUUID();
+        ProductSnapshot snapshot = snapshot(activityId, productId);
+        snapshot.setCosType(1);
+        ProductOperationState state = state(activityId, productId);
+        Map<String, Object> supplement = new LinkedHashMap<>(validAuditSupplement());
+        supplement.put("supportsAds", false);
+
+        when(snapshotMapper.selectOne(any())).thenReturn(snapshot);
+        when(operationStateMapper.selectOne(any())).thenReturn(state);
+        when(operationStateMapper.selectList(any())).thenReturn(List.of());
+        when(productBizStatusService.readBizStatus(state)).thenReturn(ProductBizStatus.PENDING_AUDIT);
+        when(productBizStatusService.changeStatus(
+                eq(state),
+                eq(ProductBizStatus.APPROVED),
+                eq("AUDIT"),
+                eq(operatorId),
+                eq(operatorDeptId),
+                any(),
+                eq("审核通过，已加入商品库"),
+                any(ProductBizStatusService.StatusMutation.class)))
+                .thenAnswer(invocation -> {
+                    ProductBizStatusService.StatusMutation mutation = invocation.getArgument(7);
+                    mutation.apply(state);
+                    state.setBizStatus(ProductBizStatus.APPROVED.name());
+                    return state;
+                });
+
+        productService.auditProduct(activityId, productId, true, "素材完整", supplement, operatorId, operatorDeptId);
+
+        Map<String, Object> persisted = OBJECT_MAPPER.readValue(
+                state.getAuditPayload(),
+                new TypeReference<Map<String, Object>>() {});
+        assertThat(persisted)
+                .containsEntry("supportsAds", false)
+                .containsEntry("adsRule", "不支持投流");
+    }
+
+    @Test
     void upsertSnapshots_shouldPreserveLocalOperationStateFieldsWhenSnapshotRefreshes() {
         String activityId = "ACT007";
         String productId = "7";

@@ -177,6 +177,28 @@ class ProductServiceFilterTest {
     }
 
     @Test
+    void updateAuditSupplement_shouldMarkFakeDoubleCommissionAsNotSupportingAds() {
+        ProductSnapshot snapshot = snapshot("10001", "9001", "玩具乐器", 9900L);
+        snapshot.setCosType(1);
+        ProductOperationState state = state("10001", "9001");
+        state.setAuditPayload("{\"supportsAds\":true,\"adsRule\":\"投流比例1:0.5\"}");
+        when(snapshotMapper.selectById(snapshot.getId())).thenReturn(snapshot);
+        when(operationStateMapper.selectOne(any())).thenReturn(state);
+        when(operationStateMapper.updateById(any())).thenReturn(1);
+
+        Product result = service.updateAuditSupplement(
+                snapshot.getId(),
+                Map.of("supportsAds", false),
+                UUID.randomUUID(),
+                UUID.randomUUID());
+
+        assertThat(result.getAuditSupplement())
+                .containsEntry("supportsAds", false)
+                .containsEntry("adsRule", "不支持投流");
+        assertThat(state.getAuditPayload()).contains("\"adsRule\":\"不支持投流\"");
+    }
+
+    @Test
     void getSelectedLibraryPage_shouldFilterByCommissionRange() {
         ProductOperationState state1 = state("10001", "9001");
         ProductOperationState state2 = state("10002", "9002");
