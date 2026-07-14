@@ -88,11 +88,53 @@ class AuthorizationDifferenceLoggerTest {
                         + "newReason=UNAVAILABLE newScope=DENY traceId=trace-6b");
     }
 
+    @Test
+    void log_replacesCrlfAndSensitiveTraceIdWithFixedPlaceholder() {
+        String unsafeTraceId = "trace-safe\r\npassword=forbidden token=forbidden";
+        MDC.put("traceId", unsafeTraceId);
+
+        new AuthorizationDifferenceLogger().log(unavailableDecision());
+
+        assertSingleSafeEvent(
+                "AUTHZ_SHADOW comparison=NEW_UNAVAILABLE mode=SHADOW "
+                        + "userId=" + USER_ID + " domain=sample permission=sample:approve "
+                        + "newReason=UNAVAILABLE newScope=DENY traceId=INVALID");
+        assertThat(appender.list.get(0).getFormattedMessage())
+                .doesNotContain(unsafeTraceId, "password=forbidden", "token=forbidden");
+    }
+
+    @Test
+    void log_replacesOverlongTraceIdWithoutWritingOriginalValue() {
+        String overlongTraceId = "x".repeat(129);
+        MDC.put("traceId", overlongTraceId);
+
+        new AuthorizationDifferenceLogger().log(unavailableDecision());
+
+        assertSingleSafeEvent(
+                "AUTHZ_SHADOW comparison=NEW_UNAVAILABLE mode=SHADOW "
+                        + "userId=" + USER_ID + " domain=sample permission=sample:approve "
+                        + "newReason=UNAVAILABLE newScope=DENY traceId=INVALID");
+        assertThat(appender.list.get(0).getFormattedMessage()).doesNotContain(overlongTraceId);
+    }
+
+    private static AuthorizationRuntimeDecision unavailableDecision() {
+        return new AuthorizationRuntimeDecision(
+                USER_ID,
+                "sample",
+                "sample:approve",
+                AuthorizationRuntimeMode.SHADOW,
+                false,
+                null,
+                false,
+                AuthorizationComparison.NEW_UNAVAILABLE);
+    }
+
     private void assertSingleSafeEvent(String expectedMessage) {
         assertThat(appender.list).singleElement().satisfies(event -> {
             assertThat(event.getLevel()).isEqualTo(Level.INFO);
             assertThat(event.getFormattedMessage())
                     .isEqualTo(expectedMessage)
+                    .doesNotContain("\r", "\n")
                     .doesNotContain(
                             "token=",
                             "roles=",
