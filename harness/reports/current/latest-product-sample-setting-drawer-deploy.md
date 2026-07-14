@@ -2,11 +2,11 @@
 
 ## Metadata
 
-- Time: 2026-07-14 17:06:54 +08:00
+- Time: 2026-07-14 17:12:41 +08:00
 - Environment: real-pre
 - Scope: full
 - Branch: codex/ddd-user-role-application
-- Commit: df76fef6
+- Commit: 4a40a74c
 - Owned worktree: clean
 - Deploy remote: true
 
@@ -45,14 +45,14 @@ Frontend build: PASS (npm --prefix frontend ci; npm --prefix frontend run build)
 
 ~~~text
 NAME                              IMAGE                            COMMAND                  SERVICE             CREATED          STATUS                       PORTS
-saas-active-backend-real-pre-1    colonel-saas/backend:real-pre    "sh -c 'java $JAVA_O…"   backend-real-pre    28 seconds ago   Up 24 seconds (healthy)      127.0.0.1:8081->8080/tcp
-saas-active-frontend-real-pre-1   colonel-saas/frontend:real-pre   "/docker-entrypoint.…"   frontend-real-pre   26 seconds ago   Up 8 seconds (healthy)       127.0.0.1:3001->80/tcp
-saas-active-postgres-real-pre-1   postgres:15-alpine               "docker-entrypoint.s…"   postgres-real-pre   52 minutes ago   Up 52 minutes (healthy)      5432/tcp
+saas-active-backend-real-pre-1    colonel-saas/backend:real-pre    "sh -c 'java $JAVA_O…"   backend-real-pre    27 seconds ago   Up 24 seconds (healthy)      127.0.0.1:8081->8080/tcp
+saas-active-frontend-real-pre-1   colonel-saas/frontend:real-pre   "/docker-entrypoint.…"   frontend-real-pre   26 seconds ago   Up 7 seconds (healthy)       127.0.0.1:3001->80/tcp
+saas-active-postgres-real-pre-1   postgres:15-alpine               "docker-entrypoint.s…"   postgres-real-pre   58 minutes ago   Up 58 minutes (healthy)      5432/tcp
 saas-active-redis-real-pre-1      redis:7-alpine                   "docker-entrypoint.s…"   redis-real-pre      4 weeks ago      Up About an hour (healthy)   6379/tcp
 NAMES                             STATUS                         PORTS
 saas-active-frontend-real-pre-1   Up 8 seconds (healthy)         127.0.0.1:3001->80/tcp
 saas-active-backend-real-pre-1    Up 24 seconds (healthy)        127.0.0.1:8081->8080/tcp
-saas-active-postgres-real-pre-1   Up 52 minutes (healthy)        5432/tcp
+saas-active-postgres-real-pre-1   Up 58 minutes (healthy)        5432/tcp
 campus_frontend                   Up About an hour               0.0.0.0:5173->5173/tcp, [::]:5173->5173/tcp
 campus_backend                    Up About an hour (healthy)     0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp
 campus_postgres                   Up About an hour (healthy)     0.0.0.0:5433->5432/tcp, [::]:5433->5432/tcp
