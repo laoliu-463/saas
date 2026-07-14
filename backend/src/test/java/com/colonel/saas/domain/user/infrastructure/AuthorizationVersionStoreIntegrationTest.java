@@ -7,6 +7,8 @@ import com.colonel.saas.testsupport.BaseIntegrationTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.Collections;
 import java.util.List;
@@ -29,6 +31,9 @@ class AuthorizationVersionStoreIntegrationTest extends BaseIntegrationTest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    @Autowired
+    private PlatformTransactionManager transactionManager;
+
     @Test
     void incrementUser_returnsExactPreviousAndCurrentVersion() {
         UUID userId = insertUser(UUID.randomUUID(), 4L, NOT_DELETED);
@@ -41,6 +46,21 @@ class AuthorizationVersionStoreIntegrationTest extends BaseIntegrationTest {
         assertThatThrownBy(() -> changes.add(
                 new AuthorizationVersionStore.VersionChange(userId, 5L, 6L)))
                 .isInstanceOf(UnsupportedOperationException.class);
+    }
+
+    @Test
+    void incrementUser_twiceInSameTransaction_returnsContiguousChangesAndUpdatesTwice() {
+        UUID userId = insertUser(UUID.randomUUID(), 4L, NOT_DELETED);
+
+        List<List<AuthorizationVersionStore.VersionChange>> calls =
+                new TransactionTemplate(transactionManager).execute(status -> List.of(
+                        store.incrementUser(userId),
+                        store.incrementUser(userId)));
+
+        assertThat(calls).containsExactly(
+                List.of(new AuthorizationVersionStore.VersionChange(userId, 4L, 5L)),
+                List.of(new AuthorizationVersionStore.VersionChange(userId, 5L, 6L)));
+        assertThat(selectVersion(userId)).isEqualTo(6L);
     }
 
     @Test
@@ -82,6 +102,23 @@ class AuthorizationVersionStoreIntegrationTest extends BaseIntegrationTest {
         assertThat(selectVersion(deletedRelationUserId)).isEqualTo(8L);
         assertThat(selectVersion(unrelatedUserId)).isEqualTo(11L);
         assertThat(selectVersion(deletedUserId)).isEqualTo(13L);
+    }
+
+    @Test
+    void incrementUsersByRole_twiceInSameTransaction_returnsContiguousChangesAndUpdatesTwice() {
+        UUID roleId = insertRole();
+        UUID userId = insertUser(UUID.randomUUID(), 2L, NOT_DELETED);
+        assignRole(userId, roleId, NOT_DELETED);
+
+        List<List<AuthorizationVersionStore.VersionChange>> calls =
+                new TransactionTemplate(transactionManager).execute(status -> List.of(
+                        store.incrementUsersByRole(roleId),
+                        store.incrementUsersByRole(roleId)));
+
+        assertThat(calls).containsExactly(
+                List.of(new AuthorizationVersionStore.VersionChange(userId, 2L, 3L)),
+                List.of(new AuthorizationVersionStore.VersionChange(userId, 3L, 4L)));
+        assertThat(selectVersion(userId)).isEqualTo(4L);
     }
 
     @Test
