@@ -48,10 +48,14 @@ public abstract class BaseIntegrationTest {
         applySchemaCompatibilityPatches();
         jdbcTemplate.execute("""
                 TRUNCATE TABLE
+                    sys_authz_change_log,
+                    sys_role_domain_scope,
+                    sys_role_permission,
+                    sys_permission,
+                    sys_user_role,
+                    sys_role,
                     sys_user,
                     sys_dept,
-                    sys_role,
-                    sys_user_role,
                     promotion_link,
                     performance_records,
                     colonel_partner,
