@@ -2,11 +2,11 @@
 
 ## Metadata
 
-- Time: 2026-07-14 14:46:06 +08:00
+- Time: 2026-07-14 14:48:36 +08:00
 - Environment: real-pre
 - Scope: full
 - Branch: codex/ddd-user-role-application
-- Commit: 9957b19b
+- Commit: 35be7a01
 - Owned worktree: clean
 - Deploy remote: true
 
@@ -32,20 +32,20 @@ harness/rules/instructions/domain/product-domain.md
 ## Build Result
 
 ~~~text
-Local/remote build PASS: backend package; frontend build; remote Maven clean package; remote JAR guard PASS
+PASS: local backend tests/build; frontend typecheck/tests/build; remote Maven clean package and JAR size guard passed, but remote build used current remote feature/auth-system checkout rather than codex/ddd-user-role-application
 ~~~
 
 ## Docker Status
 
 ~~~text
 NAME                              IMAGE                            COMMAND                  SERVICE             CREATED             STATUS                       PORTS
-saas-active-backend-real-pre-1    colonel-saas/backend:real-pre    "sh -c 'java $JAVA_O…"   backend-real-pre    4 minutes ago       Up 4 minutes (healthy)       127.0.0.1:8081->8080/tcp
-saas-active-frontend-real-pre-1   colonel-saas/frontend:real-pre   "/docker-entrypoint.…"   frontend-real-pre   4 minutes ago       Up 4 minutes (healthy)       127.0.0.1:3001->80/tcp
+saas-active-backend-real-pre-1    colonel-saas/backend:real-pre    "sh -c 'java $JAVA_O…"   backend-real-pre    7 minutes ago       Up 7 minutes (healthy)       127.0.0.1:8081->8080/tcp
+saas-active-frontend-real-pre-1   colonel-saas/frontend:real-pre   "/docker-entrypoint.…"   frontend-real-pre   7 minutes ago       Up 6 minutes (healthy)       127.0.0.1:3001->80/tcp
 saas-active-postgres-real-pre-1   postgres:15-alpine               "docker-entrypoint.s…"   postgres-real-pre   About an hour ago   Up About an hour (healthy)   5432/tcp
 saas-active-redis-real-pre-1      redis:7-alpine                   "docker-entrypoint.s…"   redis-real-pre      4 weeks ago         Up 25 hours (healthy)        6379/tcp
 NAMES                             STATUS                       PORTS
-saas-active-frontend-real-pre-1   Up 4 minutes (healthy)       127.0.0.1:3001->80/tcp
-saas-active-backend-real-pre-1    Up 4 minutes (healthy)       127.0.0.1:8081->8080/tcp
+saas-active-frontend-real-pre-1   Up 6 minutes (healthy)       127.0.0.1:3001->80/tcp
+saas-active-backend-real-pre-1    Up 7 minutes (healthy)       127.0.0.1:8081->8080/tcp
 saas-active-postgres-real-pre-1   Up About an hour (healthy)   5432/tcp
 campus_frontend                   Up 25 hours                  5173/tcp
 campus_backend                    Up 25 hours (healthy)        0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp
@@ -63,7 +63,7 @@ PASS: remote backend health HTTP 200 UP; remote frontend healthz HTTP 200 ok; re
 ## Business Validation Result
 
 ~~~text
-FAIL/BLOCKED: remote deployment used -SkipBusinessValidation because real-pre preflight admin login previously failed HTTP 401 after 5 attempts; admin token unavailable; Douyin token readiness BLOCKED_AUTH; real business flow not executed. Must rerun npm run e2e:real-pre:p0:preflight after valid credentials are restored.
+BLOCKED: real-pre admin login previously failed HTTP 401 after 5 attempts; admin token unavailable; Douyin token readiness BLOCKED_AUTH; real business flow not executed
 ~~~
 
 ## Content Maintenance Result
@@ -75,12 +75,12 @@ SKIPPED: -ContentMaintenance off. Prior harness limits check remains TASK_GATE=F
 ## Remote Deploy Result
 
 ~~~text
-PASS: deploy-remote.ps1 completed remote git pull, schema guards, remote Maven clean package, JAR size guard, compose rebuild, and remote health checks.
+BLOCKED/PARTIAL: deploy-remote.ps1 completed git pull/build/restart/health on remote feature/auth-system@9797bda8. Requested feature branch codex/ddd-user-role-application@35be7a01 was pushed to origin but was not checked out remotely; remote ProductService/ProductCard/ProductDetail do not contain the new fake-double-commission no-ads rule. Do not claim feature rollout.
 ~~~
 
 ## Retro Summary
 
-远端部署已通过；真实业务预检仍因管理员登录 HTTP 401 未执行。下一步：恢复有效 real-pre 管理员凭证并复跑 preflight；清理/归档历史 harness/reports 根目录时间戳报告后重跑 harness limits。工具限制：当前环境未提供 rtk 命令，已直接执行仓库脚本。
+功能分支已推送到 origin，但固定远端部署脚本按远端当前 feature/auth-system 分支执行，导致本次功能未被证明上线；且真实业务预检因管理员登录 HTTP 401 未执行。下一步需由负责人确认是将本次提交以合并/cherry-pick 方式集成到远端 feature/auth-system，还是调整部署脚本支持显式目标分支；确认后再部署并复跑业务 preflight。工具限制：当前环境未提供 rtk 命令，已直接执行仓库脚本。
 
 ## Conclusion
 
