@@ -55,12 +55,6 @@ public class SysUserGroupMembershipApplication {
             UUID previousDeptId = user.getDeptId();
             user.setDeptId(groupAssignment.effectiveDeptId());
             sysUserMapper.updateById(user);
-            if (deptChanged(previousDeptId, user.getDeptId())) {
-                authorizationVersionService.incrementUser(
-                        user.getId(),
-                        "USER_GROUP_MEMBERSHIP_UPDATED",
-                        currentUserId);
-            }
             recordOrgChangeIfNeeded(user, previousDeptId, user.getDeptId(), currentUserId);
             if (deptChanged(previousDeptId, user.getDeptId())) {
                 authorizationVersionService.incrementUser(
@@ -83,12 +77,6 @@ public class SysUserGroupMembershipApplication {
             UUID previousDeptId = user.getDeptId();
             user.setDeptId(null);
             sysUserMapper.updateById(user);
-            if (deptChanged(previousDeptId, user.getDeptId())) {
-                authorizationVersionService.incrementUser(
-                        user.getId(),
-                        "USER_GROUP_MEMBERSHIP_UPDATED",
-                        currentUserId);
-            }
             recordOrgChangeIfNeeded(user, previousDeptId, null, currentUserId);
             if (deptChanged(previousDeptId, user.getDeptId())) {
                 authorizationVersionService.incrementUser(
