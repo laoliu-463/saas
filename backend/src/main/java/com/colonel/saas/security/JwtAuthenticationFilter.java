@@ -4,7 +4,12 @@ import com.colonel.saas.auth.service.AuthService;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.common.result.ResultCode;
+import com.colonel.saas.config.AuthorizationRuntimeProperties;
 import com.colonel.saas.config.RuntimeExposurePolicy;
+import com.colonel.saas.domain.user.api.AuthorizationPrincipal;
+import com.colonel.saas.domain.user.api.AuthorizationTokenRejectedException;
+import com.colonel.saas.domain.user.api.AuthorizationUnavailableException;
+import com.colonel.saas.domain.user.facade.AuthorizationPrincipalFacade;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.jsonwebtoken.Claims;
 import jakarta.servlet.FilterChain;
@@ -13,7 +18,6 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.env.Environment;
-import org.springframework.core.env.StandardEnvironment;
 import org.springframework.http.MediaType;
 import org.springframework.lang.NonNull;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -68,6 +72,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     /** 认证服务，提供 Token 黑名单校验能力 */
     private final AuthService authService;
 
+    /** 用户域授权主体门面，用于校验令牌版本并读取数据库可信主体 */
+    private final AuthorizationPrincipalFacade principalFacade;
+
+    /** 授权运行时配置，用于判断是否启用授权版本校验 */
+    private final AuthorizationRuntimeProperties runtimeProperties;
+
     /** JSON 序列化器，用于将错误响应写入 HTTP 输出流 */
     private final ObjectMapper objectMapper;
 
@@ -79,6 +89,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
      *
      * @param jwtTokenProvider JWT 令牌提供者
      * @param authService      认证服务
+     * @param principalFacade  授权主体门面
+     * @param runtimeProperties 授权运行时配置
      * @param objectMapper     JSON 序列化器
      * @param environment      Spring 环境（用于判断路径是否跳过认证）
      */
@@ -86,27 +98,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     public JwtAuthenticationFilter(
             JwtTokenProvider jwtTokenProvider,
             AuthService authService,
+            AuthorizationPrincipalFacade principalFacade,
+            AuthorizationRuntimeProperties runtimeProperties,
             ObjectMapper objectMapper,
             Environment environment) {
         this.jwtTokenProvider = jwtTokenProvider;
         this.authService = authService;
+        this.principalFacade = principalFacade;
+        this.runtimeProperties = runtimeProperties;
         this.objectMapper = objectMapper;
         this.environment = environment;
-    }
-
-    /**
-     * 测试用简化构造函数，使用默认的 {@link StandardEnvironment}。
-     * <p>单元测试中可省略 Environment 注入。
-     *
-     * @param jwtTokenProvider JWT 令牌提供者
-     * @param authService      认证服务
-     * @param objectMapper     JSON 序列化器
-     */
-    public JwtAuthenticationFilter(
-            JwtTokenProvider jwtTokenProvider,
-            AuthService authService,
-            ObjectMapper objectMapper) {
-        this(jwtTokenProvider, authService, objectMapper, new StandardEnvironment());
     }
 
     /**
@@ -214,10 +215,29 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             List<String> roleCodes = claims.get("roleCodes", List.class);
             String username = claims.get("username", String.class);
             Boolean pendingActivation = claims.get("pendingActivation", Boolean.class);
+            Long tokenAuthzVersion = claims.get("authzVersion", Long.class);
+
+            AuthorizationPrincipal principal;
+            if (runtimeProperties.requiresVersionValidation()) {
+                if (tokenAuthzVersion == null || tokenAuthzVersion < 1) {
+                    throw new AuthorizationTokenRejectedException();
+                }
+                principal = principalFacade.requireCurrent(userId, tokenAuthzVersion);
+            } else {
+                long legacyVersion = tokenAuthzVersion == null || tokenAuthzVersion < 1
+                        ? 1L
+                        : tokenAuthzVersion;
+                principal = new AuthorizationPrincipal(
+                        userId,
+                        deptId,
+                        username,
+                        legacyVersion,
+                        Boolean.TRUE.equals(pendingActivation));
+            }
 
             // 第八步：待激活用户受限访问校验
             // 新用户首次登录后处于 pendingActivation 状态，仅允许查看个人信息和修改密码
-            if (Boolean.TRUE.equals(pendingActivation)) {
+            if (principal.pendingActivation()) {
                 String servletPath = request.getServletPath();
                 String requestUri = request.getRequestURI();
                 String path = (servletPath != null && !servletPath.isBlank()) ? servletPath : requestUri;
@@ -230,19 +250,24 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             // 第九步：设置 Spring Security 上下文，使 .authenticated() 校验通过
             // 使用空的 GrantedAuthority 列表，实际权限由数据范围和角色编码在业务层控制
             UsernamePasswordAuthenticationToken authentication =
-                    new UsernamePasswordAuthenticationToken(userId, null, Collections.emptyList());
+                    new UsernamePasswordAuthenticationToken(principal, null, Collections.emptyList());
             SecurityContextHolder.getContext().setAuthentication(authentication);
 
             // 第十步：将身份信息写入 request attribute，供控制器层通过 @RequestAttribute 读取
-            request.setAttribute("userId", userId);
-            request.setAttribute("deptId", deptId);
+            request.setAttribute("authorizationPrincipal", principal);
+            request.setAttribute("userId", principal.userId());
+            request.setAttribute("deptId", principal.deptId());
             request.setAttribute("dataScope", dataScope);
             request.setAttribute("roleCodes", roleCodes);
-            request.setAttribute("username", username);
+            request.setAttribute("username", principal.username());
 
             // 认证通过，继续执行后续过滤器和控制器
             filterChain.doFilter(request, response);
-        } catch (Exception e) {
+        } catch (AuthorizationTokenRejectedException exception) {
+            writeUnauthorized(response, exception.getMessage());
+        } catch (AuthorizationUnavailableException exception) {
+            writeServiceUnavailable(response, exception.getMessage());
+        } catch (Exception exception) {
             // Token 解析失败（签名错误、格式错误、已过期等），统一返回 401
             writeUnauthorized(response, "Token 无效或已过期");
         }
@@ -263,6 +288,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         response.setCharacterEncoding(StandardCharsets.UTF_8.name());               // UTF-8 编码
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);                  // JSON 内容类型
         ApiResult<Void> result = ApiResult.of(ResultCode.UNAUTHORIZED.getCode(), msg, null);
+        response.getWriter().write(objectMapper.writeValueAsString(result));
+    }
+
+    private void writeServiceUnavailable(HttpServletResponse response, String msg) throws IOException {
+        response.setStatus(HttpServletResponse.SC_SERVICE_UNAVAILABLE);
+        response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+        ApiResult<Void> result = ApiResult.of(503, msg, null, "AUTHORIZATION_UNAVAILABLE");
         response.getWriter().write(objectMapper.writeValueAsString(result));
     }
 
