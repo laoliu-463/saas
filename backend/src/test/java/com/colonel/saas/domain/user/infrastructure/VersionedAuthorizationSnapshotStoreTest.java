@@ -12,17 +12,21 @@ import com.colonel.saas.domain.user.port.AuthorizationSnapshotCache;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.data.redis.RedisConnectionFailureException;
+import org.springframework.data.redis.serializer.SerializationException;
 
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -111,6 +115,30 @@ class VersionedAuthorizationSnapshotStoreTest {
     }
 
     @Test
+    void redisSerializationReadFailureFallsBackToDatabase() {
+        UUID userId = UUID.randomUUID();
+        AuthorizationSnapshot snapshot = snapshot(userId, 3L);
+        when(cache.get(userId, 3L)).thenThrow(new SerializationException("invalid cache json"));
+        when(databaseStore.loadActiveSnapshot(userId, 3L)).thenReturn(Optional.of(snapshot));
+
+        assertThat(store.loadActiveSnapshot(userId, 3L)).contains(snapshot);
+
+        verify(cache).put(snapshot, CACHE_TTL);
+    }
+
+    @ParameterizedTest
+    @MethodSource("programmingFailures")
+    void cacheReadProgrammingFailurePropagatesWithoutDatabaseFallback(
+            RuntimeException failure) {
+        UUID userId = UUID.randomUUID();
+        when(cache.get(userId, 3L)).thenThrow(failure);
+
+        assertThatThrownBy(() -> store.loadActiveSnapshot(userId, 3L)).isSameAs(failure);
+
+        verifyNoInteractions(databaseStore);
+    }
+
+    @Test
     void redisWriteFailureDoesNotHideSuccessfulDatabaseResult() {
         UUID userId = UUID.randomUUID();
         AuthorizationSnapshot snapshot = snapshot(userId, 3L);
@@ -120,6 +148,30 @@ class VersionedAuthorizationSnapshotStoreTest {
                 .when(cache).put(snapshot, CACHE_TTL);
 
         assertThat(store.loadActiveSnapshot(userId, 3L)).contains(snapshot);
+    }
+
+    @Test
+    void redisSerializationWriteFailureDoesNotHideSuccessfulDatabaseResult() {
+        UUID userId = UUID.randomUUID();
+        AuthorizationSnapshot snapshot = snapshot(userId, 3L);
+        when(cache.get(userId, 3L)).thenReturn(Optional.empty());
+        when(databaseStore.loadActiveSnapshot(userId, 3L)).thenReturn(Optional.of(snapshot));
+        doThrow(new SerializationException("cannot serialize"))
+                .when(cache).put(snapshot, CACHE_TTL);
+
+        assertThat(store.loadActiveSnapshot(userId, 3L)).contains(snapshot);
+    }
+
+    @ParameterizedTest
+    @MethodSource("programmingFailures")
+    void cacheWriteProgrammingFailurePropagates(RuntimeException failure) {
+        UUID userId = UUID.randomUUID();
+        AuthorizationSnapshot snapshot = snapshot(userId, 3L);
+        when(cache.get(userId, 3L)).thenReturn(Optional.empty());
+        when(databaseStore.loadActiveSnapshot(userId, 3L)).thenReturn(Optional.of(snapshot));
+        doThrow(failure).when(cache).put(snapshot, CACHE_TTL);
+
+        assertThatThrownBy(() -> store.loadActiveSnapshot(userId, 3L)).isSameAs(failure);
     }
 
     @Test
@@ -154,6 +206,16 @@ class VersionedAuthorizationSnapshotStoreTest {
     void existingUnavailableFailurePropagatesUnchanged() {
         UUID userId = UUID.randomUUID();
         AuthorizationUnavailableException failure = new AuthorizationUnavailableException();
+        when(cache.get(userId, 3L)).thenReturn(Optional.empty());
+        when(databaseStore.loadActiveSnapshot(userId, 3L)).thenThrow(failure);
+
+        assertThatThrownBy(() -> store.loadActiveSnapshot(userId, 3L)).isSameAs(failure);
+    }
+
+    @Test
+    void databaseProgrammingFailurePropagatesUnchanged() {
+        UUID userId = UUID.randomUUID();
+        IllegalStateException failure = new IllegalStateException("invalid mapped row");
         when(cache.get(userId, 3L)).thenReturn(Optional.empty());
         when(databaseStore.loadActiveSnapshot(userId, 3L)).thenThrow(failure);
 
@@ -203,5 +265,11 @@ class VersionedAuthorizationSnapshotStoreTest {
         return new AuthorizationSnapshot(
                 new AuthorizationSubject(userId, UUID.randomUUID(), authzVersion),
                 List.of());
+    }
+
+    private static Stream<RuntimeException> programmingFailures() {
+        return Stream.of(
+                new IllegalStateException("cache programming failure"),
+                new NullPointerException("cache programming failure"));
     }
 }
