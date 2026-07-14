@@ -249,20 +249,7 @@ public class SysMenuService {
         // 第五步：计算变更后权限哈希
         String newHash = PermissionEventHasher.hashRolePermissions(role.getPermissions(), menuIds);
 
-        // 第六步：权限哈希变化时递增授权版本并发布域事件
-        if (!Objects.equals(oldHash, newHash)) {
-            authorizationVersionService.incrementUsersByRole(
-                    roleId,
-                    "ROLE_MENU_PERMISSIONS_UPDATED",
-                    currentUserId);
-            userDomainEventPublisher.publishRolePermissionUpdated(
-                    roleId,
-                    role.getRoleCode(),
-                    oldHash,
-                    newHash,
-                    currentUserId);
-        }
-        // 第七步：记录操作审计日志
+        // 第六步：记录操作审计日志
         operationLogService.recordSystemAction(
                 currentUserId,
                 "角色菜单管理",
@@ -273,6 +260,19 @@ public class SysMenuService {
                 null,
                 "分配角色菜单: roleId=" + roleId + ", menuCount=" + menuCount
         );
+        // 第七步：权限哈希变化时发布域事件，并在旧序列完成后递增授权版本
+        if (!Objects.equals(oldHash, newHash)) {
+            userDomainEventPublisher.publishRolePermissionUpdated(
+                    roleId,
+                    role.getRoleCode(),
+                    oldHash,
+                    newHash,
+                    currentUserId);
+            authorizationVersionService.incrementUsersByRole(
+                    roleId,
+                    "ROLE_MENU_PERMISSIONS_UPDATED",
+                    currentUserId);
+        }
     }
 
     /**

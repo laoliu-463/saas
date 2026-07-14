@@ -169,7 +169,7 @@ class SysUserGroupMembershipApplicationTest {
     }
 
     @Test
-    void assignUsersToGroup_versionFailurePropagatesBeforeEventsAndCache() {
+    void assignUsersToGroup_versionFailurePropagatesAfterEventsBeforeCache() {
         UUID groupId = UUID.randomUUID();
         UUID effectiveDeptId = UUID.randomUUID();
         UUID oldDeptId = UUID.randomUUID();
@@ -180,6 +180,12 @@ class SysUserGroupMembershipApplicationTest {
         when(orgStructureService.resolveAssignment(null, groupId))
                 .thenReturn(new OrgStructureService.ResolvedAssignment(effectiveDeptId, null, groupId));
         when(sysUserMapper.selectById(userId)).thenReturn(user);
+        when(orgStructureService.splitAssignment(oldDeptId))
+                .thenReturn(new OrgStructureService.SplitAssignment(oldDeptId, null, "old", null, "department"));
+        when(orgStructureService.splitAssignment(effectiveDeptId))
+                .thenReturn(new OrgStructureService.SplitAssignment(null, groupId, null, "group", "biz"));
+        when(orgStructureService.formatOrgChangeRemark(userId, oldDeptId, effectiveDeptId, currentUserId))
+                .thenReturn("org changed");
         doThrow(failure).when(authorizationVersionService).incrementUser(
                 userId,
                 "USER_GROUP_MEMBERSHIP_UPDATED",
@@ -191,17 +197,79 @@ class SysUserGroupMembershipApplicationTest {
                 currentUserId))
                 .isSameAs(failure);
 
-        InOrder factThenVersion = inOrder(sysUserMapper, authorizationVersionService);
-        factThenVersion.verify(sysUserMapper).updateById(user);
-        factThenVersion.verify(authorizationVersionService).incrementUser(
+        InOrder factThenLegacyThenVersion = inOrder(
+                sysUserMapper,
+                operationLogService,
+                userDomainEventPublisher,
+                authorizationVersionService);
+        factThenLegacyThenVersion.verify(sysUserMapper).updateById(user);
+        factThenLegacyThenVersion.verify(operationLogService).recordSystemAction(
+                eq(currentUserId), eq("用户管理"), eq("组织归属变更"), eq("PUT"),
+                eq("SysUser"), eq(userId.toString()), eq("alice"), any());
+        factThenLegacyThenVersion.verify(userDomainEventPublisher).publishUserGroupChanged(
+                eq(userId), eq(null), eq(groupId), eq(oldDeptId), eq(null), eq(currentUserId));
+        factThenLegacyThenVersion.verify(authorizationVersionService).incrementUser(
                 userId,
                 "USER_GROUP_MEMBERSHIP_UPDATED",
                 currentUserId);
-        verify(operationLogService, never()).recordSystemAction(
-                any(), any(), any(), any(), any(), any(), any(), any());
-        verify(userDomainEventPublisher, never()).publishUserGroupChanged(
-                any(), any(), any(), any(), any(), any());
         verify(userPermissionCacheService, never()).invalidateUser(any());
+        verify(userPermissionCacheService, never()).invalidateDataScopeForGroupChange(any(), any());
+    }
+
+    @Test
+    void removeUsersFromGroup_versionFailurePropagatesAfterOrgChangeBeforeCache() {
+        UUID groupId = UUID.randomUUID();
+        UUID parentDeptId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID currentUserId = UUID.randomUUID();
+        SysUser user = user(userId, groupId);
+        RuntimeException failure = new RuntimeException("version failed");
+        when(sysUserMapper.selectById(userId)).thenReturn(user);
+        when(orgStructureService.splitAssignment(groupId))
+                .thenReturn(new OrgStructureService.SplitAssignment(parentDeptId, groupId, "parent", "group", "biz"));
+        when(orgStructureService.splitAssignment(null))
+                .thenReturn(new OrgStructureService.SplitAssignment(null, null, null, null, null));
+        when(orgStructureService.formatOrgChangeRemark(userId, groupId, null, currentUserId))
+                .thenReturn("removed");
+        doThrow(failure).when(authorizationVersionService).incrementUser(
+                userId,
+                "USER_GROUP_MEMBERSHIP_UPDATED",
+                currentUserId);
+
+        assertThatThrownBy(() -> application.removeUsersFromGroup(
+                groupId,
+                List.of(userId),
+                currentUserId))
+                .isSameAs(failure);
+
+        InOrder factThenLegacyThenVersion = inOrder(
+                sysUserMapper,
+                operationLogService,
+                userDomainEventPublisher,
+                authorizationVersionService);
+        factThenLegacyThenVersion.verify(sysUserMapper).updateById(user);
+        factThenLegacyThenVersion.verify(operationLogService).recordSystemAction(
+                currentUserId,
+                "用户管理",
+                "组织归属变更",
+                "PUT",
+                "SysUser",
+                userId.toString(),
+                "alice",
+                "removed");
+        factThenLegacyThenVersion.verify(userDomainEventPublisher).publishUserGroupChanged(
+                userId,
+                groupId,
+                null,
+                parentDeptId,
+                null,
+                currentUserId);
+        factThenLegacyThenVersion.verify(authorizationVersionService).incrementUser(
+                userId,
+                "USER_GROUP_MEMBERSHIP_UPDATED",
+                currentUserId);
+        verify(userPermissionCacheService, never()).invalidateUser(any());
+        verify(userPermissionCacheService, never()).invalidateDataScopeForGroupChange(any(), any());
     }
 
     @Test

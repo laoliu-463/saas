@@ -55,13 +55,13 @@ public class SysUserGroupMembershipApplication {
             UUID previousDeptId = user.getDeptId();
             user.setDeptId(groupAssignment.effectiveDeptId());
             sysUserMapper.updateById(user);
+            recordOrgChangeIfNeeded(user, previousDeptId, user.getDeptId(), currentUserId);
             if (deptChanged(previousDeptId, user.getDeptId())) {
                 authorizationVersionService.incrementUser(
                         user.getId(),
                         "USER_GROUP_MEMBERSHIP_UPDATED",
                         currentUserId);
             }
-            recordOrgChangeIfNeeded(user, previousDeptId, user.getDeptId(), currentUserId);
             userPermissionCacheService.invalidateUser(user.getId());
             userPermissionCacheService.invalidateDataScopeForGroupChange(previousDeptId, user.getDeptId());
         }
@@ -77,13 +77,13 @@ public class SysUserGroupMembershipApplication {
             UUID previousDeptId = user.getDeptId();
             user.setDeptId(null);
             sysUserMapper.updateById(user);
+            recordOrgChangeIfNeeded(user, previousDeptId, null, currentUserId);
             if (deptChanged(previousDeptId, user.getDeptId())) {
                 authorizationVersionService.incrementUser(
                         user.getId(),
                         "USER_GROUP_MEMBERSHIP_UPDATED",
                         currentUserId);
             }
-            recordOrgChangeIfNeeded(user, previousDeptId, null, currentUserId);
             userPermissionCacheService.invalidateUser(user.getId());
             userPermissionCacheService.invalidateDataScopeForGroupChange(previousDeptId, null);
         }
