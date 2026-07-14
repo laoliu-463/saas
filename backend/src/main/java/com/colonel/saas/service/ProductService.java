@@ -147,8 +147,7 @@ public class ProductService implements CopyPromotionSupportPort {
     private static final int SELECTED_LIBRARY_CURSOR_VERSION = 1;
     /** 上游商品状态：推广中。 */
     private static final int UPSTREAM_PRODUCT_STATUS_PROMOTING = 1;
-    /** 审核入库去重窗口：近 3 个月内同商品 ID 不允许重复进入商品库。 */
-    private static final int AUDIT_LIBRARY_DUPLICATE_WINDOW_MONTHS = 3;
+    /** 商品库入库去重：已有有效关系的同商品 ID 不允许重复进入商品库。 */
     private static final Set<String> EDITABLE_AUDIT_SUPPLEMENT_KEYS = Set.of(
             "exclusivePriceAmount",
             "exclusivePriceRemark",
@@ -3765,6 +3764,7 @@ public class ProductService implements CopyPromotionSupportPort {
             existingDetail.put("libraryVisible", true);
             return existingDetail;
         }
+        assertNoExistingLibraryDuplicate(activityId, productId);
         requireUpstreamPromotingForLibraryEntry(snapshot);
         state.setSelectedToLibrary(true);
         state.setSelectedAt(LocalDateTime.now());
@@ -3967,7 +3967,7 @@ public class ProductService implements CopyPromotionSupportPort {
         if (approved) {
             validateAuditSupplement(supplement);
             auditPayload = writeAuditPayload(supplement);
-            assertNoRecentLibraryDuplicateForAudit(activityId, productId);
+            assertNoExistingLibraryDuplicate(activityId, productId);
         }
         final String approvedAuditPayload = auditPayload;
         Map<String, Object> payload = new LinkedHashMap<>();
@@ -6134,24 +6134,21 @@ public class ProductService implements CopyPromotionSupportPort {
         }
     }
 
-    private void assertNoRecentLibraryDuplicateForAudit(String activityId, String productId) {
+    private void assertNoExistingLibraryDuplicate(String activityId, String productId) {
         if (!StringUtils.hasText(productId)) {
             return;
         }
-        LocalDateTime cutoff = LocalDateTime.now().minusMonths(AUDIT_LIBRARY_DUPLICATE_WINDOW_MONTHS);
         LambdaQueryWrapper<ProductOperationState> query = new LambdaQueryWrapper<ProductOperationState>()
                 .eq(ProductOperationState::getProductId, productId.trim())
-                .eq(ProductOperationState::getSelectedToLibrary, true)
-                .ge(ProductOperationState::getSelectedAt, cutoff);
+                .eq(ProductOperationState::getSelectedToLibrary, true);
         if (StringUtils.hasText(activityId)) {
             query.and(w -> w.ne(ProductOperationState::getActivityId, activityId).or().isNull(ProductOperationState::getActivityId));
         }
         List<ProductOperationState> duplicates = operationStateMapper.selectList(query.last("limit 1"));
-        if (duplicates == null || duplicates.isEmpty()) {
-            return;
+        if (duplicates != null && !duplicates.isEmpty()) {
+            throw BusinessException.stateInvalid(
+                    "商品库已存在同商品ID，禁止重复进入商品库：productId=" + productId.trim());
         }
-        throw BusinessException.stateInvalid(
-                "近三个月内商品库已存在同商品ID，禁止重复进入商品库：productId=" + productId.trim());
     }
 
     private void requireText(Map<String, Object> payload, String key, String label, List<String> missing) {

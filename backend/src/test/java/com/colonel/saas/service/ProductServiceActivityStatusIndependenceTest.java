@@ -495,7 +495,7 @@ class ProductServiceActivityStatusIndependenceTest {
     }
 
     @Test
-    void auditProduct_approveShouldRejectRecentSameProductAlreadyInLibrary() {
+    void auditProduct_approveShouldRejectSameProductAlreadyInLibraryRegardlessOfAge() {
         String activityId = "ACT005";
         String productId = "5";
         ProductSnapshot snapshot = snapshot(activityId, productId);
@@ -503,7 +503,7 @@ class ProductServiceActivityStatusIndependenceTest {
         ProductOperationState existing = state("ACT_EXISTING", productId);
         existing.setAuditStatus(2);
         existing.setSelectedToLibrary(true);
-        existing.setSelectedAt(LocalDateTime.now().minusMonths(2));
+        existing.setSelectedAt(LocalDateTime.now().minusMonths(4));
         existing.setDisplayStatus(ProductDisplayStatus.DISPLAYING.name());
 
         when(snapshotMapper.selectOne(any())).thenReturn(snapshot);
@@ -520,9 +520,37 @@ class ProductServiceActivityStatusIndependenceTest {
                 null,
                 null))
                 .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("近三个月")
+                .hasMessageContaining("商品库已存在同商品ID")
                 .hasMessageContaining(productId);
         assertThat(current.getSelectedToLibrary()).isNull();
+        verify(productDisplayRuleService, never()).applyForProductId(productId);
+    }
+
+    @Test
+    void putIntoLibrary_shouldRejectSameProductAlreadyInLibraryRegardlessOfAge() {
+        String activityId = "ACT007";
+        String productId = "7";
+        ProductSnapshot snapshot = snapshot(activityId, productId);
+        ProductOperationState current = state(activityId, productId);
+        current.setSelectedToLibrary(false);
+        ProductOperationState existing = state("ACT_EXISTING", productId);
+        existing.setSelectedToLibrary(true);
+        existing.setSelectedAt(LocalDateTime.now().minusMonths(4));
+
+        when(snapshotMapper.selectOne(any())).thenReturn(snapshot);
+        when(operationStateMapper.selectOne(any())).thenReturn(current);
+        when(operationStateMapper.selectList(any())).thenReturn(List.of(existing));
+
+        assertThatThrownBy(() -> productService.putIntoLibrary(
+                activityId,
+                productId,
+                null,
+                null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("商品库已存在同商品ID")
+                .hasMessageContaining(productId);
+        assertThat(current.getSelectedToLibrary()).isFalse();
+        verify(operationStateMapper, never()).updateById(any(ProductOperationState.class));
         verify(productDisplayRuleService, never()).applyForProductId(productId);
     }
 
