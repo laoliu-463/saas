@@ -76,7 +76,7 @@ public class SysUser extends com.colonel.saas.common.base.BaseEntity {
     @TableField("status")
     private Integer status = 1;
 
-    @TableField(value = "authz_version", updateStrategy = FieldStrategy.NEVER)
+    @TableField("authz_version")
     private Long authzVersion = 1L;
 
     /**
