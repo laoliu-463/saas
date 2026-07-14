@@ -8,6 +8,8 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -19,7 +21,8 @@ class SysAuthorizationSnapshotStoreAdapterTest {
 
     @BeforeEach
     void setUp() {
-        adapter = new SysAuthorizationSnapshotStoreAdapter(userId -> configuredRows);
+        adapter = new SysAuthorizationSnapshotStoreAdapter(
+                (userId, authzVersion) -> configuredRows);
     }
 
     @Test
@@ -27,7 +30,7 @@ class SysAuthorizationSnapshotStoreAdapterTest {
         UUID userId = UUID.randomUUID();
         configuredRows = List.of();
 
-        assertThat(adapter.loadActiveSnapshot(userId)).isEmpty();
+        assertThat(adapter.loadActiveSnapshot(userId, 7L)).isEmpty();
     }
 
     @Test
@@ -35,7 +38,18 @@ class SysAuthorizationSnapshotStoreAdapterTest {
         UUID userId = UUID.randomUUID();
         configuredRows = null;
 
-        assertThat(adapter.loadActiveSnapshot(userId)).isEmpty();
+        assertThat(adapter.loadActiveSnapshot(userId, 7L)).isEmpty();
+    }
+
+    @Test
+    void loadActiveSnapshot_whenInputIsInvalid_shouldFailClosedWithoutQueryingMapper() {
+        adapter = new SysAuthorizationSnapshotStoreAdapter((userId, authzVersion) -> {
+            throw new AssertionError("mapper must not be called for invalid input");
+        });
+
+        assertThat(adapter.loadActiveSnapshot(null, 1L)).isEmpty();
+        assertThat(adapter.loadActiveSnapshot(UUID.randomUUID(), 0L)).isEmpty();
+        assertThat(adapter.loadActiveSnapshot(UUID.randomUUID(), -1L)).isEmpty();
     }
 
     @Test
@@ -45,7 +59,7 @@ class SysAuthorizationSnapshotStoreAdapterTest {
         AuthorizationSnapshotRow row = subjectRow(userId, deptId, 7L);
         configuredRows = List.of(row);
 
-        AuthorizationSnapshot snapshot = adapter.loadActiveSnapshot(userId).orElseThrow();
+        AuthorizationSnapshot snapshot = adapter.loadActiveSnapshot(userId, 7L).orElseThrow();
 
         assertThat(snapshot.subject().userId()).isEqualTo(userId);
         assertThat(snapshot.subject().deptId()).isEqualTo(deptId);
@@ -62,7 +76,7 @@ class SysAuthorizationSnapshotStoreAdapterTest {
                 userId, deptId, 11L, roleId, "sample:read", "sample", true, "GROUP");
         configuredRows = List.of(row);
 
-        AuthorizationSnapshot snapshot = adapter.loadActiveSnapshot(userId).orElseThrow();
+        AuthorizationSnapshot snapshot = adapter.loadActiveSnapshot(userId, 11L).orElseThrow();
 
         assertThat(snapshot.subject().userId()).isEqualTo(userId);
         assertThat(snapshot.subject().deptId()).isEqualTo(deptId);
@@ -83,7 +97,7 @@ class SysAuthorizationSnapshotStoreAdapterTest {
                 userId, null, 1L, UUID.randomUUID(), "sample:read", "sample", true, null);
         configuredRows = List.of(row);
 
-        AuthorizationSnapshot snapshot = adapter.loadActiveSnapshot(userId).orElseThrow();
+        AuthorizationSnapshot snapshot = adapter.loadActiveSnapshot(userId, 1L).orElseThrow();
 
         assertThat(snapshot.grants()).singleElement().satisfies(grant ->
                 assertThat(grant.scope()).isEqualTo(AuthorizationScope.DENY));
@@ -96,7 +110,7 @@ class SysAuthorizationSnapshotStoreAdapterTest {
                 userId, null, 1L, UUID.randomUUID(), "sample:read", "sample", true, "FUTURE");
         configuredRows = List.of(row);
 
-        AuthorizationSnapshot snapshot = adapter.loadActiveSnapshot(userId).orElseThrow();
+        AuthorizationSnapshot snapshot = adapter.loadActiveSnapshot(userId, 1L).orElseThrow();
 
         assertThat(snapshot.grants()).singleElement().satisfies(grant ->
                 assertThat(grant.scope()).isEqualTo(AuthorizationScope.DENY));
@@ -126,7 +140,7 @@ class SysAuthorizationSnapshotStoreAdapterTest {
                 "ALL");
         configuredRows = List.of(first, second);
 
-        AuthorizationSnapshot snapshot = adapter.loadActiveSnapshot(firstUserId).orElseThrow();
+        AuthorizationSnapshot snapshot = adapter.loadActiveSnapshot(firstUserId, 13L).orElseThrow();
 
         assertThat(snapshot.subject().userId()).isEqualTo(firstUserId);
         assertThat(snapshot.subject().deptId()).isEqualTo(firstDeptId);
@@ -144,15 +158,22 @@ class SysAuthorizationSnapshotStoreAdapterTest {
         UUID requestedUserId = UUID.randomUUID();
         configuredRows = List.of(subjectRow(UUID.randomUUID(), UUID.randomUUID(), 1L));
 
-        assertThatThrownBy(() -> adapter.loadActiveSnapshot(requestedUserId))
+        assertThatThrownBy(() -> adapter.loadActiveSnapshot(requestedUserId, 1L))
                 .isInstanceOf(IllegalStateException.class);
     }
 
     @Test
     void loadActiveSnapshot_whenFirstRowUserIdIsNull_shouldRejectSnapshot() {
-        configuredRows = List.of(subjectRow(null, null, 1L));
+        UUID requestedUserId = UUID.randomUUID();
+        AuthorizationSnapshotRow invalidRow = subjectRow(null, null, 1L);
+        adapter = new SysAuthorizationSnapshotStoreAdapter((userId, authzVersion) -> {
+            if (requestedUserId.equals(userId) && authzVersion == 1L) {
+                return List.of(invalidRow);
+            }
+            return List.of();
+        });
 
-        assertThatThrownBy(() -> adapter.loadActiveSnapshot(null))
+        assertThatThrownBy(() -> adapter.loadActiveSnapshot(requestedUserId, 1L))
                 .isInstanceOf(IllegalStateException.class);
     }
 
@@ -161,7 +182,7 @@ class SysAuthorizationSnapshotStoreAdapterTest {
         UUID userId = UUID.randomUUID();
         configuredRows = List.of(subjectRow(userId, null, null));
 
-        assertThatThrownBy(() -> adapter.loadActiveSnapshot(userId))
+        assertThatThrownBy(() -> adapter.loadActiveSnapshot(userId, 1L))
                 .isInstanceOf(IllegalStateException.class);
     }
 
@@ -173,7 +194,7 @@ class SysAuthorizationSnapshotStoreAdapterTest {
         AuthorizationSnapshotRow second = subjectRow(UUID.randomUUID(), deptId, 1L);
         configuredRows = List.of(first, second);
 
-        assertThatThrownBy(() -> adapter.loadActiveSnapshot(userId))
+        assertThatThrownBy(() -> adapter.loadActiveSnapshot(userId, 1L))
                 .isInstanceOf(IllegalStateException.class);
     }
 
@@ -184,7 +205,7 @@ class SysAuthorizationSnapshotStoreAdapterTest {
         AuthorizationSnapshotRow second = subjectRow(userId, UUID.randomUUID(), 1L);
         configuredRows = List.of(first, second);
 
-        assertThatThrownBy(() -> adapter.loadActiveSnapshot(userId))
+        assertThatThrownBy(() -> adapter.loadActiveSnapshot(userId, 1L))
                 .isInstanceOf(IllegalStateException.class);
     }
 
@@ -196,7 +217,7 @@ class SysAuthorizationSnapshotStoreAdapterTest {
         AuthorizationSnapshotRow second = subjectRow(userId, deptId, 2L);
         configuredRows = List.of(first, second);
 
-        assertThatThrownBy(() -> adapter.loadActiveSnapshot(userId))
+        assertThatThrownBy(() -> adapter.loadActiveSnapshot(userId, 1L))
                 .isInstanceOf(IllegalStateException.class);
     }
 
@@ -206,7 +227,7 @@ class SysAuthorizationSnapshotStoreAdapterTest {
         configuredRows = List.of(grantRow(
                 userId, null, 1L, null, "sample:read", "sample", true, "SELF"));
 
-        assertThatThrownBy(() -> adapter.loadActiveSnapshot(userId))
+        assertThatThrownBy(() -> adapter.loadActiveSnapshot(userId, 1L))
                 .isInstanceOf(IllegalStateException.class);
     }
 
@@ -216,7 +237,7 @@ class SysAuthorizationSnapshotStoreAdapterTest {
         configuredRows = List.of(grantRow(
                 userId, null, 1L, UUID.randomUUID(), "sample:read", "sample", null, "SELF"));
 
-        assertThatThrownBy(() -> adapter.loadActiveSnapshot(userId))
+        assertThatThrownBy(() -> adapter.loadActiveSnapshot(userId, 1L))
                 .isInstanceOf(IllegalStateException.class);
     }
 
@@ -226,7 +247,7 @@ class SysAuthorizationSnapshotStoreAdapterTest {
         configuredRows = List.of(grantRow(
                 userId, null, 1L, UUID.randomUUID(), "sample:read", null, true, "SELF"));
 
-        assertThatThrownBy(() -> adapter.loadActiveSnapshot(userId))
+        assertThatThrownBy(() -> adapter.loadActiveSnapshot(userId, 1L))
                 .isInstanceOf(IllegalStateException.class);
     }
 
@@ -236,7 +257,7 @@ class SysAuthorizationSnapshotStoreAdapterTest {
         configuredRows = List.of(grantRow(
                 userId, null, 1L, UUID.randomUUID(), "sample:read", " ", true, "SELF"));
 
-        assertThatThrownBy(() -> adapter.loadActiveSnapshot(userId))
+        assertThatThrownBy(() -> adapter.loadActiveSnapshot(userId, 1L))
                 .isInstanceOf(IllegalStateException.class);
     }
 
@@ -245,7 +266,7 @@ class SysAuthorizationSnapshotStoreAdapterTest {
         UUID userId = UUID.randomUUID();
         configuredRows = java.util.Collections.singletonList(null);
 
-        assertThatThrownBy(() -> adapter.loadActiveSnapshot(userId))
+        assertThatThrownBy(() -> adapter.loadActiveSnapshot(userId, 1L))
                 .isInstanceOf(IllegalStateException.class);
     }
 
@@ -254,7 +275,7 @@ class SysAuthorizationSnapshotStoreAdapterTest {
         UUID userId = UUID.randomUUID();
         configuredRows = java.util.Arrays.asList(subjectRow(userId, null, 1L), null);
 
-        assertThatThrownBy(() -> adapter.loadActiveSnapshot(userId))
+        assertThatThrownBy(() -> adapter.loadActiveSnapshot(userId, 1L))
                 .isInstanceOf(IllegalStateException.class);
     }
 
@@ -262,11 +283,11 @@ class SysAuthorizationSnapshotStoreAdapterTest {
     void loadActiveSnapshot_whenMapperFails_shouldPropagateSameException() {
         UUID userId = UUID.randomUUID();
         RuntimeException failure = new RuntimeException("database unavailable");
-        adapter = new SysAuthorizationSnapshotStoreAdapter(ignored -> {
+        adapter = new SysAuthorizationSnapshotStoreAdapter((ignoredUser, ignoredVersion) -> {
             throw failure;
         });
 
-        assertThatThrownBy(() -> adapter.loadActiveSnapshot(userId))
+        assertThatThrownBy(() -> adapter.loadActiveSnapshot(userId, 1L))
                 .isSameAs(failure);
     }
 
@@ -276,8 +297,34 @@ class SysAuthorizationSnapshotStoreAdapterTest {
         configuredRows = List.of(grantRow(
                 userId, null, 1L, UUID.randomUUID(), "MALFORMED", "sample", true, "SELF"));
 
-        assertThatThrownBy(() -> adapter.loadActiveSnapshot(userId))
+        assertThatThrownBy(() -> adapter.loadActiveSnapshot(userId, 1L))
                 .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void loadActiveSnapshot_shouldPassUserAndExpectedVersionToMapper() {
+        UUID userId = UUID.randomUUID();
+        AtomicReference<UUID> mappedUserId = new AtomicReference<>();
+        AtomicLong mappedVersion = new AtomicLong();
+        adapter = new SysAuthorizationSnapshotStoreAdapter((requestedUserId, authzVersion) -> {
+            mappedUserId.set(requestedUserId);
+            mappedVersion.set(authzVersion);
+            return List.of();
+        });
+
+        assertThat(adapter.loadActiveSnapshot(userId, 19L)).isEmpty();
+        assertThat(mappedUserId).hasValue(userId);
+        assertThat(mappedVersion).hasValue(19L);
+    }
+
+    @Test
+    void loadActiveSnapshot_whenMapperReturnsDifferentVersion_shouldRejectSnapshot() {
+        UUID userId = UUID.randomUUID();
+        configuredRows = List.of(subjectRow(userId, null, 8L));
+
+        assertThatThrownBy(() -> adapter.loadActiveSnapshot(userId, 7L))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("authorization snapshot version does not match request");
     }
 
     private static AuthorizationSnapshotRow subjectRow(UUID userId, UUID deptId, Long authzVersion) {

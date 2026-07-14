@@ -25,14 +25,17 @@ public class SysAuthorizationSnapshotStoreAdapter implements AuthorizationSnapsh
     }
 
     @Override
-    public Optional<AuthorizationSnapshot> loadActiveSnapshot(UUID userId) {
-        List<AuthorizationSnapshotRow> rows = mapper.findActiveSnapshotRows(userId);
+    public Optional<AuthorizationSnapshot> loadActiveSnapshot(UUID userId, long authzVersion) {
+        if (userId == null || authzVersion < 1) {
+            return Optional.empty();
+        }
+        List<AuthorizationSnapshotRow> rows = mapper.findActiveSnapshotRows(userId, authzVersion);
         if (rows == null || rows.isEmpty()) {
             return Optional.empty();
         }
 
         AuthorizationSnapshotRow first = rows.get(0);
-        validateRows(userId, rows, first);
+        validateRows(userId, authzVersion, rows, first);
         AuthorizationSubject subject = new AuthorizationSubject(
                 first.getUserId(), first.getDeptId(), first.getAuthzVersion().longValue());
         List<GrantedRolePermission> grants = rows.stream()
@@ -44,6 +47,7 @@ public class SysAuthorizationSnapshotStoreAdapter implements AuthorizationSnapsh
 
     private void validateRows(
             UUID requestedUserId,
+            long requestedAuthzVersion,
             List<AuthorizationSnapshotRow> rows,
             AuthorizationSnapshotRow first) {
         if (first == null) {
@@ -54,6 +58,9 @@ public class SysAuthorizationSnapshotStoreAdapter implements AuthorizationSnapsh
         }
         if (first.getAuthzVersion() == null) {
             throw new IllegalStateException("authorization snapshot version must not be null");
+        }
+        if (first.getAuthzVersion().longValue() != requestedAuthzVersion) {
+            throw new IllegalStateException("authorization snapshot version does not match request");
         }
         for (AuthorizationSnapshotRow row : rows) {
             if (row == null) {
