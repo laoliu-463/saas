@@ -10,12 +10,16 @@ import com.colonel.saas.domain.user.facade.AuthorizationPrincipalFacade;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.jsonwebtoken.Claims;
+import jakarta.servlet.FilterChain;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -31,13 +35,18 @@ import java.lang.reflect.Constructor;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -190,10 +199,12 @@ class JwtAuthenticationFilterTest {
         when(jwtTokenProvider.parseClaims("blacklisted.token")).thenReturn(claims);
         when(jwtTokenProvider.getTokenHash("blacklisted.token")).thenReturn("blacklisted-hash");
         when(authService.isTokenBlacklisted("blacklisted-hash")).thenReturn(true);
+        FilterChain chain = mock(FilterChain.class);
 
-        MockHttpServletResponse response = filter("blacklisted.token", "/products");
+        MockHttpServletResponse response = filter("blacklisted.token", "/products", chain);
 
         assertThat(response.getStatus()).isEqualTo(401);
+        assertShortCircuited(chain);
         verify(claims, never()).getSubject();
         verifyNoInteractions(principalFacade);
     }
@@ -204,10 +215,12 @@ class JwtAuthenticationFilterTest {
         Claims claims = accessClaims(userId, null);
         when(runtimeProperties.requiresVersionValidation()).thenReturn(true);
         stubAcceptedToken("missing.version", claims);
+        FilterChain chain = mock(FilterChain.class);
 
-        MockHttpServletResponse response = filter("missing.version", "/products");
+        MockHttpServletResponse response = filter("missing.version", "/products", chain);
 
         assertThat(response.getStatus()).isEqualTo(401);
+        assertShortCircuited(chain);
         verifyNoInteractions(principalFacade);
     }
 
@@ -217,10 +230,12 @@ class JwtAuthenticationFilterTest {
         Claims claims = accessClaims(userId, 0L);
         when(runtimeProperties.requiresVersionValidation()).thenReturn(true);
         stubAcceptedToken("invalid.version", claims);
+        FilterChain chain = mock(FilterChain.class);
 
-        MockHttpServletResponse response = filter("invalid.version", "/products");
+        MockHttpServletResponse response = filter("invalid.version", "/products", chain);
 
         assertThat(response.getStatus()).isEqualTo(401);
+        assertShortCircuited(chain);
         verifyNoInteractions(principalFacade);
     }
 
@@ -231,11 +246,13 @@ class JwtAuthenticationFilterTest {
         when(claims.get("authzVersion", Long.class))
                 .thenThrow(new ClassCastException("authzVersion is not a Long"));
         stubAcceptedToken("wrong.type", claims);
+        FilterChain chain = mock(FilterChain.class);
 
-        MockHttpServletResponse response = filter("wrong.type", "/products");
+        MockHttpServletResponse response = filter("wrong.type", "/products", chain);
 
         assertThat(response.getStatus()).isEqualTo(401);
         assertThat(jsonBody(response).path("msg").asText()).isEqualTo("Token 无效或已过期");
+        assertShortCircuited(chain);
         verifyNoInteractions(principalFacade);
     }
 
@@ -247,12 +264,14 @@ class JwtAuthenticationFilterTest {
         stubAcceptedToken("stale.version", claims);
         when(principalFacade.requireCurrent(userId, 4L))
                 .thenThrow(new AuthorizationTokenRejectedException());
+        FilterChain chain = mock(FilterChain.class);
 
-        MockHttpServletResponse response = filter("stale.version", "/products");
+        MockHttpServletResponse response = filter("stale.version", "/products", chain);
 
         assertThat(response.getStatus()).isEqualTo(401);
         assertThat(jsonBody(response).path("msg").asText())
                 .isEqualTo("授权令牌已失效，请重新登录");
+        assertShortCircuited(chain);
         verify(principalFacade).requireCurrent(userId, 4L);
     }
 
@@ -264,8 +283,9 @@ class JwtAuthenticationFilterTest {
         stubAcceptedToken("store.down", claims);
         when(principalFacade.requireCurrent(userId, 4L))
                 .thenThrow(new AuthorizationUnavailableException());
+        FilterChain chain = mock(FilterChain.class);
 
-        MockHttpServletResponse response = filter("store.down", "/products");
+        MockHttpServletResponse response = filter("store.down", "/products", chain);
 
         JsonNode body = jsonBody(response);
         assertThat(response.getStatus()).isEqualTo(503);
@@ -274,6 +294,7 @@ class JwtAuthenticationFilterTest {
         assertThat(body.path("code").asInt()).isEqualTo(503);
         assertThat(body.path("msg").asText()).isEqualTo("授权事实暂时不可用");
         assertThat(body.path("errorCode").asText()).isEqualTo("AUTHORIZATION_UNAVAILABLE");
+        assertShortCircuited(chain);
     }
 
     @Test
@@ -290,11 +311,26 @@ class JwtAuthenticationFilterTest {
 
         MockHttpServletRequest request = authenticatedRequest("valid.version", "/products");
         MockHttpServletResponse response = new MockHttpServletResponse();
-        MockFilterChain chain = new MockFilterChain();
+        FilterChain chain = mock(FilterChain.class);
+        doAnswer(invocation -> {
+            Authentication authenticationAtChain =
+                    SecurityContextHolder.getContext().getAuthentication();
+            assertThat((Object) invocation.getArgument(0)).isSameAs(request);
+            assertThat(authenticationAtChain.getPrincipal()).isSameAs(principal);
+            assertThat(authenticationAtChain.getAuthorities()).isEmpty();
+            assertThat(request.getAttribute("authorizationPrincipal")).isSameAs(principal);
+            assertThat(request.getAttribute("userId"))
+                    .isInstanceOf(UUID.class)
+                    .isEqualTo(principal.userId());
+            assertThat(request.getAttribute("deptId")).isEqualTo(databaseDept);
+            assertThat(request.getAttribute("username")).isEqualTo("database-alice");
+            assertThat(request.getAttribute("roleCodes")).isEqualTo(List.of("admin"));
+            assertThat(request.getAttribute("dataScope")).isEqualTo(DataScope.ALL);
+            return null;
+        }).when(chain).doFilter(any(), any());
         filter.doFilter(request, response, chain);
 
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        assertThat(chain.getRequest()).isNotNull();
         assertThat(authentication.getPrincipal()).isSameAs(principal);
         assertThat(authentication.getAuthorities()).isEmpty();
         assertThat(request.getAttribute("authorizationPrincipal")).isSameAs(principal);
@@ -305,12 +341,19 @@ class JwtAuthenticationFilterTest {
         assertThat(request.getAttribute("username")).isEqualTo("database-alice");
         assertThat(request.getAttribute("roleCodes")).isEqualTo(List.of("admin"));
         assertThat(request.getAttribute("dataScope")).isEqualTo(DataScope.ALL);
-        verify(principalFacade).requireCurrent(userId, 4L);
+        InOrder order = inOrder(authService, principalFacade, chain);
+        order.verify(authService).isTokenBlacklisted("valid.version-hash");
+        order.verify(principalFacade).requireCurrent(userId, 4L);
+        order.verify(chain).doFilter(request, response);
+        verifyNoMoreInteractions(chain);
     }
 
-    @Test
-    void pendingActivationPolicy_shouldUseTrueDatabasePrincipalValueInsteadOfFalseTokenValue()
-            throws Exception {
+    @ParameterizedTest(name = "{0} {1} should invoke filter chain: {2}")
+    @MethodSource("pendingActivationPaths")
+    void nonLegacyMode_shouldUseDatabasePendingPrincipalForActivationPaths(
+            String method,
+            String path,
+            boolean shouldInvokeChain) throws Exception {
         UUID userId = UUID.randomUUID();
         Claims claims = accessClaims(userId, 4L, UUID.randomUUID(), "token-user", false);
         AuthorizationPrincipal principal =
@@ -318,11 +361,23 @@ class JwtAuthenticationFilterTest {
         when(runtimeProperties.requiresVersionValidation()).thenReturn(true);
         stubAcceptedToken("database.pending", claims);
         when(principalFacade.requireCurrent(userId, 4L)).thenReturn(principal);
+        MockHttpServletRequest request =
+                authenticatedRequest("database.pending", method, path);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        FilterChain chain = mock(FilterChain.class);
 
-        MockHttpServletResponse response = filter("database.pending", "/products");
+        filter.doFilter(request, response, chain);
 
-        assertThat(response.getStatus()).isEqualTo(403);
-        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+        verify(principalFacade).requireCurrent(userId, 4L);
+        if (shouldInvokeChain) {
+            verify(chain).doFilter(request, response);
+            assertThat(response.getStatus()).isNotEqualTo(403);
+            assertThat(authenticatedPrincipal()).isSameAs(principal);
+        } else {
+            verifyNoInteractions(chain);
+            assertThat(response.getStatus()).isEqualTo(403);
+            assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+        }
     }
 
     @Test
@@ -388,16 +443,27 @@ class JwtAuthenticationFilterTest {
 
         MockHttpServletRequest request = authenticatedRequest("legacy.versioned", "/products");
         MockHttpServletResponse response = new MockHttpServletResponse();
-        MockFilterChain chain = new MockFilterChain();
+        FilterChain chain = mock(FilterChain.class);
         filter.doFilter(request, response, chain);
 
         AuthorizationPrincipal principal = authenticatedPrincipal();
-        assertThat(chain.getRequest()).isNotNull();
         assertThat(principal.authzVersion()).isEqualTo(9L);
         assertThat(request.getAttribute("userId"))
                 .isInstanceOf(UUID.class)
                 .isEqualTo(userId);
+        InOrder order = inOrder(authService, chain);
+        order.verify(authService).isTokenBlacklisted("legacy.versioned-hash");
+        order.verify(chain).doFilter(request, response);
+        verifyNoMoreInteractions(chain);
         verifyNoInteractions(principalFacade);
+    }
+
+    private static Stream<Arguments> pendingActivationPaths() {
+        return Stream.of(
+                Arguments.of("GET", "/users/current", true),
+                Arguments.of("PUT", "/users/current/password", true),
+                Arguments.of("GET", "/products", false),
+                Arguments.of("GET", "/users/current/data-scope", false));
     }
 
     private JwtAuthenticationFilter newFilter(Environment environment) {
@@ -439,7 +505,11 @@ class JwtAuthenticationFilterTest {
     }
 
     private MockHttpServletRequest authenticatedRequest(String token, String path) {
-        MockHttpServletRequest request = new MockHttpServletRequest("GET", path);
+        return authenticatedRequest(token, "GET", path);
+    }
+
+    private MockHttpServletRequest authenticatedRequest(String token, String method, String path) {
+        MockHttpServletRequest request = new MockHttpServletRequest(method, path);
         request.addHeader("Authorization", "Bearer " + token);
         return request;
     }
@@ -449,6 +519,19 @@ class JwtAuthenticationFilterTest {
         MockHttpServletResponse response = new MockHttpServletResponse();
         filter.doFilter(request, response, new MockFilterChain());
         return response;
+    }
+
+    private MockHttpServletResponse filter(String token, String path, FilterChain chain)
+            throws Exception {
+        MockHttpServletRequest request = authenticatedRequest(token, path);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        filter.doFilter(request, response, chain);
+        return response;
+    }
+
+    private void assertShortCircuited(FilterChain chain) {
+        verifyNoInteractions(chain);
+        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
     }
 
     private AuthorizationPrincipal authenticatedPrincipal() {
