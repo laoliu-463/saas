@@ -54,14 +54,18 @@ class AuthorizationRuntimePropertiesTest {
     }
 
     @Test
-    void nullDomainModesAreNormalizedToEmpty() {
+    void nullDomainModesFailFastWithoutChangingExistingOverrides() {
         AuthorizationRuntimeProperties properties = new AuthorizationRuntimeProperties();
         properties.setDomainModes(Map.of("sample", AuthorizationRuntimeMode.SHADOW));
 
-        properties.setDomainModes(null);
+        assertThatIllegalArgumentException()
+                .isThrownBy(() -> properties.setDomainModes(null))
+                .withMessageContaining("domainModes");
 
-        assertThat(properties.getDomainModes()).isEmpty();
-        assertThat(properties.modeFor("sample")).isEqualTo(AuthorizationRuntimeMode.LEGACY);
+        assertThat(properties.getDomainModes())
+                .containsOnlyKeys("sample")
+                .containsEntry("sample", AuthorizationRuntimeMode.SHADOW);
+        assertThat(properties.modeFor("sample")).isEqualTo(AuthorizationRuntimeMode.SHADOW);
     }
 
     @Test

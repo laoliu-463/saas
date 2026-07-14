@@ -33,8 +33,7 @@ public class AuthorizationRuntimeProperties {
 
     public void setDomainModes(Map<String, AuthorizationRuntimeMode> domainModes) {
         if (domainModes == null) {
-            this.domainModes = new LinkedHashMap<>();
-            return;
+            throw new IllegalArgumentException("domainModes must not be null");
         }
 
         Map<String, AuthorizationRuntimeMode> normalizedModes = new LinkedHashMap<>();
