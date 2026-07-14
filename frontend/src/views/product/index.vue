@@ -367,6 +367,7 @@ const authStore = useAuthStore()
 
 const loading = ref(false)
 const syncing = ref(false)
+let isDisposed = false
 const activitySyncHint = ref('')
 const activitySyncHintType = ref<ActivityProductSyncNoticeType>('info')
 const postSyncRefreshTimers: number[] = []
@@ -1114,13 +1115,15 @@ const pollActivityProductSyncJob = async (
   jobId: string,
   attempt = 0
 ) => {
+  if (isDisposed) return
   if (normalizeText(fallbackActivityId.value) !== activityId) return
   try {
     const res: any = await getActivityProductSyncJob(activityId, jobId, {
       suppressErrorNotice: true
     })
+    if (isDisposed) return
     const data = res?.data || {}
-    const syncStatus = String(data.syncStatus || '')
+    const syncStatus = String(data.syncStatus || '').trim().toUpperCase()
     if (isActivityProductSyncSuccess(syncStatus)) {
       setActivitySyncHint(syncStatus)
       message.success('商品同步完成，已更新商品列表')
@@ -1155,6 +1158,7 @@ const pollActivityProductSyncJob = async (
       return
     }
   }
+  if (isDisposed) return
   postSyncPollTimer = window.setTimeout(() => {
     postSyncPollTimer = null
     void pollActivityProductSyncJob(activityId, jobId, attempt + 1)
@@ -1208,6 +1212,7 @@ const syncActivityProductsFromRemote = async (payload: ProductSyncActivityConfir
     const res: any = await syncActivityProducts(selectedActivityId, syncRequest, {
       suppressErrorNotice: true
     })
+    if (isDisposed) return
     const data = res?.data || {}
     const jobId = normalizeText(data.jobId)
     const syncStatus = normalizeText(data.syncStatus)
@@ -1941,6 +1946,7 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  isDisposed = true
   clearPostSyncRefreshTimers()
 })
 

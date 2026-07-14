@@ -57,6 +57,8 @@ export function isActivityAssigned(row: ActivityRow): boolean {
 }
 
 export type ActivityProductStats = {
+  loaded: number | null
+  total: number | null
   promoting: number | null
   pending: number | null
 }
@@ -129,7 +131,7 @@ export function formatActivitySyncTime(value: unknown): string {
 }
 
 export function resolveActivitySyncTime(row: ActivityRow): string {
-  return formatActivitySyncTime(row.activityStatusSyncedAt ?? row.activity_status_synced_at ?? row.lastSyncAt ?? row.last_sync_at)
+  return formatActivitySyncTime(row.activityStatusSyncedAt ?? row.activity_status_synced_at)
 }
 
 /**
@@ -218,10 +220,10 @@ export function resolveColonelName(row: ActivityRow, institutionName: string): s
   return institutionName.trim() || '—'
 }
 
-export function countActivityProductStats(items: Array<Record<string, unknown>>): ActivityProductStats {
-  if (!items.length) {
-    return { promoting: 0, pending: 0 }
-  }
+export function countActivityProductStats(
+  items: Array<Record<string, unknown>>,
+  total: number | null = null
+): ActivityProductStats {
   let promoting = 0
   let pending = 0
   items.forEach((item) => {
@@ -235,7 +237,37 @@ export function countActivityProductStats(items: Array<Record<string, unknown>>)
       pending += 1
     }
   })
-  return { promoting, pending }
+  return { loaded: items.length, total: total ?? items.length, promoting, pending }
+}
+
+function readNonNegativeCount(value: unknown): number | null {
+  const numeric = Number(value)
+  return Number.isFinite(numeric) && numeric >= 0 ? Math.floor(numeric) : null
+}
+
+/**
+ * 解析活动商品列表响应：当前 items 只代表已加载页，total/statusCounts 才代表全量事实。
+ */
+export function resolveActivityProductStats(payload: unknown): ActivityProductStats {
+  if (!payload || typeof payload !== 'object') {
+    return { loaded: 0, total: null, promoting: null, pending: null }
+  }
+  const root = payload as Record<string, unknown>
+  const items = Array.isArray(root.items)
+    ? root.items as Array<Record<string, unknown>>
+    : Array.isArray(root.data)
+      ? root.data as Array<Record<string, unknown>>
+      : []
+  const statusCounts = root.statusCounts && typeof root.statusCounts === 'object'
+    ? root.statusCounts as Record<string, unknown>
+    : {}
+  const base = countActivityProductStats(items)
+  return {
+    loaded: base.loaded,
+    total: readNonNegativeCount(root.total) ?? readNonNegativeCount(statusCounts.total) ?? base.total,
+    promoting: readNonNegativeCount(statusCounts.promoting) ?? base.promoting,
+    pending: readNonNegativeCount(statusCounts.pendingReview) ?? readNonNegativeCount(statusCounts.pending) ?? base.pending
+  }
 }
 
 export function extractInstitutionName(payload: unknown): string {

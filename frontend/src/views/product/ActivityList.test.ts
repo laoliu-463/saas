@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import ActivityList from './ActivityList.vue'
 import { getColonelActivityPage } from '../../api/activity'
+import { getActivityProducts } from '../../api/activityProduct'
 import { getDouyinInstitutionInfo } from '../../api/douyin'
 
 const authState = vi.hoisted(() => ({
@@ -25,7 +26,8 @@ vi.mock('../../api/activity', () => ({
 }))
 
 vi.mock('../../api/activityProduct', () => ({
-  getActivityProducts: vi.fn()
+  getActivityProducts: vi.fn(),
+  getActivityProductSyncJob: vi.fn()
 }))
 
 vi.mock('../../api/douyin', () => ({
@@ -114,6 +116,9 @@ describe('ActivityList role scoped requests', () => {
       status: 'success',
       remoteResponse: {}
     } as any)
+    vi.mocked(getActivityProducts).mockResolvedValue({
+      data: { items: [], total: 0, statusCounts: { total: 0, promoting: 0, pendingReview: 0 } }
+    } as any)
   })
 
   it('does not call admin-only institution info for non-admin activity users', async () => {
@@ -152,5 +157,28 @@ describe('ActivityList role scoped requests', () => {
       path: '/product/manage/products',
       query: { activityId: '3916506' }
     })
+  })
+
+  it('displays loaded product rows separately from the backend total', async () => {
+    vi.mocked(getColonelActivityPage).mockResolvedValue({
+      data: {
+        activityList: [{ activityId: '3916506', activityName: '星链达客-zy' }],
+        total: 1
+      }
+    } as any)
+    vi.mocked(getActivityProducts).mockResolvedValue({
+      data: {
+        items: [{ status: 1 }, { status: 0 }],
+        total: 1274,
+        statusCounts: { total: 1274, promoting: 726, pendingReview: 121 }
+      }
+    } as any)
+
+    const wrapper = mountActivityList()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('已加载 2 / 共 1274')
+    expect(wrapper.text()).toContain('推广中：726')
+    expect(wrapper.text()).toContain('待审核：121')
   })
 })

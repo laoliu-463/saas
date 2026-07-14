@@ -208,6 +208,8 @@ public class ProductService implements CopyPromotionSupportPort {
     private final ProductLibraryApplicationService productLibraryApplicationService;
     /** 活动商品列表 Redis 短 TTL 缓存；单元测试未注入时自动回退 DB 直查。 */
     private ActivityProductRedisCacheService activityProductRedisCacheService;
+    /** 活动商品同步写入协调器；Spring 运行时启用，手工构造的旧单测保留原调用兼容。 */
+    private ProductActivitySyncWriteCoordinator activitySyncWriteCoordinator;
     /** 同一活动的分页写入与展示状态刷新必须串行，避免状态分区并发更新相同商品。 */
     private final Map<String, Object> activityPageRefreshLocks = new ConcurrentHashMap<>();
     @Value("${douyin.real.promotion-write-enabled:false}")
@@ -281,6 +283,11 @@ public class ProductService implements CopyPromotionSupportPort {
     @Autowired(required = false)
     void setActivityProductRedisCacheService(ActivityProductRedisCacheService activityProductRedisCacheService) {
         this.activityProductRedisCacheService = activityProductRedisCacheService;
+    }
+
+    @Autowired(required = false)
+    void setActivitySyncWriteCoordinator(ProductActivitySyncWriteCoordinator activitySyncWriteCoordinator) {
+        this.activitySyncWriteCoordinator = activitySyncWriteCoordinator;
     }
 
     public IPage<Product> getPage(long page, long size, Integer status) {
@@ -1954,6 +1961,38 @@ public class ProductService implements CopyPromotionSupportPort {
     }
 
     /**
+     * 活动同步的本地写入入口。生产运行时由协调器提供稳定排序、独立批事务和 40P01 重试；
+     * 手工构造的旧单测没有 Spring 注入时保留原行为，避免改变既有测试夹具的构造契约。
+     */
+    private ActivitySnapshotUpsertStats upsertActivityProductBatch(
+            String activityId,
+            List<DouyinProductGateway.ActivityProductItem> items) {
+        if (activitySyncWriteCoordinator == null || items == null || items.isEmpty()) {
+            return upsertSnapshotsWithStats(activityId, items);
+        }
+        List<ActivitySnapshotUpsertStats> batchStats = activitySyncWriteCoordinator.executeInBatches(
+                activityId,
+                items,
+                batch -> upsertSnapshotsWithStats(activityId, batch));
+        int created = 0;
+        int updated = 0;
+        int skipped = 0;
+        int libraryEntryCount = 0;
+        int unchanged = 0;
+        for (ActivitySnapshotUpsertStats stats : batchStats) {
+            if (stats == null) {
+                continue;
+            }
+            created += stats.createdCount();
+            updated += stats.updatedCount();
+            skipped += stats.skippedCount();
+            libraryEntryCount += stats.libraryEntryCount();
+            unchanged += stats.unchangedCount();
+        }
+        return new ActivitySnapshotUpsertStats(created, updated, skipped, libraryEntryCount, unchanged);
+    }
+
+    /**
      * 将单个上游分页结果推进到商品库可见状态。
      *
      * <p>状态分区同步可能由多个线程拉取同一活动；按活动加锁后串行执行
@@ -1969,7 +2008,7 @@ public class ProductService implements CopyPromotionSupportPort {
                 ignored -> new Object());
         synchronized (lock) {
             long startedAt = System.nanoTime();
-            ActivitySnapshotUpsertStats stats = upsertSnapshotsWithStats(activityId, items);
+            ActivitySnapshotUpsertStats stats = upsertActivityProductBatch(activityId, items);
             LinkedHashSet<String> productIds = items == null
                     ? new LinkedHashSet<>()
                     : items.stream()
@@ -2275,7 +2314,7 @@ public class ProductService implements CopyPromotionSupportPort {
                 page -> {
                     ActivitySnapshotUpsertStats stats = pageLibraryRefreshEnabled
                             ? upsertAndRefreshActivityProductPage(request.activityId(), page.items(), page.pageNo())
-                            : upsertSnapshotsWithStats(request.activityId(), page.items());
+                            : upsertActivityProductBatch(request.activityId(), page.items());
                     notifyActivityProductRefreshProgress(progressConsumer, progressPageCounter.incrementAndGet());
                     return new ActivityProductPaginationRunner.PageWriteStats(
                             stats.createdCount(),
@@ -2438,7 +2477,7 @@ public class ProductService implements CopyPromotionSupportPort {
         for (ActivityProductStatusPartitionFetch partition : partitions) {
             if (!pageLibraryRefreshEnabled) {
                 for (List<DouyinProductGateway.ActivityProductItem> pageItems : partition.pages()) {
-                    ActivitySnapshotUpsertStats stats = upsertSnapshotsWithStats(request.activityId(), pageItems);
+                    ActivitySnapshotUpsertStats stats = upsertActivityProductBatch(request.activityId(), pageItems);
                     createdCount += stats.createdCount();
                     updatedCount += stats.updatedCount();
                     skippedCount += stats.skippedCount();
@@ -2660,7 +2699,7 @@ public class ProductService implements CopyPromotionSupportPort {
             }
             if (!pageLibraryRefreshEnabled) {
                 for (List<DouyinProductGateway.ActivityProductItem> items : pageItems) {
-                    ActivitySnapshotUpsertStats stats = upsertSnapshotsWithStats(request.activityId(), items);
+                    ActivitySnapshotUpsertStats stats = upsertActivityProductBatch(request.activityId(), items);
                     createdCount += stats.createdCount();
                     updatedCount += stats.updatedCount();
                     skippedCount += stats.skippedCount();

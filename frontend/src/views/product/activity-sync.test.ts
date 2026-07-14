@@ -101,6 +101,7 @@ describe('activity-sync', () => {
     expect(isActivityProductSyncTerminal('ABANDONED')).toBe(true)
     expect(isActivityProductSyncTerminal('CANCELED')).toBe(true)
     expect(isActivityProductSyncTerminal('TIMEOUT')).toBe(true)
+    expect(isActivityProductSyncTerminal('LOCKED')).toBe(true)
     expect(isActivityProductSyncTerminal('QUEUE_FULL')).toBe(true)
     expect(isActivityProductSyncTerminal('RUNNING')).toBe(false)
     expect(isActivityProductSyncTerminal('QUEUED')).toBe(false)
@@ -117,7 +118,15 @@ describe('activity-sync', () => {
     })
     expect(getActivityProductSyncNotice('FAILED')).toEqual({
       type: 'warning',
-      text: '商品同步未完成，请稍后重试或查看后台日志。'
+      text: '商品同步失败，可重试；如持续失败请查看后台日志。'
+    })
+    expect(getActivityProductSyncNotice('LOCKED')).toEqual({
+      type: 'warning',
+      text: '商品同步被锁定，当前未执行，可稍后重试。'
+    })
+    expect(getActivityProductSyncNotice('QUEUE_FULL')).toEqual({
+      type: 'warning',
+      text: '商品同步队列已满，当前未执行，可稍后重试。'
     })
   })
 

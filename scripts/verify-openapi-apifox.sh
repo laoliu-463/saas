@@ -155,6 +155,13 @@ require_declared APIFOX_OPENAPI_FILE
 require_declared APIFOX_DEV_BASE_URL
 require_declared APIFOX_DEV_PORT
 
+case "$(printf '%s' "$APIFOX_BRANCH" | tr '[:upper:]' '[:lower:]')" in
+  main|master)
+    fail "APIFOX_BRANCH must be a development branch; main/master are forbidden"
+    ;;
+esac
+pass "Apifox target branch is non-production: $APIFOX_BRANCH"
+
 if git check-ignore -q .env; then
   pass ".env is ignored by Git"
 else

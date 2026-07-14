@@ -23,7 +23,7 @@ export function isActivityProductSyncSuccess(syncStatus?: string): boolean {
 }
 
 export function isActivityProductSyncTerminal(syncStatus?: string): boolean {
-  return ['SUCCESS', 'PARTIAL', 'FAILED', 'FAILED_LOCKED', 'ABANDONED', 'CANCELED', 'TIMEOUT', 'QUEUE_FULL'].includes(String(syncStatus || ''))
+  return ['SUCCESS', 'PARTIAL', 'FAILED', 'FAILED_LOCKED', 'LOCKED', 'ABANDONED', 'CANCELED', 'TIMEOUT', 'QUEUE_FULL'].includes(String(syncStatus || ''))
 }
 
 export type ActivityProductSyncNoticeType = 'info' | 'success' | 'warning'
@@ -39,13 +39,16 @@ export function getActivityProductSyncNotice(syncStatus?: string): ActivityProdu
       return { type: 'success', text: '商品同步完成，商品状态已更新。' }
     case 'PARTIAL':
       return { type: 'warning', text: '商品同步部分完成，当前可用商品状态已更新。' }
+    case 'LOCKED':
+      return { type: 'warning', text: '商品同步被锁定，当前未执行，可稍后重试。' }
+    case 'QUEUE_FULL':
+      return { type: 'warning', text: '商品同步队列已满，当前未执行，可稍后重试。' }
     case 'FAILED':
     case 'FAILED_LOCKED':
     case 'ABANDONED':
     case 'CANCELED':
     case 'TIMEOUT':
-    case 'QUEUE_FULL':
-      return { type: 'warning', text: '商品同步未完成，请稍后重试或查看后台日志。' }
+      return { type: 'warning', text: '商品同步失败，可重试；如持续失败请查看后台日志。' }
     default:
       return { type: 'info', text: '商品同步进行中，已完成的商品状态会实时刷新到列表。' }
   }

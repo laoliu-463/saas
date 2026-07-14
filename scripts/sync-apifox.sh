@@ -116,11 +116,11 @@ path = sys.argv[1]
 with open(path, "r", encoding="utf-8", errors="replace") as f:
     text = f.read()
 
-token = os.environ.get("APIFOX_SANITIZE_TOKEN") or ""
+token_value = os.environ.get("APIFOX_SANITIZE_TOKEN") or ""
 project = os.environ.get("APIFOX_SANITIZE_PROJECT") or ""
 
-if token and not token.startswith("__FILL_ME_"):
-    text = text.replace(token, "***REDACTED_APIFOX_TOKEN***")
+if token_value and not token_value.startswith("__FILL_ME_"):
+    text = text.replace(token_value, "***REDACTED_APIFOX_TOKEN***")
 if project and not project.startswith("__FILL_ME_"):
     text = re.sub(
         r'(:\s*)' + re.escape(project) + r'(?=\s*[,}])',
@@ -146,11 +146,11 @@ import os
 import re
 
 text = os.environ.get("APIFOX_SANITIZE_TEXT") or ""
-token = os.environ.get("APIFOX_SANITIZE_TOKEN") or ""
+token_value = os.environ.get("APIFOX_SANITIZE_TOKEN") or ""
 project = os.environ.get("APIFOX_SANITIZE_PROJECT") or ""
 
-if token and not token.startswith("__FILL_ME_"):
-    text = text.replace(token, "***REDACTED_APIFOX_TOKEN***")
+if token_value and not token_value.startswith("__FILL_ME_"):
+    text = text.replace(token_value, "***REDACTED_APIFOX_TOKEN***")
 if project and not project.startswith("__FILL_ME_"):
     text = re.sub(
         r'(:\s*)' + re.escape(project) + r'(?=\s*[,}])',
@@ -214,6 +214,13 @@ IMPORT_OUTPUT_PATH="$(resolve_workspace_path "$IMPORT_OUTPUT")"
 IMPORT_REQUEST_PATH="${IMPORT_OUTPUT_PATH}.request.json"
 ENDPOINT_LIST_OUTPUT_PATH="$(resolve_workspace_path "$ENDPOINT_LIST_OUTPUT")"
 ENVIRONMENT_OUTPUT_PATH="$(resolve_workspace_path "$ENVIRONMENT_OUTPUT")"
+
+case "$(printf '%s' "$APIFOX_BRANCH" | tr '[:upper:]' '[:lower:]')" in
+  main|master)
+    echo "Refusing Apifox import target branch '$APIFOX_BRANCH'; use a development branch such as ddd-sync or ai-sync." >&2
+    exit 2
+    ;;
+esac
 
 missing=()
 for name in \

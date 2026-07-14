@@ -1,5 +1,6 @@
 # Build outputs
 target/*
+!target/
 !target/*.jar
 
 # Git

@@ -149,7 +149,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, h, onMounted, reactive, ref } from 'vue'
+import { computed, h, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { NButton, NModal, NForm, NFormItem, NSelect, NSpace, useMessage } from 'naive-ui'
 import { useRouter } from 'vue-router'
 import PageHeader from '../../components/PageHeader.vue'
@@ -168,7 +168,7 @@ import {
   type ActivityProductStats,
   type ActivityRow,
   buildBuyinActivityUrl,
-  countActivityProductStats,
+  resolveActivityProductStats,
   extractInstitutionName,
   formatActivityCategories,
   formatDateRange,
@@ -189,6 +189,7 @@ import {
   shouldPollActivityProductSyncJob,
   isActivityProductSyncTerminal,
   isActivityProductSyncSuccess,
+  getActivityProductSyncNotice,
   getActivityProductSyncPollDelayMs,
   ACTIVITY_PRODUCT_SYNC_MAX_POLLS
 } from './activity-sync'
@@ -214,6 +215,7 @@ const checkedRowKeys = ref<Array<string | number>>([])
 const activeStatus = ref(0)
 const institutionName = ref('')
 const productStatsMap = ref<Record<string, ActivityProductStats>>({})
+const isDisposed = ref(false)
 const assignModalVisible = ref(false)
 const assignSubmitting = ref(false)
 const assigneeLoading = ref(false)
@@ -299,7 +301,7 @@ const openBuyinActivity = (row: ActivityRow) => {
 }
 
 const getProductStats = (activityId: string | number | undefined) =>
-  productStatsMap.value[String(activityId ?? '')] || { promoting: null, pending: null }
+  productStatsMap.value[String(activityId ?? '')] || { loaded: null, total: null, promoting: null, pending: null }
 
 const columns = computed(() => [
   { type: 'selection' as const, fixed: 'left' as const, width: 48 },
@@ -322,9 +324,12 @@ const columns = computed(() => [
     width: 120,
     render: (row: ActivityRow) => {
       const stats = getProductStats(row.activityId as string | number)
+      const loaded = stats.loaded == null ? '—' : String(stats.loaded)
+      const total = stats.total == null ? '—' : String(stats.total)
       const promoting = stats.promoting == null ? '—' : String(stats.promoting)
       const pending = stats.pending == null ? '—' : String(stats.pending)
       return renderCellLines([
+        { label: '商品', value: `已加载 ${loaded} / 共 ${total}` },
         { label: '推广中', value: promoting },
         { label: '待审核', value: pending }
       ])
@@ -445,25 +450,21 @@ const columns = computed(() => [
 ])
 
 const hydrateProductStats = async (rows: ActivityRow[]) => {
-  if (!rows.length) return
+  if (!rows.length || isDisposed.value) return
   const entries = await Promise.all(
     rows.map(async (row) => {
       const activityId = String(row.activityId ?? '').trim()
-      if (!activityId) return [activityId, { promoting: null, pending: null }] as const
+      if (!activityId) return [activityId, { loaded: null, total: null, promoting: null, pending: null }] as const
       try {
         const res: any = await getActivityProducts(activityId, { count: 20, refresh: false })
         const payload = res?.data ?? res ?? {}
-        const items = Array.isArray(payload.items)
-          ? payload.items
-          : Array.isArray(payload.data)
-            ? payload.data
-            : []
-        return [activityId, countActivityProductStats(items)] as const
+        return [activityId, resolveActivityProductStats(payload)] as const
       } catch {
-        return [activityId, { promoting: null, pending: null }] as const
+        return [activityId, { loaded: null, total: null, promoting: null, pending: null }] as const
       }
     })
   )
+  if (isDisposed.value) return
   const next: Record<string, ActivityProductStats> = { ...productStatsMap.value }
   entries.forEach(([activityId, stats]) => {
     if (activityId) next[activityId] = stats
@@ -522,6 +523,7 @@ const submitAssignActivity = async () => {
 }
 
 const fetchData = async () => {
+  if (isDisposed.value) return
   loading.value = true
   try {
     const res: any = await getColonelActivityPage({
@@ -533,6 +535,7 @@ const fetchData = async () => {
       activityInfo: buildActivityInfoKeyword(),
       assignmentFilter: resolveEffectiveAssignmentFilter(isAdminUser.value, filters.assignmentFilter)
     })
+    if (isDisposed.value) return
     const result = res.data || {}
     const rows = (result.activityList || []) as ActivityRow[]
     data.value = rows
@@ -588,10 +591,16 @@ const syncLatestActivities = async () => {
 
     let attempts = 0
     const maxAttempts = 40 // 40 * 1.5s = 60s 超时时间
-    const interval = setInterval(async () => {
+    const interval = window.setInterval(async () => {
+      if (isDisposed.value) {
+        clearInterval(interval)
+        activeActivityListSyncInterval = null
+        return
+      }
       attempts++
       if (attempts > maxAttempts) {
         clearInterval(interval)
+        activeActivityListSyncInterval = null
         syncingActivities.value = false
         message.warning('同步任务已超时，请稍后刷新列表查看')
         return
@@ -604,6 +613,7 @@ const syncLatestActivities = async () => {
 
         if (status === 'SUCCESS' || status === 'PARTIAL') {
           clearInterval(interval)
+          activeActivityListSyncInterval = null
           syncingActivities.value = false
           const synced = jobStatus.activitiesSynced || 0
           if (status === 'PARTIAL') {
@@ -615,6 +625,7 @@ const syncLatestActivities = async () => {
           await fetchData()
         } else if (status === 'FAILED' || status === 'FAILED_LOCKED' || status === 'ABANDONED') {
           clearInterval(interval)
+          activeActivityListSyncInterval = null
           syncingActivities.value = false
           message.error(jobStatus.errorMessage || '同步任务执行失败，可能锁被占用')
         }
@@ -623,6 +634,7 @@ const syncLatestActivities = async () => {
         console.error('轮询同步状态失败:', err)
       }
     }, 1500)
+    activeActivityListSyncInterval = interval
   } catch (err: any) {
     notifyApiFailure(err, message, { fallbackMessage: '同步活动列表失败' })
     syncingActivities.value = false
@@ -630,41 +642,51 @@ const syncLatestActivities = async () => {
 }
 
 const activeProductSyncTimers = new Map<string, number>()
+let activeActivityListSyncInterval: number | null = null
 
 const pollSingleActivityProductSyncJob = async (
   activityId: string,
   jobId: string,
   attempt = 0
 ) => {
+  if (isDisposed.value) return
   if (activeProductSyncTimers.has(activityId)) {
     window.clearTimeout(activeProductSyncTimers.get(activityId)!)
     activeProductSyncTimers.delete(activityId)
   }
   try {
     const res: any = await getActivityProductSyncJob(activityId, jobId, { suppressErrorNotice: true })
-    const syncStatus = String(res?.data?.syncStatus || '')
+    const syncStatus = String(res?.data?.syncStatus || '').trim().toUpperCase()
     if (isActivityProductSyncSuccess(syncStatus)) {
       message.success(`活动 [${activityId}] 商品同步完成，已刷新对应统计`)
-      void hydrateProductStats(data.value.filter((r) => String(r.activityId) === activityId))
+      await fetchData()
       return
     }
     if (isActivityProductSyncTerminal(syncStatus)) {
-      if (syncStatus === 'PARTIAL') {
-        message.warning(`活动 [${activityId}] 商品同步部分完成，已更新现有数据`)
+      const notice = getActivityProductSyncNotice(syncStatus)
+      if (notice.type === 'success') {
+        message.success(`活动 [${activityId}] ${notice.text}`)
+      } else if (notice.type === 'warning') {
+        message.warning(`活动 [${activityId}] ${notice.text}`)
       } else {
-        message.warning(`活动 [${activityId}] 商品同步结束 (${syncStatus})`)
+        message.info(`活动 [${activityId}] ${notice.text}`)
       }
-      void hydrateProductStats(data.value.filter((r) => String(r.activityId) === activityId))
+      if (syncStatus === 'PARTIAL') {
+        await fetchData()
+      }
       return
     }
     if (attempt >= ACTIVITY_PRODUCT_SYNC_MAX_POLLS) {
+      message.warning(`活动 [${activityId}] 商品同步状态轮询超时，可稍后重试`)
       return
     }
   } catch {
     if (attempt >= ACTIVITY_PRODUCT_SYNC_MAX_POLLS) {
+      message.warning(`活动 [${activityId}] 商品同步状态查询失败，可稍后重试`)
       return
     }
   }
+  if (isDisposed.value) return
   const timer = window.setTimeout(() => {
     void pollSingleActivityProductSyncJob(activityId, jobId, attempt + 1)
   }, getActivityProductSyncPollDelayMs(attempt))
@@ -803,6 +825,16 @@ const loadInstitutionName = async () => {
     institutionName.value = ''
   }
 }
+
+onBeforeUnmount(() => {
+  isDisposed.value = true
+  activeProductSyncTimers.forEach((timer) => window.clearTimeout(timer))
+  activeProductSyncTimers.clear()
+  if (activeActivityListSyncInterval !== null) {
+    window.clearInterval(activeActivityListSyncInterval)
+    activeActivityListSyncInterval = null
+  }
+})
 
 onMounted(async () => {
   await loadInstitutionName()

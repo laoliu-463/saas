@@ -137,6 +137,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\sync-apifox.ps1
 - `branch create --from main` 只表示 `ddd-sync` 从 `main` 创建。
 - CLI `apifox import --branch` 返回的 `apiCollection` 计数不能单独证明 UI 接口管理已有内容。
 - OpenAPI 云端导入必须显式指定 `APIFOX_BRANCH` 对应的 `targetBranchId`。
+- `APIFOX_BRANCH` 只能是开发分支；脚本会在前置校验阶段拒绝 `main` / `master`，即使是 dry-run。
 - 没有 Apifox 开发端口 / 开发入口配置，不允许云端导入。
 - OpenAPI `servers` 不包含开发入口或开发端口，不允许云端导入。
 - Evidence 必须记录 branch source、import target branch、target branch id、import API 和 import counters。

@@ -3,6 +3,7 @@ import {
   ACTIVITY_STATUS_TABS,
   buildBuyinActivityUrl,
   countActivityProductStats,
+  resolveActivityProductStats,
   formatActivityCategories,
   formatMechanismSummary,
   resolveActivityAssigneeName,
@@ -54,7 +55,15 @@ describe('activity-list-display', () => {
         { status: 0, statusText: '待审核' },
         { status: 3, statusText: '合作已终止' }
       ])
-    ).toEqual({ promoting: 1, pending: 1 })
+    ).toEqual({ loaded: 3, total: 3, promoting: 1, pending: 1 })
+  })
+
+  it('keeps loaded rows separate from backend total and all-status counts', () => {
+    expect(resolveActivityProductStats({
+      items: [{ status: 0 }, { status: 1 }],
+      total: 1274,
+      statusCounts: { total: 1274, promoting: 726, pendingReview: 121 }
+    })).toEqual({ loaded: 2, total: 1274, promoting: 726, pending: 121 })
   })
 
   it('formats mechanism summary with defaults', () => {
@@ -72,7 +81,7 @@ describe('activity-list-display', () => {
 
   it('formats activity sync time for list display', () => {
     expect(formatActivitySyncTime('2026-05-29T16:52:00')).toBe('2026-05-29 16:52')
-    expect(resolveActivitySyncTime({ lastSyncAt: '2026-05-29T16:52:00' })).toBe('2026-05-29 16:52')
+    expect(resolveActivitySyncTime({ lastSyncAt: '2026-05-29T16:52:00' })).toBe('—')
   })
 
   it('exposes assignment filter options', () => {
