@@ -79,12 +79,14 @@ class AuthorizationPrincipalApplicationServiceTest {
     }
 
     @Test
-    void requireCurrent_rejectsStaleVersion() {
+    void requireCurrent_rejectsAnyVersionMismatch() {
         UUID userId = UUID.randomUUID();
         when(store.loadLoginEligible(userId)).thenReturn(Optional.of(
                 new AuthorizationPrincipal(userId, null, "alice", 8L, false)));
 
         assertThatThrownBy(() -> service.requireCurrent(userId, 7L))
+                .isInstanceOf(AuthorizationTokenRejectedException.class);
+        assertThatThrownBy(() -> service.requireCurrent(userId, 9L))
                 .isInstanceOf(AuthorizationTokenRejectedException.class);
     }
 

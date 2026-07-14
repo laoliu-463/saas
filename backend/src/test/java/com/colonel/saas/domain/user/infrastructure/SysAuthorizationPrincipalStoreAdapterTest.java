@@ -108,6 +108,15 @@ class SysAuthorizationPrincipalStoreAdapterTest {
         assertThat(adapter.loadLoginEligible(userId)).isEmpty();
     }
 
+    @Test
+    void loadLoginEligible_whenAuthorizationVersionIsNegative_shouldReturnEmpty() {
+        UUID userId = UUID.randomUUID();
+        SysUser user = user(userId, null, "alice", SysUserStatus.ACTIVE, -1L);
+        when(sysUserMapper.selectById(userId)).thenReturn(user);
+
+        assertThat(adapter.loadLoginEligible(userId)).isEmpty();
+    }
+
     private static SysUser user(
             UUID userId,
             UUID deptId,
