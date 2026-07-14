@@ -16,6 +16,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -29,6 +30,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -38,7 +41,7 @@ class SysRoleApplicationTest {
     @Mock SysRoleMapper sysRoleMapper;
     @Mock SysUserRoleMapper sysUserRoleMapper;
     @Mock OperationLogService operationLogService;
-    @Mock SysRolePermissionMapper sysRolePermissionMapper;
+    @Mock AuthorizationVersionApplicationService authorizationVersionService;
 
     private SysRoleApplication application;
     private final UUID roleId = UUID.randomUUID();
@@ -50,7 +53,7 @@ class SysRoleApplicationTest {
                 sysRoleMapper,
                 sysUserRoleMapper,
                 operationLogService,
-                sysRolePermissionMapper);
+                authorizationVersionService);
         testRole = new SysRole();
         testRole.setId(roleId);
         testRole.setRoleCode("test_role");
@@ -155,6 +158,7 @@ class SysRoleApplicationTest {
         assertThat(captor.getValue().getRoleCode()).matches("^[a-z][a-z0-9_]*$");
         assertThat(captor.getValue().getDataScope()).isEqualTo(1);
         assertThat(result.getRoleName()).isEqualTo("新角色");
+        verify(authorizationVersionService, never()).incrementUsersByRole(any(), any(), any());
     }
 
     @Test
@@ -171,17 +175,50 @@ class SysRoleApplicationTest {
 
     @Test
     void updateSuccessfullyUpdatesRole() {
+        UUID currentUserId = UUID.randomUUID();
         when(sysRoleMapper.selectById(roleId)).thenReturn(testRole);
         when(sysRoleMapper.findByRoleCode("updated_role")).thenReturn(Optional.empty());
 
         SysRoleUpdateRequest request = new SysRoleUpdateRequest(
                 "updated_role", "更新角色", 2, 1, "更新备注");
 
-        SysRoleVO result = application.update(roleId, request, UUID.randomUUID());
+        SysRoleVO result = application.update(roleId, request, currentUserId);
 
-        verify(sysRoleMapper).updateById(any());
+        InOrder factThenVersion = inOrder(sysRoleMapper, authorizationVersionService);
+        factThenVersion.verify(sysRoleMapper).updateById(any());
+        factThenVersion.verify(authorizationVersionService).incrementUsersByRole(
+                roleId,
+                "ROLE_UPDATED",
+                currentUserId);
         assertThat(result.getRoleName()).isEqualTo("更新角色");
         assertThat(result.getDataScope()).isEqualTo(2);
+    }
+
+    @Test
+    void update_versionFailurePropagatesBeforeAudit() {
+        UUID currentUserId = UUID.randomUUID();
+        RuntimeException failure = new RuntimeException("version failed");
+        when(sysRoleMapper.selectById(roleId)).thenReturn(testRole);
+        when(sysRoleMapper.findByRoleCode("updated_role")).thenReturn(Optional.empty());
+        doThrow(failure).when(authorizationVersionService).incrementUsersByRole(
+                roleId,
+                "ROLE_UPDATED",
+                currentUserId);
+
+        SysRoleUpdateRequest request = new SysRoleUpdateRequest(
+                "updated_role", "更新角色", 2, 1, "更新备注");
+
+        assertThatThrownBy(() -> application.update(roleId, request, currentUserId))
+                .isSameAs(failure);
+
+        InOrder factThenVersion = inOrder(sysRoleMapper, authorizationVersionService);
+        factThenVersion.verify(sysRoleMapper).updateById(any());
+        factThenVersion.verify(authorizationVersionService).incrementUsersByRole(
+                roleId,
+                "ROLE_UPDATED",
+                currentUserId);
+        verify(operationLogService, never()).recordSystemAction(
+                any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -204,6 +241,7 @@ class SysRoleApplicationTest {
         application.delete(roleId, UUID.randomUUID());
 
         verify(sysRoleMapper).softDeleteById(roleId);
+        verify(authorizationVersionService, never()).incrementUsersByRole(any(), any(), any());
     }
 
     @Test
