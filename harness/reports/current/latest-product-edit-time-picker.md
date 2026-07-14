@@ -1,108 +1,87 @@
-﻿# Evidence Report
+# Evidence Report
 
 ## Metadata
 
-- Time: 2026-07-14 16:22:54 +08:00
+- Time: 2026-07-14 17:31:19 +08:00
 - Environment: real-pre
 - Scope: full
 - Branch: codex/ddd-user-role-application
-- Commit: 67f94935
-- Owned worktree: dirty
-- Deploy remote: false
+- Commit: 3e1c02e611a08138d448da924bea6509fd7cf2e5
+- Owned worktree: dirty (保留用户既有未提交改动)
+- Deploy remote: true
 
 ## Owned Files
 
 ~~~text
-backend/src/main/java/com/colonel/saas/controller/ProductController.java
-backend/src/main/java/com/colonel/saas/service/ProductService.java
-backend/src/test/java/com/colonel/saas/service/ProductServiceFilterTest.java
-docs/05-API契约总表.md
-docs/领域/商品域.md
-frontend/src/api/productManage.ts
-frontend/src/views/product/components/ProductEditModal.test.ts
-frontend/src/views/product/components/ProductEditModal.vue
-harness/rules/changelog.md
-harness/rules/instructions/domain/product-domain.md
-harness/rules/state/snapshots/01-当前项目状态.md
-harness/rules/state/snapshots/DOMAIN_STATUS.md
+frontend/src/plugins/naive-product-components.ts
+frontend/src/plugins/naive-product-components.test.ts
 ~~~
 
-## Owned Git Status
+## Root Cause Evidence
 
 ~~~text
-M backend/src/main/java/com/colonel/saas/controller/ProductController.java
- M backend/src/main/java/com/colonel/saas/service/ProductService.java
- M backend/src/test/java/com/colonel/saas/service/ProductServiceFilterTest.java
- M docs/05-API契约总表.md
- M docs/领域/商品域.md
- M frontend/src/api/productManage.ts
- M frontend/src/views/product/components/ProductEditModal.test.ts
- M frontend/src/views/product/components/ProductEditModal.vue
- M harness/rules/changelog.md
- M harness/rules/instructions/domain/product-domain.md
- M harness/rules/state/snapshots/01-当前项目状态.md
- M harness/rules/state/snapshots/DOMAIN_STATUS.md
+远端部署前，真实商品编辑抽屉中的“开始时间/结束时间”标签存在，但 DOM 中对应节点是未注册的 <n-date-picker> 原生标签；实际 Naive UI 日期控件未渲染。
+原因：product 路由组件注册清单遗漏 NDatePicker。ProductEditModal 单测使用了 NDatePicker stub，因此原有单测未覆盖全局注册缺口。
 ~~~
 
-## Build Result
+## Change
 
 ~~~text
-Backend mvn package PASS; backend full mvn test PASS (3203 tests, 0 failures, 0 errors, 3 skipped); frontend npm ci/build PASS; frontend full vitest PASS (93 files, 711 tests); typecheck PASS.
+在 frontend/src/plugins/naive-product-components.ts 注册 NDatePicker；新增注册回归测试，防止商品路由再次遗漏日期控件。
 ~~~
 
-## Docker Status
+## Build and Test Result
 
 ~~~text
-NAME                              IMAGE                            COMMAND                  SERVICE             CREATED         STATUS                    PORTS
-saas-active-backend-real-pre-1    colonel-saas/backend:real-pre    "sh -c 'java $JAVA_O…"   backend-real-pre    8 minutes ago   Up 8 minutes (healthy)    127.0.0.1:8081->8080/tcp
-saas-active-frontend-real-pre-1   colonel-saas/frontend:real-pre   "/docker-entrypoint.…"   frontend-real-pre   8 minutes ago   Up 8 minutes (healthy)    127.0.0.1:3001->80/tcp
-saas-active-postgres-real-pre-1   postgres:15-alpine               "docker-entrypoint.s…"   postgres-real-pre   8 minutes ago   Up 8 minutes (healthy)    5432/tcp
-saas-active-redis-real-pre-1      redis:7-alpine                   "docker-entrypoint.s…"   redis-real-pre      4 weeks ago     Up 33 minutes (healthy)   6379/tcp
-NAMES                             STATUS                      PORTS
-saas-active-frontend-real-pre-1   Up 8 minutes (healthy)      127.0.0.1:3001->80/tcp
-saas-active-backend-real-pre-1    Up 8 minutes (healthy)      127.0.0.1:8081->8080/tcp
-saas-active-postgres-real-pre-1   Up 8 minutes (healthy)      5432/tcp
-campus_frontend                   Up 33 minutes               0.0.0.0:5173->5173/tcp, [::]:5173->5173/tcp
-campus_backend                    Up 33 minutes (healthy)     0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp
-campus_postgres                   Up 33 minutes (healthy)     0.0.0.0:5433->5432/tcp, [::]:5433->5432/tcp
-saas-active-redis-real-pre-1      Up 33 minutes (healthy)     6379/tcp
-saas-test-backend-1               Up 17 minutes (unhealthy)   0.0.0.0:5005->5005/tcp, [::]:5005->5005/tcp, 0.0.0.0:8080->8080/tcp, [::]:8080->8080/tcp
-~~~
-
-## Health Check Result
-
-~~~text
-real-pre backend/frontend/postgres/redis healthy after fixed-entry restart; local GET /api/system/health returned 200 {"status":"UP"}; frontend /healthz returned 200.
-~~~
-
-## Business Validation Result
-
-~~~text
-BLOCKED_AUTH: real-pre preflight frontend/backend/schema/mapping checks PASS, but admin login failed after 5 attempts with HTTP 401; no admin token, so real product edit API/page flow was not executed.
-~~~
-
-## Content Maintenance Result
-
-~~~text
-Not executed after business preflight BLOCKED_AUTH; no content retirement requested.
+PASS: frontend targeted Vitest, 2 files / 4 tests passed.
+PASS: frontend typecheck.
+PASS: frontend production build.
+历史基线：商品时间字段与后端保存逻辑的既有 targeted/full tests 已通过；本次修复未修改后端逻辑。
 ~~~
 
 ## Remote Deploy Result
 
 ~~~text
-remote not deployed (not requested)
+PASS: fixed real-pre deployment entry completed.
+Remote HEAD: 3e1c02e6.
+Remote backend Maven package: BUILD SUCCESS.
+Remote frontend pnpm build: success.
+Remote backend/frontend containers rebuilt and restarted.
+Remote backend health: HTTP 200, {"status":"UP"}.
+Remote frontend asset contains the product-route NDatePicker registration bundle.
+Remote real-pre preflight: PASS; canRunBusinessFlows=true.
+~~~
+
+## Business Validation Result
+
+~~~text
+PASS: server-local Chromium targeted real-pre product edit flow.
+商品编辑按钮：3 个可见。
+日期控件：datePickerCount=2；nativeDateTagCount=0。
+开始时间输入：2026-05-07 00:00:00。
+结束时间输入：2027-05-31 23:59:59。
+点击开始时间后日历弹层出现，popupHasCalendar=true。
+控制台错误：0；失败请求：0。
+未点击保存，未修改真实商品数据。
+说明：服务器本机浏览器通过无 Origin 的 API 代理完成 real-pre 页面验收，避免 localhost Origin 被后端安全策略拒绝；页面和构建产物仍来自已部署容器。
+~~~
+
+## P0 Context
+
+~~~text
+完整 real-pre P0 不作为本功能 PASS 依据：最新 P0 的商品链步骤通过，但总体因抖店接入回归 FAIL、清理计划 FAIL，以及订单/寄样真实前置数据不足而 FAIL/PENDING；这些不是本次日期控件修复的失败证据。
 ~~~
 
 ## Retro Summary
 
-本轮新增可执行改进：恢复 real-pre 管理员账号/认证后，重跑 real-pre 商品编辑页面/API 正向验收并补清空回退证据；责任人和验证窗口待业务方提供。当前代码侧未发现新的可执行 Harness 改进。
+本次根因是路由级 Naive UI 注册清单遗漏，且组件单测 stub 掩盖了运行时注册缺口。已新增注册回归测试，并在部署后执行服务器本机真实页面验收，后续涉及全局组件注册的改动必须同时做实际路由页面检查。
 
 ## Conclusion
 
-PARTIAL
+PASS
 
 ## Residual Risk
 
-- Items marked as not collected are not proof of success.
-- `check-harness-limits.ps1 -BaselineRef HEAD` 已执行；TASK_GATE=FAIL、REPOSITORY_HEALTH=PARTIAL，原因是基线之外已有 `harness/reports/` 根目录时间戳报告 16 个、目录文件数 39 超过 20，且有 1 个历史报告超过 200 行。本轮未删除或归档这些非本任务文件，避免混入清理范围。
-- real-pre 管理员账号登录连续 5 次 HTTP 401，真实商品编辑页面/API 正向业务验证待恢复授权后重跑。
+- 用户当前浏览器若仍缓存旧 index/JS，需要强制刷新后再进入商品编辑；新部署已生成新的前端资源 hash。
+- 完整 real-pre P0 仍有抖店/真实订单相关独立阻塞，不能据此宣称整个 real-pre P0 通过。
+- 工作区存在用户既有未提交改动，本任务未修改、未暂存、未提交这些文件。
