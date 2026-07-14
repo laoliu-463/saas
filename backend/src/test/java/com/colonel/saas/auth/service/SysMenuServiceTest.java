@@ -34,6 +34,7 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -135,14 +136,14 @@ class SysMenuServiceTest {
         verify(sysRoleMenuMapper).deleteByRoleId(roleId);
         verify(sysRoleMenuMapper, times(2)).insert(captor.capture());
         assertThat(captor.getAllValues()).extracting(SysRoleMenu::getMenuId).containsExactly(menuA, menuB);
-        InOrder factThenVersion = inOrder(sysRoleMenuMapper, authorizationVersionService);
-        factThenVersion.verify(sysRoleMenuMapper).deleteByRoleId(roleId);
-        factThenVersion.verify(sysRoleMenuMapper, times(2)).insert(any(SysRoleMenu.class));
-        factThenVersion.verify(authorizationVersionService).incrementUsersByRole(
-                roleId,
-                "ROLE_MENU_PERMISSIONS_UPDATED",
-                userId);
-        verify(operationLogService).recordSystemAction(
+        InOrder factThenLegacyThenVersion = inOrder(
+                sysRoleMenuMapper,
+                operationLogService,
+                userDomainEventPublisher,
+                authorizationVersionService);
+        factThenLegacyThenVersion.verify(sysRoleMenuMapper).deleteByRoleId(roleId);
+        factThenLegacyThenVersion.verify(sysRoleMenuMapper, times(2)).insert(any(SysRoleMenu.class));
+        factThenLegacyThenVersion.verify(operationLogService).recordSystemAction(
                 userId,
                 "角色菜单管理",
                 "分配角色菜单",
@@ -152,12 +153,16 @@ class SysMenuServiceTest {
                 null,
                 "分配角色菜单: roleId=" + roleId + ", menuCount=2"
         );
-        verify(userDomainEventPublisher).publishRolePermissionUpdated(
+        factThenLegacyThenVersion.verify(userDomainEventPublisher).publishRolePermissionUpdated(
                 eq(roleId),
                 eq("biz_staff"),
                 any(),
                 any(),
                 eq(userId));
+        factThenLegacyThenVersion.verify(authorizationVersionService).incrementUsersByRole(
+                roleId,
+                "ROLE_MENU_PERMISSIONS_UPDATED",
+                userId);
     }
 
     @Test
@@ -176,7 +181,7 @@ class SysMenuServiceTest {
     }
 
     @Test
-    void assignMenusToRole_versionFailurePropagatesBeforeAuditAndDomainEvent() {
+    void assignMenusToRole_versionFailurePropagatesAfterAuditAndDomainEvent() {
         RuntimeException failure = new RuntimeException("version failed");
         SysRole role = new SysRole();
         role.setId(roleId);
@@ -191,17 +196,32 @@ class SysMenuServiceTest {
         assertThatThrownBy(() -> service.assignMenusToRole(roleId, List.of(rootId), userId))
                 .isSameAs(failure);
 
-        InOrder factThenVersion = inOrder(sysRoleMenuMapper, authorizationVersionService);
-        factThenVersion.verify(sysRoleMenuMapper).deleteByRoleId(roleId);
-        factThenVersion.verify(sysRoleMenuMapper).insert(any(SysRoleMenu.class));
-        factThenVersion.verify(authorizationVersionService).incrementUsersByRole(
+        InOrder factThenLegacyThenVersion = inOrder(
+                sysRoleMenuMapper,
+                operationLogService,
+                userDomainEventPublisher,
+                authorizationVersionService);
+        factThenLegacyThenVersion.verify(sysRoleMenuMapper).deleteByRoleId(roleId);
+        factThenLegacyThenVersion.verify(sysRoleMenuMapper).insert(any(SysRoleMenu.class));
+        factThenLegacyThenVersion.verify(operationLogService).recordSystemAction(
+                userId,
+                "角色菜单管理",
+                "分配角色菜单",
+                "PUT",
+                "SysRoleMenu",
+                roleId.toString(),
+                null,
+                "分配角色菜单: roleId=" + roleId + ", menuCount=1");
+        factThenLegacyThenVersion.verify(userDomainEventPublisher).publishRolePermissionUpdated(
+                eq(roleId),
+                eq("biz_staff"),
+                any(),
+                any(),
+                eq(userId));
+        factThenLegacyThenVersion.verify(authorizationVersionService).incrementUsersByRole(
                 roleId,
                 "ROLE_MENU_PERMISSIONS_UPDATED",
                 userId);
-        verify(operationLogService, never()).recordSystemAction(
-                any(), any(), any(), any(), any(), any(), any(), any());
-        verify(userDomainEventPublisher, never()).publishRolePermissionUpdated(
-                any(), any(), any(), any(), any());
     }
 
     @Test
@@ -226,6 +246,7 @@ class SysMenuServiceTest {
         assertThat(created.getSortOrder()).isZero();
         assertThat(created.getVisible()).isEqualTo(1);
         assertThat(created.getStatus()).isEqualTo(1);
+        verifyNoInteractions(authorizationVersionService);
         verify(sysMenuMapper).insert(any(SysMenu.class));
 
         SysMenu existing = menu(rootId, "Old");
@@ -294,6 +315,7 @@ class SysMenuServiceTest {
                 "Referenced",
                 "删除菜单: Referenced"
         );
+        verifyNoInteractions(authorizationVersionService);
     }
 
     @Test
