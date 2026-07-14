@@ -2,6 +2,7 @@ package com.colonel.saas.config;
 
 import com.colonel.saas.domain.product.policy.ProductDisplayPolicy;
 import com.colonel.saas.domain.sample.policy.SampleActionPermissionPolicy;
+import com.colonel.saas.domain.user.policy.AuthorizationDecisionPolicy;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.domain.user.policy.OrgAssignmentPolicy;
@@ -31,6 +32,11 @@ public class DomainPolicyConfig {
     @Bean
     public ProductDisplayPolicy productDisplayPolicy() {
         return new ProductDisplayPolicy();
+    }
+
+    @Bean
+    public AuthorizationDecisionPolicy authorizationDecisionPolicy() {
+        return new AuthorizationDecisionPolicy();
     }
 
     @Bean
