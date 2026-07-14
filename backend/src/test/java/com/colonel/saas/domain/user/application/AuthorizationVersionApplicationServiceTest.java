@@ -6,9 +6,11 @@ import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.colonel.saas.domain.user.event.AuthorizationVersionChangedEvent;
 import com.colonel.saas.domain.user.infrastructure.AuthorizationVersionCacheEvictListener;
+import com.colonel.saas.domain.user.infrastructure.SysAuthorizationVersionStoreAdapter;
 import com.colonel.saas.domain.user.port.AuthorizationSnapshotCache;
 import com.colonel.saas.domain.user.port.AuthorizationVersionStore;
 import com.colonel.saas.testsupport.BaseIntegrationTest;
+import org.assertj.core.api.SoftAssertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
@@ -26,6 +28,8 @@ import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -47,6 +51,9 @@ class AuthorizationVersionApplicationServiceTest extends BaseIntegrationTest {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private SysAuthorizationVersionStoreAdapter versionStore;
 
     @MockBean
     private AuthorizationSnapshotCache cache;
@@ -177,6 +184,26 @@ class AuthorizationVersionApplicationServiceTest extends BaseIntegrationTest {
 
         assertThat(selectVersion(userId)).isEqualTo(5L);
         verifyNoMoreInteractions(cache);
+    }
+
+    @Test
+    void publisherFailure_propagatesAndRollsBackVersionWithoutCacheEviction() {
+        UUID userId = insertUser(9L);
+        RuntimeException publishFailure = new IllegalStateException("publisher unavailable");
+        ApplicationEventPublisher throwingPublisher = mock(ApplicationEventPublisher.class);
+        doThrow(publishFailure).when(throwingPublisher).publishEvent(any(Object.class));
+        AuthorizationVersionApplicationService service =
+                new AuthorizationVersionApplicationService(versionStore, throwingPublisher);
+
+        Throwable thrown = catchThrowable(() -> transactionTemplate.executeWithoutResult(
+                ignored -> service.incrementUser(userId, CAUSE, UUID.randomUUID())));
+
+        SoftAssertions.assertSoftly(softly -> {
+            softly.assertThat(thrown).isSameAs(publishFailure);
+            softly.assertThat(selectVersion(userId)).isEqualTo(9L);
+        });
+        verify(throwingPublisher).publishEvent(any(AuthorizationVersionChangedEvent.class));
+        verifyNoInteractions(cache);
     }
 
     @Test
