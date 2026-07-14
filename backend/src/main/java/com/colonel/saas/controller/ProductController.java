@@ -143,14 +143,14 @@ public class ProductController extends BaseController {
      * <p>只更新寄样规则，不改变商品审核、上架和业务状态；请求体使用 Map 是为了
      * 兼容历史寄样字段与当前表单字段，具体字段校验在服务层完成。</p>
      */
-    @Operation(summary = "保存商品寄样设置", description = "保存免费寄样开关、达人门槛和样品盒数/数量。")
+    @Operation(summary = "保存商品寄样设置", description = "保存免费寄样开关和达人寄样门槛。")
     @PutMapping("/{relationId}/sample-setting")
     public ApiResult<Map<String, Object>> updateSampleSetting(
             @Parameter(description = "商品关系 ID，使用 product_snapshot.id。") @PathVariable UUID relationId,
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
-                    description = "寄样设置。支持 supportFreeSample、hasSampleThreshold、minSales30d、sampleBoxCount、sampleQuantity 等字段。",
+                    description = "寄样设置。支持 supportFreeSample、hasSampleThreshold、minWindowSales30d、minSales30d、minFans、minTalentLevel 等字段；达人带货等级范围为 LV0-LV7。",
                     required = true,
-                    content = @Content(examples = @ExampleObject(value = "{\"supportFreeSample\":true,\"hasSampleThreshold\":true,\"minSales30d\":50000,\"sampleBoxCount\":4,\"sampleQuantity\":1}"))
+                    content = @Content(examples = @ExampleObject(value = "{\"supportFreeSample\":true,\"hasSampleThreshold\":true,\"minSales30d\":50000,\"minTalentLevel\":1}"))
             )
             @RequestBody Map<String, Object> request,
             @RequestAttribute(value = "userId", required = false) UUID userId,

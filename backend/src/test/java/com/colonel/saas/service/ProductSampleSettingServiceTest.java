@@ -70,8 +70,6 @@ class ProductSampleSettingServiceTest {
         request.put("minSales30d", 50000L);
         request.put("minFans", 1000L);
         request.put("minTalentLevel", 1L);
-        request.put("sampleBoxCount", 4L);
-        request.put("sampleQuantity", 1L);
 
         Map<String, Object> result = service.update(
                 relationId,
@@ -86,8 +84,7 @@ class ProductSampleSettingServiceTest {
                 .containsEntry("sampleType", "FREE")
                 .containsEntry("sampleThresholdSales", 50000L)
                 .containsEntry("sampleThresholdLevel", 1L)
-                .containsEntry("sampleBoxCount", 4L)
-                .containsEntry("sampleQuantity", 1L);
+                .doesNotContainKeys("sampleBoxCount", "sampleQuantity");
         assertThat(result.get("hasSampleThreshold")).isEqualTo(true);
 
         verify(operationStateMapper).updateById(state);
@@ -112,6 +109,46 @@ class ProductSampleSettingServiceTest {
     }
 
     @Test
+    void update_shouldAcceptTalentLevelBetweenZeroAndSeven() throws Exception {
+        UUID relationId = UUID.randomUUID();
+        ProductSnapshot snapshot = snapshot(relationId);
+        ProductOperationState state = new ProductOperationState();
+        state.setId(UUID.randomUUID());
+        state.setActivityId(snapshot.getActivityId());
+        state.setProductId(snapshot.getProductId());
+        state.setVersion(1);
+        state.setBizStatus("APPROVED");
+
+        when(snapshotMapper.selectById(relationId)).thenReturn(snapshot);
+        when(operationStateMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(state);
+        when(operationStateMapper.updateById(state)).thenReturn(1);
+
+        Map<String, Object> request = Map.of(
+                "supportFreeSample", true,
+                "minTalentLevel", 7);
+
+        Map<String, Object> result = service.update(relationId, request, null, null);
+
+        assertThat(result)
+                .containsEntry("minTalentLevel", 7L)
+                .containsEntry("sampleThresholdLevel", 7L);
+    }
+
+    @Test
+    void update_shouldRejectTalentLevelAboveSeven() {
+        UUID relationId = UUID.randomUUID();
+        when(snapshotMapper.selectById(relationId)).thenReturn(snapshot(relationId));
+
+        Map<String, Object> request = Map.of(
+                "supportFreeSample", true,
+                "minTalentLevel", 8);
+
+        assertThatThrownBy(() -> service.update(relationId, request, null, null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("达人带货等级");
+    }
+
+    @Test
     void update_shouldRemoveThresholdValuesWhenThresholdSwitchIsOff() throws Exception {
         UUID relationId = UUID.randomUUID();
         ProductSnapshot snapshot = snapshot(relationId);
@@ -128,9 +165,7 @@ class ProductSampleSettingServiceTest {
 
         Map<String, Object> request = Map.of(
                 "supportFreeSample", false,
-                "hasSampleThreshold", false,
-                "sampleBoxCount", 4,
-                "sampleQuantity", 1);
+                "hasSampleThreshold", false);
 
         Map<String, Object> result = service.update(relationId, request, null, null);
 
@@ -151,9 +186,7 @@ class ProductSampleSettingServiceTest {
         when(operationStateMapper.insert(any(ProductOperationState.class))).thenReturn(1);
 
         Map<String, Object> request = Map.of(
-                "supportFreeSample", true,
-                "sampleBoxCount", 4,
-                "sampleQuantity", 1);
+                "supportFreeSample", true);
 
         service.update(relationId, request, null, null);
 

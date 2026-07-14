@@ -99,7 +99,6 @@ public class ProductSampleSettingService {
         applySupportFreeSample(request, merged);
         boolean thresholdEnabled = applyThresholdSwitch(request, merged);
         applyThresholdValues(request, merged, thresholdEnabled);
-        applySampleQuantity(request, merged);
 
         state.setAuditPayload(writeJson(merged));
         state.setLastOperationAt(LocalDateTime.now());
@@ -202,25 +201,12 @@ public class ProductSampleSettingService {
         if (!enabled) {
             return;
         }
-        applyOptionalNumber(request, merged, "minWindowSales30d", 0L, "windowSales30dMin");
-        applyOptionalNumber(request, merged, "minSales30d", 0L, "sampleThresholdSales", "salesRequirement30d");
-        applyOptionalNumber(request, merged, "minFans", 0L, "fansMin");
-        applyOptionalNumber(request, merged, "minTalentLevel", 0L, "sampleThresholdLevel", "talentLevelRequirement");
-    }
-
-    private void applySampleQuantity(Map<String, Object> request, Map<String, Object> merged) {
-        if (containsAny(request, "sampleBoxCount", "sampleBoxes")) {
-            long sampleBoxCount = requireNumber(valueOf(request, "sampleBoxCount", "sampleBoxes"),
-                    "样品盒数", 1L);
-            merged.put("sampleBoxCount", sampleBoxCount);
-            merged.put("sampleBoxes", sampleBoxCount);
-        }
-        if (containsAny(request, "sampleQuantity", "quantity")) {
-            long sampleQuantity = requireNumber(valueOf(request, "sampleQuantity", "quantity"),
-                    "样品数量", 1L);
-            merged.put("sampleQuantity", sampleQuantity);
-            merged.put("quantity", sampleQuantity);
-        }
+        applyOptionalNumber(request, merged, "minWindowSales30d", 0L, Long.MAX_VALUE, "windowSales30dMin");
+        applyOptionalNumber(request, merged, "minSales30d", 0L, Long.MAX_VALUE,
+                "sampleThresholdSales", "salesRequirement30d");
+        applyOptionalNumber(request, merged, "minFans", 0L, Long.MAX_VALUE, "fansMin");
+        applyOptionalNumber(request, merged, "minTalentLevel", 0L, 7L,
+                "sampleThresholdLevel", "talentLevelRequirement");
     }
 
     private void applyOptionalNumber(
@@ -228,6 +214,7 @@ public class ProductSampleSettingService {
             Map<String, Object> merged,
             String canonicalKey,
             long minimum,
+            long maximum,
             String... aliases) {
         String[] keys = new String[aliases.length + 1];
         keys[0] = canonicalKey;
@@ -240,7 +227,7 @@ public class ProductSampleSettingService {
             removeAll(merged, keys);
             return;
         }
-        long normalized = requireNumber(raw, displayName(canonicalKey), minimum);
+        long normalized = requireNumber(raw, displayName(canonicalKey), minimum, maximum);
         merged.put(canonicalKey, normalized);
         for (String alias : aliases) {
             merged.put(alias, normalized);
@@ -272,7 +259,7 @@ public class ProductSampleSettingService {
         throw BusinessException.param(fieldName + "必须是布尔值");
     }
 
-    private long requireNumber(Object raw, String fieldName, long minimum) {
+    private long requireNumber(Object raw, String fieldName, long minimum, long maximum) {
         if (raw == null) {
             throw BusinessException.param(fieldName + "不能为空");
         }
@@ -284,6 +271,9 @@ public class ProductSampleSettingService {
             long value = decimal.longValueExact();
             if (value < minimum) {
                 throw BusinessException.param(fieldName + "不能小于 " + minimum);
+            }
+            if (value > maximum) {
+                throw BusinessException.param(fieldName + "不能大于 " + maximum);
             }
             return value;
         } catch (NumberFormatException | ArithmeticException ex) {

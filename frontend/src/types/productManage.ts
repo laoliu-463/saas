@@ -62,8 +62,6 @@ export interface ProductSampleSetting {
   minSales30d?: string | number
   minFans?: string | number
   minTalentLevel?: string | number
-  sampleBoxCount?: string | number
-  sampleQuantity?: string | number
   allowSample?: boolean
   sampleType?: string
   responsibleParty?: string
