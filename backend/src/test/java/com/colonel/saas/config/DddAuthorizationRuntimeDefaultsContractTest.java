@@ -2,6 +2,7 @@ package com.colonel.saas.config;
 
 import com.colonel.saas.domain.user.api.AuthorizationRuntimeMode;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.springframework.boot.context.properties.bind.Bindable;
 import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.boot.env.YamlPropertySourceLoader;
@@ -17,6 +18,7 @@ import java.util.List;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class DddAuthorizationRuntimeDefaultsContractTest {
 
@@ -55,26 +57,78 @@ class DddAuthorizationRuntimeDefaultsContractTest {
         }
     }
 
+    @Test
+    void laterYamlDocumentOverridesEarlierAndEnforceGateRejectsIt(
+            @TempDir Path root) throws Exception {
+        Path yaml = root.resolve("application-multi-document.yml");
+        Files.writeString(yaml, """
+                authorization:
+                  runtime:
+                    default-mode: LEGACY
+                ---
+                authorization:
+                  runtime:
+                    default-mode: ENFORCE
+                """);
+
+        AuthorizationRuntimeProperties properties = bindAuthorizationRuntime(yaml);
+
+        assertThat(properties.getDefaultMode())
+                .as("later YAML documents should override earlier documents")
+                .isEqualTo(AuthorizationRuntimeMode.ENFORCE);
+        assertThatThrownBy(() -> assertThat(properties.getDefaultMode())
+                .as("the runtime default ENFORCE gate")
+                .isNotEqualTo(AuthorizationRuntimeMode.ENFORCE))
+                .isInstanceOf(AssertionError.class)
+                .hasMessageContaining("ENFORCE");
+    }
+
+    @Test
+    void checkedInRuntimeProfilesDiscoverDottedProfilesAndOnlyYamlFiles(
+            @TempDir Path root) throws Exception {
+        Files.writeString(root.resolve("application.yml"), "");
+        Files.writeString(root.resolve("application-prod.eu.yml"), "");
+        Files.writeString(root.resolve("application-prod.eu.yaml"), "");
+        Files.writeString(root.resolve("application-.yml"), "");
+        Files.writeString(root.resolve("application-prod.eu.properties"), "");
+        Files.writeString(root.resolve("bootstrap-prod.eu.yml"), "");
+
+        assertThat(checkedInRuntimeProfiles(root))
+                .containsExactlyInAnyOrder(
+                        "application.yml",
+                        "application-prod.eu.yml",
+                        "application-prod.eu.yaml");
+    }
+
     private static List<String> checkedInRuntimeProfiles() throws Exception {
-        try (Stream<Path> paths = Files.list(Path.of("src/main/resources"))) {
+        return checkedInRuntimeProfiles(Path.of("src/main/resources"));
+    }
+
+    private static List<String> checkedInRuntimeProfiles(Path root) throws Exception {
+        try (Stream<Path> paths = Files.list(root)) {
             return paths
                     .filter(Files::isRegularFile)
                     .map(path -> path.getFileName().toString())
-                    .filter(name -> name.matches("application(?:-[^.]+)?\\.ya?ml"))
+                    .filter(name -> name.matches("^application(?:-.+)?\\.ya?ml$"))
                     .sorted()
                     .toList();
         }
     }
 
     private static AuthorizationRuntimeProperties bindAuthorizationRuntime(String resource) throws Exception {
+        return bindAuthorizationRuntime(Path.of("src/main/resources", resource));
+    }
+
+    private static AuthorizationRuntimeProperties bindAuthorizationRuntime(Path yaml) throws Exception {
+        String resource = yaml.getFileName().toString();
         ConfigurableEnvironment environment = new StandardEnvironment();
         environment.getPropertySources().remove(StandardEnvironment.SYSTEM_PROPERTIES_PROPERTY_SOURCE_NAME);
         environment.getPropertySources().remove(StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME);
 
         YamlPropertySourceLoader loader = new YamlPropertySourceLoader();
-        FileSystemResource yaml = new FileSystemResource(Path.of("src/main/resources", resource));
-        for (PropertySource<?> propertySource : loader.load(resource, yaml)) {
-            environment.getPropertySources().addLast(propertySource);
+        FileSystemResource yamlResource = new FileSystemResource(yaml);
+        for (PropertySource<?> propertySource : loader.load(resource, yamlResource)) {
+            environment.getPropertySources().addFirst(propertySource);
         }
 
         return Binder.get(environment)
