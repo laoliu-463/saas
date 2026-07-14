@@ -31,24 +31,41 @@ class AuthorizationSnapshotStoreIntegrationTest extends BaseIntegrationTest {
         UUID userId = insertUser(UUID.randomUUID(), 7L, ACTIVE, NOT_DELETED);
         UUID activeRoleId = insertRole(UUID.randomUUID(), "active_reader", ACTIVE, NOT_DELETED);
         UUID disabledRoleId = insertRole(UUID.randomUUID(), "disabled_reader", INACTIVE, NOT_DELETED);
+        UUID softDeletedRoleId = insertRole(UUID.randomUUID(), "soft_deleted_role", ACTIVE, DELETED);
+        UUID deletedMembershipRoleId = insertRole(
+                UUID.randomUUID(), "deleted_membership_role", ACTIVE, NOT_DELETED);
         UUID scopeOnlyRoleId = insertRole(UUID.randomUUID(), "scope_only", ACTIVE, NOT_DELETED);
         UUID activePermissionId = insertPermission("sample", "read", true, ACTIVE, NOT_DELETED);
         UUID disabledPermissionId = insertPermission("sample", "delete", true, INACTIVE, NOT_DELETED);
+        UUID softDeletedPermissionId = insertPermission("sample", "archive", true, ACTIVE, DELETED);
 
         assignRole(userId, activeRoleId);
         assignRole(userId, disabledRoleId);
+        assignRole(userId, softDeletedRoleId);
+        assignRole(userId, deletedMembershipRoleId, DELETED);
         assignRole(userId, scopeOnlyRoleId);
         grantPermission(activeRoleId, activePermissionId);
         grantPermission(activeRoleId, disabledPermissionId);
+        grantPermission(activeRoleId, softDeletedPermissionId);
         grantPermission(disabledRoleId, activePermissionId);
+        grantPermission(softDeletedRoleId, activePermissionId);
+        grantPermission(deletedMembershipRoleId, activePermissionId);
         insertDomainScope(activeRoleId, "sample", "GROUP");
         insertDomainScope(disabledRoleId, "sample", "ALL");
+        insertDomainScope(softDeletedRoleId, "sample", "ALL");
+        insertDomainScope(deletedMembershipRoleId, "sample", "ALL");
         insertDomainScope(scopeOnlyRoleId, "sample", "ALL");
 
         AuthorizationSnapshot snapshot = store.loadActiveSnapshot(userId).orElseThrow();
 
         assertThat(snapshot.subject().userId()).isEqualTo(userId);
         assertThat(snapshot.subject().authzVersion()).isEqualTo(7L);
+        assertThat(snapshot.grants())
+                .extracting(GrantedRolePermission::roleId)
+                .doesNotContain(softDeletedRoleId, deletedMembershipRoleId);
+        assertThat(snapshot.grants())
+                .extracting(grant -> grant.permission().value())
+                .doesNotContain("sample:archive");
         assertThat(snapshot.grants())
                 .singleElement()
                 .satisfies(grant -> {
@@ -198,13 +215,18 @@ class AuthorizationSnapshotStoreIntegrationTest extends BaseIntegrationTest {
     }
 
     private void assignRole(UUID userId, UUID roleId) {
+        assignRole(userId, roleId, NOT_DELETED);
+    }
+
+    private void assignRole(UUID userId, UUID roleId, int deleted) {
         jdbcTemplate.update("""
                         INSERT INTO sys_user_role (id, user_id, role_id, deleted)
-                        VALUES (?, ?, ?, 0)
+                        VALUES (?, ?, ?, ?)
                         """,
                 UUID.randomUUID(),
                 userId,
-                roleId);
+                roleId,
+                deleted);
     }
 
     private void grantPermission(UUID roleId, UUID permissionId) {
