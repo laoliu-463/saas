@@ -44,36 +44,33 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * 活动商品主链路控制器。
- * <p>
- * 负责团长活动下商品的全生命周期管理，包括详情查询、SKU 查看、绑定活动、
- * 分配招商、审核决策、生成推广链接、达人跟进、操作日志、置顶、加入商品库及批量操作。
- * 本控制器是活动商品业务的核心入口，覆盖了商品从进入活动到完成推广的主要业务流转。
- * </p>
+ * 活动商品主链路控制器 (god controller - 边缘服务, 不再 DDD 切片).
  *
+ * <p><strong>当前状态 (2026-07-14):</strong></p>
  * <ul>
- *   <li>商品详情与 SKU 查询</li>
- *   <li>商品绑定/解绑活动</li>
- *   <li>分配招商组长及审核人</li>
- *   <li>商品审核（通过/驳回）与推进判断（主推/次推/暂缓/放弃）</li>
- *   <li>生成推广链接（转链）</li>
- *   <li>达人跟进记录</li>
- *   <li>操作日志分页查询</li>
- *   <li>商品置顶（24 小时，每人最多 10 个）</li>
- *   <li>加入共享商品库</li>
- *   <li>批量分配、批量入库、批量置顶</li>
+ *   <li>已拆分 3 个 sub-controller (3 次 commit):
+ *     <ul>
+ *       <li>ColonelActivityProductQueryController (detail/SKUs/logs) - commit 2e54714f</li>
+ *       <li>ColonelActivityProductPinController (pin/unpin) - commit d6f9cd2f</li>
+ *       <li>ColonelActivityProductLibraryController (library-entry/batch-library-entry) - commit 77dd0c49</li>
+ *     </ul>
+ *   </li>
+ *   <li>未拆分 (god controller, 边缘服务处置 - 标 Javadoc + 跳过 DDD 切片):
+ *     <ul>
+ *       <li>业务管理 5 个 endpoint: bind/assignee/audit-assignee/audit-result/decision</li>
+ *       <li>推广跟进 2 个 endpoint: promotion-links/follow</li>
+ *       <li>批量 2 个 endpoint: batch-assign/batch-pin</li>
+ *     </ul>
+ *   </li>
+ *   <li>不切理由 (与 9 个 god service 一致处置):
+ *     <ol>
+ *       <li>AuditRequest 13+ 字段, 与 ColonelActivityProductControllerAuditRequestTest
+ *           + ColonelActivityProductControllerCopyPromotionTest 强耦合, 切片需同步改 test</li>
+ *       <li>PromotionLinkRequest 含 Swagger content (ExampleObject) 大段装饰, 搬迁工作量大</li>
+ *       <li>3 个 batch endpoint 共享 runProductBatch helper, 拆出需抽公共 helper</li>
+ *     </ol>
+ *   </li>
  * </ul>
- *
- * <p><strong>API 路径前缀：</strong>{@code /colonel/activities/{activityId}/products}</p>
- * <p><strong>架构角色：</strong>表现层（Controller），负责活动商品主链路的 HTTP 入口处理，
- * 委托 {@link ProductService}、{@link ProductPinService} 等完成业务逻辑。</p>
- * <p><strong>访问控制：</strong>类级别允许 {@code BIZ_LEADER}、{@code BIZ_STAFF}、{@code CHANNEL_LEADER}、
- * {@code CHANNEL_STAFF}、{@code ADMIN}；各方法进一步限制角色。</p>
- *
- * @see ProductService
- * @see ProductPinService
-
- * @see SysUserService
  */
 @Validated
 @RestController
