@@ -2,37 +2,29 @@ package com.colonel.saas.domain.user.infrastructure;
 
 import com.colonel.saas.domain.user.api.AuthorizationScope;
 import com.colonel.saas.domain.user.domain.AuthorizationSnapshot;
-import com.colonel.saas.mapper.AuthorizationSnapshotMapper;
 import com.colonel.saas.mapper.projection.AuthorizationSnapshotRow;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.when;
 
-@ExtendWith(MockitoExtension.class)
 class SysAuthorizationSnapshotStoreAdapterTest {
 
-    @Mock
-    private AuthorizationSnapshotMapper mapper;
-
+    private List<AuthorizationSnapshotRow> configuredRows;
     private SysAuthorizationSnapshotStoreAdapter adapter;
 
     @BeforeEach
     void setUp() {
-        adapter = new SysAuthorizationSnapshotStoreAdapter(mapper);
+        adapter = new SysAuthorizationSnapshotStoreAdapter(userId -> configuredRows);
     }
 
     @Test
     void loadActiveSnapshot_whenMapperReturnsEmptyList_shouldReturnEmpty() {
         UUID userId = UUID.randomUUID();
-        when(mapper.findActiveSnapshotRows(userId)).thenReturn(List.of());
+        configuredRows = List.of();
 
         assertThat(adapter.loadActiveSnapshot(userId)).isEmpty();
     }
@@ -40,7 +32,7 @@ class SysAuthorizationSnapshotStoreAdapterTest {
     @Test
     void loadActiveSnapshot_whenMapperReturnsNull_shouldReturnEmpty() {
         UUID userId = UUID.randomUUID();
-        when(mapper.findActiveSnapshotRows(userId)).thenReturn(null);
+        configuredRows = null;
 
         assertThat(adapter.loadActiveSnapshot(userId)).isEmpty();
     }
@@ -50,7 +42,7 @@ class SysAuthorizationSnapshotStoreAdapterTest {
         UUID userId = UUID.randomUUID();
         UUID deptId = UUID.randomUUID();
         AuthorizationSnapshotRow row = subjectRow(userId, deptId, 7L);
-        when(mapper.findActiveSnapshotRows(userId)).thenReturn(List.of(row));
+        configuredRows = List.of(row);
 
         AuthorizationSnapshot snapshot = adapter.loadActiveSnapshot(userId).orElseThrow();
 
@@ -67,7 +59,7 @@ class SysAuthorizationSnapshotStoreAdapterTest {
         UUID roleId = UUID.randomUUID();
         AuthorizationSnapshotRow row = grantRow(
                 userId, deptId, 11L, roleId, "sample:read", "sample", true, "GROUP");
-        when(mapper.findActiveSnapshotRows(userId)).thenReturn(List.of(row));
+        configuredRows = List.of(row);
 
         AuthorizationSnapshot snapshot = adapter.loadActiveSnapshot(userId).orElseThrow();
 
@@ -88,7 +80,7 @@ class SysAuthorizationSnapshotStoreAdapterTest {
         UUID userId = UUID.randomUUID();
         AuthorizationSnapshotRow row = grantRow(
                 userId, null, 1L, UUID.randomUUID(), "sample:read", "sample", true, null);
-        when(mapper.findActiveSnapshotRows(userId)).thenReturn(List.of(row));
+        configuredRows = List.of(row);
 
         AuthorizationSnapshot snapshot = adapter.loadActiveSnapshot(userId).orElseThrow();
 
@@ -101,7 +93,7 @@ class SysAuthorizationSnapshotStoreAdapterTest {
         UUID userId = UUID.randomUUID();
         AuthorizationSnapshotRow row = grantRow(
                 userId, null, 1L, UUID.randomUUID(), "sample:read", "sample", true, "FUTURE");
-        when(mapper.findActiveSnapshotRows(userId)).thenReturn(List.of(row));
+        configuredRows = List.of(row);
 
         AuthorizationSnapshot snapshot = adapter.loadActiveSnapshot(userId).orElseThrow();
 
@@ -131,7 +123,7 @@ class SysAuthorizationSnapshotStoreAdapterTest {
                 "sample",
                 false,
                 "ALL");
-        when(mapper.findActiveSnapshotRows(firstUserId)).thenReturn(List.of(first, second));
+        configuredRows = List.of(first, second);
 
         AuthorizationSnapshot snapshot = adapter.loadActiveSnapshot(firstUserId).orElseThrow();
 
