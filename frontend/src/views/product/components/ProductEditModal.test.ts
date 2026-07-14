@@ -34,6 +34,7 @@ describe('ProductEditModal', () => {
           NFormItem: { props: ['label'], template: '<div class="form-item"><label>{{ label }}</label><slot /></div>' },
           NInputNumber: { props: ['value'], template: '<input v-bind="$attrs" :value="value" />' },
           NInput: { props: ['value', 'readonly'], template: '<input v-bind="$attrs" :value="value" :readonly="readonly" />' },
+          NDatePicker: { props: ['formattedValue'], emits: ['update:formattedValue'], template: '<input v-bind="$attrs" :value="formattedValue" @input="$emit(\'update:formattedValue\', $event.target.value)" />' },
           NCheckbox: { props: ['checked', 'disabled'], template: '<label><input type="checkbox" :checked="checked" :disabled="disabled" /><slot /></label>' },
           NSpace: { template: '<div><slot /></div>' },
           NButton: { emits: ['click'], template: '<button v-bind="$attrs" @click="$emit(\'click\')"><slot /></button>' }
@@ -72,6 +73,7 @@ describe('ProductEditModal', () => {
           NFormItem: { props: ['label'], template: '<div class="form-item"><label>{{ label }}</label><slot /></div>' },
           NInputNumber: { props: ['value'], template: '<input v-bind="$attrs" :value="value" />' },
           NInput: { props: ['value', 'readonly'], template: '<input v-bind="$attrs" :value="value" :readonly="readonly" />' },
+          NDatePicker: { props: ['formattedValue'], emits: ['update:formattedValue'], template: '<input v-bind="$attrs" :value="formattedValue" @input="$emit(\'update:formattedValue\', $event.target.value)" />' },
           NCheckbox: { props: ['checked', 'disabled'], template: '<label><input type="checkbox" :checked="checked" :disabled="disabled" /><slot /></label>' },
           NSpace: { template: '<div><slot /></div>' },
           NButton: { template: '<button><slot /></button>' }
@@ -88,8 +90,6 @@ describe('ProductEditModal', () => {
     expect(wrapper.text()).toEqual(expect.stringContaining('结束时间'))
     expect(wrapper.text()).not.toContain('手卡')
     expect((wrapper.find('[data-testid="product-edit-exclusive-price"]').element as HTMLInputElement).value).toBe('99.5')
-    expect(wrapper.find('[data-testid="product-edit-start-time"]').attributes('readonly')).toBeDefined()
-    expect(wrapper.find('[data-testid="product-edit-end-time"]').attributes('readonly')).toBeDefined()
     expect((wrapper.get('[data-testid="product-edit-start-time"]').element as HTMLInputElement).value).toBe('2026-07-01 00:00:00')
     expect((wrapper.get('[data-testid="product-edit-end-time"]').element as HTMLInputElement).value).toBe('2026-07-31 23:59:59')
   })
@@ -118,6 +118,7 @@ describe('ProductEditModal', () => {
           NFormItem: { props: ['label'], template: '<div><slot /></div>' },
           NInputNumber: { props: ['value'], template: '<input v-bind="$attrs" :value="value" />' },
           NInput: { props: ['value'], template: '<input v-bind="$attrs" :value="value" />' },
+          NDatePicker: { props: ['formattedValue'], emits: ['update:formattedValue'], template: '<input v-bind="$attrs" :value="formattedValue" @input="$emit(\'update:formattedValue\', $event.target.value)" />' },
           NCheckbox: { props: ['checked', 'disabled'], template: '<input type="checkbox" />' },
           NSpace: { template: '<div><slot /></div>' },
           NButton: { emits: ['click'], template: '<button @click="$emit(\'click\')"><slot /></button>' }
@@ -132,6 +133,8 @@ describe('ProductEditModal', () => {
         supportsAds: boolean
         rewardRemark: string
         participationRequirements: string
+        startTime: string | null
+        endTime: string | null
       }
     }
     state.form.exclusivePriceAmount = 99.9
@@ -139,6 +142,8 @@ describe('ProductEditModal', () => {
     state.form.supportsAds = false
     state.form.rewardRemark = '新奖励说明'
     state.form.participationRequirements = '新参与要求'
+    await wrapper.get('[data-testid="product-edit-start-time"]').setValue('2026-07-02 08:00:00')
+    await wrapper.get('[data-testid="product-edit-end-time"]').setValue('2026-08-01 20:00:00')
 
     await wrapper.get('button:last-of-type').trigger('click')
 
@@ -147,7 +152,9 @@ describe('ProductEditModal', () => {
       exclusivePriceRemark: '新专属价说明',
       supportsAds: false,
       rewardRemark: '新奖励说明',
-      participationRequirements: '新参与要求'
+      participationRequirements: '新参与要求',
+      promotionStartTime: '2026-07-02 08:00:00',
+      promotionEndTime: '2026-08-01 20:00:00'
     })
   })
 })

@@ -161,10 +161,10 @@ public class ProductController extends BaseController {
     /**
      * 编辑商品推广补充信息。
      *
-     * <p>该接口只更新商品运营状态中的 audit_payload，不改变审核、上架和推广状态。
+     * <p>该接口只更新商品运营状态中的 audit_payload，不改变审核、上架和官方推广状态。
      * 允许编辑的字段由商品服务统一校验，专属价金额使用元并保留两位小数。</p>
      */
-    @Operation(summary = "编辑商品推广补充信息", description = "更新专属价金额、专属价说明、投流开关、奖励说明和参与要求。")
+    @Operation(summary = "编辑商品推广补充信息", description = "更新专属价金额、专属价说明、投流开关、奖励说明、参与要求和本系统推广时间覆盖。")
     @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF})
     @PutMapping("/{relationId}")
     public ApiResult<Product> updateProductSupplement(

@@ -59,7 +59,8 @@
 
 ## 商品 API 补充事实
 
-- [V1 必做] `GET /api/products` 商品库分页返回的 `records[]` 需带出商品卡片展示输入：`shopName`、`detailUrl`、`promotionStartTime`、`promotionEndTime`。这些字段来源于 `product_snapshot`，用于前端商品库卡片展示店铺、商品链接和推广时间范围。
+- [V1 必做] `GET /api/products` 商品库分页返回的 `records[]` 需带出商品卡片展示输入：`shopName`、`detailUrl`、`promotionStartTime`、`promotionEndTime`。时间默认来源于 `product_snapshot`；存在本系统推广时间覆盖时返回覆盖值，用于前端商品库卡片展示店铺、商品链接和推广时间范围。
+- [V1 必做] `PUT /api/products/{relationId}` 允许编辑 `promotionStartTime` / `promotionEndTime` 作为本系统推广时间覆盖，持久化在 `product_operation_state.audit_payload`；不修改 `product_snapshot` 上游时间事实，开始时间不得晚于结束时间，清空覆盖值时回退上游时间。
 - [V1 必做] `GET /api/products` 商品库分页支持 `productId` 查询参数，按商品外部 ID 精确匹配；该参数独立于 `keyword`，`keyword` 仍用于商品名称 / 商品 ID / 店铺关键字模糊匹配。前端商品库搜索框输入商品 ID 时走 `keyword` 模糊查询；内部单行刷新等精确定位场景才使用 `productId`。
 - [V1 必做] `GET /api/products` 商品库分页固定按“置顶优先、上游合作开始时间倒序、同步时间倒序、入库时间倒序”排序；`sortBy` 仅兼容旧请求，不作为前端可选排序条件。
 - [V1 必做] `POST /api/products/manage/{relationId}/approve` 为旧商品管理审核通过兼容入口，仍必须遵守活动商品审核补充字段契约：审核通过前请求体需携带 `exclusivePriceRemark`、`shippingInfo`、`sellingPoints`、`promotionScript`、`supportsAds`、`rewardRemark`、`participationRequirements`、`campaignTimeRemark`、`materialFiles`；后端透传到商品域审核服务写入 `audit_payload`，缺失时返回业务错误 `code=461` 和“审核通过前请补充：...”提示。拒绝入口 `POST /api/products/manage/{relationId}/reject` 只要求拒绝原因。
