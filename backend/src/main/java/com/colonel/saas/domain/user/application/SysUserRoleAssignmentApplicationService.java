@@ -35,16 +35,19 @@ public class SysUserRoleAssignmentApplicationService {
     private final OperationLogService operationLogService;
     private final UserPermissionCacheService userPermissionCacheService;
     private final UserAccessPolicy userAccessPolicy;
+    private final AuthorizationVersionApplicationService authorizationVersionService;
 
     public SysUserRoleAssignmentApplicationService(
             UserRoleAssignmentStore roleAssignmentStore,
             OperationLogService operationLogService,
             UserPermissionCacheService userPermissionCacheService,
-            UserAccessPolicy userAccessPolicy) {
+            UserAccessPolicy userAccessPolicy,
+            AuthorizationVersionApplicationService authorizationVersionService) {
         this.roleAssignmentStore = roleAssignmentStore;
         this.operationLogService = operationLogService;
         this.userPermissionCacheService = userPermissionCacheService;
         this.userAccessPolicy = userAccessPolicy;
+        this.authorizationVersionService = authorizationVersionService;
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -58,6 +61,10 @@ public class SysUserRoleAssignmentApplicationService {
         List<UUID> roleIds = normalizeRoleIds(request.roleIds());
         validateRoleIds(roleIds, id);
         roleAssignmentStore.replaceUserRoles(id, roleIds);
+        authorizationVersionService.incrementUser(
+                id,
+                "USER_ROLES_REPLACED",
+                currentUserId);
         userPermissionCacheService.invalidateUser(id);
         for (UUID roleId : roleIds) {
             userPermissionCacheService.invalidateRole(roleId);

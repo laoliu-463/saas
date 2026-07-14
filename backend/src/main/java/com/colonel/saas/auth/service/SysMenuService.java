@@ -10,6 +10,7 @@ import com.colonel.saas.mapper.SysMenuMapper;
 import com.colonel.saas.mapper.SysRoleMapper;
 import com.colonel.saas.mapper.SysRoleMenuMapper;
 import com.colonel.saas.domain.user.PermissionEventHasher;
+import com.colonel.saas.domain.user.application.AuthorizationVersionApplicationService;
 import com.colonel.saas.service.OperationLogService;
 import com.colonel.saas.service.UserDomainEventPublisher;
 import com.colonel.saas.vo.SysMenuVO;
@@ -70,6 +71,9 @@ public class SysMenuService {
     /** 用户域事件发布器，用于发布权限变更等域事件 */
     private final UserDomainEventPublisher userDomainEventPublisher;
 
+    /** 授权版本服务，用于使受角色权限影响的既有令牌失效 */
+    private final AuthorizationVersionApplicationService authorizationVersionService;
+
     /**
      * 构造注入所有依赖。
      *
@@ -84,12 +88,14 @@ public class SysMenuService {
             SysRoleMapper sysRoleMapper,
             SysRoleMenuMapper sysRoleMenuMapper,
             OperationLogService operationLogService,
-            UserDomainEventPublisher userDomainEventPublisher) {
+            UserDomainEventPublisher userDomainEventPublisher,
+            AuthorizationVersionApplicationService authorizationVersionService) {
         this.sysMenuMapper = sysMenuMapper;
         this.sysRoleMapper = sysRoleMapper;
         this.sysRoleMenuMapper = sysRoleMenuMapper;
         this.operationLogService = operationLogService;
         this.userDomainEventPublisher = userDomainEventPublisher;
+        this.authorizationVersionService = authorizationVersionService;
     }
 
     /**
@@ -243,7 +249,20 @@ public class SysMenuService {
         // 第五步：计算变更后权限哈希
         String newHash = PermissionEventHasher.hashRolePermissions(role.getPermissions(), menuIds);
 
-        // 第六步：记录操作审计日志
+        // 第六步：权限哈希变化时递增授权版本并发布域事件
+        if (!Objects.equals(oldHash, newHash)) {
+            authorizationVersionService.incrementUsersByRole(
+                    roleId,
+                    "ROLE_MENU_PERMISSIONS_UPDATED",
+                    currentUserId);
+            userDomainEventPublisher.publishRolePermissionUpdated(
+                    roleId,
+                    role.getRoleCode(),
+                    oldHash,
+                    newHash,
+                    currentUserId);
+        }
+        // 第七步：记录操作审计日志
         operationLogService.recordSystemAction(
                 currentUserId,
                 "角色菜单管理",
@@ -254,15 +273,6 @@ public class SysMenuService {
                 null,
                 "分配角色菜单: roleId=" + roleId + ", menuCount=" + menuCount
         );
-        // 第七步：权限哈希变化时发布域事件
-        if (!Objects.equals(oldHash, newHash)) {
-            userDomainEventPublisher.publishRolePermissionUpdated(
-                    roleId,
-                    role.getRoleCode(),
-                    oldHash,
-                    newHash,
-                    currentUserId);
-        }
     }
 
     /**

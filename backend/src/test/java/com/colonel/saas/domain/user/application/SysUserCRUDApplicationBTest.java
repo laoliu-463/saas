@@ -18,9 +18,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Optional;
@@ -31,6 +33,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -51,6 +55,8 @@ class SysUserCRUDApplicationBTest {
     private OrgStructureService orgStructureService;
     @Mock
     private UserAccessPolicy userAccessPolicy;
+    @Mock
+    private AuthorizationVersionApplicationService authorizationVersionService;
 
     private SysUserCRUDApplicationB applicationB;
 
@@ -63,7 +69,8 @@ class SysUserCRUDApplicationBTest {
                 userDomainEventPublisher,
                 userPermissionCacheService,
                 orgStructureService,
-                userAccessPolicy);
+                userAccessPolicy,
+                authorizationVersionService);
     }
 
     @Test
@@ -105,6 +112,12 @@ class SysUserCRUDApplicationBTest {
         assertThat(saved.getValue().email()).isEqualTo("u@x.com");
         assertThat(saved.getValue().deptId()).isEqualTo(newDeptId);
         assertThat(saved.getValue().status()).isEqualTo(SysUserStatus.DISABLED);
+        InOrder factThenVersion = inOrder(userStore, authorizationVersionService);
+        factThenVersion.verify(userStore).saveUser(any(ManagedUser.class));
+        factThenVersion.verify(authorizationVersionService).incrementUser(
+                userId,
+                "USER_AUTHORIZATION_CONTEXT_UPDATED",
+                currentUserId);
         verify(operationLogService).recordSystemAction(
                 eq(currentUserId), eq("用户管理"), eq("组织归属变更"), eq("PUT"),
                 eq("SysUser"), eq(userId.toString()), eq("alice"), eq("org changed"));
@@ -138,7 +151,95 @@ class SysUserCRUDApplicationBTest {
         verify(orgStructureService, never()).splitAssignment(any());
         verify(userDomainEventPublisher, never()).publishUserGroupChanged(any(), any(), any(), any(), any(), any());
         verify(userDomainEventPublisher, never()).publishUserDisabled(any(), any(), any(), any());
+        verify(authorizationVersionService, never()).incrementUser(any(), any(), any());
         verify(userPermissionCacheService).invalidateDataScopeForGroupChange(deptId, deptId);
+    }
+
+    @Test
+    void update_statusOnlyChange_advancesAuthorizationVersion() {
+        UUID userId = UUID.randomUUID();
+        UUID currentUserId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+        ManagedUser user = activeUser(userId, deptId);
+        when(userStore.findUser(userId)).thenReturn(Optional.of(user));
+        when(userStore.findRoleIdsByUserId(userId)).thenReturn(List.of());
+        when(orgStructureService.enrichUser(any(SysUserVO.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        applicationB.update(
+                userId,
+                new SysUserUpdateRequest(
+                        "Alice", null, null, SysUserStatus.DISABLED, null, null, null),
+                currentUserId,
+                DataScope.ALL);
+
+        InOrder factThenVersion = inOrder(userStore, authorizationVersionService);
+        factThenVersion.verify(userStore).saveUser(any(ManagedUser.class));
+        factThenVersion.verify(authorizationVersionService).incrementUser(
+                userId,
+                "USER_AUTHORIZATION_CONTEXT_UPDATED",
+                currentUserId);
+    }
+
+    @Test
+    void update_deptOnlyChange_advancesAuthorizationVersion() {
+        UUID userId = UUID.randomUUID();
+        UUID currentUserId = UUID.randomUUID();
+        UUID oldDeptId = UUID.randomUUID();
+        UUID newDeptId = UUID.randomUUID();
+        ManagedUser user = activeUser(userId, oldDeptId);
+        when(userStore.findUser(userId)).thenReturn(Optional.of(user));
+        when(orgStructureService.splitAssignment(oldDeptId))
+                .thenReturn(new OrgStructureService.SplitAssignment(oldDeptId, null, "old", null, "department"));
+        when(orgStructureService.splitAssignment(newDeptId))
+                .thenReturn(new OrgStructureService.SplitAssignment(newDeptId, null, "new", null, "department"));
+        when(userStore.findRoleIdsByUserId(userId)).thenReturn(List.of());
+        when(orgStructureService.enrichUser(any(SysUserVO.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        applicationB.update(
+                userId,
+                new SysUserUpdateRequest(
+                        "Alice", null, null, SysUserStatus.ACTIVE, null, null, newDeptId),
+                currentUserId,
+                DataScope.ALL);
+
+        InOrder factThenVersion = inOrder(userStore, authorizationVersionService);
+        factThenVersion.verify(userStore).saveUser(any(ManagedUser.class));
+        factThenVersion.verify(authorizationVersionService).incrementUser(
+                userId,
+                "USER_AUTHORIZATION_CONTEXT_UPDATED",
+                currentUserId);
+    }
+
+    @Test
+    void update_versionFailurePropagatesBeforeOtherSideEffects() {
+        UUID userId = UUID.randomUUID();
+        UUID currentUserId = UUID.randomUUID();
+        ManagedUser user = activeUser(userId, UUID.randomUUID());
+        RuntimeException failure = new RuntimeException("version failed");
+        when(userStore.findUser(userId)).thenReturn(Optional.of(user));
+        doThrow(failure).when(authorizationVersionService).incrementUser(
+                userId,
+                "USER_AUTHORIZATION_CONTEXT_UPDATED",
+                currentUserId);
+
+        assertThatThrownBy(() -> applicationB.update(
+                userId,
+                new SysUserUpdateRequest(
+                        "Alice", null, null, SysUserStatus.DISABLED, null, null, null),
+                currentUserId,
+                DataScope.ALL))
+                .isSameAs(failure);
+
+        InOrder factThenVersion = inOrder(userStore, authorizationVersionService);
+        factThenVersion.verify(userStore).saveUser(any(ManagedUser.class));
+        factThenVersion.verify(authorizationVersionService).incrementUser(
+                userId,
+                "USER_AUTHORIZATION_CONTEXT_UPDATED",
+                currentUserId);
+        verify(operationLogService, never()).recordSystemAction(
+                any(), any(), any(), any(), any(), any(), any(), any());
+        verify(userDomainEventPublisher, never()).publishUserDisabled(any(), any(), any(), any());
+        verify(userPermissionCacheService, never()).invalidateUser(any());
     }
 
     @Test
@@ -168,6 +269,7 @@ class SysUserCRUDApplicationBTest {
         verify(userStore).deleteUserRoles(userId);
         verify(userStore).softDeleteUser(userId);
         verify(userPermissionCacheService).invalidateUser(userId);
+        verify(authorizationVersionService, never()).incrementUser(any(), any(), any());
         verify(operationLogService).recordSystemAction(
                 eq(currentUserId), eq("用户管理"), eq("删除用户"), eq("DELETE"),
                 eq("SysUser"), eq(userId.toString()), eq("alice"), eq("删除用户: alice"));
@@ -188,10 +290,70 @@ class SysUserCRUDApplicationBTest {
                 currentUserId,
                 DataScope.ALL);
 
-        verify(userStore).updatePassword(userId, "encoded", true);
+        InOrder factThenVersion = inOrder(userStore, authorizationVersionService);
+        factThenVersion.verify(userStore).updatePassword(userId, "encoded", true);
+        factThenVersion.verify(authorizationVersionService).incrementUser(
+                userId,
+                "USER_PASSWORD_RESET",
+                currentUserId);
         verify(operationLogService).recordSystemAction(
                 eq(currentUserId), eq("用户管理"), eq("重置密码"), eq("PUT"),
                 eq("SysUser"), eq(userId.toString()), eq("alice"), eq("重置用户密码: alice"));
+    }
+
+    @Test
+    void resetPassword_versionFailurePropagatesBeforeAudit() {
+        UUID userId = UUID.randomUUID();
+        UUID currentUserId = UUID.randomUUID();
+        ManagedUser user = activeUser(userId, UUID.randomUUID());
+        RuntimeException failure = new RuntimeException("version failed");
+        when(userStore.findUser(userId)).thenReturn(Optional.of(user));
+        when(passwordEncoder.encode("NewPassw0rd!")).thenReturn("encoded");
+        doThrow(failure).when(authorizationVersionService).incrementUser(
+                userId,
+                "USER_PASSWORD_RESET",
+                currentUserId);
+
+        assertThatThrownBy(() -> applicationB.resetPassword(
+                userId,
+                new SysUserResetPasswordRequest("NewPassw0rd!"),
+                currentUserId,
+                DataScope.ALL))
+                .isSameAs(failure);
+
+        InOrder factThenVersion = inOrder(userStore, authorizationVersionService);
+        factThenVersion.verify(userStore).updatePassword(userId, "encoded", true);
+        factThenVersion.verify(authorizationVersionService).incrementUser(
+                userId,
+                "USER_PASSWORD_RESET",
+                currentUserId);
+        verify(operationLogService, never()).recordSystemAction(
+                any(), any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void updateAndResetPassword_areTransactionalWithCheckedExceptionRollback() throws NoSuchMethodException {
+        Transactional updateTransaction = SysUserCRUDApplicationB.class
+                .getDeclaredMethod(
+                        "update",
+                        UUID.class,
+                        SysUserUpdateRequest.class,
+                        UUID.class,
+                        DataScope.class)
+                .getAnnotation(Transactional.class);
+        Transactional resetTransaction = SysUserCRUDApplicationB.class
+                .getDeclaredMethod(
+                        "resetPassword",
+                        UUID.class,
+                        SysUserResetPasswordRequest.class,
+                        UUID.class,
+                        DataScope.class)
+                .getAnnotation(Transactional.class);
+
+        assertThat(updateTransaction).isNotNull();
+        assertThat(updateTransaction.rollbackFor()).containsExactly(Exception.class);
+        assertThat(resetTransaction).isNotNull();
+        assertThat(resetTransaction.rollbackFor()).containsExactly(Exception.class);
     }
 
     private static ManagedUser activeUser(UUID id, UUID deptId) {

@@ -40,6 +40,7 @@ public class SysUserCRUDApplicationB {
     private final UserPermissionCacheService userPermissionCacheService;
     private final OrgStructureService orgStructureService;
     private final UserAccessPolicy userAccessPolicy;
+    private final AuthorizationVersionApplicationService authorizationVersionService;
 
     public SysUserCRUDApplicationB(
             UserCrudMutationStore userStore,
@@ -48,7 +49,8 @@ public class SysUserCRUDApplicationB {
             UserDomainEventPublisher userDomainEventPublisher,
             UserPermissionCacheService userPermissionCacheService,
             OrgStructureService orgStructureService,
-            UserAccessPolicy userAccessPolicy) {
+            UserAccessPolicy userAccessPolicy,
+            AuthorizationVersionApplicationService authorizationVersionService) {
         this.userStore = userStore;
         this.passwordEncoder = passwordEncoder;
         this.operationLogService = operationLogService;
@@ -56,8 +58,10 @@ public class SysUserCRUDApplicationB {
         this.userPermissionCacheService = userPermissionCacheService;
         this.orgStructureService = orgStructureService;
         this.userAccessPolicy = userAccessPolicy;
+        this.authorizationVersionService = authorizationVersionService;
     }
 
+    @Transactional(rollbackFor = Exception.class)
     public SysUserVO update(UUID id, SysUserUpdateRequest request, UUID currentUserId, DataScope dataScope) {
         ManagedUser user = requireUser(id);
         userAccessPolicy.assertCanAccess(accessibleUser(user), currentUserId, dataScope);
@@ -84,6 +88,13 @@ public class SysUserCRUDApplicationB {
                 newDeptId,
                 newStatus);
         userStore.saveUser(updatedUser);
+        if (!Objects.equals(previousStatus, updatedUser.status())
+                || !Objects.equals(previousDeptId, updatedUser.deptId())) {
+            authorizationVersionService.incrementUser(
+                    id,
+                    "USER_AUTHORIZATION_CONTEXT_UPDATED",
+                    currentUserId);
+        }
         recordOrgChangeIfNeeded(updatedUser, previousDeptId, updatedUser.deptId(), currentUserId);
         operationLogService.recordSystemAction(
                 currentUserId,
@@ -127,6 +138,7 @@ public class SysUserCRUDApplicationB {
                 "删除用户: " + user.username());
     }
 
+    @Transactional(rollbackFor = Exception.class)
     public void resetPassword(
             UUID id,
             SysUserResetPasswordRequest request,
@@ -135,6 +147,10 @@ public class SysUserCRUDApplicationB {
         ManagedUser user = requireUser(id);
         userAccessPolicy.assertCanAccess(accessibleUser(user), currentUserId, dataScope);
         userStore.updatePassword(id, passwordEncoder.encode(request.newPassword()), true);
+        authorizationVersionService.incrementUser(
+                id,
+                "USER_PASSWORD_RESET",
+                currentUserId);
         operationLogService.recordSystemAction(
                 currentUserId,
                 "用户管理",

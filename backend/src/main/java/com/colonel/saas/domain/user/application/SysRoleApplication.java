@@ -40,14 +40,17 @@ public class SysRoleApplication {
     private final SysRoleMapper sysRoleMapper;
     private final SysUserRoleMapper sysUserRoleMapper;
     private final OperationLogService operationLogService;
+    private final AuthorizationVersionApplicationService authorizationVersionService;
 
     public SysRoleApplication(
             SysRoleMapper sysRoleMapper,
             SysUserRoleMapper sysUserRoleMapper,
-            OperationLogService operationLogService) {
+            OperationLogService operationLogService,
+            AuthorizationVersionApplicationService authorizationVersionService) {
         this.sysRoleMapper = sysRoleMapper;
         this.sysUserRoleMapper = sysUserRoleMapper;
         this.operationLogService = operationLogService;
+        this.authorizationVersionService = authorizationVersionService;
     }
 
     public IPage<SysRoleVO> findPage(long page, long size, String keyword, Integer status) {
@@ -106,6 +109,10 @@ public class SysRoleApplication {
         role.setStatus(request.status());
         role.setRemark(request.remark());
         sysRoleMapper.updateById(role);
+        authorizationVersionService.incrementUsersByRole(
+                id,
+                "ROLE_UPDATED",
+                currentUserId);
 
         operationLogService.recordSystemAction(
                 currentUserId,
