@@ -11,6 +11,7 @@ import com.colonel.saas.mapper.projection.AuthorizationSnapshotRow;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -31,8 +32,9 @@ public class SysAuthorizationSnapshotStoreAdapter implements AuthorizationSnapsh
         }
 
         AuthorizationSnapshotRow first = rows.get(0);
+        validateRows(userId, rows, first);
         AuthorizationSubject subject = new AuthorizationSubject(
-                first.getUserId(), first.getDeptId(), first.getAuthzVersion());
+                first.getUserId(), first.getDeptId(), first.getAuthzVersion().longValue());
         List<GrantedRolePermission> grants = rows.stream()
                 .filter(row -> row.getPermissionCode() != null)
                 .map(this::toGrant)
@@ -40,12 +42,46 @@ public class SysAuthorizationSnapshotStoreAdapter implements AuthorizationSnapsh
         return Optional.of(new AuthorizationSnapshot(subject, grants));
     }
 
+    private void validateRows(
+            UUID requestedUserId,
+            List<AuthorizationSnapshotRow> rows,
+            AuthorizationSnapshotRow first) {
+        if (first == null) {
+            throw new IllegalStateException("authorization snapshot first row must not be null");
+        }
+        if (first.getUserId() == null || !Objects.equals(requestedUserId, first.getUserId())) {
+            throw new IllegalStateException("authorization snapshot user does not match request");
+        }
+        if (first.getAuthzVersion() == null) {
+            throw new IllegalStateException("authorization snapshot version must not be null");
+        }
+        for (AuthorizationSnapshotRow row : rows) {
+            if (row == null) {
+                throw new IllegalStateException("authorization snapshot row must not be null");
+            }
+            if (!Objects.equals(first.getUserId(), row.getUserId())
+                    || !Objects.equals(first.getDeptId(), row.getDeptId())
+                    || !Objects.equals(first.getAuthzVersion(), row.getAuthzVersion())) {
+                throw new IllegalStateException("authorization snapshot rows have inconsistent subjects");
+            }
+        }
+    }
+
     private GrantedRolePermission toGrant(AuthorizationSnapshotRow row) {
+        if (row.getRoleId() == null) {
+            throw new IllegalStateException("authorization grant role must not be null");
+        }
+        if (row.getDomainCode() == null || row.getDomainCode().isBlank()) {
+            throw new IllegalStateException("authorization grant domain must not be blank");
+        }
+        if (row.getDataScopeRequired() == null) {
+            throw new IllegalStateException("authorization grant data scope flag must not be null");
+        }
         return new GrantedRolePermission(
                 row.getRoleId(),
                 new PermissionCode(row.getPermissionCode()),
                 row.getDomainCode(),
-                Boolean.TRUE.equals(row.getDataScopeRequired()),
+                row.getDataScopeRequired().booleanValue(),
                 toScope(row.getScopeCode()));
     }
 
