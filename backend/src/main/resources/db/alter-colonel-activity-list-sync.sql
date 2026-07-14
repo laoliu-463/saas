@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS colonel_activity_sync_job_log (
     id              UUID PRIMARY KEY,
     job_id          VARCHAR(64)  NOT NULL,
     sync_type       VARCHAR(32)  NOT NULL DEFAULT 'ACTIVITY_LIST',
+    scope           VARCHAR(64)  NOT NULL DEFAULT 'ACTIVITY_LIST_GLOBAL',
     status          VARCHAR(20)  NOT NULL DEFAULT 'QUEUED',
     triggered_by    UUID,
     started_at      TIMESTAMP,
@@ -18,6 +19,20 @@ CREATE TABLE IF NOT EXISTS colonel_activity_sync_job_log (
     update_time     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     deleted         INT NOT NULL DEFAULT 0
 );
+
+-- 兼容早期已创建但尚未包含 scope 的任务日志表。
+ALTER TABLE colonel_activity_sync_job_log
+    ADD COLUMN IF NOT EXISTS scope VARCHAR(64) NOT NULL DEFAULT 'ACTIVITY_LIST_GLOBAL';
+
+ALTER TABLE colonel_activity_sync_job_log
+    ALTER COLUMN scope SET DEFAULT 'ACTIVITY_LIST_GLOBAL';
+
+UPDATE colonel_activity_sync_job_log
+   SET scope = 'ACTIVITY_LIST_GLOBAL'
+ WHERE scope IS NULL;
+
+ALTER TABLE colonel_activity_sync_job_log
+    ALTER COLUMN scope SET NOT NULL;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_colonel_activity_sync_job_log_job_id
     ON colonel_activity_sync_job_log(job_id);
