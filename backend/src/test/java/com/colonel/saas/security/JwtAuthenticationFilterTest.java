@@ -1,23 +1,43 @@
 package com.colonel.saas.security;
 
 import com.colonel.saas.auth.service.AuthService;
+import com.colonel.saas.common.enums.DataScope;
+import com.colonel.saas.config.AuthorizationRuntimeProperties;
+import com.colonel.saas.domain.user.api.AuthorizationPrincipal;
+import com.colonel.saas.domain.user.api.AuthorizationTokenRejectedException;
+import com.colonel.saas.domain.user.api.AuthorizationUnavailableException;
+import com.colonel.saas.domain.user.facade.AuthorizationPrincipalFacade;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.jsonwebtoken.Claims;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.env.Environment;
 import org.springframework.mock.env.MockEnvironment;
 import org.springframework.mock.web.MockFilterChain;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 
+import java.lang.reflect.Constructor;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -29,11 +49,38 @@ class JwtAuthenticationFilterTest {
     @Mock
     private AuthService authService;
 
+    @Mock
+    private AuthorizationPrincipalFacade principalFacade;
+
+    @Mock
+    private AuthorizationRuntimeProperties runtimeProperties;
+
+    private final ObjectMapper objectMapper = new ObjectMapper();
     private JwtAuthenticationFilter filter;
 
     @BeforeEach
     void setUp() {
-        filter = new JwtAuthenticationFilter(jwtTokenProvider, authService, new ObjectMapper());
+        filter = newFilter(new MockEnvironment());
+    }
+
+    @AfterEach
+    void clearSecurityContext() {
+        SecurityContextHolder.clearContext();
+    }
+
+    @Test
+    void productionConstructor_shouldBeTheOnlyConstructorAndExplicitlyAutowired() {
+        Constructor<?>[] constructors = JwtAuthenticationFilter.class.getDeclaredConstructors();
+
+        assertThat(constructors).hasSize(1);
+        assertThat(constructors[0].getAnnotation(Autowired.class)).isNotNull();
+        assertThat(constructors[0].getParameterTypes()).containsExactly(
+                JwtTokenProvider.class,
+                AuthService.class,
+                AuthorizationPrincipalFacade.class,
+                AuthorizationRuntimeProperties.class,
+                ObjectMapper.class,
+                Environment.class);
     }
 
     @Test
@@ -89,8 +136,7 @@ class JwtAuthenticationFilterTest {
     void systemEnvPath_shouldRequireAuthorizationWhenProtectedProfileActive() throws Exception {
         MockEnvironment environment = new MockEnvironment();
         environment.setActiveProfiles("real-pre");
-        JwtAuthenticationFilter prodFilter =
-                new JwtAuthenticationFilter(jwtTokenProvider, authService, new ObjectMapper(), environment);
+        JwtAuthenticationFilter prodFilter = newFilter(environment);
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/system/env");
         MockHttpServletResponse response = new MockHttpServletResponse();
         MockFilterChain chain = new MockFilterChain();
@@ -138,75 +184,280 @@ class JwtAuthenticationFilterTest {
     }
 
     @Test
-    void testToolPath_withValidAccessToken_shouldPopulateRequestAttributes() throws Exception {
-        UUID userId = UUID.randomUUID();
-        UUID deptId = UUID.randomUUID();
+    void blacklistedToken_shouldRejectBeforeResolvingAuthorizationPrincipal() throws Exception {
         Claims claims = mock(Claims.class);
-        when(claims.getSubject()).thenReturn(userId.toString());
-        when(claims.get("deptId")).thenReturn(deptId.toString());
-        when(claims.get("dataScope", Integer.class)).thenReturn(3);
-        when(claims.get("roleCodes", List.class)).thenReturn(List.of("admin"));
-        when(claims.get("username", String.class)).thenReturn("admin");
         when(claims.get("type", String.class)).thenReturn("access");
-        when(claims.get("pendingActivation", Boolean.class)).thenReturn(false);
-        when(jwtTokenProvider.parseClaims("valid.token")).thenReturn(claims);
-        when(jwtTokenProvider.getTokenHash("valid.token")).thenReturn("token-hash");
-        when(authService.isTokenBlacklisted("token-hash")).thenReturn(false);
+        when(jwtTokenProvider.parseClaims("blacklisted.token")).thenReturn(claims);
+        when(jwtTokenProvider.getTokenHash("blacklisted.token")).thenReturn("blacklisted-hash");
+        when(authService.isTokenBlacklisted("blacklisted-hash")).thenReturn(true);
 
-        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/test/reset");
-        request.addHeader("Authorization", "Bearer valid.token");
-        MockHttpServletResponse response = new MockHttpServletResponse();
-        MockFilterChain chain = new MockFilterChain();
+        MockHttpServletResponse response = filter("blacklisted.token", "/products");
 
-        filter.doFilter(request, response, chain);
-
-        assertThat(response.getStatus()).isNotEqualTo(401);
-        assertThat(chain.getRequest()).isNotNull();
-        assertThat(request.getAttribute("userId")).isEqualTo(userId);
-        assertThat(request.getAttribute("deptId")).isEqualTo(deptId);
-        assertThat(request.getAttribute("username")).isEqualTo("admin");
-        assertThat(request.getAttribute("roleCodes")).isEqualTo(List.of("admin"));
+        assertThat(response.getStatus()).isEqualTo(401);
+        verify(claims, never()).getSubject();
+        verifyNoInteractions(principalFacade);
     }
 
     @Test
-    void pendingActivationUser_shouldAllowCurrentUserAndPasswordChangeOnly() throws Exception {
+    void nonLegacyMode_shouldRejectTokenWithoutAuthorizationVersionBeforeFacade() throws Exception {
         UUID userId = UUID.randomUUID();
-        UUID deptId = UUID.randomUUID();
+        Claims claims = accessClaims(userId, null);
+        when(runtimeProperties.requiresVersionValidation()).thenReturn(true);
+        stubAcceptedToken("missing.version", claims);
+
+        MockHttpServletResponse response = filter("missing.version", "/products");
+
+        assertThat(response.getStatus()).isEqualTo(401);
+        verifyNoInteractions(principalFacade);
+    }
+
+    @Test
+    void nonLegacyMode_shouldRejectNonPositiveAuthorizationVersionBeforeFacade() throws Exception {
+        UUID userId = UUID.randomUUID();
+        Claims claims = accessClaims(userId, 0L);
+        when(runtimeProperties.requiresVersionValidation()).thenReturn(true);
+        stubAcceptedToken("invalid.version", claims);
+
+        MockHttpServletResponse response = filter("invalid.version", "/products");
+
+        assertThat(response.getStatus()).isEqualTo(401);
+        verifyNoInteractions(principalFacade);
+    }
+
+    @Test
+    void authorizationVersionClaimTypeError_shouldReturnGeneric401BeforeFacade() throws Exception {
+        UUID userId = UUID.randomUUID();
+        Claims claims = accessClaims(userId, 4L);
+        when(claims.get("authzVersion", Long.class))
+                .thenThrow(new ClassCastException("authzVersion is not a Long"));
+        stubAcceptedToken("wrong.type", claims);
+
+        MockHttpServletResponse response = filter("wrong.type", "/products");
+
+        assertThat(response.getStatus()).isEqualTo(401);
+        assertThat(jsonBody(response).path("msg").asText()).isEqualTo("Token 无效或已过期");
+        verifyNoInteractions(principalFacade);
+    }
+
+    @Test
+    void nonLegacyMode_shouldReturn401WhenFacadeRejectsToken() throws Exception {
+        UUID userId = UUID.randomUUID();
+        Claims claims = accessClaims(userId, 4L);
+        when(runtimeProperties.requiresVersionValidation()).thenReturn(true);
+        stubAcceptedToken("stale.version", claims);
+        when(principalFacade.requireCurrent(userId, 4L))
+                .thenThrow(new AuthorizationTokenRejectedException());
+
+        MockHttpServletResponse response = filter("stale.version", "/products");
+
+        assertThat(response.getStatus()).isEqualTo(401);
+        assertThat(jsonBody(response).path("msg").asText())
+                .isEqualTo("授权令牌已失效，请重新登录");
+        verify(principalFacade).requireCurrent(userId, 4L);
+    }
+
+    @Test
+    void nonLegacyMode_shouldReturnStructured503WhenPrincipalStoreIsUnavailable() throws Exception {
+        UUID userId = UUID.randomUUID();
+        Claims claims = accessClaims(userId, 4L);
+        when(runtimeProperties.requiresVersionValidation()).thenReturn(true);
+        stubAcceptedToken("store.down", claims);
+        when(principalFacade.requireCurrent(userId, 4L))
+                .thenThrow(new AuthorizationUnavailableException());
+
+        MockHttpServletResponse response = filter("store.down", "/products");
+
+        JsonNode body = jsonBody(response);
+        assertThat(response.getStatus()).isEqualTo(503);
+        assertThat(response.getCharacterEncoding()).isEqualTo(StandardCharsets.UTF_8.name());
+        assertThat(response.getContentType()).startsWith("application/json");
+        assertThat(body.path("code").asInt()).isEqualTo(503);
+        assertThat(body.path("msg").asText()).isEqualTo("授权事实暂时不可用");
+        assertThat(body.path("errorCode").asText()).isEqualTo("AUTHORIZATION_UNAVAILABLE");
+    }
+
+    @Test
+    void nonLegacyMode_shouldUseDatabasePrincipalAndPreserveLegacyTokenAttributes() throws Exception {
+        UUID userId = UUID.randomUUID();
+        UUID tokenDept = UUID.randomUUID();
+        UUID databaseDept = UUID.randomUUID();
+        Claims claims = accessClaims(userId, 4L, tokenDept, "token-alice", false);
+        AuthorizationPrincipal principal =
+                new AuthorizationPrincipal(userId, databaseDept, "database-alice", 4L, false);
+        when(runtimeProperties.requiresVersionValidation()).thenReturn(true);
+        stubAcceptedToken("valid.version", claims);
+        when(principalFacade.requireCurrent(userId, 4L)).thenReturn(principal);
+
+        MockHttpServletRequest request = authenticatedRequest("valid.version", "/products");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        MockFilterChain chain = new MockFilterChain();
+        filter.doFilter(request, response, chain);
+
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        assertThat(chain.getRequest()).isNotNull();
+        assertThat(authentication.getPrincipal()).isSameAs(principal);
+        assertThat(authentication.getAuthorities()).isEmpty();
+        assertThat(request.getAttribute("authorizationPrincipal")).isSameAs(principal);
+        assertThat(request.getAttribute("userId"))
+                .isInstanceOf(UUID.class)
+                .isEqualTo(principal.userId());
+        assertThat(request.getAttribute("deptId")).isEqualTo(databaseDept);
+        assertThat(request.getAttribute("username")).isEqualTo("database-alice");
+        assertThat(request.getAttribute("roleCodes")).isEqualTo(List.of("admin"));
+        assertThat(request.getAttribute("dataScope")).isEqualTo(DataScope.ALL);
+        verify(principalFacade).requireCurrent(userId, 4L);
+    }
+
+    @Test
+    void pendingActivationPolicy_shouldUseTrueDatabasePrincipalValueInsteadOfFalseTokenValue()
+            throws Exception {
+        UUID userId = UUID.randomUUID();
+        Claims claims = accessClaims(userId, 4L, UUID.randomUUID(), "token-user", false);
+        AuthorizationPrincipal principal =
+                new AuthorizationPrincipal(userId, UUID.randomUUID(), "database-user", 4L, true);
+        when(runtimeProperties.requiresVersionValidation()).thenReturn(true);
+        stubAcceptedToken("database.pending", claims);
+        when(principalFacade.requireCurrent(userId, 4L)).thenReturn(principal);
+
+        MockHttpServletResponse response = filter("database.pending", "/products");
+
+        assertThat(response.getStatus()).isEqualTo(403);
+        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+    }
+
+    @Test
+    void pendingActivationPolicy_shouldIgnoreTrueTokenValueWhenDatabasePrincipalIsActive()
+            throws Exception {
+        UUID userId = UUID.randomUUID();
+        Claims claims = accessClaims(userId, 4L, UUID.randomUUID(), "token-user", true);
+        AuthorizationPrincipal principal =
+                new AuthorizationPrincipal(userId, UUID.randomUUID(), "database-user", 4L, false);
+        when(runtimeProperties.requiresVersionValidation()).thenReturn(true);
+        stubAcceptedToken("database.active", claims);
+        when(principalFacade.requireCurrent(userId, 4L)).thenReturn(principal);
+
+        MockHttpServletRequest request = authenticatedRequest("database.active", "/products");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        MockFilterChain chain = new MockFilterChain();
+        filter.doFilter(request, response, chain);
+
+        assertThat(response.getStatus()).isNotEqualTo(403);
+        assertThat(chain.getRequest()).isNotNull();
+        assertThat(request.getAttribute("authorizationPrincipal")).isSameAs(principal);
+    }
+
+    @Test
+    void legacyMode_shouldUseVersionOneWhenAuthorizationVersionIsMissingWithoutCallingFacade()
+            throws Exception {
+        UUID userId = UUID.randomUUID();
+        Claims claims = accessClaims(userId, null);
+        stubAcceptedToken("legacy.missing", claims);
+
+        MockHttpServletRequest request = authenticatedRequest("legacy.missing", "/products");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        MockFilterChain chain = new MockFilterChain();
+        filter.doFilter(request, response, chain);
+
+        AuthorizationPrincipal principal = authenticatedPrincipal();
+        assertThat(chain.getRequest()).isNotNull();
+        assertThat(principal.authzVersion()).isEqualTo(1L);
+        assertThat(request.getAttribute("authorizationPrincipal")).isSameAs(principal);
+        verifyNoInteractions(principalFacade);
+    }
+
+    @ParameterizedTest
+    @ValueSource(longs = {0L, -7L})
+    void legacyMode_shouldUseVersionOneForNonPositiveAuthorizationVersionWithoutCallingFacade(
+            long tokenVersion) throws Exception {
+        UUID userId = UUID.randomUUID();
+        Claims claims = accessClaims(userId, tokenVersion);
+        stubAcceptedToken("legacy.nonpositive", claims);
+
+        MockHttpServletResponse response = filter("legacy.nonpositive", "/products");
+
+        assertThat(response.getStatus()).isNotEqualTo(401);
+        assertThat(authenticatedPrincipal().authzVersion()).isEqualTo(1L);
+        verifyNoInteractions(principalFacade);
+    }
+
+    @Test
+    void legacyMode_shouldPreservePositiveAuthorizationVersionWithoutCallingFacade() throws Exception {
+        UUID userId = UUID.randomUUID();
+        Claims claims = accessClaims(userId, 9L);
+        stubAcceptedToken("legacy.versioned", claims);
+
+        MockHttpServletRequest request = authenticatedRequest("legacy.versioned", "/products");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        MockFilterChain chain = new MockFilterChain();
+        filter.doFilter(request, response, chain);
+
+        AuthorizationPrincipal principal = authenticatedPrincipal();
+        assertThat(chain.getRequest()).isNotNull();
+        assertThat(principal.authzVersion()).isEqualTo(9L);
+        assertThat(request.getAttribute("userId"))
+                .isInstanceOf(UUID.class)
+                .isEqualTo(userId);
+        verifyNoInteractions(principalFacade);
+    }
+
+    private JwtAuthenticationFilter newFilter(Environment environment) {
+        return new JwtAuthenticationFilter(
+                jwtTokenProvider,
+                authService,
+                principalFacade,
+                runtimeProperties,
+                objectMapper,
+                environment);
+    }
+
+    private Claims accessClaims(UUID userId, Long authzVersion) {
+        return accessClaims(userId, authzVersion, UUID.randomUUID(), "token-user", false);
+    }
+
+    private Claims accessClaims(
+            UUID userId,
+            Long authzVersion,
+            UUID deptId,
+            String username,
+            boolean pendingActivation) {
         Claims claims = mock(Claims.class);
-        when(claims.getSubject()).thenReturn(userId.toString());
-        when(claims.get("deptId")).thenReturn(deptId.toString());
-        when(claims.get("dataScope", Integer.class)).thenReturn(1);
-        when(claims.get("roleCodes", List.class)).thenReturn(List.of("biz_staff"));
-        when(claims.get("username", String.class)).thenReturn("pending");
-        when(claims.get("type", String.class)).thenReturn("access");
-        when(claims.get("pendingActivation", Boolean.class)).thenReturn(Boolean.TRUE);
-        when(jwtTokenProvider.parseClaims("pending.token")).thenReturn(claims);
-        when(jwtTokenProvider.getTokenHash("pending.token")).thenReturn("pending-hash");
-        when(authService.isTokenBlacklisted("pending-hash")).thenReturn(false);
+        lenient().when(claims.getSubject()).thenReturn(userId.toString());
+        lenient().when(claims.get("deptId")).thenReturn(deptId.toString());
+        lenient().when(claims.get("dataScope", Integer.class)).thenReturn(3);
+        lenient().when(claims.get("roleCodes", List.class)).thenReturn(List.of("admin"));
+        lenient().when(claims.get("username", String.class)).thenReturn(username);
+        lenient().when(claims.get("type", String.class)).thenReturn("access");
+        lenient().when(claims.get("pendingActivation", Boolean.class)).thenReturn(pendingActivation);
+        lenient().when(claims.get("authzVersion", Long.class)).thenReturn(authzVersion);
+        return claims;
+    }
 
-        MockHttpServletRequest allowed = new MockHttpServletRequest("GET", "/users/current");
-        allowed.addHeader("Authorization", "Bearer pending.token");
-        MockHttpServletResponse allowedResponse = new MockHttpServletResponse();
-        MockFilterChain allowedChain = new MockFilterChain();
-        filter.doFilter(allowed, allowedResponse, allowedChain);
-        assertThat(allowedResponse.getStatus()).isNotEqualTo(401);
-        assertThat(allowedResponse.getStatus()).isNotEqualTo(403);
-        assertThat(allowedChain.getRequest()).isNotNull();
+    private void stubAcceptedToken(String token, Claims claims) {
+        when(jwtTokenProvider.parseClaims(token)).thenReturn(claims);
+        when(jwtTokenProvider.getTokenHash(token)).thenReturn(token + "-hash");
+        when(authService.isTokenBlacklisted(token + "-hash")).thenReturn(false);
+    }
 
-        MockHttpServletRequest blocked = new MockHttpServletRequest("GET", "/products");
-        blocked.addHeader("Authorization", "Bearer pending.token");
-        MockHttpServletResponse blockedResponse = new MockHttpServletResponse();
-        MockFilterChain blockedChain = new MockFilterChain();
-        filter.doFilter(blocked, blockedResponse, blockedChain);
-        assertThat(blockedResponse.getStatus()).isEqualTo(403);
-        assertThat(blockedChain.getRequest()).isNull();
+    private MockHttpServletRequest authenticatedRequest(String token, String path) {
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", path);
+        request.addHeader("Authorization", "Bearer " + token);
+        return request;
+    }
 
-        MockHttpServletRequest blockedDataScope = new MockHttpServletRequest("GET", "/users/current/data-scope");
-        blockedDataScope.addHeader("Authorization", "Bearer pending.token");
-        MockHttpServletResponse blockedDataScopeResponse = new MockHttpServletResponse();
-        MockFilterChain blockedDataScopeChain = new MockFilterChain();
-        filter.doFilter(blockedDataScope, blockedDataScopeResponse, blockedDataScopeChain);
-        assertThat(blockedDataScopeResponse.getStatus()).isEqualTo(403);
-        assertThat(blockedDataScopeChain.getRequest()).isNull();
+    private MockHttpServletResponse filter(String token, String path) throws Exception {
+        MockHttpServletRequest request = authenticatedRequest(token, path);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        filter.doFilter(request, response, new MockFilterChain());
+        return response;
+    }
+
+    private AuthorizationPrincipal authenticatedPrincipal() {
+        return (AuthorizationPrincipal) SecurityContextHolder.getContext()
+                .getAuthentication()
+                .getPrincipal();
+    }
+
+    private JsonNode jsonBody(MockHttpServletResponse response) throws Exception {
+        return objectMapper.readTree(response.getContentAsByteArray());
     }
 }
