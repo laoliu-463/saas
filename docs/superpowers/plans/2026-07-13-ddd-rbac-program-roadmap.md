@@ -1,6 +1,6 @@
 # DDD RBAC 长期治理实施路线图
 
-**状态：** 已批准设计，分阶段实施
+**状态：** 设计已批准；Phase 1 已完成并形成 evidence；Phase 2 独立计划已生成，尚未获得 migration 或 SHADOW 激活授权
 
 **设计基线：** `docs/superpowers/specs/2026-07-13-ddd-rbac-long-term-governance-design.md`
 
@@ -29,11 +29,11 @@
 
 ## 计划分拆规则
 
-阶段 1 的可执行计划见 `2026-07-13-ddd-rbac-foundation.md`。后续阶段在前一阶段 evidence 形成后分别编写实施计划，原因是当前代码图谱显示授权核心影响 500 个节点、至少 141 个附加文件；提前把后续阶段写成文件级修改清单会把尚未验证的接口当成事实。
+阶段 1 的可执行计划见 [`2026-07-13-ddd-rbac-foundation.md`](2026-07-13-ddd-rbac-foundation.md)。Phase 2 的独立计划见 [`2026-07-13-ddd-rbac-shadow-runtime.md`](2026-07-13-ddd-rbac-shadow-runtime.md)，当前仅完成规划与静态自审；后续阶段仍需在前一阶段 evidence 形成后分别编写实施计划。这样拆分的原因是当前代码图谱显示授权核心影响 500 个节点、至少 141 个附加文件；提前把后续阶段写成文件级修改清单会把尚未验证的接口当成事实。
 
 后续计划固定按以下名称生成：
 
-1. `2026-07-13-ddd-rbac-shadow-runtime.md`
+1. [`2026-07-13-ddd-rbac-shadow-runtime.md`](2026-07-13-ddd-rbac-shadow-runtime.md)（已生成，待评审与 migration 明确授权）
 2. `2026-07-13-ddd-rbac-management-projection.md`
 3. `2026-07-13-ddd-rbac-sample-pilot.md`
 4. `2026-07-13-ddd-rbac-talent-product-rollout.md`
