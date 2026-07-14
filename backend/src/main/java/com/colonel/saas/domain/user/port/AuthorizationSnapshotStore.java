@@ -7,5 +7,5 @@ import java.util.UUID;
 
 public interface AuthorizationSnapshotStore {
 
-    Optional<AuthorizationSnapshot> loadActiveSnapshot(UUID userId);
+    Optional<AuthorizationSnapshot> loadActiveSnapshot(UUID userId, long authzVersion);
 }

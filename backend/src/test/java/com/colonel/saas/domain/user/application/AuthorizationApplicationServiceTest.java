@@ -1,6 +1,7 @@
 package com.colonel.saas.domain.user.application;
 
 import com.colonel.saas.domain.user.api.AuthorizationDecision;
+import com.colonel.saas.domain.user.api.AuthorizationPrincipal;
 import com.colonel.saas.domain.user.api.AuthorizationReason;
 import com.colonel.saas.domain.user.api.AuthorizationScope;
 import com.colonel.saas.domain.user.api.PermissionCode;
@@ -19,6 +20,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -28,9 +31,9 @@ class AuthorizationApplicationServiceTest {
     @Test
     void authorize_shouldDenyWhenSubjectIsNotActive() {
         UUID userId = UUID.randomUUID();
-        AuthorizationApplicationService service = service(ignored -> Optional.empty());
+        AuthorizationApplicationService service = service((ignoredUser, ignoredVersion) -> Optional.empty());
 
-        AuthorizationDecision decision = service.authorize(userId, "sample:read");
+        AuthorizationDecision decision = service.authorize(principal(userId, 7L), "sample:read");
 
         assertThat(decision.allowed()).isFalse();
         assertThat(decision.permissionCode()).isEqualTo("sample:read");
@@ -49,9 +52,9 @@ class AuthorizationApplicationServiceTest {
                 UUID.randomUUID(),
                 List.of(grant("sample:read", true, scope)));
         AuthorizationApplicationService service = service(
-                ignored -> Optional.of(snapshot));
+                (ignoredUser, ignoredVersion) -> Optional.of(snapshot));
 
-        AuthorizationDecision decision = service.authorize(userId, "sample:read");
+        AuthorizationDecision decision = service.authorize(principal(userId, 7L), "sample:read");
 
         assertThat(decision.allowed()).isTrue();
         assertThat(decision.permissionCode()).isEqualTo("sample:read");
@@ -70,9 +73,9 @@ class AuthorizationApplicationServiceTest {
                 null,
                 List.of(grant("sample:read", true, scope)));
         AuthorizationApplicationService service = service(
-                ignored -> Optional.of(snapshot));
+                (ignoredUser, ignoredVersion) -> Optional.of(snapshot));
 
-        AuthorizationDecision decision = service.authorize(userId, "sample:read");
+        AuthorizationDecision decision = service.authorize(principal(userId, 7L), "sample:read");
 
         assertThat(decision.allowed()).isFalse();
         assertThat(decision.permissionCode()).isEqualTo("sample:read");
@@ -89,9 +92,9 @@ class AuthorizationApplicationServiceTest {
                 null,
                 List.of(grant("system:login", false, AuthorizationScope.DENY)));
         AuthorizationApplicationService service = service(
-                ignored -> Optional.of(snapshot));
+                (ignoredUser, ignoredVersion) -> Optional.of(snapshot));
 
-        AuthorizationDecision decision = service.authorize(userId, "system:login");
+        AuthorizationDecision decision = service.authorize(principal(userId, 7L), "system:login");
 
         assertThat(decision.allowed()).isFalse();
         assertThat(decision.permissionCode()).isEqualTo("system:login");
@@ -107,9 +110,9 @@ class AuthorizationApplicationServiceTest {
                 userId,
                 List.of(grant("product:read", AuthorizationScope.ALL)));
         AuthorizationApplicationService service = service(
-                ignored -> Optional.of(snapshot));
+                (ignoredUser, ignoredVersion) -> Optional.of(snapshot));
 
-        AuthorizationDecision decision = service.authorize(userId, "sample:read");
+        AuthorizationDecision decision = service.authorize(principal(userId, 7L), "sample:read");
 
         assertThat(decision.allowed()).isFalse();
         assertThat(decision.permissionCode()).isEqualTo("sample:read");
@@ -119,9 +122,9 @@ class AuthorizationApplicationServiceTest {
     }
 
     @Test
-    void authorize_shouldDenyNullUserWithoutLoadingStore() {
+    void authorize_shouldDenyNullPrincipalWithoutLoadingStore() {
         AtomicBoolean storeCalled = new AtomicBoolean();
-        AuthorizationApplicationService service = service(userId -> {
+        AuthorizationApplicationService service = service((userId, authzVersion) -> {
             storeCalled.set(true);
             return Optional.empty();
         });
@@ -145,7 +148,7 @@ class AuthorizationApplicationServiceTest {
             "sample:read:detail"
     })
     void authorize_shouldRejectMalformedPermissionBeforeSubjectLookup(String rawPermissionCode) {
-        AuthorizationApplicationService service = service(userId -> {
+        AuthorizationApplicationService service = service((userId, authzVersion) -> {
             throw new AssertionError("store must not be called for malformed permission");
         });
 
@@ -158,18 +161,44 @@ class AuthorizationApplicationServiceTest {
     void authorize_shouldPropagateStoreFailureUnchanged() {
         UUID userId = UUID.randomUUID();
         RuntimeException failure = new RuntimeException("authorization store unavailable");
-        AuthorizationApplicationService service = service(ignored -> {
+        AuthorizationApplicationService service = service((ignoredUser, ignoredVersion) -> {
             throw failure;
         });
 
-        assertThatThrownBy(() -> service.authorize(userId, "sample:read"))
+        assertThatThrownBy(() -> service.authorize(principal(userId, 7L), "sample:read"))
                 .isSameAs(failure);
+    }
+
+    @Test
+    void authorize_shouldLoadSnapshotWithPrincipalUserAndExactVersion() {
+        UUID userId = UUID.randomUUID();
+        AtomicReference<UUID> loadedUserId = new AtomicReference<>();
+        AtomicLong loadedVersion = new AtomicLong();
+        AuthorizationApplicationService service = service((requestedUserId, authzVersion) -> {
+            loadedUserId.set(requestedUserId);
+            loadedVersion.set(authzVersion);
+            return Optional.empty();
+        });
+
+        service.authorize(principal(userId, 23L), "sample:read");
+
+        assertThat(loadedUserId).hasValue(userId);
+        assertThat(loadedVersion).hasValue(23L);
     }
 
     private AuthorizationApplicationService service(AuthorizationSnapshotStore store) {
         return new AuthorizationApplicationService(
                 store,
                 new AuthorizationDecisionPolicy());
+    }
+
+    private AuthorizationPrincipal principal(UUID userId, long authzVersion) {
+        return new AuthorizationPrincipal(
+                userId,
+                UUID.randomUUID(),
+                "alice",
+                authzVersion,
+                false);
     }
 
     private AuthorizationSnapshot snapshot(
