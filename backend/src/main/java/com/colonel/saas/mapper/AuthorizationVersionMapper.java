@@ -2,6 +2,7 @@ package com.colonel.saas.mapper;
 
 import com.colonel.saas.mapper.projection.AuthorizationVersionChangeRow;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Options;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
@@ -11,7 +12,7 @@ import java.util.UUID;
 @Mapper
 public interface AuthorizationVersionMapper {
 
-    @Select("""
+    @Select(value = """
             WITH changed AS (
                 UPDATE sys_user
                    SET authz_version = authz_version + 1,
@@ -24,10 +25,11 @@ public interface AuthorizationVersionMapper {
             )
             SELECT user_id, previous_version, current_version
               FROM changed
-            """)
+            """, affectData = true)
+    @Options(flushCache = Options.FlushCachePolicy.TRUE, useCache = false)
     List<AuthorizationVersionChangeRow> incrementUser(@Param("userId") UUID userId);
 
-    @Select("""
+    @Select(value = """
             WITH changed AS (
                 UPDATE sys_user u
                    SET authz_version = authz_version + 1,
@@ -47,7 +49,8 @@ public interface AuthorizationVersionMapper {
             SELECT user_id, previous_version, current_version
               FROM changed
              ORDER BY user_id
-            """)
+            """, affectData = true)
+    @Options(flushCache = Options.FlushCachePolicy.TRUE, useCache = false)
     List<AuthorizationVersionChangeRow> incrementUsersByRole(
             @Param("roleId") UUID roleId);
 }
