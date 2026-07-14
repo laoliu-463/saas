@@ -14,17 +14,18 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 class DddAuthorizationRuntimeDefaultsContractTest {
 
     @Test
-    void allRuntimeProfilesDefaultAuthorizationToLegacy() throws Exception {
-        for (String resource : List.of(
-                "application.yml",
-                "application-real-pre.yml",
-                "application-test.yml")) {
+    void allCheckedInRuntimeProfilesAndDomainsAvoidEnforce() throws Exception {
+        List<String> resources = checkedInRuntimeProfiles();
+        assertThat(resources).isNotEmpty();
+
+        for (String resource : resources) {
             String source = Files.readString(Path.of("src/main/resources", resource));
 
             assertThat(source)
@@ -39,12 +40,29 @@ class DddAuthorizationRuntimeDefaultsContractTest {
             assertThat(properties.getDefaultMode())
                     .as("%s should bind the LEGACY default", resource)
                     .isEqualTo(AuthorizationRuntimeMode.LEGACY);
+            assertThat(properties.getDefaultMode())
+                    .as("%s should not configure ENFORCE as its default", resource)
+                    .isNotEqualTo(AuthorizationRuntimeMode.ENFORCE);
             assertThat(properties.getSnapshotCacheTtl())
                     .as("%s should bind the five-minute snapshot TTL", resource)
                     .isEqualTo(Duration.ofMinutes(5));
             assertThat(properties.getDomainModes())
                     .as("%s should bind no domain overrides", resource)
                     .isEmpty();
+            assertThat(properties.getDomainModes())
+                    .as("%s should not configure any domain as ENFORCE", resource)
+                    .doesNotContainValue(AuthorizationRuntimeMode.ENFORCE);
+        }
+    }
+
+    private static List<String> checkedInRuntimeProfiles() throws Exception {
+        try (Stream<Path> paths = Files.list(Path.of("src/main/resources"))) {
+            return paths
+                    .filter(Files::isRegularFile)
+                    .map(path -> path.getFileName().toString())
+                    .filter(name -> name.matches("application(?:-[^.]+)?\\.ya?ml"))
+                    .sorted()
+                    .toList();
         }
     }
 
