@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.exceptions.MybatisPlusException;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.common.result.ResultCode;
 import com.colonel.saas.douyin.DouyinApiException;
+import com.colonel.saas.domain.user.api.AuthorizationUnavailableException;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.CannotAcquireLockException;
@@ -145,6 +146,28 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResult<Void>> handleForbidden(ForbiddenException e) {
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
                 .body(ApiResult.of(ResultCode.FORBIDDEN.getCode(), e.getMessage(), null));
+    }
+
+    /**
+     * 处理授权事实暂时不可用异常（503 Service Unavailable）。
+     *
+     * @param exception 授权事实不可用异常
+     * @return 状态码 503 的统一响应
+     */
+    @ExceptionHandler(AuthorizationUnavailableException.class)
+    public ResponseEntity<ApiResult<Void>> handleAuthorizationUnavailable(
+            AuthorizationUnavailableException exception) {
+        log.warn(
+                "授权事实暂时不可用: cause={}",
+                exception.getCause() == null
+                        ? exception.getClass().getSimpleName()
+                        : exception.getCause().getClass().getSimpleName());
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(ApiResult.of(
+                        ResultCode.SERVICE_UNAVAILABLE.getCode(),
+                        "授权事实暂时不可用",
+                        null,
+                        "AUTHORIZATION_UNAVAILABLE"));
     }
 
     /**

@@ -66,7 +66,10 @@ public enum ResultCode {
     EXTERNAL_SERVICE(470, "外部服务异常"),
 
     /** 服务器内部异常（500），未预期的系统错误 */
-    SERVER_ERROR(500, "服务器异常");
+    SERVER_ERROR(500, "服务器异常"),
+
+    /** 服务暂时不可用（503），依赖的权威事实当前不可取得 */
+    SERVICE_UNAVAILABLE(503, "服务暂时不可用");
 
     /** 业务状态码（前端通过此值判断响应类型） */
     private final int code;
