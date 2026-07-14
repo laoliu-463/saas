@@ -93,17 +93,19 @@
 以下分片是同一份计划的组成部分，必须依序执行；不得只读取单个分片后跳过总入口门禁。
 
 1. [Task 1：三态配置与默认 LEGACY](2026-07-13-ddd-rbac-shadow-runtime/task-01-runtime-modes.md)
-2. [Task 2：数据库权威 AuthorizationPrincipal](2026-07-13-ddd-rbac-shadow-runtime/task-02-authorization-principal.md)
-3. [Task 3：JWT authzVersion](2026-07-13-ddd-rbac-shadow-runtime/task-03-jwt-authz-version.md)
-4. [Task 4：JWT filter 版本校验](2026-07-13-ddd-rbac-shadow-runtime/task-04-jwt-filter.md)
-5. [Task 5：版本化 Redis 授权快照缓存](2026-07-13-ddd-rbac-shadow-runtime/task-05-versioned-cache.md)
-6. [Task 6A：三态授权协调器](2026-07-13-ddd-rbac-shadow-runtime/task-06a-runtime-coordinator.md)
-7. [Task 6B：差异日志与 503 语义](2026-07-13-ddd-rbac-shadow-runtime/task-06b-difference-logging.md)
-8. [Task 7A：授权版本存储与事务事件](2026-07-13-ddd-rbac-shadow-runtime/task-07a-version-store.md)
-9. [Task 7B：授权事实写入口接线](2026-07-13-ddd-rbac-shadow-runtime/task-07b-version-writers.md)
-10. [Task 8：激活边界守卫](2026-07-13-ddd-rbac-shadow-runtime/task-08-activation-guard.md)
-11. [Task 9：本地 migration 人工门](2026-07-13-ddd-rbac-shadow-runtime/task-09-local-migration-gate.md)
-12. [Task 10：全量验证、evidence 与推送](2026-07-13-ddd-rbac-shadow-runtime/task-10-verification.md)
+2. [Task 2A：AuthorizationPrincipal 合同](2026-07-13-ddd-rbac-shadow-runtime/task-02a-principal-contracts.md)
+3. [Task 2B：应用服务与数据库适配](2026-07-13-ddd-rbac-shadow-runtime/task-02b-principal-adapter.md)
+4. [Task 3：JWT authzVersion](2026-07-13-ddd-rbac-shadow-runtime/task-03-jwt-authz-version.md)
+5. [Task 4：JWT filter 版本校验](2026-07-13-ddd-rbac-shadow-runtime/task-04-jwt-filter.md)
+6. [Task 5A：版本化缓存合同](2026-07-13-ddd-rbac-shadow-runtime/task-05a-cache-contracts.md)
+7. [Task 5B：Redis 缓存适配与装饰器](2026-07-13-ddd-rbac-shadow-runtime/task-05b-cache-adapters.md)
+8. [Task 6A：三态授权协调器](2026-07-13-ddd-rbac-shadow-runtime/task-06a-runtime-coordinator.md)
+9. [Task 6B：差异日志与 503 语义](2026-07-13-ddd-rbac-shadow-runtime/task-06b-difference-logging.md)
+10. [Task 7A：授权版本存储与事务事件](2026-07-13-ddd-rbac-shadow-runtime/task-07a-version-store.md)
+11. [Task 7B：授权事实写入口接线](2026-07-13-ddd-rbac-shadow-runtime/task-07b-version-writers.md)
+12. [Task 8：激活边界守卫](2026-07-13-ddd-rbac-shadow-runtime/task-08-activation-guard.md)
+13. [Task 9：本地 migration 人工门](2026-07-13-ddd-rbac-shadow-runtime/task-09-local-migration-gate.md)
+14. [Task 10：全量验证、evidence 与推送](2026-07-13-ddd-rbac-shadow-runtime/task-10-verification.md)
 
 ## Verification matrix
 
