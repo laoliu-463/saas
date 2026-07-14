@@ -4,6 +4,7 @@ import com.colonel.saas.domain.user.api.AuthorizationDecision;
 import com.colonel.saas.domain.user.api.AuthorizationReason;
 import com.colonel.saas.domain.user.api.AuthorizationScope;
 import com.colonel.saas.domain.user.api.PermissionCode;
+import com.colonel.saas.domain.user.domain.AuthorizationSnapshot;
 import com.colonel.saas.domain.user.domain.GrantedRolePermission;
 
 import java.util.Comparator;
@@ -13,12 +14,17 @@ public class AuthorizationDecisionPolicy {
 
     public AuthorizationDecision decide(
             PermissionCode permission,
-            List<GrantedRolePermission> grants) {
-        List<GrantedRolePermission> matchingGrants = grants == null
-                ? List.of()
-                : grants.stream()
-                        .filter(grant -> permission.equals(grant.permission()))
-                        .toList();
+            AuthorizationSnapshot snapshot) {
+        if (snapshot == null || snapshot.subject().deptId() == null) {
+            return AuthorizationDecision.deny(
+                    permission,
+                    null,
+                    AuthorizationReason.DOMAIN_SCOPE_MISSING);
+        }
+
+        List<GrantedRolePermission> matchingGrants = snapshot.grants().stream()
+                .filter(grant -> permission.equals(grant.permission()))
+                .toList();
 
         if (matchingGrants.isEmpty()) {
             return AuthorizationDecision.deny(

@@ -11,6 +11,7 @@ import com.colonel.saas.domain.user.policy.AuthorizationDecisionPolicy;
 import com.colonel.saas.domain.user.port.AuthorizationSnapshotStore;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
@@ -38,12 +39,15 @@ class AuthorizationApplicationServiceTest {
         assertThat(decision.scope()).isEqualTo(AuthorizationScope.DENY);
     }
 
-    @Test
-    void authorize_shouldAllowActiveSubjectWithGrantedSelfScope() {
+    @ParameterizedTest
+    @EnumSource(value = AuthorizationScope.class, names = {"SELF", "GROUP", "ALL"})
+    void authorize_shouldAllowActiveSubjectWithDepartmentAndGrantedScope(
+            AuthorizationScope scope) {
         UUID userId = UUID.randomUUID();
         AuthorizationSnapshot snapshot = snapshot(
                 userId,
-                List.of(grant("sample:read", AuthorizationScope.SELF)));
+                UUID.randomUUID(),
+                List.of(grant("sample:read", true, scope)));
         AuthorizationApplicationService service = service(
                 ignored -> Optional.of(snapshot));
 
@@ -53,7 +57,47 @@ class AuthorizationApplicationServiceTest {
         assertThat(decision.permissionCode()).isEqualTo("sample:read");
         assertThat(decision.domainCode()).isEqualTo("sample");
         assertThat(decision.reason()).isEqualTo(AuthorizationReason.GRANTED);
-        assertThat(decision.scope()).isEqualTo(AuthorizationScope.SELF);
+        assertThat(decision.scope()).isEqualTo(scope);
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = AuthorizationScope.class, names = {"GROUP", "ALL"})
+    void authorize_shouldDenyScopedGrantWhenSubjectDepartmentIsMissing(
+            AuthorizationScope scope) {
+        UUID userId = UUID.randomUUID();
+        AuthorizationSnapshot snapshot = snapshot(
+                userId,
+                null,
+                List.of(grant("sample:read", true, scope)));
+        AuthorizationApplicationService service = service(
+                ignored -> Optional.of(snapshot));
+
+        AuthorizationDecision decision = service.authorize(userId, "sample:read");
+
+        assertThat(decision.allowed()).isFalse();
+        assertThat(decision.permissionCode()).isEqualTo("sample:read");
+        assertThat(decision.domainCode()).isNull();
+        assertThat(decision.reason()).isEqualTo(AuthorizationReason.DOMAIN_SCOPE_MISSING);
+        assertThat(decision.scope()).isEqualTo(AuthorizationScope.DENY);
+    }
+
+    @Test
+    void authorize_shouldDenyUnscopedGrantWhenSubjectDepartmentIsMissing() {
+        UUID userId = UUID.randomUUID();
+        AuthorizationSnapshot snapshot = snapshot(
+                userId,
+                null,
+                List.of(grant("system:login", false, AuthorizationScope.DENY)));
+        AuthorizationApplicationService service = service(
+                ignored -> Optional.of(snapshot));
+
+        AuthorizationDecision decision = service.authorize(userId, "system:login");
+
+        assertThat(decision.allowed()).isFalse();
+        assertThat(decision.permissionCode()).isEqualTo("system:login");
+        assertThat(decision.domainCode()).isNull();
+        assertThat(decision.reason()).isEqualTo(AuthorizationReason.DOMAIN_SCOPE_MISSING);
+        assertThat(decision.scope()).isEqualTo(AuthorizationScope.DENY);
     }
 
     @Test
@@ -131,19 +175,33 @@ class AuthorizationApplicationServiceTest {
     private AuthorizationSnapshot snapshot(
             UUID userId,
             List<GrantedRolePermission> grants) {
+        return snapshot(userId, UUID.randomUUID(), grants);
+    }
+
+    private AuthorizationSnapshot snapshot(
+            UUID userId,
+            UUID deptId,
+            List<GrantedRolePermission> grants) {
         return new AuthorizationSnapshot(
-                new AuthorizationSubject(userId, UUID.randomUUID(), 7L),
+                new AuthorizationSubject(userId, deptId, 7L),
                 grants);
     }
 
     private GrantedRolePermission grant(
             String permissionCode,
             AuthorizationScope scope) {
+        return grant(permissionCode, true, scope);
+    }
+
+    private GrantedRolePermission grant(
+            String permissionCode,
+            boolean dataScopeRequired,
+            AuthorizationScope scope) {
         return new GrantedRolePermission(
                 UUID.randomUUID(),
                 new PermissionCode(permissionCode),
                 permissionCode.substring(0, permissionCode.indexOf(':')),
-                true,
+                dataScopeRequired,
                 scope);
     }
 }

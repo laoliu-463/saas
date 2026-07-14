@@ -35,7 +35,7 @@ public class AuthorizationApplicationService implements AuthorizationFacade {
                     AuthorizationReason.SUBJECT_NOT_ACTIVE);
         }
         return store.loadActiveSnapshot(userId)
-                .map(snapshot -> policy.decide(permission, snapshot.grants()))
+                .map(snapshot -> policy.decide(permission, snapshot))
                 .orElseGet(() -> AuthorizationDecision.deny(
                         permission,
                         null,

@@ -30,7 +30,7 @@ class AuthorizationDecisionPolicyTest {
 
     @Test
     void decide_shouldDenyWhenPermissionIsNotGranted() {
-        AuthorizationDecision decision = policy.decide(
+        AuthorizationDecision decision = decideWithDepartment(
                 new PermissionCode("sample:read"), List.of());
 
         assertThat(decision.allowed()).isFalse();
@@ -42,7 +42,7 @@ class AuthorizationDecisionPolicyTest {
 
     @Test
     void decide_shouldDenyScopedPermissionWhenEveryGrantLacksDomainScope() {
-        AuthorizationDecision decision = policy.decide(
+        AuthorizationDecision decision = decideWithDepartment(
                 new PermissionCode("sample:read"),
                 List.of(grant("sample:read", "sample", true, AuthorizationScope.DENY)));
 
@@ -53,8 +53,21 @@ class AuthorizationDecisionPolicyTest {
     }
 
     @Test
-    void decide_shouldMergeOnlyRolesThatGrantTheRequestedPermission() {
+    void decide_shouldDenyWhenSubjectDepartmentContextIsMissing() {
+        AuthorizationSnapshot snapshot = new AuthorizationSnapshot(
+                new AuthorizationSubject(UUID.randomUUID(), null, 1L),
+                List.of(grant("sample:read", "sample", true, AuthorizationScope.GROUP)));
+
         AuthorizationDecision decision = policy.decide(
+                new PermissionCode("sample:read"),
+                snapshot);
+
+        assertDomainScopeDenied(decision, null);
+    }
+
+    @Test
+    void decide_shouldMergeOnlyRolesThatGrantTheRequestedPermission() {
+        AuthorizationDecision decision = decideWithDepartment(
                 new PermissionCode("sample:read"),
                 List.of(
                         grant("sample:read", "sample", true, AuthorizationScope.GROUP),
@@ -68,7 +81,7 @@ class AuthorizationDecisionPolicyTest {
 
     @Test
     void decide_shouldAllowUnscopedPermissionWithoutRoleDomainScope() {
-        AuthorizationDecision decision = policy.decide(
+        AuthorizationDecision decision = decideWithDepartment(
                 new PermissionCode("system:login"),
                 List.of(grant("system:login", "system", false, AuthorizationScope.DENY)));
 
@@ -80,7 +93,7 @@ class AuthorizationDecisionPolicyTest {
 
     @Test
     void decide_shouldDenyWhenMatchingGrantsUseDifferentDomains() {
-        AuthorizationDecision decision = policy.decide(
+        AuthorizationDecision decision = decideWithDepartment(
                 new PermissionCode("sample:read"),
                 List.of(
                         grant("sample:read", "sample", true, AuthorizationScope.SELF),
@@ -91,7 +104,7 @@ class AuthorizationDecisionPolicyTest {
 
     @Test
     void decide_shouldDenyWhenMatchingGrantsDisagreeOnDataScopeRequirement() {
-        AuthorizationDecision decision = policy.decide(
+        AuthorizationDecision decision = decideWithDepartment(
                 new PermissionCode("sample:read"),
                 List.of(
                         grant("sample:read", "sample", true, AuthorizationScope.ALL),
@@ -104,7 +117,7 @@ class AuthorizationDecisionPolicyTest {
     @NullSource
     @ValueSource(strings = {"", " "})
     void decide_shouldDenyWhenMatchingGrantHasInvalidDomain(String domainCode) {
-        AuthorizationDecision decision = policy.decide(
+        AuthorizationDecision decision = decideWithDepartment(
                 new PermissionCode("sample:read"),
                 List.of(grant("sample:read", domainCode, true, AuthorizationScope.SELF)));
 
@@ -115,7 +128,7 @@ class AuthorizationDecisionPolicyTest {
     void decide_shouldDenyWhenScopedMatchingGrantHasNullScope() {
         AtomicReference<AuthorizationDecision> decision = new AtomicReference<>();
 
-        assertThatCode(() -> decision.set(policy.decide(
+        assertThatCode(() -> decision.set(decideWithDepartment(
                 new PermissionCode("sample:read"),
                 List.of(grant("sample:read", "sample", true, null)))))
                 .doesNotThrowAnyException();
@@ -128,7 +141,7 @@ class AuthorizationDecisionPolicyTest {
             AuthorizationScope first,
             AuthorizationScope second,
             AuthorizationScope expected) {
-        AuthorizationDecision decision = policy.decide(
+        AuthorizationDecision decision = decideWithDepartment(
                 new PermissionCode("sample:read"),
                 List.of(
                         grant("sample:read", "sample", true, first),
@@ -139,11 +152,68 @@ class AuthorizationDecisionPolicyTest {
     }
 
     @Test
-    void decide_shouldTreatNullGrantListAsEmpty() {
+    void decide_shouldTreatSnapshotNullGrantListAsEmpty() {
+        PermissionCode permission = new PermissionCode("sample:read");
+        AuthorizationSubject subject = subjectWithDepartment();
+
+        assertThat(policy.decide(permission, new AuthorizationSnapshot(subject, null)))
+                .isEqualTo(policy.decide(permission, new AuthorizationSnapshot(subject, List.of())));
+    }
+
+    @ParameterizedTest(name = "allowed={0}, scope={1}, reason={2}")
+    @MethodSource("contradictoryDecisionCases")
+    void authorizationDecision_shouldRejectContradictoryState(
+            boolean allowed,
+            AuthorizationScope scope,
+            AuthorizationReason reason) {
+        assertThatThrownBy(() -> new AuthorizationDecision(
+                allowed,
+                "sample:read",
+                "sample",
+                scope,
+                reason))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void authorizationDecision_shouldRejectNullRequiredFields() {
+        assertThatThrownBy(() -> new AuthorizationDecision(
+                true,
+                null,
+                "sample",
+                AuthorizationScope.SELF,
+                AuthorizationReason.GRANTED))
+                .isInstanceOf(NullPointerException.class);
+        assertThatThrownBy(() -> new AuthorizationDecision(
+                true,
+                "sample:read",
+                "sample",
+                null,
+                AuthorizationReason.GRANTED))
+                .isInstanceOf(NullPointerException.class);
+        assertThatThrownBy(() -> new AuthorizationDecision(
+                false,
+                "sample:read",
+                "sample",
+                AuthorizationScope.DENY,
+                null))
+                .isInstanceOf(NullPointerException.class);
+    }
+
+    @Test
+    void authorizationDecision_factoriesShouldProduceValidState() {
         PermissionCode permission = new PermissionCode("sample:read");
 
-        assertThat(policy.decide(permission, null))
-                .isEqualTo(policy.decide(permission, List.of()));
+        assertThatCode(() -> AuthorizationDecision.allow(
+                permission,
+                "sample",
+                AuthorizationScope.SELF))
+                .doesNotThrowAnyException();
+        assertThatCode(() -> AuthorizationDecision.deny(
+                permission,
+                "sample",
+                AuthorizationReason.DOMAIN_SCOPE_MISSING))
+                .doesNotThrowAnyException();
     }
 
     @Test
@@ -229,6 +299,14 @@ class AuthorizationDecisionPolicyTest {
                 Arguments.of(AuthorizationScope.GROUP, AuthorizationScope.ALL, AuthorizationScope.ALL));
     }
 
+    private static Stream<Arguments> contradictoryDecisionCases() {
+        return Stream.of(
+                Arguments.of(true, AuthorizationScope.DENY, AuthorizationReason.GRANTED),
+                Arguments.of(true, AuthorizationScope.SELF, AuthorizationReason.PERMISSION_NOT_GRANTED),
+                Arguments.of(false, AuthorizationScope.SELF, AuthorizationReason.PERMISSION_NOT_GRANTED),
+                Arguments.of(false, AuthorizationScope.DENY, AuthorizationReason.GRANTED));
+    }
+
     private void assertDomainScopeDenied(
             AuthorizationDecision decision,
             String expectedDomainCode) {
@@ -236,6 +314,14 @@ class AuthorizationDecisionPolicyTest {
         assertThat(decision.domainCode()).isEqualTo(expectedDomainCode);
         assertThat(decision.reason()).isEqualTo(AuthorizationReason.DOMAIN_SCOPE_MISSING);
         assertThat(decision.scope()).isEqualTo(AuthorizationScope.DENY);
+    }
+
+    private AuthorizationDecision decideWithDepartment(
+            PermissionCode permission,
+            List<GrantedRolePermission> grants) {
+        return policy.decide(
+                permission,
+                new AuthorizationSnapshot(subjectWithDepartment(), grants));
     }
 
     private GrantedRolePermission grant(
@@ -253,5 +339,9 @@ class AuthorizationDecisionPolicyTest {
 
     private AuthorizationSubject subject() {
         return new AuthorizationSubject(UUID.randomUUID(), null, 1L);
+    }
+
+    private AuthorizationSubject subjectWithDepartment() {
+        return new AuthorizationSubject(UUID.randomUUID(), UUID.randomUUID(), 1L);
     }
 }
