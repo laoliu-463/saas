@@ -8,6 +8,7 @@ import com.colonel.saas.domain.user.api.AuthorizationUnavailableException;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.CannotAcquireLockException;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.dao.QueryTimeoutException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -96,6 +97,26 @@ public class GlobalExceptionHandler {
             return ApiResult.of(ResultCode.CONFLICT.getCode(), "数据已被他人修改，请刷新后重试", null);
         }
         log.error("MyBatis-Plus 异常", e);
+        return ApiResult.of(ResultCode.SERVER_ERROR, null);
+    }
+
+    /**
+     * 处理数据库唯一键冲突。
+     *
+     * <p>用户名在数据库中是包含软删除记录的全局唯一键。创建请求在并发场景下
+     * 可能通过前置查询后同时进入 INSERT，因此仍需在数据库异常边界补充映射，
+     * 避免把可识别的用户名冲突包装成“服务器异常”。</p>
+     *
+     * @param e 数据库唯一键异常
+     * @return 用户名冲突返回重复业务错误，其他唯一键异常继续返回通用服务器错误
+     */
+    @ExceptionHandler(DuplicateKeyException.class)
+    public ApiResult<Void> handleDuplicateKey(DuplicateKeyException e) {
+        if (containsConstraint(e, "sys_user_username_key")) {
+            log.warn("用户名唯一约束冲突: {}", e.getMessage());
+            return ApiResult.of(ResultCode.DUPLICATE.getCode(), "用户名已存在", null);
+        }
+        log.error("数据库唯一键异常", e);
         return ApiResult.of(ResultCode.SERVER_ERROR, null);
     }
 
@@ -307,5 +328,14 @@ public class GlobalExceptionHandler {
                 || lower.contains("optimistic")
                 || lower.contains("version")
                 || lower.contains("modified");
+    }
+
+    private static boolean containsConstraint(Throwable error, String constraintName) {
+        for (Throwable current = error; current != null; current = current.getCause()) {
+            if (current.getMessage() != null && current.getMessage().contains(constraintName)) {
+                return true;
+            }
+        }
+        return false;
     }
 }

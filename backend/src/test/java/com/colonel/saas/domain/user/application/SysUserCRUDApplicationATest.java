@@ -132,7 +132,7 @@ class SysUserCRUDApplicationATest {
 
         ManagedRole role = new ManagedRole(roleId, RoleCodes.BIZ_STAFF, 1);
 
-        when(userStore.findByUsername("newuser")).thenReturn(Optional.empty());
+        when(userStore.findByUsernameIncludingDeleted("newuser")).thenReturn(Optional.empty());
         when(userStore.findRolesByIds(roleIds)).thenReturn(List.of(role));
         when(passwordEncoder.encode("Passw0rd!")).thenReturn("encoded-pwd");
         when(userChannelCodePolicy.generateUnique("newuser")).thenReturn("newuser");
@@ -166,11 +166,31 @@ class SysUserCRUDApplicationATest {
         UUID existingId = UUID.randomUUID();
         ManagedUser existing = managedUser(existingId, "alice", UUID.randomUUID(), 1);
 
-        when(userStore.findByUsername("alice")).thenReturn(Optional.of(existing));
+        when(userStore.findByUsernameIncludingDeleted("alice")).thenReturn(Optional.of(existing));
 
         SysUserCreateRequest request = new SysUserCreateRequest(
                 "alice", "Passw0rd!", "Alice", "13800000000", "a@x.com",
                 null, null, UUID.randomUUID(), List.of());
+
+        assertThatThrownBy(() -> applicationA.create(request, operatorId))
+                .isInstanceOf(BusinessException.class)
+                .extracting(t -> ((BusinessException) t).getCode())
+                .isEqualTo(com.colonel.saas.common.result.ResultCode.DUPLICATE.getCode());
+
+        verify(userStore, never()).insertUser(any());
+        verify(userDomainEventPublisher, never()).publishUserCreated(
+                any(), any(), any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void create_softDeletedUsername_throwsDuplicateBeforeInsert() {
+        UUID operatorId = UUID.randomUUID();
+        ManagedUser deletedUser = managedUser(UUID.randomUUID(), "玄同", UUID.randomUUID(), 1);
+        SysUserCreateRequest request = new SysUserCreateRequest(
+                "玄同", "Passw0rd!", "新用户", null, null,
+                null, null, null, List.of());
+
+        when(userStore.findByUsernameIncludingDeleted("玄同")).thenReturn(Optional.of(deletedUser));
 
         assertThatThrownBy(() -> applicationA.create(request, operatorId))
                 .isInstanceOf(BusinessException.class)

@@ -14,6 +14,7 @@ import jakarta.validation.ConstraintViolationException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.DuplicateKeyException;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -237,6 +238,28 @@ class GlobalExceptionHandlerTest {
     void handleGeneral_withBlankMessage_returnsGenericMessage() {
         RuntimeException ex = new RuntimeException("   ");
         ApiResult<Void> result = handler.handleGeneral(ex);
+        assertThat(result.getCode()).isEqualTo(500);
+        assertThat(result.getMsg()).isEqualTo("服务器异常");
+    }
+
+    @Test
+    void handleDuplicateKey_withUsernameConstraint_returnsDuplicateMessage() {
+        DuplicateKeyException ex = new DuplicateKeyException(
+                "ERROR: duplicate key value violates unique constraint \"sys_user_username_key\"");
+
+        ApiResult<Void> result = handler.handleDuplicateKey(ex);
+
+        assertThat(result.getCode()).isEqualTo(462);
+        assertThat(result.getMsg()).isEqualTo("用户名已存在");
+    }
+
+    @Test
+    void handleDuplicateKey_withOtherConstraint_keepsServerError() {
+        DuplicateKeyException ex = new DuplicateKeyException(
+                "ERROR: duplicate key value violates unique constraint \"sys_user_channel_code_key\"");
+
+        ApiResult<Void> result = handler.handleDuplicateKey(ex);
+
         assertThat(result.getCode()).isEqualTo(500);
         assertThat(result.getMsg()).isEqualTo("服务器异常");
     }
