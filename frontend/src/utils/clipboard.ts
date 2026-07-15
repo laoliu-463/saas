@@ -72,6 +72,33 @@ const readBlobAsDataUrl = (blob: Blob): Promise<string> => new Promise((resolve,
   reader.readAsDataURL(blob)
 })
 
+const convertImageToClipboardPng = async (blob: Blob): Promise<Blob> => {
+  const imageType = String(blob.type || '').toLowerCase()
+  if (imageType === 'image/png') return blob
+  if (typeof createImageBitmap !== 'function' || typeof document === 'undefined') {
+    throw new Error('image conversion unavailable')
+  }
+
+  const bitmap = await createImageBitmap(blob)
+  try {
+    const canvas = document.createElement('canvas')
+    canvas.width = bitmap.width
+    canvas.height = bitmap.height
+    const context = canvas.getContext('2d')
+    if (!context) throw new Error('canvas context unavailable')
+    context.drawImage(bitmap, 0, 0)
+
+    return await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((pngBlob) => {
+        if (pngBlob) resolve(pngBlob)
+        else reject(new Error('png conversion failed'))
+      }, 'image/png')
+    })
+  } finally {
+    bitmap.close()
+  }
+}
+
 /**
  * 尝试把文本和商品图片作为同一个剪贴板 payload 写入。
  * 图片读取失败（常见于 CDN 未开放 CORS）时只降级复制文本，不伪造图片已复制。
@@ -96,18 +123,19 @@ export async function tryCopyTextAndImage(
       })
       if (!response.ok) throw new Error(`image request failed: ${response.status}`)
 
-      const blob = await response.blob()
-      const imageType = String(blob.type || '').toLowerCase()
+      const sourceBlob = await response.blob()
+      const imageType = String(sourceBlob.type || '').toLowerCase()
       if (!isSupportedClipboardImageType(imageType)) {
         throw new Error(`unsupported clipboard image type: ${imageType || 'unknown'}`)
       }
 
-      const imageDataUrl = await readBlobAsDataUrl(blob)
+      const clipboardImage = await convertImageToClipboardPng(sourceBlob)
+      const imageDataUrl = await readBlobAsDataUrl(clipboardImage)
       const html = `<img src="${imageDataUrl}" alt="商品图片"><div>${escapeHtml(text).replace(/\r?\n/g, '<br>')}</div>`
       const clipboardItem = new ClipboardItem({
         'text/plain': new Blob([text], { type: 'text/plain' }),
         'text/html': new Blob([html], { type: 'text/html' }),
-        [imageType]: blob
+        'image/png': clipboardImage
       })
       await navigator.clipboard.write([clipboardItem])
       return { copied: true, imageCopied: true }

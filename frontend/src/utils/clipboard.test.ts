@@ -103,6 +103,54 @@ describe('tryCopyTextAndImage', () => {
     ])
   })
 
+  it('converts jpeg images to png before writing because browser clipboard write supports png', async () => {
+    const write = vi.fn().mockResolvedValue(undefined)
+    setClipboard({ write, writeText: vi.fn() } as unknown as Clipboard)
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      blob: vi.fn().mockResolvedValue(new Blob(['jpeg'], { type: 'image/jpeg' }))
+    }))
+    vi.stubGlobal('createImageBitmap', vi.fn().mockResolvedValue({
+      width: 100,
+      height: 80,
+      close: vi.fn()
+    }))
+    const drawImage = vi.fn()
+    const toBlob = vi.fn((callback: BlobCallback) => callback(new Blob(['png'], { type: 'image/png' })))
+    vi.spyOn(document, 'createElement').mockImplementation((tagName: string) => {
+      if (tagName === 'canvas') {
+        return {
+          width: 0,
+          height: 0,
+          getContext: () => ({ drawImage }),
+          toBlob
+        } as unknown as HTMLCanvasElement
+      }
+      return document.createElementNS('http://www.w3.org/1999/xhtml', tagName)
+    })
+    class ClipboardItemMock {
+      readonly items: Record<string, Blob>
+
+      constructor(items: Record<string, Blob>) {
+        this.items = items
+      }
+    }
+    vi.stubGlobal('ClipboardItem', ClipboardItemMock)
+
+    await expect(tryCopyTextAndImage('商品文案', 'https://img.example.com/product.jpg')).resolves.toEqual({
+      copied: true,
+      imageCopied: true
+    })
+
+    expect(drawImage).toHaveBeenCalledOnce()
+    expect(toBlob).toHaveBeenCalledOnce()
+    expect(Object.keys((write.mock.calls[0][0][0] as ClipboardItemMock).items)).toEqual([
+      'text/plain',
+      'text/html',
+      'image/png'
+    ])
+  })
+
   it('falls back to text when the image cannot be fetched', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined)
     setClipboard({ writeText } as unknown as Clipboard)
