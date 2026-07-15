@@ -133,6 +133,54 @@ class SysUserMapperTest extends BaseIntegrationTest {
     }
 
     @Nested
+    @DisplayName("restoreById")
+    class RestoreByIdTest {
+
+        @Test
+        void shouldRestoreDeletedUserAndOverwriteNewCredentials() {
+            SysUser user = createUser("testuser", "ch001");
+            user.setPassword("old-hash");
+            user.setForcePasswordChange(false);
+            sysUserMapper.insert(user);
+            sysUserMapper.softDeleteById(user.getId());
+
+            SysUser restored = new SysUser();
+            restored.setId(user.getId());
+            restored.setUsername("testuser");
+            restored.setPassword("new-hash");
+            restored.setRealName("新用户");
+            restored.setEmail("new@example.com");
+            restored.setStatus(2);
+            restored.setForcePasswordChange(true);
+            restored.setChannelCode("ch002");
+
+            int rows = sysUserMapper.restoreById(restored);
+
+            assertThat(rows).isEqualTo(1);
+            SysUser found = sysUserMapper.selectById(user.getId());
+            assertThat(found).isNotNull();
+            assertThat(found.getDeleted()).isEqualTo(0);
+            assertThat(found.getPassword()).isEqualTo("new-hash");
+            assertThat(found.getRealName()).isEqualTo("新用户");
+            assertThat(found.getEmail()).isEqualTo("new@example.com");
+            assertThat(found.getStatus()).isEqualTo(2);
+            assertThat(found.getForcePasswordChange()).isTrue();
+            assertThat(found.getChannelCode()).isEqualTo("ch002");
+            assertThat(found.getLastLoginAt()).isNull();
+        }
+
+        @Test
+        void shouldReturn0WhenUserIsAlreadyActive() {
+            SysUser user = createUser("testuser", "ch001");
+            sysUserMapper.insert(user);
+
+            int rows = sysUserMapper.restoreById(user);
+
+            assertThat(rows).isEqualTo(0);
+        }
+    }
+
+    @Nested
     @DisplayName("BaseMapper operations")
     class BaseMapperOperationsTest {
 

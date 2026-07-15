@@ -53,14 +53,39 @@ public interface SysUserMapper extends BaseMapper<SysUser> {
     /**
      * 根据用户名查询用户（包含软删除记录）。
      *
-     * <p>仅用于创建用户时校验全局用户名唯一性；登录和活跃用户查询必须继续使用
-     * {@link #findByUsername(String)}，避免软删除用户重新获得访问资格。</p>
+     * <p>用于创建用户时识别活跃或软删除记录；命中软删除记录时由用户应用服务执行受控恢复。
+     * 登录和活跃用户查询必须继续使用 {@link #findByUsername(String)}，避免查询到已删除用户。</p>
      *
      * @param username 用户名
      * @return 包含活跃或软删除记录的用户 Optional
      */
     @Select("SELECT * FROM sys_user WHERE username = #{username} LIMIT 1")
     Optional<SysUser> findByUsernameIncludingDeleted(@Param("username") String username);
+
+    /**
+     * 恢复软删除用户并覆盖本次新建请求中的资料。
+     *
+     * <p>使用 deleted=1 条件保证并发创建同名用户时只有一个请求能完成恢复，
+     * 同时保留 username 全局唯一约束，不通过删除历史记录绕过约束。</p>
+     */
+    @Update("""
+            UPDATE sys_user
+               SET username = #{user.username},
+                   password = #{user.password},
+                   real_name = #{user.realName},
+                   phone = #{user.phone},
+                   email = #{user.email},
+                   dept_id = #{user.deptId},
+                   channel_code = #{user.channelCode},
+                   status = #{user.status},
+                   force_password_change = #{user.forcePasswordChange},
+                   last_login_at = NULL,
+                   deleted = 0,
+                   update_time = CURRENT_TIMESTAMP
+             WHERE id = #{user.id}
+               AND deleted = 1
+            """)
+    int restoreById(@Param("user") SysUser user);
 
     /**
      * 根据真实姓名查询用户（精确匹配，用于姓名登录）。

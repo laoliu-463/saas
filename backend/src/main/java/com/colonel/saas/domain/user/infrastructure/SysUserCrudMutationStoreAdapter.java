@@ -136,6 +136,22 @@ public class SysUserCrudMutationStoreAdapter implements UserCrudMutationStore {
     }
 
     @Override
+    public boolean restoreUser(UUID existingUserId, NewUser user) {
+        SysUser entity = new SysUser();
+        entity.setId(existingUserId);
+        entity.setUsername(user.username());
+        entity.setPassword(user.encodedPassword());
+        entity.setRealName(user.realName());
+        entity.setPhone(user.phone());
+        entity.setEmail(user.email());
+        entity.setDeptId(user.deptId());
+        entity.setStatus(user.status());
+        entity.setForcePasswordChange(user.forcePasswordChange());
+        entity.setChannelCode(user.channelCode());
+        return sysUserMapper.restoreById(entity) > 0;
+    }
+
+    @Override
     public void saveUser(ManagedUser user) {
         SysUser entity = new SysUser();
         entity.setId(user.id());

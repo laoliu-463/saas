@@ -21,6 +21,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -153,6 +154,36 @@ class SysUserCrudMutationStoreAdapterTest {
         verify(sysUserRoleMapper).insert(roleCaptor.capture());
         assertThat(roleCaptor.getValue().getUserId()).isEqualTo(userId);
         assertThat(roleCaptor.getValue().getRoleId()).isEqualTo(roleId);
+    }
+
+    @Test
+    void restoreUser_reusesExistingIdAndOverwritesCredentialsAndProfile() {
+        UUID existingUserId = UUID.randomUUID();
+        NewUser user = new NewUser(
+                UUID.randomUUID(),
+                "玄同",
+                "encoded",
+                "新用户",
+                null,
+                "new@example.com",
+                null,
+                2,
+                true,
+                "user");
+        when(sysUserMapper.restoreById(any(SysUser.class))).thenReturn(1);
+
+        boolean restored = adapter.restoreUser(existingUserId, user);
+
+        assertThat(restored).isTrue();
+        ArgumentCaptor<SysUser> captor = ArgumentCaptor.forClass(SysUser.class);
+        verify(sysUserMapper).restoreById(captor.capture());
+        assertThat(captor.getValue().getId()).isEqualTo(existingUserId);
+        assertThat(captor.getValue().getUsername()).isEqualTo("玄同");
+        assertThat(captor.getValue().getPassword()).isEqualTo("encoded");
+        assertThat(captor.getValue().getRealName()).isEqualTo("新用户");
+        assertThat(captor.getValue().getStatus()).isEqualTo(2);
+        assertThat(captor.getValue().getForcePasswordChange()).isTrue();
+        assertThat(captor.getValue().getChannelCode()).isEqualTo("user");
     }
 
     @Test

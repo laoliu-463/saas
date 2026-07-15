@@ -44,7 +44,7 @@ import java.util.UUID;
  * <p><b>2 个 public 方法</b>：
  * <ul>
  *   <li>getById —— 单个查询（带数据权限校验）</li>
- *   <li>create —— 新建（事务性，校验用户名唯一 + 角色合法性 + 单一管理员保护）</li>
+ *   <li>create —— 新建或恢复软删除用户（事务性，校验用户名、角色合法性 + 单一管理员保护）</li>
  * </ul>
  *
  * <p>所属业务领域：用户域 / 用户管理</p>
@@ -89,9 +89,11 @@ public class SysUserCRUDApplicationA {
 
     @Transactional(rollbackFor = Exception.class)
     public SysUserVO create(SysUserCreateRequest request, UUID currentUserId) {
-        userStore.findByUsernameIncludingDeleted(request.username()).ifPresent(existing -> {
+        ManagedUser existingUser = userStore.findByUsernameIncludingDeleted(request.username()).orElse(null);
+        boolean restoringDeletedUser = existingUser != null && isSoftDeleted(existingUser);
+        if (existingUser != null && !restoringDeletedUser) {
             throw BusinessException.duplicate("用户名已存在");
-        });
+        }
 
         List<UUID> roleIds = normalizeRoleIds(request.roleIds());
         validateRoleIds(roleIds, null);
@@ -101,7 +103,7 @@ public class SysUserCRUDApplicationA {
                 request.groupId(),
                 request.deptId());
         NewUser user = new NewUser(
-                UUID.randomUUID(),
+                restoringDeletedUser ? existingUser.id() : UUID.randomUUID(),
                 request.username(),
                 passwordEncoder.encode(request.password()),
                 request.realName(),
@@ -111,18 +113,25 @@ public class SysUserCRUDApplicationA {
                 SysUserStatus.PENDING_ACTIVATION,
                 true,
                 userChannelCodePolicy.generateUnique(request.username()));
-        userStore.insertUser(user);
+        if (restoringDeletedUser) {
+            if (!userStore.restoreUser(existingUser.id(), user)) {
+                throw BusinessException.duplicate("用户名已存在");
+            }
+        } else {
+            userStore.insertUser(user);
+        }
 
         userStore.replaceUserRoles(user.id(), roleIds);
+        String operation = restoringDeletedUser ? "恢复用户" : "新建用户";
         operationLogService.recordSystemAction(
                 currentUserId,
                 "用户管理",
-                "新建用户",
+                operation,
                 "POST",
                 "SysUser",
                 user.id().toString(),
                 user.username(),
-                "新建用户: " + user.username()
+                operation + ": " + user.username()
         );
         ManagedRole primaryRole = resolvePrimaryRole(roleIds);
         userDomainEventPublisher.publishUserCreated(
@@ -136,6 +145,10 @@ public class SysUserCRUDApplicationA {
                 user.status(),
                 currentUserId);
         return orgStructureService.enrichUser(toVO(user.toManagedUser()));
+    }
+
+    private static boolean isSoftDeleted(ManagedUser user) {
+        return user.deleted() != null && user.deleted() == 1;
     }
 
     // ===== private helpers（从 SysUserService 1:1 复制）=====
