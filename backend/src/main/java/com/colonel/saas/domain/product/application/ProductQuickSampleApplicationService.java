@@ -14,7 +14,7 @@ import java.util.UUID;
  * 商品快速寄样应用层（DDD-PRODUCT-003 Batch3 Replace）。
  *
  * <p>Controller 写路径统一经本服务；开关 {@code ddd.refactor.product-facade.enabled=true}
- * 且根开关开启时，先走 {@link ProductDomainFacade} 存在性检查，再委派 {@link ProductQuickSampleService}。</p>
+ * 且根开关开启时，先按商品库关系 ID 检查商品快照，再委派 {@link ProductQuickSampleService}。</p>
  */
 @Service
 public class ProductQuickSampleApplicationService {
@@ -45,13 +45,13 @@ public class ProductQuickSampleApplicationService {
             UUID deptId,
             Object roleCodes) {
         if (isRoutingEnabled()) {
-            assertProductExistsViaFacade(relationId);
+            assertProductSnapshotExistsViaFacade(relationId);
         }
         return productQuickSampleService.applyQuickSample(relationId, request, userId, deptId, roleCodes);
     }
 
-    private void assertProductExistsViaFacade(UUID relationId) {
-        if (!productDomainFacade.existsById(relationId)) {
+    private void assertProductSnapshotExistsViaFacade(UUID relationId) {
+        if (productDomainFacade.findSnapshotById(relationId) == null) {
             throw BusinessException.notFound("商品不存在或已不在商品库，请刷新商品后重试");
         }
     }
