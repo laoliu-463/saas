@@ -15,6 +15,11 @@ public interface UserCrudMutationStore {
 
     Optional<ManagedUser> findByUsername(String username);
 
+    /**
+     * 查询包含软删除记录的用户名，用于创建时遵守数据库全局唯一约束。
+     */
+    Optional<ManagedUser> findByUsernameIncludingDeleted(String username);
+
     List<ManagedRole> findRolesByIds(Collection<UUID> roleIds);
 
     List<UUID> findUserIdsByRoleId(UUID roleId);

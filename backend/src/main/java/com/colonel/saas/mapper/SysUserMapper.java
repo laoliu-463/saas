@@ -51,6 +51,18 @@ public interface SysUserMapper extends BaseMapper<SysUser> {
     Optional<SysUser> findByUsername(@Param("username") String username);
 
     /**
+     * 根据用户名查询用户（包含软删除记录）。
+     *
+     * <p>仅用于创建用户时校验全局用户名唯一性；登录和活跃用户查询必须继续使用
+     * {@link #findByUsername(String)}，避免软删除用户重新获得访问资格。</p>
+     *
+     * @param username 用户名
+     * @return 包含活跃或软删除记录的用户 Optional
+     */
+    @Select("SELECT * FROM sys_user WHERE username = #{username} LIMIT 1")
+    Optional<SysUser> findByUsernameIncludingDeleted(@Param("username") String username);
+
+    /**
      * 根据真实姓名查询用户（精确匹配，用于姓名登录）。
      *
      * @param realName 真实姓名（已 trim）

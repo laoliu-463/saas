@@ -51,6 +51,14 @@ public class SysUserCrudMutationStoreAdapter implements UserCrudMutationStore {
     }
 
     @Override
+    public Optional<ManagedUser> findByUsernameIncludingDeleted(String username) {
+        if (username == null || username.isBlank()) {
+            return Optional.empty();
+        }
+        return sysUserMapper.findByUsernameIncludingDeleted(username.trim()).map(this::toManagedUser);
+    }
+
+    @Override
     public List<ManagedRole> findRolesByIds(Collection<UUID> roleIds) {
         if (roleIds == null || roleIds.isEmpty()) {
             return List.of();

@@ -89,7 +89,7 @@ public class SysUserCRUDApplicationA {
 
     @Transactional(rollbackFor = Exception.class)
     public SysUserVO create(SysUserCreateRequest request, UUID currentUserId) {
-        userStore.findByUsername(request.username()).ifPresent(existing -> {
+        userStore.findByUsernameIncludingDeleted(request.username()).ifPresent(existing -> {
             throw BusinessException.duplicate("用户名已存在");
         });
 

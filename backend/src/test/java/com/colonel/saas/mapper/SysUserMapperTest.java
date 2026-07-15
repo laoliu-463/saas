@@ -54,6 +54,18 @@ class SysUserMapperTest extends BaseIntegrationTest {
 
             assertThat(result).isEmpty();
         }
+
+        @Test
+        void shouldReturnDeletedUserWhenIncludingDeleted() {
+            SysUser user = createUser("testuser", "ch001");
+            sysUserMapper.insert(user);
+            sysUserMapper.softDeleteById(user.getId());
+
+            Optional<SysUser> result = sysUserMapper.findByUsernameIncludingDeleted("testuser");
+
+            assertThat(result).isPresent();
+            assertThat(result.get().getDeleted()).isEqualTo(1);
+        }
     }
 
     @Nested
