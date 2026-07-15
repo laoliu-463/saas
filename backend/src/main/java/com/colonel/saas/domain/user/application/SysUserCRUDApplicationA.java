@@ -89,9 +89,7 @@ public class SysUserCRUDApplicationA {
 
     @Transactional(rollbackFor = Exception.class)
     public SysUserVO create(SysUserCreateRequest request, UUID currentUserId) {
-        ManagedUser existingUser = userStore.findByUsernameIncludingDeleted(request.username()).orElse(null);
-        boolean restoringDeletedUser = existingUser != null && isSoftDeleted(existingUser);
-        if (existingUser != null && !restoringDeletedUser) {
+        userStore.findByUsernameIncludingDeleted(request.username()).ifPresent(existing -> {
             throw BusinessException.duplicate("用户名已存在");
         }
 

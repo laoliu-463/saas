@@ -6,9 +6,9 @@
 - Environment: real-pre
 - Scope: backend
 - Branch: codex/ddd-user-role-application
-- Commit: cd1b320a
+- Commit: c86578b5
 - Owned worktree: dirty
-- Deploy remote: true
+- Deploy remote: false
 
 ## Owned Files
 
@@ -21,14 +21,21 @@ backend/src/main/java/com/colonel/saas/mapper/SysUserMapper.java
 backend/src/test/java/com/colonel/saas/common/exception/GlobalExceptionHandlerTest.java
 backend/src/test/java/com/colonel/saas/domain/user/application/SysUserCRUDApplicationATest.java
 backend/src/test/java/com/colonel/saas/mapper/SysUserMapperTest.java
-harness/rules/state/snapshots/DOMAIN_STATUS.md
 harness/reports/current/latest-user-create-username-20260715.md
 ~~~
 
 ## Owned Git Status
 
 ~~~text
-Owned task files are clean after commit cd1b320a; the repository still contains unrelated pre-existing dirty files outside Owned Files.
+M backend/src/main/java/com/colonel/saas/common/exception/GlobalExceptionHandler.java
+ M backend/src/main/java/com/colonel/saas/domain/user/application/SysUserCRUDApplicationA.java
+ M backend/src/main/java/com/colonel/saas/domain/user/infrastructure/SysUserCrudMutationStoreAdapter.java
+ M backend/src/main/java/com/colonel/saas/domain/user/port/UserCrudMutationStore.java
+ M backend/src/main/java/com/colonel/saas/mapper/SysUserMapper.java
+ M backend/src/test/java/com/colonel/saas/common/exception/GlobalExceptionHandlerTest.java
+ M backend/src/test/java/com/colonel/saas/domain/user/application/SysUserCRUDApplicationATest.java
+ M backend/src/test/java/com/colonel/saas/mapper/SysUserMapperTest.java
+?? harness/reports/current/latest-user-create-username-20260715.md
 ~~~
 
 ## Build Result
@@ -36,8 +43,6 @@ Owned task files are clean after commit cd1b320a; the repository still contains 
 ~~~text
 not collected
 Backend build: PASS (mvn -f backend/pom.xml -DskipTests package)
-Backend full test: PASS (3207 tests, 0 failures, 0 errors, 3 skipped)
-Deployment-branch full test: PASS (3430 tests, 0 failures, 0 errors, 3 skipped)
 ~~~
 
 ## Docker Status
@@ -82,13 +87,7 @@ Content maintenance skipped by -ContentMaintenance off.
 ## Remote Deploy Result
 
 ~~~text
-Remote deploy: PASS
-- Gitee `feature/auth-system`: `068ef926 -> 61f7f129`.
-- Remote worktree: clean; remote commit `61f7f129`.
-- Remote Maven package: PASS; backend jar guard passed (`81065134` bytes).
-- Remote Compose: backend, frontend, PostgreSQL, and Redis all healthy.
-- Remote HTTP checks: backend `/api/system/health` returned `{"status":"UP"}`; frontend `/healthz` returned `ok`.
-- The first compose attempt hit a transient stale-container name conflict; the official deployment script was rerun and completed successfully. No volume deletion or data cleanup was performed.
+remote not deployed
 ~~~
 
 ## Retro Summary
@@ -102,6 +101,3 @@ PASS
 ## Residual Risk
 
 - Items marked as not collected are not proof of success.
-- Harness governance: TASK_GATE=PASS, REPOSITORY_HEALTH=PARTIAL because pre-existing `harness/reports` count is 39 (budget 20) and one historical report is 258 lines.
-- State update: `harness/rules/state/snapshots/DOMAIN_STATUS.md` records this user-domain fix.
-- Remote deployment was explicitly requested and completed through `deploy-remote.ps1`; no frontend source was changed for this backend fix.

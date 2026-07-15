@@ -204,38 +204,23 @@ class SysUserCRUDApplicationATest {
     }
 
     @Test
-    void create_softDeletedUsername_restoresUserInsteadOfRejectingIt() {
+    void create_softDeletedUsername_throwsDuplicateBeforeInsert() {
         UUID operatorId = UUID.randomUUID();
-        UUID deletedUserId = UUID.randomUUID();
-        ManagedUser deletedUser = new ManagedUser(
-                deletedUserId,
-                "玄同",
-                "旧姓名",
-                null,
-                null,
-                UUID.randomUUID(),
-                1,
-                false,
-                null,
-                null,
-                1);
+        ManagedUser deletedUser = managedUser(UUID.randomUUID(), "玄同", UUID.randomUUID(), 1);
         SysUserCreateRequest request = new SysUserCreateRequest(
                 "玄同", "Passw0rd!", "新用户", null, null,
                 null, null, null, List.of());
 
         when(userStore.findByUsernameIncludingDeleted("玄同")).thenReturn(Optional.of(deletedUser));
-        when(passwordEncoder.encode("Passw0rd!")).thenReturn("encoded-pwd");
-        when(userChannelCodePolicy.generateUnique("玄同")).thenReturn("user");
-        when(userStore.restoreUser(eq(deletedUserId), any(NewUser.class))).thenReturn(true);
-        when(userStore.findRoleIdsByUserId(deletedUserId)).thenReturn(List.of());
-        when(orgStructureService.enrichUser(any(SysUserVO.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        SysUserVO result = applicationA.create(request, operatorId);
+        assertThatThrownBy(() -> applicationA.create(request, operatorId))
+                .isInstanceOf(BusinessException.class)
+                .extracting(t -> ((BusinessException) t).getCode())
+                .isEqualTo(com.colonel.saas.common.result.ResultCode.DUPLICATE.getCode());
 
         verify(userStore, never()).insertUser(any());
-        verify(userStore).restoreUser(eq(deletedUserId), any(NewUser.class));
-        assertThat(result.getId()).isEqualTo(deletedUserId);
-        assertThat(result.getUsername()).isEqualTo("玄同");
+        verify(userDomainEventPublisher, never()).publishUserCreated(
+                any(), any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     private static ManagedUser managedUser(UUID id, String username, UUID deptId, Integer status) {
