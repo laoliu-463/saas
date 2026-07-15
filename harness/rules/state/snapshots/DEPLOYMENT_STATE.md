@@ -13,7 +13,7 @@
 
 ## 最新受控部署（2026-07-15）
 
-- `feature/auth-system` 的远端仓库 HEAD `66ddf8bd`（业务代码含 `82456081` 与既有 RBAC 集成链）已通过固定脚本部署到远端 `real-pre`；backend、frontend、PostgreSQL、Redis 均健康。
+- `feature/auth-system` 的远端应用镜像已从源码提交 `66ddf8bd` 构建（业务代码含 `82456081` 与既有 RBAC 集成链）并通过固定脚本部署到远端 `real-pre`；backend、frontend、PostgreSQL、Redis 均健康。后续 evidence-only 提交只 fast-forward 服务器仓库，不改变镜像源码基线。
 - 本轮部署前 PostgreSQL dump 为 `/opt/saas/backups/rbac-redeploy-pre-20260715-131037.dump`；重启后仍为 4 张授权表、1 个 `authz_version` 列、0 条授权事实。
 - Authorization 保持 `LEGACY(default)`，未进入 `SHADOW/ENFORCE`。
 - 部署技术门禁通过，但业务门禁为 `PARTIAL`：P0 与六角色完整业务流均为 `FAIL`，不得据此声明正式全量上线。最新证据：`harness/reports/current/latest-rbac-phase2-remote-redeploy.md`。
