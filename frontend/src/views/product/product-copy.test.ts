@@ -42,10 +42,33 @@ describe('product copy helpers', () => {
   it('uses the rich clipboard writer for the product library share format', async () => {
     const writeContent = vi.fn().mockResolvedValue({ copied: true, imageCopied: true })
     const writeText = vi.fn().mockResolvedValue(true)
+    const expectedText = [
+      '【抖音】莫斯卡托香型荔枝起泡酒低度鲜果味微醺气泡酒整箱送礼装',
+      '【店铺名称】醒地带酒品工厂店',
+      '【售价】19.8元',
+      '【佣金率】20%',
+      '【投放期佣金】5%',
+      '【库存】99.86W',
+      '【奖励说明】投流5 出视频投流，roi前期不卡，后期根据系统推荐roi',
+      '【开始时间】2026-07-15 10:14:07',
+      '【结束时间】2027-07-18 23:59:59',
+      '【推广链接】',
+      'https://v.douyin.com/share/'
+    ].join('\n')
 
     const result = await copyProductBriefWithLink({
       item: {
-        title: '图文商品',
+        title: '莫斯卡托香型荔枝起泡酒低度鲜果味微醺气泡酒整箱送礼装',
+        shopName: '醒地带酒品工厂店',
+        priceText: '19.8元',
+        activityCosRatioText: '20%',
+        activityAdCosRatioText: '5%',
+        productStock: '99.86W',
+        auditSupplement: {
+          rewardRemark: '投流5 出视频投流，roi前期不卡，后期根据系统推荐roi'
+        },
+        promotionStartTime: '2026-07-15 10:14:07',
+        promotionEndTime: '2027-07-18 23:59:59',
         imageUrl: 'https://img.example.com/product.png',
         promotionLink: 'https://v.douyin.com/share/'
       },
@@ -59,10 +82,11 @@ describe('product copy helpers', () => {
     })
 
     expect(writeContent).toHaveBeenCalledWith({
-      text: expect.stringContaining('【推广链接】\nhttps://v.douyin.com/share/'),
+      text: expectedText,
       imageUrl: 'https://img.example.com/product.png'
     })
     expect(writeText).not.toHaveBeenCalled()
+    expect(result.text).toBe(expectedText)
     expect(result.imageCopied).toBe(true)
   })
 
