@@ -6,7 +6,7 @@
 - Environment: real-pre
 - Scope: backend
 - Branch: codex/ddd-user-role-application
-- Commit: 7fd71840
+- Commit: 582960ac
 - Owned worktree: dirty
 - Deploy remote: false
 

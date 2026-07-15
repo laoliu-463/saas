@@ -16,7 +16,7 @@ public interface UserCrudMutationStore {
     Optional<ManagedUser> findByUsername(String username);
 
     /**
-     * 查询包含软删除记录的用户名，用于创建时遵守数据库全局唯一约束。
+     * 查询包含软删除记录的用户名，用于创建时识别是否需要恢复历史用户。
      */
     Optional<ManagedUser> findByUsernameIncludingDeleted(String username);
 
