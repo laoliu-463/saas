@@ -1,11 +1,18 @@
 # Harness Changelog（索引）
 
 > 任务 ID：HARNESS-REDUNDANCY-CLEANUP-20260713
-> 更新时间：2026-07-13
+> 更新时间：2026-07-15
 > 详细历史（含每版修改文件、行为变化、证据）：`archive/20260610/harness-changelog-full.md`
 > 治理政策：`file-retention-policy.md`（changelog 索引 ≤200 行）
 
 ## 最近版本摘要
+
+### v0.8.1 — 2026-07-15
+- `deploy-remote.ps1` 绑定本地完整 commit，远端拉取后必须与期望 commit 完全一致，避免并发推进时部署错误版本。
+- 远端 `.env.real-pre` 必须收敛为指向 `/opt/saas/env/.env.real-pre` 的软链接；普通文件或目标不一致时停止部署。
+- Compose 固定使用 `saas-active` project，并先收敛 PostgreSQL、Redis 的 working dir、配置文件和 env-file 来源；不删除 volume、不强制重建数据容器。
+- 增加部署脚本 Pester 契约测试，并同步远端部署 runbook 与部署运行总览。
+- `agent-do` 在 real-pre 业务验证期间从 canonical env 只读注入管理员凭据，日志仅显示 redacted，验证结束后恢复原进程环境；消除默认演示密码导致的错误 401。
 
 ### v0.8.0 — 2026-07-13
 - 实施 ADR-013：活跃目录 40/50、非脚本文本 160/200、reports 根目标 20，并区分 `TASK_GATE` 与 `REPOSITORY_HEALTH`。
