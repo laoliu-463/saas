@@ -1,17 +1,30 @@
 type ProductCopySource = Record<string, any>
 type ProductPromotionScene = 'PRODUCT_LIBRARY' | 'PRODUCT_DETAIL' | 'TALENT_SHARE' | 'SAMPLE_DESK'
+export type ProductBriefCopyFormat = 'LEGACY' | 'DOUYIN_SHARE'
+
+export type ProductCopyContent = {
+  text: string
+  imageUrl: string | null
+}
+
+type ProductCopyContentResult = {
+  copied: boolean
+  imageCopied: boolean
+}
 
 type CopyProductBriefOptions = {
   item: ProductCopySource
   activityId: string | number
   productId: string | number
   scene: ProductPromotionScene
+  format?: ProductBriefCopyFormat
   convertLink: (
     activityId: string | number,
     productId: string | number,
     data: { scene: ProductPromotionScene }
   ) => Promise<unknown>
   writeText: (text: string) => Promise<boolean>
+  writeContent?: (content: ProductCopyContent) => Promise<ProductCopyContentResult>
 }
 
 type CopyProductBriefResult = {
@@ -26,6 +39,8 @@ type CopyProductBriefResult = {
   realPromotionWriteEnabled: boolean | null
   allowRealPromotionWrite: boolean | null
   responseData: ProductCopySource | null
+  imageCopyAttempted: boolean
+  imageCopied: boolean
   error: unknown
 }
 
@@ -33,6 +48,8 @@ type ProductBriefCopyMessageInput = {
   clipboardWriteFailed: boolean
   linkGenerationFailed: boolean
   promotionLinkGenerated?: boolean
+  imageCopyAttempted?: boolean
+  imageCopied?: boolean
 }
 
 type ProductBriefCopyMessage = {
@@ -70,6 +87,72 @@ const resolvePromotionScript = (item: ProductCopySource): string => {
   const supplement = getAuditSupplement(item)
   const pack = getPromotionMaterialPack(item)
   return normalizeText(supplement?.promotionScript) || normalizeText(pack?.outreachScript)
+}
+
+const resolveAuditSupplementForShare = (item: ProductCopySource): ProductCopySource => {
+  const supplement = item?.auditSupplement
+  if (supplement && typeof supplement === 'object' && Object.keys(supplement).length) {
+    return supplement
+  }
+  return item?.auditSupplementSummary || {}
+}
+
+const firstDisplayValue = (...values: unknown[]): string =>
+  values.map((value) => normalizeText(value)).find(Boolean) || EMPTY_TEXT
+
+const resolveBasisPointRate = (value: unknown): string => {
+  const text = normalizeText(value)
+  if (!text) return ''
+  if (text.includes('%')) return text
+  const number = Number(text)
+  if (!Number.isFinite(number) || number <= 0) return ''
+  return `${(number / 100).toFixed(2).replace(/\.00$/, '')}%`
+}
+
+const resolveShareCampaignCommission = (item: ProductCopySource): string => {
+  const direct = firstDisplayValue(
+    item?.campaignCommissionRateText,
+    item?.deliveryCommissionRateText,
+    item?.putCommissionRateText,
+    item?.activityAdCosRatioText,
+    item?.campaignCommissionRate
+  )
+  if (direct !== EMPTY_TEXT) return direct
+  return resolveBasisPointRate(item?.activityAdCosRatio ?? item?.activity_ad_cos_ratio) || EMPTY_TEXT
+}
+
+export const extractProductImage = (source: ProductCopySource | null | undefined): string | null => {
+  const pack = source?.promotionMaterialPack || {}
+  return [
+    source?.imageUrl,
+    source?.cover,
+    source?.mainImage,
+    source?.productImage,
+    pack?.cover,
+    pack?.imageUrl
+  ].map((value) => normalizeText(value)).find(Boolean) || null
+}
+
+/** 商品库专用：按渠道可直接转发的抖音商品信息模板生成纯文本。 */
+export const buildDouyinShareCopy = (
+  item: ProductCopySource,
+  promotionLink?: string | null
+): string => {
+  const supplement = resolveAuditSupplementForShare(item)
+  const link = normalizeText(promotionLink)
+  return [
+    `【抖音】${firstDisplayValue(item?.title, item?.productName, item?.name)}`,
+    `【店铺名称】${firstDisplayValue(item?.shopName, item?.merchantShopName, item?.merchantName)}`,
+    `【售价】${firstDisplayValue(item?.priceText, item?.livePriceText, item?.livePrice, item?.price)}`,
+    `【佣金率】${firstDisplayValue(item?.activityCosRatioText, item?.commissionRateText, item?.commissionRate)}`,
+    `【投放期佣金】${resolveShareCampaignCommission(item)}`,
+    `【库存】${firstDisplayValue(item?.productStock, item?.product_stock, item?.stock)}`,
+    `【奖励说明】${firstDisplayValue(supplement?.rewardRemark, item?.rewardRemark)}`,
+    `【开始时间】${firstDisplayValue(item?.promotionStartTime, item?.activityStartTime, item?.startTime)}`,
+    `【结束时间】${firstDisplayValue(item?.promotionEndTime, item?.activityEndTime, item?.endTime)}`,
+    '【推广链接】',
+    link || '未生成'
+  ].join('\n')
 }
 
 export const extractPromotionLink = (source: ProductCopySource | null | undefined): string | null => {
@@ -116,8 +199,10 @@ export const copyProductBriefWithLink = async ({
   activityId,
   productId,
   scene,
+  format = 'LEGACY',
   convertLink,
-  writeText
+  writeText,
+  writeContent
 }: CopyProductBriefOptions): Promise<CopyProductBriefResult> => {
   let link = extractPromotionLink(item)
   let converted = false
@@ -152,12 +237,31 @@ export const copyProductBriefWithLink = async ({
     }
   }
 
-  const text = backendCopyText || buildProductBriefCopy(item, link)
+  const text = format === 'DOUYIN_SHARE'
+    ? buildDouyinShareCopy(item, link)
+    : backendCopyText || buildProductBriefCopy(item, link)
+  const imageUrl = format === 'DOUYIN_SHARE' ? extractProductImage(item) : null
+  const imageCopyAttempted = Boolean(format === 'DOUYIN_SHARE' && writeContent && imageUrl)
   let copied = false
-  try {
-    copied = await writeText(text)
-  } catch {
-    copied = false
+  let imageCopied = false
+  if (format === 'DOUYIN_SHARE' && writeContent) {
+    try {
+      const copyResult = await writeContent({ text, imageUrl })
+      copied = copyResult.copied
+      imageCopied = copyResult.imageCopied
+    } catch {
+      try {
+        copied = await writeText(text)
+      } catch {
+        copied = false
+      }
+    }
+  } else {
+    try {
+      copied = await writeText(text)
+    } catch {
+      copied = false
+    }
   }
 
   return {
@@ -172,6 +276,8 @@ export const copyProductBriefWithLink = async ({
     realPromotionWriteEnabled,
     allowRealPromotionWrite,
     responseData,
+    imageCopyAttempted,
+    imageCopied,
     error
   }
 }
@@ -179,10 +285,20 @@ export const copyProductBriefWithLink = async ({
 export const resolveProductBriefCopyMessage = ({
   clipboardWriteFailed,
   linkGenerationFailed,
-  promotionLinkGenerated
+  promotionLinkGenerated,
+  imageCopyAttempted,
+  imageCopied
 }: ProductBriefCopyMessageInput): ProductBriefCopyMessage => {
   if (clipboardWriteFailed) {
     return { type: 'warning', content: '简介已生成，但浏览器未允许写入剪贴板，请手动复制' }
+  }
+  if (imageCopyAttempted === true) {
+    return imageCopied
+      ? { type: 'success', content: '商品图片和完整简介已按模板复制' }
+      : { type: 'warning', content: '完整简介已复制，但商品图片受浏览器或图片源限制未能显示' }
+  }
+  if (imageCopyAttempted === false) {
+    return { type: 'warning', content: '完整简介已复制；商品库未提供可复制的商品图片' }
   }
   if (promotionLinkGenerated === true) {
     return { type: 'success', content: '复制成功，已生成推广链接' }

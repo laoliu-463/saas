@@ -127,6 +127,7 @@ describe('frontend business rule boundary scan', () => {
       'frontend/src/views/product/components/ProductCard.vue',
       'frontend/src/views/product/index.vue',
       'frontend/src/views/product/product-actions.ts',
+      'frontend/src/views/product/product-copy.ts',
       'frontend/src/views/product/product-filters.ts',
       'frontend/src/views/product/product-library-display.ts',
       'frontend/src/views/product/product-operation-log-display.ts',

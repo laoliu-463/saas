@@ -178,7 +178,10 @@ import {
   productDomainCategoryOptions,
   type ProductFilterState
 } from './product-filters'
-import { copyProductBriefWithLink, resolveProductBriefCopyMessage } from './product-copy'
+import {
+  copyProductBriefWithLink,
+  resolveProductBriefCopyMessage
+} from './product-copy'
 import { createEmptyManualCopyDialogState, resolveManualCopyDialogState } from './manual-copy'
 import { mergeLibraryDisplayFields, normalizeProductCard } from './product-library-display'
 import {
@@ -186,7 +189,7 @@ import {
   isSameActivityId,
   resolveActivityIdFromQuery
 } from './product-library-route-sync'
-import { tryCopyText } from '../../utils/clipboard'
+import { tryCopyText, tryCopyTextAndImage } from '../../utils/clipboard'
 import {
   PRODUCT_LIBRARY_CARD_HEIGHT,
   PRODUCT_LIBRARY_GRID_GAP,
@@ -726,8 +729,10 @@ const copyPromotionLink = async (item: any) => {
       activityId,
       productId,
       scene: 'PRODUCT_LIBRARY',
+      format: 'DOUYIN_SHARE',
       convertLink: convertLinkForBriefCopy,
-      writeText: async (text: string) => tryCopyText(text)
+      writeText: async (text: string) => tryCopyText(text),
+      writeContent: async ({ text, imageUrl }) => tryCopyTextAndImage(text, imageUrl)
     })
 
     if (result.link && result.responseData) {
@@ -766,7 +771,9 @@ const copyPromotionLink = async (item: any) => {
       const notice = resolveProductBriefCopyMessage({
         clipboardWriteFailed: !result.copied,
         linkGenerationFailed: result.linkGenerationFailed,
-        promotionLinkGenerated: result.promotionLinkGenerated
+        promotionLinkGenerated: result.promotionLinkGenerated,
+        imageCopyAttempted: result.imageCopyAttempted,
+        imageCopied: result.imageCopied
       })
       message[notice.type](notice.content)
     }
