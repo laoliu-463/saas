@@ -6,7 +6,7 @@
 - Environment: real-pre
 - Scope: backend
 - Branch: codex/ddd-user-role-application
-- Commit: 311e14ef
+- Commit: ec23c711
 - Owned worktree: dirty
 - Deploy remote: false
 
@@ -37,33 +37,23 @@ backend/src/test/java/com/colonel/saas/mapper/SysUserMapperTest.java
 ## Owned Git Status
 
 ~~~text
-M backend/src/main/java/com/colonel/saas/auth/service/AuthService.java
- M backend/src/main/java/com/colonel/saas/domain/user/application/SysUserCRUDApplicationA.java
- M backend/src/main/java/com/colonel/saas/domain/user/application/SysUserCRUDApplicationB.java
- M backend/src/main/java/com/colonel/saas/domain/user/application/SysUserGroupMembershipApplication.java
- M backend/src/main/java/com/colonel/saas/domain/user/application/SysUserRoleAssignmentApplicationService.java
- M backend/src/main/java/com/colonel/saas/domain/user/infrastructure/SysUserAssignmentLookupAdapter.java
- M backend/src/main/java/com/colonel/saas/domain/user/infrastructure/SysUserCrudMutationStoreAdapter.java
- M backend/src/main/java/com/colonel/saas/domain/user/infrastructure/SysUserDepartmentLookupAdapter.java
- M backend/src/main/java/com/colonel/saas/domain/user/infrastructure/SysUserRoleAssignmentStoreAdapter.java
- M backend/src/main/java/com/colonel/saas/domain/user/policy/UserAssignmentPolicy.java
- M backend/src/main/java/com/colonel/saas/domain/user/port/UserAssignmentLookup.java
- M backend/src/main/java/com/colonel/saas/mapper/SysUserMapper.java
- M backend/src/test/java/com/colonel/saas/auth/service/AuthServiceTest.java
- M backend/src/test/java/com/colonel/saas/domain/user/application/SysUserCRUDApplicationATest.java
- M backend/src/test/java/com/colonel/saas/domain/user/application/SysUserCRUDApplicationBTest.java
- M backend/src/test/java/com/colonel/saas/domain/user/application/SysUserGroupMembershipApplicationTest.java
- M backend/src/test/java/com/colonel/saas/domain/user/application/SysUserRoleAssignmentApplicationServiceTest.java
- M backend/src/test/java/com/colonel/saas/domain/user/infrastructure/SysUserCrudMutationStoreAdapterTest.java
- M backend/src/test/java/com/colonel/saas/mapper/SysUserMapperTest.java
+Owned files committed and pushed in ec23c711; unrelated pre-existing worktree changes remain outside OwnedFiles.
 ~~~
 
 ## Build Result
 
 ~~~text
-not collected
 Backend build: PASS (mvn -f backend/pom.xml -DskipTests package)
 ~~~
+
+## Additional Verification
+
+- Backend targeted lifecycle tests: PASS (50 tests, 0 failures).
+- PostgreSQL mapper integration tests: PASS (17 tests, 0 failures).
+- User-domain policy/exception regression tests: PASS (74 tests, 0 failures).
+- Backend full test suite: PASS (3218 tests, 0 failures, 0 errors, 3 skipped).
+- Frontend production build: PASS; frontend full test suite: PARTIAL (93 files passed, 711 tests passed, 1 existing router lazy-loader test timed out).
+- real-pre preflight: BLOCKED_AUTH/FAIL because local admin login returned HTTP 401 after 5 attempts; frontend/backend health and database schema checks passed.
 
 ## Docker Status
 
@@ -118,4 +108,6 @@ PARTIAL
 
 ## Residual Risk
 
-- Items marked as not collected are not proof of success.
+- Local real-pre create/delete/recreate API smoke was not rerun in this audit because the QA admin credential is unavailable; do not treat this report as a full real-pre business PASS.
+- Frontend router lazy-loader timeout is outside the changed user-lifecycle files and remains an independent follow-up item.
+- Remote deployment was not requested in this turn and was not executed.
