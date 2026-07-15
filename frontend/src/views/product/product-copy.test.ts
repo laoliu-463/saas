@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import {
+  buildDouyinShareCopy,
   buildProductBriefCopy,
   copyProductBriefWithLink,
   extractPromotionLink,
@@ -8,6 +9,97 @@ import {
 } from './product-copy'
 
 describe('product copy helpers', () => {
+  it('builds product library copy in the uploaded Douyin share layout', () => {
+    const text = buildDouyinShareCopy({
+      title: '莫斯卡托香型荔枝起泡酒低度鲜果味微醺气泡酒整箱送礼装',
+      shopName: '醒地带酒品工厂店',
+      priceText: '19.8元',
+      activityCosRatioText: '20%',
+      activityAdCosRatioText: '5%',
+      productStock: '99.86W',
+      auditSupplement: {
+        rewardRemark: '投流5 出视频投流，roi前期不卡，后期根据系统推荐roi'
+      },
+      promotionStartTime: '2026-07-15 10:14:07',
+      promotionEndTime: '2027-07-18 23:59:59'
+    }, 'https://haohuo.jinritemai.com/ecommerce/trade/detail/index.html?id=3829667671994139570')
+
+    expect(text).toBe([
+      '【抖音】莫斯卡托香型荔枝起泡酒低度鲜果味微醺气泡酒整箱送礼装',
+      '【店铺名称】醒地带酒品工厂店',
+      '【售价】19.8元',
+      '【佣金率】20%',
+      '【投放期佣金】5%',
+      '【库存】99.86W',
+      '【奖励说明】投流5 出视频投流，roi前期不卡，后期根据系统推荐roi',
+      '【开始时间】2026-07-15 10:14:07',
+      '【结束时间】2027-07-18 23:59:59',
+      '【推广链接】',
+      'https://haohuo.jinritemai.com/ecommerce/trade/detail/index.html?id=3829667671994139570'
+    ].join('\n'))
+  })
+
+  it('uses the rich clipboard writer for the product library share format', async () => {
+    const writeContent = vi.fn().mockResolvedValue({ copied: true, imageCopied: true })
+    const writeText = vi.fn().mockResolvedValue(true)
+
+    const result = await copyProductBriefWithLink({
+      item: {
+        title: '图文商品',
+        imageUrl: 'https://img.example.com/product.png',
+        promotionLink: 'https://v.douyin.com/share/'
+      },
+      activityId: 'A1',
+      productId: 'P1',
+      scene: 'PRODUCT_LIBRARY',
+      format: 'DOUYIN_SHARE',
+      convertLink: vi.fn(),
+      writeText,
+      writeContent
+    })
+
+    expect(writeContent).toHaveBeenCalledWith({
+      text: expect.stringContaining('【推广链接】\nhttps://v.douyin.com/share/'),
+      imageUrl: 'https://img.example.com/product.png'
+    })
+    expect(writeText).not.toHaveBeenCalled()
+    expect(result.imageCopied).toBe(true)
+  })
+
+  it('falls back to the text writer when the rich clipboard writer throws', async () => {
+    const writeContent = vi.fn().mockRejectedValue(new Error('clipboard unavailable'))
+    const writeText = vi.fn().mockResolvedValue(true)
+
+    const result = await copyProductBriefWithLink({
+      item: {
+        title: '降级商品',
+        imageUrl: 'https://img.example.com/product.png',
+        promotionLink: 'https://v.douyin.com/fallback/'
+      },
+      activityId: 'A1',
+      productId: 'P1',
+      scene: 'PRODUCT_LIBRARY',
+      format: 'DOUYIN_SHARE',
+      convertLink: vi.fn(),
+      writeText,
+      writeContent
+    })
+
+    expect(writeText).toHaveBeenCalledWith(expect.stringContaining('【推广链接】\nhttps://v.douyin.com/fallback/'))
+    expect(result.copied).toBe(true)
+    expect(result.imageCopied).toBe(false)
+  })
+
+  it('uses the populated audit summary when the full supplement is empty', () => {
+    const text = buildDouyinShareCopy({
+      title: '摘要商品',
+      auditSupplement: {},
+      auditSupplementSummary: { rewardRemark: '摘要奖励' }
+    })
+
+    expect(text).toContain('【奖励说明】摘要奖励')
+  })
+
   it('builds a product brief with audit supplement, material pack and short link', () => {
     const text = buildProductBriefCopy(
       {

@@ -38,3 +38,86 @@ export async function tryCopyText(text: string): Promise<boolean> {
 
   return runExecCommandCopy(text)
 }
+
+export type ClipboardContentResult = {
+  copied: boolean
+  imageCopied: boolean
+}
+
+const isSupportedClipboardImageType = (value: string): boolean =>
+  /^(image\/(png|jpeg|gif|webp))$/i.test(value)
+
+const escapeHtml = (value: string): string => value.replace(/[&<>"']/g, (character) => {
+  const entities: Record<string, string> = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  }
+  return entities[character]
+})
+
+const readBlobAsDataUrl = (blob: Blob): Promise<string> => new Promise((resolve, reject) => {
+  if (typeof FileReader === 'undefined') {
+    reject(new Error('FileReader unavailable'))
+    return
+  }
+  const reader = new FileReader()
+  reader.onload = () => {
+    if (typeof reader.result === 'string') resolve(reader.result)
+    else reject(new Error('image data URL unavailable'))
+  }
+  reader.onerror = () => reject(reader.error || new Error('image read failed'))
+  reader.readAsDataURL(blob)
+})
+
+/**
+ * 尝试把文本和商品图片作为同一个剪贴板 payload 写入。
+ * 图片读取失败（常见于 CDN 未开放 CORS）时只降级复制文本，不伪造图片已复制。
+ */
+export async function tryCopyTextAndImage(
+  text: string,
+  imageUrl?: string | null
+): Promise<ClipboardContentResult> {
+  const normalizedImageUrl = String(imageUrl || '').trim()
+  if (
+    text &&
+    normalizedImageUrl &&
+    typeof fetch === 'function' &&
+    typeof ClipboardItem !== 'undefined' &&
+    typeof navigator !== 'undefined' &&
+    typeof navigator.clipboard?.write === 'function'
+  ) {
+    try {
+      const response = await fetch(normalizedImageUrl, {
+        mode: 'cors',
+        credentials: 'omit'
+      })
+      if (!response.ok) throw new Error(`image request failed: ${response.status}`)
+
+      const blob = await response.blob()
+      const imageType = String(blob.type || '').toLowerCase()
+      if (!isSupportedClipboardImageType(imageType)) {
+        throw new Error(`unsupported clipboard image type: ${imageType || 'unknown'}`)
+      }
+
+      const imageDataUrl = await readBlobAsDataUrl(blob)
+      const html = `<img src="${imageDataUrl}" alt="商品图片"><div>${escapeHtml(text).replace(/\r?\n/g, '<br>')}</div>`
+      const clipboardItem = new ClipboardItem({
+        'text/plain': new Blob([text], { type: 'text/plain' }),
+        'text/html': new Blob([html], { type: 'text/html' }),
+        [imageType]: blob
+      })
+      await navigator.clipboard.write([clipboardItem])
+      return { copied: true, imageCopied: true }
+    } catch {
+      // 图片跨域或浏览器能力受限时，继续走已有纯文本降级路径。
+    }
+  }
+
+  return {
+    copied: await tryCopyText(text),
+    imageCopied: false
+  }
+}

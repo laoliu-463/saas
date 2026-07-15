@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { tryCopyText } from './clipboard'
+import { tryCopyText, tryCopyTextAndImage } from './clipboard'
 
 const originalClipboard = navigator.clipboard
 const originalExecCommand = document.execCommand
@@ -62,5 +62,57 @@ describe('tryCopyText', () => {
 
     expect(writeText).toHaveBeenCalledOnce()
     expect(execCommand).toHaveBeenCalledWith('copy')
+  })
+})
+
+describe('tryCopyTextAndImage', () => {
+  afterEach(() => {
+    setClipboard(originalClipboard)
+    setExecCommand(originalExecCommand)
+    document.body.innerHTML = ''
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
+  })
+
+  it('writes the formatted text and fetched product image as one clipboard payload', async () => {
+    const write = vi.fn().mockResolvedValue(undefined)
+    setClipboard({ write, writeText: vi.fn() } as unknown as Clipboard)
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      blob: vi.fn().mockResolvedValue(new Blob(['image'], { type: 'image/png' }))
+    }))
+    class ClipboardItemMock {
+      readonly items: Record<string, Blob>
+
+      constructor(items: Record<string, Blob>) {
+        this.items = items
+      }
+    }
+    vi.stubGlobal('ClipboardItem', ClipboardItemMock)
+
+    await expect(tryCopyTextAndImage('商品文案', 'https://img.example.com/product.png')).resolves.toEqual({
+      copied: true,
+      imageCopied: true
+    })
+
+    expect(write).toHaveBeenCalledOnce()
+    expect(Object.keys((write.mock.calls[0][0][0] as ClipboardItemMock).items)).toEqual([
+      'text/plain',
+      'text/html',
+      'image/png'
+    ])
+  })
+
+  it('falls back to text when the image cannot be fetched', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    setClipboard({ writeText } as unknown as Clipboard)
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('cors denied')))
+
+    await expect(tryCopyTextAndImage('商品文案', 'https://img.example.com/product.png')).resolves.toEqual({
+      copied: true,
+      imageCopied: false
+    })
+
+    expect(writeText).toHaveBeenCalledWith('商品文案')
   })
 })

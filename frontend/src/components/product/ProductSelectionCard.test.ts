@@ -88,6 +88,7 @@ const baseCard = {
   shopScore: 90,
   isPinned: false,
   supportInvestment: false,
+  adsRule: '',
   productUrl: '',
   baiyingUrl: '',
   promotionUrl: '',
@@ -97,7 +98,14 @@ const baseCard = {
 
 const mountCard = (props: Record<string, unknown> = {}) =>
   mount(ProductSelectionCard, {
-    props: { card: baseCard, ...props }
+    props: { card: baseCard, ...props },
+    global: {
+      stubs: {
+        NTooltip: {
+          template: '<span><slot name="trigger" /><span data-testid="product-ads-tooltip"><slot /></span></span>'
+        }
+      }
+    }
   })
 
 describe('ProductSelectionCard hover drawer', () => {
@@ -210,6 +218,21 @@ describe('ProductSelectionCard hover drawer', () => {
     expect(drawer.text()).toContain('商家评分')
   })
 
+  it('投流标签悬浮时展示招商填写的投流说明', () => {
+    const wrapper = mountCard({
+      card: {
+        ...baseCard,
+        supportInvestment: true,
+        adsRule: '投流比例1:0.5，保量10万曝光'
+      }
+    })
+
+    const tag = wrapper.get('[data-testid="product-ads-tag"]')
+    expect(tag.text()).toBe('投流')
+    expect(tag.attributes('aria-label')).toBe('投流比例1:0.5，保量10万曝光')
+    expect(wrapper.get('[data-testid="product-ads-tooltip"]').text()).toContain('投流比例1:0.5，保量10万曝光')
+  })
+
   it('活动字段在 drawer 中展示 activityName（来自后端补传）', async () => {
     const wrapper = mountCard()
     const drawer = wrapper.find('[data-testid="product-selection-drawer"]')
@@ -259,6 +282,15 @@ describe('ProductSelectionCard hover drawer', () => {
     const copyUrlBtn = wrapper.find('[data-testid="product-copy-url"]')
     expect(copyIdBtn.exists()).toBe(true)
     expect(copyUrlBtn.exists()).toBe(true)
+  })
+
+  it('渠道点击复制链接图标时触发商品图文复制事件', async () => {
+    const card = { ...baseCard, productUrl: 'https://haohuo.example.com/product/1' }
+    const wrapper = mountCard({ card, canCopyBrief: true })
+
+    await wrapper.get('[data-testid="product-copy-url"]').trigger('click')
+
+    expect(wrapper.emitted('copyBrief')?.[0]).toEqual([card.raw])
   })
 
   it('默认态投放期佣金为空占位时回退展示佣金率', () => {

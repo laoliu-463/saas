@@ -178,7 +178,10 @@ import {
   productDomainCategoryOptions,
   type ProductFilterState
 } from './product-filters'
-import { copyProductBriefWithLink, resolveProductBriefCopyMessage } from './product-copy'
+import {
+  copyProductBriefWithLink,
+  resolveProductBriefCopyMessage
+} from './product-copy'
 import { createEmptyManualCopyDialogState, resolveManualCopyDialogState } from './manual-copy'
 import { mergeLibraryDisplayFields, normalizeProductCard } from './product-library-display'
 import {
@@ -186,7 +189,7 @@ import {
   isSameActivityId,
   resolveActivityIdFromQuery
 } from './product-library-route-sync'
-import { tryCopyText } from '../../utils/clipboard'
+import { tryCopyText, tryCopyTextAndImage } from '../../utils/clipboard'
 import {
   PRODUCT_LIBRARY_CARD_HEIGHT,
   PRODUCT_LIBRARY_GRID_GAP,
@@ -726,8 +729,10 @@ const copyPromotionLink = async (item: any) => {
       activityId,
       productId,
       scene: 'PRODUCT_LIBRARY',
+      format: 'DOUYIN_SHARE',
       convertLink: convertLinkForBriefCopy,
-      writeText: async (text: string) => tryCopyText(text)
+      writeText: async (text: string) => tryCopyText(text),
+      writeContent: async ({ text, imageUrl }) => tryCopyTextAndImage(text, imageUrl)
     })
 
     if (result.link && result.responseData) {
@@ -763,12 +768,18 @@ const copyPromotionLink = async (item: any) => {
         message.warning('简介已生成，但浏览器未允许写入剪贴板，请手动复制')
       }
     } else {
-      const notice = resolveProductBriefCopyMessage({
-        clipboardWriteFailed: !result.copied,
-        linkGenerationFailed: result.linkGenerationFailed,
-        promotionLinkGenerated: result.promotionLinkGenerated
-      })
-      message[notice.type](notice.content)
+      if (result.imageCopyAttempted && !result.imageCopied) {
+        message.warning('商品链接文案已复制，但商品图片受浏览器或图片源跨域限制未能复制')
+      } else if (result.imageCopyAttempted && result.imageCopied) {
+        message.success('商品图片和推广链接已按模板复制')
+      } else {
+        const notice = resolveProductBriefCopyMessage({
+          clipboardWriteFailed: !result.copied,
+          linkGenerationFailed: result.linkGenerationFailed,
+          promotionLinkGenerated: result.promotionLinkGenerated
+        })
+        message[notice.type](notice.content)
+      }
     }
   } catch (error: any) {
     notifyApiFailure(error, message, { fallbackMessage: '讲解复制失败，请稍后重试' })
