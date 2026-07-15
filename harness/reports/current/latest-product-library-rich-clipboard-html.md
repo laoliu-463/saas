@@ -6,7 +6,9 @@
 - Environment: real-pre
 - Scope: full
 - Branch: codex/deploy-wechat-clipboard-20260715
-- Commit: 4a116585
+- Application commit: 4a116585
+- Evidence commit before this amendment: 50c13c09
+- Release upstream: gitee/feature/auth-system
 - Owned worktree: clean
 - Deploy remote: true
 
@@ -33,9 +35,10 @@ harness/rules/state/snapshots/DOMAIN_STATUS.md
 ## Build Result
 
 ~~~text
-not collected
 Backend build: PASS (mvn -f backend/pom.xml -DskipTests package)
 Frontend build: PASS (npm --prefix frontend ci; npm --prefix frontend run build)
+Frontend production typecheck: PASS
+Frontend test typecheck: PASS
 ~~~
 
 ## Docker Status
@@ -61,13 +64,46 @@ saas-test-backend-1               Up 27 hours (unhealthy)       0.0.0.0:5005->50
 
 ~~~text
 Local health verification: PASS
+Remote backend: PASS ({"status":"UP"})
+Remote frontend: PASS (ok)
 ~~~
 
 ## Business Validation Result
 
 ~~~text
-Business validation: PASS (npm --prefix frontend run test -- src/utils/clipboard.test.ts src/views/product/product-copy.test.ts)
+Targeted clipboard/copy contract: PASS (2 files, 19 tests)
+Full frontend regression: PASS (94 files, 719 tests)
+User manual WeChat verification: PASS
+Feishu: accepted compatibility fallback; receives image link/rich content text but does not render the image
 ~~~
+
+## Production Browser Clipboard Verification
+
+~~~text
+Target: local real-pre Docker production build (same application source as remote commit 4a116585)
+Browser: headed Chromium through Playwright CLI, clean session
+Clipboard write: PASS ({copied:true,imageCopied:true})
+ClipboardItem count: 1
+Clipboard MIME types: text/plain, text/html
+Standalone image MIME: absent (expected)
+Plain text: exact after CRLF/LF normalization
+HTML: contains img and all 10 required introduction fields
+Contenteditable paste: 1 image plus exact full introduction text
+Browser console errors: 0
+~~~
+
+Required fields verified: 抖音标题、店铺名称、售价、佣金率、投放期佣金、库存、奖励说明、开始时间、结束时间、推广链接。
+
+## Default P0 Preflight Boundary
+
+~~~text
+Result: BLOCKED_AUTH, not PASS
+Evidence: runtime/qa/out/real-pre-preflight-20260715-185554
+Cause observed: admin login returned HTTP 401
+Handling: did not use SkipBusinessValidation; used the 19 clipboard/copy contract tests as the task-relevant business gate
+~~~
+
+The admin authentication failure is outside this clipboard change and remains a separate follow-up item. It is not presented as a successful P0 result.
 
 ## Content Maintenance Result
 
@@ -79,6 +115,9 @@ Content maintenance skipped by -ContentMaintenance off.
 
 ~~~text
 Remote deploy: PASS
+Remote server application revision: 4a116585
+Remote release branch evidence revision: 50c13c09 before this amendment
+Remote source verified: tryCopyTextAndImage + text/html + text/plain; no standalone image/png
 ~~~
 
 ## Retro Summary
@@ -87,8 +126,10 @@ Remote deploy: PASS
 
 ## Conclusion
 
-PASS
+PASS for the product-library WeChat rich clipboard scope. This conclusion does not include the independently blocked admin-auth P0 probe.
 
 ## Residual Risk
 
-- Items marked as not collected are not proof of success.
+- Feishu still does not render the copied image. The user explicitly accepted its current link/text fallback, so it is not a blocker for this delivery.
+- `imageCopied=true` proves that the browser wrote the rich HTML clipboard item; actual rendering remains controlled by each destination client's clipboard parser.
+- The default P0 admin login remains `BLOCKED_AUTH` with HTTP 401 and should be handled separately if full-system P0 acceptance is required.
