@@ -5,12 +5,21 @@ param(
     [string]$RemoteHost = "saas",
     [string]$RemoteDir = "/opt/saas/app",
     [string]$RemoteEnvFile = "/opt/saas/env/.env.real-pre",
+    [string]$ExpectedCommit = "",
     [switch]$DryRun
 )
 
 $ErrorActionPreference = "Stop"
 
 . (Join-Path $PSScriptRoot "_lib.ps1")
+
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..\..")).Path
+if ([string]::IsNullOrWhiteSpace($ExpectedCommit)) {
+    $ExpectedCommit = (& git -C $repoRoot rev-parse HEAD).Trim()
+}
+if ($ExpectedCommit -notmatch "^[0-9a-fA-F]{40}$") {
+    throw "ExpectedCommit must be a full 40-character Git commit hash. actual=$ExpectedCommit"
+}
 
 Write-HarnessStage "Remote deploy"
 & (Join-Path $PSScriptRoot "safety-check.ps1") -Env $TargetEnv -Scope full
@@ -19,6 +28,26 @@ $remoteScript = @"
 set -e
 cd '$RemoteDir'
 git pull --ff-only
+actual_commit="`$(git rev-parse HEAD)"
+if [ "`$actual_commit" != '$ExpectedCommit' ]; then
+  echo "Remote commit mismatch: expected=$ExpectedCommit actual=`$actual_commit"
+  exit 1
+fi
+if [ ! -f '$RemoteEnvFile' ]; then
+  echo "Canonical remote env file not found: $RemoteEnvFile"
+  exit 1
+fi
+if [ -e .env.real-pre ] && [ ! -L .env.real-pre ]; then
+  echo "Repository .env.real-pre is not a symlink; refusing to overwrite it"
+  exit 1
+fi
+ln -sfn '$RemoteEnvFile' .env.real-pre
+repo_env_real="`$(readlink -f .env.real-pre)"
+canonical_env_real="`$(readlink -f '$RemoteEnvFile')"
+if [ "`$repo_env_real" != "`$canonical_env_real" ]; then
+  echo "Remote env link mismatch: expected=`$canonical_env_real actual=`$repo_env_real"
+  exit 1
+fi
 echo "Checking product sync env vars ..."
 if grep -q PRODUCT_ACTIVITY_SYNC_ENABLED '$RemoteEnvFile' 2>/dev/null; then
   grep PRODUCT_ACTIVITY_SYNC '$RemoteEnvFile'
@@ -27,7 +56,7 @@ else
   echo "Compose and real-pre profile default to enabled, but remote env must set PRODUCT_ACTIVITY_SYNC_* explicitly."
 fi
 compose() {
-  docker compose --env-file '$RemoteEnvFile' -f docker-compose.real-pre.yml "`$@"
+  docker compose --project-name 'saas-active' --env-file '$RemoteEnvFile' -f docker-compose.real-pre.yml "`$@"
 }
 echo "Checking product sync compose config ..."
 compose config | grep PRODUCT_ACTIVITY || {
@@ -35,7 +64,23 @@ compose config | grep PRODUCT_ACTIVITY || {
   exit 1
 }
 echo "Preparing postgres-real-pre before schema guard ..."
-compose up -d postgres-real-pre
+compose up -d postgres-real-pre redis-real-pre
+for service in postgres-real-pre redis-real-pre; do
+  service_container="`$(compose ps -q "`$service")"
+  if [ -z "`$service_container" ]; then
+    echo "Stateful service container not found: `$service"
+    exit 1
+  fi
+  service_project="`$(docker inspect -f '{{ index .Config.Labels "com.docker.compose.project" }}' "`$service_container")"
+  service_working_dir="`$(docker inspect -f '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}' "`$service_container")"
+  service_config_files="`$(docker inspect -f '{{ index .Config.Labels "com.docker.compose.project.config_files" }}' "`$service_container")"
+  service_environment_file="`$(docker inspect -f '{{ index .Config.Labels "com.docker.compose.project.environment_file" }}' "`$service_container")"
+  if [ "`$service_project" != "saas-active" ] || [ "`$service_working_dir" != '$RemoteDir' ] || [ "`$service_config_files" != '$RemoteDir/docker-compose.real-pre.yml' ] || [ "`$service_environment_file" != '$RemoteEnvFile' ]; then
+    echo "Stateful service provenance mismatch: service=`$service project=`$service_project workingDir=`$service_working_dir configFiles=`$service_config_files environmentFile=`$service_environment_file"
+    exit 1
+  fi
+done
+echo "Stateful service provenance guard passed."
 ready=false
 for i in `$(seq 1 60); do
   if compose exec -T postgres-real-pre sh -lc 'pg_isready -U "`$POSTGRES_USER" -d "`$POSTGRES_DB"' </dev/null >/dev/null 2>&1; then
@@ -155,6 +200,7 @@ docker logs --tail=200 "`$backend_container" 2>&1 | grep -i ProductActivitySyncJ
 Write-Host "Remote host: $RemoteHost"
 Write-Host "Remote dir: $RemoteDir"
 Write-Host "Remote env file: $RemoteEnvFile"
+Write-Host "Expected commit: $ExpectedCommit"
 
 if ($DryRun) {
     Write-Host "DRY-RUN remote script:"

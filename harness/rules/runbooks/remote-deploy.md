@@ -10,6 +10,7 @@
 - 远端目录：`/opt/saas/app`
 - Compose 文件：`docker-compose.real-pre.yml`
 - 远端 env：`/opt/saas/env/.env.real-pre`
+- 预期 commit：默认取执行机当前工作树的完整 `HEAD`，也可通过 `-ExpectedCommit` 显式传入
 
 ## 执行入口
 
@@ -25,12 +26,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\a
 
 ## 固定远端流程
 
-1. `ssh` 进入远端目录。
-2. `git pull --ff-only`。
-3. `docker compose --env-file /opt/saas/env/.env.real-pre -f docker-compose.real-pre.yml up -d --build backend-real-pre frontend-real-pre`。
-4. `docker compose ps`。
-5. `curl http://127.0.0.1:8081/api/system/health`。
-6. `curl http://127.0.0.1:3001/healthz`。
+1. `ssh` 进入远端目录并执行 `git pull --ff-only`。
+2. 校验远端 `HEAD` 必须等于预期 commit；不一致立即失败，禁止部署并发推进后的未知提交。
+3. 将仓库 `.env.real-pre` 安全收敛为 `/opt/saas/env/.env.real-pre` 的符号链接并校验 canonical target；普通文件不会被覆盖。
+4. 固定 Compose project 为 `saas-active`，先收敛 `postgres-real-pre`、`redis-real-pre`，再校验容器 working directory、Compose 文件和 env 来源。
+5. 执行幂等 schema guard，构建并更新 `backend-real-pre`、`frontend-real-pre`。
+6. 执行 Compose、后端和前端健康检查。
 
 ## 部署前检查（同步参数）
 
@@ -84,5 +85,8 @@ ProductActivitySyncJob config: enabled=true, cron=0 */5 * * * ?, batchSize=20, w
 | --- | --- |
 | SSH 不通 | 检查 `RemoteHost`、网络和密钥，不猜测密码 |
 | `git pull` 失败 | 检查远端工作区和分支，不强制 reset |
+| `Remote commit mismatch` | 重新确认本地提交已推送到 `feature/auth-system`，不得跳过 commit 门禁 |
+| `Remote env link mismatch` | 检查 `/opt/saas/env/.env.real-pre` 与仓库链接，不复制本机 env |
+| `Stateful service provenance mismatch` | 检查 `saas-active` 项目、固定 volume 和当前 Compose 来源，禁止删除 volume |
 | compose 构建失败 | 保留构建日志，标记 `FAIL` |
 | 健康检查失败 | 查容器日志和 env guard，标记 `FAIL` 或 `BLOCKED` |
