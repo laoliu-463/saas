@@ -39,7 +39,7 @@ public class SysUserCrudMutationStoreAdapter implements UserCrudMutationStore {
         if (userId == null) {
             return Optional.empty();
         }
-        return Optional.ofNullable(toManagedUser(sysUserMapper.selectById(userId)));
+        return sysUserMapper.findActiveById(userId).map(this::toManagedUser);
     }
 
     @Override

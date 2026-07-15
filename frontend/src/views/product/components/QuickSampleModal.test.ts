@@ -3,7 +3,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import type { AxiosResponse } from 'axios'
 import { applyQuickSample } from '../../../api/product'
-import { getTalentByChannel, getTalentShippingAddress } from '../../../api/talent'
+import { getTalentByChannel, getTalentShippingAddress, updateTalentShippingAddress } from '../../../api/talent'
 import QuickSampleModal from './QuickSampleModal.vue'
 
 const messageApi = vi.hoisted(() => ({
@@ -37,6 +37,7 @@ vi.mock('../../../api/talent', () => ({
   getTalentPrivate: vi.fn().mockResolvedValue({ data: [] }),
   getTalentByChannel: vi.fn().mockResolvedValue([]),
   getTalentShippingAddress: vi.fn().mockResolvedValue({ recipientName: null, recipientPhone: null, recipientAddress: null }),
+  updateTalentShippingAddress: vi.fn().mockResolvedValue({}),
   parsePrivateTalentPoolResponse: vi.fn(() => [{
     id: '22222222-2222-4222-8222-222222222222',
     nickname: '达人一',
@@ -69,6 +70,11 @@ vi.mock('naive-ui', async (importOriginal) => {
   }
 })
 
+async function chooseTalentFromPicker(wrapper: any) {
+  await wrapper.get('[data-testid="quick-sample-talent-row-TALENT-1"]').trigger('click')
+  await wrapper.get('[data-testid="quick-sample-talent-picker-submit"]').trigger('click')
+}
+
 describe('QuickSampleModal', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -89,6 +95,7 @@ describe('QuickSampleModal', () => {
         stubs: {
           NDrawer: { template: '<div data-testid="quick-sample-drawer"><slot /></div>', props: ['show'] },
           NDrawerContent: { template: '<div><slot /><slot name="footer" /></div>', props: ['title'] },
+          NModal: { props: ['show'], template: '<div v-if="show" v-bind="$attrs"><slot /><slot name="footer" /></div>' },
           NForm: { template: '<form><slot /></form>' },
           NFormItem: { template: '<div><slot /></div>', props: ['label'] },
           NAlert: { template: '<div><slot /></div>' },
@@ -104,6 +111,7 @@ describe('QuickSampleModal', () => {
           ProductSpecSelector: { template: '<select data-testid="quick-sample-spec" />' },
           NInput: { template: '<input />' },
           NInputNumber: true,
+          NAvatar: { template: '<span><slot /></span>' },
           NButton: { emits: ['click'], template: '<button v-bind="$attrs" @click="$emit(\'click\')"><slot /></button>' },
           NSpace: { template: '<div><slot /></div>' }
         }
@@ -111,7 +119,7 @@ describe('QuickSampleModal', () => {
     })
 
     expect(wrapper.find('[data-testid="quick-sample-drawer"]').exists()).toBe(true)
-    expect(wrapper.find('[data-testid="quick-sample-drawer"]').attributes('width')).toBe('640')
+    expect(wrapper.find('[data-testid="quick-sample-drawer"]').attributes('width')).toBe('860')
     expect(wrapper.find('[data-testid="quick-sample-external-hint"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="quick-sample-step-1"]').text()).toContain('选择合作对象')
     expect(wrapper.find('[data-testid="quick-sample-step-2"]').text()).toContain('选择商品规格')
@@ -120,11 +128,32 @@ describe('QuickSampleModal', () => {
     expect(wrapper.find('[data-testid="quick-sample-cooperation-section"]').text()).toContain('已选 0/20')
     expect(wrapper.find('[data-testid="quick-sample-spec-section"]').text()).toContain('测试商品')
     expect(wrapper.find('[data-testid="quick-sample-spec-section"]').text()).toContain('商品规格')
-    expect(wrapper.find('[data-testid="quick-sample-spec-section"]').text()).toContain('备注')
+    expect(wrapper.find('[data-testid="quick-sample-cooperation-section"]').text()).toContain('操作')
     await wrapper.get('[data-testid="quick-sample-add-talent"]').trigger('click')
-    expect(wrapper.get('[data-testid="quick-sample-talents"]').attributes('data-filterable')).toBe('true')
-    await wrapper.get('[data-testid="quick-sample-remark-edit"]').trigger('click')
+    expect(wrapper.get('[data-testid="quick-sample-talent-picker"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="quick-sample-talent-nickname-search"]').exists()).toBe(true)
+    await chooseTalentFromPicker(wrapper)
+    expect(wrapper.get('[data-testid="quick-sample-selected-talent-TALENT-1"]').exists()).toBe(true)
+    await wrapper.get('[data-testid="quick-sample-remark-edit-TALENT-1"]').trigger('click')
     expect(wrapper.find('[data-testid="quick-sample-remark"]').exists()).toBe(true)
+    await wrapper.get('[data-testid="quick-sample-address-edit-TALENT-1"]').trigger('click')
+    expect(wrapper.find('[data-testid="quick-sample-address-modal"]').exists()).toBe(true)
+    const state = wrapper.vm as any
+    state.addressDraft.recipientName = '张三'
+    state.addressDraft.recipientPhone = '13800138000'
+    state.addressDraft.recipientAddress = '北京市朝阳区测试路 1 号'
+    await wrapper.get('[data-testid="quick-sample-address-save"]').trigger('click')
+    await flushPromises()
+    expect(updateTalentShippingAddress).toHaveBeenCalledWith(
+      '22222222-2222-4222-8222-222222222222',
+      {
+        recipientName: '张三',
+        recipientPhone: '13800138000',
+        recipientAddress: '北京市朝阳区测试路 1 号'
+      }
+    )
+    expect(state.addressModalVisible).toBe(false)
+    expect(wrapper.get('[data-testid="quick-sample-selected-talent-TALENT-1"]').text()).toContain('北京市朝阳区测试路 1 号')
     expect(wrapper.find('[data-testid="quick-sample-submit"]').exists()).toBe(true)
   })
 
@@ -145,6 +174,7 @@ describe('QuickSampleModal', () => {
         stubs: {
           NDrawer: { template: '<div data-testid="quick-sample-drawer"><slot /></div>', props: ['show'] },
           NDrawerContent: { template: '<div><slot /><slot name="footer" /></div>', props: ['title'] },
+          NModal: { props: ['show'], template: '<div v-if="show" v-bind="$attrs"><slot /><slot name="footer" /></div>' },
           NForm: { template: '<form><slot /></form>' },
           NFormItem: { template: '<div><slot /></div>', props: ['label'] },
           NAlert: { template: '<div><slot /></div>' },
@@ -156,6 +186,7 @@ describe('QuickSampleModal', () => {
           ProductSpecSelector: { template: '<select data-testid="quick-sample-spec" />' },
           NInput: { template: '<input />' },
           NInputNumber: true,
+          NAvatar: { template: '<span><slot /></span>' },
           NButton: { emits: ['click'], template: '<button v-bind="$attrs" @click="$emit(\'click\')"><slot /></button>' },
           NSpace: { template: '<div><slot /></div>' }
         }
@@ -166,7 +197,7 @@ describe('QuickSampleModal', () => {
     await wrapper.get('[data-testid="quick-sample-channel"]').trigger('click')
     await flushPromises()
     await wrapper.get('[data-testid="quick-sample-add-talent"]').trigger('click')
-    await wrapper.get('[data-testid="quick-sample-talents"]').trigger('click')
+    await chooseTalentFromPicker(wrapper)
     await wrapper.get('[data-testid="quick-sample-submit"]').trigger('click')
     await flushPromises()
 
@@ -196,6 +227,7 @@ describe('QuickSampleModal', () => {
         stubs: {
           NDrawer: { template: '<div data-testid="quick-sample-drawer"><slot /></div>', props: ['show'] },
           NDrawerContent: { template: '<div><slot /><slot name="footer" /></div>', props: ['title'] },
+          NModal: { props: ['show'], template: '<div v-if="show" v-bind="$attrs"><slot /><slot name="footer" /></div>' },
           NForm: { template: '<form><slot /></form>' },
           NFormItem: { template: '<div><slot /></div>', props: ['label'] },
           NAlert: { template: '<div><slot /></div>' },
@@ -207,6 +239,7 @@ describe('QuickSampleModal', () => {
           ProductSpecSelector: { template: '<select data-testid="quick-sample-spec" />' },
           NInput: { template: '<input />' },
           NInputNumber: true,
+          NAvatar: { template: '<span><slot /></span>' },
           NButton: { emits: ['click'], template: '<button v-bind="$attrs" @click="$emit(\'click\')"><slot /></button>' },
           NSpace: { template: '<div><slot /></div>' }
         }
@@ -216,7 +249,7 @@ describe('QuickSampleModal', () => {
     await flushPromises()
 
     await wrapper.get('[data-testid="quick-sample-add-talent"]').trigger('click')
-    await wrapper.get('[data-testid="quick-sample-talents"]').trigger('click')
+    await chooseTalentFromPicker(wrapper)
     await flushPromises()
 
     expect(getTalentShippingAddress).toHaveBeenCalledWith('22222222-2222-4222-8222-222222222222')
@@ -253,6 +286,7 @@ describe('QuickSampleModal', () => {
         stubs: {
           NDrawer: { template: '<div data-testid="quick-sample-drawer"><slot /></div>', props: ['show'] },
           NDrawerContent: { template: '<div><slot /><slot name="footer" /></div>', props: ['title'] },
+          NModal: { props: ['show'], template: '<div v-if="show" v-bind="$attrs"><slot /><slot name="footer" /></div>' },
           NForm: { template: '<form><slot /></form>' },
           NFormItem: { template: '<div><slot /></div>', props: ['label'] },
           NAlert: { template: '<div><slot /></div>' },
@@ -268,6 +302,7 @@ describe('QuickSampleModal', () => {
           },
           NInput: { template: '<input />' },
           NInputNumber: true,
+          NAvatar: { template: '<span><slot /></span>' },
           NButton: { emits: ['click'], template: '<button v-bind="$attrs" @click="$emit(\'click\')"><slot /></button>' },
           NSpace: { template: '<div><slot /></div>' }
         }
@@ -276,7 +311,7 @@ describe('QuickSampleModal', () => {
     await flushPromises()
 
     await wrapper.get('[data-testid="quick-sample-add-talent"]').trigger('click')
-    await wrapper.get('[data-testid="quick-sample-talents"]').trigger('click')
+    await chooseTalentFromPicker(wrapper)
     await wrapper.get('[data-testid="quick-sample-spec"]').trigger('click')
     await wrapper.get('[data-testid="quick-sample-submit"]').trigger('click')
     await flushPromises()
@@ -315,6 +350,7 @@ describe('QuickSampleModal', () => {
         stubs: {
           NDrawer: { template: '<div data-testid="quick-sample-drawer"><slot /></div>', props: ['show'] },
           NDrawerContent: { template: '<div><slot /><slot name="footer" /></div>', props: ['title'] },
+          NModal: { props: ['show'], template: '<div v-if="show" v-bind="$attrs"><slot /><slot name="footer" /></div>' },
           NForm: { template: '<form><slot /></form>' },
           NFormItem: { template: '<div><slot /></div>', props: ['label'] },
           NAlert: { template: '<div><slot /></div>' },
@@ -326,6 +362,7 @@ describe('QuickSampleModal', () => {
           ProductSpecSelector: { template: '<select data-testid="quick-sample-spec" />' },
           NInput: { template: '<input />' },
           NInputNumber: true,
+          NAvatar: { template: '<span><slot /></span>' },
           NButton: { emits: ['click'], template: '<button v-bind="$attrs" @click="$emit(\'click\')"><slot /></button>' },
           NSpace: { template: '<div><slot /></div>' }
         }
@@ -334,7 +371,7 @@ describe('QuickSampleModal', () => {
     await flushPromises()
 
     await wrapper.get('[data-testid="quick-sample-add-talent"]').trigger('click')
-    await wrapper.get('[data-testid="quick-sample-talents"]').trigger('click')
+    await chooseTalentFromPicker(wrapper)
     await wrapper.get('[data-testid="quick-sample-submit"]').trigger('click')
     await flushPromises()
 
@@ -370,6 +407,7 @@ describe('QuickSampleModal', () => {
         stubs: {
           NDrawer: { template: '<div data-testid="quick-sample-drawer"><slot /></div>', props: ['show'] },
           NDrawerContent: { template: '<div><slot /><slot name="footer" /></div>', props: ['title'] },
+          NModal: { props: ['show'], template: '<div v-if="show" v-bind="$attrs"><slot /><slot name="footer" /></div>' },
           NForm: { template: '<form><slot /></form>' },
           NFormItem: { template: '<div><slot /></div>', props: ['label'] },
           NAlert: { template: '<div><slot /></div>' },
@@ -381,6 +419,7 @@ describe('QuickSampleModal', () => {
           ProductSpecSelector: { template: '<select data-testid="quick-sample-spec" />' },
           NInput: { template: '<input />', props: ['value'], emits: ['update:value'] },
           NInputNumber: true,
+          NAvatar: { template: '<span><slot /></span>' },
           NButton: { emits: ['click'], template: '<button v-bind="$attrs" @click="$emit(\'click\')"><slot /></button>' },
           NSpace: { template: '<div><slot /></div>' }
         }
@@ -389,7 +428,7 @@ describe('QuickSampleModal', () => {
     await flushPromises()
 
     await wrapper.get('[data-testid="quick-sample-add-talent"]').trigger('click')
-    await wrapper.get('[data-testid="quick-sample-talents"]').trigger('click')
+    await chooseTalentFromPicker(wrapper)
     await wrapper.get('[data-testid="quick-sample-submit"]').trigger('click')
     await flushPromises()
 

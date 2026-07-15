@@ -64,7 +64,21 @@
           {{ commissionTypeTagText }}
         </span>
         <span class="selection-card__shop-tag" :title="card.shopName">{{ shopTagText }}</span>
-        <span v-if="card.supportInvestment" class="selection-card__ads-tag">投流</span>
+        <n-tooltip v-if="card.supportInvestment" trigger="hover" placement="top" :delay="100">
+          <template #trigger>
+            <span
+              class="selection-card__ads-tag"
+              data-testid="product-ads-tag"
+              :aria-label="adsRuleTooltipText"
+            >
+              投流
+            </span>
+          </template>
+          <div class="selection-card__ads-tooltip" data-testid="product-ads-tooltip">
+            <strong>招商投流说明</strong>
+            <span>{{ adsRuleTooltipText }}</span>
+          </div>
+        </n-tooltip>
 
         <div class="selection-card__media-actions" @click.stop>
           <button
@@ -109,10 +123,10 @@
             <button
               type="button"
               class="selection-card__icon-btn"
-              title="复制链接"
+              title="复制图文链接"
               data-testid="product-copy-url"
-              :disabled="!card.productUrl"
-              @click="copyField(card.productUrl, '商品链接')"
+              :disabled="!canCopyBrief || copyBriefLoading"
+              @click="$emit('copyBrief', card.raw)"
             >
               <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5">
                 <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71" />
@@ -415,6 +429,10 @@ const cleanDisplayText = (value: unknown) => {
   const text = String(value ?? '').trim()
   return text && text !== '-' ? text : ''
 }
+
+const adsRuleTooltipText = computed(() =>
+  cleanDisplayText(props.card.adsRule) || '招商暂未填写投流说明'
+)
 
 const commissionTypeTagText = computed(() => {
   if (!(props.card as any).isDoubleCommission) return ''

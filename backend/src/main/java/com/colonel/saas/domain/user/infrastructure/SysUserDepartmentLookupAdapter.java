@@ -25,7 +25,6 @@ public class SysUserDepartmentLookupAdapter implements UserDepartmentLookup {
         if (userId == null) {
             return Optional.empty();
         }
-        SysUser user = sysUserMapper.selectById(userId);
-        return Optional.ofNullable(user).map(SysUser::getDeptId);
+        return sysUserMapper.findActiveById(userId).map(SysUser::getDeptId);
     }
 }

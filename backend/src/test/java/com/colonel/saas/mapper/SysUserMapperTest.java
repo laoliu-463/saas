@@ -101,6 +101,33 @@ class SysUserMapperTest extends BaseIntegrationTest {
     }
 
     @Nested
+    @DisplayName("findActiveById")
+    class FindActiveByIdTest {
+
+        @Test
+        void shouldReturnActiveUser() {
+            SysUser user = createUser("active-by-id", "active-channel");
+            sysUserMapper.insert(user);
+
+            Optional<SysUser> result = sysUserMapper.findActiveById(user.getId());
+
+            assertThat(result).isPresent();
+            assertThat(result.get().getId()).isEqualTo(user.getId());
+        }
+
+        @Test
+        void shouldExcludeSoftDeletedUser() {
+            SysUser user = createUser("deleted-by-id", "deleted-channel");
+            sysUserMapper.insert(user);
+            sysUserMapper.softDeleteById(user.getId());
+
+            Optional<SysUser> result = sysUserMapper.findActiveById(user.getId());
+
+            assertThat(result).isEmpty();
+        }
+    }
+
+    @Nested
     @DisplayName("softDeleteById")
     class SoftDeleteByIdTest {
 

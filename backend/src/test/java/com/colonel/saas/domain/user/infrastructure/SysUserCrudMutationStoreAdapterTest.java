@@ -58,7 +58,7 @@ class SysUserCrudMutationStoreAdapterTest {
         entity.setForcePasswordChange(true);
         entity.setLastLoginAt(now);
         entity.setCreateTime(now.minusDays(1));
-        when(sysUserMapper.selectById(userId)).thenReturn(entity);
+        when(sysUserMapper.findActiveById(userId)).thenReturn(Optional.of(entity));
 
         Optional<ManagedUser> result = adapter.findUser(userId);
 

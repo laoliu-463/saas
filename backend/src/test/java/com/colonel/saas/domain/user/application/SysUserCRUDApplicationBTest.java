@@ -276,6 +276,23 @@ class SysUserCRUDApplicationBTest {
     }
 
     @Test
+    void delete_softDeletedUser_shouldThrowNotFound() {
+        UUID userId = UUID.randomUUID();
+        UUID currentUserId = UUID.randomUUID();
+        ManagedUser deletedUser = deletedUser(userId);
+
+        when(userStore.findUser(userId)).thenReturn(Optional.of(deletedUser));
+
+        assertThatThrownBy(() -> applicationB.delete(userId, currentUserId, DataScope.ALL))
+                .isInstanceOf(BusinessException.class)
+                .extracting(t -> ((BusinessException) t).getCode())
+                .isEqualTo(ResultCode.NOT_FOUND.getCode());
+
+        verify(userStore, never()).deleteUserRoles(any());
+        verify(userStore, never()).softDeleteUser(any());
+    }
+
+    @Test
     void resetPassword_updatesEncodedPasswordAndForcesPasswordChange() {
         UUID userId = UUID.randomUUID();
         UUID currentUserId = UUID.randomUUID();
@@ -369,5 +386,20 @@ class SysUserCRUDApplicationBTest {
                 null,
                 null,
                 0);
+    }
+
+    private static ManagedUser deletedUser(UUID id) {
+        return new ManagedUser(
+                id,
+                "deleted-user",
+                "Deleted User",
+                null,
+                null,
+                UUID.randomUUID(),
+                SysUserStatus.ACTIVE,
+                false,
+                null,
+                null,
+                1);
     }
 }

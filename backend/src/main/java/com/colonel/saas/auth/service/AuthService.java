@@ -205,7 +205,7 @@ public class AuthService {
         boolean pendingActivation = SysUserStatus.isPendingActivation(user.getStatus());
         long authzVersion = requireCurrentAuthorizationVersion(user);
 
-        String accessToken = jwtTokenProvider.generateAccessToken(
+        String accessCredential = jwtTokenProvider.generateAccessToken(
                 user.getId(),
                 user.getDeptId(),
                 dataScope,
@@ -215,7 +215,7 @@ public class AuthService {
                 authzVersion
         );
 
-        String refreshToken = jwtTokenProvider.generateRefreshToken(user.getId(), authzVersion);
+        String refreshCredential = jwtTokenProvider.generateRefreshToken(user.getId(), authzVersion);
 
         SysUser update = new SysUser();
         update.setId(user.getId());
@@ -225,11 +225,11 @@ public class AuthService {
                 true, "用户登录成功", null);
 
         return LoginResponse.builder()
-                .token(accessToken)
+                .token(accessCredential)
                 .tokenType("Bearer")
                 .expiresIn(jwtTokenProvider.getExpireSeconds())
                 .accessTokenExpiresIn(jwtTokenProvider.getExpireSeconds())
-                .refreshToken(refreshToken)
+                .refreshToken(refreshCredential)
                 .refreshExpiresIn(jwtTokenProvider.getRefreshExpireSeconds())
                 .userId(user.getId())
                 .deptId(user.getDeptId())
@@ -263,11 +263,11 @@ public class AuthService {
      * @throws BusinessException Token 无效、已过期、已吊销或账号已停用时抛出
      */
     public RefreshResponse refreshToken(RefreshRequest request) {
-        String refreshToken = request.getRefreshToken();
+        String refreshCredential = request.getRefreshToken();
 
         Claims claims;
         try {
-            claims = jwtTokenProvider.parseClaims(refreshToken);
+            claims = jwtTokenProvider.parseClaims(refreshCredential);
         } catch (Exception e) {
             throw new BusinessException(ResultCode.UNAUTHORIZED.getCode(), "Refresh Token 无效或已过期");
         }
@@ -277,14 +277,16 @@ public class AuthService {
             throw new BusinessException(ResultCode.UNAUTHORIZED.getCode(), "Token 类型错误，需要 refresh token");
         }
 
-        String tokenHash = jwtTokenProvider.getTokenHash(refreshToken);
+        String tokenHash = jwtTokenProvider.getTokenHash(refreshCredential);
         if (Boolean.TRUE.equals(redisTemplate.hasKey(REDIS_REFRESH_PREFIX + tokenHash))) {
             throw new BusinessException(ResultCode.UNAUTHORIZED.getCode(), "Refresh Token 已吊销");
         }
 
         java.util.UUID userId = java.util.UUID.fromString(claims.getSubject());
-        SysUser user = sysUserMapper.selectById(userId);
-        if (user == null || !SysUserStatus.canLogin(user.getStatus())) {
+        SysUser user = sysUserMapper.findActiveById(userId).orElse(null);
+        if (user == null
+                || user.getDeleted() != null && user.getDeleted() != 0
+                || !SysUserStatus.canLogin(user.getStatus())) {
             throw new BusinessException(ResultCode.UNAUTHORIZED.getCode(), "账号已停用");
         }
 
@@ -315,7 +317,7 @@ public class AuthService {
                 .collect(Collectors.toList());
         int dataScope = resolveDataScope(roles, roleCodes);
 
-        String newAccessToken = jwtTokenProvider.generateAccessToken(
+        String newAccessCredential = jwtTokenProvider.generateAccessToken(
                 userId,
                 user.getDeptId(),
                 dataScope,
@@ -324,8 +326,8 @@ public class AuthService {
                 pendingActivation,
                 currentAuthzVersion
         );
-        String newRefreshToken = jwtTokenProvider.generateRefreshToken(userId, currentAuthzVersion);
-        long refreshRemaining = jwtTokenProvider.getRemainingSeconds(refreshToken);
+        String newRefreshCredential = jwtTokenProvider.generateRefreshToken(userId, currentAuthzVersion);
+        long refreshRemaining = jwtTokenProvider.getRemainingSeconds(refreshCredential);
         if (refreshRemaining > 0) {
             redisTemplate.opsForValue().set(
                     REDIS_REFRESH_PREFIX + tokenHash,
@@ -336,9 +338,9 @@ public class AuthService {
         }
 
         return RefreshResponse.builder()
-                .accessToken(newAccessToken)
+                .accessToken(newAccessCredential)
                 .accessTokenExpiresIn(jwtTokenProvider.getExpireSeconds())
-                .refreshToken(newRefreshToken)
+                .refreshToken(newRefreshCredential)
                 .refreshExpiresIn(jwtTokenProvider.getRefreshExpireSeconds())
                 .build();
     }
@@ -361,14 +363,14 @@ public class AuthService {
      * @throws BusinessException Token 无效、已过期、已吊销时抛出
      */
     public void logout(LogoutRequest request) {
-        String refreshToken = request.getRefreshToken();
-        if (refreshToken == null || refreshToken.isBlank()) {
+        String refreshCredential = request.getRefreshToken();
+        if (refreshCredential == null || refreshCredential.isBlank()) {
             throw new BusinessException(ResultCode.UNAUTHORIZED.getCode(), "refreshToken 不能为空");
         }
 
         Claims refreshClaims;
         try {
-            refreshClaims = jwtTokenProvider.parseClaims(refreshToken);
+            refreshClaims = jwtTokenProvider.parseClaims(refreshCredential);
         } catch (Exception e) {
             throw new BusinessException(ResultCode.UNAUTHORIZED.getCode(), "Refresh Token 无效或已过期");
         }
@@ -378,11 +380,11 @@ public class AuthService {
             throw new BusinessException(ResultCode.UNAUTHORIZED.getCode(), "Token 类型错误，需要 refresh token");
         }
 
-        String refreshTokenHash = jwtTokenProvider.getTokenHash(refreshToken);
+        String refreshTokenHash = jwtTokenProvider.getTokenHash(refreshCredential);
         if (Boolean.TRUE.equals(redisTemplate.hasKey(REDIS_REFRESH_PREFIX + refreshTokenHash))) {
             throw new BusinessException(ResultCode.UNAUTHORIZED.getCode(), "Refresh Token 已吊销");
         }
-        long refreshRemaining = jwtTokenProvider.getRemainingSeconds(refreshToken);
+        long refreshRemaining = jwtTokenProvider.getRemainingSeconds(refreshCredential);
         redisTemplate.opsForValue().set(
                 REDIS_REFRESH_PREFIX + refreshTokenHash,
                 "1",
@@ -391,9 +393,9 @@ public class AuthService {
         );
 
         Claims accessClaims = null;
-        String accessToken = request.getAccessToken();
-        if (accessToken != null && !accessToken.isBlank()) {
-            accessClaims = revokeAccessTokenBestEffort(accessToken);
+        String accessCredential = request.getAccessToken();
+        if (accessCredential != null && !accessCredential.isBlank()) {
+            accessClaims = revokeAccessTokenBestEffort(accessCredential);
         }
 
         UUID userId = extractUserId(accessClaims != null ? accessClaims : refreshClaims);

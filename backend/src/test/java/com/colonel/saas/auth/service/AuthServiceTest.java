@@ -426,7 +426,7 @@ class AuthServiceTest {
         user.setStatus(1);
         user.setUsername("testuser");
         user.setAuthzVersion(7L);
-        when(sysUserMapper.selectById(userId)).thenReturn(user);
+        when(sysUserMapper.findActiveById(userId)).thenReturn(Optional.of(user));
         when(sysRoleMapper.findByUserId(userId)).thenReturn(List.of());
         when(jwtTokenProvider.getTokenHash("valid.refresh.token")).thenReturn("refreshHash");
         when(redisTemplate.hasKey("auth:refresh:refreshHash")).thenReturn(false);
@@ -468,7 +468,7 @@ class AuthServiceTest {
         user.setStatus(1);
         user.setUsername("admin");
         user.setAuthzVersion(7L);
-        when(sysUserMapper.selectById(userId)).thenReturn(user);
+        when(sysUserMapper.findActiveById(userId)).thenReturn(Optional.of(user));
 
         SysRole role = new SysRole();
         role.setRoleCode(" ADMIN ");
@@ -569,6 +569,32 @@ class AuthServiceTest {
     }
 
     @Test
+    @DisplayName("刷新令牌失败 - 软删除用户不能继续续期")
+    void refreshToken_softDeletedUser_shouldThrow() {
+        UUID userId = UUID.randomUUID();
+        Claims claims = org.mockito.Mockito.mock(Claims.class);
+        when(claims.getSubject()).thenReturn(userId.toString());
+        when(claims.get("type", String.class)).thenReturn("refresh");
+        when(jwtTokenProvider.parseClaims("valid.refresh.token")).thenReturn(claims);
+
+        SysUser deletedUser = new SysUser();
+        deletedUser.setId(userId);
+        deletedUser.setUsername("deleted-user");
+        deletedUser.setStatus(1);
+        deletedUser.setDeleted(1);
+        when(sysUserMapper.findActiveById(userId)).thenReturn(Optional.of(deletedUser));
+        when(jwtTokenProvider.getTokenHash("valid.refresh.token")).thenReturn("refreshHash");
+        when(redisTemplate.hasKey("auth:refresh:refreshHash")).thenReturn(false);
+
+        RefreshRequest request = new RefreshRequest();
+        request.setRefreshToken("valid.refresh.token");
+
+        assertThatThrownBy(() -> authService.refreshToken(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("账号已停用");
+    }
+
+    @Test
     @DisplayName("刷新令牌失败 - 令牌无效")
     void refreshToken_invalidToken_shouldThrow() {
         when(jwtTokenProvider.parseClaims("invalid.token")).thenThrow(new RuntimeException("invalid token"));
@@ -593,7 +619,7 @@ class AuthServiceTest {
         user.setStatus(1);
         user.setUsername("testuser");
         user.setAuthzVersion(currentAuthzVersion);
-        when(sysUserMapper.selectById(userId)).thenReturn(user);
+        when(sysUserMapper.findActiveById(userId)).thenReturn(Optional.of(user));
         return claims;
     }
 

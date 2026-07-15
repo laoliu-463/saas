@@ -51,6 +51,15 @@ public interface SysUserMapper extends BaseMapper<SysUser> {
     Optional<SysUser> findByUsername(@Param("username") String username);
 
     /**
+     * 按主键查询活动用户。
+     *
+     * <p>管理写路径、角色/负责人分配和刷新令牌不得通过 {@link #selectById(Object)}
+     * 读取软删除记录，否则旧 ID 或旧令牌会重新获得业务权限。</p>
+     */
+    @Select("SELECT * FROM sys_user WHERE id = #{id} AND deleted = 0 LIMIT 1")
+    Optional<SysUser> findActiveById(@Param("id") UUID id);
+
+    /**
      * 根据用户名查询用户（包含软删除记录）。
      *
      * <p>用于创建用户时识别活跃或软删除记录；命中软删除记录时由用户应用服务执行受控恢复。

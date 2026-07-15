@@ -377,6 +377,8 @@ export interface ProductCardView {
   shopScore: number | null
   isPinned: boolean
   supportInvestment: boolean
+  /** 招商审核补充填写的投流说明，用于商品库投流标签悬浮提示。 */
+  adsRule: string
   /**
    * 上游原始商品链接（详情页 H5 / 商详页 URL）。
    * 不允许把真实转链 / 百应后台链接兜底到这里 — 见 ADR-003。
@@ -402,6 +404,15 @@ export function resolveSupportInvestment(item: any): boolean {
   if (item?.supportInvestment === true || item?.supportsAds === true) return true
   const supplement = getAuditSupplement(item)
   return supplement?.supportsAds === true
+}
+
+export function resolveAdsRule(item: any): string {
+  const candidates = [
+    item?.adsRule,
+    item?.auditSupplement?.adsRule,
+    item?.auditSupplementSummary?.adsRule
+  ]
+  return candidates.map((value) => normalizeText(value)).find(Boolean) || ''
 }
 
 export function buildSampleRequirementText(item: any): string {
@@ -567,6 +578,7 @@ export function normalizeProductCard(raw: any): ProductCardView {
     shopScore: parseShopScore(raw?.shopScore ?? raw?.shop_score),
     isPinned: Boolean(raw?.isPinned ?? raw?.pinned),
     supportInvestment: resolveSupportInvestment(raw),
+    adsRule: resolveAdsRule(raw),
     productUrl,
     baiyingUrl,
     promotionUrl,

@@ -173,6 +173,24 @@ class SysUserRoleAssignmentApplicationServiceTest {
         verify(userPermissionCacheService).invalidateRole(adminRoleId);
     }
 
+    @Test
+    void assignRoles_softDeletedUser_shouldThrowNotFound() {
+        UUID userId = UUID.randomUUID();
+        UUID currentUserId = UUID.randomUUID();
+
+        when(roleAssignmentStore.findUser(userId)).thenReturn(Optional.of(user(userId, "deleted-user", 1)));
+
+        assertThatThrownBy(() -> service.assignRoles(
+                userId,
+                new SysUserAssignRolesRequest(List.of()),
+                currentUserId,
+                DataScope.ALL))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("用户不存在");
+
+        verify(roleAssignmentStore, never()).replaceUserRoles(any(), any());
+    }
+
     private static RoleAssignableUser user(UUID id, String username, Integer deleted) {
         return new RoleAssignableUser(id, username, UUID.randomUUID(), deleted);
     }

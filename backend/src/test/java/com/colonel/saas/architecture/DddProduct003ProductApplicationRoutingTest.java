@@ -4,6 +4,7 @@ import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.domain.product.application.ProductQuickSampleApplicationService;
 import com.colonel.saas.domain.product.facade.ProductDomainFacade;
+import com.colonel.saas.domain.product.facade.dto.ProductSnapshotReadDTO;
 import com.colonel.saas.dto.product.QuickSampleApplyRequest;
 import com.colonel.saas.dto.product.QuickSampleApplyResponse;
 import com.colonel.saas.service.ProductQuickSampleService;
@@ -52,16 +53,16 @@ class DddProduct003ProductApplicationRoutingTest {
                 relationId, request, UUID.randomUUID(), UUID.randomUUID(), List.of("channel_staff"));
 
         assertThat(actual).isSameAs(expected);
-        verify(productDomainFacade, never()).existsById(any());
+        verify(productDomainFacade, never()).findSnapshotById(any());
     }
 
     @Test
-    @DisplayName("开关开启且 Facade 不存在时 applyQuickSample 抛 NOT_FOUND")
+    @DisplayName("开关开启且商品快照不存在时 applyQuickSample 抛 NOT_FOUND")
     void applyQuickSample_shouldRejectMissingProductWhenRoutingEnabled() {
         when(dddRefactorProperties.isEnabled()).thenReturn(true);
         when(dddRefactorProperties.getProductFacade()).thenReturn(productFacadeSwitch);
         when(productFacadeSwitch.isEnabled()).thenReturn(true);
-        when(productDomainFacade.existsById(relationId)).thenReturn(false);
+        when(productDomainFacade.findSnapshotById(relationId)).thenReturn(null);
 
         assertThatThrownBy(() -> applicationService.applyQuickSample(
                 relationId, new QuickSampleApplyRequest(), UUID.randomUUID(), UUID.randomUUID(), List.of("channel_staff")))
@@ -77,7 +78,7 @@ class DddProduct003ProductApplicationRoutingTest {
         when(dddRefactorProperties.isEnabled()).thenReturn(true);
         when(dddRefactorProperties.getProductFacade()).thenReturn(productFacadeSwitch);
         when(productFacadeSwitch.isEnabled()).thenReturn(true);
-        when(productDomainFacade.existsById(relationId)).thenReturn(true);
+        when(productDomainFacade.findSnapshotById(relationId)).thenReturn(snapshot());
         QuickSampleApplyResponse expected = new QuickSampleApplyResponse();
         expected.setSuccess(true);
         when(productQuickSampleService.applyQuickSample(eq(relationId), any(), any(), any(), any()))
@@ -87,6 +88,40 @@ class DddProduct003ProductApplicationRoutingTest {
                 relationId, new QuickSampleApplyRequest(), UUID.randomUUID(), UUID.randomUUID(), List.of("channel_staff"));
 
         assertThat(actual).isSameAs(expected);
-        verify(productDomainFacade).existsById(relationId);
+        verify(productDomainFacade).findSnapshotById(relationId);
+    }
+
+    @Test
+    @DisplayName("开关开启且商品快照存在但无同主键 product 记录时仍可寄样")
+    void applyQuickSample_shouldDelegateWhenSnapshotExistsWithoutSamePrimaryKeyProduct() {
+        when(dddRefactorProperties.isEnabled()).thenReturn(true);
+        when(dddRefactorProperties.getProductFacade()).thenReturn(productFacadeSwitch);
+        when(productFacadeSwitch.isEnabled()).thenReturn(true);
+        when(productDomainFacade.findSnapshotById(relationId)).thenReturn(snapshot());
+        QuickSampleApplyResponse expected = new QuickSampleApplyResponse();
+        expected.setSuccess(true);
+        when(productQuickSampleService.applyQuickSample(eq(relationId), any(), any(), any(), any()))
+                .thenReturn(expected);
+
+        QuickSampleApplyResponse actual = applicationService.applyQuickSample(
+                relationId, new QuickSampleApplyRequest(), UUID.randomUUID(), UUID.randomUUID(), List.of("channel_staff"));
+
+        assertThat(actual).isSameAs(expected);
+        verify(productDomainFacade, never()).existsById(any());
+    }
+
+    private ProductSnapshotReadDTO snapshot() {
+        return new ProductSnapshotReadDTO(
+                relationId,
+                "activity-1",
+                "external-product-1",
+                "测试商品",
+                "https://example.com/cover.jpg",
+                1001L,
+                "测试店铺",
+                9900L,
+                "99.00",
+                1,
+                "https://example.com/product/1");
     }
 }

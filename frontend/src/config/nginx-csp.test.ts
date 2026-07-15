@@ -12,4 +12,8 @@ describe('real-pre nginx CSP', () => {
     expect(nginxTemplate).toContain('https://*.ecombdimg.com')
     expect(nginxTemplate).toContain('https:')
   })
+
+  it('allows fetching remote product images for rich clipboard copy', () => {
+    expect(nginxTemplate).toContain("connect-src 'self' https://*.ecombdimg.com")
+  })
 })
