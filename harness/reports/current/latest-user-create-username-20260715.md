@@ -6,7 +6,7 @@
 - Environment: real-pre
 - Scope: backend
 - Branch: codex/ddd-user-role-application
-- Commit: c86578b5
+- Commit: cd1b320a
 - Owned worktree: dirty
 - Deploy remote: false
 
@@ -27,15 +27,7 @@ harness/reports/current/latest-user-create-username-20260715.md
 ## Owned Git Status
 
 ~~~text
-M backend/src/main/java/com/colonel/saas/common/exception/GlobalExceptionHandler.java
- M backend/src/main/java/com/colonel/saas/domain/user/application/SysUserCRUDApplicationA.java
- M backend/src/main/java/com/colonel/saas/domain/user/infrastructure/SysUserCrudMutationStoreAdapter.java
- M backend/src/main/java/com/colonel/saas/domain/user/port/UserCrudMutationStore.java
- M backend/src/main/java/com/colonel/saas/mapper/SysUserMapper.java
- M backend/src/test/java/com/colonel/saas/common/exception/GlobalExceptionHandlerTest.java
- M backend/src/test/java/com/colonel/saas/domain/user/application/SysUserCRUDApplicationATest.java
- M backend/src/test/java/com/colonel/saas/mapper/SysUserMapperTest.java
-?? harness/reports/current/latest-user-create-username-20260715.md
+Owned task files are clean after commit cd1b320a; the repository still contains unrelated pre-existing dirty files outside Owned Files.
 ~~~
 
 ## Build Result
@@ -43,6 +35,7 @@ M backend/src/main/java/com/colonel/saas/common/exception/GlobalExceptionHandler
 ~~~text
 not collected
 Backend build: PASS (mvn -f backend/pom.xml -DskipTests package)
+Backend full test: PASS (3207 tests, 0 failures, 0 errors, 3 skipped)
 ~~~
 
 ## Docker Status
@@ -87,7 +80,7 @@ Content maintenance skipped by -ContentMaintenance off.
 ## Remote Deploy Result
 
 ~~~text
-remote not deployed
+remote deploy pending: the code commit is pushed to the current branch; deployment branch transplant and remote verification are the remaining steps.
 ~~~
 
 ## Retro Summary
@@ -101,3 +94,5 @@ PASS
 ## Residual Risk
 
 - Items marked as not collected are not proof of success.
+- Harness governance: TASK_GATE=PASS, REPOSITORY_HEALTH=PARTIAL because pre-existing `harness/reports` count is 39 (budget 20) and one historical report is 258 lines.
+- State update: `harness/rules/state/snapshots/DOMAIN_STATUS.md` records this user-domain fix.
