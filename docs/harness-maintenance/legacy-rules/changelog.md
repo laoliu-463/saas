@@ -1,67 +1,18 @@
 # Harness Changelog（索引）
 
-> 任务 ID：GH-180-REAL-PRE-RELEASE-QUEUE；Harness CLI 实施：HARNESS-NODE-VERIFY-20260718
-> 更新时间：2026-07-20
+> 任务 ID：HARNESS-REDUNDANCY-CLEANUP-20260713
+> 更新时间：2026-07-15
 > 详细历史（含每版修改文件、行为变化、证据）：`archive/20260610/harness-changelog-full.md`
 > 治理政策：`file-retention-policy.md`（changelog 索引 ≤200 行）
 
 ## 最近版本摘要
 
-<<<<<<< HEAD:docs/harness-maintenance/legacy-rules/changelog.md
-<<<<<<< HEAD:docs/harness-maintenance/legacy-rules/changelog.md
-### v0.8.5 — 2026-07-20
-- Issue #182 将达人认领到期判断从全量订单实体/JSONB 分页累积改为订单域 `SELECT 1 / LIMIT 1` 有界存在性查询，保持 `author_id OR talent_uid` 原匹配语义。
-- `TalentClaimReleaseJob` 的 Cron 显式固定 `Asia/Shanghai`，业务比较时间继续与无时区数据库字段使用同一 JVM 默认时钟。
-- real-pre 后端 JVM 增加 `ExitOnOutOfMemoryError`，Compose 治理测试限定后端服务块，避免半死 JVM 长期保持 running/unhealthy。
-- 本轮无数据库 migration；只生成候选提交、PR/CI 和本地 evidence，不由 Agent 直接部署远端。
-
-### v0.8.4 — 2026-07-19
-- real-pre 唯一部署来源固定为 `release/real-pre`，Jenkins 同 Job 排队且使用 `saas-real-pre-deploy` 跨 Job 全局锁。
-- 发布前校验目标 release tree 来自 `main`，并拒绝非当前部署后继提交；回滚必须显式设置 `ROLLBACK_APPROVED=true`。
-- 数据库备份、迁移和 Schema 预检改为 migration diff 驱动；无迁移输入变化时明确 `SKIPPED`，纯 Harness / 文档变更不触碰远端数据库。
-- 后端健康接口增加 `gitSha` / `imageDigest`，前端镜像生成 `/version.json`；Jenkins 核对运行 SHA、Docker 内容摘要、OCI revision 与 Flyway 后才更新不可变发布清单。
-- `agent-do -DeployRemote` 和直接 SSH 部署脚本已退休；普通 Agent 只能提交候选和 evidence，不能绕过 Jenkins。
-- 新增发布队列契约测试与分支治理 manifest；历史分叉分支只允许能力切片移植，脏 Worktree 全部保留。
-
-### v0.8.3 — 2026-07-19
-- 以服务器实际运行提交 `db930364f577f965f93601297e5e9854b4ff1813` 为发布基线，建立 `main` 与 `release/real-pre`，GitHub 默认分支切换为 `main`。
-- `main` 与 `release/real-pre` 启用 PR、禁止强推、禁止删除和管理员同样受约束的基础保护；旧分叉分支进入分批核对，不做无证据整支合并。
-- 建立 Issue → 独立 worktree/分支 → Draft PR → CI → 串行合并的 GitHub 协作合同，普通任务不再拥有直接合并或部署权限。
-- 增加 CODEOWNERS、中文友好的 PR/Issue 模板、Dependabot、贡献指南和私密安全报告入口。
-- CI 增加 merge queue 触发、完整 SHA Action 固定、Job 超时、Node 20、后端 PostgreSQL/Redis 依赖和仓库治理检查。
-- 增加可执行 Pester 契约测试；本次不触发远端部署、容器重启或数据库迁移。
-- 刷新 `docs/harness-maintenance/engineering/issues-index.md`，当前 open issue 镜像与 GitHub #165、#166、#168 一致；#168 跟踪后端 CI 基线与隔离数据库 bootstrap，旧 Sprint 排期明确标记为历史快照。
-- 修正 docs/governance 统一入口：无本地运行环境文件时仍可执行安全扫描、Harness 门禁与 evidence 收口，并跳过 evidence 的运行时采集，不触发应用构建、容器或数据库操作。
-- 修复 scoped push 对 `.github/` 的路径截断与未跟踪目录折叠问题，并让 Harness 文件路径按平台分隔符解析；保证 dot-prefixed Owned files 被逐文件暂存且 Linux 治理 Job 可执行。
-
-### v0.8.2 — 2026-07-18
-- 修正 `git-push-safe.ps1` 明文密钥扫描：仅将带引号的字面量或配置文件行识别为候选值，避免把 Java 函数调用、变量赋值和 Redis key 名误报为密钥。
-- 范围：Harness Git 安全门禁；保留真实配置字面量扫描，需用 `git-push-safe.ps1 -DryRun` 回归。
-- real-pre safety-check 新增 DOUYIN_APP_ID / DOUYIN_CLIENT_KEY / DOUYIN_CLIENT_SECRET 占位值门禁，避免 Redis 仍有旧 Token 时掩盖上游签名配置缺失。
-
-### v0.8.1 — 2026-07-18
-- real-pre CD 迁移路径统一到 Spring Boot/Flyway：移除独立 `schema_migration_log` 执行器，调度暂停后由应用启动迁移并只读核验 `flyway_schema_history`。
-- CD 预检不再落盘渲染后的 Compose 环境值；证据结果由 readiness、镜像 ID、OCI revision 和迁移版本共同决定，取证失败不得写 `PASS`。
-- 远端部署增加 checkout SHA 与 `IMAGE_TAG` 一致性、镜像 OCI revision、数据库备份和恢复前置校验。
-=======
-=======
-### v0.10.1 — 2026-07-19
-- real-pre 数据库迁移改为差异触发：首次发布或迁移路径变化才执行，纯 Harness/文档/普通应用发布不写数据库。
-- 发布清单新增 `databaseMigration.required/reason/baseGitSha/changedPaths`；需要迁移时严格校验数据库/Flyway 版本，无迁移时只记录观测值。
-- 回滚保持数据库 forward-only，不自动执行旧迁移或逆向数据库。
-
->>>>>>> 643e04cb (fix: run database migrations only when required):harness/rules/changelog.md
-### v0.10.0 — 2026-07-18
-- 采用 ADR-015：允许独立 worktree 并行开发，GitHub Merge Queue 与 Jenkins 全局锁串行合并、迁移和 real-pre 发布。
-- 关闭 `DeployRemote`、SSH 现场构建和手工回滚旁路；唯一发布源固定为 `release/real-pre`。
-- CI 以完整 SHA 构建并推送镜像，Jenkins 校验 OCI revision、digest、防降级和不可变 release manifest。
-- 后端/前端暴露运行 SHA，后端同时读取镜像 digest、aggregate migration 与 Flyway 版本；五项不一致不得 PASS。
-
->>>>>>> b8cb837b (refactor: establish real-pre single-channel CD):harness/rules/changelog.md
-### v0.9.0 — 2026-07-18
-- 依据 ADR-014 将 Harness 一级目录白名单由 9 个扩展为 13 个，新增 `src/`、`contracts/`、`state/`、`tests/`；未知目录继续阻断。
-- 保留 40/50/200、报告生命周期和基线感知语义；仅标准 `harness/package-lock.json` 精确豁免行数预算，Git 忽略的 `harness/node_modules/` 不计入结构健康，其他 JSON/lockfile 和未知目录仍阻断。
-- `state/` 按需创建且禁止接收运行时产物，本批次不创建空目录。
+### v0.8.1 — 2026-07-15
+- `deploy-remote.ps1` 绑定本地完整 commit，远端拉取后必须与期望 commit 完全一致，避免并发推进时部署错误版本。
+- 远端 `.env.real-pre` 必须收敛为指向 `/opt/saas/env/.env.real-pre` 的软链接；普通文件或目标不一致时停止部署。
+- Compose 固定使用 `saas-active` project，并先收敛 PostgreSQL、Redis 的 working dir、配置文件和 env-file 来源；不删除 volume、不强制重建数据容器。
+- 增加部署脚本 Pester 契约测试，并同步远端部署 runbook 与部署运行总览。
+- `agent-do` 在 real-pre 业务验证期间从 canonical env 只读注入管理员凭据，日志仅显示 redacted，验证结束后恢复原进程环境；消除默认演示密码导致的错误 401。
 
 ### v0.8.0 — 2026-07-13
 - 实施 ADR-013：活跃目录 40/50、非脚本文本 160/200、reports 根目标 20，并区分 `TASK_GATE` 与 `REPOSITORY_HEALTH`。
