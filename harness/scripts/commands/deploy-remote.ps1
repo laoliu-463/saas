@@ -69,6 +69,11 @@ if [ ! -f "`$backfill_migration" ]; then
   echo "Required product backfill schema migration not found: `$backfill_migration"
   exit 1
 fi
+colonel_partner_mapping_migration="backend/src/main/resources/db/alter-pick-source-mapping-colonel-name.sql"
+if [ ! -f "`$colonel_partner_mapping_migration" ]; then
+  echo "Required colonel partner mapping schema migration not found: `$colonel_partner_mapping_migration"
+  exit 1
+fi
 pg_container="`$(compose ps -q postgres-real-pre)"
 if [ -z "`$pg_container" ]; then
   echo "postgres-real-pre container id not found"
@@ -86,6 +91,15 @@ if [ "`$schema_count" != "7" ]; then
   exit 1
 fi
 echo "Activity schema guard passed."
+echo "Applying required colonel partner mapping schema migration ..."
+docker cp "`$colonel_partner_mapping_migration" "`$pg_container:/tmp/alter-pick-source-mapping-colonel-name.sql"
+compose exec -T postgres-real-pre sh -lc 'psql -U "`$POSTGRES_USER" -d "`$POSTGRES_DB" -v ON_ERROR_STOP=1 -f /tmp/alter-pick-source-mapping-colonel-name.sql' </dev/null
+colonel_name_schema_count="`$(compose exec -T postgres-real-pre sh -lc 'psql -U "`$POSTGRES_USER" -d "`$POSTGRES_DB" -tAc "SELECT count(*) FROM information_schema.columns WHERE table_schema = '\''public'\'' AND table_name = '\''pick_source_mapping'\'' AND column_name = '\''colonel_name'\''"' </dev/null | tr -d '[:space:]')"
+if [ "`$colonel_name_schema_count" != "1" ]; then
+  echo "Colonel partner mapping schema guard failed: pick_source_mapping.colonel_name is missing"
+  exit 1
+fi
+echo "Colonel partner mapping schema guard passed."
 echo "Applying required V2 config schema migration ..."
 docker cp "`$config_migration" "`$pg_container:/tmp/alter-v2-config-20260523.sql"
 compose exec -T postgres-real-pre sh -lc 'psql -U "`$POSTGRES_USER" -d "`$POSTGRES_DB" -v ON_ERROR_STOP=1 -f /tmp/alter-v2-config-20260523.sql' </dev/null
