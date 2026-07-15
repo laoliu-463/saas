@@ -2,11 +2,11 @@
 
 ## Metadata
 
-- Time: 2026-07-15 14:10:31 +08:00
+- Time: 2026-07-15 14:11:54 +08:00
 - Environment: real-pre
 - Scope: backend
 - Branch: codex/ddd-user-role-application
-- Commit: 2a8b08ca
+- Commit: a6708ab3
 - Owned worktree: clean
 - Deploy remote: true
 
@@ -17,6 +17,7 @@ backend/src/main/java/com/colonel/saas/controller/AdminColonelPartnerController.
 backend/src/main/resources/db/migrate-all.sql
 backend/src/test/java/com/colonel/saas/config/ProductStateMigrationContractTest.java
 backend/src/test/java/com/colonel/saas/controller/AdminColonelPartnerControllerTest.java
+harness/reports/current/latest-colonel-sync-schema-20260715.md
 harness/scripts/commands/deploy-remote.ps1
 ~~~
 
@@ -36,13 +37,13 @@ Backend build PASS; targeted tests: ProductStateMigrationContractTest 3/3, Admin
 
 ~~~text
 NAME                              IMAGE                            COMMAND                  SERVICE             CREATED             STATUS                       PORTS
-saas-active-backend-real-pre-1    colonel-saas/backend:real-pre    "sh -c 'java $JAVA_O…"   backend-real-pre    4 minutes ago       Up 4 minutes (healthy)       127.0.0.1:8081->8080/tcp
+saas-active-backend-real-pre-1    colonel-saas/backend:real-pre    "sh -c 'java $JAVA_O…"   backend-real-pre    5 minutes ago       Up 5 minutes (healthy)       127.0.0.1:8081->8080/tcp
 saas-active-frontend-real-pre-1   colonel-saas/frontend:real-pre   "/docker-entrypoint.…"   frontend-real-pre   About an hour ago   Up About an hour (healthy)   127.0.0.1:3001->80/tcp
-saas-active-postgres-real-pre-1   postgres:15-alpine               "docker-entrypoint.s…"   postgres-real-pre   5 minutes ago       Up 5 minutes (healthy)       5432/tcp
+saas-active-postgres-real-pre-1   postgres:15-alpine               "docker-entrypoint.s…"   postgres-real-pre   6 minutes ago       Up 6 minutes (healthy)       5432/tcp
 saas-active-redis-real-pre-1      redis:7-alpine                   "docker-entrypoint.s…"   redis-real-pre      4 weeks ago         Up 22 hours (healthy)        6379/tcp
 NAMES                             STATUS                       PORTS
-saas-active-backend-real-pre-1    Up 4 minutes (healthy)       127.0.0.1:8081->8080/tcp
-saas-active-postgres-real-pre-1   Up 5 minutes (healthy)       5432/tcp
+saas-active-backend-real-pre-1    Up 5 minutes (healthy)       127.0.0.1:8081->8080/tcp
+saas-active-postgres-real-pre-1   Up 6 minutes (healthy)       5432/tcp
 saas-active-frontend-real-pre-1   Up About an hour (healthy)   127.0.0.1:3001->80/tcp
 campus_frontend                   Up 22 hours                  0.0.0.0:5173->5173/tcp, [::]:5173->5173/tcp
 campus_backend                    Up 22 hours (healthy)        0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp
@@ -60,7 +61,7 @@ Local backend rebuild/restart PASS; local /api/system/health PASS; remote backen
 ## Business Validation Result
 
 ~~~text
-Local real API sync PASS: login 200, POST /api/admin/colonel-partners/sync 200, upserted=138. Remote real API sync PASS: 200, upserted=139. Local schema query returned 13 mapping rows without missing-column error.
+Local real API sync PASS: login 200, POST /api/admin/colonel-partners/sync 200, upserted=138. Remote real API sync PASS: 200, upserted=139. Local and remote schema queries returned colonel_name and mapping rows without missing-column error. Post-deploy remote 30m: activity50002=0, order20000=0, Broken pipe=0, colonel_name missing=0.
 ~~~
 
 ## Content Maintenance Result
@@ -72,16 +73,16 @@ Content maintenance skipped by -ContentMaintenance off.
 ## Remote Deploy Result
 
 ~~~text
-Remote deploy PASS via deploy-remote.ps1: gitee/feature/auth-system d52e5a6f; schema guard for pick_source_mapping.colonel_name PASS; remote Maven/Docker/JAR guard PASS; remote health PASS; remote sync endpoint PASS; no recent colonel_name/BadSqlGrammarException logs.
+Remote deploy PASS via deploy-remote.ps1: gitee/feature/auth-system d52e5a6f; schema guard PASS; remote Maven/Docker/JAR guard PASS; health PASS; sync endpoint PASS. Remote slow=true=1 was the intentional manual sync request (duration 4246ms), not a dashboard request.
 ~~~
 
 ## Retro Summary
 
-根因是字段迁移未接入统一迁移与固定远端部署入口；同时管理员同步控制器重复声明 /api，导致真实 context-path 下接口不可达。已补齐幂等迁移、远端 schema guard、路径回归测试，并完成本地/远端真实接口验证。
+根因是字段迁移未接入统一迁移与固定远端部署入口；同时管理员同步控制器重复声明 /api，导致真实 context-path 下接口不可达。已补齐幂等迁移、远端 schema guard、路径回归测试，并完成本地/远端真实接口验证。仓库级门禁仍受任务前已有时间戳报告文件影响，已保留并单独标注。
 
 ## Conclusion
 
-PASS
+PARTIAL
 
 ## Residual Risk
 
