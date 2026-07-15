@@ -756,18 +756,14 @@ const copyPromotionLink = async (item: any) => {
         message.warning('简介已生成，但浏览器未允许写入剪贴板，请手动复制')
       }
     } else {
-      if (result.imageCopyAttempted && !result.imageCopied) {
-        message.warning('商品链接文案已复制，但商品图片受浏览器或图片源跨域限制未能复制')
-      } else if (result.imageCopyAttempted && result.imageCopied) {
-        message.success('商品图片和推广链接已按模板复制')
-      } else {
-        const notice = resolveProductBriefCopyMessage({
-          clipboardWriteFailed: !result.copied,
-          linkGenerationFailed: result.linkGenerationFailed,
-          promotionLinkGenerated: result.promotionLinkGenerated
-        })
-        message[notice.type](notice.content)
-      }
+      const notice = resolveProductBriefCopyMessage({
+        clipboardWriteFailed: !result.copied,
+        linkGenerationFailed: result.linkGenerationFailed,
+        promotionLinkGenerated: result.promotionLinkGenerated,
+        imageCopyAttempted: result.imageCopyAttempted,
+        imageCopied: result.imageCopied
+      })
+      message[notice.type](notice.content)
     }
   } catch (error: any) {
     notifyApiFailure(error, message, { fallbackMessage: '讲解复制失败，请稍后重试' })
