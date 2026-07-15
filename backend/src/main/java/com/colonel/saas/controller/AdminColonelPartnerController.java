@@ -30,14 +30,14 @@ import java.util.UUID;
  * </ul>
  *
  * <p>所属业务领域：用户域 / 团长主数据管理
- * <p>API 路径前缀：{@code /api/admin/colonel-partners}
+ * <p>API 路径前缀：{@code /admin/colonel-partners}（应用 context-path 为 {@code /api}）
  * <p>访问权限：管理员和招商组长（{@link com.colonel.saas.constant.RoleCodes#ADMIN}、{@link com.colonel.saas.constant.RoleCodes#BIZ_LEADER}）
  *
  * @see com.colonel.saas.service.ColonelPartnerAdminService
  * @see com.colonel.saas.service.ColonelPartnerSyncService
  */
 @RestController
-@RequestMapping("/api/admin/colonel-partners")
+@RequestMapping("/admin/colonel-partners")
 public class AdminColonelPartnerController {
 
     /** 团长主数据管理服务（传统路径，由 ColonelPartnerContactUpdateRouter 灰度切换） */

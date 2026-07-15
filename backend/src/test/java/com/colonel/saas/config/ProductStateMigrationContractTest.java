@@ -46,6 +46,20 @@ class ProductStateMigrationContractTest {
         assertThat(mergedMigration).contains("display_status");
     }
 
+    @Test
+    void colonelPartnerSyncMigration_shouldBeIncludedInUnifiedMigration() throws IOException {
+        Path migration = DB_DIR.resolve("alter-pick-source-mapping-colonel-name.sql");
+
+        assertThat(migration).exists();
+        String sql = readLower(migration);
+        assertThat(sql).contains("add column if not exists colonel_name varchar(256)");
+
+        String mergedMigration = readLower(DB_DIR.resolve("migrate-all.sql"));
+        assertThat(mergedMigration)
+                .contains("alter-pick-source-mapping-colonel-name.sql")
+                .contains("add column if not exists colonel_name varchar(256)");
+    }
+
     private static void assertMountedAfter(String compose, String earlier, String later) {
         int earlierIndex = compose.indexOf(earlier);
         int laterIndex = compose.indexOf(later);
