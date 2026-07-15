@@ -63,7 +63,7 @@ class SysUserGroupMembershipApplicationTest {
 
         when(orgStructureService.resolveAssignment(null, groupId))
                 .thenReturn(new OrgStructureService.ResolvedAssignment(effectiveDeptId, parentDeptId, groupId));
-        when(sysUserMapper.selectById(userId)).thenReturn(user);
+        when(sysUserMapper.findActiveById(userId)).thenReturn(java.util.Optional.of(user));
         when(orgStructureService.splitAssignment(oldDeptId))
                 .thenReturn(new OrgStructureService.SplitAssignment(oldDeptId, null, "old", null, "department"));
         when(orgStructureService.splitAssignment(effectiveDeptId))
@@ -93,7 +93,7 @@ class SysUserGroupMembershipApplicationTest {
         UUID currentUserId = UUID.randomUUID();
         SysUser user = user(userId, groupId);
 
-        when(sysUserMapper.selectById(userId)).thenReturn(user);
+        when(sysUserMapper.findActiveById(userId)).thenReturn(java.util.Optional.of(user));
         when(orgStructureService.splitAssignment(groupId))
                 .thenReturn(new OrgStructureService.SplitAssignment(parentDeptId, groupId, "parent", "group", "biz"));
         when(orgStructureService.splitAssignment(null))
@@ -122,7 +122,7 @@ class SysUserGroupMembershipApplicationTest {
         UUID currentUserId = UUID.randomUUID();
         SysUser user = user(userId, UUID.randomUUID());
 
-        when(sysUserMapper.selectById(userId)).thenReturn(user);
+        when(sysUserMapper.findActiveById(userId)).thenReturn(java.util.Optional.of(user));
 
         application.removeUsersFromGroup(groupId, List.of(userId), currentUserId);
 
@@ -140,7 +140,7 @@ class SysUserGroupMembershipApplicationTest {
 
         when(orgStructureService.resolveAssignment(null, groupId))
                 .thenReturn(new OrgStructureService.ResolvedAssignment(groupId, null, groupId));
-        when(sysUserMapper.selectById(userId)).thenReturn(null);
+        when(sysUserMapper.findActiveById(userId)).thenReturn(java.util.Optional.empty());
 
         assertThatThrownBy(() -> application.assignUsersToGroup(groupId, List.of(userId), UUID.randomUUID()))
                 .isInstanceOf(BusinessException.class)

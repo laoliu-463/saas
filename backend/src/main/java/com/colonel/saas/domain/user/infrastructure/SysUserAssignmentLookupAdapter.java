@@ -42,7 +42,7 @@ public class SysUserAssignmentLookupAdapter implements UserAssignmentLookup {
         if (userId == null) {
             return Optional.empty();
         }
-        return Optional.ofNullable(toAssignableUser(sysUserMapper.selectById(userId)));
+        return sysUserMapper.findActiveById(userId).map(SysUserAssignmentLookupAdapter::toAssignableUser);
     }
 
     @Override
@@ -87,6 +87,6 @@ public class SysUserAssignmentLookupAdapter implements UserAssignmentLookup {
         if (user == null) {
             return null;
         }
-        return new AssignableUser(user.getId(), user.getDeptId(), user.getStatus());
+        return new AssignableUser(user.getId(), user.getDeptId(), user.getStatus(), user.getDeleted());
     }
 }

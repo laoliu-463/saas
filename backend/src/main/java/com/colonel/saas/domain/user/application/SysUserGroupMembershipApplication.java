@@ -75,11 +75,8 @@ public class SysUserGroupMembershipApplication {
     }
 
     private SysUser requireUser(UUID id) {
-        SysUser user = sysUserMapper.selectById(id);
-        if (user == null) {
-            throw BusinessException.notFound("用户不存在");
-        }
-        return user;
+        return sysUserMapper.findActiveById(id)
+                .orElseThrow(() -> BusinessException.notFound("用户不存在"));
     }
 
     private boolean deptChanged(UUID previousDeptId, UUID newDeptId) {

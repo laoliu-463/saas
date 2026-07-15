@@ -148,6 +148,7 @@ public class SysUserCRUDApplicationB {
 
     private ManagedUser requireUser(UUID id) {
         return userStore.findUser(id)
+                .filter(user -> user.deleted() == null || user.deleted() == 0)
                 .orElseThrow(() -> BusinessException.notFound("用户不存在"));
     }
 

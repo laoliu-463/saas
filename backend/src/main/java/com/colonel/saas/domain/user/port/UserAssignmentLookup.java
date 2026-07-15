@@ -17,7 +17,10 @@ public interface UserAssignmentLookup {
 
     Map<UUID, AssignableRole> findRolesByIds(Collection<UUID> roleIds);
 
-    record AssignableUser(UUID id, UUID deptId, Integer status) {
+    record AssignableUser(UUID id, UUID deptId, Integer status, Integer deleted) {
+        public AssignableUser(UUID id, UUID deptId, Integer status) {
+            this(id, deptId, status, 0);
+        }
     }
 
     record UserRoleAssignment(UUID userId, UUID roleId) {

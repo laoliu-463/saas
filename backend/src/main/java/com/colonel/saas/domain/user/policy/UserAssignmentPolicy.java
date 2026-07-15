@@ -141,6 +141,7 @@ public class UserAssignmentPolicy {
 
     private AssignableUser requireUser(UUID id) {
         return assignmentLookup.findUser(id)
+                .filter(user -> user.deleted() == null || user.deleted() == 0)
                 .orElseThrow(() -> BusinessException.notFound("用户不存在"));
     }
 

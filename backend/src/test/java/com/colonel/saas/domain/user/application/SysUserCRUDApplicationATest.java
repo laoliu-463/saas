@@ -117,6 +117,27 @@ class SysUserCRUDApplicationATest {
         verify(orgStructureService, never()).enrichUser(any());
     }
 
+    @Test
+    void getById_softDeletedUser_throwsNotFound() {
+        UUID userId = UUID.randomUUID();
+        UUID currentUserId = UUID.randomUUID();
+        ManagedUser deletedUser = managedUser(userId, "deleted-user", UUID.randomUUID(), 1);
+        deletedUser = new ManagedUser(
+                deletedUser.id(), deletedUser.username(), deletedUser.realName(), deletedUser.phone(),
+                deletedUser.email(), deletedUser.deptId(), deletedUser.status(), deletedUser.forcePasswordChange(),
+                deletedUser.lastLoginAt(), deletedUser.createTime(), 1);
+
+        when(userStore.findUser(userId)).thenReturn(Optional.of(deletedUser));
+
+        assertThatThrownBy(() -> applicationA.getById(userId, currentUserId, DataScope.ALL))
+                .isInstanceOf(BusinessException.class)
+                .extracting(t -> ((BusinessException) t).getCode())
+                .isEqualTo(com.colonel.saas.common.result.ResultCode.NOT_FOUND.getCode());
+
+        verify(userAccessPolicy, never()).assertCanAccess(any(), any(), any());
+        verify(orgStructureService, never()).enrichUser(any());
+    }
+
     // ===== create =====
 
     @Test

@@ -76,6 +76,7 @@ public class SysUserRoleAssignmentApplicationService {
 
     private RoleAssignableUser requireUser(UUID id) {
         return roleAssignmentStore.findUser(id)
+                .filter(user -> user.deleted() == null || user.deleted() == 0)
                 .orElseThrow(() -> BusinessException.notFound("用户不存在"));
     }
 
