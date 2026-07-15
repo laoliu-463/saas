@@ -6,7 +6,8 @@
 - Environment: real-pre
 - Scope: full
 - Branch: codex/ddd-user-role-application
-- Commit: 3016ae7c
+- Pre-commit baseline: 3016ae7c
+- Implementation commit: 1bfaa6d8
 - Owned worktree: dirty
 - Deploy remote: false
 
@@ -69,6 +70,17 @@ Local health verification: PASS
 
 ~~~text
 Business validation: PASS (npm run e2e:real-pre:p0:preflight)
+Frontend typecheck: PASS
+Frontend test typecheck: PASS
+Frontend full regression: PASS (94 files / 721 tests)
+Production clipboard module in headed Chromium: PASS
+- Browser clipboard types: text/plain, text/html
+- HTML contains product image URL and complete formatted introduction: PASS
+- Plain text matches after normalizing Windows CRLF to LF: PASS
+- Windows native formats contain HTML/text and no PNG/Bitmap/DIB image candidate: PASS
+- Paste into a standard contenteditable rich editor keeps the image node, title, shop and promotion link: PASS
+WeChat client paste: PENDING (target client evidence not collected)
+Feishu client paste: PENDING (target client evidence not collected)
 ~~~
 
 ## Content Maintenance Result
@@ -85,12 +97,14 @@ remote not deployed
 
 ## Retro Summary
 
-No actionable Harness improvement was recorded; no standalone retro is required.
+The generic real-pre preflight cannot prove target-client clipboard compatibility. Future clipboard changes must record browser/Windows clipboard formats and separate WeChat/Feishu paste acceptance; no standalone retro is required.
 
 ## Conclusion
 
-PASS
+PARTIAL
 
 ## Residual Risk
 
-- Items marked as not collected are not proof of success.
+- 微信与飞书会自行选择、过滤剪贴板格式；两端真实粘贴未采集，不能声明跨平台 PASS。
+- 当前方案依赖目标端允许富文本中的商品 CDN 图片 URL；若目标端过滤外链图片，只会保留简介文本。
+- 本轮未部署远端，仅应用到本地 `real-pre` 容器。
