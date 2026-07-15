@@ -11,6 +11,13 @@
 | 本地 real-pre | 默认工程修改环境 | `harness/rules/environment/envs/real-pre-env.md`、`docker-compose.real-pre.yml` | 前端 `3001`，后端 `8081` |
 | 远端 real-pre | 允许受控部署，但需用户明确要求 | `harness/rules/environment/envs/remote-real-pre-env.md`、`docs/10-部署运行总览.md` | 不等于正式全量上线 |
 
+## 最新受控部署（2026-07-15）
+
+- `feature/auth-system` 的部署代码提交 `38689b0a` 已通过固定脚本部署到远端 `real-pre`；backend、frontend、PostgreSQL、Redis 均健康。
+- 部署前 PostgreSQL dump 与 Authorization 增量 migration 已完成；重启后为 4 张授权表、1 个 `authz_version` 列、0 条授权事实。
+- Authorization 保持 `LEGACY(default)`，未进入 `SHADOW/ENFORCE`。
+- 部署技术门禁通过，但业务门禁为 `PARTIAL`：P0 与六角色完整业务流均为 `FAIL`，不得据此声明正式全量上线。证据：`harness/reports/current/latest-rbac-phase2-remote-deploy.md`。
+
 ## 当前限制
 
 - real-pre P0 不能因环境健康而直接判定全量通过；仍受真实订单 / `pick_source` 样本影响。
