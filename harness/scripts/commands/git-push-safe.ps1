@@ -117,7 +117,21 @@ try {
     $branch = (& git branch --show-current).Trim()
     if ([string]::IsNullOrWhiteSpace($branch)) { throw 'Cannot determine current branch for push.' }
     & git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>$null | Out-Null
-    if ($LASTEXITCODE -eq 0) { & git push } else { & git push --set-upstream origin $branch }
+    if ($LASTEXITCODE -eq 0) {
+        $upstreamRemote = (& git config --get "branch.$branch.remote").Trim()
+        $upstreamMerge = (& git config --get "branch.$branch.merge").Trim()
+        if ([string]::IsNullOrWhiteSpace($upstreamRemote) -or $upstreamRemote -eq '.') {
+            throw "Configured upstream is not a pushable remote: branch=$branch remote=$upstreamRemote"
+        }
+        if ($upstreamMerge -notmatch '^refs/heads/(?<name>.+)$') {
+            throw "Configured upstream branch is invalid: branch=$branch merge=$upstreamMerge"
+        }
+        $upstreamBranch = $matches['name']
+        & git push $upstreamRemote "HEAD:refs/heads/$upstreamBranch"
+    }
+    else {
+        & git push --set-upstream origin $branch
+    }
     if ($LASTEXITCODE -ne 0) { throw 'git push failed. Check upstream and credentials.' }
     Write-Host "Git push completed: $((& git rev-parse --short HEAD).Trim())" -ForegroundColor Green
 }

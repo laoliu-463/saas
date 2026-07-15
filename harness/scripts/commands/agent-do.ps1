@@ -161,39 +161,15 @@ try {
             Write-HarnessStage "Business validation"
             Write-Host $effectiveBusinessCommand
             if (-not $DryRun) {
-                $previousQaAdminPassword = $env:QA_ADMIN_PASSWORD
-                $qaAdminPasswordInjected = $false
-                if ($TargetEnv -eq "real-pre" -and [string]::IsNullOrWhiteSpace($env:QA_ADMIN_PASSWORD)) {
-                    $realPreEnvMap = Read-HarnessEnvFile -Path $config.EnvFile
-                    if (-not $realPreEnvMap.ContainsKey("ADMIN_PASSWORD") -or
-                        [string]::IsNullOrWhiteSpace($realPreEnvMap['ADMIN_PASSWORD'])) {
-                        throw "real-pre business validation requires QA_ADMIN_PASSWORD or ADMIN_PASSWORD in the canonical env file."
-                    }
-                    $env:QA_ADMIN_PASSWORD = $realPreEnvMap['ADMIN_PASSWORD']
-                    $qaAdminPasswordInjected = $true
-                    Write-Host "real-pre admin credential injected for business validation (value redacted)."
-                }
+                Push-Location $config.RepoRoot
                 try {
-                    Push-Location $config.RepoRoot
-                    try {
-                        powershell -NoProfile -ExecutionPolicy Bypass -Command $effectiveBusinessCommand
-                        if ($LASTEXITCODE -ne 0) {
-                            throw "Business validation failed: $effectiveBusinessCommand"
-                        }
-                    }
-                    finally {
-                        Pop-Location
+                    powershell -NoProfile -ExecutionPolicy Bypass -Command $effectiveBusinessCommand
+                    if ($LASTEXITCODE -ne 0) {
+                        throw "Business validation failed: $effectiveBusinessCommand"
                     }
                 }
                 finally {
-                    if ($qaAdminPasswordInjected) {
-                        if ($null -eq $previousQaAdminPassword) {
-                            Remove-Item Env:QA_ADMIN_PASSWORD -ErrorAction SilentlyContinue
-                        }
-                        else {
-                            $env:QA_ADMIN_PASSWORD = $previousQaAdminPassword
-                        }
-                    }
+                    Pop-Location
                 }
             }
             $businessResult = "Business validation: PASS ($effectiveBusinessCommand)"
@@ -286,6 +262,12 @@ try {
     if ($deployRemoteValue) {
         & (Join-Path $PSScriptRoot "deploy-remote.ps1") -Env real-pre -DryRun:$DryRun
         $remoteResult = "Remote deploy: PASS"
+        $remoteConclusion = if ($SkipBusinessValidation -or $Scope -eq "docs" -or $Scope -eq "apifox") {
+            "PARTIAL"
+        }
+        else {
+            "PASS"
+        }
         $remoteReportPath = & (Join-Path $PSScriptRoot "collect-evidence.ps1") `
             -Env $TargetEnv `
             -Scope $Scope `
@@ -294,7 +276,7 @@ try {
             -BusinessResult $businessResult `
             -ContentMaintenanceResult $contentMaintenanceResult `
             -RemoteResult $remoteResult `
-            -Conclusion "PASS" `
+            -Conclusion $remoteConclusion `
             -DeployRemote $true `
             -ReportKey $ReportKey `
             -OwnedFiles $taskOwnedFiles `
@@ -307,7 +289,7 @@ try {
                 -Message "docs(harness): record remote deployment evidence" `
                 -OwnedFiles @($remoteReportRelative)
         }
-        $conclusion = "PASS"
+        $conclusion = $remoteConclusion
     }
 
     Write-Host "Review HARNESS_CHANGELOG.md and update it when Harness behavior changed." -ForegroundColor Yellow
