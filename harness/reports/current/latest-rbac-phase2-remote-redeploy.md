@@ -5,7 +5,8 @@
 - 时间：2026-07-15（Asia/Shanghai）
 - 环境：远端 `real-pre`
 - 分支：`feature/auth-system`
-- 最终服务器仓库提交：`66ddf8bda80f27d49a25a9c4ba602c0266f89ed1`
+- 应用镜像构建源码提交：`66ddf8bda80f27d49a25a9c4ba602c0266f89ed1`
+- Evidence-only 收口提交会继续 fast-forward 服务器仓库，但不重建已验证镜像
 - 本轮新增业务代码提交：`82456081`（重复用户名错误映射）；`61f7f129`、`66ddf8bd` 为对应 evidence 提交
 - RBAC 基础代码仍来自已部署集成链 `539fbb68` / `38689b0a`
 - Completion Gate：Gate 4
@@ -16,7 +17,7 @@
 - 主仓库存在用户未提交修改，本轮只使用隔离工作树 `D:\Projects\SAAS\.worktrees\integrate-rbac-to-auth-system-20260714`，未修改主仓库工作区。
 - 部署开始时本地、GitHub、Gitee、服务器均为 `068ef926`；部署期间 Gitee 先前进到 `61f7f129`，固定脚本实际拉取并部署该提交。
 - 随后并发发布将 Gitee 与服务器推进到 `66ddf8bd`；`61f7f129..66ddf8bd` 仅更新 evidence，没有业务代码差异。
-- 最终服务器工作区干净；并发发布停止后无残留 deploy、Maven、Docker build 或 E2E 进程。
+- 应用镜像构建时服务器 HEAD 为 `66ddf8bd` 且工作区干净；并发发布停止后无残留 deploy、Maven、Docker build 或 E2E 进程。
 - GitHub `feature/auth-system` 在本报告生成前仍落后，需在本报告提交后与 Gitee 一并 fast-forward。
 
 ## 构建与测试
