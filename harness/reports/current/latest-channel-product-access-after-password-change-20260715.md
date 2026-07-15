@@ -57,12 +57,14 @@ Not applicable.
 ## Remote Deploy Result
 
 ~~~text
-PASS: deployed exact source commit 1bd75f081695070ec681b36f295d4baeabe9cc72; remote worktree clean; canonical env link and container provenance verified; frontend artifact contains forced-relogin hotfix; true ERROR/FATAL logs 0.
+PASS: application containers were built and deployed from code commit 1bd75f081695070ec681b36f295d4baeabe9cc72; canonical env link and container provenance verified; frontend artifact contains the forced-relogin hotfix; true ERROR/FATAL logs 0. The remote repository was subsequently fast-forwarded to evidence-only commit 41c7ff0c5a19ec78f747bb837907d6a895584f6e without recreating containers; git diff confirms 1bd75f08..41c7ff0c only adds this evidence report.
 ~~~
 
 ## Retro Summary
 
 Root cause: activation password change updated database state but retained the old pendingActivation JWT in the browser, so business APIs remained blocked. Governance action implemented: clear local authentication and force navigation to /login after successful activation password change. The affected user has since completed one successful login and immediate logout; remaining validation requires keeping the new session open and navigating to /product because no product request was observed.
+
+Execution-control retro: an orphaned agent-do child process overwrote the evidence report and fast-forwarded the remote worktree after the main process had been interrupted. Its process tree was terminated and verified absent; it did not recreate the remote containers after the evidence-only commits. Future interrupted deployments must terminate and verify the full child process tree before continuing.
 
 ## Conclusion
 
