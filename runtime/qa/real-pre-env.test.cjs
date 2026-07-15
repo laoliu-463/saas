@@ -1,5 +1,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 
 const {
   DEFAULT_REAL_PRE_BACKEND_URL,
@@ -9,6 +12,7 @@ const {
   isRealPreRuntime,
   normalizeSystemEnv,
   redactSecretLikeKeys,
+  resolveQaAdminCredential,
   resolveRealPreDbContainer,
   resolveRealPreUrls
 } = require('./real-pre-env.cjs');
@@ -48,6 +52,41 @@ test('applyRealPreEnv replaces the retired real-pre database container default',
   applyRealPreEnv(env);
   assert.equal(env.E2E_DB_CONTAINER, 'saas-active-postgres-real-pre-1');
   assert.equal(env.QA_POSTGRES_CONTAINER, 'saas-active-postgres-real-pre-1');
+});
+
+test('resolveQaAdminCredential prefers an explicit QA credential', () => {
+  const envFile = path.join(os.tmpdir(), `saas-real-pre-env-${Date.now()}-explicit`);
+  fs.writeFileSync(envFile, 'ADMIN_PASSWORD=file-pwd\n', 'utf8');
+  try {
+    assert.equal(
+      resolveQaAdminCredential(
+        { QA_ADMIN_PASSWORD: 'x' },
+        { envFile }
+      ),
+      'x'
+    );
+  } finally {
+    fs.rmSync(envFile, { force: true });
+  }
+});
+
+test('resolveQaAdminCredential reads ADMIN_PASSWORD from the supplied local env file', () => {
+  const envFile = path.join(os.tmpdir(), `saas-real-pre-env-${Date.now()}-file`);
+  fs.writeFileSync(envFile, '# local only\nADMIN_PASSWORD=file-pwd\n', 'utf8');
+  try {
+    assert.equal(resolveQaAdminCredential({}, { envFile }), 'file-pwd');
+  } finally {
+    fs.rmSync(envFile, { force: true });
+  }
+});
+
+test('resolveQaAdminCredential has no insecure hardcoded fallback', () => {
+  const envFile = path.join(os.tmpdir(), `saas-real-pre-env-${Date.now()}-missing`);
+  try {
+    assert.equal(resolveQaAdminCredential({}, { envFile }), '');
+  } finally {
+    fs.rmSync(envFile, { force: true });
+  }
 });
 
 test('normalizeSystemEnv accepts REAL-PRE only on real-pre profile when test switches are off', () => {

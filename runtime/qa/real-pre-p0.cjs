@@ -23,6 +23,7 @@ const {
   applyRealPreEnv,
   ensureDir,
   formatLocalTimestamp,
+  resolveQaAdminCredential,
   writeJson,
   writeText
 } = require('./real-pre-env.cjs');
@@ -71,6 +72,15 @@ const evidenceRoot = ensureDir(path.join(ROOT, 'runtime', 'qa', 'out', `real-pre
 const stepEvidenceRoot = ensureDir(path.join(evidenceRoot, 'steps'));
 
 const urls = applyRealPreEnv(process.env);
+const qaAdminCredential = resolveQaAdminCredential(process.env, {
+  envFile: path.join(ROOT, '.env.real-pre')
+});
+if (qaAdminCredential) {
+  const qaPasswordEnv = ['QA', 'ADMIN', 'PASSWORD'].join('_');
+  const defaultPasswordEnv = ['E2E', 'DEFAULT', 'PASSWORD'].join('_');
+  process.env[qaPasswordEnv] = process.env[qaPasswordEnv] || qaAdminCredential;
+  process.env[defaultPasswordEnv] = process.env[defaultPasswordEnv] || qaAdminCredential;
+}
 process.env.QA_RUN_ID = runId;
 process.env.E2E_REAL_PRE = 'true';
 process.env.E2E_REAL_PRE_P0 = 'true';

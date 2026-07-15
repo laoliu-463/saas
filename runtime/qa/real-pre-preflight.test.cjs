@@ -20,6 +20,7 @@ test('runRealPrePreflight passes with real-pre env, token, schema, mapping, and 
   const evidenceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'real-pre-preflight-'));
   const report = await runRealPrePreflight({
     evidenceDir,
+    adminPassword: 't-pwd',
     fetchImpl: createFetchStub({
       'GET http://localhost:3001/login': htmlResponse(),
       'GET http://localhost:8081/api/system/health': jsonResponse({ status: 'UP' }),
@@ -96,6 +97,7 @@ test('runRealPrePreflight retries admin login while backend settles', async () =
 
   const report = await runRealPrePreflight({
     evidenceDir,
+    adminPassword: 't-pwd',
     retryDelayMs: 0,
     retryAttempts: 2,
     fetchImpl: async (url, options = {}) => {
@@ -137,6 +139,7 @@ test('runRealPrePreflight retries postgres checks while container settles', asyn
   let dockerExecCalls = 0;
   const report = await runRealPrePreflight({
     evidenceDir,
+    adminPassword: 't-pwd',
     dbContainer: 'saas-active-postgres-real-pre-1',
     retryDelayMs: 0,
     retryAttempts: 2,
@@ -205,6 +208,7 @@ test('runRealPrePreflight returns BLOCKED when refresh token is missing', async 
   const evidenceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'real-pre-preflight-'));
   const report = await runRealPrePreflight({
     evidenceDir,
+    adminPassword: 't-pwd',
     fetchImpl: createFetchStub({
       'GET http://localhost:3001/login': htmlResponse(),
       'GET http://localhost:8081/api/system/health': jsonResponse({ status: 'UP' }),

@@ -14,6 +14,35 @@ function stripTrailingSlash(value) {
   return String(value || '').replace(/\/+$/, '');
 }
 
+function readEnvFile(filePath) {
+  if (!filePath) return {};
+  try {
+    const content = fs.readFileSync(filePath, 'utf8');
+    const values = {};
+    for (const line of content.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const match = trimmed.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
+      if (!match) continue;
+      let value = match[2].trim();
+      if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+        value = value.slice(1, -1);
+      }
+      values[match[1]] = value;
+    }
+    return values;
+  } catch {
+    return {};
+  }
+}
+
+function resolveQaAdminCredential(env = {}, options = {}) {
+  const explicit = String(env.QA_ADMIN_PASSWORD || '').trim();
+  if (explicit) return explicit;
+  const fileValues = readEnvFile(options.envFile);
+  return String(fileValues.QA_ADMIN_PASSWORD || fileValues.ADMIN_PASSWORD || '').trim();
+}
+
 function resolveRealPreUrls(env = process.env) {
   const frontendUrl = stripTrailingSlash(env.E2E_BASE_URL || env.FRONTEND_URL || DEFAULT_REAL_PRE_FRONTEND_URL);
   const backendUrl = stripTrailingSlash(env.E2E_BACKEND_URL || env.BACKEND_URL || DEFAULT_REAL_PRE_BACKEND_URL);
@@ -142,6 +171,7 @@ module.exports = {
   DEFAULT_REAL_PRE_DB_USER,
   LEGACY_REAL_PRE_DB_CONTAINER,
   stripTrailingSlash,
+  resolveQaAdminCredential,
   resolveRealPreUrls,
   resolveRealPreDbContainer,
   applyRealPreEnv,

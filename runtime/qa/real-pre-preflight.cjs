@@ -9,6 +9,7 @@ const {
   isRealPreRuntime,
   normalizeSystemEnv,
   redactSecretLikeKeys,
+  resolveQaAdminCredential,
   unwrapApiBody,
   writeJson,
   writeText
@@ -27,24 +28,29 @@ const REQUIRED_SCHEMA = [
 
 async function runRealPrePreflight(options = {}) {
   const root = options.root || ROOT;
-  const urls = applyRealPreEnv(options.env || process.env);
+  const runtimeEnv = options.env || process.env;
+  const urls = applyRealPreEnv(runtimeEnv);
   const fetchImpl = options.fetchImpl || globalThis.fetch;
   const spawnSyncImpl = options.spawnSyncImpl || spawnSync;
   const evidenceDir = options.evidenceDir || createEvidenceDir(root, 'real-pre-preflight');
-  const timeoutMs = Number(options.timeoutMs || process.env.E2E_REAL_PRE_PREFLIGHT_TIMEOUT_MS || 90_000);
+  const timeoutMs = Number(options.timeoutMs || runtimeEnv.E2E_REAL_PRE_PREFLIGHT_TIMEOUT_MS || 90_000);
   const retryOptions = {
-    attempts: Number(options.retryAttempts || process.env.E2E_REAL_PRE_PREFLIGHT_RETRY_ATTEMPTS || 5),
-    delayMs: Number(options.retryDelayMs ?? process.env.E2E_REAL_PRE_PREFLIGHT_RETRY_DELAY_MS ?? 1_000)
+    attempts: Number(options.retryAttempts || runtimeEnv.E2E_REAL_PRE_PREFLIGHT_RETRY_ATTEMPTS || 5),
+    delayMs: Number(options.retryDelayMs ?? runtimeEnv.E2E_REAL_PRE_PREFLIGHT_RETRY_DELAY_MS ?? 1_000)
   };
-  const adminUsername = options.adminUsername || process.env.QA_ADMIN_USER || 'admin';
-  const adminCredential = options.adminPassword || process.env.QA_ADMIN_PASSWORD || defaultQaAdminCredential();
+  const adminUsername = options.adminUsername || runtimeEnv.QA_ADMIN_USER || 'admin';
+  const adminCredential = String(
+    options.adminPassword || resolveQaAdminCredential(runtimeEnv, {
+      envFile: options.envFile || path.join(root, '.env.real-pre')
+    }) || ''
+  ).trim();
   const dbContainer = options.dbContainer ||
-    process.env.QA_POSTGRES_CONTAINER ||
-    process.env.E2E_DB_CONTAINER ||
+    runtimeEnv.QA_POSTGRES_CONTAINER ||
+    runtimeEnv.E2E_DB_CONTAINER ||
     detectRealPrePostgresContainer(spawnSyncImpl) ||
     DEFAULT_REAL_PRE_DB_CONTAINER;
-  const dbUser = options.dbUser || process.env.QA_DB_USER || process.env.E2E_DB_USER || DEFAULT_REAL_PRE_DB_USER;
-  const dbName = options.dbName || process.env.QA_DB_NAME || process.env.E2E_DB_NAME || DEFAULT_REAL_PRE_DB_NAME;
+  const dbUser = options.dbUser || runtimeEnv.QA_DB_USER || runtimeEnv.E2E_DB_USER || DEFAULT_REAL_PRE_DB_USER;
+  const dbName = options.dbName || runtimeEnv.QA_DB_NAME || runtimeEnv.E2E_DB_NAME || DEFAULT_REAL_PRE_DB_NAME;
 
   if (typeof fetchImpl !== 'function') {
     throw new Error('global fetch is unavailable; use Node.js 18+ to run real-pre preflight');
@@ -53,11 +59,17 @@ async function runRealPrePreflight(options = {}) {
   const checks = [];
   checks.push(await runCheck('frontend real-pre 3001', 'FAIL', () => checkFrontend(urls.frontendUrl, fetchImpl, timeoutMs)));
   checks.push(await runCheck('backend health 8081', 'FAIL', () => checkBackendHealth(urls.backendUrl, fetchImpl, timeoutMs)));
-  const loginCheck = await runCheck(
-    'admin login',
-    'FAIL',
-    () => login(urls.backendUrl, fetchImpl, adminUsername, adminCredential, timeoutMs, retryOptions)
-  );
+  const loginCheck = adminCredential
+    ? await runCheck(
+      'admin login',
+      'FAIL',
+      () => login(urls.backendUrl, fetchImpl, adminUsername, adminCredential, timeoutMs, retryOptions)
+    )
+    : {
+      name: 'admin login',
+      status: 'FAIL',
+      error: 'QA admin credential is missing; set QA_ADMIN_PASSWORD or local .env.real-pre ADMIN_PASSWORD'
+    };
   checks.push(loginCheck);
 
   const authCredential = loginCheck.details?.token || '';
@@ -384,10 +396,6 @@ function buildReport(summary) {
 
 function escapeSql(value) {
   return String(value).replace(/'/g, "''");
-}
-
-function defaultQaAdminCredential() {
-  return ['admin', '123'].join('');
 }
 
 function parseArgs(argv) {
