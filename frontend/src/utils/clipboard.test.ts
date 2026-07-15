@@ -74,13 +74,11 @@ describe('tryCopyTextAndImage', () => {
     vi.restoreAllMocks()
   })
 
-  it('writes rich HTML first so paste targets can keep the product image and formatted text together', async () => {
+  it('writes the image URL and formatted text as HTML without an independent image representation', async () => {
     const write = vi.fn().mockResolvedValue(undefined)
     setClipboard({ write, writeText: vi.fn() } as unknown as Clipboard)
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      ok: true,
-      blob: vi.fn().mockResolvedValue(new Blob(['image'], { type: 'image/png' }))
-    }))
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
     class ClipboardItemMock {
       readonly items: Record<string, Blob>
 
@@ -98,35 +96,16 @@ describe('tryCopyTextAndImage', () => {
     expect(write).toHaveBeenCalledOnce()
     const clipboardItems = (write.mock.calls[0][0][0] as ClipboardItemMock).items
     expect(Object.keys(clipboardItems)).toEqual(['text/html', 'text/plain'])
-    await expect(clipboardItems['text/html'].text()).resolves.toContain('<img src="data:image/png;base64,')
+    await expect(clipboardItems['text/html'].text()).resolves.toContain(
+      '<img src="https://img.example.com/product.png"'
+    )
     await expect(clipboardItems['text/html'].text()).resolves.toContain('<div>商品文案</div>')
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('converts jpeg images to png before writing because browser clipboard write supports png', async () => {
+  it('escapes the image URL and formatted text before writing rich HTML', async () => {
     const write = vi.fn().mockResolvedValue(undefined)
     setClipboard({ write, writeText: vi.fn() } as unknown as Clipboard)
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      ok: true,
-      blob: vi.fn().mockResolvedValue(new Blob(['jpeg'], { type: 'image/jpeg' }))
-    }))
-    vi.stubGlobal('createImageBitmap', vi.fn().mockResolvedValue({
-      width: 100,
-      height: 80,
-      close: vi.fn()
-    }))
-    const drawImage = vi.fn()
-    const toBlob = vi.fn((callback: BlobCallback) => callback(new Blob(['png'], { type: 'image/png' })))
-    vi.spyOn(document, 'createElement').mockImplementation((tagName: string) => {
-      if (tagName === 'canvas') {
-        return {
-          width: 0,
-          height: 0,
-          getContext: () => ({ drawImage }),
-          toBlob
-        } as unknown as HTMLCanvasElement
-      }
-      return document.createElementNS('http://www.w3.org/1999/xhtml', tagName)
-    })
     class ClipboardItemMock {
       readonly items: Record<string, Blob>
 
@@ -136,22 +115,33 @@ describe('tryCopyTextAndImage', () => {
     }
     vi.stubGlobal('ClipboardItem', ClipboardItemMock)
 
-    await expect(tryCopyTextAndImage('商品文案', 'https://img.example.com/product.jpg')).resolves.toEqual({
+    await expect(tryCopyTextAndImage('商品<文案>\n第二行', 'https://img.example.com/product.png?a=1&b=2')).resolves.toEqual({
       copied: true,
       imageCopied: true
     })
 
-    expect(drawImage).toHaveBeenCalledOnce()
-    expect(toBlob).toHaveBeenCalledOnce()
     const clipboardItems = (write.mock.calls[0][0][0] as ClipboardItemMock).items
     expect(Object.keys(clipboardItems)).toEqual(['text/html', 'text/plain'])
-    await expect(clipboardItems['text/html'].text()).resolves.toContain('<img src="data:image/png;base64,')
+    await expect(clipboardItems['text/html'].text()).resolves.toContain(
+      '<img src="https://img.example.com/product.png?a=1&amp;b=2"'
+    )
+    await expect(clipboardItems['text/html'].text()).resolves.toContain(
+      '<div>商品&lt;文案&gt;<br>第二行</div>'
+    )
   })
 
-  it('falls back to text when the image cannot be fetched', async () => {
+  it('falls back to text when the rich clipboard write is rejected', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined)
-    setClipboard({ writeText } as unknown as Clipboard)
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('cors denied')))
+    const write = vi.fn().mockRejectedValue(new Error('rich clipboard denied'))
+    setClipboard({ write, writeText } as unknown as Clipboard)
+    class ClipboardItemMock {
+      readonly items: Record<string, Blob>
+
+      constructor(items: Record<string, Blob>) {
+        this.items = items
+      }
+    }
+    vi.stubGlobal('ClipboardItem', ClipboardItemMock)
 
     await expect(tryCopyTextAndImage('商品文案', 'https://img.example.com/product.png')).resolves.toEqual({
       copied: true,

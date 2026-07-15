@@ -2,10 +2,10 @@
 
 ## Metadata
 
-- Time: 2026-07-15 17:47:44 +08:00
+- Time: 2026-07-15 18:06:55 +08:00
 - Action: Plan
 - DryRun: False
-- Reason: fix: 商品图文使用统一富文本剪贴板格式
+- Reason: fix(product): 统一商品图文剪贴板输出
 - Manifest: (none)
 - ArchiveRoot: harness/archive/retired-content
 - AllowSourceCode: False

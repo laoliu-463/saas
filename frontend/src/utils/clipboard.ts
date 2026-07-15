@@ -44,9 +44,6 @@ export type ClipboardContentResult = {
   imageCopied: boolean
 }
 
-const isSupportedClipboardImageType = (value: string): boolean =>
-  /^(image\/(png|jpeg|gif|webp))$/i.test(value)
-
 const escapeHtml = (value: string): string => value.replace(/[&<>"']/g, (character) => {
   const entities: Record<string, string> = {
     '&': '&amp;',
@@ -58,54 +55,12 @@ const escapeHtml = (value: string): string => value.replace(/[&<>"']/g, (charact
   return entities[character]
 })
 
-const readBlobAsDataUrl = (blob: Blob): Promise<string> => new Promise((resolve, reject) => {
-  if (typeof FileReader === 'undefined') {
-    reject(new Error('FileReader unavailable'))
-    return
-  }
-  const reader = new FileReader()
-  reader.onload = () => {
-    if (typeof reader.result === 'string') resolve(reader.result)
-    else reject(new Error('image data URL unavailable'))
-  }
-  reader.onerror = () => reject(reader.error || new Error('image read failed'))
-  reader.readAsDataURL(blob)
-})
-
-const convertImageToClipboardPng = async (blob: Blob): Promise<Blob> => {
-  const imageType = String(blob.type || '').toLowerCase()
-  if (imageType === 'image/png') return blob
-  if (typeof createImageBitmap !== 'function' || typeof document === 'undefined') {
-    throw new Error('image conversion unavailable')
-  }
-
-  const bitmap = await createImageBitmap(blob)
-  try {
-    const canvas = document.createElement('canvas')
-    canvas.width = bitmap.width
-    canvas.height = bitmap.height
-    const context = canvas.getContext('2d')
-    if (!context) throw new Error('canvas context unavailable')
-    context.drawImage(bitmap, 0, 0)
-
-    return await new Promise<Blob>((resolve, reject) => {
-      canvas.toBlob((pngBlob) => {
-        if (pngBlob) resolve(pngBlob)
-        else reject(new Error('png conversion failed'))
-      }, 'image/png')
-    })
-  } finally {
-    bitmap.close()
-  }
-}
-
 /**
- * 尝试把商品图片和文本写成同一个富文本剪贴板表示。
+ * 尝试把商品图片引用和文本写成同一个富文本剪贴板表示。
  *
- * 不再同时暴露独立 image/png 表示：Windows 与粘贴目标会从多个格式中选择一个，
- * 微信会优先选择独立图片并丢弃同一 ClipboardItem 中的文字。富文本放在首位，
- * 纯文本仅作为不支持 HTML 的目标端降级格式。
- * 图片读取失败（常见于 CDN 未开放 CORS）时只降级复制文本，不伪造图片已复制。
+ * 不暴露独立图片格式，避免目标端只消费图片候选而忽略文字。HTML 同时包含
+ * 商品 CDN 图片 URL 和完整简介，纯文本作为不支持 HTML 的目标端降级格式。
+ * 是否保留 HTML 图片由粘贴目标决定，必须在对应客户端单独验收。
  */
 export async function tryCopyTextAndImage(
   text: string,
@@ -121,21 +76,7 @@ export async function tryCopyTextAndImage(
     typeof navigator.clipboard?.write === 'function'
   ) {
     try {
-      const response = await fetch(normalizedImageUrl, {
-        mode: 'cors',
-        credentials: 'omit'
-      })
-      if (!response.ok) throw new Error(`image request failed: ${response.status}`)
-
-      const sourceBlob = await response.blob()
-      const imageType = String(sourceBlob.type || '').toLowerCase()
-      if (!isSupportedClipboardImageType(imageType)) {
-        throw new Error(`unsupported clipboard image type: ${imageType || 'unknown'}`)
-      }
-
-      const clipboardImage = await convertImageToClipboardPng(sourceBlob)
-      const imageDataUrl = await readBlobAsDataUrl(clipboardImage)
-      const html = `<img src="${imageDataUrl}" alt="商品图片"><div>${escapeHtml(text).replace(/\r?\n/g, '<br>')}</div>`
+      const html = `<img src="${escapeHtml(normalizedImageUrl)}" alt="商品图片"><div>${escapeHtml(text).replace(/\r?\n/g, '<br>')}</div>`
       const clipboardItem = new ClipboardItem({
         'text/html': new Blob([html], { type: 'text/html' }),
         'text/plain': new Blob([text], { type: 'text/plain' })
