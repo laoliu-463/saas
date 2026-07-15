@@ -115,6 +115,7 @@
 import { notifyApiFailure } from '../../utils/requestError'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useMessage } from 'naive-ui'
+import { useRouter } from 'vue-router'
 import PageHeader from '../../components/PageHeader.vue'
 import {
   changeCurrentUserPassword,
@@ -127,6 +128,7 @@ import { useAuthStore } from '../../stores/auth'
 import { ROLE_NAME_MAP } from '../../constants/rbac'
 
 const message = useMessage()
+const router = useRouter()
 const authStore = useAuthStore()
 const loading = ref(false)
 const checkingPermission = ref(false)
@@ -264,13 +266,15 @@ const handleChangePassword = async () => {
   changingPassword.value = true
   try {
     await changeCurrentUserPassword({
-      oldPassword: passwordForm.oldPassword,
-      newPassword: passwordForm.newPassword
+      oldPassword: String(passwordForm.oldPassword),
+      newPassword: String(passwordForm.newPassword)
     })
     passwordForm.oldPassword = ''
     passwordForm.newPassword = ''
     passwordForm.confirmPassword = ''
-    message.success('密码已更新')
+    authStore.clearAuth()
+    message.success('密码已更新，请使用新密码重新登录')
+    await router.replace('/login')
   } catch (error: any) {
     notifyApiFailure(error, message, { fallbackMessage: '密码更新失败' })
   } finally {

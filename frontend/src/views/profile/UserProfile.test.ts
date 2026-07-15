@@ -32,4 +32,12 @@ describe('user profile page wiring', () => {
     expect(source).toContain("key: 'profile'")
     expect(source).toContain("router.push('/profile')")
   })
+
+  it('clears the pending-activation session and requires a fresh login after password change', () => {
+    const source = componentSource()
+
+    expect(source).toContain('authStore.clearAuth()')
+    expect(source).toContain("message.success('密码已更新，请使用新密码重新登录')")
+    expect(source).toContain("await router.replace('/login')")
+  })
 })
