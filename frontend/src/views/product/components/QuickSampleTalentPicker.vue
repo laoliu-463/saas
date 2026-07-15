@@ -1,156 +1,169 @@
 <template>
-  <section
-    v-if="show"
-    class="quick-sample-talent-picker"
-    role="dialog"
-    aria-modal="true"
-    aria-labelledby="quick-sample-talent-picker-title"
-    data-testid="quick-sample-talent-picker"
+  <n-drawer
+    :show="show"
+    :width="DRAWER_WIDTH_PX.lg"
+    placement="right"
+    data-testid="quick-sample-talent-picker-drawer"
+    @update:show="updateShow"
   >
-    <header class="quick-sample-talent-picker__header">
-      <div class="quick-sample-talent-picker__heading">
-        <span class="quick-sample-talent-picker__mark" aria-hidden="true"><i /><i /></span>
-        <h2 id="quick-sample-talent-picker-title" data-testid="quick-sample-talent-picker-title">
-          选择合作达人({{ draftSelected.length }}/{{ maxSelection }})
-        </h2>
-      </div>
-
-      <div class="quick-sample-talent-picker__actions">
-        <button
-          type="button"
-          class="quick-sample-talent-picker__cancel"
-          data-testid="quick-sample-talent-picker-cancel"
-          @click="cancel"
-        >
-          取消
-        </button>
-        <button
-          type="button"
-          class="quick-sample-talent-picker__submit"
-          data-testid="quick-sample-talent-picker-submit"
-          @click="submit"
-        >
-          提交
-        </button>
-      </div>
-    </header>
-
-    <main class="quick-sample-talent-picker__main">
-      <form class="quick-sample-talent-picker__search" @submit.prevent="search">
-        <label class="quick-sample-talent-picker__field">
-          <span>达人昵称：</span>
-          <input
-            v-model="nicknameQuery"
-            type="search"
-            placeholder="请输入"
-            data-testid="quick-sample-talent-nickname-search"
-          />
-        </label>
-        <label class="quick-sample-talent-picker__field">
-          <span>抖音号：</span>
-          <input
-            v-model="douyinNoQuery"
-            type="search"
-            placeholder="请输入"
-            data-testid="quick-sample-talent-douyin-search"
-          />
-        </label>
-        <button type="submit" class="quick-sample-talent-picker__search-button" data-testid="quick-sample-talent-search">
-          搜索
-        </button>
-      </form>
-
-      <div class="quick-sample-talent-picker__table" role="table" aria-label="合作达人列表">
-        <div class="quick-sample-talent-picker__table-head quick-sample-talent-picker__grid" role="row">
-          <span role="columnheader" aria-label="选择" />
-          <span role="columnheader">达人昵称</span>
-          <span role="columnheader">抖音号</span>
-          <span role="columnheader">粉丝数</span>
+    <n-drawer-content :native-scrollbar="false" closable>
+      <template #header>
+        <div class="quick-sample-talent-picker__header">
+          <div class="quick-sample-talent-picker__heading">
+            <span class="quick-sample-talent-picker__mark" aria-hidden="true" />
+            <span id="quick-sample-talent-picker-title" data-testid="quick-sample-talent-picker-title">
+              选择合作达人({{ draftSelected.length }}/{{ maxSelection }})
+            </span>
+          </div>
         </div>
+      </template>
 
-        <div class="quick-sample-talent-picker__table-body" role="rowgroup">
-          <div v-if="loading" class="quick-sample-talent-picker__empty" data-testid="quick-sample-talent-loading">
-            加载中…
+      <section
+        v-if="show"
+        class="quick-sample-talent-picker"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="quick-sample-talent-picker-title"
+        data-testid="quick-sample-talent-picker"
+      >
+        <form class="quick-sample-talent-picker__search" @submit.prevent="search">
+          <label class="quick-sample-talent-picker__field">
+            <span>达人昵称：</span>
+            <input
+              v-model="nicknameQuery"
+              type="search"
+              placeholder="请输入"
+              data-testid="quick-sample-talent-nickname-search"
+            />
+          </label>
+          <label class="quick-sample-talent-picker__field">
+            <span>抖音号：</span>
+            <input
+              v-model="douyinNoQuery"
+              type="search"
+              placeholder="请输入"
+              data-testid="quick-sample-talent-douyin-search"
+            />
+          </label>
+          <button type="submit" class="quick-sample-talent-picker__search-button" data-testid="quick-sample-talent-search">
+            搜索
+          </button>
+        </form>
+
+        <div class="quick-sample-talent-picker__table" role="table" aria-label="合作达人列表">
+          <div class="quick-sample-talent-picker__table-head quick-sample-talent-picker__grid" role="row">
+            <span role="columnheader" aria-label="选择" />
+            <span role="columnheader">达人昵称</span>
+            <span role="columnheader">抖音号</span>
+            <span role="columnheader">粉丝数</span>
           </div>
-          <div v-else-if="!pageRows.length" class="quick-sample-talent-picker__empty" data-testid="quick-sample-talent-empty">
-            {{ emptyText }}
-          </div>
-          <template v-else>
-            <div
-              v-for="row in pageRows"
-              :key="row.value"
-              class="quick-sample-talent-picker__table-row quick-sample-talent-picker__grid"
-              :class="{ 'is-selected': isSelected(row.value) }"
-              role="row"
-              tabindex="0"
-              :data-testid="`quick-sample-talent-row-${row.value}`"
-              @click="toggleRow(row.value)"
-              @keydown.enter.prevent="toggleRow(row.value)"
-            >
-              <span role="cell" class="quick-sample-talent-picker__checkbox-cell">
-                <button
-                  type="button"
-                  class="quick-sample-talent-picker__checkbox"
-                  :class="{ 'is-selected': isSelected(row.value) }"
-                  :aria-label="`${isSelected(row.value) ? '取消选择' : '选择'} ${row.nickname || row.douyinNo || '达人'}`"
-                  :aria-pressed="isSelected(row.value)"
-                  :disabled="isSelectionDisabled(row.value)"
-                  @click.stop="toggleRow(row.value)"
-                >
-                  <span v-if="isSelected(row.value)" aria-hidden="true">✓</span>
-                </button>
-              </span>
-              <span role="cell" class="quick-sample-talent-picker__nickname">{{ row.nickname || row.douyinNo || '未命名达人' }}</span>
-              <span role="cell">{{ row.douyinNo || row.value || '-' }}</span>
-              <span role="cell">{{ formatFans(row.fansCount) }}</span>
+
+          <div class="quick-sample-talent-picker__table-body" role="rowgroup">
+            <div v-if="loading" class="quick-sample-talent-picker__empty" data-testid="quick-sample-talent-loading">
+              加载中…
             </div>
-          </template>
+            <div v-else-if="!pageRows.length" class="quick-sample-talent-picker__empty" data-testid="quick-sample-talent-empty">
+              {{ emptyText }}
+            </div>
+            <template v-else>
+              <div
+                v-for="row in pageRows"
+                :key="row.value"
+                class="quick-sample-talent-picker__table-row quick-sample-talent-picker__grid"
+                :class="{ 'is-selected': isSelected(row.value) }"
+                role="row"
+                tabindex="0"
+                :data-testid="`quick-sample-talent-row-${row.value}`"
+                @click="toggleRow(row.value)"
+                @keydown.enter.prevent="toggleRow(row.value)"
+              >
+                <span role="cell" class="quick-sample-talent-picker__checkbox-cell">
+                  <button
+                    type="button"
+                    class="quick-sample-talent-picker__checkbox"
+                    :class="{ 'is-selected': isSelected(row.value) }"
+                    :aria-label="`${isSelected(row.value) ? '取消选择' : '选择'} ${row.nickname || row.douyinNo || '达人'}`"
+                    :aria-pressed="isSelected(row.value)"
+                    :disabled="isSelectionDisabled(row.value)"
+                    @click.stop="toggleRow(row.value)"
+                  >
+                    <span v-if="isSelected(row.value)" aria-hidden="true">✓</span>
+                  </button>
+                </span>
+                <span role="cell" class="quick-sample-talent-picker__nickname">{{ row.nickname || row.douyinNo || '未命名达人' }}</span>
+                <span role="cell">{{ row.douyinNo || row.value || '-' }}</span>
+                <span role="cell">{{ formatFans(row.fansCount) }}</span>
+              </div>
+            </template>
+          </div>
         </div>
-      </div>
-    </main>
 
-    <footer class="quick-sample-talent-picker__footer">
-      <span v-if="validationMessage" class="quick-sample-talent-picker__validation" role="alert">{{ validationMessage }}</span>
-      <span class="quick-sample-talent-picker__total">共{{ filteredRows.length }}条达人数据</span>
-      <nav class="quick-sample-talent-picker__pagination" aria-label="达人分页">
-        <button
-          type="button"
-          class="quick-sample-talent-picker__page-arrow"
-          aria-label="上一页"
-          :disabled="page <= 1"
-          data-testid="quick-sample-talent-page-prev"
-          @click="changePage(page - 1)"
-        >
-          ‹
-        </button>
-        <button
-          v-for="pageNumber in pageNumbers"
-          :key="pageNumber"
-          type="button"
-          class="quick-sample-talent-picker__page-number"
-          :class="{ 'is-active': pageNumber === page }"
-          :aria-current="pageNumber === page ? 'page' : undefined"
-          @click="changePage(pageNumber)"
-        >
-          {{ pageNumber }}
-        </button>
-        <button
-          type="button"
-          class="quick-sample-talent-picker__page-arrow"
-          aria-label="下一页"
-          :disabled="page >= pageCount"
-          data-testid="quick-sample-talent-page-next"
-          @click="changePage(page + 1)"
-        >
-          ›
-        </button>
-      </nav>
-    </footer>
-  </section>
+        <div class="quick-sample-talent-picker__table-footer">
+          <span v-if="validationMessage" class="quick-sample-talent-picker__validation" role="alert">{{ validationMessage }}</span>
+          <span class="quick-sample-talent-picker__total">共{{ filteredRows.length }}条达人数据</span>
+          <nav class="quick-sample-talent-picker__pagination" aria-label="达人分页">
+            <button
+              type="button"
+              class="quick-sample-talent-picker__page-arrow"
+              aria-label="上一页"
+              :disabled="page <= 1"
+              data-testid="quick-sample-talent-page-prev"
+              @click="changePage(page - 1)"
+            >
+              ‹
+            </button>
+            <button
+              v-for="pageNumber in pageNumbers"
+              :key="pageNumber"
+              type="button"
+              class="quick-sample-talent-picker__page-number"
+              :class="{ 'is-active': pageNumber === page }"
+              :aria-current="pageNumber === page ? 'page' : undefined"
+              @click="changePage(pageNumber)"
+            >
+              {{ pageNumber }}
+            </button>
+            <button
+              type="button"
+              class="quick-sample-talent-picker__page-arrow"
+              aria-label="下一页"
+              :disabled="page >= pageCount"
+              data-testid="quick-sample-talent-page-next"
+              @click="changePage(page + 1)"
+            >
+              ›
+            </button>
+          </nav>
+        </div>
+      </section>
+
+      <template #footer>
+        <div class="quick-sample-talent-picker__footer">
+          <button
+            type="button"
+            class="quick-sample-talent-picker__footer-button quick-sample-talent-picker__footer-button--cancel"
+            data-testid="quick-sample-talent-picker-cancel"
+            @click="cancel"
+          >
+            取消
+          </button>
+          <button
+            type="button"
+            class="quick-sample-talent-picker__footer-button quick-sample-talent-picker__footer-button--submit"
+            data-testid="quick-sample-talent-picker-submit"
+            @click="submit"
+          >
+            提交
+          </button>
+        </div>
+      </template>
+    </n-drawer-content>
+  </n-drawer>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { DRAWER_WIDTH_PX } from '../../../constants/ui'
 
 export interface QuickSampleTalentRow {
   value: string
@@ -253,7 +266,7 @@ function changePage(nextPage: number) {
 }
 
 function cancel() {
-  emit('update:show', false)
+  updateShow(false)
 }
 
 function submit() {
@@ -262,7 +275,11 @@ function submit() {
     return
   }
   emit('update:selectedValues', [...draftSelected.value])
-  emit('update:show', false)
+  updateShow(false)
+}
+
+function updateShow(value: boolean) {
+  emit('update:show', value)
 }
 
 function formatFans(value: number | string | null | undefined) {
@@ -277,203 +294,137 @@ function formatFans(value: number | string | null | undefined) {
 
 <style scoped>
 .quick-sample-talent-picker {
-  position: fixed;
-  z-index: 3000;
-  inset: 0;
-  display: grid;
-  grid-template-rows: 94px minmax(0, 1fr) 132px;
-  overflow: hidden;
-  color: #1e1e1e;
-  background: #fff;
-  font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+  width: 100%;
+  color: var(--text-primary, #1f2937);
+  background: var(--card-color, #fff);
+  font-size: 14px;
 }
 
 .quick-sample-talent-picker__header,
+.quick-sample-talent-picker__heading,
+.quick-sample-talent-picker__field,
+.quick-sample-talent-picker__table-footer,
+.quick-sample-talent-picker__pagination,
 .quick-sample-talent-picker__footer {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 0 40px;
-  background: #fff;
 }
 
 .quick-sample-talent-picker__header {
-  border-bottom: 1px solid #ededed;
-}
-
-.quick-sample-talent-picker__heading,
-.quick-sample-talent-picker__actions,
-.quick-sample-talent-picker__search,
-.quick-sample-talent-picker__field,
-.quick-sample-talent-picker__pagination {
-  display: flex;
-  align-items: center;
+  width: 100%;
 }
 
 .quick-sample-talent-picker__heading {
-  gap: 14px;
-}
-
-.quick-sample-talent-picker__heading h2 {
-  margin: 0;
-  color: #111;
-  font-size: clamp(22px, 2vw, 28px);
-  font-weight: 700;
-  line-height: 1;
+  gap: 12px;
+  color: #1f2937;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.4;
 }
 
 .quick-sample-talent-picker__mark {
-  display: inline-flex;
-  align-items: center;
-  gap: 9px;
-}
-
-.quick-sample-talent-picker__mark i {
-  display: block;
-  width: 6px;
-  height: 27px;
-  border-radius: 4px;
+  width: 4px;
+  height: 20px;
+  flex: 0 0 auto;
+  border-radius: 2px;
   background: #f5222d;
-}
-
-.quick-sample-talent-picker__mark i:first-child {
-  opacity: .75;
-}
-
-.quick-sample-talent-picker__actions {
-  gap: 16px;
-}
-
-.quick-sample-talent-picker__actions button {
-  width: 120px;
-  height: 60px;
-  border-radius: 9px;
-  font-size: 26px;
-  cursor: pointer;
-}
-
-.quick-sample-talent-picker__cancel {
-  border: 1px solid #d9d9d9;
-  color: #222;
-  background: #fff;
-  box-shadow: 0 1px 4px rgb(0 0 0 / 7%);
-}
-
-.quick-sample-talent-picker__submit {
-  border: 1px solid #f5222d;
-  color: #fff;
-  background: #f5222d;
-}
-
-.quick-sample-talent-picker__actions button:hover {
-  filter: brightness(.97);
-}
-
-.quick-sample-talent-picker__main {
-  display: flex;
-  min-height: 0;
-  flex-direction: column;
-  padding: 46px 40px 0;
-  overflow: hidden;
 }
 
 .quick-sample-talent-picker__search {
-  flex-wrap: wrap;
-  gap: 16px;
-  margin-bottom: 68px;
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  margin-bottom: 18px;
 }
 
 .quick-sample-talent-picker__field {
-  gap: 12px;
+  min-width: 0;
+  flex: 1;
+  gap: 8px;
+  color: #333;
   white-space: nowrap;
 }
 
-.quick-sample-talent-picker__field > span {
-  color: #222;
-  font-size: clamp(18px, 1.65vw, 25px);
-}
-
 .quick-sample-talent-picker__field input {
-  width: clamp(240px, 24.5vw, 376px);
-  height: 60px;
+  width: 100%;
+  min-width: 0;
+  height: 34px;
   box-sizing: border-box;
-  padding: 0 20px;
-  border: 2px solid #dedede;
-  border-radius: 11px;
-  outline: 0;
-  color: #222;
+  padding: 0 11px;
+  border: 1px solid #d9d9d9;
+  border-radius: 6px;
+  outline: none;
+  color: var(--text-primary, #1f2937);
   background: #fff;
-  font-size: 20px;
-}
-
-.quick-sample-talent-picker__field input::placeholder {
-  color: #c9c9c9;
+  font: inherit;
 }
 
 .quick-sample-talent-picker__field input:focus {
   border-color: #f5222d;
+  box-shadow: 0 0 0 2px rgba(245, 34, 45, .12);
+}
+
+.quick-sample-talent-picker__field input::placeholder {
+  color: #b8b8b8;
 }
 
 .quick-sample-talent-picker__search-button {
-  height: 46px;
-  padding: 0 16px;
-  border: 2px solid #f5222d;
-  border-radius: 8px;
+  min-width: 64px;
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid #f5222d;
+  border-radius: 6px;
   color: #f5222d;
   background: #fff;
-  font-size: 22px;
+  font: inherit;
   cursor: pointer;
 }
 
 .quick-sample-talent-picker__table {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
   overflow: hidden;
-  border-radius: 14px 14px 0 0;
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 8px;
 }
 
 .quick-sample-talent-picker__grid {
   display: grid;
-  grid-template-columns: 145px minmax(0, 1.45fr) minmax(180px, .9fr) minmax(130px, .55fr);
+  grid-template-columns: 46px minmax(0, 1.4fr) minmax(120px, 1fr) 84px;
   align-items: center;
-  padding: 0 30px;
+  column-gap: 0;
+  padding: 0 16px;
 }
 
 .quick-sample-talent-picker__table-head {
-  flex: 0 0 102px;
-  color: #161616;
-  background: #fafafa;
-  font-size: clamp(18px, 1.65vw, 25px);
-  font-weight: 700;
+  min-height: 46px;
+  color: #333;
+  background: var(--bg-sidebar, #fafafa);
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .quick-sample-talent-picker__table-head span + span,
 .quick-sample-talent-picker__table-row span + span {
-  border-left: 1px solid #ececec;
-  padding-left: 30px;
+  padding-left: 16px;
+  border-left: 1px solid #f0f0f0;
 }
 
 .quick-sample-talent-picker__table-body {
-  min-height: 0;
-  flex: 1;
-  overflow-y: auto;
-  border-top: 1px solid #ededed;
+  max-height: min(560px, calc(100vh - 310px));
+  overflow: auto;
 }
 
 .quick-sample-talent-picker__table-row {
-  min-height: 102px;
-  box-sizing: border-box;
-  border-bottom: 1px solid #ededed;
-  color: #313131;
-  font-size: clamp(17px, 1.5vw, 23px);
+  min-height: 52px;
+  border-top: 1px solid var(--border-color, #e5e7eb);
+  color: #333;
+  font-size: 14px;
   cursor: pointer;
+  transition: background-color .15s ease;
 }
 
 .quick-sample-talent-picker__table-row:hover,
 .quick-sample-talent-picker__table-row.is-selected {
-  background: #fffafa;
+  background: #fff8f8;
 }
 
 .quick-sample-talent-picker__checkbox-cell {
@@ -483,16 +434,16 @@ function formatFans(value: number | string | null | undefined) {
 
 .quick-sample-talent-picker__checkbox {
   display: inline-flex;
-  width: 30px;
-  height: 30px;
+  width: 18px;
+  height: 18px;
   align-items: center;
   justify-content: center;
   padding: 0;
-  border: 2px solid #ddd;
-  border-radius: 8px;
+  border: 1px solid #c8cdd3;
+  border-radius: 4px;
   color: #fff;
   background: #fff;
-  font-size: 21px;
+  font-size: 13px;
   line-height: 1;
   cursor: pointer;
 }
@@ -515,46 +466,48 @@ function formatFans(value: number | string | null | undefined) {
 
 .quick-sample-talent-picker__empty {
   display: flex;
-  min-height: 180px;
+  min-height: 160px;
   align-items: center;
   justify-content: center;
-  color: #999;
-  font-size: 18px;
+  color: var(--text-muted, #999);
+  font-size: 14px;
 }
 
-.quick-sample-talent-picker__footer {
+.quick-sample-talent-picker__table-footer {
   justify-content: flex-end;
-  gap: 30px;
-  border-top: 1px solid #fff;
+  gap: 16px;
+  margin-top: 12px;
+  min-height: 32px;
 }
 
 .quick-sample-talent-picker__total {
-  color: #242424;
-  font-size: clamp(18px, 1.65vw, 25px);
+  color: #333;
+  font-size: 14px;
 }
 
 .quick-sample-talent-picker__validation {
+  margin-right: auto;
   color: #f5222d;
-  font-size: 16px;
+  font-size: 13px;
 }
 
 .quick-sample-talent-picker__pagination {
-  gap: 17px;
+  gap: 4px;
 }
 
 .quick-sample-talent-picker__page-number,
 .quick-sample-talent-picker__page-arrow {
   display: inline-flex;
-  width: 44px;
-  height: 44px;
+  width: 28px;
+  height: 28px;
   align-items: center;
   justify-content: center;
   padding: 0;
   border: 1px solid transparent;
-  border-radius: 8px;
-  color: #242424;
+  border-radius: 4px;
+  color: #333;
   background: transparent;
-  font-size: 22px;
+  font-size: 14px;
   cursor: pointer;
 }
 
@@ -564,8 +517,8 @@ function formatFans(value: number | string | null | undefined) {
 }
 
 .quick-sample-talent-picker__page-arrow {
-  color: #222;
-  font-size: 38px;
+  color: #666;
+  font-size: 22px;
   line-height: 1;
 }
 
@@ -574,74 +527,51 @@ function formatFans(value: number | string | null | undefined) {
   cursor: not-allowed;
 }
 
-@media (max-width: 900px) {
-  .quick-sample-talent-picker {
-    grid-template-rows: 78px minmax(0, 1fr) 92px;
-  }
+.quick-sample-talent-picker__footer {
+  justify-content: flex-end;
+  gap: 12px;
+  width: 100%;
+}
 
-  .quick-sample-talent-picker__header,
-  .quick-sample-talent-picker__footer {
-    padding: 0 16px;
-  }
+.quick-sample-talent-picker__footer-button {
+  min-width: 72px;
+  height: 34px;
+  padding: 0 16px;
+  border-radius: 6px;
+  font: inherit;
+  cursor: pointer;
+}
 
-  .quick-sample-talent-picker__actions {
-    gap: 8px;
-  }
+.quick-sample-talent-picker__footer-button--cancel {
+  border: 1px solid #d9d9d9;
+  color: #333;
+  background: #fff;
+}
 
-  .quick-sample-talent-picker__actions button {
-    width: 78px;
-    height: 44px;
-    font-size: 18px;
-  }
+.quick-sample-talent-picker__footer-button--submit {
+  border: 1px solid #f5222d;
+  color: #fff;
+  background: #f5222d;
+}
 
-  .quick-sample-talent-picker__main {
-    padding: 24px 16px 0;
-    overflow: auto;
-  }
-
+@media (max-width: 640px) {
   .quick-sample-talent-picker__search {
-    margin-bottom: 24px;
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .quick-sample-talent-picker__field {
     width: 100%;
-    justify-content: space-between;
-  }
-
-  .quick-sample-talent-picker__field input {
-    flex: 1;
   }
 
   .quick-sample-talent-picker__grid {
-    grid-template-columns: 54px minmax(140px, 1fr) minmax(110px, .8fr) minmax(70px, .5fr);
-    padding: 0 12px;
+    grid-template-columns: 38px minmax(120px, 1fr) minmax(100px, .9fr) 64px;
+    padding: 0 10px;
   }
 
   .quick-sample-talent-picker__table-head span + span,
   .quick-sample-talent-picker__table-row span + span {
-    padding-left: 10px;
-  }
-
-  .quick-sample-talent-picker__table-head {
-    flex-basis: 64px;
-  }
-
-  .quick-sample-talent-picker__table-row {
-    min-height: 72px;
-    font-size: 14px;
-  }
-
-  .quick-sample-talent-picker__checkbox {
-    width: 24px;
-    height: 24px;
-  }
-
-  .quick-sample-talent-picker__footer {
-    gap: 12px;
-  }
-
-  .quick-sample-talent-picker__pagination {
-    gap: 4px;
+    padding-left: 8px;
   }
 }
 </style>

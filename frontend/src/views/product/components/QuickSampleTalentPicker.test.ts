@@ -8,12 +8,24 @@ const rows: QuickSampleTalentRow[] = [
   { value: 'C', nickname: '叮叮又喝了', douyinNo: '93810356967', fansCount: 3094 }
 ]
 
+const drawerStubs = {
+  NDrawer: {
+    inheritAttrs: false,
+    template: '<div v-bind="$attrs"><slot /></div>'
+  },
+  NDrawerContent: {
+    template: '<div><header><slot name="header" /></header><slot /><footer><slot name="footer" /></footer></div>'
+  }
+}
+
 describe('QuickSampleTalentPicker', () => {
   it('matches the selection layout and submits multiple selected talents', async () => {
     const wrapper = mount(QuickSampleTalentPicker, {
-      props: { show: true, rows, selectedValues: [] }
+      props: { show: true, rows, selectedValues: [] },
+      global: { stubs: drawerStubs }
     })
 
+    expect(wrapper.get('[data-testid="quick-sample-talent-picker-drawer"]').attributes('width')).toBe('860')
     expect(wrapper.get('[data-testid="quick-sample-talent-picker-title"]').text()).toContain('选择合作达人(0/20)')
     expect(wrapper.get('[data-testid="quick-sample-talent-picker"]').text()).toContain('共3条达人数据')
     expect(wrapper.get('[data-testid="quick-sample-talent-row-A"]').text()).toContain('2.5W')
@@ -30,7 +42,8 @@ describe('QuickSampleTalentPicker', () => {
 
   it('filters by nickname and douyin number before paging', async () => {
     const wrapper = mount(QuickSampleTalentPicker, {
-      props: { show: true, rows, selectedValues: [] }
+      props: { show: true, rows, selectedValues: [] },
+      global: { stubs: drawerStubs }
     })
 
     await wrapper.get('[data-testid="quick-sample-talent-nickname-search"]').setValue('叮叮')

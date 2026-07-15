@@ -1,11 +1,11 @@
-# Content Retirement Report
+﻿# Content Retirement Report
 
 ## Metadata
 
-- Time: 2026-07-15 18:27:35 +08:00
+- Time: 2026-07-15 18:42:27 +08:00
 - Action: Plan
 - DryRun: False
-- Reason: feat(frontend): add screenshot-aligned multi-select talent picker for quick sample
+- Reason: fix(frontend): use existing right drawer layout for quick sample talent picker
 - Manifest: (none)
 - ArchiveRoot: harness/archive/retired-content
 - AllowSourceCode: False
@@ -14,10 +14,10 @@
 
 ~~~text
 - docs/06-技术架构与数据模型.md [document-debt] -> review/resolve-from-debt-register; evidence=listed in harness/rules/state/snapshots/05-*.md debt register
-- docs/归档/旧版V2.2完整方案.md [document-debt] -> review/resolve-from-debt-register; evidence=listed in harness/rules/state/snapshots/05-*.md debt register
-- docs/领域/业绩域.md [document-debt] -> review/resolve-from-debt-register; evidence=listed in harness/rules/state/snapshots/05-*.md debt register
 - docs/deploy/02-jenkins-later.md [document-debt] -> review/resolve-from-debt-register; evidence=listed in harness/rules/state/snapshots/05-*.md debt register
 - docs/deploy/07-Jenkins自动化部署规划.md [document-debt] -> review/resolve-from-debt-register; evidence=listed in harness/rules/state/snapshots/05-*.md debt register
+- docs/归档/旧版V2.2完整方案.md [document-debt] -> review/resolve-from-debt-register; evidence=listed in harness/rules/state/snapshots/05-*.md debt register
+- docs/领域/业绩域.md [document-debt] -> review/resolve-from-debt-register; evidence=listed in harness/rules/state/snapshots/05-*.md debt register
 - out [generated-output-directory] -> review/delete-after-retention; evidence=generated output directory exists
 - playwright-report [generated-output-directory] -> review/delete-after-retention; evidence=generated output directory exists
 - test-results [generated-output-directory] -> review/delete-after-retention; evidence=generated output directory exists
