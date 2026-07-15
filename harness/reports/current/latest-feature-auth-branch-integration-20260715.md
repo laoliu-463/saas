@@ -2,12 +2,12 @@
 
 ## Metadata
 
-- Time: 2026-07-15 15:26:44 +08:00
+- Time: 2026-07-15 15:28:23 +08:00
 - Environment: real-pre
 - Scope: full
 - Branch: codex/feature-auth-integration-20260715
-- Commit: d358b07a
-- Owned worktree: dirty
+- Commit: 15387a20
+- Owned worktree: clean
 - Deploy remote: true
 
 ## Owned Files
@@ -48,13 +48,7 @@ harness/scripts/tests/git-push-safe.Tests.ps1
 ## Owned Git Status
 
 ~~~text
-M harness/rules/changelog.md
- M harness/scripts/commands/agent-do.ps1
- M harness/scripts/commands/git-push-safe.ps1
- D harness/scripts/tests/agent-do.Tests.ps1
-?? harness/reports/current/latest-feature-auth-branch-integration-20260715.md
-?? harness/scripts/tests/agent-do-conclusion.Tests.ps1
-?? harness/scripts/tests/git-push-safe.Tests.ps1
+(clean)
 ~~~
 
 ## Build Result
@@ -68,20 +62,19 @@ Frontend build: PASS (npm --prefix frontend ci; npm --prefix frontend run build)
 ## Docker Status
 
 ~~~text
-NAME                              IMAGE                            COMMAND                  SERVICE             CREATED          STATUS                            PORTS
-saas-active-backend-real-pre-1    colonel-saas/backend:real-pre    "sh -c 'java $JAVA_O…"   backend-real-pre    24 seconds ago   Up 20 seconds (healthy)           127.0.0.1:8081->8080/tcp
-saas-active-frontend-real-pre-1   colonel-saas/frontend:real-pre   "/docker-entrypoint.…"   frontend-real-pre   22 seconds ago   Up 4 seconds (health: starting)   127.0.0.1:3001->80/tcp
-saas-active-postgres-real-pre-1   postgres:15-alpine               "docker-entrypoint.s…"   postgres-real-pre   24 minutes ago   Up 23 minutes (healthy)           5432/tcp
-saas-active-redis-real-pre-1      redis:7-alpine                   "docker-entrypoint.s…"   redis-real-pre      4 weeks ago      Up 24 hours (healthy)             6379/tcp
-NAMES                             STATUS                            PORTS
-saas-active-frontend-real-pre-1   Up 4 seconds (health: starting)   127.0.0.1:3001->80/tcp
-saas-active-backend-real-pre-1    Up 20 seconds (healthy)           127.0.0.1:8081->8080/tcp
-saas-active-postgres-real-pre-1   Up 23 minutes (healthy)           5432/tcp
-campus_frontend                   Up 24 hours                       0.0.0.0:5173->5173/tcp, [::]:5173->5173/tcp
-campus_backend                    Up 24 hours (healthy)             0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp
-campus_postgres                   Up 24 hours (healthy)             0.0.0.0:5433->5432/tcp, [::]:5433->5432/tcp
-saas-active-redis-real-pre-1      Up 24 hours (healthy)             6379/tcp
-saas-test-backend-1               Up 23 hours (unhealthy)           0.0.0.0:5005->5005/tcp, [::]:5005->5005/tcp, 0.0.0.0:8080->8080/tcp, [::]:8080->8080/tcp
+NAME                              IMAGE                                                                     COMMAND                  SERVICE             CREATED          STATUS                        PORTS
+saas-active-backend-real-pre-1    sha256:da50a0f50b3b0c663383ff17147bf4c0c55ec1fc47cf9c68ecb6dfa804f25bcb   "sh -c 'java $JAVA_O…"   backend-real-pre    2 minutes ago    Up About a minute (healthy)   127.0.0.1:8081->8080/tcp
+saas-active-frontend-real-pre-1   sha256:c694db8fbd53454b4e8d1d5f154911585f3799b4e49f1630a30addb567112da1   "/docker-entrypoint.…"   frontend-real-pre   2 minutes ago    Up About a minute (healthy)   127.0.0.1:3001->80/tcp
+saas-active-postgres-real-pre-1   postgres:15-alpine                                                        "docker-entrypoint.s…"   postgres-real-pre   25 minutes ago   Up 25 minutes (healthy)       5432/tcp
+saas-active-redis-real-pre-1      redis:7-alpine                                                            "docker-entrypoint.s…"   redis-real-pre      4 weeks ago      Up 24 hours (healthy)         6379/tcp
+NAMES                             STATUS                        PORTS
+saas-active-frontend-real-pre-1   Up About a minute (healthy)   127.0.0.1:3001->80/tcp
+saas-active-backend-real-pre-1    Up About a minute (healthy)   127.0.0.1:8081->8080/tcp
+campus_frontend                   Up 24 hours                   0.0.0.0:5173->5173/tcp, [::]:5173->5173/tcp
+campus_backend                    Up 24 hours (healthy)         0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp
+campus_postgres                   Up 24 hours (healthy)         0.0.0.0:5433->5432/tcp, [::]:5433->5432/tcp
+saas-active-redis-real-pre-1      Up 24 hours (healthy)         6379/tcp
+saas-test-backend-1               Up 23 hours (unhealthy)       0.0.0.0:5005->5005/tcp, [::]:5005->5005/tcp, 0.0.0.0:8080->8080/tcp, [::]:8080->8080/tcp
 ~~~
 
 ## Health Check Result
@@ -105,7 +98,7 @@ Content maintenance skipped by -ContentMaintenance off.
 ## Remote Deploy Result
 
 ~~~text
-remote not deployed
+Remote deploy: PASS
 ~~~
 
 ## Retro Summary
