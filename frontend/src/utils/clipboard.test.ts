@@ -74,7 +74,7 @@ describe('tryCopyTextAndImage', () => {
     vi.restoreAllMocks()
   })
 
-  it('writes the formatted text and fetched product image as one clipboard payload', async () => {
+  it('writes rich HTML first so paste targets can keep the product image and formatted text together', async () => {
     const write = vi.fn().mockResolvedValue(undefined)
     setClipboard({ write, writeText: vi.fn() } as unknown as Clipboard)
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
@@ -96,11 +96,10 @@ describe('tryCopyTextAndImage', () => {
     })
 
     expect(write).toHaveBeenCalledOnce()
-    expect(Object.keys((write.mock.calls[0][0][0] as ClipboardItemMock).items)).toEqual([
-      'text/plain',
-      'text/html',
-      'image/png'
-    ])
+    const clipboardItems = (write.mock.calls[0][0][0] as ClipboardItemMock).items
+    expect(Object.keys(clipboardItems)).toEqual(['text/html', 'text/plain'])
+    await expect(clipboardItems['text/html'].text()).resolves.toContain('<img src="data:image/png;base64,')
+    await expect(clipboardItems['text/html'].text()).resolves.toContain('<div>商品文案</div>')
   })
 
   it('converts jpeg images to png before writing because browser clipboard write supports png', async () => {
@@ -144,11 +143,9 @@ describe('tryCopyTextAndImage', () => {
 
     expect(drawImage).toHaveBeenCalledOnce()
     expect(toBlob).toHaveBeenCalledOnce()
-    expect(Object.keys((write.mock.calls[0][0][0] as ClipboardItemMock).items)).toEqual([
-      'text/plain',
-      'text/html',
-      'image/png'
-    ])
+    const clipboardItems = (write.mock.calls[0][0][0] as ClipboardItemMock).items
+    expect(Object.keys(clipboardItems)).toEqual(['text/html', 'text/plain'])
+    await expect(clipboardItems['text/html'].text()).resolves.toContain('<img src="data:image/png;base64,')
   })
 
   it('falls back to text when the image cannot be fetched', async () => {

@@ -100,7 +100,11 @@ const convertImageToClipboardPng = async (blob: Blob): Promise<Blob> => {
 }
 
 /**
- * 尝试把文本和商品图片作为同一个剪贴板 payload 写入。
+ * 尝试把商品图片和文本写成同一个富文本剪贴板表示。
+ *
+ * 不再同时暴露独立 image/png 表示：Windows 与粘贴目标会从多个格式中选择一个，
+ * 微信会优先选择独立图片并丢弃同一 ClipboardItem 中的文字。富文本放在首位，
+ * 纯文本仅作为不支持 HTML 的目标端降级格式。
  * 图片读取失败（常见于 CDN 未开放 CORS）时只降级复制文本，不伪造图片已复制。
  */
 export async function tryCopyTextAndImage(
@@ -133,9 +137,8 @@ export async function tryCopyTextAndImage(
       const imageDataUrl = await readBlobAsDataUrl(clipboardImage)
       const html = `<img src="${imageDataUrl}" alt="商品图片"><div>${escapeHtml(text).replace(/\r?\n/g, '<br>')}</div>`
       const clipboardItem = new ClipboardItem({
-        'text/plain': new Blob([text], { type: 'text/plain' }),
         'text/html': new Blob([html], { type: 'text/html' }),
-        'image/png': clipboardImage
+        'text/plain': new Blob([text], { type: 'text/plain' })
       })
       await navigator.clipboard.write([clipboardItem])
       return { copied: true, imageCopied: true }
