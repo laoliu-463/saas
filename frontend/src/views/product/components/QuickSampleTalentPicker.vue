@@ -170,6 +170,12 @@ export interface QuickSampleTalentRow {
   nickname: string
   douyinNo: string
   fansCount?: number | string | null
+  avatarUrl?: string | null
+  talentLevel?: string | null
+  remark?: string | null
+  recipientName?: string | null
+  recipientPhone?: string | null
+  recipientAddress?: string | null
 }
 
 const PAGE_SIZE = 200

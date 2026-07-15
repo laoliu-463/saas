@@ -2,10 +2,10 @@
 
 ## Metadata
 
-- Time: 2026-07-15 18:42:27 +08:00
+- Time: 2026-07-15 19:27:22 +08:00
 - Action: Plan
 - DryRun: False
-- Reason: fix(frontend): use existing right drawer layout for quick sample talent picker
+- Reason: feat(frontend): add centered address modal and expand quick sample layout
 - Manifest: (none)
 - ArchiveRoot: harness/archive/retired-content
 - AllowSourceCode: False

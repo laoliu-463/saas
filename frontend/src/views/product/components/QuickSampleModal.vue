@@ -2,7 +2,7 @@
   <n-drawer
     v-model:show="visible"
     placement="right"
-    :width="DRAWER_WIDTH_PX.md"
+    :width="DRAWER_WIDTH_PX.lg"
     data-testid="quick-sample-drawer"
     @after-leave="resetForm"
   >
@@ -51,6 +51,78 @@
                 />
               </n-form-item>
 
+              <div class="quick-sample-talent-list" role="table" aria-label="已选合作达人" data-testid="quick-sample-selected-talents">
+                <div class="quick-sample-talent-list__head" role="row">
+                  <span role="columnheader">达人信息</span>
+                  <span role="columnheader">收货地址</span>
+                  <span role="columnheader">操作</span>
+                </div>
+                <div class="quick-sample-talent-list__body" role="rowgroup">
+                  <div
+                    v-for="row in selectedTalentRows"
+                    :key="row.value"
+                    class="quick-sample-talent-list__row"
+                    role="row"
+                    :data-testid="`quick-sample-selected-talent-${row.value}`"
+                  >
+                    <div class="quick-sample-talent-list__info" role="cell">
+                      <n-avatar round :size="52" :src="resolveSafeAvatarUrl(row.avatarUrl)">
+                        {{ (row.nickname || row.douyinNo || '达').slice(0, 1) }}
+                      </n-avatar>
+                      <div class="quick-sample-talent-list__info-copy">
+                        <strong class="quick-sample-talent-list__name">
+                          <span class="quick-sample-talent-list__douyin-icon" aria-hidden="true">♪</span>
+                          {{ row.nickname || row.douyinNo || '未命名达人' }}
+                        </strong>
+                        <span>抖音号：{{ row.douyinNo || row.value || '-' }}</span>
+                        <span>达人等级：{{ row.talentLevel || '-' }}</span>
+                        <span v-if="row.remark" class="quick-sample-talent-list__profile-remark">达人备注：{{ row.remark }}</span>
+                      </div>
+                    </div>
+
+                    <div class="quick-sample-talent-list__address" role="cell">
+                      <div v-if="talentAddressFor(row.value).loading" class="quick-sample-talent-list__address-loading">正在读取地址…</div>
+                      <template v-else>
+                        <strong v-if="hasTalentAddress(row.value)">
+                          {{ talentAddressFor(row.value).recipientName || '收货人未填写' }}
+                          {{ talentAddressFor(row.value).recipientPhone }}
+                        </strong>
+                        <span v-if="talentAddressFor(row.value).recipientAddress" class="quick-sample-talent-list__address-text">
+                          {{ talentAddressFor(row.value).recipientAddress }}
+                        </span>
+                        <span v-else class="quick-sample-talent-list__address-empty">暂无默认收货地址</span>
+                      </template>
+                      <div class="quick-sample-talent-list__address-actions">
+                        <n-button text type="primary" :data-testid="`quick-sample-address-edit-${row.value}`" @click="startTalentAddressEdit(row)">
+                          {{ hasTalentAddress(row.value) ? '编辑' : '添加' }}
+                        </n-button>
+                        <button type="button" class="quick-sample-talent-list__address-plus" :aria-label="`编辑${row.nickname || '达人'}地址`" @click="startTalentAddressEdit(row)">＋</button>
+                      </div>
+                    </div>
+
+                    <div class="quick-sample-talent-list__actions" role="cell">
+                      <n-button text type="primary" :data-testid="`quick-sample-remark-edit-${row.value}`" @click="toggleTalentRemark(row.value)">备注</n-button>
+                      <n-button text type="primary" :data-testid="`quick-sample-remove-talent-${row.value}`" @click="removeTalent(row.value)">删除</n-button>
+                    </div>
+
+                    <div v-if="remarkEditingTalentValue === row.value" class="quick-sample-talent-list__remark-editor">
+                      <span>本次寄样备注</span>
+                      <n-input
+                        v-model:value="form.remark"
+                        type="textarea"
+                        :autosize="{ minRows: 2, maxRows: 4 }"
+                        placeholder="请输入本次批量寄样备注"
+                        data-testid="quick-sample-remark"
+                      />
+                      <n-button text size="small" data-testid="quick-sample-remark-done" @click="remarkEditingTalentValue = ''">完成</n-button>
+                    </div>
+                  </div>
+                  <div v-if="!selectedTalentRows.length" class="quick-sample-talent-list__empty" data-testid="quick-sample-selected-talent-empty">
+                    请选择合作达人
+                  </div>
+                </div>
+              </div>
+
               <div class="quick-sample-talent-action">
                 <n-button
                   text
@@ -65,17 +137,6 @@
                 </n-button>
                 <span class="quick-sample-talent-action__count">（已选 {{ selectedTalentCount }}/20）</span>
               </div>
-
-              <div v-if="selectedTalentRows.length" class="quick-sample-selected-talents" data-testid="quick-sample-selected-talents">
-                <span
-                  v-for="row in selectedTalentRows"
-                  :key="row.value"
-                  class="quick-sample-selected-talent"
-                  data-testid="quick-sample-selected-talent"
-                >
-                  {{ row.nickname || row.douyinNo || row.value }}
-                </span>
-              </div>
             </section>
 
             <section class="quick-sample-section" data-testid="quick-sample-spec-section">
@@ -85,7 +146,6 @@
                 <div class="quick-sample-product-table__head" role="row">
                   <span role="columnheader">商品信息</span>
                   <span role="columnheader">商品规格</span>
-                  <span role="columnheader">备注</span>
                 </div>
                 <div class="quick-sample-product-table__row" role="row">
                   <div class="quick-sample-product-info" role="cell">
@@ -123,45 +183,7 @@
                     />
                   </div>
 
-                  <div class="quick-sample-product-remark" role="cell">
-                    <n-button
-                      v-if="!remarkEditing"
-                      text
-                      type="primary"
-                      data-testid="quick-sample-remark-edit"
-                      @click="remarkEditing = true"
-                    >
-                      编辑
-                    </n-button>
-                    <div v-else class="quick-sample-product-remark__editor">
-                      <n-input
-                        v-model:value="form.remark"
-                        type="textarea"
-                        :autosize="{ minRows: 2, maxRows: 4 }"
-                        placeholder="请输入备注"
-                        data-testid="quick-sample-remark"
-                      />
-                      <n-button text size="small" data-testid="quick-sample-remark-done" @click="remarkEditing = false">
-                        完成
-                      </n-button>
-                    </div>
-                  </div>
                 </div>
-              </div>
-            </section>
-
-            <section class="quick-sample-section quick-sample-section--optional" data-testid="quick-sample-address-section">
-              <h3 class="quick-sample-section__title">收货信息</h3>
-              <div class="quick-sample-address-grid">
-                <n-form-item label="收货人">
-                  <n-input v-model:value="form.recipientName" placeholder="收货人姓名" data-testid="quick-sample-recipient-name" />
-                </n-form-item>
-                <n-form-item label="联系电话">
-                  <n-input v-model:value="form.recipientPhone" placeholder="收货人手机号" data-testid="quick-sample-recipient-phone" />
-                </n-form-item>
-                <n-form-item label="收货地址">
-                  <n-input v-model:value="form.recipientAddress" type="textarea" rows="2" data-testid="quick-sample-address" />
-                </n-form-item>
               </div>
             </section>
           </n-form>
@@ -184,6 +206,41 @@
     </n-drawer-content>
   </n-drawer>
 
+  <n-modal
+    v-model:show="addressModalVisible"
+    preset="card"
+    :title="addressModalTitle"
+    closable
+    :mask-closable="false"
+    :style="{ width: '520px', maxWidth: 'calc(100vw - 32px)' }"
+    data-testid="quick-sample-address-modal"
+  >
+    <n-form label-placement="top" class="quick-sample-address-form">
+      <n-form-item label="收货人" required>
+        <n-input v-model:value="addressDraft.recipientName" placeholder="请输入收货人姓名" data-testid="quick-sample-address-recipient" />
+      </n-form-item>
+      <n-form-item label="手机号" required>
+        <n-input v-model:value="addressDraft.recipientPhone" placeholder="请输入收货人手机号" data-testid="quick-sample-address-phone" />
+      </n-form-item>
+      <n-form-item label="收货地址" required>
+        <n-input
+          v-model:value="addressDraft.recipientAddress"
+          type="textarea"
+          :autosize="{ minRows: 3, maxRows: 5 }"
+          placeholder="请输入详细收货地址"
+          data-testid="quick-sample-address-detail"
+        />
+      </n-form-item>
+    </n-form>
+
+    <template #footer>
+      <n-space justify="end" :size="8">
+        <n-button :disabled="addressSaving" data-testid="quick-sample-address-cancel" @click="cancelTalentAddressEdit">取消</n-button>
+        <n-button type="primary" :loading="addressSaving" data-testid="quick-sample-address-save" @click="saveTalentAddress">保存地址</n-button>
+      </n-space>
+    </template>
+  </n-modal>
+
   <QuickSampleTalentPicker
     v-model:show="talentSelectionVisible"
     :rows="talentOptions"
@@ -204,11 +261,13 @@ import {
   getTalentPrivate,
   getTalentByChannel,
   getTalentShippingAddress,
+  updateTalentShippingAddress,
   parsePrivateTalentPoolResponse,
   toPrivateTalentSelectOption
 } from '../../../api/talent'
 import { useAuthStore } from '../../../stores/auth'
 import { DRAWER_WIDTH_PX } from '../../../constants/ui'
+import { resolveSafeAvatarUrl } from '../../../utils/media'
 import { loadSampleChannelOptions } from '../../sample/sample-user-filter-options'
 import ProductSpecSelector from './ProductSpecSelector.vue'
 import QuickSampleTalentPicker, { type QuickSampleTalentRow } from './QuickSampleTalentPicker.vue'
@@ -228,7 +287,18 @@ const talentLoadFailed = ref(false)
 const talentOptions = ref<QuickSampleTalentRow[]>([])
 /** 下拉选项提交的是抖音 UID，收货地址接口需要达人记录 UUID。 */
 const talentRecordIdByValue = ref<Record<string, string>>({})
-const addressTalentValue = ref('')
+type TalentAddress = {
+  recipientName: string
+  recipientPhone: string
+  recipientAddress: string
+  loaded: boolean
+  loading: boolean
+}
+const talentShippingByValue = ref<Record<string, TalentAddress>>({})
+const addressEditingTalentValue = ref('')
+const addressDraft = ref({ recipientName: '', recipientPhone: '', recipientAddress: '' })
+const addressSaving = ref(false)
+const addressModalVisible = ref(false)
 /** 管理员可以选渠道并查询该渠道的达人，非管理员只能选自己的私海 */
 const isAdmin = computed(() => authStore.isAdmin)
 const talentEmptyHint = computed(() => {
@@ -278,7 +348,7 @@ const form = ref({
 })
 
 const talentSelectionVisible = ref(false)
-const remarkEditing = ref(false)
+const remarkEditingTalentValue = ref('')
 const selectedTalentCount = computed(() => form.value.talentIds.length)
 const selectedTalentRows = computed(() => form.value.talentIds
   .map((value) => talentOptions.value.find((row) => row.value === value))
@@ -308,6 +378,7 @@ const openTalentPicker = () => {
 
 const mapTalentSelectOptions = (records: any[]): QuickSampleTalentRow[] => {
   const recordIdMap: Record<string, string> = {}
+  const addressMap: Record<string, TalentAddress> = {}
   const options = records
     .map((item: any) => {
       const option = toPrivateTalentSelectOption(item)
@@ -316,15 +387,34 @@ const mapTalentSelectOptions = (records: any[]): QuickSampleTalentRow[] => {
       if (optionValue && UUID_PATTERN.test(recordId)) {
         recordIdMap[optionValue] = recordId
       }
+      const recipientName = String(item?.recipientName || item?.claim?.recipientName || item?.shippingRecipientName || '').trim()
+      const recipientPhone = String(item?.recipientPhone || item?.claim?.recipientPhone || item?.shippingRecipientPhone || '').trim()
+      const recipientAddress = String(item?.recipientAddress || item?.claim?.recipientAddress || item?.shippingRecipientAddress || '').trim()
+      if (optionValue) {
+        addressMap[optionValue] = {
+          recipientName,
+          recipientPhone,
+          recipientAddress,
+          loaded: Boolean(recipientName || recipientPhone || recipientAddress),
+          loading: false
+        }
+      }
       return {
         value: optionValue,
         nickname: String(item?.nickname || item?.talentName || '').trim(),
         douyinNo: String(item?.douyinNo || '').trim(),
-        fansCount: item?.fansCount ?? item?.fans ?? null
+        fansCount: item?.fansCount ?? item?.fans ?? null,
+        avatarUrl: String(item?.avatarUrl || '').trim() || null,
+        talentLevel: String(item?.talentLevel || item?.level || '').trim() || null,
+        remark: String(item?.remark || '').trim() || null,
+        recipientName: recipientName || null,
+        recipientPhone: recipientPhone || null,
+        recipientAddress: recipientAddress || null
       }
     })
     .filter((item: QuickSampleTalentRow) => item.value && (item.nickname || item.douyinNo))
   talentRecordIdByValue.value = recordIdMap
+  talentShippingByValue.value = addressMap
   return options
 }
 
@@ -384,7 +474,9 @@ const handleChannelChange = () => {
   form.value.talentIds = []
   talentOptions.value = []
   talentRecordIdByValue.value = {}
-  addressTalentValue.value = ''
+  talentShippingByValue.value = {}
+  addressEditingTalentValue.value = ''
+  remarkEditingTalentValue.value = ''
   talentSelectionVisible.value = false
   clearAddressFields()
   if (form.value.channelUserId) {
@@ -394,12 +486,138 @@ const handleChannelChange = () => {
 
 const handleTalentSelection = (talentIds: string[]) => {
   form.value.talentIds = talentIds.slice(0, 20)
+  addressEditingTalentValue.value = ''
+  remarkEditingTalentValue.value = ''
 }
 
 const clearAddressFields = () => {
   form.value.recipientName = ''
   form.value.recipientPhone = ''
   form.value.recipientAddress = ''
+}
+
+const talentAddressFor = (value: string): TalentAddress => {
+  return talentShippingByValue.value[value] || {
+    recipientName: '',
+    recipientPhone: '',
+    recipientAddress: '',
+    loaded: true,
+    loading: false
+  }
+}
+
+const hasTalentAddress = (value: string) => {
+  const address = talentAddressFor(value)
+  return Boolean(address.recipientName || address.recipientPhone || address.recipientAddress)
+}
+
+const addressModalTitle = computed(() => {
+  const value = addressEditingTalentValue.value
+  return value && hasTalentAddress(value) ? '编辑收货地址' : '添加收货地址'
+})
+
+const applyFirstTalentAddress = (value: string, address: TalentAddress) => {
+  if (String(form.value.talentIds?.[0] || '').trim() !== value) return
+  form.value.recipientName = address.recipientName
+  form.value.recipientPhone = address.recipientPhone
+  form.value.recipientAddress = address.recipientAddress
+}
+
+const ensureTalentShippingAddress = async (value: string) => {
+  const current = talentAddressFor(value)
+  if (current.loading || current.loaded) {
+    if (current.loaded) applyFirstTalentAddress(value, current)
+    return current
+  }
+
+  const talentRecordId = talentRecordIdByValue.value[value]
+  if (!talentRecordId) return current
+
+  talentShippingByValue.value = {
+    ...talentShippingByValue.value,
+    [value]: { ...current, loading: true }
+  }
+  try {
+    const addr = await getTalentShippingAddress(talentRecordId)
+    const next: TalentAddress = {
+      recipientName: String(addr?.recipientName || '').trim(),
+      recipientPhone: String(addr?.recipientPhone || '').trim(),
+      recipientAddress: String(addr?.recipientAddress || '').trim(),
+      loaded: true,
+      loading: false
+    }
+    talentShippingByValue.value = { ...talentShippingByValue.value, [value]: next }
+    applyFirstTalentAddress(value, next)
+    return next
+  } catch {
+    const next = { ...current, loaded: true, loading: false }
+    talentShippingByValue.value = { ...talentShippingByValue.value, [value]: next }
+    return next
+  }
+}
+
+const startTalentAddressEdit = (row: QuickSampleTalentRow) => {
+  const current = talentAddressFor(row.value)
+  addressDraft.value = {
+    recipientName: current.recipientName,
+    recipientPhone: current.recipientPhone,
+    recipientAddress: current.recipientAddress
+  }
+  addressEditingTalentValue.value = row.value
+  addressModalVisible.value = true
+}
+
+const cancelTalentAddressEdit = () => {
+  addressModalVisible.value = false
+  addressEditingTalentValue.value = ''
+}
+
+const saveTalentAddress = async () => {
+  const value = addressEditingTalentValue.value
+  const talentRecordId = talentRecordIdByValue.value[value]
+  if (!talentRecordId) {
+    message.warning('缺少达人记录 ID，暂时无法保存地址')
+    return
+  }
+  const normalizedAddress = {
+    recipientName: addressDraft.value.recipientName.trim(),
+    recipientPhone: addressDraft.value.recipientPhone.trim(),
+    recipientAddress: addressDraft.value.recipientAddress.trim()
+  }
+  if (!normalizedAddress.recipientName || !normalizedAddress.recipientPhone || !normalizedAddress.recipientAddress) {
+    message.warning('请完整填写收货人、手机号和收货地址')
+    return
+  }
+  addressSaving.value = true
+  try {
+    const saved: any = await updateTalentShippingAddress(talentRecordId, normalizedAddress)
+    const next: TalentAddress = {
+      recipientName: String(saved?.shippingRecipientName ?? saved?.recipientName ?? normalizedAddress.recipientName).trim(),
+      recipientPhone: String(saved?.shippingRecipientPhone ?? saved?.recipientPhone ?? normalizedAddress.recipientPhone).trim(),
+      recipientAddress: String(saved?.shippingRecipientAddress ?? saved?.recipientAddress ?? normalizedAddress.recipientAddress).trim(),
+      loaded: true,
+      loading: false
+    }
+    talentShippingByValue.value = { ...talentShippingByValue.value, [value]: next }
+    applyFirstTalentAddress(value, next)
+    addressDraft.value = { ...normalizedAddress }
+    cancelTalentAddressEdit()
+    message.success('已保存默认收货地址')
+  } catch (error: any) {
+    notifyApiFailure(error, message, { fallbackMessage: '保存默认收货地址失败' })
+  } finally {
+    addressSaving.value = false
+  }
+}
+
+const toggleTalentRemark = (value: string) => {
+  remarkEditingTalentValue.value = remarkEditingTalentValue.value === value ? '' : value
+}
+
+const removeTalent = (value: string) => {
+  form.value.talentIds = form.value.talentIds.filter((item) => item !== value)
+  if (remarkEditingTalentValue.value === value) remarkEditingTalentValue.value = ''
+  if (addressEditingTalentValue.value === value) cancelTalentAddressEdit()
 }
 
 const formatQuickSampleFailureDetail = (data: any) => {
@@ -427,40 +645,30 @@ watch(visible, (show) => {
   }
 }, { immediate: true })
 
-/** 选择达人后自动加载默认收货地址 */
-watch(() => form.value.talentIds, async (talentIds) => {
-  const selectedTalentValue = String(talentIds?.[0] || '').trim()
-  if (!selectedTalentValue) {
-    addressTalentValue.value = ''
+/** 选中达人后加载每位达人的默认收货地址；提交协议仍沿用首位达人地址兼容逻辑。 */
+watch(() => form.value.talentIds, (talentIds) => {
+  const selectedValues = talentIds.map((value) => String(value || '').trim()).filter(Boolean)
+  if (!selectedValues.length) {
     clearAddressFields()
     return
   }
-  // 多选时收货信息跟随第一位达人；同一位达人下用户手动修改后不重复覆盖。
-  if (selectedTalentValue === addressTalentValue.value) return
-  addressTalentValue.value = selectedTalentValue
-  clearAddressFields()
 
-  const talentRecordId = talentRecordIdByValue.value[selectedTalentValue]
-  if (!talentRecordId) return
-  try {
-    const addr = await getTalentShippingAddress(talentRecordId)
-    // 避免快速切换达人时，前一个请求的响应覆盖当前达人的地址。
-    if (String(form.value.talentIds?.[0] || '').trim() !== selectedTalentValue) return
-    form.value.recipientName = addr?.recipientName || ''
-    form.value.recipientPhone = addr?.recipientPhone || ''
-    form.value.recipientAddress = addr?.recipientAddress || ''
-  } catch {
-    // 加载地址失败不阻断寄样流程
-  }
-})
+  clearAddressFields()
+  selectedValues.forEach((value) => {
+    void ensureTalentShippingAddress(value)
+  })
+}, { deep: true })
 
 const resetForm = () => {
   form.value = { channelUserId: '', talentIds: [], skuId: '', specification: '', quantity: 1, recipientName: '', recipientPhone: '', recipientAddress: '', remark: '' }
   skuOptions.value = []
   talentRecordIdByValue.value = {}
-  addressTalentValue.value = ''
+  talentShippingByValue.value = {}
+  addressEditingTalentValue.value = ''
+  addressDraft.value = { recipientName: '', recipientPhone: '', recipientAddress: '' }
+  addressModalVisible.value = false
   talentSelectionVisible.value = false
-  remarkEditing.value = false
+  remarkEditingTalentValue.value = ''
 }
 
 const submit = async () => {
@@ -555,7 +763,7 @@ const submit = async () => {
 .quick-sample-body {
   width: 100%;
   margin: 0 auto;
-  padding: 16px 16px 24px;
+  padding: 18px 22px 28px;
   box-sizing: border-box;
 }
 
@@ -619,8 +827,8 @@ const submit = async () => {
 }
 
 .quick-sample-section {
-  margin-bottom: 16px;
-  padding: 14px 12px 16px;
+  margin-bottom: 18px;
+  padding: 16px 18px 18px;
   border: 1px solid var(--border-color, #e4e7eb);
   border-radius: 12px;
   background: var(--card-color, #fff);
@@ -628,9 +836,9 @@ const submit = async () => {
 }
 
 .quick-sample-section__title {
-  margin: 0 0 12px;
+  margin: 0 0 14px;
   color: var(--text-color-1, #172033);
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 700;
 }
 
@@ -639,7 +847,7 @@ const submit = async () => {
 }
 
 .quick-sample-section :deep(.n-form-item-label) {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
 }
 
@@ -651,43 +859,213 @@ const submit = async () => {
   display: flex;
   align-items: baseline;
   gap: 8px;
-  margin-top: 2px;
+  margin-top: 12px;
 }
 
 .quick-sample-talent-action :deep(.n-button) {
   color: var(--primary-color, #f5222d);
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 600;
 }
 
 .quick-sample-talent-action__plus {
-  font-size: 20px;
+  font-size: 18px;
   line-height: 1;
 }
 
 .quick-sample-talent-action__count {
   color: var(--text-color-2, #606873);
-  font-size: 14px;
-}
-
-.quick-sample-selected-talents {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 12px;
-}
-
-.quick-sample-selected-talent {
-  max-width: 100%;
-  overflow: hidden;
-  padding: 6px 12px;
-  border: 1px solid rgb(245 34 45 / 22%);
-  border-radius: 999px;
-  color: var(--primary-color, #f5222d);
-  background: rgb(245 34 45 / 6%);
   font-size: 13px;
+}
+
+.quick-sample-talent-list {
+  overflow: hidden;
+  border: 1px solid var(--border-color, #e4e7eb);
+  border-radius: 10px;
+  background: var(--card-color, #fff);
+}
+
+.quick-sample-talent-list__head,
+.quick-sample-talent-list__row {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.1fr) minmax(300px, 1.8fr) 88px;
+  align-items: center;
+}
+
+.quick-sample-talent-list__head {
+  min-height: 44px;
+  padding: 0 14px;
+  color: var(--text-color-1, #172033);
+  background: #fafafa;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.quick-sample-talent-list__body {
+  max-height: 520px;
+  overflow-y: auto;
+}
+
+.quick-sample-talent-list__row {
+  min-height: 132px;
+  padding: 14px 16px;
+  border-top: 1px solid var(--divider-color, #edf0f3);
+  column-gap: 18px;
+}
+
+.quick-sample-talent-list__info {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+
+.quick-sample-talent-list__info :deep(.n-avatar) {
+  flex: 0 0 auto;
+}
+
+.quick-sample-talent-list__info-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+  color: var(--text-color-2, #606873);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.quick-sample-talent-list__name {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  overflow: hidden;
+  color: var(--text-color-1, #172033);
+  font-size: 15px;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.quick-sample-talent-list__douyin-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  margin-right: 5px;
+  border-radius: 4px;
+  color: #fff;
+  background: #101217;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.quick-sample-talent-list__profile-remark {
+  overflow: hidden;
+  color: var(--text-muted, #999);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quick-sample-talent-list__address {
+  min-width: 0;
+  padding: 9px 12px;
+  border: 1px solid var(--border-color, #d9d9d9);
+  border-radius: 8px;
+  color: var(--text-color-1, #172033);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.quick-sample-talent-list__address > strong,
+.quick-sample-talent-list__address-text {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.quick-sample-talent-list__address > strong {
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.quick-sample-talent-list__address-text {
+  color: var(--text-color-1, #172033);
+  font-weight: 600;
+  white-space: normal;
+}
+
+.quick-sample-talent-list__address-empty,
+.quick-sample-talent-list__address-loading {
+  display: block;
+  color: var(--text-muted, #999);
+}
+
+.quick-sample-talent-list__address-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.quick-sample-talent-list__address-plus {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--primary-color, #f5222d);
+  border-radius: 50%;
+  color: var(--primary-color, #f5222d);
+  background: transparent;
+  font-size: 18px;
+  line-height: 18px;
+  cursor: pointer;
+}
+
+.quick-sample-talent-list__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.quick-sample-talent-list__actions :deep(.n-button) {
+  color: var(--primary-color, #f5222d);
+  font-size: 13px;
+}
+
+.quick-sample-address-form {
+  padding-top: 2px;
+}
+
+.quick-sample-address-form :deep(.n-form-item) {
+  margin-bottom: 14px;
+}
+
+.quick-sample-address-form :deep(.n-form-item-label) {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.quick-sample-talent-list__remark-editor {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding-top: 10px;
+  color: var(--text-color-2, #606873);
+  font-size: 13px;
+}
+
+.quick-sample-talent-list__empty {
+  display: flex;
+  min-height: 96px;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted, #999);
+  font-size: 14px;
 }
 
 .quick-sample-product-table {
@@ -828,16 +1206,6 @@ const submit = async () => {
   color: var(--primary-color, #f5222d);
 }
 
-.quick-sample-section--optional {
-  padding-bottom: 4px;
-}
-
-.quick-sample-address-grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 0;
-}
-
 @media (max-width: 900px) {
   .quick-sample-body {
     padding: 14px 12px 20px;
@@ -869,6 +1237,29 @@ const submit = async () => {
 
   .quick-sample-section__title {
     font-size: 14px;
+  }
+
+  .quick-sample-talent-list__head,
+  .quick-sample-talent-list__row {
+    grid-template-columns: minmax(150px, 1fr) minmax(170px, 1.2fr) 78px;
+  }
+
+  .quick-sample-talent-list__row {
+    column-gap: 8px;
+    padding: 10px;
+  }
+
+  .quick-sample-talent-list__name {
+    font-size: 14px;
+  }
+
+  .quick-sample-talent-list__info-copy,
+  .quick-sample-talent-list__address {
+    font-size: 12px;
+  }
+
+  .quick-sample-talent-list__remark-editor {
+    grid-template-columns: 1fr;
   }
 }
 </style>
