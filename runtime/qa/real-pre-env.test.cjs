@@ -9,6 +9,7 @@ const {
   DEFAULT_REAL_PRE_DB_CONTAINER,
   DEFAULT_REAL_PRE_FRONTEND_URL,
   applyRealPreEnv,
+  applyQaAdminCredentialToE2eEnv,
   isRealPreRuntime,
   normalizeSystemEnv,
   redactSecretLikeKeys,
@@ -72,7 +73,7 @@ test('resolveQaAdminCredential prefers an explicit QA credential', () => {
 
 test('resolveQaAdminCredential reads ADMIN_PASSWORD from the supplied local env file', () => {
   const envFile = path.join(os.tmpdir(), `saas-real-pre-env-${Date.now()}-file`);
-  fs.writeFileSync(envFile, '# local only\nADMIN_PASSWORD=file-pwd\n', 'utf8');
+  fs.writeFileSync(envFile, '# local only\nQA_ADMIN_PASSWORD=ignored\nADMIN_PASSWORD=file-pwd\n', 'utf8');
   try {
     assert.equal(resolveQaAdminCredential({}, { envFile }), 'file-pwd');
   } finally {
@@ -87,6 +88,13 @@ test('resolveQaAdminCredential has no insecure hardcoded fallback', () => {
   } finally {
     fs.rmSync(envFile, { force: true });
   }
+});
+
+test('applyQaAdminCredentialToE2eEnv only sets the admin E2E password', () => {
+  const env = {};
+  applyQaAdminCredentialToE2eEnv(env, 'x');
+  assert.equal(env.E2E_ADMIN_PASSWORD, 'x');
+  assert.equal(env.E2E_DEFAULT_PASSWORD, undefined);
 });
 
 test('normalizeSystemEnv accepts REAL-PRE only on real-pre profile when test switches are off', () => {

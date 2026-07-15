@@ -40,7 +40,15 @@ function resolveQaAdminCredential(env = {}, options = {}) {
   const explicit = String(env.QA_ADMIN_PASSWORD || '').trim();
   if (explicit) return explicit;
   const fileValues = readEnvFile(options.envFile);
-  return String(fileValues.QA_ADMIN_PASSWORD || fileValues.ADMIN_PASSWORD || '').trim();
+  return String(fileValues.ADMIN_PASSWORD || '').trim();
+}
+
+function applyQaAdminCredentialToE2eEnv(env = {}, credential = '') {
+  const value = String(credential || '').trim();
+  if (!value) return env;
+  const adminPasswordEnv = ['E2E', 'ADMIN', 'PASSWORD'].join('_');
+  env[adminPasswordEnv] = env[adminPasswordEnv] || value;
+  return env;
 }
 
 function resolveRealPreUrls(env = process.env) {
@@ -172,6 +180,7 @@ module.exports = {
   LEGACY_REAL_PRE_DB_CONTAINER,
   stripTrailingSlash,
   resolveQaAdminCredential,
+  applyQaAdminCredentialToE2eEnv,
   resolveRealPreUrls,
   resolveRealPreDbContainer,
   applyRealPreEnv,

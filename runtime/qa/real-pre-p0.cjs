@@ -21,6 +21,7 @@ const fs = require('node:fs');
 const { spawnSync } = require('node:child_process');
 const {
   applyRealPreEnv,
+  applyQaAdminCredentialToE2eEnv,
   ensureDir,
   formatLocalTimestamp,
   resolveQaAdminCredential,
@@ -77,9 +78,8 @@ const qaAdminCredential = resolveQaAdminCredential(process.env, {
 });
 if (qaAdminCredential) {
   const qaPasswordEnv = ['QA', 'ADMIN', 'PASSWORD'].join('_');
-  const defaultPasswordEnv = ['E2E', 'DEFAULT', 'PASSWORD'].join('_');
   process.env[qaPasswordEnv] = process.env[qaPasswordEnv] || qaAdminCredential;
-  process.env[defaultPasswordEnv] = process.env[defaultPasswordEnv] || qaAdminCredential;
+  applyQaAdminCredentialToE2eEnv(process.env, qaAdminCredential);
 }
 process.env.QA_RUN_ID = runId;
 process.env.E2E_REAL_PRE = 'true';
