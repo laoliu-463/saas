@@ -69,6 +69,11 @@ vi.mock('naive-ui', async (importOriginal) => {
   }
 })
 
+async function chooseTalentFromPicker(wrapper: any) {
+  await wrapper.get('[data-testid="quick-sample-talent-row-TALENT-1"]').trigger('click')
+  await wrapper.get('[data-testid="quick-sample-talent-picker-submit"]').trigger('click')
+}
+
 describe('QuickSampleModal', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -122,7 +127,9 @@ describe('QuickSampleModal', () => {
     expect(wrapper.find('[data-testid="quick-sample-spec-section"]').text()).toContain('商品规格')
     expect(wrapper.find('[data-testid="quick-sample-spec-section"]').text()).toContain('备注')
     await wrapper.get('[data-testid="quick-sample-add-talent"]').trigger('click')
-    expect(wrapper.get('[data-testid="quick-sample-talents"]').attributes('data-filterable')).toBe('true')
+    expect(wrapper.get('[data-testid="quick-sample-talent-picker"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="quick-sample-talent-nickname-search"]').exists()).toBe(true)
+    await wrapper.get('[data-testid="quick-sample-talent-picker-cancel"]').trigger('click')
     await wrapper.get('[data-testid="quick-sample-remark-edit"]').trigger('click')
     expect(wrapper.find('[data-testid="quick-sample-remark"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="quick-sample-submit"]').exists()).toBe(true)
@@ -166,7 +173,7 @@ describe('QuickSampleModal', () => {
     await wrapper.get('[data-testid="quick-sample-channel"]').trigger('click')
     await flushPromises()
     await wrapper.get('[data-testid="quick-sample-add-talent"]').trigger('click')
-    await wrapper.get('[data-testid="quick-sample-talents"]').trigger('click')
+    await chooseTalentFromPicker(wrapper)
     await wrapper.get('[data-testid="quick-sample-submit"]').trigger('click')
     await flushPromises()
 
@@ -216,7 +223,7 @@ describe('QuickSampleModal', () => {
     await flushPromises()
 
     await wrapper.get('[data-testid="quick-sample-add-talent"]').trigger('click')
-    await wrapper.get('[data-testid="quick-sample-talents"]').trigger('click')
+    await chooseTalentFromPicker(wrapper)
     await flushPromises()
 
     expect(getTalentShippingAddress).toHaveBeenCalledWith('22222222-2222-4222-8222-222222222222')
@@ -276,7 +283,7 @@ describe('QuickSampleModal', () => {
     await flushPromises()
 
     await wrapper.get('[data-testid="quick-sample-add-talent"]').trigger('click')
-    await wrapper.get('[data-testid="quick-sample-talents"]').trigger('click')
+    await chooseTalentFromPicker(wrapper)
     await wrapper.get('[data-testid="quick-sample-spec"]').trigger('click')
     await wrapper.get('[data-testid="quick-sample-submit"]').trigger('click')
     await flushPromises()
@@ -334,7 +341,7 @@ describe('QuickSampleModal', () => {
     await flushPromises()
 
     await wrapper.get('[data-testid="quick-sample-add-talent"]').trigger('click')
-    await wrapper.get('[data-testid="quick-sample-talents"]').trigger('click')
+    await chooseTalentFromPicker(wrapper)
     await wrapper.get('[data-testid="quick-sample-submit"]').trigger('click')
     await flushPromises()
 
@@ -389,7 +396,7 @@ describe('QuickSampleModal', () => {
     await flushPromises()
 
     await wrapper.get('[data-testid="quick-sample-add-talent"]').trigger('click')
-    await wrapper.get('[data-testid="quick-sample-talents"]').trigger('click')
+    await chooseTalentFromPicker(wrapper)
     await wrapper.get('[data-testid="quick-sample-submit"]').trigger('click')
     await flushPromises()
 

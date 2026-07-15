@@ -66,24 +66,15 @@
                 <span class="quick-sample-talent-action__count">（已选 {{ selectedTalentCount }}/20）</span>
               </div>
 
-              <div v-if="talentPickerVisible" class="quick-sample-talent-picker">
-                <n-form-item :label="talentFieldLabel" required>
-                  <n-select
-                    v-model:value="form.talentIds"
-                    :options="talentOptions"
-                    :loading="talentLoading"
-                    multiple
-                    filterable
-                    clearable
-                    max-tag-count="responsive"
-                    :placeholder="talentPlaceholder"
-                    data-testid="quick-sample-talents"
-                  >
-                    <template #empty>
-                      {{ talentEmptyHint }}
-                    </template>
-                  </n-select>
-                </n-form-item>
+              <div v-if="selectedTalentRows.length" class="quick-sample-selected-talents" data-testid="quick-sample-selected-talents">
+                <span
+                  v-for="row in selectedTalentRows"
+                  :key="row.value"
+                  class="quick-sample-selected-talent"
+                  data-testid="quick-sample-selected-talent"
+                >
+                  {{ row.nickname || row.douyinNo || row.value }}
+                </span>
               </div>
             </section>
 
@@ -192,6 +183,15 @@
       </template>
     </n-drawer-content>
   </n-drawer>
+
+  <QuickSampleTalentPicker
+    v-model:show="talentSelectionVisible"
+    :rows="talentOptions"
+    :selected-values="form.talentIds"
+    :loading="talentLoading"
+    :empty-text="talentEmptyHint"
+    @update:selected-values="handleTalentSelection"
+  />
 </template>
 
 <script setup lang="ts">
@@ -211,6 +211,7 @@ import { useAuthStore } from '../../../stores/auth'
 import { DRAWER_WIDTH_PX } from '../../../constants/ui'
 import { loadSampleChannelOptions } from '../../sample/sample-user-filter-options'
 import ProductSpecSelector from './ProductSpecSelector.vue'
+import QuickSampleTalentPicker, { type QuickSampleTalentRow } from './QuickSampleTalentPicker.vue'
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const props = defineProps<{ product: any | null }>()
@@ -224,16 +225,12 @@ const channelLoading = ref(false)
 const channelOptions = ref<Array<{ label: string; value: string }>>([])
 const talentLoading = ref(false)
 const talentLoadFailed = ref(false)
-const talentOptions = ref<Array<{ label: string; value: string }>>([])
+const talentOptions = ref<QuickSampleTalentRow[]>([])
 /** 下拉选项提交的是抖音 UID，收货地址接口需要达人记录 UUID。 */
 const talentRecordIdByValue = ref<Record<string, string>>({})
 const addressTalentValue = ref('')
 /** 管理员可以选渠道并查询该渠道的达人，非管理员只能选自己的私海 */
 const isAdmin = computed(() => authStore.isAdmin)
-const talentFieldLabel = computed(() => (isAdmin.value ? '合作达人' : '私海达人'))
-const talentPlaceholder = computed(() =>
-  isAdmin.value ? '请选择合作达人' : '选择当前渠道已认领达人'
-)
 const talentEmptyHint = computed(() => {
   if (talentLoading.value) return '加载中…'
   if (talentLoadFailed.value) return '加载失败，请关闭弹窗后重试'
@@ -280,9 +277,12 @@ const form = ref({
   remark: ''
 })
 
-const talentPickerVisible = ref(false)
+const talentSelectionVisible = ref(false)
 const remarkEditing = ref(false)
 const selectedTalentCount = computed(() => form.value.talentIds.length)
+const selectedTalentRows = computed(() => form.value.talentIds
+  .map((value) => talentOptions.value.find((row) => row.value === value))
+  .filter((row): row is QuickSampleTalentRow => Boolean(row)))
 const productTitle = computed(() => String(
   props.product?.title || props.product?.productName || props.product?.name || '未命名商品'
 ).trim())
@@ -303,10 +303,10 @@ const openTalentPicker = () => {
     message.warning('请先选择媒介')
     return
   }
-  talentPickerVisible.value = true
+  talentSelectionVisible.value = true
 }
 
-const mapTalentSelectOptions = (records: any[]) => {
+const mapTalentSelectOptions = (records: any[]): QuickSampleTalentRow[] => {
   const recordIdMap: Record<string, string> = {}
   const options = records
     .map((item: any) => {
@@ -316,9 +316,14 @@ const mapTalentSelectOptions = (records: any[]) => {
       if (optionValue && UUID_PATTERN.test(recordId)) {
         recordIdMap[optionValue] = recordId
       }
-      return option
+      return {
+        value: optionValue,
+        nickname: String(item?.nickname || item?.talentName || '').trim(),
+        douyinNo: String(item?.douyinNo || '').trim(),
+        fansCount: item?.fansCount ?? item?.fans ?? null
+      }
     })
-    .filter((item: { label: string; value: string }) => item.label && item.value)
+    .filter((item: QuickSampleTalentRow) => item.value && (item.nickname || item.douyinNo))
   talentRecordIdByValue.value = recordIdMap
   return options
 }
@@ -380,11 +385,15 @@ const handleChannelChange = () => {
   talentOptions.value = []
   talentRecordIdByValue.value = {}
   addressTalentValue.value = ''
-  talentPickerVisible.value = false
+  talentSelectionVisible.value = false
   clearAddressFields()
   if (form.value.channelUserId) {
     loadTalents()
   }
+}
+
+const handleTalentSelection = (talentIds: string[]) => {
+  form.value.talentIds = talentIds.slice(0, 20)
 }
 
 const clearAddressFields = () => {
@@ -416,7 +425,7 @@ watch(visible, (show) => {
     loadTalents()
     loadSkus()
   }
-})
+}, { immediate: true })
 
 /** 选择达人后自动加载默认收货地址 */
 watch(() => form.value.talentIds, async (talentIds) => {
@@ -450,7 +459,7 @@ const resetForm = () => {
   skuOptions.value = []
   talentRecordIdByValue.value = {}
   addressTalentValue.value = ''
-  talentPickerVisible.value = false
+  talentSelectionVisible.value = false
   remarkEditing.value = false
 }
 
@@ -661,12 +670,24 @@ const submit = async () => {
   font-size: 14px;
 }
 
-.quick-sample-talent-picker {
-  max-width: 560px;
-  margin-top: 10px;
-  padding: 12px;
-  border-radius: 12px;
-  background: var(--hover-color, #f8f9fb);
+.quick-sample-selected-talents {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.quick-sample-selected-talent {
+  max-width: 100%;
+  overflow: hidden;
+  padding: 6px 12px;
+  border: 1px solid rgb(245 34 45 / 22%);
+  border-radius: 999px;
+  color: var(--primary-color, #f5222d);
+  background: rgb(245 34 45 / 6%);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .quick-sample-product-table {
