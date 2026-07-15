@@ -1,5 +1,7 @@
 ﻿# Evidence Report
 
+> Superseded by `latest-product-library-rich-clipboard-html.md`. This experiment embedded image bytes in HTML and did not collect WeChat/Feishu client paste evidence; it must not be used as cross-platform PASS evidence.
+
 ## Metadata
 
 - Time: 2026-07-15 17:48:05 +08:00
@@ -83,8 +85,9 @@ No actionable Harness improvement was recorded; no standalone retro is required.
 
 ## Conclusion
 
-PASS
+PARTIAL
 
 ## Residual Risk
 
-- Items marked as not collected are not proof of success.
+- 微信与飞书客户端真实粘贴未采集，不能声明跨平台 PASS。
+- 后续实现与最终阶段性证据见 `latest-product-library-rich-clipboard-html.md`。
