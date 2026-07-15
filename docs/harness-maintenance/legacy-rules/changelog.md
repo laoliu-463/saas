@@ -12,7 +12,8 @@
 - 远端 `.env.real-pre` 必须收敛为指向 `/opt/saas/env/.env.real-pre` 的软链接；普通文件或目标不一致时停止部署。
 - Compose 固定使用 `saas-active` project，并先收敛 PostgreSQL、Redis 的 working dir、配置文件和 env-file 来源；不删除 volume、不强制重建数据容器。
 - 增加部署脚本 Pester 契约测试，并同步远端部署 runbook 与部署运行总览。
-- `agent-do` 在 real-pre 业务验证期间从 canonical env 只读注入管理员凭据，日志仅显示 redacted，验证结束后恢复原进程环境；消除默认演示密码导致的错误 401。
+- `git-push-safe.ps1` 显式将 `HEAD` 推送到当前分支配置的 upstream ref，支持隔离工作树分支名与远端主线名不同的场景，仍保持非 force 推送。
+- `agent-do` 远端部署后保留 `SkipBusinessValidation` 的 `PARTIAL` 结论，不再把未验证业务链误写为 `PASS`。
 
 ### v0.8.0 — 2026-07-13
 - 实施 ADR-013：活跃目录 40/50、非脚本文本 160/200、reports 根目标 20，并区分 `TASK_GATE` 与 `REPOSITORY_HEALTH`。
