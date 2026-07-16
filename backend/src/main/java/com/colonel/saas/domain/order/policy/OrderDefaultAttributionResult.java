@@ -1,53 +1,71 @@
 package com.colonel.saas.domain.order.policy;
 
+import com.colonel.saas.domain.shared.attribution.AttributionSource;
+import com.colonel.saas.service.AttributionService;
+
 import java.util.UUID;
 
-/**
- * 订单默认归因结果（DDD-ORDER-004）。仅包含默认渠道与默认招商，不含独家/最终归属/提成。
- */
+/** 订单默认归因结果；渠道和招商是两个互不覆盖的事实维度。 */
 public record OrderDefaultAttributionResult(
         UUID defaultChannelUserId,
         UUID channelDeptId,
         UUID defaultRecruiterId,
+        String channelAttributionSource,
+        String recruiterAttributionSource,
+        String attributionStatus,
+        String attributionRemark,
+        OrderLinkAttributionResolution linkResolution,
         UUID talentId,
         String talentUid,
-        String activityId,
-        String attributionStatus,
-        String attributionRemark) {
+        String activityId) {
+
+    public static OrderDefaultAttributionResult attributed(
+            UUID defaultChannelUserId,
+            UUID channelDeptId,
+            UUID defaultRecruiterId,
+            String channelAttributionSource,
+            String recruiterAttributionSource,
+            UUID talentId,
+            String talentUid,
+            String activityId,
+            OrderLinkAttributionResolution linkResolution) {
+        return new OrderDefaultAttributionResult(
+                defaultChannelUserId,
+                channelDeptId,
+                defaultRecruiterId,
+                sourceOrUnattributed(channelAttributionSource),
+                sourceOrUnattributed(recruiterAttributionSource),
+                AttributionService.STATUS_ATTRIBUTED,
+                linkResolution == null ? AttributionService.REASON_ATTRIBUTED : linkResolution.reason(),
+                linkResolution,
+                talentId,
+                talentUid,
+                activityId);
+    }
 
     public static OrderDefaultAttributionResult unattributed(
             UUID talentId,
             String talentUid,
             String activityId,
-            UUID defaultRecruiterId,
-            String remark) {
+            String channelAttributionSource,
+            String recruiterAttributionSource,
+            String remark,
+            OrderLinkAttributionResolution linkResolution) {
         return new OrderDefaultAttributionResult(
                 null,
                 null,
-                defaultRecruiterId,
+                null,
+                sourceOrUnattributed(channelAttributionSource),
+                sourceOrUnattributed(recruiterAttributionSource),
+                AttributionService.STATUS_UNATTRIBUTED,
+                remark,
+                linkResolution,
                 talentId,
                 talentUid,
-                activityId,
-                com.colonel.saas.service.AttributionService.STATUS_UNATTRIBUTED,
-                remark);
+                activityId);
     }
 
-    public static OrderDefaultAttributionResult attributedChannel(
-            UUID defaultChannelUserId,
-            UUID channelDeptId,
-            UUID talentId,
-            String talentUid,
-            String activityId,
-            UUID defaultRecruiterId,
-            String remark) {
-        return new OrderDefaultAttributionResult(
-                defaultChannelUserId,
-                channelDeptId,
-                defaultRecruiterId,
-                talentId,
-                talentUid,
-                activityId,
-                com.colonel.saas.service.AttributionService.STATUS_ATTRIBUTED,
-                remark);
+    private static String sourceOrUnattributed(String source) {
+        return source == null || source.isBlank() ? AttributionSource.UNATTRIBUTED : source;
     }
 }

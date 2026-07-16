@@ -5,11 +5,11 @@ import com.colonel.saas.domain.order.policy.OrderAttributionInput;
 import com.colonel.saas.domain.order.policy.OrderDefaultAttributionPolicy;
 import com.colonel.saas.domain.order.policy.OrderDefaultAttributionPolicy.RecruiterLookup;
 import com.colonel.saas.domain.order.policy.OrderDefaultAttributionResult;
+import com.colonel.saas.domain.order.policy.OrderLinkAttributionResolution;
 import com.colonel.saas.domain.product.facade.ProductDomainFacade;
 import com.colonel.saas.domain.talent.facade.TalentDomainFacade;
 import com.colonel.saas.domain.talent.facade.dto.TalentReadDTO;
 import com.colonel.saas.entity.ColonelsettlementOrder;
-import com.colonel.saas.entity.PickSourceMapping;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -19,7 +19,7 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * 默认归因解析器（DDD-ORDER-004）：加载映射与商品负责人后委派 {@link OrderDefaultAttributionPolicy}。
+ * 默认归因解析器（DDD-ORDER-004）：加载推广链接归属和活动招商后委派 {@link OrderDefaultAttributionPolicy}。
  */
 @Service
 public class OrderDefaultAttributionResolver {
@@ -54,28 +54,22 @@ public class OrderDefaultAttributionResolver {
                 input.secondActivityId(),
                 input.businessTime());
 
-        PickSourceMapping channelMapping = pickSourceMappingAdapter.findByPickSourceOrExtra(
-                enriched.pickSource(),
-                enriched.pickExtra());
-        RecruiterLookup recruiterLookup = loadRecruiterLookup(enriched.activityId(), enriched.productId());
+        OrderLinkAttributionResolution linkResolution = pickSourceMappingAdapter.resolve(enriched);
+        RecruiterLookup recruiterLookup = loadRecruiterLookup(enriched.activityId());
 
-        return OrderDefaultAttributionPolicy.resolve(enriched, channelMapping, recruiterLookup);
+        return OrderDefaultAttributionPolicy.resolve(enriched, linkResolution, recruiterLookup);
     }
 
-    private RecruiterLookup loadRecruiterLookup(String activityId, String productId) {
+    private RecruiterLookup loadRecruiterLookup(String activityId) {
         try {
-            UUID productAssignee = null;
             UUID activityDefault = null;
-            if (StringUtils.hasText(activityId) && StringUtils.hasText(productId)) {
-                productAssignee = productDomainFacade.findProductAssigneeId(activityId.trim(), productId.trim());
-            }
             if (StringUtils.hasText(activityId)) {
                 activityDefault = productDomainFacade.findActivityDefaultRecruiterId(activityId.trim());
             }
-            return new RecruiterLookup(productAssignee, activityDefault, false);
+            return new RecruiterLookup(activityDefault, false);
         } catch (Exception ex) {
-            log.warn("Default recruiter lookup failed: activityId={}, productId={}", activityId, productId, ex);
-            return new RecruiterLookup(null, null, true);
+            log.warn("Activity recruiter lookup failed: activityId={}", activityId, ex);
+            return new RecruiterLookup(null, true);
         }
     }
 
