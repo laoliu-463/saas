@@ -33,6 +33,15 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 
 /**
+ * 手动触发的活动商品后台同步服务 (god service - 边缘服务, 不再 DDD 切片).
+ *
+ * <p><strong>当前状态 (2026-07-14):</strong></p>
+ * <ul>
+ *   <li>1057 行, 7-12 死锁事件直接路径</li>
+ *   <li>已 owner-safe 修复 (commit 4c41af50 P0-R1)</li>
+ *   <li>已接 DistributedConcurrencyLimiter (commit 653eb41b P9.4)</li>
+ *   <li>不切理由: 跨 service 协调 + lock 协议复杂, 切片风险高于收益</li>
+ * </ul>
  * 手动触发的活动商品后台同步服务。
  */
 @Slf4j

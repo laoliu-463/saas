@@ -23,6 +23,14 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
+ * 仪表盘数据聚合服务 (god service - 边缘服务, 不再 DDD 切片).
+ *
+ * <p><strong>当前状态 (2026-07-14):</strong></p>
+ * <ul>
+ *   <li>1131 行 / 19 public method</li>
+ *   <li>跨域聚合 (OrderService / OrderSyncService 等)</li>
+ *   <li>不切理由: 跨域聚合 + dashboard 单一职责, 不再 DDD 切片</li>
+ * </ul>
  * 仪表盘数据聚合服务。
  *
  * <p>职责：为前端仪表盘提供订单总览、渠道/招商员业绩排名、未归因原因分布、

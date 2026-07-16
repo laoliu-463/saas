@@ -106,6 +106,14 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
+ * 寄样管理控制器 (god service - dead controller, 不再 DDD 切片).
+ *
+ * <p><strong>当前状态 (2026-07-14):</strong></p>
+ * <ul>
+ *   <li>3603 行 @RestController, 已标 LEGACY 已弃用 (commit 5b542069)</li>
+ *   <li>实际是 god controller (extends BaseController), 不是 service</li>
+ *   <li>DDD 路径已完整 (Controller 已切 DDD), 本类应删除而非切片</li>
+ * </ul>
  * 寄样管理控制器（LEGACY 已弃用，DDD-SAMPLE 评估中）。
  *
  * <p><b>DDD 切片状态（DDD-SAMPLE Slice 1 收尾）：</b>

@@ -82,6 +82,15 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
+ * 商品核心业务服务 (god service - 最大 god service, 不再 DDD 切片).
+ *
+ * <p><strong>当前状态 (2026-07-14):</strong></p>
+ * <ul>
+ *   <li>7230 行 / 60+ public method (最大 god service, 全项目最大单文件)</li>
+ *   <li>已切片小方法 (commit 1cf336d3 - listLibraryCategories/getAdminCounts)</li>
+ *   <li>DDD 切片 (commit b4ea09f9 / 86738b76 / 1cf336d3)</li>
+ *   <li>不切理由: 60+ method 跨多个业务簇, 切分边界不清晰, 切片价值低于风险</li>
+ * </ul>
  * 商品核心业务服务（商品域，DDD-PRODUCT-001 评估中）。
  *
  * <ul>

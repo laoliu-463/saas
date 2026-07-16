@@ -39,6 +39,14 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
+ * 活动商品全量回补服务 (god service - 边缘服务, 不再 DDD 切片).
+ *
+ * <p><strong>当前状态 (2026-07-14):</strong></p>
+ * <ul>
+ *   <li>1559 行, 7-12 死锁事件直接路径</li>
+ *   <li>已 owner-safe 修复 (commit 387b3e10 P9.5 阶段 2)</li>
+ *   <li>不切理由: 跨 service 协调复杂 + 7-12 死锁事件已修复, 切片价值低</li>
+ * </ul>
  * 活动商品全量回补服务。
  *
  * <p>Phase 4-1.5 deadlock 修复要点：</p>

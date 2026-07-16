@@ -26,6 +26,14 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
+ * 精选联盟商品转链映射管理服务 (god service - 边缘服务, 不再 DDD 切片).
+ *
+ * <p><strong>当前状态 (2026-07-14):</strong></p>
+ * <ul>
+ *   <li>1043 行 / 15 public method (含 5 个 saveOrUpdate 重载)</li>
+ *   <li>5+ 跨域 caller (AttributionService / OrderSyncPersistenceService / ProductService / PromotionApi / DouyinContractFixtureProvider / TestDouyinOrderGateway)</li>
+ *   <li>不切理由: 跨域 caller 多 + 14 参 saveOrUpdate 重载, 切片必牵连 caller</li>
+ * </ul>
  * 精选联盟商品转链映射管理服务。
  * <p>
  * 维护 {@link PickSourceMapping} 记录，支持两种来源类型：

@@ -39,6 +39,14 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
+ * 商品库展示去重规则引擎服务 (god service - 边缘服务, 不再 DDD 切片).
+ *
+ * <p><strong>当前状态 (2026-07-14):</strong></p>
+ * <ul>
+ *   <li>1507 行 / 35 public method</li>
+ *   <li>不切理由: 35 method 跨多个业务簇 (去重/计算/调度), 切分边界不清晰</li>
+ *   <li>与 3 个 god controller 处置一致</li>
+ * </ul>
  * 商品库展示去重规则引擎服务。
  * <p>
  * 核心规则：同一 {@code product_id} 下的所有运营状态记录中，最多只能有一条处于
