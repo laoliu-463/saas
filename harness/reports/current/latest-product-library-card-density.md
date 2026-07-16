@@ -68,6 +68,26 @@ Local health verification: PASS
 Business validation: PASS (npm run e2e:real-pre:p0:preflight)
 ~~~
 
+## Frontend Regression Result
+
+~~~text
+Latest feature/auth-system baseline: PASS (95 files, 729 tests)
+Post-cherry-pick full suite: PASS (96 files, 731 tests)
+TypeScript typecheck: PASS
+Code review graph: risk 0.30, affected flows 0, test gaps 0
+~~~
+
+## Remote Artifact Verification
+
+~~~text
+Remote app revision: e9e39f1d859aa00a430e747a923be8ea9c760891
+Backend health: PASS ({"status":"UP"})
+Frontend health: PASS (ok)
+ProductLibrary bundle contains: product-copy-id, product-id-value
+ProductLibrary bundle excludes: product-copy-url, product-refresh, product-detail-btn
+Remote frontend artifact: PASS
+~~~
+
 ## Content Maintenance Result
 
 ~~~text
