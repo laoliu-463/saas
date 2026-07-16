@@ -1,13 +1,16 @@
 package com.colonel.saas.domain.order.event;
 
+import com.colonel.saas.domain.order.policy.OrderDefaultAttributionResult;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.event.OrderSyncedEvent;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * 订单事件载荷映射（DDD-ORDER-005）。
@@ -39,7 +42,7 @@ public class OrderEventPayloadMapper {
                 order.getOrderStatus(),
                 resolveOrderCreateTime(order),
                 resolveTalentUid(order.getExtraData()),
-                order.getExtraData(),
+                enrichExtraDataWithDualAttributionStatus(order),
                 order.getProductId(),
                 order.getActivityId(),
                 order.getShopId() == null ? null : String.valueOf(order.getShopId()),
@@ -117,6 +120,54 @@ public class OrderEventPayloadMapper {
             }
         }
         return null;
+    }
+
+    /**
+     * 复制订单 extraData 并注入双维度归属状态。
+     * <p>为什么不在 record 字段里加：{@code OrderSyncedEvent} 已是 36 参数 record，
+     * 改 record 会触发 Outbox 序列化 / 反序列化 / 全部调用方一连串升级。当前切片先走 extraData
+     * 通道，下一切片再决定是否升级为 record 字段。</p>
+     * <p>不可变保护：调用方传入的 {@code Map.of(...)} 不可变；这里复制为 {@code LinkedHashMap}，
+     * 不修改调用方引用。</p>
+     */
+    private Map<String, Object> enrichExtraDataWithDualAttributionStatus(ColonelsettlementOrder order) {
+        Map<String, Object> enriched = new LinkedHashMap<>();
+        Map<String, Object> source = order.getExtraData();
+        if (source != null) {
+            enriched.putAll(source);
+        }
+        enriched.put(
+                "channel_attribution_status",
+                resolveChannelAttributionStatus(order));
+        enriched.put(
+                "recruiter_attribution_status",
+                resolveRecruiterAttributionStatus(order));
+        return enriched;
+    }
+
+    private String resolveChannelAttributionStatus(ColonelsettlementOrder order) {
+        if (order != null
+                && StringUtils.hasText(order.getChannelAttributionStatus())) {
+            return order.getChannelAttributionStatus();
+        }
+        if (order != null && order.getChannelUserId() != null) {
+            return OrderDefaultAttributionResult.CHANNEL_ATTRIBUTED;
+        }
+        return OrderDefaultAttributionResult.CHANNEL_UNATTRIBUTED;
+    }
+
+    private String resolveRecruiterAttributionStatus(ColonelsettlementOrder order) {
+        if (order != null
+                && StringUtils.hasText(order.getRecruiterAttributionStatus())) {
+            return order.getRecruiterAttributionStatus();
+        }
+        UUID recruiterId = order == null ? null : order.getColonelUserId();
+        if (recruiterId == null) {
+            recruiterId = order == null ? null : order.getUserId();
+        }
+        return recruiterId == null
+                ? OrderDefaultAttributionResult.RECRUITER_UNATTRIBUTED
+                : OrderDefaultAttributionResult.RECRUITER_ATTRIBUTED;
     }
 
     private String resolveString(Map<String, Object> extraData, List<String> keys) {
