@@ -74,6 +74,27 @@ Local health verification: PASS
 Business validation: PASS (npm run e2e:real-pre:p0:preflight)
 ~~~
 
+## Frontend Regression Result
+
+~~~text
+Targeted unit/component tests: PASS (3 files, 27 tests)
+Full frontend tests: PASS (96 files, 726 tests)
+TypeScript typecheck: PASS
+~~~
+
+## Headless Browser Validation Result
+
+~~~text
+Route: http://127.0.0.1:3001/product/library
+Loaded products: 100
+First card title: fully visible; CSS line-clamp=none
+First card product ID: full 19-digit value visible
+Card grid gap: 8px
+Per-card quick actions: copy ID=1, copy image-text URL=0, refresh=0, detail=0
+Copy ID button: click completed without page error
+Console errors after product-library navigation: 0
+~~~
+
 ## Content Maintenance Result
 
 ~~~text
