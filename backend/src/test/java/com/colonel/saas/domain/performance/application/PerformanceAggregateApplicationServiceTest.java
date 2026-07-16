@@ -335,13 +335,4 @@ class PerformanceAggregateApplicationServiceTest {
                 .contains("LIMIT 10");
     }
 
-    /**
-     * Phase 1: OrderSyncedEvent 事件订阅 (handleOrderSynced) - null 事件不抛异常.
-     *
-     * <p>测试 Phase 1 修复: 事件订阅 + 异常隔离. 验证 null 事件不抛异常.</p>
-     */
-    @Test
-    void handleOrderSynced_nullEvent_doesNotThrow() {
-        applicationService.handleOrderSynced(null);
-    }
 }

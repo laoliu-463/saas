@@ -49,6 +49,13 @@ class DddPerformanceRecordGenerationEntrypointTest {
     }
 
     @Test
+    void performanceDomainShouldNotSubscribeToOrderSyncedEvent() throws IOException {
+        assertThat(mainJavaFilesContaining(Pattern.compile("\\bOrderSyncedEvent\\b")))
+                .filteredOn(path -> path.startsWith("com/colonel/saas/domain/performance/"))
+                .isEmpty();
+    }
+
+    @Test
     void eventAndManualEntrypointsShouldDelegateIntoTheSameGenerationFunnel() throws IOException {
         assertSourceContains(
                 "src/main/java/com/colonel/saas/listener/PerformanceRecordSyncListener.java",

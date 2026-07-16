@@ -2,10 +2,10 @@
 
 ## Metadata
 
-- Time: 2026-07-15 19:27:22 +08:00
+- Time: 2026-07-16 22:55:18 +08:00
 - Action: Plan
 - DryRun: False
-- Reason: feat(frontend): add centered address modal and expand quick sample layout
+- Reason: refactor(ddd): keep a single performance order event consumer
 - Manifest: (none)
 - ArchiveRoot: harness/archive/retired-content
 - AllowSourceCode: False
@@ -18,9 +18,6 @@
 - docs/deploy/07-Jenkins自动化部署规划.md [document-debt] -> review/resolve-from-debt-register; evidence=listed in harness/rules/state/snapshots/05-*.md debt register
 - docs/归档/旧版V2.2完整方案.md [document-debt] -> review/resolve-from-debt-register; evidence=listed in harness/rules/state/snapshots/05-*.md debt register
 - docs/领域/业绩域.md [document-debt] -> review/resolve-from-debt-register; evidence=listed in harness/rules/state/snapshots/05-*.md debt register
-- out [generated-output-directory] -> review/delete-after-retention; evidence=generated output directory exists
-- playwright-report [generated-output-directory] -> review/delete-after-retention; evidence=generated output directory exists
-- test-results [generated-output-directory] -> review/delete-after-retention; evidence=generated output directory exists
 ~~~
 
 ## Planned / Applied Operations
