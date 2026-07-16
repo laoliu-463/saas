@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { reactive } from 'vue'
@@ -483,5 +486,14 @@ describe('ProductLibrary infinite scroll', () => {
     const visibleProductIds = wrapper.findAll('[data-testid="product-card"]').map((card) => card.text())
     expect(visibleProductIds).not.toContain('product-1')
     expect(visibleProductIds.some((id) => Number(id.replace('product-', '')) > 80)).toBe(true)
+  })
+
+  it('does not wire removed per-card refresh actions and uses compact grid gaps', () => {
+    const source = readFileSync(resolve(process.cwd(), 'src/views/product/ProductLibrary.vue'), 'utf8')
+
+    expect(source).not.toContain('@refresh="refreshProductRow"')
+    expect(source).not.toContain('const refreshProductRow = async')
+    expect(source).toMatch(/\.product-grid\s*\{[^}]*gap:\s*8px/s)
+    expect(source).toMatch(/\.product-grid__virtual-window\s*\{[^}]*gap:\s*8px/s)
   })
 })
