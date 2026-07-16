@@ -91,6 +91,43 @@ class SampleOrderCopyPolicyTest {
         assertThat(text).doesNotContain("sales30d", "sales_30d");
     }
 
+    @Test
+    void format_shouldKeepThirteenLinesWhenDynamicTextContainsControlCharacters() {
+        String text = policy.format(new SampleOrderCopyPolicy.OrderCopyFacts(
+                " 轻奢\r\n店铺：伪造\u0000尾 ",
+                "\u0000\u0001",
+                "中文，标点！\u2028第二段",
+                2,
+                "\u0007",
+                "\r\n\u0001",
+                "达人甲\n收货人：伪造",
+                "dy001\r伪造",
+                68000L,
+                321L,
+                "\u0002张三",
+                "138\u00090000",
+                "杭州\u2029西湖\u001F区"));
+
+        assertThat(text).isEqualTo(String.join("\n",
+                "商品名称：轻奢 店铺：伪造 尾",
+                "商品ID：---",
+                "店铺：中文，标点！ 第二段",
+                "申请数量：2",
+                "商品规格：---",
+                "申样备注：",
+                "达人昵称：达人甲 收货人：伪造",
+                "抖音号：dy001 伪造",
+                "粉丝数：6.8W",
+                "近30天橱窗销量：321",
+                "收货人：张三",
+                "收货电话：138 0000",
+                "收货地址：杭州 西湖 区"));
+        assertThat(text.split("\n", -1)).hasSize(13);
+        assertThat(text)
+                .doesNotContain("\r", "\u2028", "\u2029", "\u0000", "\u0007")
+                .doesNotContain("\n店铺：伪造", "\n收货人：伪造");
+    }
+
     private String followerLine(Long followers) {
         String text = policy.format(new SampleOrderCopyPolicy.OrderCopyFacts(
                 "商品", "P-1", "店铺", 1, "规格", "备注",

@@ -4,6 +4,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
+import java.util.regex.Pattern;
 
 /**
  * 寄样合作单的订单复制文本策略。
@@ -15,6 +16,8 @@ public class SampleOrderCopyPolicy {
 
     private static final long TEN_THOUSAND = 10_000L;
     private static final String PLACEHOLDER = "---";
+    private static final Pattern UNSAFE_SINGLE_LINE_PATTERN =
+            Pattern.compile("[\\p{Cc}\\u2028\\u2029]+");
 
     public String format(OrderCopyFacts facts) {
         return String.join("\n",
@@ -55,11 +58,20 @@ public class SampleOrderCopyPolicy {
     }
 
     private String textOrPlaceholder(String value) {
-        return StringUtils.hasText(value) ? value.trim() : PLACEHOLDER;
+        String singleLine = sanitizeSingleLine(value);
+        return StringUtils.hasText(singleLine) ? singleLine : PLACEHOLDER;
     }
 
     private String textOrEmpty(String value) {
-        return StringUtils.hasText(value) ? value.trim() : "";
+        String singleLine = sanitizeSingleLine(value);
+        return StringUtils.hasText(singleLine) ? singleLine : "";
+    }
+
+    private String sanitizeSingleLine(String value) {
+        if (value == null) {
+            return null;
+        }
+        return UNSAFE_SINGLE_LINE_PATTERN.matcher(value).replaceAll(" ").trim();
     }
 
     /** 生成文案所需的只读事实。 */
