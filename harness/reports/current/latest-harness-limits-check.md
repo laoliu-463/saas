@@ -3,7 +3,7 @@
 ## Status
 
 - TASK_GATE=PASS
-- REPOSITORY_HEALTH=PASS
+- REPOSITORY_HEALTH=PARTIAL
 
 ## Active Budgets
 
@@ -18,4 +18,4 @@
 - None
 
 ## Historical Debt
-- None
+- [DIRECT_FILE_COUNT_EXCEEDED] harness/reports: Repository file count 23 exceeds 20.
