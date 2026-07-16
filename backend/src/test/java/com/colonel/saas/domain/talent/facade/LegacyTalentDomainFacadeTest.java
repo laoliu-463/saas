@@ -250,4 +250,20 @@ class LegacyTalentDomainFacadeTest {
 
         assertThat(facade.findTalentById(talentId).windowSales30d()).isNull();
     }
+
+    @Test
+    void findTalentById_supportedWindowSalesShouldPrecedeAliasesAndAmountFields() {
+        UUID talentId = UUID.randomUUID();
+        Talent talent = new Talent();
+        talent.setId(talentId);
+        talent.setRawPayload(Map.of(
+                "windowSales30d", 41L,
+                "window_sales_30d", 42L,
+                "showcaseSales30d", 43L,
+                "sales30d", 9900L,
+                "sales_30d", 8800L));
+        when(talentMapper.selectById(talentId)).thenReturn(talent);
+
+        assertThat(facade.findTalentById(talentId).windowSales30d()).isEqualTo(41L);
+    }
 }

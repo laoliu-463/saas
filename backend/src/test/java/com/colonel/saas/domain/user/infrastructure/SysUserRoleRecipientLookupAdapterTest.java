@@ -11,14 +11,23 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.lang.reflect.Method;
 import java.util.List;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class SysUserRoleRecipientLookupAdapterTest {
+
+    private static final Pattern ROLE_CODE_FOREACH_CONTRACT = Pattern.compile(
+            "and\\s+sr\\.role_code\\s+in\\s*"
+                    + "<foreach\\s+collection=\"rolecodes\"\\s+item=\"rolecode\"\\s+"
+                    + "open=\"\\(\"\\s+separator=\",\"\\s+close=\"\\)\">\\s*"
+                    + "#\\{rolecode}\\s*</foreach>",
+            Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
 
     @Mock
     private SysUserMapper sysUserMapper;
@@ -51,9 +60,7 @@ class SysUserRoleRecipientLookupAdapterTest {
 
     @Test
     void mapperQuery_shouldFilterActiveUsersRolesAndRelations() throws Exception {
-        Method method = SysUserMapper.class.getMethod("findActiveIdsByRoleCodes", java.util.Collection.class);
-        Select select = method.getAnnotation(Select.class);
-        String sql = String.join(" ", select.value()).replaceAll("\\s+", " ").toLowerCase();
+        String sql = mapperSql();
 
         assertThat(sql)
                 .contains("select distinct su.id")
@@ -66,5 +73,30 @@ class SysUserRoleRecipientLookupAdapterTest {
                 .contains("su.status = 1")
                 .contains("<otherwise>")
                 .contains("1 = 0");
+        assertRoleCodeForeachContract(sql);
+    }
+
+    @Test
+    void roleCodeForeachContract_shouldRejectBrokenPredicateCollectionOrPlaceholder() throws Exception {
+        String sql = mapperSql();
+
+        assertRejectedContractMutation(sql.replace("and sr.role_code in", ""));
+        assertRejectedContractMutation(sql.replace("collection=\"rolecodes\"", "collection=\"ids\""));
+        assertRejectedContractMutation(sql.replace("#{rolecode}", "#{id}"));
+    }
+
+    private static String mapperSql() throws Exception {
+        Method method = SysUserMapper.class.getMethod("findActiveIdsByRoleCodes", java.util.Collection.class);
+        Select select = method.getAnnotation(Select.class);
+        return String.join(" ", select.value()).replaceAll("\\s+", " ").toLowerCase();
+    }
+
+    private static void assertRoleCodeForeachContract(String sql) {
+        assertThat(sql).containsPattern(ROLE_CODE_FOREACH_CONTRACT);
+    }
+
+    private static void assertRejectedContractMutation(String mutatedSql) {
+        assertThatThrownBy(() -> assertRoleCodeForeachContract(mutatedSql))
+                .isInstanceOf(AssertionError.class);
     }
 }
