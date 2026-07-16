@@ -1,11 +1,19 @@
 import { describe, expect, it } from 'vitest'
-import { getProductActions } from './product-actions'
+import { canGenerateAttributionPromotionLink, getProductActions } from './product-actions'
 import type { ProductManageRow } from '../../types/productManage'
 
 const keys = (row: ProductManageRow) =>
   getProductActions(row, { roles: ['biz_leader', 'biz_staff'], isAdmin: false }).map((item) => item.key)
 
 describe('product action rules', () => {
+  it('allows every channel or recruiting role to generate an attributable promotion link', () => {
+    expect(canGenerateAttributionPromotionLink({ roles: ['channel_leader'] })).toBe(true)
+    expect(canGenerateAttributionPromotionLink({ roles: ['channel_staff'] })).toBe(true)
+    expect(canGenerateAttributionPromotionLink({ roles: ['biz_leader'] })).toBe(true)
+    expect(canGenerateAttributionPromotionLink({ roles: ['biz_staff'] })).toBe(true)
+    expect(canGenerateAttributionPromotionLink({ roles: ['viewer'] })).toBe(false)
+  })
+
   it('shows only approve reject and detail for pending review rows', () => {
     expect(keys({ officialStatus: 'PENDING_REVIEW' })).toEqual(['approve', 'reject', 'detail'])
   })

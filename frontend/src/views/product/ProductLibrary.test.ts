@@ -15,6 +15,11 @@ const messageMock = vi.hoisted(() => ({
   info: vi.fn()
 }))
 
+const authState = vi.hoisted(() => ({
+  roleCodes: ['channel_leader'] as string[],
+  isAdmin: false
+}))
+
 vi.mock('../../api/product', () => ({
   getProducts: vi.fn(),
   getProductLibraryCategories: vi.fn()
@@ -25,10 +30,7 @@ vi.mock('../../api/activityProduct', () => ({
 }))
 
 vi.mock('../../stores/auth', () => ({
-  useAuthStore: () => ({
-    roleCodes: [ROLE_CODES.CHANNEL_LEADER],
-    isAdmin: false
-  })
+  useAuthStore: () => authState
 }))
 
 const routeState = reactive({
@@ -104,7 +106,8 @@ function mountLibrary(options: { attachTo?: HTMLElement } = {}) {
           `
         },
         ProductSelectionCard: {
-          props: ['card'],
+          name: 'ProductSelectionCard',
+          props: ['card', 'canCopyBrief'],
           template: '<article data-testid="product-card">{{ card.productId }}</article>'
         },
         ProductDetail: true,
@@ -137,6 +140,8 @@ describe('ProductLibrary infinite scroll', () => {
     routeState.path = '/product'
     routeState.query = {}
     vi.mocked(getProductLibraryCategories).mockResolvedValue({ data: [] } as any)
+    authState.roleCodes = [ROLE_CODES.CHANNEL_LEADER]
+    authState.isAdmin = false
     lastIntersectionCallback = null
     const intersectionObserverMock = vi.fn((callback: IntersectionObserverCallback) => {
       lastIntersectionCallback = callback
@@ -153,6 +158,18 @@ describe('ProductLibrary infinite scroll', () => {
       writable: true,
       value: intersectionObserverMock
     })
+  })
+
+  it('allows recruiting staff to generate an attributable promotion link', async () => {
+    authState.roleCodes = [ROLE_CODES.BIZ_STAFF]
+    vi.mocked(getProducts).mockResolvedValue({
+      data: { records: buildRows(1, 1), total: 1, hasMore: false, nextCursor: null }
+    } as any)
+
+    const wrapper = mountLibrary()
+    await flushPromises()
+
+    expect(wrapper.findComponent({ name: 'ProductSelectionCard' }).props('canCopyBrief')).toBe(true)
   })
 
   afterEach(() => {
