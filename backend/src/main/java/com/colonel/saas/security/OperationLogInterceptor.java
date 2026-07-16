@@ -137,7 +137,7 @@ public class OperationLogInterceptor implements HandlerInterceptor {
             entry.setUserAgent(request.getHeader("User-Agent"));
             entry.setDurationMs(resolveDuration(request));
             entry.setErrorMessage(ex == null ? null : ex.getMessage());
-            entry.setRequestParams(copyParams(request.getParameterMap()));
+            entry.setRequestParams(copyParams(request.getParameterMap(), request.getRequestURI()));
 
             // 根据处理器类型提取模块和操作元数据
             if (handler instanceof HandlerMethod handlerMethod) {
@@ -229,12 +229,19 @@ public class OperationLogInterceptor implements HandlerInterceptor {
      * @param parameterMap Servlet 原始参数映射
      * @return 复制后的参数 Map，可安全序列化；若输入为空则返回 {@code null}
      */
-    private Map<String, Object> copyParams(Map<String, String[]> parameterMap) {
+    private Map<String, Object> copyParams(
+            Map<String, String[]> parameterMap,
+            String requestUri) {
         if (parameterMap == null || parameterMap.isEmpty()) {
             return null;
         }
         Map<String, Object> result = new LinkedHashMap<>();
+        boolean complaintCreate = isComplaintCreateRoute(requestUri);
         parameterMap.forEach((key, value) -> {
+            if (complaintCreate && "content".equals(key)) {
+                result.put(key, "[REDACTED]");
+                return;
+            }
             if (value == null) {
                 result.put(key, null);
             } else if (value.length == 1) {
@@ -244,6 +251,14 @@ public class OperationLogInterceptor implements HandlerInterceptor {
             }
         });
         return result;
+    }
+
+    private boolean isComplaintCreateRoute(String requestUri) {
+        if (requestUri == null) {
+            return false;
+        }
+        return requestUri.matches(
+                "^/(?:api/)?samples/[0-9a-fA-F-]{36}/complaints/?$");
     }
 
     /**

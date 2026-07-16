@@ -12,6 +12,7 @@ import com.colonel.saas.dto.sample.SampleBatchActionRequest;
 import com.colonel.saas.dto.sample.SampleBatchShipRequest;
 import com.colonel.saas.dto.sample.SampleCooperationUpdateRequest;
 import com.colonel.saas.dto.sample.SamplePrivateNoteRequest;
+import com.colonel.saas.dto.talent.TalentComplaintCreateRequest;
 import com.colonel.saas.domain.sample.policy.SampleCooperationActionPolicy;
 import com.colonel.saas.domain.talent.facade.TalentDomainFacade;
 import com.colonel.saas.domain.talent.facade.dto.TalentComplaintRiskDTO;
@@ -26,6 +27,7 @@ import com.colonel.saas.vo.sample.SamplePrivateNoteVO;
 import com.colonel.saas.vo.sample.SampleStatusTransitionVO;
 import com.colonel.saas.vo.sample.SampleVO;
 import com.colonel.saas.vo.sample.StatusLogVO;
+import com.colonel.saas.vo.talent.TalentComplaintVO;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -201,6 +203,22 @@ public class SampleApplicationService {
         }
         return sampleCooperationApplicationService.copyOrder(
                 id, userId, deptId, dataScope, roleCodes);
+    }
+
+    public TalentComplaintVO createComplaint(
+            UUID id,
+            TalentComplaintCreateRequest request,
+            List<? extends MultipartFile> files,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            Object roleCodes) {
+        if (sampleCooperationApplicationService == null) {
+            throw com.colonel.saas.common.exception.BusinessException.stateInvalid(
+                    "达人投诉能力不可用，请检查应用服务装配");
+        }
+        return sampleCooperationApplicationService.createComplaint(
+                id, request, files, userId, deptId, dataScope, roleCodes);
     }
 
     public ApiResult<List<StatusLogVO>> getStatusLogs(

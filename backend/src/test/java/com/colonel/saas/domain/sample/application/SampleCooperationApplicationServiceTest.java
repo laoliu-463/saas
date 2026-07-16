@@ -15,6 +15,7 @@ import com.colonel.saas.domain.sample.policy.SampleCooperationActionPolicy;
 import com.colonel.saas.domain.sample.policy.SampleOrderCopyPolicy;
 import com.colonel.saas.domain.sample.policy.SampleRemarkPolicy;
 import com.colonel.saas.domain.talent.facade.TalentDomainFacade;
+import com.colonel.saas.domain.talent.facade.TalentComplaintFacade;
 import com.colonel.saas.domain.talent.facade.dto.TalentClaimAddressDTO;
 import com.colonel.saas.domain.talent.facade.dto.TalentComplaintRiskDTO;
 import com.colonel.saas.domain.talent.facade.dto.TalentReadDTO;
@@ -22,6 +23,7 @@ import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.dto.sample.SampleCooperationUpdateRequest;
 import com.colonel.saas.dto.sample.SamplePrivateNoteRequest;
+import com.colonel.saas.dto.talent.TalentComplaintCreateRequest;
 import com.colonel.saas.entity.SamplePrivateNote;
 import com.colonel.saas.entity.SampleRequest;
 import com.colonel.saas.mapper.SamplePrivateNoteMapper;
@@ -30,6 +32,8 @@ import com.colonel.saas.vo.sample.SampleEditContextVO;
 import com.colonel.saas.vo.sample.SampleCopyTextVO;
 import com.colonel.saas.vo.sample.SamplePrivateNoteVO;
 import com.colonel.saas.vo.sample.SampleVO;
+import com.colonel.saas.vo.talent.TalentComplaintVO;
+import org.springframework.mock.web.MockMultipartFile;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -77,6 +81,8 @@ class SampleCooperationApplicationServiceTest {
     private TalentDomainFacade talentDomainFacade;
     @Mock
     private ProductPromotionFacade productPromotionFacade;
+    @Mock
+    private TalentComplaintFacade talentComplaintFacade;
 
     private SampleCooperationApplicationService service;
 
@@ -261,6 +267,72 @@ class SampleCooperationApplicationServiceTest {
     }
 
     @Test
+    void createComplaint_shouldCheckScopedVisibilityBeforeReadingRawFactsAndNeverChangeSampleStatus() {
+        UUID sampleId = UUID.randomUUID();
+        UUID viewerId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        UUID talentId = UUID.randomUUID();
+        UUID productId = UUID.randomUUID();
+        Object roles = List.of(RoleCodes.CHANNEL_STAFF);
+        SampleRequest sample = sample(sampleId, ownerId, talentId, SampleStatus.SHIPPING, 4);
+        sample.setProductId(productId);
+        SampleVO visible = visibleSample(sample);
+        TalentComplaintCreateRequest request =
+                new TalentComplaintCreateRequest("LOW_PRICE_RESALE", "存在低价倒卖");
+        MockMultipartFile file = new MockMultipartFile(
+                "files", "proof.jpg", "image/jpeg",
+                new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, 0x01});
+        TalentComplaintVO created = new TalentComplaintVO(
+                UUID.randomUUID(), sampleId, talentId, productId, viewerId,
+                "LOW_PRICE_RESALE", "存在低价倒卖", "SUBMITTED", List.of(), null);
+        when(sampleQueryApplicationService.getVisibleSampleById(
+                sampleId, viewerId, null, DataScope.PERSONAL, roles))
+                .thenReturn(visible);
+        when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
+        when(talentComplaintFacade.create(
+                sampleId, talentId, productId, viewerId, request, List.of(file)))
+                .thenReturn(created);
+        SampleCooperationApplicationService complaintService = serviceWithComplaintFacade();
+
+        TalentComplaintVO result = complaintService.createComplaint(
+                sampleId, request, List.of(file),
+                viewerId, null, DataScope.PERSONAL, roles);
+
+        assertThat(result).isSameAs(created);
+        assertThat(sample.getStatus()).isEqualTo(SampleStatus.SHIPPING.getCode());
+        InOrder order = inOrder(
+                sampleQueryApplicationService, sampleRequestMapper, talentComplaintFacade);
+        order.verify(sampleQueryApplicationService).getVisibleSampleById(
+                sampleId, viewerId, null, DataScope.PERSONAL, roles);
+        order.verify(sampleRequestMapper).selectById(sampleId);
+        order.verify(talentComplaintFacade).create(
+                sampleId, talentId, productId, viewerId, request, List.of(file));
+        verify(sampleRequestMapper, never()).insert(any(SampleRequest.class));
+        verify(sampleRequestMapper, never()).updateById(any(SampleRequest.class));
+    }
+
+    @Test
+    void createComplaint_shouldHideInvisibleSampleBeforeRawReadOrComplaintWrite() {
+        UUID sampleId = UUID.randomUUID();
+        UUID viewerId = UUID.randomUUID();
+        Object roles = List.of(RoleCodes.CHANNEL_STAFF);
+        when(sampleQueryApplicationService.getVisibleSampleById(
+                sampleId, viewerId, null, DataScope.PERSONAL, roles))
+                .thenThrow(new ForbiddenException("无权查看"));
+        SampleCooperationApplicationService complaintService = serviceWithComplaintFacade();
+
+        assertThatThrownBy(() -> complaintService.createComplaint(
+                sampleId,
+                new TalentComplaintCreateRequest("OTHER", "其他原因"),
+                List.of(), viewerId, null, DataScope.PERSONAL, roles))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Sample request not found");
+
+        verify(sampleRequestMapper, never()).selectById(any());
+        verifyNoInteractions(talentComplaintFacade);
+    }
+
+    @Test
     void copyOrder_shouldRenderPlaceholderWhenVisibleCompatibilityQuantityIsOneButRawQuantityIsNull() {
         UUID sampleId = UUID.randomUUID();
         UUID ownerId = UUID.randomUUID();
@@ -409,7 +481,7 @@ class SampleCooperationApplicationServiceTest {
                 TalentDomainFacade.class,
                 SampleCooperationActionPolicy.class,
                 SampleRemarkPolicy.class);
-        var spring = SampleCooperationApplicationService.class.getConstructor(
+        var promotionCompatibility = SampleCooperationApplicationService.class.getConstructor(
                 SampleQueryApplicationService.class,
                 SampleRequestMapper.class,
                 SamplePrivateNoteMapper.class,
@@ -418,9 +490,20 @@ class SampleCooperationApplicationServiceTest {
                 SampleRemarkPolicy.class,
                 ProductPromotionFacade.class,
                 SampleOrderCopyPolicy.class);
+        var spring = SampleCooperationApplicationService.class.getConstructor(
+                SampleQueryApplicationService.class,
+                SampleRequestMapper.class,
+                SamplePrivateNoteMapper.class,
+                TalentDomainFacade.class,
+                SampleCooperationActionPolicy.class,
+                SampleRemarkPolicy.class,
+                ProductPromotionFacade.class,
+                SampleOrderCopyPolicy.class,
+                TalentComplaintFacade.class);
 
-        assertThat(SampleCooperationApplicationService.class.getConstructors()).hasSize(2);
+        assertThat(SampleCooperationApplicationService.class.getConstructors()).hasSize(3);
         assertThat(legacy.getAnnotation(Autowired.class)).isNull();
+        assertThat(promotionCompatibility.getAnnotation(Autowired.class)).isNull();
         assertThat(spring.getAnnotation(Autowired.class)).isNotNull();
         assertThat(java.util.Arrays.stream(SampleCooperationApplicationService.class.getDeclaredFields())
                 .map(field -> field.getType().getName()))
@@ -985,7 +1068,23 @@ class SampleCooperationApplicationServiceTest {
                 new SampleCooperationActionPolicy(checker),
                 new SampleRemarkPolicy(),
                 productPromotionFacade,
-                new SampleOrderCopyPolicy());
+                new SampleOrderCopyPolicy(),
+                null);
+    }
+
+    private SampleCooperationApplicationService serviceWithComplaintFacade() {
+        CurrentUserPermissionChecker checker =
+                new CurrentUserPermissionChecker(new CurrentUserPermissionPolicy());
+        return new SampleCooperationApplicationService(
+                sampleQueryApplicationService,
+                sampleRequestMapper,
+                samplePrivateNoteMapper,
+                talentDomainFacade,
+                new SampleCooperationActionPolicy(checker),
+                new SampleRemarkPolicy(),
+                productPromotionFacade,
+                new SampleOrderCopyPolicy(),
+                talentComplaintFacade);
     }
 
     private SampleCooperationApplicationService serviceWithRealDddQuery(
@@ -1009,7 +1108,8 @@ class SampleCooperationApplicationServiceTest {
                 new SampleCooperationActionPolicy(checker),
                 new SampleRemarkPolicy(),
                 productPromotionFacade,
-                new SampleOrderCopyPolicy());
+                new SampleOrderCopyPolicy(),
+                null);
     }
 
     private static SampleVO sampleView(

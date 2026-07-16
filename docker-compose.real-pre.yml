@@ -147,6 +147,8 @@ services:
     # 公网入口由 Nginx 反代承担 (Gate 7)。${BACKEND_HOST_PORT:-8081} 仍允许覆盖方便调试。
     ports:
       - "127.0.0.1:${BACKEND_HOST_PORT:-8081}:8080"
+    volumes:
+      - complaint_evidence_real_pre:/var/lib/colonel-saas/complaints
     depends_on:
       postgres-real-pre:
         condition: service_healthy
@@ -209,6 +211,8 @@ volumes:
     name: saas-active_postgres_real_pre_data
   redis_real_pre_data:
     name: saas-active_redis_real_pre_data
+  complaint_evidence_real_pre:
+    name: complaint_evidence_real_pre
 
 networks:
   real-pre-net:

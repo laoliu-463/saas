@@ -121,4 +121,39 @@ class OperationLogInterceptorTest {
 
         verify(operationLogService).record(org.mockito.ArgumentMatchers.any());
     }
+
+    @Test
+    void afterCompletion_redactsComplaintContentOnlyForExactCreateRoute() {
+        OperationLogInterceptor interceptor = new OperationLogInterceptor(operationLogService);
+        UUID sampleId = UUID.randomUUID();
+        MockHttpServletRequest request = new MockHttpServletRequest(
+                "POST", "/samples/" + sampleId + "/complaints");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        request.addParameter("reason", "OTHER");
+        request.addParameter("content", "不得进入操作日志的投诉正文");
+
+        interceptor.afterCompletion(request, response, new Object(), null);
+
+        ArgumentCaptor<OperationLog> captor = ArgumentCaptor.forClass(OperationLog.class);
+        verify(operationLogService).record(captor.capture());
+        assertThat(captor.getValue().getRequestParams())
+                .containsEntry("reason", "OTHER")
+                .containsEntry("content", "[REDACTED]")
+                .doesNotContainValue("不得进入操作日志的投诉正文");
+    }
+
+    @Test
+    void afterCompletion_doesNotRedactContentForUnrelatedRoutes() {
+        OperationLogInterceptor interceptor = new OperationLogInterceptor(operationLogService);
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/test/path");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        request.addParameter("content", "普通业务内容");
+
+        interceptor.afterCompletion(request, response, new Object(), null);
+
+        ArgumentCaptor<OperationLog> captor = ArgumentCaptor.forClass(OperationLog.class);
+        verify(operationLogService).record(captor.capture());
+        assertThat(captor.getValue().getRequestParams())
+                .containsEntry("content", "普通业务内容");
+    }
 }

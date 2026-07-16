@@ -5,6 +5,7 @@ import com.colonel.saas.entity.TalentComplaintReminder;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Update;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -43,4 +44,31 @@ public interface TalentComplaintReminderMapper extends BaseMapper<TalentComplain
               AND read_at IS NULL
             """)
     long countUnreadByRecipientUserId(@Param("recipientUserId") UUID recipientUserId);
+
+    @Select("""
+            SELECT *
+            FROM talent_complaint_reminder
+            WHERE id = #{id}
+              AND recipient_user_id = #{recipientUserId}
+              AND deleted = 0
+            LIMIT 1
+            """)
+    TalentComplaintReminder selectByIdAndRecipientUserId(
+            @Param("id") UUID id,
+            @Param("recipientUserId") UUID recipientUserId);
+
+    @Update("""
+            UPDATE talent_complaint_reminder
+            SET read_at = #{readAt},
+                update_time = now(),
+                version = version + 1
+            WHERE id = #{id}
+              AND recipient_user_id = #{recipientUserId}
+              AND deleted = 0
+              AND read_at IS NULL
+            """)
+    int markRead(
+            @Param("id") UUID id,
+            @Param("recipientUserId") UUID recipientUserId,
+            @Param("readAt") LocalDateTime readAt);
 }

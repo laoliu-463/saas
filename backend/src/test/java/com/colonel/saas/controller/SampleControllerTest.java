@@ -222,6 +222,16 @@ class SampleControllerTest {
                         "推广正文", true, "https://short.example/p1", null);
         com.colonel.saas.vo.sample.SampleCopyTextVO orderCopyText =
                 new com.colonel.saas.vo.sample.SampleCopyTextVO("订单正文");
+        com.colonel.saas.dto.talent.TalentComplaintCreateRequest complaintRequest =
+                new com.colonel.saas.dto.talent.TalentComplaintCreateRequest(
+                        "LOW_PRICE_RESALE", "存在低价倒卖");
+        MockMultipartFile complaintFile = new MockMultipartFile(
+                "files", "proof.jpg", "image/jpeg",
+                new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, 0x01});
+        com.colonel.saas.vo.talent.TalentComplaintVO complaint =
+                new com.colonel.saas.vo.talent.TalentComplaintVO(
+                        UUID.randomUUID(), sampleId, UUID.randomUUID(), UUID.randomUUID(), userId,
+                        "LOW_PRICE_RESALE", "存在低价倒卖", "SUBMITTED", List.of(), null);
         Object roles = List.of(RoleCodes.CHANNEL_STAFF);
         when(sampleService.getEditContext(sampleId, userId, null, DataScope.PERSONAL, roles))
                 .thenReturn(editContext);
@@ -239,6 +249,10 @@ class SampleControllerTest {
         when(sampleService.copyOrder(
                 sampleId, userId, null, DataScope.PERSONAL, roles))
                 .thenReturn(orderCopyText);
+        when(sampleService.createComplaint(
+                sampleId, complaintRequest, List.of(complaintFile),
+                userId, null, DataScope.PERSONAL, roles))
+                .thenReturn(complaint);
 
         assertThat(controller.getEditContext(
                 sampleId, userId, null, DataScope.PERSONAL, roles).getData())
@@ -258,6 +272,10 @@ class SampleControllerTest {
         assertThat(controller.copyOrder(
                 sampleId, userId, null, DataScope.PERSONAL, roles).getData())
                 .isSameAs(orderCopyText);
+        assertThat(controller.createComplaint(
+                sampleId, "LOW_PRICE_RESALE", "存在低价倒卖", List.of(complaintFile),
+                userId, null, DataScope.PERSONAL, roles).getData())
+                .isSameAs(complaint);
 
         assertThat(SampleController.class.getMethod(
                 "getEditContext", UUID.class, UUID.class, UUID.class, DataScope.class, Object.class)
@@ -306,8 +324,23 @@ class SampleControllerTest {
                 Object.class)
                 .getAnnotation(GetMapping.class).value())
                 .containsExactly("/{id:[0-9a-fA-F\\-]{36}}/order-copy");
+        assertThat(SampleController.class.getMethod(
+                "createComplaint",
+                UUID.class,
+                String.class,
+                String.class,
+                List.class,
+                UUID.class,
+                UUID.class,
+                DataScope.class,
+                Object.class)
+                .getAnnotation(PostMapping.class).value())
+                .containsExactly("/{id:[0-9a-fA-F\\-]{36}}/complaints");
         verify(sampleService).copyOrder(
                 sampleId, userId, null, DataScope.PERSONAL, roles);
+        verify(sampleService).createComplaint(
+                sampleId, complaintRequest, List.of(complaintFile),
+                userId, null, DataScope.PERSONAL, roles);
     }
 
     @Test

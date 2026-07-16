@@ -23,4 +23,16 @@ public interface TalentComplaintAttachmentMapper extends BaseMapper<TalentCompla
             ORDER BY create_time ASC
             """)
     List<TalentComplaintAttachment> selectByComplaintId(@Param("complaintId") UUID complaintId);
+
+    @Select("""
+            SELECT *
+            FROM talent_complaint_attachment
+            WHERE id = #{attachmentId}
+              AND complaint_id = #{complaintId}
+              AND deleted = 0
+            LIMIT 1
+            """)
+    TalentComplaintAttachment selectByIdAndComplaintId(
+            @Param("attachmentId") UUID attachmentId,
+            @Param("complaintId") UUID complaintId);
 }

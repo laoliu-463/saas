@@ -5,8 +5,10 @@ import com.baomidou.mybatisplus.core.MybatisSqlSessionFactoryBuilder;
 import com.colonel.saas.entity.TalentComplaintReminder;
 import com.colonel.saas.mapper.TalentComplaintMapper;
 import com.colonel.saas.mapper.TalentComplaintReminderMapper;
+import com.colonel.saas.common.handler.UUIDTypeHandler;
 import com.colonel.saas.testsupport.DockerAvailable;
 import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Update;
 import org.apache.ibatis.mapping.Environment;
 import org.apache.ibatis.session.SqlSession;
 import org.apache.ibatis.session.SqlSessionFactory;
@@ -340,6 +342,19 @@ class CooperationWorkbenchActionsSchemaContractTest {
                         "recipient_user_id = #{recipientuserid}",
                         "deleted = 0",
                         "read_at is null");
+
+        Method markReadMethod = requireMethod(
+                TalentComplaintReminderMapper.class,
+                "markRead",
+                UUID.class,
+                UUID.class,
+                LocalDateTime.class);
+        assertThat(updateSql(markReadMethod))
+                .contains(
+                        "where id = #{id}",
+                        "recipient_user_id = #{recipientuserid}",
+                        "deleted = 0",
+                        "read_at is null");
     }
 
     @Nested
@@ -568,6 +583,24 @@ class CooperationWorkbenchActionsSchemaContractTest {
                         "countUnreadByRecipientUserId",
                         UUID.class);
                 assertThat(countMethod.invoke(reminderMapper, seed.recipientUserId())).isEqualTo(2L);
+
+                Method markReadMethod = requireMethod(
+                        TalentComplaintReminderMapper.class,
+                        "markRead",
+                        UUID.class,
+                        UUID.class,
+                        LocalDateTime.class);
+                LocalDateTime readAt = seed.latestComplaintAt().plusMinutes(1);
+                assertThat(markReadMethod.invoke(
+                        reminderMapper, seed.reminderId3(), UUID.randomUUID(), readAt))
+                        .isEqualTo(0);
+                assertThat(markReadMethod.invoke(
+                        reminderMapper, seed.reminderId3(), seed.recipientUserId(), readAt))
+                        .isEqualTo(1);
+                assertThat(markReadMethod.invoke(
+                        reminderMapper, seed.reminderId3(), seed.recipientUserId(), readAt.plusSeconds(1)))
+                        .isEqualTo(0);
+                assertThat(countMethod.invoke(reminderMapper, seed.recipientUserId())).isEqualTo(1L);
             }
         }
 
@@ -578,6 +611,7 @@ class CooperationWorkbenchActionsSchemaContractTest {
         private SqlSessionFactory actionMapperSessionFactory() {
             MybatisConfiguration configuration = new MybatisConfiguration();
             configuration.setMapUnderscoreToCamelCase(true);
+            configuration.getTypeHandlerRegistry().register(UUID.class, UUIDTypeHandler.class);
             configuration.setEnvironment(new Environment(
                     "cooperation-actions-test",
                     new JdbcTransactionFactory(),
@@ -705,6 +739,12 @@ class CooperationWorkbenchActionsSchemaContractTest {
         Select select = method.getAnnotation(Select.class);
         assertThat(select).as(method + " should use an explicit domain SELECT").isNotNull();
         return normalize(String.join(" ", select.value()));
+    }
+
+    private static String updateSql(Method method) {
+        Update update = method.getAnnotation(Update.class);
+        assertThat(update).as(method + " should use an explicit scoped UPDATE").isNotNull();
+        return normalize(String.join(" ", update.value()));
     }
 
     private static List<String> actionStatements(String rawSql) {

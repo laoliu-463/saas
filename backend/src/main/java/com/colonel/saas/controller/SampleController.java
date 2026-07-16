@@ -14,6 +14,7 @@ import com.colonel.saas.dto.sample.SampleBatchActionRequest;
 import com.colonel.saas.dto.sample.SampleBatchShipRequest;
 import com.colonel.saas.dto.sample.SampleCooperationUpdateRequest;
 import com.colonel.saas.dto.sample.SamplePrivateNoteRequest;
+import com.colonel.saas.dto.talent.TalentComplaintCreateRequest;
 import com.colonel.saas.vo.SampleTalentVO;
 import com.colonel.saas.vo.sample.SampleBoardCard;
 import com.colonel.saas.vo.sample.SampleCopyTextVO;
@@ -25,6 +26,7 @@ import com.colonel.saas.vo.sample.SamplePrivateNoteVO;
 import com.colonel.saas.vo.sample.SampleStatusTransitionVO;
 import com.colonel.saas.vo.sample.SampleVO;
 import com.colonel.saas.vo.sample.StatusLogVO;
+import com.colonel.saas.vo.talent.TalentComplaintVO;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.ExampleObject;
@@ -34,6 +36,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.MediaType;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -228,6 +231,28 @@ public class SampleController {
             @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
         return ApiResult.ok(sampleApplicationService.copyOrder(
                 id, userId, deptId, dataScope, roleCodes));
+    }
+
+    @PostMapping(
+            value = "/{id:[0-9a-fA-F\\-]{36}}/complaints",
+            consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ApiResult<TalentComplaintVO> createComplaint(
+            @PathVariable UUID id,
+            @RequestParam("reason") String reason,
+            @RequestParam(value = "content", required = false) String content,
+            @RequestPart(value = "files", required = false) List<MultipartFile> files,
+            @RequestAttribute("userId") UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
+            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
+            @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
+        return ApiResult.ok(sampleApplicationService.createComplaint(
+                id,
+                new TalentComplaintCreateRequest(reason, content),
+                files == null ? List.of() : files,
+                userId,
+                deptId,
+                dataScope,
+                roleCodes));
     }
 
     @GetMapping("/{id:[0-9a-fA-F\\-]{36}}/status-logs")
