@@ -86,7 +86,7 @@ public class OrderAttributionReplayService {
                 ambiguousMapping++;
             }
 
-            boolean isAttributed = AttributionService.STATUS_ATTRIBUTED.equals(result.attributionStatus());
+            boolean isAttributed = OrderDefaultAttributionPolicy.isAttributed(result.attributionStatus());
             if (isAttributed) {
                 attributed++;
             } else {
@@ -170,7 +170,7 @@ public class OrderAttributionReplayService {
     private boolean isSafeForHistoricalUpdate(
             LocalDateTime businessTime,
             OrderDefaultAttributionResult result) {
-        if (result == null || !AttributionService.STATUS_ATTRIBUTED.equals(result.attributionStatus())) {
+        if (result == null || !OrderDefaultAttributionPolicy.isAttributed(result.attributionStatus())) {
             return false;
         }
         OrderLinkAttributionResolution resolution = result.linkResolution();

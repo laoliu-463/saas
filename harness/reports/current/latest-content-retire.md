@@ -2,10 +2,10 @@
 
 ## Metadata
 
-- Time: 2026-07-16 21:35:05 +08:00
+- Time: 2026-07-16 22:19:16 +08:00
 - Action: Plan
 - DryRun: False
-- Reason: fix: pin remote deploy to feature auth branch
+- Reason: fix: allow recruiter-only performance attribution replay
 - Manifest: (none)
 - ArchiveRoot: harness/archive/retired-content
 - AllowSourceCode: False
