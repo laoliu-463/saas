@@ -4,6 +4,8 @@
 .DESCRIPTION
     替代同步 HTTP 长请求，走 async 接口提交任务后轮询 jobId 直到完成。
     支持 dry-run 和 real-run（需显式 -Confirm）。
+    本地回环地址从 .env.real-pre 读取管理员凭据；远端地址必须在当前进程设置
+    QA_REMOTE_ADMIN_PASSWORD，避免将本地凭据误用于远端。
 .EXAMPLE
     # dry-run：RECENT_30D 20 活动
     .\backfill-async.ps1 -DryRun -MaxActivities 20
@@ -26,12 +28,15 @@ param(
     [switch]$Confirm,
     [string]$DisplayRefreshMode = "DEFERRED",
     [int]$PollIntervalSec = 15,
-    [int]$TimeoutMinutes = 60
+    [int]$TimeoutMinutes = 60,
+    [string]$AdminUsername = "admin",
+    [string]$AdminPassword = ""
 )
 
 $ErrorActionPreference = "Stop"
 
 $repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..\..\.." )).Path
+. (Join-Path $PSScriptRoot "_admin-credential.ps1")
 $reportDir = Join-Path $repoRoot "harness\reports"
 $stamp = Get-Date -Format "yyyyMMdd-HHmm"
 
@@ -109,8 +114,12 @@ Write-Host ""
 # ── step 1: login ────────────────────────────────────────────────────
 
 Write-Host "[1/3] Logging in..." -ForegroundColor Yellow
+$adminCredential = Resolve-HarnessProbeAdminCredential `
+    -BaseUrl $BaseUrl `
+    -AdminPassword $AdminPassword `
+    -LocalEnvFile (Join-Path $repoRoot ".env.real-pre")
 $login = Invoke-Api -Method "Post" -Path "/auth/login" -Headers $null `
-    -Body @{ username = "admin"; password = "admin123" } -TimeoutSec 15
+    -Body @{ username = $AdminUsername; password = $adminCredential } -TimeoutSec 15
 $token = $login.data.token
 if (-not $token) { throw "admin login did not return token" }
 $headers = @{ Authorization = "Bearer $token" }

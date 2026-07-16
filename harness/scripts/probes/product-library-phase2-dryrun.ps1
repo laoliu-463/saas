@@ -4,12 +4,18 @@ param(
     [int]$PageSize = 20,
     [int]$MaxPages = 300,
     [int]$MaxActivities = 50,
-    [string]$ActivityScope = "ACTIVE_ONLY"
+    [string]$ActivityScope = "ACTIVE_ONLY",
+    [string]$AdminUsername = "admin",
+    [string]$AdminPassword = ""
 )
 
 $ErrorActionPreference = "Stop"
 
 $repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..\..\..")).Path
+. (Join-Path $PSScriptRoot "_admin-credential.ps1")
+if (-not (Test-HarnessProbeLoopbackUrl -BaseUrl $BaseUrl)) {
+    throw 'This probe compares against the local real-pre database and only supports a loopback BaseUrl.'
+}
 $reportDir = Join-Path $repoRoot "harness\reports"
 $stamp = Get-Date -Format "yyyyMMdd-HHmm"
 $reportPath = Join-Path $reportDir "product-library-count-phase2-dryrun-pagination-$stamp.md"
@@ -107,8 +113,12 @@ $startedAt = Get-Date
 $failures = [System.Collections.Generic.List[string]]::new()
 
 $beforeCounts = Get-DbCounts
+$adminCredential = Resolve-HarnessProbeAdminCredential `
+    -BaseUrl $BaseUrl `
+    -AdminPassword $AdminPassword `
+    -LocalEnvFile (Join-Path $repoRoot ".env.real-pre")
 $login = Invoke-Api -Method "Post" -Path "/auth/login" -Headers $null `
-    -Body @{ username = "admin"; password = "admin123" } -TimeoutSec 30
+    -Body @{ username = $AdminUsername; password = $adminCredential } -TimeoutSec 30
 $token = $login.data.token
 if (-not $token) { throw "admin login did not return token" }
 $headers = @{ Authorization = "Bearer $token" }
