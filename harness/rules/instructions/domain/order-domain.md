@@ -3,7 +3,7 @@
 ## 领域职责
 
 - 负责抖音订单同步、订单事实保存、订单明细、退款 / 售后事实和同步日志。
-- 负责保存 `raw_payload`、双轨金额输入、`pick_source`、`colonel_buyin_id` 和默认归因输入。
+- 负责保存 `raw_payload`、双轨金额输入、`pick_source`、`colonel_buyin_id`、链接 owner type 和归因事实。
 - 负责发布订单已同步、退款事实已同步事件。
 
 ## 领域不负责
@@ -16,12 +16,16 @@
 - 订单域只存事实，不算提成。
 - 订单同步必须有幂等键、时间窗口、同步日志和错误证据。
 - 订单同步后通过事件通知寄样域、业绩域和分析模块。
+- 推广链接创建时必须固化 owner type：`RECRUITER` 只写招商、`CHANNEL` 只写渠道；活动招商只可作为无可用链接归因时的招商 fallback，商品负责人不得作为默认招商。
+- 缺失 `pick_source` 时按 `pay_time > order_create_time > create_time` 筛选有效映射，只有唯一 `(user_id, owner_type)` 能采用；跨 owner/type 结果必须 `ambiguous`，不得取最新。
+- 订单必须保存 final 渠道/招商用户及 source；可用 source 仅为 `pick_source`、`native_unique_link_owner`、`activity_owner`、`ambiguous`、`unattributed`。
 
 ## 禁止越界
 
 - 禁止订单域计算提成或最终归属。
 - 禁止订单域直接更新寄样状态。
 - 禁止订单域应用独家达人、独家商家或个别品负责人覆盖。
+- 禁止按当前角色、活动招商或商品负责人覆盖已固化的链接 owner type。
 
 ## 允许调用的 Facade
 
