@@ -48,7 +48,11 @@ public class OrderDefaultAttributionResolver {
                 input.pickSource(),
                 input.pickExtra(),
                 input.talentUid(),
-                talentId);
+                talentId,
+                input.colonelBuyinId(),
+                input.secondColonelBuyinId(),
+                input.secondActivityId(),
+                input.businessTime());
 
         PickSourceMapping channelMapping = pickSourceMappingAdapter.findByPickSourceOrExtra(
                 enriched.pickSource(),

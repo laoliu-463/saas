@@ -13,6 +13,7 @@ import com.colonel.saas.service.AttributionService;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.RecordComponent;
+import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.UUID;
@@ -31,6 +32,11 @@ class DddOrderDefaultAttributionInputContractTest {
         order.setProductId("prod-1");
         order.setActivityId("order-act");
         order.setPickSource("ps-1");
+        order.setColonelBuyinId(7351155267604218149L);
+        order.setSecondColonelBuyinId(7392822694083707171L);
+        order.setSecondActivityId("order-second-act");
+        LocalDateTime payTime = LocalDateTime.of(2026, 7, 16, 14, 6, 24);
+        order.setPayTime(payTime);
         order.setTalentId(talentId);
         order.setTalentName("fallback-talent");
 
@@ -43,11 +49,15 @@ class DddOrderDefaultAttributionInputContractTest {
                 "promotion_talent_uid", "ignored-promotion"));
 
         assertThat(input.productId()).isEqualTo("prod-1");
-        assertThat(input.activityId()).isEqualTo("raw-act");
+        assertThat(input.activityId()).isEqualTo("order-act");
         assertThat(input.pickSource()).isEqualTo("ps-1");
         assertThat(input.pickExtra()).isEqualTo("extra-1");
         assertThat(input.talentUid()).isEqualTo("uid-author");
         assertThat(input.talentId()).isEqualTo(talentId);
+        assertThat(input.colonelBuyinId()).isEqualTo("7351155267604218149");
+        assertThat(input.secondColonelBuyinId()).isEqualTo("7392822694083707171");
+        assertThat(input.secondActivityId()).isEqualTo("order-second-act");
+        assertThat(input.businessTime()).isEqualTo(payTime);
     }
 
     @Test
@@ -56,13 +66,33 @@ class DddOrderDefaultAttributionInputContractTest {
         order.setProductId("prod-1");
         order.setActivityId("order-act");
         order.setTalentName("talent-name-fallback");
+        LocalDateTime orderCreateTime = LocalDateTime.of(2026, 7, 16, 13, 5);
+        order.setOrderCreateTime(orderCreateTime);
 
-        OrderAttributionInput input = OrderAttributionInput.from(order, Map.of());
+        OrderAttributionInput input = OrderAttributionInput.from(order, Map.of(
+                "colonel_buyin_id", "raw-buyin",
+                "second_colonel_buyin_id", "raw-second-buyin",
+                "second_colonel_activity_id", "raw-second-act"));
 
         assertThat(input.activityId()).isEqualTo("order-act");
         assertThat(input.talentUid()).isEqualTo("talent-name-fallback");
         assertThat(input.pickSource()).isNull();
         assertThat(input.pickExtra()).isNull();
+        assertThat(input.colonelBuyinId()).isEqualTo("raw-buyin");
+        assertThat(input.secondColonelBuyinId()).isEqualTo("raw-second-buyin");
+        assertThat(input.secondActivityId()).isEqualTo("raw-second-act");
+        assertThat(input.businessTime()).isEqualTo(orderCreateTime);
+    }
+
+    @Test
+    void attributionInputShouldFallbackBusinessTimeToLocalCreateTime() {
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        LocalDateTime createTime = LocalDateTime.of(2026, 7, 16, 12, 4);
+        order.setCreateTime(createTime);
+
+        OrderAttributionInput input = OrderAttributionInput.from(order, Map.of());
+
+        assertThat(input.businessTime()).isEqualTo(createTime);
     }
 
     @Test
@@ -92,8 +122,8 @@ class DddOrderDefaultAttributionInputContractTest {
         when(mappingAdapter.findByPickSourceOrExtra("ps-1", "extra-1")).thenReturn(mapping);
         when(talentDomainFacade.findByDouyinUid("uid-1"))
                 .thenReturn(new TalentReadDTO(talentId, "uid-1", null, "Talent", null, 1, null, null, null, null));
-        when(productDomainFacade.findProductAssigneeId("raw-act", "prod-1")).thenReturn(recruiterId);
-        when(productDomainFacade.findActivityDefaultRecruiterId("raw-act")).thenReturn(UUID.randomUUID());
+        when(productDomainFacade.findProductAssigneeId("order-act", "prod-1")).thenReturn(recruiterId);
+        when(productDomainFacade.findActivityDefaultRecruiterId("order-act")).thenReturn(UUID.randomUUID());
 
         OrderDefaultAttributionResult result = resolver.resolve(order, Map.of(
                 "colonel_activity_id", "raw-act",
@@ -109,8 +139,8 @@ class DddOrderDefaultAttributionInputContractTest {
         assertThat(result.attributionStatus()).isEqualTo(AttributionService.STATUS_ATTRIBUTED);
 
         verify(mappingAdapter).findByPickSourceOrExtra("ps-1", "extra-1");
-        verify(productDomainFacade).findProductAssigneeId("raw-act", "prod-1");
-        verify(productDomainFacade).findActivityDefaultRecruiterId("raw-act");
+        verify(productDomainFacade).findProductAssigneeId("order-act", "prod-1");
+        verify(productDomainFacade).findActivityDefaultRecruiterId("order-act");
         verify(talentDomainFacade).findByDouyinUid("uid-1");
     }
 
