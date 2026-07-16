@@ -2,10 +2,10 @@
 
 ## Metadata
 
-- Time: 2026-07-16 11:06:46 +08:00
+- Time: 2026-07-16 11:39:31 +08:00
 - Action: Plan
 - DryRun: False
-- Reason: fix: bypass default sample standard and preserve talent fields/data
+- Reason: deploy: verify quick sample after adding collaborator with remote talent data
 - Manifest: (none)
 - ArchiveRoot: harness/archive/retired-content
 - AllowSourceCode: False
