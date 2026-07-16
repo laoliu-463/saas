@@ -4,7 +4,7 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
-import com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler;
+import com.colonel.saas.common.typehandler.JsonbTypeHandler;
 import lombok.Data;
 
 import java.time.LocalDateTime;
@@ -40,7 +40,7 @@ public class PerformanceCalculationExecution {
      * 事件处理所需的最小业务输入快照（例如退款金额、退款单号与发生时间）。
      * 重试必须基于该快照恢复原事件语义，不能只重算订单主记录。
      */
-    @TableField(value = "event_payload", typeHandler = JacksonTypeHandler.class)
+    @TableField(value = "event_payload", typeHandler = JsonbTypeHandler.class)
     private Map<String, Object> eventPayload;
 
     /** RUNNING / SUCCEEDED / FAILED。 */

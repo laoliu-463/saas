@@ -1,6 +1,8 @@
 package com.colonel.saas.domain.performance.application;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.colonel.saas.common.typehandler.JsonbTypeHandler;
 import com.colonel.saas.entity.PerformanceCalculationExecution;
 import com.colonel.saas.mapper.PerformanceCalculationExecutionMapper;
 import org.junit.jupiter.api.Test;
@@ -21,6 +23,15 @@ import static org.mockito.Mockito.when;
 class PerformanceCalculationExecutionServiceTest {
 
     @Mock private PerformanceCalculationExecutionMapper mapper;
+
+    @Test
+    void executionPayloadShouldUsePostgresJsonbMapHandler() throws NoSuchFieldException {
+        TableField mapping = PerformanceCalculationExecution.class
+                .getDeclaredField("eventPayload")
+                .getAnnotation(TableField.class);
+
+        assertThat(mapping.typeHandler()).isEqualTo(JsonbTypeHandler.class);
+    }
 
     @Test
     void startShouldPersistRunningExecutionAndSkipAlreadySucceededEvent() {

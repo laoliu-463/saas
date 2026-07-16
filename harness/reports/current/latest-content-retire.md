@@ -2,10 +2,10 @@
 
 ## Metadata
 
-- Time: 2026-07-16 22:19:16 +08:00
+- Time: 2026-07-16 22:32:30 +08:00
 - Action: Plan
 - DryRun: False
-- Reason: fix: allow recruiter-only performance attribution replay
+- Reason: fix: recover performance event execution ledger
 - Manifest: (none)
 - ArchiveRoot: harness/archive/retired-content
 - AllowSourceCode: False
