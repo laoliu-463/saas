@@ -110,6 +110,39 @@ class OrderAttributionReplayServiceTest {
     }
 
     @Test
+    void replayShouldPersistRecruiterOnlyAttributionWhenAggregateStatusIsPartial() {
+        LocalDateTime businessTime = LocalDateTime.of(2026, 7, 16, 14, 6, 24);
+        ColonelsettlementOrder order = order("o-recruiter-only", businessTime);
+        when(orderMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(order));
+
+        UUID recruiterUserId = UUID.randomUUID();
+        when(defaultAttributionResolver.resolve(eq(order), anyMap())).thenReturn(attributed(
+                null,
+                null,
+                recruiterUserId,
+                new OrderLinkAttributionResolution(
+                        Status.UNIQUE, recruiterUserId, null, AttributionOwnerType.RECRUITER,
+                        AttributionSource.NATIVE_UNIQUE_LINK_OWNER, "UNIQUE_LINK_OWNER", true, true,
+                        businessTime.minusMinutes(1))));
+        when(persistenceService.getUserName(recruiterUserId)).thenReturn("招商A");
+
+        OrderAttributionReplayService.ReplayResult result =
+                service.replay(List.of(order.getOrderId()), "recruiter-only correction", 1, false);
+
+        assertThat(result.attributed()).isEqualTo(1);
+        assertThat(result.safeToUpdate()).isEqualTo(1);
+        assertThat(result.updated()).isEqualTo(1);
+        assertThat(result.decisions()).singleElement()
+                .extracting(OrderAttributionReplayService.ReplayDecision::safe,
+                        OrderAttributionReplayService.ReplayDecision::recruiterUserId)
+                .containsExactly(true, recruiterUserId);
+        assertThat(order.getAttributionStatus()).isEqualTo("PARTIAL");
+        assertThat(order.getRecruiterAttributionStatus()).isEqualTo(AttributionService.STATUS_ATTRIBUTED);
+        verify(persistenceService).persistOrderForAttributionReplay(order);
+        verify(orderDomainEventPublisher).publishOrderAttributionReplayed(any(OrderAttributionReplayedEvent.class));
+    }
+
+    @Test
     void replayDryRunShouldNotWriteOrderOrPerformance() {
         ColonelsettlementOrder order = order("o-2", LocalDateTime.of(2026, 7, 16, 14, 6, 24));
         when(orderMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(order));
