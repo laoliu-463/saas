@@ -28,6 +28,20 @@ import java.util.Objects;
 import java.util.UUID;
 
 /**
+ * 快递100物流轨迹回调处理服务 (DDD 切片候选 - 高价值, 需后续会话).
+ *
+ * <p><strong>当前状态 (2026-07-14):</strong></p>
+ * <ul>
+ *   <li>396 行 / 2 public method (handleCallback + record CallbackAck), 业务复杂</li>
+ *   <li>SHA-256 节点哈希幂等 + 状态机自动推进 + 领域事件发布</li>
+ *   <li>无 domain 层 Application Service 包装, 无 Kuaidi100LogisticsCallbackServiceTest</li>
+ *   <li>DDD 切片价值: 高 (复杂业务无 Application 包装)</li>
+ *   <li>DDD 切片风险: 中 (无现有测试, 需写 ApplicationTest + 搬运 11 个 helper)</li>
+ *   <li>不切理由: 本会话 (按 ask-matt "Suspend and document") 标候选, 后续会话实施</li>
+ * </ul>
+ *
+ * <p>依赖: SampleRequestMapper / SampleStatusLogMapper / SampleDomainEventPublisher / LogisticsProperties / ObjectMapper</p>
+ *
  * 快递100物流轨迹回调处理服务。
  *
  * <p>负责接收快递100（Kuaidi100）推送的物流轨迹回调，完成签名验证、报文解析、
