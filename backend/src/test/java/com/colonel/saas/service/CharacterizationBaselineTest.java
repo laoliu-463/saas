@@ -245,6 +245,47 @@ class CharacterizationBaselineTest extends BaseIntegrationTest {
                 linkResult.pickSource(),
                 "10901825");
         assertThat(mappingCount).isGreaterThanOrEqualTo(1);
+
+        String linkOwnerType = jdbcTemplate.queryForObject(
+                "SELECT attribution_owner_type FROM promotion_link WHERE pick_source = ? ORDER BY created_at DESC LIMIT 1",
+                String.class,
+                linkResult.pickSource());
+        String mappingOwnerType = jdbcTemplate.queryForObject(
+                "SELECT attribution_owner_type FROM pick_source_mapping WHERE pick_source = ? ORDER BY create_time DESC LIMIT 1",
+                String.class,
+                linkResult.pickSource());
+        assertThat(linkOwnerType).isEqualTo("CHANNEL");
+        assertThat(mappingOwnerType).isEqualTo("CHANNEL");
+    }
+
+    @Test
+    void test03b_RecruiterLinkConversionShouldSnapshotRecruiterOwnerType() {
+        testDataService.seedAll(false);
+        UUID mainProductSnapshotId = jdbcTemplate.queryForObject(
+                "SELECT id FROM product_snapshot WHERE product_id = '10901825' LIMIT 1", UUID.class);
+        UUID recruiterId = jdbcTemplate.queryForObject(
+                "SELECT id FROM sys_user WHERE username = 'biz_staff' AND deleted = 0 LIMIT 1", UUID.class);
+        UUID recruiterDeptId = jdbcTemplate.queryForObject(
+                "SELECT dept_id FROM sys_user WHERE username = 'biz_staff' AND deleted = 0 LIMIT 1", UUID.class);
+
+        DouyinPromotionGateway.PromotionLinkResult linkResult = productService.generatePromotionLink(
+                mainProductSnapshotId,
+                recruiterId,
+                recruiterDeptId,
+                "EXT-RECRUITER-001",
+                1,
+                true);
+
+        String linkOwnerType = jdbcTemplate.queryForObject(
+                "SELECT attribution_owner_type FROM promotion_link WHERE pick_source = ? ORDER BY created_at DESC LIMIT 1",
+                String.class,
+                linkResult.pickSource());
+        String mappingOwnerType = jdbcTemplate.queryForObject(
+                "SELECT attribution_owner_type FROM pick_source_mapping WHERE pick_source = ? ORDER BY create_time DESC LIMIT 1",
+                String.class,
+                linkResult.pickSource());
+        assertThat(linkOwnerType).isEqualTo("RECRUITER");
+        assertThat(mappingOwnerType).isEqualTo("RECRUITER");
     }
 
     @Test

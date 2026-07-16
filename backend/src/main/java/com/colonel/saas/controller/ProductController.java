@@ -640,7 +640,7 @@ public class ProductController extends BaseController {
      * @deprecated 请迁移到 {@code /colonel/activities/{activityId}/products/{productId}/promotion-links}
      */
     @Operation(summary = "[已废弃] 商品转链", description = "兼容旧版商品转链入口。请迁移到 /colonel/activities/{activityId}/products/{productId}/promotion-links。")
-    @RequireRoles({RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF})
+    @RequireRoles({RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF})
     @PostMapping("/{id}/promotion-links")
     public ApiResult<PromotionLinkResponse> generatePromotionLink(
             @Parameter(description = "商品主键 ID，使用 UUID 格式。") @PathVariable UUID id,

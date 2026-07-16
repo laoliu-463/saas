@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.colonel.saas.common.exception.OptimisticLockSupport;
 import com.colonel.saas.domain.product.facade.dto.PickSourceAttributionMappingDTO;
 import com.colonel.saas.domain.product.facade.dto.PickSourceMappingReadDTO;
+import com.colonel.saas.domain.shared.attribution.AttributionOwnerType;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.PickSourceMapping;
 import com.colonel.saas.mapper.PickSourceMappingMapper;
@@ -358,7 +359,36 @@ public class PickSourceMappingService {
             String pickExtra,
             String colonelBuyinId,
             String sourceType) {
+        saveOrUpdate(
+                userId, channelUserName, deptId, talentId, talentName,
+                shortId, uuidSeed, pickSource, productId, activityId,
+                sourceUrl, convertedUrl, promotionLinkId, scene, pickExtra,
+                colonelBuyinId, sourceType, null);
+    }
+
+    /** 保存或更新转链映射，并固化创建链接时的归属维度。 */
+    @Transactional(rollbackFor = Exception.class)
+    public void saveOrUpdate(
+            UUID userId,
+            String channelUserName,
+            UUID deptId,
+            String talentId,
+            String talentName,
+            String shortId,
+            UUID uuidSeed,
+            String pickSource,
+            String productId,
+            String activityId,
+            String sourceUrl,
+            String convertedUrl,
+            UUID promotionLinkId,
+            String scene,
+            String pickExtra,
+            String colonelBuyinId,
+            String sourceType,
+            String attributionOwnerType) {
         String resolvedSourceType = resolveSourceType(sourceType, colonelBuyinId);
+        String resolvedAttributionOwnerType = resolveAttributionOwnerType(attributionOwnerType);
         PickSourceMapping existing = findExistingMapping(
                 userId,
                 pickSource,
@@ -374,6 +404,7 @@ public class PickSourceMappingService {
                 mapping.setId(UUID.randomUUID());
                 mapping.setUserId(userId);
                 mapping.setChannelUserName(channelUserName);
+                mapping.setAttributionOwnerType(resolvedAttributionOwnerType);
                 mapping.setDeptId(deptId);
                 mapping.setTalentId(talentId);
                 mapping.setTalentName(talentName);
@@ -429,7 +460,8 @@ public class PickSourceMappingService {
                 promotionLinkId,
                 scene,
                 pickExtra,
-                resolvedSourceType
+                resolvedSourceType,
+                resolvedAttributionOwnerType
         );
         try {
             persistPickSourceMapping(update);
@@ -453,7 +485,8 @@ public class PickSourceMappingService {
                     promotionLinkId,
                     scene,
                     pickExtra,
-                    resolvedSourceType
+                    resolvedSourceType,
+                    resolvedAttributionOwnerType
             );
             if (recovered == null) {
                 throw ex;
@@ -555,7 +588,8 @@ public class PickSourceMappingService {
             UUID promotionLinkId,
             String scene,
             String pickExtra,
-            String resolvedSourceType) {
+            String resolvedSourceType,
+            String resolvedAttributionOwnerType) {
         boolean preserveNativeIdentity = shouldPreserveNativeIdentity(
                 existing,
                 userId,
@@ -567,6 +601,9 @@ public class PickSourceMappingService {
         PickSourceMapping update = new PickSourceMapping();
         update.setId(existing.getId());
         update.setChannelUserName(channelUserName);
+        if (existing.getAttributionOwnerType() == null) {
+            update.setAttributionOwnerType(resolvedAttributionOwnerType);
+        }
         update.setTalentId(talentId);
         update.setTalentName(talentName);
         update.setDeptId(deptId);
@@ -600,6 +637,9 @@ public class PickSourceMappingService {
         materialized.setId(existing.getId());
         materialized.setUserId(update.getUserId() != null ? update.getUserId() : existing.getUserId());
         materialized.setChannelUserName(update.getChannelUserName() != null ? update.getChannelUserName() : existing.getChannelUserName());
+        materialized.setAttributionOwnerType(update.getAttributionOwnerType() != null
+                ? update.getAttributionOwnerType()
+                : existing.getAttributionOwnerType());
         materialized.setTalentId(update.getTalentId() != null ? update.getTalentId() : existing.getTalentId());
         materialized.setTalentName(update.getTalentName() != null ? update.getTalentName() : existing.getTalentName());
         materialized.setShortId(update.getShortId() != null ? update.getShortId() : existing.getShortId());
@@ -652,7 +692,8 @@ public class PickSourceMappingService {
             UUID promotionLinkId,
             String scene,
             String pickExtra,
-            String resolvedSourceType) {
+            String resolvedSourceType,
+            String resolvedAttributionOwnerType) {
         if (!SOURCE_TYPE_NATIVE.equals(resolvedSourceType)
                 || userId == null
                 || !StringUtils.hasText(colonelBuyinId)
@@ -705,7 +746,8 @@ public class PickSourceMappingService {
                 promotionLinkId,
                 scene,
                 pickExtra,
-                resolvedSourceType
+                resolvedSourceType,
+                resolvedAttributionOwnerType
         );
         persistPickSourceMapping(patch);
         return materializeForLogging(nativeExisting, patch);
@@ -761,6 +803,11 @@ public class PickSourceMappingService {
             return sourceType.trim().toUpperCase();
         }
         return StringUtils.hasText(colonelBuyinId) ? SOURCE_TYPE_NATIVE : SOURCE_TYPE_PICK_SOURCE;
+    }
+
+    private String resolveAttributionOwnerType(String attributionOwnerType) {
+        AttributionOwnerType ownerType = AttributionOwnerType.parseNullable(attributionOwnerType);
+        return ownerType == null ? null : ownerType.name();
     }
 
     /**
