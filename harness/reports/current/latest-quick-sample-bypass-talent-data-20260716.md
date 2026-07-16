@@ -6,8 +6,8 @@
 - Environment: real-pre
 - Scope: full
 - Branch: codex/merge-feature-auth-system-20260715
-- Commit: f2dca9bb
-- Owned worktree: dirty
+- Commit: 5dd43e08
+- Owned worktree: clean
 - Deploy remote: false
 
 ## Owned Files
@@ -46,42 +46,16 @@ harness/scripts/commands/deploy-remote.ps1
 ## Owned Git Status
 
 ~~~text
-M backend/src/main/java/com/colonel/saas/domain/sample/application/SampleApplicationPortImpl.java
- M backend/src/main/java/com/colonel/saas/domain/talent/application/TalentProfileApplicationService.java
- M backend/src/main/java/com/colonel/saas/domain/talent/facade/LegacyTalentDomainFacade.java
- M backend/src/main/java/com/colonel/saas/domain/talent/facade/dto/TalentReadDTO.java
- M backend/src/main/java/com/colonel/saas/dto/talent/TalentCreateRequest.java
- M backend/src/main/java/com/colonel/saas/dto/talent/TalentDetailResponse.java
- M backend/src/main/java/com/colonel/saas/dto/talent/TalentUpdateRequest.java
- M backend/src/main/java/com/colonel/saas/service/TalentQueryService.java
- M backend/src/main/java/com/colonel/saas/service/talent/TalentEnrichOrchestrator.java
- M backend/src/main/java/com/colonel/saas/service/talent/profile/TalentProfileSyncService.java
- M backend/src/main/java/com/colonel/saas/service/talent/provider/ManualTalentProvider.java
- M backend/src/main/java/com/colonel/saas/service/talent/provider/ThirdPartyTalentProvider.java
- M backend/src/main/java/com/colonel/saas/vo/TalentVO.java
- M backend/src/main/resources/db/init-db.sql
- M backend/src/main/resources/db/migrate-all.sql
- M backend/src/test/java/com/colonel/saas/domain/talent/application/TalentProfileApplicationServiceTest.java
- M backend/src/test/java/com/colonel/saas/domain/talent/facade/LegacyTalentDomainFacadeTest.java
- M backend/src/test/java/com/colonel/saas/dto/talent/TalentDtoTest.java
- M backend/src/test/java/com/colonel/saas/service/BusinessRuleConfigServiceTest.java
- M backend/src/test/java/com/colonel/saas/service/talent/TalentDataProviderTest.java
- M backend/src/test/java/com/colonel/saas/service/talent/TalentEnrichOrchestratorTest.java
- M backend/src/test/java/com/colonel/saas/service/talent/provider/ManualTalentProviderTest.java
- M frontend/src/api/talent.ts
- M harness/reports/current/latest-content-retire.md
- M harness/scripts/commands/deploy-remote.ps1
-?? backend/src/main/resources/db/alter-sample-default-standard-disable-20260716.sql
-?? backend/src/test/java/com/colonel/saas/domain/sample/application/SampleApplicationPortImplTest.java
-?? backend/src/test/java/com/colonel/saas/service/talent/profile/TalentProfileSyncServiceTest.java
+clean after commit 5dd43e08
 ~~~
 
 ## Build Result
 
 ~~~text
-not collected
 Backend build: PASS (mvn -f backend/pom.xml -DskipTests package)
 Frontend build: PASS (npm --prefix frontend ci; npm --prefix frontend run build)
+Scoped backend tests: PASS (51 tests, 0 failures, 0 errors)
+Full backend tests: FAIL (3 failures in SysUserGroupMembershipApplicationTest; the failure is outside the owned files and reports "用户不存在")
 ~~~
 
 ## Docker Status
@@ -137,4 +111,5 @@ PASS
 
 ## Residual Risk
 
-- Items marked as not collected are not proof of success.
+- Full backend suite is not all green because of the unrelated user-group test fixture failure described above; this task's scoped tests are green.
+- npm reported 6 dependency audit findings during the frontend build (1 low, 1 moderate, 2 high, 2 critical); dependency upgrades were not part of this task.
