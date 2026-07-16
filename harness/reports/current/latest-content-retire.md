@@ -2,10 +2,10 @@
 
 ## Metadata
 
-- Time: 2026-07-16 22:32:30 +08:00
+- Time: 2026-07-16 22:46:52 +08:00
 - Action: Plan
 - DryRun: False
-- Reason: fix: recover performance event execution ledger
+- Reason: fix: query performance activity relation
 - Manifest: (none)
 - ArchiveRoot: harness/archive/retired-content
 - AllowSourceCode: False
