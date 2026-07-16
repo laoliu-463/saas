@@ -331,6 +331,18 @@ class OrderControllerTest {
     }
 
     @Test
+    void replayAttribution_shouldRequireReasonForApply() throws Exception {
+        mockMvc.perform(post("/orders/replay-attribution")
+                        .requestAttr("userId", java.util.UUID.randomUUID())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"orderIds\":[\"order-1\"]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(400));
+
+        verify(orderAttributionReplayService, never()).replay(any(), any(), any(), anyBoolean());
+    }
+
+    @Test
     void getOrders_shouldReturnPagedOrdersAndNormalizeReason() throws Exception {
         java.util.UUID userId = java.util.UUID.randomUUID();
         java.util.UUID deptId = java.util.UUID.randomUUID();
