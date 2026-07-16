@@ -70,11 +70,23 @@ import java.util.Objects;
 import java.util.UUID;
 
 /**
- * 订单管理控制器。
- * <p>
- * 负责订单域的全部 HTTP 接口，包括订单同步、分页查询、统计汇总、筛选项候选值、
- * 详情查询以及历史订单归因重算等运维操作。
- * </p>
+ * 订单管理控制器 (god controller - 边缘服务, 不再 DDD 切片).
+ *
+ * <p><strong>当前状态 (2026-07-14):</strong></p>
+ * <ul>
+ *   <li>1504 行 / 11 endpoint / 18 内部引用, 与 ColonelActivityProductController / DouyinController 一致处置</li>
+ *   <li>OrderService 已标 "Router legacy 路径" (commit ee7e4d09), OrderController 跟随不切</li>
+ *   <li>不切理由:
+ *     <ol>
+ *       <li>Router legacy 路径: 11 endpoint 跨 Router 灰度调度, 切片破坏 Router 灰度策略</li>
+ *       <li>跨域调用多: 18 内部引用 (DashboardService / OperationLogService / AttributionService / OrderSyncService 等)</li>
+ *       <li>Filter/Dashboard cache 配置 (FILTER_OPTIONS_CACHE_PREFIX / DASHBOARD_SUMMARY_CACHE_PREFIX 等) 与 controller 强耦合</li>
+ *     </ol>
+ *   </li>
+ * </ul>
+ *
+ * <p>负责订单域的全部 HTTP 接口，包括订单同步、分页查询、统计汇总、筛选项候选值、
+ * 详情查询以及历史订单归因重算等运维操作。</p>
  *
  * <ul>
  *   <li>订单同步：从抖店上游拉取并落库订单数据（仅管理员）</li>

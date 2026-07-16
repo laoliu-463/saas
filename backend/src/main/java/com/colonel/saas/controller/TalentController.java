@@ -43,7 +43,27 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * 达人 CRM 控制器，供渠道人员管理达人池、公海私海、认领释放与达人信息补全。
+ * 达人 CRM 控制器 (god controller - 部分 DDD 化, 不再 DDD 切片).
+ *
+ * <p><strong>当前状态 (2026-07-14):</strong></p>
+ * <ul>
+ *   <li>777 行 / 24 endpoint / 62 内部引用 (最高耦合), 与 ColonelActivityProductController /
+ *       DouyinController / OrderController / ProductController 一致处置</li>
+ *   <li>已部分 DDD 化: 注入 TalentQueryApplicationService (Batch3 读路径入口),
+ *       通过 DddRefactorProperties 开关路由至 TalentDomainFacade</li>
+ *   <li>不切理由:
+ *     <ol>
+ *       <li>24 endpoint 跨 6 个业务簇 (查询 / CRUD / 标签 / 地址 / 池 / 认领释放 / 黑名单 / 刷新),
+ *           切分边界不清晰</li>
+ *       <li>62 内部引用 (TalentService 跨域调用多), 切片需同步改多个 service / repository</li>
+ *       <li>Batch3 DDD 化已部分完成 (TalentQueryApplicationService + DomainFacade),
+ *           重复切片收益低</li>
+ *       <li>TalentWeeklyRefreshJob 注入到 controller (line 95), 跨 Job/Controller 边界</li>
+ *     </ol>
+ *   </li>
+ * </ul>
+ *
+ * <p>供渠道人员管理达人池、公海私海、认领释放与达人信息补全。
  *
  * <ul>
  *   <li>分页查询达人列表，支持关键字、地区、粉丝量与池状态筛选</li>

@@ -53,7 +53,21 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * 商品管理控制器（已废弃，仅兼容过渡使用）。
+ * 商品管理控制器 (god controller - @Deprecated, 不再 DDD 切片).
+ *
+ * <p><strong>当前状态 (2026-07-14):</strong></p>
+ * <ul>
+ *   <li>1236 行 / 21 endpoint / 29 内部引用, 已标 @Deprecated (since 2026-04-24)</li>
+ *   <li>不切理由 (与 ColonelActivityProductController / DouyinController / OrderController 一致处置):
+ *     <ol>
+ *       <li>@Deprecated 兼容过渡层: 新前端已迁移至 /colonel/ 命名空间, 本 controller 仅平滑过渡</li>
+ *       <li>21 endpoint 数量大, 跨 6+ 业务簇 (商品库 / 类目 / 选品 / 详情 / 转链 / 跟进)</li>
+ *       <li>29 内部引用, 跨 ProductService / ProductQuickSampleApplicationService /
+ *           ProductSampleSettingService / ColonelPartnerSyncService 等</li>
+ *       <li>未来 forRemoval=true 时应直接删除, 不再 DDD 切片</li>
+ *     </ol>
+ *   </li>
+ * </ul>
  *
  * <p>本控制器提供旧版商品库的查询、筛选、快速寄样、转链、审核、达人跟进等接口，
  * 已被标记为 {@code @Deprecated}，新功能请优先使用团长活动商品主链路接口
