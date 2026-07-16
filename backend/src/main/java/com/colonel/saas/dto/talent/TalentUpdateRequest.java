@@ -31,6 +31,14 @@ public class TalentUpdateRequest {
     @Size(max = 64, message = "达人等级不能超过 64 个字符")
     private String level;
 
+    /** 平台达人等级，手动补全时写入 talent_level */
+    @Size(max = 64, message = "平台达人等级不能超过 64 个字符")
+    private String talentLevel;
+
+    /** 近 30 天销售额，单位：分，手动补全时写入 sales_30d */
+    @PositiveOrZero(message = "近 30 天销售额不能为负数")
+    private Long sales30d;
+
     /** 达人状态，0=禁用，1=正常 */
     @Min(value = 0, message = "达人状态不正确")
     @Max(value = 1, message = "达人状态不正确")
@@ -98,6 +106,8 @@ public class TalentUpdateRequest {
         talent.setFollowingCount(followingCount);
         talent.setWorksCount(worksCount);
         talent.setIpLocation(trimToNull(ipLocation));
+        talent.setTalentLevel(trimToNull(talentLevel));
+        talent.setSales30d(sales30d);
         return talent;
     }
 

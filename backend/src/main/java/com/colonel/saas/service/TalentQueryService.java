@@ -663,6 +663,12 @@ public class TalentQueryService {
         info.setWorksCount(talent.getWorksCount());
         info.setIpLocation(talent.getIpLocation());
         info.setLevel(talent.getLevel());
+        info.setTalentLevel(talent.getTalentLevel());
+        info.setSales30d(talent.getSales30d());
+        info.setUnsupportedFields(talent.getUnsupportedFields());
+        info.setSyncStatus(talent.getSyncStatus());
+        info.setDataSource(talent.getDataSource());
+        info.setSyncErrorMessage(talent.getSyncErrorMessage());
         info.setMonthlySales(talent.getMonthlySales());
         info.setMainCategory(talent.getMainCategory());
         info.setLiveSalesBand(talent.getLiveSalesBand());

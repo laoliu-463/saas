@@ -16,7 +16,9 @@ import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -370,7 +372,7 @@ public class TalentProfileSyncService {
      * <ol>
      *   <li>逐字段检查结果中是否有有效值（非 null 非空白），有值时覆盖实体对应字段</li>
      *   <li>特殊映射：douyinAccount 同步写入 douyinNo；talentUid 同步写入 uid，首次时还写入 douyinUid</li>
-     *   <li>talentLevel 和 sales30d 若结果中无值则显式置 null（这两个字段通常不支持自动采集）</li>
+     *   <li>talentLevel 和 sales30d 仅在结果明确返回值时更新，结果缺失时保留已有值，避免刷新资料造成数据丢失</li>
      *   <li>更新元信息字段：dataSource、syncStatus、lastSyncTime、rawPayload、unsupportedFields</li>
      *   <li>清除先前的同步错误信息（syncErrorCode 和 syncErrorMessage 置 null）</li>
      * </ol>
@@ -420,16 +422,12 @@ public class TalentProfileSyncService {
         if (StringUtils.hasText(result.getIpLocation())) {
             talent.setIpLocation(result.getIpLocation());
         }
-        // --- 通常不支持自动采集的字段：有值则写入，无值则显式清空 ---
+        // --- 资料指标字段：仅使用明确返回的值更新，不能因本次来源不支持而清空旧值 ---
         if (StringUtils.hasText(result.getTalentLevel())) {
             talent.setTalentLevel(result.getTalentLevel());
-        } else {
-            talent.setTalentLevel(null);
         }
         if (result.getSales30d() != null) {
             talent.setSales30d(result.getSales30d());
-        } else {
-            talent.setSales30d(null);
         }
         // --- 同步元信息更新 ---
         talent.setDataSource(dataSource);
@@ -437,8 +435,10 @@ public class TalentProfileSyncService {
         talent.setLastSyncTime(LocalDateTime.now());
         talent.setSyncErrorCode(null);       // 清除先前的错误信息
         talent.setSyncErrorMessage(null);
-        talent.setRawPayload(result.getRawPayload());
-        talent.setUnsupportedFields(result.getUnsupportedFields());
+        if (result.getRawPayload() != null && !result.getRawPayload().isEmpty()) {
+            talent.setRawPayload(result.getRawPayload());
+        }
+        talent.setUnsupportedFields(mergeUnsupportedFields(talent, result.getUnsupportedFields()));
     }
 
     /**
@@ -467,7 +467,26 @@ public class TalentProfileSyncService {
         if (result.getRawPayload() != null && !result.getRawPayload().isEmpty()) {
             talent.setRawPayload(result.getRawPayload());
         }
-        talent.setUnsupportedFields(result.getUnsupportedFields());
+        talent.setUnsupportedFields(mergeUnsupportedFields(talent, result.getUnsupportedFields()));
+    }
+
+    /**
+     * 合并资料来源声明，并清除已经有实际值的字段，避免 unsupported 标记与实体值矛盾。
+     */
+    private List<String> mergeUnsupportedFields(Talent talent, List<String> resultUnsupportedFields) {
+        Set<String> unsupported = new LinkedHashSet<>();
+        if (resultUnsupportedFields != null) {
+            unsupported.addAll(resultUnsupportedFields);
+        } else if (talent.getUnsupportedFields() != null) {
+            unsupported.addAll(talent.getUnsupportedFields());
+        }
+        if (StringUtils.hasText(talent.getTalentLevel())) {
+            unsupported.removeIf(field -> "talentLevel".equalsIgnoreCase(field));
+        }
+        if (talent.getSales30d() != null) {
+            unsupported.removeIf(field -> "sales30d".equalsIgnoreCase(field));
+        }
+        return List.copyOf(unsupported);
     }
 
     /**

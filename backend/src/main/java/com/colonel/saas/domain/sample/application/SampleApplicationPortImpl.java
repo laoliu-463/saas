@@ -38,7 +38,7 @@ import java.util.UUID;
  * {@link SampleApplicationPort} 的寄样域实现。
  * <p>
  * 负责商品域快速寄样入口的寄样创建全流程：达人解析 → 私海校验 → 去重校验 →
- * 资质评估 → 外部网关调用 → 寄样单落库 → 状态日志 → 领域事件。
+ * 资格快照 → 外部网关调用 → 寄样单落库 → 状态日志 → 领域事件。
  * </p>
  *
  * @see SampleApplicationPort
@@ -140,9 +140,8 @@ public class SampleApplicationPortImpl implements SampleApplicationPort {
         /* 达人资质评估 */
         SampleEligibilityService.EligibilityResult eligibility =
                 sampleEligibilityService.evaluate(talent, talentInfo);
-        if (!eligibility.eligible() && !StringUtils.hasText(cmd.remark())) {
-            throw BusinessException.stateInvalid("达人未满足默认寄样标准，请填写备注说明申请原因");
-        }
+        // 快速寄样只记录当前资格快照，不执行默认寄样标准拦截。
+        // 默认标准属于后续人工审核/正式寄样流程，不能阻断快速寄样创建。
 
         /* 默认降级模式 */
         item.setExternalApplied(false);
@@ -281,6 +280,9 @@ public class SampleApplicationPortImpl implements SampleApplicationPort {
         talent.setMainCategory(dto.mainCategory());
         talent.setCategories(dto.categories());
         talent.setIpLocation(dto.ipLocation());
+        talent.setTalentLevel(dto.talentLevel());
+        talent.setSales30d(dto.sales30d());
+        talent.setUnsupportedFields(dto.unsupportedFields());
         return talent;
     }
 

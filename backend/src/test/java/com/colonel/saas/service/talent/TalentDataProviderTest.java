@@ -78,6 +78,8 @@ class TalentDataProviderTest {
                 .followingCount(12L)
                 .worksCount(34L)
                 .ipLocation("上海")
+                .talentLevel("LV2")
+                .sales30d(68000L)
                 .build());
 
         assertThat(thirdParty.supports(context)).isTrue();
@@ -91,7 +93,9 @@ class TalentDataProviderTest {
                 .containsEntry("likesCount", 5678L)
                 .containsEntry("followingCount", 12L)
                 .containsEntry("worksCount", 34L)
-                .containsEntry("ipLocation", "上海");
+                .containsEntry("ipLocation", "上海")
+                .containsEntry("talentLevel", "LV2")
+                .containsEntry("sales30d", 68000L);
         assertThat(result.message()).contains("configurable_http");
         verify(httpProvider).fetch(any());
     }

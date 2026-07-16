@@ -109,6 +109,11 @@ if [ ! -f "`$config_migration" ]; then
   echo "Required V2 config migration not found: `$config_migration"
   exit 1
 fi
+sample_standard_migration="backend/src/main/resources/db/alter-sample-default-standard-disable-20260716.sql"
+if [ ! -f "`$sample_standard_migration" ]; then
+  echo "Required sample standard migration not found: `$sample_standard_migration"
+  exit 1
+fi
 backfill_migration="backend/src/main/resources/db/migrate/V20260615_001__product_activity_backfill_state.sql"
 if [ ! -f "`$backfill_migration" ]; then
   echo "Required product backfill schema migration not found: `$backfill_migration"
@@ -154,6 +159,10 @@ if [ "`$config_version_count" != "1" ]; then
   exit 1
 fi
 echo "V2 config schema guard passed."
+echo "Applying required sample default standard migration ..."
+docker cp "`$sample_standard_migration" "`$pg_container:/tmp/alter-sample-default-standard-disable-20260716.sql"
+compose exec -T postgres-real-pre sh -lc 'psql -U "`$POSTGRES_USER" -d "`$POSTGRES_DB" -v ON_ERROR_STOP=1 -f /tmp/alter-sample-default-standard-disable-20260716.sql' </dev/null
+echo "Sample default standard migration passed."
 echo "Applying required product backfill schema migration ..."
 docker cp "`$backfill_migration" "`$pg_container:/tmp/V20260615_001__product_activity_backfill_state.sql"
 compose exec -T postgres-real-pre sh -lc 'psql -U "`$POSTGRES_USER" -d "`$POSTGRES_DB" -v ON_ERROR_STOP=1 -f /tmp/V20260615_001__product_activity_backfill_state.sql' </dev/null

@@ -7,10 +7,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -141,7 +144,8 @@ public class TalentEnrichOrchestrator {
     /**
      * 将 Provider 返回的字段映射应用到 Talent 实体。
      *
-     * <p>支持的字段：nickname、avatarUrl、fans、likesCount、followingCount、worksCount、ipLocation。
+     * <p>支持的字段：nickname、avatarUrl、fans、likesCount、followingCount、worksCount、ipLocation、
+     * talentLevel、sales30d。
      * 不在映射表中的字段会被静默忽略。</p>
      *
      * @param talent 目标达人实体
@@ -162,11 +166,33 @@ public class TalentEnrichOrchestrator {
                 case "followingCount" -> talent.setFollowingCount(toLong(value));
                 case "worksCount" -> talent.setWorksCount(toLong(value));
                 case "ipLocation" -> talent.setIpLocation(String.valueOf(value));
+                case "talentLevel" -> {
+                    talent.setTalentLevel(String.valueOf(value));
+                    removeUnsupportedField(talent, "talentLevel");
+                }
+                case "sales30d" -> {
+                    Long sales30d = toLong(value);
+                    if (sales30d != null) {
+                        talent.setSales30d(sales30d);
+                        removeUnsupportedField(talent, "sales30d");
+                    }
+                }
                 default -> {
                     // 忽略不支持的字段键
                 }
             }
         }
+    }
+
+    private void removeUnsupportedField(Talent talent, String fieldName) {
+        List<String> current = talent.getUnsupportedFields();
+        if (current == null || current.isEmpty()) {
+            talent.setUnsupportedFields(List.of());
+            return;
+        }
+        Set<String> remaining = new LinkedHashSet<>(current);
+        remaining.removeIf(field -> fieldName.equalsIgnoreCase(field));
+        talent.setUnsupportedFields(new ArrayList<>(remaining));
     }
 
     /**

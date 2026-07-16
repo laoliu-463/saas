@@ -965,7 +965,7 @@ VALUES
     ('sample.timeout_homework_days',      '30',       'int',     'sample',     '寄样待交作业自动关闭天数',   1),
     ('sample.timeout_pending_ship_days',  '15',       'int',     'sample',     '寄样待发货自动关闭天数',     1),
     ('sample.default_standard',
-     '{"min_30day_sales":30000,"min_level":"LV1"}', 'json', 'sample', '寄样默认标准', 1),
+     '{}', 'json', 'sample', '寄样默认标准', 1),
     ('commission.business_default_ratio', '0.15',     'numeric', 'commission', '招商默认提成比例',          1),
     ('commission.channel_default_ratio',  '0.15',     'numeric', 'commission', '渠道默认提成比例',          1),
     ('promotion.pick_extra_rule', '{"format":"channel_{channel_code}","encode":"none"}',

@@ -24,7 +24,10 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -171,6 +174,14 @@ public class TalentProfileApplicationService {
         if (StringUtils.hasText(request.getIpLocation())) {
             talent.setIpLocation(request.getIpLocation().trim());
         }
+        if (StringUtils.hasText(request.getTalentLevel())) {
+            talent.setTalentLevel(request.getTalentLevel().trim());
+            removeUnsupportedField(talent, "talentLevel");
+        }
+        if (request.getSales30d() != null) {
+            talent.setSales30d(request.getSales30d());
+            removeUnsupportedField(talent, "sales30d");
+        }
         if (StringUtils.hasText(request.getContactPhone())) {
             talent.setContactPhone(request.getContactPhone().trim());
         }
@@ -185,6 +196,35 @@ public class TalentProfileApplicationService {
         talent.setLastEnrichTime(LocalDateTime.now());
         persistTalent(talent);
         return talent;
+    }
+
+    private void removeUnsupportedField(Talent talent, String fieldName) {
+        List<String> current = talent.getUnsupportedFields();
+        if (current == null || current.isEmpty()) {
+            talent.setUnsupportedFields(List.of());
+            return;
+        }
+        Set<String> remaining = new LinkedHashSet<>(current);
+        remaining.removeIf(field -> fieldName.equalsIgnoreCase(field));
+        talent.setUnsupportedFields(new ArrayList<>(remaining));
+    }
+
+    private List<String> normalizeUnsupportedFields(Talent talent) {
+        Set<String> unsupported = new LinkedHashSet<>();
+        if (talent.getUnsupportedFields() != null) {
+            unsupported.addAll(talent.getUnsupportedFields());
+        }
+        if (StringUtils.hasText(talent.getTalentLevel())) {
+            unsupported.removeIf(field -> "talentLevel".equalsIgnoreCase(field));
+        } else {
+            unsupported.add("talentLevel");
+        }
+        if (talent.getSales30d() != null) {
+            unsupported.removeIf(field -> "sales30d".equalsIgnoreCase(field));
+        } else {
+            unsupported.add("sales30d");
+        }
+        return new ArrayList<>(unsupported);
     }
 
     /**
@@ -279,9 +319,7 @@ public class TalentProfileApplicationService {
         if (!StringUtils.hasText(request.getTalentUid()) && StringUtils.hasText(request.getUid())) {
             request.setTalentUid(request.getUid().trim());
         }
-        if (request.getUnsupportedFields() == null || request.getUnsupportedFields().isEmpty()) {
-            request.setUnsupportedFields(List.of("talentLevel", "sales30d"));
-        }
+        request.setUnsupportedFields(normalizeUnsupportedFields(request));
         request.setId(UUID.randomUUID());
         talentMapper.insert(request);
         boolean profilePrefilled = StringUtils.hasText(request.getDataSource()) && StringUtils.hasText(request.getSyncStatus());

@@ -114,6 +114,12 @@ public class ManualTalentProvider implements TalentDataProvider {
         if (StringUtils.hasText(talent.getIpLocation())) {
             fields.put("ipLocation", talent.getIpLocation().trim());
         }
+        if (StringUtils.hasText(talent.getTalentLevel())) {
+            fields.put("talentLevel", talent.getTalentLevel().trim());
+        }
+        if (talent.getSales30d() != null) {
+            fields.put("sales30d", talent.getSales30d());
+        }
 
         // 第三步：根据结果 Map 是否为空决定返回值
         if (fields.isEmpty()) {

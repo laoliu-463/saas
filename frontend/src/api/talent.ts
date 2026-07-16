@@ -69,6 +69,9 @@ export interface TalentListItem {
   worksCount?: number | null
   ipLocation?: string | null
   level?: string | null
+  talentLevel?: string | null
+  sales30d?: number | null
+  unsupportedFields?: string[]
   monthlySales?: number | null
   poolStatus?: string | null
   ownerId?: string | null

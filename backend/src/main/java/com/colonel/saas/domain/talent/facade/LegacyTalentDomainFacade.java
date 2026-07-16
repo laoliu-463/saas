@@ -192,6 +192,9 @@ public class LegacyTalentDomainFacade implements TalentDomainFacade {
                 talent.getAvatarUrl(),
                 talent.getMainCategory(),
                 talent.getCategories(),
-                talent.getIpLocation());
+                talent.getIpLocation(),
+                talent.getTalentLevel(),
+                talent.getSales30d(),
+                talent.getUnsupportedFields());
     }
 }

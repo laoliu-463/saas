@@ -44,6 +44,9 @@ class LegacyTalentDomainFacadeTest {
         talent.setNickname("测试达人");
         talent.setFans(10000L);
         talent.setStatus(1);
+        talent.setTalentLevel("LV2");
+        talent.setSales30d(68000L);
+        talent.setUnsupportedFields(List.of("talentLevel"));
         when(talentMapper.selectById(id)).thenReturn(talent);
 
         TalentReadDTO dto = facade.findTalentById(id);
@@ -53,6 +56,9 @@ class LegacyTalentDomainFacadeTest {
         assertThat(dto.douyinUid()).isEqualTo("DY-100");
         assertThat(dto.nickname()).isEqualTo("测试达人");
         assertThat(dto.fansCount()).isEqualTo(10000L);
+        assertThat(dto.talentLevel()).isEqualTo("LV2");
+        assertThat(dto.sales30d()).isEqualTo(68000L);
+        assertThat(dto.unsupportedFields()).containsExactly("talentLevel");
     }
 
     @Test
