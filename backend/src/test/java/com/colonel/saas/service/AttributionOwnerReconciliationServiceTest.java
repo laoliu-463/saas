@@ -15,7 +15,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.lang.reflect.Constructor;
 import java.time.LocalDateTime;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -170,6 +172,34 @@ class AttributionOwnerReconciliationServiceTest {
 
         assertThat(result.scanned()).isEqualTo(200);
         assertThat(result.items()).hasSize(200);
+    }
+
+    @Test
+    void mappingIdsMustScopeReconciliationToExplicitTarget() throws Exception {
+        UUID userId = UUID.randomUUID();
+        UUID targetMappingId = UUID.randomUUID();
+        PickSourceMapping unrelatedMapping = mapping(userId, null);
+        unrelatedMapping.setId(UUID.randomUUID());
+        when(mappingMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(unrelatedMapping));
+
+        Constructor<?> constructor = Arrays.stream(AttributionOwnerReconciliationService.ReconcileRequest.class.getConstructors())
+                .filter(candidate -> candidate.getParameterCount() == 5)
+                .findFirst()
+                .orElse(null);
+
+        assertThat(constructor)
+                .as("精确回填请求必须支持 mappingIds，避免按用户扩大处理范围")
+                .isNotNull();
+
+        AttributionOwnerReconciliationService.ReconcileRequest request =
+                (AttributionOwnerReconciliationService.ReconcileRequest) constructor.newInstance(
+                        List.of(userId), List.of(targetMappingId), 1, true, false);
+
+        AttributionOwnerReconciliationService.ReconcileResult result = service.reconcile(request);
+
+        assertThat(result.scanned()).isZero();
+        assertThat(result.updated()).isZero();
+        verifyNoInteractions(userDomainFacade, orderMapper, promotionLinkMapper);
     }
 
     private PickSourceMapping mapping(UUID userId, UUID promotionLinkId) {

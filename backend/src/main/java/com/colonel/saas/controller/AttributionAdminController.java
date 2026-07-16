@@ -48,10 +48,19 @@ public class AttributionAdminController extends BaseController {
                 "分类历史推广链接归属类型",
                 "POST",
                 "attribution_owner_reconcile",
-                safeRequest.userIds() == null ? null : safeRequest.userIds().toString(),
+                reconcileAuditTarget(safeRequest),
                 result.dryRun() ? "dry-run" : "apply",
                 String.format("scanned=%d, classifiable=%d, conflicts=%d, updated=%d",
                         result.scanned(), result.classifiable(), result.conflicts(), result.updated()));
         return ok(result);
+    }
+
+    private String reconcileAuditTarget(AttributionOwnerReconciliationService.ReconcileRequest request) {
+        if (request.mappingIds() != null && !request.mappingIds().isEmpty()) {
+            return request.mappingIds().size() == 1
+                    ? request.mappingIds().get(0).toString()
+                    : request.mappingIds().toString();
+        }
+        return request.userIds() == null ? null : request.userIds().toString();
     }
 }

@@ -70,15 +70,21 @@ public class AttributionOwnerReconciliationService {
         }
 
         List<UUID> userIds = normalizeUserIds(safeRequest.userIds());
+        List<UUID> mappingIds = normalizeMappingIds(safeRequest.mappingIds());
         List<PickSourceMapping> mappings = mappingMapper.selectList(new LambdaQueryWrapper<PickSourceMapping>()
                 .isNull(PickSourceMapping::getAttributionOwnerType)
                 .eq(PickSourceMapping::getDeleted, 0)
                 .in(!userIds.isEmpty(), PickSourceMapping::getUserId, userIds)
+                .in(!mappingIds.isEmpty(), PickSourceMapping::getId, mappingIds)
                 .orderByAsc(PickSourceMapping::getCreateTime)
                 .last("LIMIT " + normalizeLimit(safeRequest.limit())));
         List<PickSourceMapping> candidates = mappings == null
                 ? List.of()
-                : mappings.stream().limit(MAX_LIMIT).toList();
+                : mappings.stream()
+                        .filter(java.util.Objects::nonNull)
+                        .filter(mapping -> mappingIds.isEmpty() || mappingIds.contains(mapping.getId()))
+                        .limit(MAX_LIMIT)
+                        .toList();
 
         List<UUID> candidateUserIds = normalizeUserIds(candidates.stream()
                 .map(PickSourceMapping::getUserId)
@@ -218,6 +224,13 @@ public class AttributionOwnerReconciliationService {
         return new ArrayList<>(new LinkedHashSet<>(userIds.stream().filter(java.util.Objects::nonNull).toList()));
     }
 
+    private List<UUID> normalizeMappingIds(Collection<UUID> mappingIds) {
+        if (mappingIds == null || mappingIds.isEmpty()) {
+            return List.of();
+        }
+        return new ArrayList<>(new LinkedHashSet<>(mappingIds.stream().filter(java.util.Objects::nonNull).toList()));
+    }
+
     private int normalizeLimit(Integer limit) {
         if (limit == null) {
             return DEFAULT_LIMIT;
@@ -225,7 +238,15 @@ public class AttributionOwnerReconciliationService {
         return Math.min(Math.max(limit, 1), MAX_LIMIT);
     }
 
-    public record ReconcileRequest(List<UUID> userIds, Integer limit, Boolean dryRun, Boolean confirm) {
+    public record ReconcileRequest(
+            List<UUID> userIds,
+            List<UUID> mappingIds,
+            Integer limit,
+            Boolean dryRun,
+            Boolean confirm) {
+        public ReconcileRequest(List<UUID> userIds, Integer limit, Boolean dryRun, Boolean confirm) {
+            this(userIds, null, limit, dryRun, confirm);
+        }
     }
 
     public record ReconcileItem(
