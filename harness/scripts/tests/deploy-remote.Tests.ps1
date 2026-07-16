@@ -25,6 +25,18 @@ Describe 'remote deployment safety contract' {
         $firstComposeChange | Should BeGreaterThan $commitGuard
     }
 
+    It 'switches a clean remote worktree to the controlled feature branch before commit validation' {
+        $content | Should Match 'Remote worktree is not clean'
+        $content | Should Match 'git fetch gitee feature/auth-system'
+        $content | Should Match 'git switch feature/auth-system'
+        $content | Should Match 'git merge --ff-only gitee/feature/auth-system'
+
+        $branchSwitch = $content.IndexOf('git switch feature/auth-system')
+        $commitGuard = $content.IndexOf('Remote commit mismatch')
+        $branchSwitch | Should BeGreaterThan -1
+        $commitGuard | Should BeGreaterThan $branchSwitch
+    }
+
     It 'repairs and verifies the repository real-pre env symlink before Compose' {
         $content | Should Match 'ln -sfn'
         $content | Should Match 'readlink -f'

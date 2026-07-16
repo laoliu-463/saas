@@ -2,30 +2,29 @@
 
 ## Metadata
 
-- Time: 2026-07-16 21:30:31 +08:00
+- Time: 2026-07-16 21:35:08 +08:00
 - Environment: real-pre
 - Scope: full
 - Branch: feature/auth-system
-- Commit: dad7a73d
+- Commit: 1903e966
 - Owned worktree: dirty
 - Deploy remote: false
 
 ## Owned Files
 
 ~~~text
-backend/src/test/java/com/colonel/saas/config/RealPreMigrationContractTest.java
 harness/reports/current/latest-content-retire.md
 harness/reports/current/latest-performance-attribution-closure-remediation.md
 harness/scripts/commands/deploy-remote.ps1
+harness/scripts/tests/deploy-remote.Tests.ps1
 ~~~
 
 ## Owned Git Status
 
 ~~~text
-M backend/src/test/java/com/colonel/saas/config/RealPreMigrationContractTest.java
- M harness/reports/current/latest-content-retire.md
- M harness/reports/current/latest-performance-attribution-closure-remediation.md
+M harness/reports/current/latest-content-retire.md
  M harness/scripts/commands/deploy-remote.ps1
+ M harness/scripts/tests/deploy-remote.Tests.ps1
 ~~~
 
 ## Build Result
@@ -40,13 +39,13 @@ Frontend build: PASS (npm --prefix frontend ci; npm --prefix frontend run build)
 
 ~~~text
 NAME                              IMAGE                            COMMAND                   SERVICE             CREATED          STATUS                    PORTS
-saas-active-backend-real-pre-1    colonel-saas/backend:real-pre    "sh -c 'java $JAVA_O鈥?   backend-real-pre    40 seconds ago   Up 33 seconds (healthy)   127.0.0.1:8081->8080/tcp
-saas-active-frontend-real-pre-1   colonel-saas/frontend:real-pre   "/docker-entrypoint.鈥?   frontend-real-pre   37 seconds ago   Up 10 seconds (healthy)   127.0.0.1:3001->80/tcp
+saas-active-backend-real-pre-1    colonel-saas/backend:real-pre    "sh -c 'java $JAVA_O鈥?   backend-real-pre    28 seconds ago   Up 23 seconds (healthy)   127.0.0.1:8081->8080/tcp
+saas-active-frontend-real-pre-1   colonel-saas/frontend:real-pre   "/docker-entrypoint.鈥?   frontend-real-pre   25 seconds ago   Up 6 seconds (healthy)    127.0.0.1:3001->80/tcp
 saas-active-postgres-real-pre-1   postgres:15-alpine               "docker-entrypoint.s鈥?   postgres-real-pre   3 hours ago      Up 3 hours (healthy)      5432/tcp
 saas-active-redis-real-pre-1      redis:7-alpine                   "docker-entrypoint.s鈥?   redis-real-pre      30 hours ago     Up 30 hours (healthy)     6379/tcp
 NAMES                             STATUS                    PORTS
-saas-active-frontend-real-pre-1   Up 12 seconds (healthy)   127.0.0.1:3001->80/tcp
-saas-active-backend-real-pre-1    Up 35 seconds (healthy)   127.0.0.1:8081->8080/tcp
+saas-active-frontend-real-pre-1   Up 6 seconds (healthy)    127.0.0.1:3001->80/tcp
+saas-active-backend-real-pre-1    Up 23 seconds (healthy)   127.0.0.1:8081->8080/tcp
 saas-active-postgres-real-pre-1   Up 3 hours (healthy)      5432/tcp
 saas-active-redis-real-pre-1      Up 30 hours (healthy)     6379/tcp
 campus_frontend                   Up 2 days                 0.0.0.0:5173->5173/tcp, [::]:5173->5173/tcp
