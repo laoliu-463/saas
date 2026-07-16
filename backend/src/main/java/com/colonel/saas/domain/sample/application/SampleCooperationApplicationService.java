@@ -148,7 +148,7 @@ public class SampleCooperationApplicationService {
                 context.productName(),
                 context.productExternalId(),
                 context.shopName(),
-                context.quantity(),
+                sample.getExpectedSampleNum(),
                 context.productSpecification(),
                 context.remark(),
                 context.talentNickname(),

@@ -207,6 +207,7 @@ class SampleCooperationApplicationServiceTest {
                 "applyReason", "  主播试用  ",
                 "specification", "  50ml  ")));
         SampleVO visible = visibleSample(sample);
+        visible.setQuantity(1);
         visible.setProductExternalId("3820194249627009436");
         visible.setProductName("轻奢防晒霜");
         visible.setShopName("轻奢美妆旗舰店");
@@ -253,6 +254,37 @@ class SampleCooperationApplicationServiceTest {
         verify(sampleRequestMapper, never()).insert(any(SampleRequest.class));
         verify(sampleRequestMapper, never()).updateById(any(SampleRequest.class));
         verify(productPromotionFacade, never()).copyForSample(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void copyOrder_shouldRenderPlaceholderWhenVisibleCompatibilityQuantityIsOneButRawQuantityIsNull() {
+        UUID sampleId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        UUID viewerId = UUID.randomUUID();
+        UUID talentId = UUID.randomUUID();
+        SampleRequest sample = sample(sampleId, ownerId, talentId, SampleStatus.PENDING_AUDIT, 1);
+        sample.setExpectedSampleNum(null);
+        SampleVO visible = visibleSample(sample);
+        visible.setQuantity(1);
+        Object roles = List.of(RoleCodes.CHANNEL_STAFF);
+
+        when(sampleQueryApplicationService.getSampleById(
+                sampleId, viewerId, null, DataScope.PERSONAL, roles))
+                .thenReturn(visible);
+        when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
+
+        SampleCopyTextVO result = service.copyOrder(
+                sampleId, viewerId, null, DataScope.PERSONAL, roles);
+
+        assertThat(result.text())
+                .contains("申请数量：---")
+                .doesNotContain("申请数量：1");
+        InOrder order = inOrder(sampleQueryApplicationService, sampleRequestMapper);
+        order.verify(sampleQueryApplicationService).getSampleById(
+                sampleId, viewerId, null, DataScope.PERSONAL, roles);
+        order.verify(sampleRequestMapper).selectById(sampleId);
+        verify(sampleRequestMapper, never()).insert(any(SampleRequest.class));
+        verify(sampleRequestMapper, never()).updateById(any(SampleRequest.class));
     }
 
     @Test
