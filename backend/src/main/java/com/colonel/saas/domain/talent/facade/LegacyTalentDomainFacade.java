@@ -1,11 +1,16 @@
 package com.colonel.saas.domain.talent.facade;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.colonel.saas.common.exception.OptimisticLockSupport;
+import com.colonel.saas.domain.talent.facade.dto.TalentClaimAddressDTO;
+import com.colonel.saas.domain.talent.facade.dto.TalentComplaintRiskDTO;
 import com.colonel.saas.domain.talent.facade.dto.TalentReadDTO;
 import com.colonel.saas.entity.Talent;
 import com.colonel.saas.entity.TalentClaim;
 import com.colonel.saas.mapper.TalentClaimMapper;
+import com.colonel.saas.mapper.TalentComplaintMapper;
 import com.colonel.saas.mapper.TalentMapper;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -26,10 +31,92 @@ public class LegacyTalentDomainFacade implements TalentDomainFacade {
 
     private final TalentMapper talentMapper;
     private final TalentClaimMapper talentClaimMapper;
+    private final TalentComplaintMapper talentComplaintMapper;
 
-    public LegacyTalentDomainFacade(TalentMapper talentMapper, TalentClaimMapper talentClaimMapper) {
+    @Autowired
+    public LegacyTalentDomainFacade(
+            TalentMapper talentMapper,
+            TalentClaimMapper talentClaimMapper,
+            TalentComplaintMapper talentComplaintMapper) {
         this.talentMapper = talentMapper;
         this.talentClaimMapper = talentClaimMapper;
+        this.talentComplaintMapper = talentComplaintMapper;
+    }
+
+    /**
+     * 保留既有测试和非 Spring 调用方的构造方式。
+     */
+    public LegacyTalentDomainFacade(TalentMapper talentMapper, TalentClaimMapper talentClaimMapper) {
+        this(talentMapper, talentClaimMapper, null);
+    }
+
+    @Override
+    public TalentClaimAddressDTO findActiveClaimAddress(UUID talentId, UUID ownerUserId) {
+        if (talentId == null || ownerUserId == null) {
+            return null;
+        }
+        TalentClaim claim = talentClaimMapper.findActiveByTalentAndUser(talentId, ownerUserId);
+        if (claim == null) {
+            return null;
+        }
+        return new TalentClaimAddressDTO(
+                claim.getTalentId(),
+                claim.getUserId(),
+                claim.getRecipientName(),
+                claim.getRecipientPhone(),
+                claim.getRecipientAddress());
+    }
+
+    @Override
+    public void updateActiveClaimAddress(
+            UUID talentId,
+            UUID ownerUserId,
+            String recipientName,
+            String recipientPhone,
+            String recipientAddress) {
+        TalentClaim claim = talentId == null || ownerUserId == null
+                ? null
+                : talentClaimMapper.findActiveByTalentAndUser(talentId, ownerUserId);
+        if (claim == null) {
+            OptimisticLockSupport.requireUpdated(0, "达人认领地址已失效，请刷新后重试");
+            return;
+        }
+        claim.setRecipientName(recipientName);
+        claim.setRecipientPhone(recipientPhone);
+        claim.setRecipientAddress(recipientAddress);
+        OptimisticLockSupport.requireUpdated(
+                talentClaimMapper.updateById(claim),
+                "达人认领地址已被修改或认领已失效，请刷新后重试");
+    }
+
+    @Override
+    public Map<UUID, TalentComplaintRiskDTO> loadComplaintRisks(Collection<UUID> talentIds) {
+        if (talentIds == null || talentIds.isEmpty() || talentComplaintMapper == null) {
+            return Map.of();
+        }
+        List<UUID> distinctTalentIds = talentIds.stream()
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (distinctTalentIds.isEmpty()) {
+            return Map.of();
+        }
+        List<TalentComplaintMapper.TalentRiskSummary> summaries =
+                talentComplaintMapper.selectRiskSummariesByTalentIds(distinctTalentIds);
+        if (summaries == null || summaries.isEmpty()) {
+            return Map.of();
+        }
+        Map<UUID, TalentComplaintRiskDTO> risks = new LinkedHashMap<>();
+        for (TalentComplaintMapper.TalentRiskSummary summary : summaries) {
+            if (summary == null || summary.talentId() == null) {
+                continue;
+            }
+            risks.putIfAbsent(summary.talentId(), new TalentComplaintRiskDTO(
+                    summary.talentId(),
+                    summary.complaintCount(),
+                    summary.latestComplaintAt()));
+        }
+        return risks;
     }
 
     @Override
@@ -192,6 +279,20 @@ public class LegacyTalentDomainFacade implements TalentDomainFacade {
                 talent.getAvatarUrl(),
                 talent.getMainCategory(),
                 talent.getCategories(),
-                talent.getIpLocation());
+                talent.getIpLocation(),
+                resolveWindowSales30d(talent.getRawPayload()));
+    }
+
+    private static Long resolveWindowSales30d(Map<String, Object> rawPayload) {
+        if (rawPayload == null || rawPayload.isEmpty()) {
+            return null;
+        }
+        for (String field : List.of("windowSales30d", "window_sales_30d", "showcaseSales30d")) {
+            Object value = rawPayload.get(field);
+            if (value instanceof Number number) {
+                return number.longValue();
+            }
+        }
+        return null;
     }
 }

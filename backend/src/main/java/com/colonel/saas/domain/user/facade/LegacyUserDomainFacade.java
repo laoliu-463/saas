@@ -7,6 +7,7 @@ import com.colonel.saas.domain.user.port.DepartmentOptionLookup;
 import com.colonel.saas.domain.user.port.DepartmentOptionLookup.DepartmentEntry;
 import com.colonel.saas.domain.user.port.UserBasicLookup;
 import com.colonel.saas.domain.user.port.UserBasicLookup.BasicUser;
+import com.colonel.saas.domain.user.port.UserRoleRecipientLookup;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
 import com.colonel.saas.dto.user.CheckPermissionRequest;
 import com.colonel.saas.dto.user.CurrentUserResponse;
@@ -14,6 +15,7 @@ import com.colonel.saas.dto.user.UserDataScopeResponse;
 import com.colonel.saas.dto.user.UserOptionResponse;
 import com.colonel.saas.service.UserDomainService;
 import com.colonel.saas.service.UserMasterDataService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.Collection;
@@ -36,18 +38,55 @@ public class LegacyUserDomainFacade implements UserDomainFacade {
     private final DepartmentOptionLookup departmentOptionLookup;
     private final UserBasicLookup userBasicLookup;
     private final CurrentUserPermissionChecker currentUserPermissionChecker;
+    private final UserRoleRecipientLookup userRoleRecipientLookup;
 
+    @Autowired
+    public LegacyUserDomainFacade(
+            UserDomainService userDomainService,
+            UserMasterDataService userMasterDataService,
+            DepartmentOptionLookup departmentOptionLookup,
+            UserBasicLookup userBasicLookup,
+            CurrentUserPermissionChecker currentUserPermissionChecker,
+            UserRoleRecipientLookup userRoleRecipientLookup) {
+        this.userDomainService = userDomainService;
+        this.userMasterDataService = userMasterDataService;
+        this.departmentOptionLookup = departmentOptionLookup;
+        this.userBasicLookup = userBasicLookup;
+        this.currentUserPermissionChecker = currentUserPermissionChecker;
+        this.userRoleRecipientLookup = userRoleRecipientLookup;
+    }
+
+    /**
+     * 保留既有测试和非 Spring 调用方的构造方式。
+     */
     public LegacyUserDomainFacade(
             UserDomainService userDomainService,
             UserMasterDataService userMasterDataService,
             DepartmentOptionLookup departmentOptionLookup,
             UserBasicLookup userBasicLookup,
             CurrentUserPermissionChecker currentUserPermissionChecker) {
-        this.userDomainService = userDomainService;
-        this.userMasterDataService = userMasterDataService;
-        this.departmentOptionLookup = departmentOptionLookup;
-        this.userBasicLookup = userBasicLookup;
-        this.currentUserPermissionChecker = currentUserPermissionChecker;
+        this(
+                userDomainService,
+                userMasterDataService,
+                departmentOptionLookup,
+                userBasicLookup,
+                currentUserPermissionChecker,
+                roleCodes -> List.of());
+    }
+
+    @Override
+    public List<UUID> listActiveUserIdsByRoleCodes(Collection<String> roleCodes) {
+        if (roleCodes == null || roleCodes.isEmpty()) {
+            return List.of();
+        }
+        List<UUID> userIds = userRoleRecipientLookup.findActiveUserIdsByRoleCodes(roleCodes);
+        if (userIds == null || userIds.isEmpty()) {
+            return List.of();
+        }
+        return userIds.stream()
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
     }
 
     @Override

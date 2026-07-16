@@ -13,6 +13,7 @@ import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -40,6 +41,36 @@ import java.util.UUID;
  */
 @Mapper
 public interface SysUserMapper extends BaseMapper<SysUser> {
+
+    /**
+     * 查询具有任一指定角色的启用用户 ID。
+     * 用户、角色关系和角色均必须处于未删除状态。
+     */
+    @Select("""
+            <script>
+            SELECT DISTINCT su.id
+            FROM sys_user su
+            INNER JOIN sys_user_role sur ON sur.user_id = su.id
+            INNER JOIN sys_role sr ON sr.id = sur.role_id
+            WHERE su.deleted = 0
+              AND su.status = 1
+              AND sur.deleted = 0
+              AND sr.deleted = 0
+            <choose>
+              <when test="roleCodes != null and roleCodes.size() > 0">
+                AND sr.role_code IN
+                <foreach collection="roleCodes" item="roleCode" open="(" separator="," close=")">
+                  #{roleCode}
+                </foreach>
+              </when>
+              <otherwise>
+                AND 1 = 0
+              </otherwise>
+            </choose>
+            ORDER BY su.id
+            </script>
+            """)
+    List<UUID> findActiveIdsByRoleCodes(@Param("roleCodes") Collection<String> roleCodes);
 
     /**
      * 根据用户名查询用户

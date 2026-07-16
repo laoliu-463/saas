@@ -15,5 +15,34 @@ public record TalentReadDTO(
         String avatarUrl,
         String mainCategory,
         String categories,
-        String ipLocation) {
+        String ipLocation,
+        Long windowSales30d) {
+
+    /**
+     * 保留既有调用方的十字段构造方式；窗口销量未提供时为 null。
+     */
+    public TalentReadDTO(
+            UUID id,
+            String douyinUid,
+            String douyinNo,
+            String nickname,
+            Long fansCount,
+            Integer status,
+            String avatarUrl,
+            String mainCategory,
+            String categories,
+            String ipLocation) {
+        this(
+                id,
+                douyinUid,
+                douyinNo,
+                nickname,
+                fansCount,
+                status,
+                avatarUrl,
+                mainCategory,
+                categories,
+                ipLocation,
+                null);
+    }
 }
