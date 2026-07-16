@@ -125,6 +125,8 @@ class PerformanceCalculationApplicationServiceTest {
         order.setChannelUserId(channelUserId);
         order.setColonelUserId(recruiterUserId);
         order.setUserId(fallbackUserId);
+        order.setChannelAttributionSource("native_unique_link_owner");
+        order.setRecruiterAttributionSource("pick_source");
         order.setTalentId(talentId);
         order.setShopId(90000001L);
         order.setProductId("PROD-TRACE-1");
@@ -141,8 +143,8 @@ class PerformanceCalculationApplicationServiceTest {
         assertThat(result.getDefaultRecruiterUserId()).isEqualTo(recruiterUserId);
         assertThat(result.getFinalChannelUserId()).isEqualTo(channelUserId);
         assertThat(result.getFinalRecruiterUserId()).isEqualTo(recruiterUserId);
-        assertThat(result.getChannelAttribution()).isEqualTo("pick_source");
-        assertThat(result.getRecruiterAttribution()).isEqualTo("activity_owner");
+        assertThat(result.getChannelAttribution()).isEqualTo("native_unique_link_owner");
+        assertThat(result.getRecruiterAttribution()).isEqualTo("pick_source");
         assertThat(result.getTalentId()).isEqualTo(talentId);
         assertThat(result.getPartnerId()).isEqualTo(90000001L);
         assertThat(result.getProductId()).isEqualTo("PROD-TRACE-1");

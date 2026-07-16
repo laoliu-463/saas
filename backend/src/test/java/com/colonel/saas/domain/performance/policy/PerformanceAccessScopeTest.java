@@ -140,7 +140,7 @@ class PerformanceAccessScopeTest {
     }
 
     @Test
-    void canAccessRecord_shouldRestrictRecruiterStaff() {
+    void bizStaffWithPersonalScopeShouldOnlySeeOwnFinalRecruiter() {
         PerformanceRecord record = record(OTHER, USER);
         assertThat(PerformanceAccessScope.canAccessRecord(
                 record,

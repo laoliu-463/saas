@@ -1,5 +1,6 @@
 package com.colonel.saas.domain.performance.application;
 
+import com.colonel.saas.domain.shared.attribution.AttributionSource;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.PerformanceRecord;
 import com.colonel.saas.mapper.PerformanceRecordMapper;
@@ -88,8 +89,12 @@ public class PerformanceCalculationApplicationService {
         record.setDefaultRecruiterUserId(recruiterUserId);
         record.setFinalChannelUserId(channelUserId);
         record.setFinalRecruiterUserId(recruiterUserId);
-        record.setChannelAttribution(channelUserId != null ? "pick_source" : "unattributed");
-        record.setRecruiterAttribution(recruiterUserId != null ? "activity_owner" : "unattributed");
+        record.setChannelAttribution(firstNonBlank(
+                order.getChannelAttributionSource(),
+                channelUserId == null ? null : AttributionSource.PICK_SOURCE));
+        record.setRecruiterAttribution(firstNonBlank(
+                order.getRecruiterAttributionSource(),
+                recruiterUserId == null ? null : AttributionSource.ACTIVITY_OWNER));
 
         // 第一步（续）：关联实体
         record.setTalentId(order.getTalentId());
@@ -203,5 +208,17 @@ public class PerformanceCalculationApplicationService {
      */
     private int nvlInt(Integer value) {
         return value == null ? 0 : value;
+    }
+
+    private String firstNonBlank(String... values) {
+        if (values == null) {
+            return AttributionSource.UNATTRIBUTED;
+        }
+        for (String value : values) {
+            if (StringUtils.hasText(value)) {
+                return value.trim();
+            }
+        }
+        return AttributionSource.UNATTRIBUTED;
     }
 }
