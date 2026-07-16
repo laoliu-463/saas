@@ -383,6 +383,24 @@ class SampleCooperationApplicationServiceTest {
     }
 
     @Test
+    void copyOrder_shouldPreserveUnrelatedVisibilityBusinessFailure() {
+        UUID sampleId = UUID.randomUUID();
+        UUID viewerId = UUID.randomUUID();
+        Object roles = List.of(RoleCodes.CHANNEL_STAFF);
+        BusinessException conflict = BusinessException.conflict("详情读模型暂不可用");
+        when(sampleQueryApplicationService.getVisibleSampleById(
+                sampleId, viewerId, null, DataScope.PERSONAL, roles))
+                .thenThrow(conflict);
+
+        Throwable thrown = org.assertj.core.api.Assertions.catchThrowable(() -> service.copyOrder(
+                sampleId, viewerId, null, DataScope.PERSONAL, roles));
+
+        assertThat(thrown).isSameAs(conflict);
+        assertThat(((BusinessException) thrown).getCode()).isEqualTo(409);
+        verify(sampleRequestMapper, never()).selectById(any());
+    }
+
+    @Test
     void sampleCooperationService_shouldUseOneAutowiredFullConstructorAndNoCrossDomainMapper() throws Exception {
         var legacy = SampleCooperationApplicationService.class.getConstructor(
                 SampleQueryApplicationService.class,
