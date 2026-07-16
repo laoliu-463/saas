@@ -480,6 +480,60 @@ class OrderSyncPersistenceServiceTest {
         }
     }
 
+    @Test
+    void persistOrder_shouldPreserveExistingAttributedDecisionDuringNormalSync() {
+        UUID originalChannel = UUID.randomUUID();
+        UUID originalRecruiter = UUID.randomUUID();
+        ColonelsettlementOrder existing = makeOrder(originalChannel);
+        existing.setId(UUID.randomUUID());
+        existing.setCreateTime(LocalDateTime.now().minusDays(1));
+        existing.setVersion(3);
+        existing.setColonelUserId(originalRecruiter);
+        existing.setChannelAttributionSource("pick_source");
+        existing.setRecruiterAttributionSource("native_unique_link_owner");
+        existing.setAttributionStatus(AttributionService.STATUS_ATTRIBUTED);
+        existing.setAttributionRemark("ATTRIBUTED");
+
+        ColonelsettlementOrder incoming = makeOrder(UUID.randomUUID());
+        incoming.setOrderId(existing.getOrderId());
+        incoming.setColonelUserId(UUID.randomUUID());
+        incoming.setChannelAttributionSource("activity_owner");
+        incoming.setRecruiterAttributionSource("activity_owner");
+        incoming.setAttributionStatus(AttributionService.STATUS_ATTRIBUTED);
+        incoming.setAttributionRemark("ATTRIBUTED");
+        when(orderSyncDedupClaimMapper.claim(incoming.getOrderId(), incoming.getId())).thenReturn(1);
+        when(orderMapper.findByOrderId(incoming.getOrderId())).thenReturn(existing);
+
+        service.persistOrder(incoming);
+
+        assertThat(incoming.getChannelUserId()).isEqualTo(originalChannel);
+        assertThat(incoming.getColonelUserId()).isEqualTo(originalRecruiter);
+        assertThat(incoming.getChannelAttributionSource()).isEqualTo("pick_source");
+        assertThat(incoming.getRecruiterAttributionSource()).isEqualTo("native_unique_link_owner");
+    }
+
+    @Test
+    void persistOrderForAttributionReplay_shouldAllowExplicitCorrectionOfAttributedDecision() {
+        ColonelsettlementOrder existing = makeOrder(UUID.randomUUID());
+        existing.setId(UUID.randomUUID());
+        existing.setCreateTime(LocalDateTime.now().minusDays(1));
+        existing.setVersion(3);
+        existing.setColonelUserId(UUID.randomUUID());
+        existing.setAttributionStatus(AttributionService.STATUS_ATTRIBUTED);
+
+        UUID correctedRecruiter = UUID.randomUUID();
+        ColonelsettlementOrder replayed = makeOrder(UUID.randomUUID());
+        replayed.setOrderId(existing.getOrderId());
+        replayed.setColonelUserId(correctedRecruiter);
+        replayed.setAttributionStatus(AttributionService.STATUS_ATTRIBUTED);
+        when(orderSyncDedupClaimMapper.claim(replayed.getOrderId(), replayed.getId())).thenReturn(1);
+        when(orderMapper.findByOrderId(replayed.getOrderId())).thenReturn(existing);
+
+        service.persistOrderForAttributionReplay(replayed);
+
+        assertThat(replayed.getColonelUserId()).isEqualTo(correctedRecruiter);
+    }
+
     private ColonelsettlementOrder makeOrder(UUID channelUserId) {
         ColonelsettlementOrder order = new ColonelsettlementOrder();
         order.setId(UUID.randomUUID());

@@ -2,10 +2,11 @@ package com.colonel.saas.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.colonel.saas.domain.order.application.OrderDefaultAttributionResolver;
+import com.colonel.saas.domain.order.event.OrderAttributionReplayedEvent;
+import com.colonel.saas.domain.order.event.OrderDomainEventPublisher;
 import com.colonel.saas.domain.order.policy.OrderDefaultAttributionResult;
 import com.colonel.saas.domain.order.policy.OrderLinkAttributionResolution;
 import com.colonel.saas.domain.order.policy.OrderLinkAttributionResolution.Status;
-import com.colonel.saas.domain.performance.application.PerformanceCalculationApplicationService;
 import com.colonel.saas.domain.shared.attribution.AttributionOwnerType;
 import com.colonel.saas.domain.shared.attribution.AttributionSource;
 import com.colonel.saas.entity.ColonelsettlementOrder;
@@ -14,7 +15,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -27,7 +27,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -42,7 +41,7 @@ class OrderAttributionReplayServiceTest {
     @Mock
     private OrderSyncPersistenceService persistenceService;
     @Mock
-    private PerformanceCalculationApplicationService performanceService;
+    private OrderDomainEventPublisher orderDomainEventPublisher;
 
     private OrderAttributionReplayService service;
 
@@ -52,11 +51,11 @@ class OrderAttributionReplayServiceTest {
                 orderMapper,
                 defaultAttributionResolver,
                 persistenceService,
-                performanceService);
+                orderDomainEventPublisher);
     }
 
     @Test
-    void replayShouldUseDefaultResolverThenPersistOrderAndUpsertPerformance() {
+    void replayShouldPersistCorrectedFactThenPublishVersionedAttributionEvent() {
         LocalDateTime businessTime = LocalDateTime.of(2026, 7, 16, 14, 6, 24);
         ColonelsettlementOrder order = order("o-1", businessTime);
         order.setExtraData(Map.of(
@@ -98,9 +97,12 @@ class OrderAttributionReplayServiceTest {
         assertThat(sourceCaptor.getValue().get("second_colonel_buyin_id")).isEqualTo("second-buyin");
         assertThat(sourceCaptor.getValue().get("second_colonel_activity_id")).isEqualTo("3543332");
 
-        InOrder writes = inOrder(persistenceService, performanceService);
-        writes.verify(persistenceService).persistOrder(order);
-        writes.verify(performanceService).upsertFromOrder(order);
+        verify(persistenceService).persistOrderForAttributionReplay(order);
+        ArgumentCaptor<OrderAttributionReplayedEvent> eventCaptor =
+                ArgumentCaptor.forClass(OrderAttributionReplayedEvent.class);
+        verify(orderDomainEventPublisher).publishOrderAttributionReplayed(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().orderId()).isEqualTo(order.getOrderId());
+        assertThat(eventCaptor.getValue().orderVersion()).isEqualTo(1);
         assertThat(order.getAttributionStatus()).isEqualTo(AttributionService.STATUS_ATTRIBUTED);
         assertThat(order.getRecruiterAttributionSource()).isEqualTo(AttributionSource.PICK_SOURCE);
         assertThat(order.getChannelUserName()).isEqualTo("渠道A");
@@ -119,8 +121,8 @@ class OrderAttributionReplayServiceTest {
         assertThat(result.scanned()).isEqualTo(1);
         assertThat(result.updated()).isZero();
         assertThat(result.stillUnattributed()).isEqualTo(1);
-        verify(persistenceService, never()).persistOrder(any());
-        verify(performanceService, never()).upsertFromOrder(any());
+        verify(persistenceService, never()).persistOrderForAttributionReplay(any());
+        verify(orderDomainEventPublisher, never()).publishOrderAttributionReplayed(any());
     }
 
     @Test

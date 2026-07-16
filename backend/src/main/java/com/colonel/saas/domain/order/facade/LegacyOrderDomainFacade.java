@@ -91,6 +91,36 @@ public class LegacyOrderDomainFacade implements OrderDomainFacade {
             UUID deptId,
             DataScope dataScope
     ) {
+        return getOrders(
+                page, size, orderId, attributionStatus, unattributedReason, activityId, productId,
+                channelKeyword, colonelKeyword, orderStatus, startTime, endTime, timeField,
+                dashboardDiagnosis, recruiterDeptIds, channelDeptIds, userId, deptId, dataScope, null);
+    }
+
+    @Transactional(readOnly = true, timeout = 15)
+    @Override
+    public IPage<OrderQueryView> getOrders(
+            long page,
+            long size,
+            String orderId,
+            String attributionStatus,
+            String unattributedReason,
+            String activityId,
+            String productId,
+            String channelKeyword,
+            String colonelKeyword,
+            Integer orderStatus,
+            String startTime,
+            String endTime,
+            String timeField,
+            String dashboardDiagnosis,
+            String recruiterDeptIds,
+            String channelDeptIds,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            Object roleCodes
+    ) {
         IPage<ColonelsettlementOrder> result = orderService.findPage(
                 page,
                 size,
@@ -110,7 +140,8 @@ public class LegacyOrderDomainFacade implements OrderDomainFacade {
                 parseUuidCsv(channelDeptIds),
                 userId,
                 deptId,
-                dataScope
+                dataScope,
+                roleCodes
         );
         return result.convert(OrderListAssembler::toView);
     }
@@ -119,6 +150,19 @@ public class LegacyOrderDomainFacade implements OrderDomainFacade {
     @Override
     public OrderDetailView getOrderDetail(String orderId, UUID userId, UUID deptId, DataScope dataScope) {
         OrderDetailResponse response = orderQueryService.getOrderDetail(orderId, userId, deptId, dataScope);
+        return OrderDetailAssembler.toView(response);
+    }
+
+    @Transactional(readOnly = true, timeout = 15)
+    @Override
+    public OrderDetailView getOrderDetail(
+            String orderId,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            Object roleCodes) {
+        OrderDetailResponse response = orderQueryService.getOrderDetail(
+                orderId, userId, deptId, dataScope, roleCodes);
         return OrderDetailAssembler.toView(response);
     }
 
@@ -144,6 +188,34 @@ public class LegacyOrderDomainFacade implements OrderDomainFacade {
             UUID deptId,
             DataScope dataScope
     ) {
+        return getStats(
+                orderId, attributionStatus, unattributedReason, activityId, productId, channelKeyword,
+                colonelKeyword, orderStatus, startTime, endTime, timeField, dashboardDiagnosis,
+                recruiterDeptIds, channelDeptIds, userId, deptId, dataScope, null);
+    }
+
+    @Transactional(readOnly = true, timeout = 15)
+    @Override
+    public OrderController.OrderStats getStats(
+            String orderId,
+            String attributionStatus,
+            String unattributedReason,
+            String activityId,
+            String productId,
+            String channelKeyword,
+            String colonelKeyword,
+            Integer orderStatus,
+            String startTime,
+            String endTime,
+            String timeField,
+            String dashboardDiagnosis,
+            String recruiterDeptIds,
+            String channelDeptIds,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            Object roleCodes
+    ) {
         OrderService.OrderStatsResult result = orderService.findStats(
                 orderId,
                 attributionStatus,
@@ -162,7 +234,8 @@ public class LegacyOrderDomainFacade implements OrderDomainFacade {
                 userId,
                 deptId,
                 dataScope,
-                orderSyncService.getLastSyncTime()
+                orderSyncService.getLastSyncTime(),
+                roleCodes
         );
         return toOrderStats(result);
     }

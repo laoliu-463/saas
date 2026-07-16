@@ -58,6 +58,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.context.request.RequestAttributes;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.Duration;
@@ -540,35 +543,34 @@ public class OrderController extends BaseController {
             @RequestAttribute(name = "userId", required = false) UUID userId,
             @RequestAttribute(name = "deptId", required = false) UUID deptId,
             @RequestAttribute(name = "dataScope", required = false) DataScope dataScope) {
+        Object roleCodes = currentRoleCodes();
         if (dddRefactorProperties.isEnabled() && dddRefactorProperties.getOrderApplication().isEnabled()) {
+            if (roleCodes == null) {
+                IPage<OrderQueryView> dddResult = orderDomainFacade.getOrders(
+                        page, size, orderId, attributionStatus, unattributedReason, activityId, productId,
+                        channelKeyword, colonelKeyword, orderStatus, startTime, endTime, timeField,
+                        dashboardDiagnosis, recruiterDeptIds, channelDeptIds, userId, deptId, dataScope
+                );
+                return ok(dddResult);
+            }
             IPage<OrderQueryView> dddResult = orderDomainFacade.getOrders(
                     page, size, orderId, attributionStatus, unattributedReason, activityId, productId,
                     channelKeyword, colonelKeyword, orderStatus, startTime, endTime, timeField,
-                    dashboardDiagnosis, recruiterDeptIds, channelDeptIds, userId, deptId, dataScope
+                    dashboardDiagnosis, recruiterDeptIds, channelDeptIds, userId, deptId, dataScope, roleCodes
             );
             return ok(dddResult);
         }
-        IPage<ColonelsettlementOrder> result = orderService.findPage(
-                page,
-                size,
-                orderId,
-                attributionStatus,
-                unattributedReason,
-                activityId,
-                productId,
-                channelKeyword,
-                colonelKeyword,
-                orderStatus,
-                startTime,
-                endTime,
-                timeField,
-                dashboardDiagnosis,
-                parseUuidCsv(recruiterDeptIds),
-                parseUuidCsv(channelDeptIds),
-                userId,
-                deptId,
-                dataScope
-        );
+        IPage<ColonelsettlementOrder> result = roleCodes == null
+                ? orderService.findPage(
+                        page, size, orderId, attributionStatus, unattributedReason, activityId, productId,
+                        channelKeyword, colonelKeyword, orderStatus, startTime, endTime, timeField,
+                        dashboardDiagnosis, parseUuidCsv(recruiterDeptIds), parseUuidCsv(channelDeptIds),
+                        userId, deptId, dataScope)
+                : orderService.findPage(
+                        page, size, orderId, attributionStatus, unattributedReason, activityId, productId,
+                        channelKeyword, colonelKeyword, orderStatus, startTime, endTime, timeField,
+                        dashboardDiagnosis, parseUuidCsv(recruiterDeptIds), parseUuidCsv(channelDeptIds),
+                        userId, deptId, dataScope, roleCodes);
         return ok(result.convert(OrderListAssembler::toView));
     }
 
@@ -625,14 +627,6 @@ public class OrderController extends BaseController {
             @RequestAttribute(name = "userId", required = false) UUID userId,
             @RequestAttribute(name = "deptId", required = false) UUID deptId,
             @RequestAttribute(name = "dataScope", required = false) DataScope dataScope) {
-        if (dddRefactorProperties.isEnabled() && dddRefactorProperties.getOrderApplication().isEnabled()) {
-            IPage<OrderQueryView> dddResult = orderDomainFacade.getOrders(
-                    page, size, orderId, AttributionService.STATUS_UNATTRIBUTED, unattributedReason, activityId, productId,
-                    channelKeyword, colonelKeyword, orderStatus, startTime, endTime, timeField,
-                    dashboardDiagnosis, recruiterDeptIds, channelDeptIds, userId, deptId, dataScope
-            );
-            return ok(dddResult);
-        }
         return getOrders(page, size, orderId, AttributionService.STATUS_UNATTRIBUTED, unattributedReason, activityId, productId, channelKeyword, colonelKeyword, orderStatus, startTime, endTime, timeField, dashboardDiagnosis, recruiterDeptIds, channelDeptIds, userId, deptId, dataScope);
     }
 
@@ -661,10 +655,15 @@ public class OrderController extends BaseController {
             @RequestAttribute(name = "userId", required = false) UUID userId,
             @RequestAttribute(name = "deptId", required = false) UUID deptId,
             @RequestAttribute(name = "dataScope", required = false) DataScope dataScope) {
+        Object roleCodes = currentRoleCodes();
         if (dddRefactorProperties.isEnabled() && dddRefactorProperties.getOrderApplication().isEnabled()) {
-            return ok(orderDomainFacade.getOrderDetail(orderId, userId, deptId, dataScope));
+            return ok(roleCodes == null
+                    ? orderDomainFacade.getOrderDetail(orderId, userId, deptId, dataScope)
+                    : orderDomainFacade.getOrderDetail(orderId, userId, deptId, dataScope, roleCodes));
         }
-        OrderDetailResponse response = orderQueryService.getOrderDetail(orderId, userId, deptId, dataScope);
+        OrderDetailResponse response = roleCodes == null
+                ? orderQueryService.getOrderDetail(orderId, userId, deptId, dataScope)
+                : orderQueryService.getOrderDetail(orderId, userId, deptId, dataScope, roleCodes);
         return ok(OrderDetailAssembler.toView(response));
     }
 
@@ -688,11 +687,19 @@ public class OrderController extends BaseController {
             @RequestAttribute(name = "userId", required = false) UUID userId,
             @RequestAttribute(name = "deptId", required = false) UUID deptId,
             @RequestAttribute(name = "dataScope", required = false) DataScope dataScope) {
+        Object roleCodes = currentRoleCodes();
         if (dddRefactorProperties.isEnabled() && dddRefactorProperties.getOrderApplication().isEnabled()) {
+            if (roleCodes == null) {
+                return ok(orderDomainFacade.getStats(
+                        orderId, attributionStatus, unattributedReason, activityId, productId,
+                        channelKeyword, colonelKeyword, orderStatus, startTime, endTime, timeField,
+                        dashboardDiagnosis, recruiterDeptIds, channelDeptIds, userId, deptId, dataScope
+                ));
+            }
             return ok(orderDomainFacade.getStats(
                     orderId, attributionStatus, unattributedReason, activityId, productId,
                     channelKeyword, colonelKeyword, orderStatus, startTime, endTime, timeField,
-                    dashboardDiagnosis, recruiterDeptIds, channelDeptIds, userId, deptId, dataScope
+                    dashboardDiagnosis, recruiterDeptIds, channelDeptIds, userId, deptId, dataScope, roleCodes
             ));
         }
         return ok(resolveStats(
@@ -712,7 +719,8 @@ public class OrderController extends BaseController {
                 channelDeptIds,
                 userId,
                 deptId,
-                dataScope
+                dataScope,
+                roleCodes
         ));
     }
 
@@ -874,24 +882,25 @@ public class OrderController extends BaseController {
             String channelDeptIds,
             UUID userId,
             UUID deptId,
-            DataScope dataScope) {
+            DataScope dataScope,
+            Object roleCodes) {
         if (!statsCacheEnabled) {
             return loadStats(
                     orderId, attributionStatus, unattributedReason, activityId, productId,
                     channelKeyword, colonelKeyword, orderStatus, startTime, endTime, timeField,
-                    dashboardDiagnosis, recruiterDeptIds, channelDeptIds, userId, deptId, dataScope
+                    dashboardDiagnosis, recruiterDeptIds, channelDeptIds, userId, deptId, dataScope, roleCodes
             );
         }
         String cacheKey = ORDER_STATS_CACHE_PREFIX + statsCacheKey(
                 orderId, attributionStatus, unattributedReason, activityId, productId,
                 channelKeyword, colonelKeyword, orderStatus, startTime, endTime, timeField,
-                dashboardDiagnosis, recruiterDeptIds, channelDeptIds, userId, deptId, dataScope
+                dashboardDiagnosis, recruiterDeptIds, channelDeptIds, userId, deptId, dataScope, roleCodes
         );
         Duration ttl = Duration.ofSeconds(Math.max(statsCacheTtlSeconds, 1L));
         return shortTtlCacheService.get(cacheKey, ttl, () -> loadStats(
                 orderId, attributionStatus, unattributedReason, activityId, productId,
                 channelKeyword, colonelKeyword, orderStatus, startTime, endTime, timeField,
-                dashboardDiagnosis, recruiterDeptIds, channelDeptIds, userId, deptId, dataScope
+                dashboardDiagnosis, recruiterDeptIds, channelDeptIds, userId, deptId, dataScope, roleCodes
         ));
     }
 
@@ -912,28 +921,31 @@ public class OrderController extends BaseController {
             String channelDeptIds,
             UUID userId,
             UUID deptId,
-            DataScope dataScope) {
-        OrderService.OrderStatsResult result = orderService.findStats(
-                orderId,
-                attributionStatus,
-                unattributedReason,
-                activityId,
-                productId,
-                channelKeyword,
-                colonelKeyword,
-                orderStatus,
-                startTime,
-                endTime,
-                timeField,
-                dashboardDiagnosis,
-                parseUuidCsv(recruiterDeptIds),
-                parseUuidCsv(channelDeptIds),
-                userId,
-                deptId,
-                dataScope,
-                orderSyncService.getLastSyncTime()
-        );
+            DataScope dataScope,
+            Object roleCodes) {
+        OrderService.OrderStatsResult result = roleCodes == null
+                ? orderService.findStats(
+                        orderId, attributionStatus, unattributedReason, activityId, productId, channelKeyword,
+                        colonelKeyword, orderStatus, startTime, endTime, timeField, dashboardDiagnosis,
+                        parseUuidCsv(recruiterDeptIds), parseUuidCsv(channelDeptIds), userId, deptId, dataScope,
+                        orderSyncService.getLastSyncTime())
+                : orderService.findStats(
+                        orderId, attributionStatus, unattributedReason, activityId, productId, channelKeyword,
+                        colonelKeyword, orderStatus, startTime, endTime, timeField, dashboardDiagnosis,
+                        parseUuidCsv(recruiterDeptIds), parseUuidCsv(channelDeptIds), userId, deptId, dataScope,
+                        orderSyncService.getLastSyncTime(), roleCodes);
         return toOrderStats(result);
+    }
+
+    /**
+     * 读取当前认证请求的原始角色事实；角色归一化仍由用户域策略负责。
+     */
+    private Object currentRoleCodes() {
+        RequestAttributes attributes = RequestContextHolder.getRequestAttributes();
+        if (!(attributes instanceof ServletRequestAttributes servletAttributes)) {
+            return null;
+        }
+        return servletAttributes.getRequest().getAttribute("roleCodes");
     }
 
     private String statsCacheKey(Object... values) {

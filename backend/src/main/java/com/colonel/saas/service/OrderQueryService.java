@@ -31,4 +31,16 @@ public class OrderQueryService {
             DataScope dataScope) {
         return applicationService.getOrderDetail(orderId, currentUserId, currentDeptId, dataScope);
     }
+
+    /**
+     * 传递认证请求的角色事实，详情与列表/统计使用同一归因维度范围。
+     */
+    public OrderDetailResponse getOrderDetail(
+            String orderId,
+            UUID currentUserId,
+            UUID currentDeptId,
+            DataScope dataScope,
+            Object roleCodes) {
+        return applicationService.getOrderDetail(orderId, currentUserId, currentDeptId, dataScope, roleCodes);
+    }
 }

@@ -121,12 +121,25 @@ public class OrderSyncPersistenceService {
      */
     @Transactional(rollbackFor = Exception.class)
     public boolean persistOrder(ColonelsettlementOrder order) {
+        return persistOrderInternal(order, false);
+    }
+
+    /**
+     * 显式归因重放入口：仅受控重放可改写已冻结的归因决定。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public boolean persistOrderForAttributionReplay(ColonelsettlementOrder order) {
+        return persistOrderInternal(order, true);
+    }
+
+    private boolean persistOrderInternal(ColonelsettlementOrder order, boolean attributionReplay) {
         int claimEffect = orderSyncDedupClaimMapper.claim(order.getOrderId(), order.getId());
         ColonelsettlementOrder existing = orderMapper.findByOrderId(order.getOrderId());
         if (existing != null) {
             orderSyncDedupClaimMapper.bindOrderRow(order.getOrderId(), existing.getId());
             Integer previousStatus = existing.getOrderStatus();
             mergeBySource(existing, order);
+            preserveExistingAttributionForNormalSync(existing, order, attributionReplay);
             order.setId(existing.getId());
             order.setCreateTime(existing.getCreateTime());
             order.setVersion(existing.getVersion());
@@ -147,6 +160,7 @@ public class OrderSyncPersistenceService {
             orderSyncDedupClaimMapper.bindOrderRow(order.getOrderId(), existing.getId());
             Integer previousStatus = existing.getOrderStatus();
             mergeBySource(existing, order);
+            preserveExistingAttributionForNormalSync(existing, order, attributionReplay);
             order.setId(existing.getId());
             order.setCreateTime(existing.getCreateTime());
             order.setVersion(existing.getVersion());
@@ -158,6 +172,32 @@ public class OrderSyncPersistenceService {
         runAttributionFollowUps(order);
         publishOrderSynced(order, true, null);
         return true;
+    }
+
+    /**
+     * 常规同步只更新上游订单事实；已完成的归因决定必须由显式重放入口更正，
+     * 避免当前映射、活动负责人或用户角色变化漂移历史订单归属。
+     */
+    private void preserveExistingAttributionForNormalSync(
+            ColonelsettlementOrder existing,
+            ColonelsettlementOrder incoming,
+            boolean attributionReplay) {
+        if (attributionReplay || existing == null || incoming == null
+                || !AttributionService.STATUS_ATTRIBUTED.equals(existing.getAttributionStatus())) {
+            return;
+        }
+        incoming.setChannelUserId(existing.getChannelUserId());
+        incoming.setChannelUserName(existing.getChannelUserName());
+        incoming.setChannelDeptId(existing.getChannelDeptId());
+        incoming.setUserId(existing.getUserId());
+        incoming.setDeptId(existing.getDeptId());
+        incoming.setColonelUserId(existing.getColonelUserId());
+        incoming.setColonelUserName(existing.getColonelUserName());
+        incoming.setPromotionLinkId(existing.getPromotionLinkId());
+        incoming.setChannelAttributionSource(existing.getChannelAttributionSource());
+        incoming.setRecruiterAttributionSource(existing.getRecruiterAttributionSource());
+        incoming.setAttributionStatus(existing.getAttributionStatus());
+        incoming.setAttributionRemark(existing.getAttributionRemark());
     }
 
     /**

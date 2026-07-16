@@ -1,6 +1,7 @@
 package com.colonel.saas.listener;
 
 import com.colonel.saas.domain.order.event.OrderRefundFactSyncedEvent;
+import com.colonel.saas.domain.order.event.OrderAttributionReplayedEvent;
 import com.colonel.saas.domain.order.facade.OrderReadFacade;
 import com.colonel.saas.domain.performance.application.PerformanceCalculationApplicationService;
 import com.colonel.saas.entity.ColonelsettlementOrder;
@@ -46,7 +47,7 @@ public class PerformanceRecordSyncListener {
         }
         try {
             ColonelsettlementOrder order = orderReadFacade.findByOrderId(event.orderId());
-            recalculate(order, event.orderId());
+            recalculateOrThrow(order, event.orderId());
         } catch (Exception ex) {
             log.warn("Performance calculation failed, orderId={}", event.orderId(), ex);
         }
@@ -61,19 +62,31 @@ public class PerformanceRecordSyncListener {
         recalculate(event.orderId());
     }
 
+    /**
+     * 受控归因更正由 Outbox dispatcher 同步投递；异常必须向上抛出，
+     * 使既有 FAILED/retry/DEAD 机制能够可靠处理。
+     */
+    @EventListener
+    public void onOrderAttributionReplayed(OrderAttributionReplayedEvent event) {
+        if (event == null || event.orderId() == null) {
+            return;
+        }
+        ColonelsettlementOrder order = orderReadFacade.findByOrderId(event.orderId());
+        recalculateOrThrow(order, event.orderId());
+    }
+
     private void recalculate(String orderId) {
         try {
             ColonelsettlementOrder order = orderReadFacade.findByOrderId(orderId);
-            recalculate(order, orderId);
+            recalculateOrThrow(order, orderId);
         } catch (Exception ex) {
             log.warn("Performance calculation failed, orderId={}", orderId, ex);
         }
     }
 
-    private void recalculate(ColonelsettlementOrder order, String orderId) {
+    private void recalculateOrThrow(ColonelsettlementOrder order, String orderId) {
         if (order == null) {
-            log.warn("Performance calculation skipped, order not found: {}", orderId);
-            return;
+            throw new IllegalStateException("Performance calculation order not found: " + orderId);
         }
         PerformanceRecord record = performanceCalculationApplicationService.upsertFromOrder(order);
         if (record == null) {

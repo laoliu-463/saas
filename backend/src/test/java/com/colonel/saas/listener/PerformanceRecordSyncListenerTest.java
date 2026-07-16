@@ -1,6 +1,7 @@
 package com.colonel.saas.listener;
 
 import com.colonel.saas.domain.order.event.OrderRefundFactSyncedEvent;
+import com.colonel.saas.domain.order.event.OrderAttributionReplayedEvent;
 import com.colonel.saas.domain.order.facade.OrderReadFacade;
 import com.colonel.saas.domain.performance.application.PerformanceCalculationApplicationService;
 import com.colonel.saas.entity.ColonelsettlementOrder;
@@ -19,6 +20,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -145,6 +147,49 @@ class PerformanceRecordSyncListenerTest {
         assertThat(calculatedEvent.orderId()).isEqualTo("ORD-REFUND-FACT");
         assertThat(calculatedEvent.correctionType()).isEqualTo("REVERSAL");
         assertThat(calculatedEvent.reversed()).isTrue();
+    }
+
+    @Test
+    void onOrderAttributionReplayed_shouldReadLatestFactUpsertAndPublishCalculatedEvent() {
+        ColonelsettlementOrder order = order("ORD-ATTRIBUTION-REPLAY");
+        PerformanceRecord record = performanceRecord(
+                "ORD-ATTRIBUTION-REPLAY",
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                12L,
+                10L,
+                34L,
+                30L,
+                123L,
+                45L,
+                false);
+        when(orderReadFacade.findByOrderId("ORD-ATTRIBUTION-REPLAY")).thenReturn(order);
+        when(performanceCalculationApplicationService.upsertFromOrder(order)).thenReturn(record);
+
+        listener.onOrderAttributionReplayed(new OrderAttributionReplayedEvent(
+                "ORD-ATTRIBUTION-REPLAY", order.getId(), 7));
+
+        verify(performanceCalculationApplicationService).upsertFromOrder(order);
+        ArgumentCaptor<Object> eventCaptor = ArgumentCaptor.forClass(Object.class);
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+        assertThat(eventCaptor.getValue()).isInstanceOf(PerformanceCalculatedEvent.class);
+        assertThat(((PerformanceCalculatedEvent) eventCaptor.getValue()).orderId())
+                .isEqualTo("ORD-ATTRIBUTION-REPLAY");
+    }
+
+    @Test
+    void onOrderAttributionReplayed_shouldPropagateCalculationFailureForOutboxRetry() {
+        ColonelsettlementOrder order = order("ORD-ATTRIBUTION-REPLAY-FAIL");
+        when(orderReadFacade.findByOrderId("ORD-ATTRIBUTION-REPLAY-FAIL")).thenReturn(order);
+        when(performanceCalculationApplicationService.upsertFromOrder(order))
+                .thenThrow(new IllegalStateException("calculation failed"));
+
+        assertThatThrownBy(() -> listener.onOrderAttributionReplayed(new OrderAttributionReplayedEvent(
+                "ORD-ATTRIBUTION-REPLAY-FAIL", order.getId(), 8)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("calculation failed");
+
+        verifyNoInteractions(eventPublisher);
     }
 
     @Test
