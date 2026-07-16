@@ -21,7 +21,7 @@ public class SampleOrderCopyPolicy {
                 "商品名称：" + textOrPlaceholder(facts.productName()),
                 "商品ID：" + textOrPlaceholder(facts.productId()),
                 "店铺：" + textOrPlaceholder(facts.shopName()),
-                "申请数量：1",
+                "申请数量：" + positiveQuantityOrPlaceholder(facts.quantity()),
                 "商品规格：" + textOrPlaceholder(facts.productSpecification()),
                 "申样备注：" + textOrEmpty(facts.remark()),
                 "达人昵称：" + textOrPlaceholder(facts.talentNickname()),
@@ -50,6 +50,10 @@ public class SampleOrderCopyPolicy {
         return value == null || value < 0 ? PLACEHOLDER : String.valueOf(value);
     }
 
+    private String positiveQuantityOrPlaceholder(Integer value) {
+        return value == null || value <= 0 ? PLACEHOLDER : String.valueOf(value);
+    }
+
     private String textOrPlaceholder(String value) {
         return StringUtils.hasText(value) ? value.trim() : PLACEHOLDER;
     }
@@ -63,6 +67,7 @@ public class SampleOrderCopyPolicy {
             String productName,
             String productId,
             String shopName,
+            Integer quantity,
             String productSpecification,
             String remark,
             String talentNickname,

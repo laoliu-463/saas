@@ -14,6 +14,7 @@ class SampleOrderCopyPolicyTest {
                 "轻奢防晒霜",
                 "3820194249627009436",
                 "轻奢美妆旗舰店",
+                2,
                 "50ml",
                 "主播试用",
                 "达人甲",
@@ -28,7 +29,7 @@ class SampleOrderCopyPolicyTest {
                 "商品名称：轻奢防晒霜",
                 "商品ID：3820194249627009436",
                 "店铺：轻奢美妆旗舰店",
-                "申请数量：1",
+                "申请数量：2",
                 "商品规格：50ml",
                 "申样备注：主播试用",
                 "达人昵称：达人甲",
@@ -50,11 +51,19 @@ class SampleOrderCopyPolicyTest {
     }
 
     @Test
+    void format_shouldFailClosedWhenQuantityIsMissingOrNotPositive() {
+        assertThat(quantityLine(null)).isEqualTo("申请数量：---");
+        assertThat(quantityLine(0)).isEqualTo("申请数量：---");
+        assertThat(quantityLine(-1)).isEqualTo("申请数量：---");
+    }
+
+    @Test
     void format_shouldKeepBlankRemarkLineAndUsePlaceholdersForMissingFacts() {
         String text = policy.format(new SampleOrderCopyPolicy.OrderCopyFacts(
                 null,
                 null,
                 "  ",
+                null,
                 null,
                 null,
                 null,
@@ -69,7 +78,7 @@ class SampleOrderCopyPolicyTest {
                 "商品名称：---\n",
                 "商品ID：---\n",
                 "店铺：---\n",
-                "申请数量：1\n",
+                "申请数量：---\n",
                 "商品规格：---\n",
                 "申样备注：\n",
                 "达人昵称：---\n",
@@ -84,11 +93,22 @@ class SampleOrderCopyPolicyTest {
 
     private String followerLine(Long followers) {
         String text = policy.format(new SampleOrderCopyPolicy.OrderCopyFacts(
-                "商品", "P-1", "店铺", "规格", "备注",
+                "商品", "P-1", "店铺", 1, "规格", "备注",
                 "达人", "douyin", followers, 1L,
                 "收件人", "13800000000", "地址"));
         return text.lines()
                 .filter(line -> line.startsWith("粉丝数："))
+                .findFirst()
+                .orElseThrow();
+    }
+
+    private String quantityLine(Integer quantity) {
+        String text = policy.format(new SampleOrderCopyPolicy.OrderCopyFacts(
+                "商品", "P-1", "店铺", quantity, "规格", "备注",
+                "达人", "douyin", 1L, 1L,
+                "收件人", "13800000000", "地址"));
+        return text.lines()
+                .filter(line -> line.startsWith("申请数量："))
                 .findFirst()
                 .orElseThrow();
     }

@@ -202,6 +202,7 @@ class SampleCooperationApplicationServiceTest {
         UUID viewerId = UUID.randomUUID();
         UUID talentId = UUID.randomUUID();
         SampleRequest sample = sample(sampleId, ownerId, talentId, SampleStatus.PENDING_AUDIT, 3);
+        sample.setExpectedSampleNum(2);
         sample.setExtraData(new LinkedHashMap<>(Map.of(
                 "applyReason", "  主播试用  ",
                 "specification", "  50ml  ")));
@@ -230,7 +231,7 @@ class SampleCooperationApplicationServiceTest {
                 "商品名称：轻奢防晒霜",
                 "商品ID：3820194249627009436",
                 "店铺：轻奢美妆旗舰店",
-                "申请数量：1",
+                "申请数量：2",
                 "商品规格：50ml",
                 "申样备注：主播试用",
                 "达人昵称：达人甲",

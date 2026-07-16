@@ -148,6 +148,7 @@ public class SampleCooperationApplicationService {
                 context.productName(),
                 context.productExternalId(),
                 context.shopName(),
+                context.quantity(),
                 context.productSpecification(),
                 context.remark(),
                 context.talentNickname(),
