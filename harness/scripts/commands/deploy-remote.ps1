@@ -124,6 +124,11 @@ if [ ! -f "`$colonel_partner_mapping_migration" ]; then
   echo "Required colonel partner mapping schema migration not found: `$colonel_partner_mapping_migration"
   exit 1
 fi
+role_aware_attribution_migration="backend/src/main/resources/db/alter-role-aware-promotion-link-attribution-20260716.sql"
+if [ ! -f "`$role_aware_attribution_migration" ]; then
+  echo "Required role-aware attribution migration not found: `$role_aware_attribution_migration"
+  exit 1
+fi
 pg_container="`$(compose ps -q postgres-real-pre)"
 if [ -z "`$pg_container" ]; then
   echo "postgres-real-pre container id not found"
@@ -150,6 +155,15 @@ if [ "`$colonel_name_schema_count" != "1" ]; then
   exit 1
 fi
 echo "Colonel partner mapping schema guard passed."
+echo "Applying required role-aware attribution migration ..."
+docker cp "`$role_aware_attribution_migration" "`$pg_container:/tmp/alter-role-aware-promotion-link-attribution-20260716.sql"
+compose exec -T postgres-real-pre sh -lc 'psql -U "`$POSTGRES_USER" -d "`$POSTGRES_DB" -v ON_ERROR_STOP=1 -f /tmp/alter-role-aware-promotion-link-attribution-20260716.sql' </dev/null
+role_aware_attribution_schema_count="`$(compose exec -T postgres-real-pre sh -lc 'psql -U "`$POSTGRES_USER" -d "`$POSTGRES_DB" -tAc "SELECT count(*) FROM information_schema.columns WHERE table_schema = '\''public'\'' AND ((table_name = '\''promotion_link'\'' AND column_name = '\''attribution_owner_type'\'') OR (table_name = '\''pick_source_mapping'\'' AND column_name = '\''attribution_owner_type'\'') OR (table_name = '\''colonelsettlement_order'\'' AND column_name IN ('\''channel_attribution_source'\'', '\''recruiter_attribution_source'\'')))"' </dev/null | tr -d '[:space:]')"
+if [ "`$role_aware_attribution_schema_count" != "4" ]; then
+  echo "Role-aware attribution schema guard failed: expected 4 columns, got `$role_aware_attribution_schema_count"
+  exit 1
+fi
+echo "Role-aware attribution schema guard passed."
 echo "Applying required V2 config schema migration ..."
 docker cp "`$config_migration" "`$pg_container:/tmp/alter-v2-config-20260523.sql"
 compose exec -T postgres-real-pre sh -lc 'psql -U "`$POSTGRES_USER" -d "`$POSTGRES_DB" -v ON_ERROR_STOP=1 -f /tmp/alter-v2-config-20260523.sql' </dev/null
