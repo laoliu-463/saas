@@ -104,6 +104,8 @@ public final class OrderDefaultAttributionPolicy {
         order.setActivityId(firstNonBlank(result.activityId(), order.getActivityId()));
         order.setAttributionStatus(result.attributionStatus());
         order.setAttributionRemark(result.attributionRemark());
+        order.setChannelAttributionStatus(result.channelAttributionStatus());
+        order.setRecruiterAttributionStatus(result.recruiterAttributionStatus());
         order.setProductTitle(order.getProductName());
         order.setTalentName(talentName);
     }

@@ -227,6 +227,99 @@ class OrderDefaultAttributionPolicyTest {
     }
 
     @Test
+    void applyToOrder_shouldWriteBothChannelAndRecruiterAttributionStatusWhenBothAttributed() {
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setProductName("商品A");
+        UUID channelUserId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+        UUID recruiterId = UUID.randomUUID();
+        UUID talentId = UUID.randomUUID();
+
+        OrderDefaultAttributionResult result = OrderDefaultAttributionResult.attributedChannel(
+                channelUserId,
+                deptId,
+                talentId,
+                "talent-1",
+                "act-new",
+                recruiterId,
+                AttributionService.REASON_ATTRIBUTED);
+
+        OrderDefaultAttributionPolicy.applyToOrder(order, result, "达人A");
+
+        assertThat(order.getChannelAttributionStatus())
+                .isEqualTo(OrderDefaultAttributionResult.CHANNEL_ATTRIBUTED);
+        assertThat(order.getRecruiterAttributionStatus())
+                .isEqualTo(OrderDefaultAttributionResult.RECRUITER_ATTRIBUTED);
+    }
+
+    @Test
+    void applyToOrder_shouldWriteChannelAttributedAndRecruiterUnattributedWhenPickSourceHitsButRecruiterMissing() {
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setProductName("商品A");
+        UUID channelUserId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+        UUID talentId = UUID.randomUUID();
+
+        OrderDefaultAttributionResult result = OrderDefaultAttributionResult.attributedChannel(
+                channelUserId,
+                deptId,
+                talentId,
+                "talent-1",
+                "act-new",
+                null,
+                AttributionService.REASON_NO_PICK_SOURCE);
+
+        OrderDefaultAttributionPolicy.applyToOrder(order, result, "达人A");
+
+        assertThat(order.getChannelAttributionStatus())
+                .isEqualTo(OrderDefaultAttributionResult.CHANNEL_ATTRIBUTED);
+        assertThat(order.getRecruiterAttributionStatus())
+                .isEqualTo(OrderDefaultAttributionResult.RECRUITER_UNATTRIBUTED);
+    }
+
+    @Test
+    void applyToOrder_shouldWriteChannelUnattributedAndRecruiterAttributedWhenOnlyRecruiterResolved() {
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setProductName("商品A");
+        UUID recruiterId = UUID.randomUUID();
+        UUID talentId = UUID.randomUUID();
+
+        OrderDefaultAttributionResult result = OrderDefaultAttributionResult.unattributed(
+                talentId,
+                "talent-uid-1",
+                "act-1",
+                recruiterId,
+                AttributionService.REASON_NO_PICK_SOURCE);
+
+        OrderDefaultAttributionPolicy.applyToOrder(order, result, "达人A");
+
+        assertThat(order.getChannelAttributionStatus())
+                .isEqualTo(OrderDefaultAttributionResult.CHANNEL_UNATTRIBUTED);
+        assertThat(order.getRecruiterAttributionStatus())
+                .isEqualTo(OrderDefaultAttributionResult.RECRUITER_ATTRIBUTED);
+    }
+
+    @Test
+    void applyToOrder_shouldWriteBothUnattributedWhenNeitherResolved() {
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setProductName("商品A");
+
+        OrderDefaultAttributionResult result = OrderDefaultAttributionResult.unattributed(
+                null,
+                null,
+                "act-1",
+                null,
+                AttributionService.REASON_SYNC_FAILED);
+
+        OrderDefaultAttributionPolicy.applyToOrder(order, result, "达人A");
+
+        assertThat(order.getChannelAttributionStatus())
+                .isEqualTo(OrderDefaultAttributionResult.CHANNEL_UNATTRIBUTED);
+        assertThat(order.getRecruiterAttributionStatus())
+                .isEqualTo(OrderDefaultAttributionResult.RECRUITER_UNATTRIBUTED);
+    }
+
+    @Test
     void toLegacyResult_shouldNotReferenceExclusiveTypes() {
         OrderDefaultAttributionResult result = OrderDefaultAttributionResult.unattributed(
                 null, null, "act-1", UUID.randomUUID(), AttributionService.REASON_NO_PICK_SOURCE);
