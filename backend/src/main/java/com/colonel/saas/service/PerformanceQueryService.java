@@ -35,7 +35,7 @@ import java.util.UUID;
  * <p>提供单订单、批量、分页列表、导出等多种查询方式，所有查询均受
  * {@link PerformanceAccessScope} 数据范围约束（personal / group / all）。
  * 底层通过 {@link JdbcTemplate} 原生 SQL 关联 performance_records、
- * colonelsettlement_order、colonelsettlement_activity 等表。</p>
+ * colonelsettlement_order、colonel_activity 等表。</p>
  *
  * <p><b>DDD 切片状态（DDD-PERFORMANCE Slice 1 收尾）：</b>
  * 本服务是 PerformanceQueryFacade 的实现层——已被多个 caller 调用：
@@ -99,7 +99,7 @@ public class PerformanceQueryService {
     private static final String BASE_FROM = """
             FROM performance_records pr
             LEFT JOIN colonelsettlement_order co ON co.order_id = pr.order_id AND co.deleted = 0
-            LEFT JOIN colonelsettlement_activity ca ON ca.activity_id = pr.activity_id
+            LEFT JOIN colonel_activity ca ON ca.activity_id = pr.activity_id
             """;
 
     private final PerformanceRecordMapper performanceRecordMapper;

@@ -185,6 +185,8 @@ class PerformanceQueryServiceTest {
         verify(jdbcTemplate).query(sqlCaptor.capture(), org.mockito.ArgumentMatchers.<RowMapper<?>>any(), any(Object[].class));
         assertThat(sqlCaptor.getValue()).contains("pr.calculated_at");
         assertThat(sqlCaptor.getValue()).contains("pr.final_recruiter_user_id = ?");
+        assertThat(sqlCaptor.getValue()).contains("LEFT JOIN colonel_activity ca ON ca.activity_id = pr.activity_id");
+        assertThat(sqlCaptor.getValue()).doesNotContain("colonelsettlement_activity");
         assertThat(sqlCaptor.getValue()).contains("LIMIT ?");
     }
 
