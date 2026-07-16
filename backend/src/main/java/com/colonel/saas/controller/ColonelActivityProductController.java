@@ -326,7 +326,7 @@ public class ColonelActivityProductController extends BaseController {
      * @return 转链结果，包含推广链接、短链等信息
      */
     @Operation(summary = "活动商品转链", description = "为活动商品生成推广链接。")
-    @RequireRoles({RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF})
+    @RequireRoles({RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF})
     @PostMapping("/{productId}/promotion-links")
     public ApiResult<com.colonel.saas.domain.product.application.dto.PromotionLinkCopyResult> generatePromotionLink(
             @Parameter(description = "团长活动 ID。") @PathVariable String activityId,
