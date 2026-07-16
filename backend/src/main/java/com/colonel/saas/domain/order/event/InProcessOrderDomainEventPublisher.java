@@ -237,6 +237,7 @@ public class InProcessOrderDomainEventPublisher implements OrderDomainEventPubli
             }
         } catch (Exception ex) {
             log.warn("Spring republish failed for eventType={}", eventType, ex);
+            throw new IllegalStateException("Order domain event republish failed: " + eventType, ex);
         }
     }
 }

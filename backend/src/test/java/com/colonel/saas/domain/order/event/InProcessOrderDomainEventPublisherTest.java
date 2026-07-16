@@ -114,4 +114,19 @@ class InProcessOrderDomainEventPublisherTest {
         assertThat(eventCaptor.getValue()).isEqualTo(
                 new OrderAttributionReplayedEvent("ORD-REPLAY-2", rowId, 5));
     }
+
+    @Test
+    void republishSpringEvent_shouldPropagateConsumerFailureForOutboxRetry() throws Exception {
+        UUID rowId = UUID.randomUUID();
+        String payload = new ObjectMapper().writeValueAsString(
+                new OrderAttributionReplayedEvent("ORD-REPLAY-FAIL", rowId, 6));
+        doThrow(new IllegalStateException("execution ledger unavailable"))
+                .when(applicationEventPublisher).publishEvent(any(Object.class));
+
+        assertThatThrownBy(() -> publisher.republishSpringEvent(
+                OrderDomainEventTypes.ORDER_ATTRIBUTION_REPLAYED, payload))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Order domain event republish failed")
+                .hasCauseInstanceOf(IllegalStateException.class);
+    }
 }
