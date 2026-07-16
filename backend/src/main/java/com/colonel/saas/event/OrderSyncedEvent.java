@@ -130,7 +130,36 @@ public record OrderSyncedEvent(
         /** 是否为更新已有订单 */
         boolean isUpdate,
         /** 事件发生时间 */
-        LocalDateTime occurredAt) {
+        LocalDateTime occurredAt,
+        /** 订单事实版本；同一订单版本变更必须形成新的可消费事件。 */
+        int orderVersion) {
+
+    /** 兼容既有事件调用；未提供版本的历史调用按版本 0 处理。 */
+    public OrderSyncedEvent(
+            String orderId, UUID orderRowId, boolean newlyInserted, String attributionStatus,
+            long orderAmount, long payAmount, long settleAmount, long estimateServiceFee,
+            long effectiveServiceFee, long estimateServiceFeeExpense, long effectiveServiceFeeExpense,
+            long estimateTechServiceFee, long effectiveTechServiceFee, long settleColonelCommission,
+            long settleColonelTechServiceFee, long settleSecondColonelCommission, Integer orderStatus,
+            LocalDateTime orderCreateTime, String talentUid, Map<String, Object> extraData, String productId,
+            String activityId, String partnerId, UUID talentId, UUID defaultChannelId, UUID defaultRecruiterId,
+            String recruiterAttribution, String pickSource, LocalDateTime payTime, LocalDateTime settleTime,
+            boolean isUpdate, LocalDateTime occurredAt) {
+        this(orderId, orderRowId, newlyInserted, attributionStatus, orderAmount, payAmount, settleAmount,
+                estimateServiceFee, effectiveServiceFee, estimateServiceFeeExpense, effectiveServiceFeeExpense,
+                estimateTechServiceFee, effectiveTechServiceFee, settleColonelCommission, settleColonelTechServiceFee,
+                settleSecondColonelCommission, orderStatus, orderCreateTime, talentUid, extraData, productId,
+                activityId, partnerId, talentId, defaultChannelId, defaultRecruiterId, recruiterAttribution,
+                pickSource, payTime, settleTime, isUpdate, occurredAt, 0);
+    }
+
+    /** 用于版本化 Outbox 契约的最小事件工厂。 */
+    public static OrderSyncedEvent versioned(String orderId, UUID orderRowId, int orderVersion) {
+        return new OrderSyncedEvent(orderId, orderRowId, false, null,
+                0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L,
+                null, null, null, Map.of(), null, null, null, null, null, null,
+                null, null, null, null, false, LocalDateTime.now(), orderVersion);
+    }
 
     public OrderSyncedEvent(
             String orderId,
@@ -183,6 +212,7 @@ public record OrderSyncedEvent(
                 null,
                 null,
                 !newlyInserted,
-                null);
+                null,
+                0);
     }
 }

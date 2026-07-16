@@ -12,6 +12,8 @@ public record OrderDefaultAttributionResult(
         UUID defaultRecruiterId,
         String channelAttributionSource,
         String recruiterAttributionSource,
+        String channelAttributionStatus,
+        String recruiterAttributionStatus,
         String attributionStatus,
         String attributionRemark,
         OrderLinkAttributionResolution linkResolution,
@@ -35,7 +37,9 @@ public record OrderDefaultAttributionResult(
                 defaultRecruiterId,
                 sourceOrUnattributed(channelAttributionSource),
                 sourceOrUnattributed(recruiterAttributionSource),
-                AttributionService.STATUS_ATTRIBUTED,
+                statusFor(defaultChannelUserId),
+                statusFor(defaultRecruiterId),
+                aggregateStatus(defaultChannelUserId, defaultRecruiterId),
                 linkResolution == null ? AttributionService.REASON_ATTRIBUTED : linkResolution.reason(),
                 linkResolution,
                 talentId,
@@ -65,6 +69,8 @@ public record OrderDefaultAttributionResult(
                 sourceOrUnattributed(channelAttributionSource),
                 sourceOrUnattributed(recruiterAttributionSource),
                 AttributionService.STATUS_UNATTRIBUTED,
+                AttributionService.STATUS_UNATTRIBUTED,
+                AttributionService.STATUS_UNATTRIBUTED,
                 remark,
                 linkResolution,
                 talentId,
@@ -76,10 +82,17 @@ public record OrderDefaultAttributionResult(
         return source == null || source.isBlank() ? AttributionSource.UNATTRIBUTED : source;
     }
 
-    private static String aggregateStatus(boolean channel, boolean recruiter) {
-        if (channel || recruiter) {
-            return STATUS_ATTRIBUTED;
+    private static String statusFor(UUID userId) {
+        return userId == null ? AttributionService.STATUS_UNATTRIBUTED : AttributionService.STATUS_ATTRIBUTED;
+    }
+
+    private static String aggregateStatus(UUID channelUserId, UUID recruiterUserId) {
+        if (channelUserId != null && recruiterUserId != null) {
+            return AttributionService.STATUS_ATTRIBUTED;
         }
-        return STATUS_UNATTRIBUTED;
+        if (channelUserId != null || recruiterUserId != null) {
+            return "PARTIAL";
+        }
+        return AttributionService.STATUS_UNATTRIBUTED;
     }
 }

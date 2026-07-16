@@ -57,12 +57,12 @@ class DddPerformanceOrderBoundaryContractTest {
                 "findUnsettledOrdersByCreateTimeRange");
         assertSourceContains(
                 "com/colonel/saas/domain/performance/application/PerformanceAggregateApplicationService.java",
-                "FROM colonelsettlement_order co",
-                "LEFT JOIN performance_records pr ON pr.order_id = co.order_id");
+                "FROM performance_records pr",
+                "FROM performance_adjustment_ledger");
         assertSourceContains(
                 "com/colonel/saas/domain/performance/application/PerformanceSummaryApplicationService.java",
-                "FROM colonelsettlement_order co",
-                "LEFT JOIN performance_records pr ON pr.order_id = co.order_id");
+                "FROM performance_records pr",
+                "FROM performance_adjustment_ledger");
     }
 
     private static Set<String> findViolations(Pattern... forbiddenPatterns) throws IOException {

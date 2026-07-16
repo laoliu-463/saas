@@ -1923,6 +1923,23 @@ public class ProductService implements CopyPromotionSupportPort {
             String scene,
             String talentId,
             String idempotencyKey) {
+        return generatePromotionLink(
+                id, userId, deptId, externalUniqueId, promotionScene, needShortLink,
+                scene, talentId, idempotencyKey, null);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public DouyinPromotionGateway.PromotionLinkResult generatePromotionLink(
+            UUID id,
+            UUID userId,
+            UUID deptId,
+            String externalUniqueId,
+            Integer promotionScene,
+            boolean needShortLink,
+            String scene,
+            String talentId,
+            String idempotencyKey,
+            AttributionOwnerType requestedOwnerType) {
         ProductSnapshot snapshot = getSnapshotById(id);
         return generatePromotionLink(
                 snapshot.getActivityId(),
@@ -1934,7 +1951,8 @@ public class ProductService implements CopyPromotionSupportPort {
                 needShortLink,
                 scene,
                 talentId,
-                idempotencyKey);
+                idempotencyKey,
+                requestedOwnerType);
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -4203,6 +4221,24 @@ public class ProductService implements CopyPromotionSupportPort {
             String scene,
             String talentId,
             String idempotencyKey) {
+        return generatePromotionLink(
+                activityId, productId, userId, deptId, externalUniqueId, promotionScene,
+                needShortLink, scene, talentId, idempotencyKey, null);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public DouyinPromotionGateway.PromotionLinkResult generatePromotionLink(
+            String activityId,
+            String productId,
+            UUID userId,
+            UUID deptId,
+            String externalUniqueId,
+            Integer promotionScene,
+            boolean needShortLink,
+            String scene,
+            String talentId,
+            String idempotencyKey,
+            AttributionOwnerType requestedOwnerType) {
         if (!StringUtils.hasText(idempotencyKey)) {
             return generatePromotionLinkInternal(
                     activityId,
@@ -4213,7 +4249,9 @@ public class ProductService implements CopyPromotionSupportPort {
                     promotionScene,
                     needShortLink,
                     scene,
-                    talentId);
+                    talentId,
+                    null,
+                    requestedOwnerType);
         }
         String scopeKey = promotionLinkIdempotencyService.buildScopeKey(userId, activityId, productId, idempotencyKey);
         java.util.Optional<DouyinPromotionGateway.PromotionLinkResult> completed =
@@ -4239,7 +4277,8 @@ public class ProductService implements CopyPromotionSupportPort {
                     needShortLink,
                     scene,
                     talentId,
-                    idempotencyKey);
+                    idempotencyKey,
+                    requestedOwnerType);
             promotionLinkIdempotencyService.markCompleted(scopeKey, result);
             return result;
         } catch (RuntimeException ex) {
@@ -4311,6 +4350,26 @@ public class ProductService implements CopyPromotionSupportPort {
                 result.pickSource());
     }
 
+    @Override
+    public CopyPromotionSupportPort.GeneratedPromotionLink generatePromotionLinkForCopy(
+            String activityId,
+            String productId,
+            UUID userId,
+            UUID deptId,
+            String externalUniqueId,
+            Integer promotionScene,
+            boolean needShortLink,
+            String scene,
+            String talentId,
+            String idempotencyKey,
+            AttributionOwnerType attributionOwnerType) {
+        DouyinPromotionGateway.PromotionLinkResult result = generatePromotionLink(
+                activityId, productId, userId, deptId, externalUniqueId, promotionScene,
+                needShortLink, scene, talentId, idempotencyKey, attributionOwnerType);
+        return new CopyPromotionSupportPort.GeneratedPromotionLink(
+                result.shortLink(), result.promoteLink(), result.pickSource());
+    }
+
     public DouyinPromotionGateway.PromotionLinkResult generatePromotionLinkInternal(
             String activityId,
             String productId,
@@ -4331,6 +4390,7 @@ public class ProductService implements CopyPromotionSupportPort {
                 needShortLink,
                 scene,
                 talentId,
+                null,
                 null);
     }
 
@@ -4345,6 +4405,23 @@ public class ProductService implements CopyPromotionSupportPort {
             String scene,
             String talentId,
             String idempotencyKey) {
+        return generatePromotionLinkInternal(
+                activityId, productId, userId, deptId, externalUniqueId, promotionScene,
+                needShortLink, scene, talentId, idempotencyKey, null);
+    }
+
+    private DouyinPromotionGateway.PromotionLinkResult generatePromotionLinkInternal(
+            String activityId,
+            String productId,
+            UUID userId,
+            UUID deptId,
+            String externalUniqueId,
+            Integer promotionScene,
+            boolean needShortLink,
+            String scene,
+            String talentId,
+            String idempotencyKey,
+            AttributionOwnerType requestedOwnerType) {
         ProductSnapshot snapshot = ensureSnapshotExists(activityId, productId);
         NativeColonelBuyinResolution nativeColonelBuyin = resolveColonelBuyinIdForNativeMapping(snapshot.getActivityId(), snapshot.getProductId());
         String finalExternalId = StringUtils.hasText(externalUniqueId) ? externalUniqueId : String.valueOf(userId);
@@ -4368,7 +4445,7 @@ public class ProductService implements CopyPromotionSupportPort {
                 ? Set.of()
                 : roleCodesByUser.getOrDefault(userId, Set.of());
         AttributionOwnerType attributionOwnerType =
-                PROMOTION_ATTRIBUTION_OWNER_POLICY.resolve(roleCodes)
+                PROMOTION_ATTRIBUTION_OWNER_POLICY.resolve(roleCodes, requestedOwnerType)
                         .orElseThrow(() -> new BusinessException(
                                 ResultCode.FORBIDDEN.getCode(),
                                 "当前角色不能创建可归因推广链接",
@@ -4419,6 +4496,16 @@ public class ProductService implements CopyPromotionSupportPort {
             link.setChannelUserId(userId);
             link.setChannelUserName(channelUserName);
             link.setAttributionOwnerType(attributionOwnerType.name());
+            Map<String, Object> attributionSnapshot = new LinkedHashMap<>();
+            attributionSnapshot.put("ownerUserId", userId == null ? null : userId.toString());
+            attributionSnapshot.put("ownerDeptId", deptId == null ? null : deptId.toString());
+            attributionSnapshot.put("ownerType", attributionOwnerType.name());
+            attributionSnapshot.put("activityId", snapshot.getActivityId());
+            attributionSnapshot.put("productId", snapshot.getProductId());
+            attributionSnapshot.put("talentId", talentId);
+            attributionSnapshot.put("roleCodes", roleCodes);
+            attributionSnapshot.put("recordedAt", LocalDateTime.now().toString());
+            link.setAttributionSnapshot(attributionSnapshot);
             link.setOriginalProductUrl(snapshot.getDetailUrl());
             link.setPromotionUrl(result.promoteLink());
             link.setShortUrl(result.shortLink());

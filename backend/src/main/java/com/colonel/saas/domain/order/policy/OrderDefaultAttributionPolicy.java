@@ -103,6 +103,8 @@ public final class OrderDefaultAttributionPolicy {
         order.setActivityId(firstNonBlank(result.activityId(), order.getActivityId()));
         order.setChannelAttributionSource(result.channelAttributionSource());
         order.setRecruiterAttributionSource(result.recruiterAttributionSource());
+        order.setChannelAttributionStatus(result.channelAttributionStatus());
+        order.setRecruiterAttributionStatus(result.recruiterAttributionStatus());
         order.setAttributionStatus(result.attributionStatus());
         order.setAttributionRemark(result.attributionRemark());
         order.setChannelAttributionStatus(result.channelAttributionStatus());
@@ -147,7 +149,8 @@ public final class OrderDefaultAttributionPolicy {
     }
 
     public static boolean isAttributed(String attributionStatus) {
-        return AttributionService.STATUS_ATTRIBUTED.equals(attributionStatus);
+        return AttributionService.STATUS_ATTRIBUTED.equals(attributionStatus)
+                || "PARTIAL".equals(attributionStatus);
     }
 
     public static UnattributedBucket classifyUnattributedRemark(String remark) {

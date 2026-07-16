@@ -26,6 +26,7 @@ class OrderEventPayloadMapperTest {
         ColonelsettlementOrder order = new ColonelsettlementOrder();
         order.setOrderId("ORD-1");
         order.setId(orderRowId);
+        order.setVersion(8);
         order.setProductId("P-1");
         order.setActivityId("A-1");
         order.setShopId(1001L);
@@ -51,6 +52,7 @@ class OrderEventPayloadMapperTest {
 
         assertThat(event.orderId()).isEqualTo("ORD-1");
         assertThat(event.orderRowId()).isEqualTo(orderRowId);
+        assertThat(event.orderVersion()).isEqualTo(8);
         assertThat(event.newlyInserted()).isTrue();
         assertThat(event.isUpdate()).isFalse();
         assertThat(event.talentUid()).isEqualTo("T-100");

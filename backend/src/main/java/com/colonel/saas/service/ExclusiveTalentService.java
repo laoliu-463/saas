@@ -9,6 +9,7 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
 
 import java.time.YearMonth;
+import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 
 /**
@@ -56,10 +57,15 @@ public class ExclusiveTalentService {
 
     @Deprecated
     public AttributionService.ExclusiveOwner findActiveOwnerByTalentUid(String talentUid) {
+        return findActiveOwnerByTalentUidAt(talentUid, LocalDate.now());
+    }
+
+    /** 按订单业务日期读取有效独家达人，避免重算使用当前月份。 */
+    public AttributionService.ExclusiveOwner findActiveOwnerByTalentUidAt(String talentUid, LocalDate businessDate) {
         if (talentUid == null || talentUid.isEmpty()) {
             return null;
         }
-        String month = YearMonth.now().format(MONTH_FORMATTER);
+        String month = (businessDate == null ? YearMonth.now() : YearMonth.from(businessDate)).format(MONTH_FORMATTER);
         ExclusiveTalent match = exclusiveTalentMapper.selectOne(new LambdaQueryWrapper<ExclusiveTalent>()
                 .eq(ExclusiveTalent::getTalentUid, talentUid)
                 .eq(ExclusiveTalent::getEffectiveMonth, month)

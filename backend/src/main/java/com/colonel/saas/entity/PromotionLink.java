@@ -85,6 +85,10 @@ public class PromotionLink implements Serializable {
     @TableField("attribution_owner_type")
     private String attributionOwnerType;
 
+    /** 创建链接时固化的归属输入快照，供订单及业绩归因审计解释。 */
+    @TableField(value = "attribution_snapshot", typeHandler = JsonbTypeHandler.class)
+    private Map<String, Object> attributionSnapshot;
+
     /**
      * 原始商品链接
      * <p>对应数据库列：{@code original_product_url}，转链前的原始商品 URL</p>

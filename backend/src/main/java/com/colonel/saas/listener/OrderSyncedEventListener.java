@@ -3,7 +3,6 @@ package com.colonel.saas.listener;
 import com.colonel.saas.config.OrderDerivedCacheKeys;
 import com.colonel.saas.event.OrderSyncedEvent;
 import com.colonel.saas.domain.talent.application.TalentClaimApplicationService;
-import com.colonel.saas.service.DashboardPerformanceSummaryService;
 import com.colonel.saas.service.ShortTtlCacheService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.event.EventListener;
@@ -17,8 +16,7 @@ import java.time.LocalDateTime;
  * <p>
  * 监听订单同步完成事件（{@link OrderSyncedEvent}），异步执行以下副作用：
  * <ol>
- *   <li>更新仪表盘业绩汇总数据</li>
- *   <li>清除仪表盘相关的短 TTL 缓存（汇总 + 指标）</li>
+ *   <li>清除订单事实相关的短 TTL 缓存</li>
  *   <li>对于有效订单，自动重置关联达人的保护期（T-03 需求）</li>
  * </ol>
  * </p>
@@ -33,14 +31,11 @@ import java.time.LocalDateTime;
  * </p>
  *
  * @see OrderSyncedEvent
- * @see DashboardPerformanceSummaryService#applyOrderSynced(OrderSyncedEvent)
  */
 @Slf4j
 @Component
 public class OrderSyncedEventListener {
 
-    /** 仪表盘业绩汇总服务 */
-    private final DashboardPerformanceSummaryService summaryService;
     /** 短 TTL 缓存服务，用于清除仪表盘缓存 */
     private final ShortTtlCacheService shortTtlCacheService;
     /** 达人认领应用服务 */
@@ -54,10 +49,8 @@ public class OrderSyncedEventListener {
      * @param talentClaimApplicationService 达人认领应用服务
      */
     public OrderSyncedEventListener(
-            DashboardPerformanceSummaryService summaryService,
             ShortTtlCacheService shortTtlCacheService,
             TalentClaimApplicationService talentClaimApplicationService) {
-        this.summaryService = summaryService;
         this.shortTtlCacheService = shortTtlCacheService;
         this.talentClaimApplicationService = talentClaimApplicationService;
     }
@@ -74,8 +67,6 @@ public class OrderSyncedEventListener {
             return;
         }
         try {
-            // 更新仪表盘业绩汇总数据
-            summaryService.applyOrderSynced(event);
             // 清除仪表盘相关的短 TTL 缓存
             shortTtlCacheService.evictByPrefix(OrderDerivedCacheKeys.DASHBOARD_SUMMARY_PREFIX);
             shortTtlCacheService.evictByPrefix(OrderDerivedCacheKeys.DASHBOARD_METRICS_PREFIX);

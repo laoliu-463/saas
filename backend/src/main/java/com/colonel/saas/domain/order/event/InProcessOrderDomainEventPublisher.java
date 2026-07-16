@@ -108,7 +108,7 @@ public class InProcessOrderDomainEventPublisher implements OrderDomainEventPubli
             return;
         }
         if (isOutboxRoutingEnabled()) {
-            String eventKey = "OrderSynced:" + event.orderId() + ":" + event.orderRowId();
+            String eventKey = "OrderSynced:" + event.orderId() + ":" + event.orderVersion();
             appendOrderSyncedInTransaction(eventKey, event);
             return;
         }

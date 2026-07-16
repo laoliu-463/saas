@@ -3,6 +3,7 @@ package com.colonel.saas.domain.order.event;
 import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.constant.OrderDomainEventTypes;
 import com.colonel.saas.domain.event.OutboxEventAppender;
+import com.colonel.saas.event.OrderSyncedEvent;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -68,6 +69,24 @@ class InProcessOrderDomainEventPublisherTest {
                 "OrderAttributionReplayed:ORD-REPLAY-1:3",
                 "OrderAttributionReplayed:ORD-REPLAY-1:3",
                 "OrderAttributionReplayed:ORD-REPLAY-1:4");
+    }
+
+    @Test
+    void publishOrderSynced_shouldUseOrderVersionInOutboxKey() {
+        UUID rowId = UUID.randomUUID();
+        OrderSyncedEvent event = OrderSyncedEvent.versioned("ORD-SYNC-1", rowId, 9);
+
+        publisher.publishOrderSynced(event);
+
+        verify(outboxEventAppender).appendIfAbsent(
+                org.mockito.ArgumentMatchers.eq("OrderSynced:ORD-SYNC-1:9"),
+                org.mockito.ArgumentMatchers.eq(OrderDomainEventTypes.ORDER_SYNCED),
+                org.mockito.ArgumentMatchers.eq(OutboxEventAppender.AGGREGATE_ORDER),
+                org.mockito.ArgumentMatchers.eq("ORD-SYNC-1"),
+                anyInt(),
+                org.mockito.ArgumentMatchers.eq(event),
+                any(),
+                any());
     }
 
     @Test

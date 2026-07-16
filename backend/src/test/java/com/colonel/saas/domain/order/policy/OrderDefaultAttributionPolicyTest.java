@@ -28,7 +28,7 @@ class OrderDefaultAttributionPolicyTest {
         assertThat(result.defaultChannelUserId()).isNull();
         assertThat(result.recruiterAttributionSource()).isEqualTo(AttributionSource.PICK_SOURCE);
         assertThat(result.channelAttributionSource()).isEqualTo(AttributionSource.UNATTRIBUTED);
-        assertThat(result.attributionStatus()).isEqualTo(AttributionService.STATUS_ATTRIBUTED);
+        assertThat(result.attributionStatus()).isEqualTo("PARTIAL");
     }
 
     @Test
@@ -46,6 +46,8 @@ class OrderDefaultAttributionPolicyTest {
         assertThat(result.defaultRecruiterId()).isEqualTo(activityRecruiter);
         assertThat(result.channelAttributionSource()).isEqualTo(AttributionSource.NATIVE_UNIQUE_LINK_OWNER);
         assertThat(result.recruiterAttributionSource()).isEqualTo(AttributionSource.ACTIVITY_OWNER);
+        assertThat(result.channelAttributionStatus()).isEqualTo(AttributionService.STATUS_ATTRIBUTED);
+        assertThat(result.recruiterAttributionStatus()).isEqualTo(AttributionService.STATUS_ATTRIBUTED);
     }
 
     @Test
@@ -58,7 +60,9 @@ class OrderDefaultAttributionPolicyTest {
         assertThat(result.defaultChannelUserId()).isNull();
         assertThat(result.defaultRecruiterId()).isEqualTo(activityRecruiter);
         assertThat(result.recruiterAttributionSource()).isEqualTo(AttributionSource.ACTIVITY_OWNER);
-        assertThat(result.attributionStatus()).isEqualTo(AttributionService.STATUS_ATTRIBUTED);
+        assertThat(result.channelAttributionStatus()).isEqualTo(AttributionService.STATUS_UNATTRIBUTED);
+        assertThat(result.recruiterAttributionStatus()).isEqualTo(AttributionService.STATUS_ATTRIBUTED);
+        assertThat(result.attributionStatus()).isEqualTo("PARTIAL");
     }
 
     @Test
@@ -100,7 +104,7 @@ class OrderDefaultAttributionPolicyTest {
 
         assertThat(result.defaultChannelUserId()).isEqualTo(channelUser);
         assertThat(result.defaultRecruiterId()).isNull();
-        assertThat(result.attributionStatus()).isEqualTo(AttributionService.STATUS_ATTRIBUTED);
+        assertThat(result.attributionStatus()).isEqualTo("PARTIAL");
     }
 
     @Test
@@ -122,9 +126,27 @@ class OrderDefaultAttributionPolicyTest {
         assertThat(order.getColonelUserId()).isEqualTo(recruiterId);
         assertThat(order.getChannelAttributionSource()).isEqualTo(AttributionSource.PICK_SOURCE);
         assertThat(order.getRecruiterAttributionSource()).isEqualTo(AttributionSource.ACTIVITY_OWNER);
+        assertThat(order.getChannelAttributionStatus()).isEqualTo(AttributionService.STATUS_ATTRIBUTED);
+        assertThat(order.getRecruiterAttributionStatus()).isEqualTo(AttributionService.STATUS_ATTRIBUTED);
         assertThat(order.getTalentId()).isEqualTo(talentId);
         assertThat(order.getAttributionStatus()).isEqualTo(AttributionService.STATUS_ATTRIBUTED);
         assertThat(order.getTalentName()).isEqualTo("达人A");
+    }
+
+    @Test
+    void recruiterOnlyDefaultAttributionShouldRemainQueryableWithoutPretendingChannelIsAttributed() {
+        UUID recruiterId = UUID.randomUUID();
+        OrderDefaultAttributionResult result = OrderDefaultAttributionPolicy.resolve(
+                input(), notFound(), new RecruiterLookup(recruiterId, false));
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+
+        OrderDefaultAttributionPolicy.applyToOrder(order, result, "达人A");
+
+        assertThat(order.getColonelUserId()).isEqualTo(recruiterId);
+        assertThat(order.getChannelUserId()).isNull();
+        assertThat(order.getRecruiterAttributionStatus()).isEqualTo(AttributionService.STATUS_ATTRIBUTED);
+        assertThat(order.getChannelAttributionStatus()).isEqualTo(AttributionService.STATUS_UNATTRIBUTED);
+        assertThat(order.getAttributionStatus()).isEqualTo("PARTIAL");
     }
 
     @Test

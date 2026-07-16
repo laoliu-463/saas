@@ -101,9 +101,8 @@ class DddPerformanceDomainInventoryTest {
                 "PERFORMANCE_CACHE_WARMUP");
         assertSourceContains(
                 "src/main/java/com/colonel/saas/job/PerformanceRecalculateFailedJob.java",
-                "ConditionalOnProperty",
-                "performance.recalculate-failed.enabled",
                 "performance.recalculate-failed.cron",
+                "PerformanceCalculationRetryService",
                 "PERFORMANCE_RECALCULATE_FAILED");
         assertSourceContains(
                 "src/main/resources/application.yml",

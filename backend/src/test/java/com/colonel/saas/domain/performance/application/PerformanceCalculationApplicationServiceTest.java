@@ -45,6 +45,8 @@ class PerformanceCalculationApplicationServiceTest {
     private ConfigDomainFacade configDomainFacade;
     @Mock
     private CommissionRuleService commissionRuleService;
+    @Mock
+    private PerformanceAttributionResolver performanceAttributionResolver;
 
     private PerformanceCalculationApplicationService applicationService;
 
@@ -83,7 +85,7 @@ class PerformanceCalculationApplicationServiceTest {
                     recruiterUserId == null ? "UNATTRIBUTED" : "DEFAULT");
         });
         applicationService = new PerformanceCalculationApplicationService(
-                performanceRecordMapper, commissionService, attributionResolver);
+                performanceRecordMapper, commissionService, performanceAttributionResolver);
     }
 
     @Test
@@ -152,16 +154,33 @@ class PerformanceCalculationApplicationServiceTest {
 
         when(performanceRecordMapper.findByOrderId("ORD-TRACE-1")).thenReturn(null);
         when(performanceRecordMapper.upsert(any())).thenReturn(1);
+        UUID finalChannel = UUID.randomUUID();
+        UUID finalRecruiter = UUID.randomUUID();
+        when(performanceAttributionResolver.resolve(order)).thenReturn(
+                new PerformanceAttributionResolver.ResolvedAttribution(
+                        new PerformanceAttributionPolicy.AttributionResult(
+                                finalChannel,
+                                finalRecruiter,
+                                UUID.randomUUID(),
+                                UUID.randomUUID(),
+                                "EXCLUSIVE_TALENT",
+                                "EXCLUSIVE_MERCHANT"),
+                        "PERFORMANCE_ATTRIBUTION_V1",
+                        java.util.Map.of("merchant", "exclusive", "manual", false)));
 
         PerformanceRecord result = applicationService.upsertFromOrder(order);
 
         assertThat(result).isNotNull();
         assertThat(result.getDefaultChannelUserId()).isEqualTo(channelUserId);
         assertThat(result.getDefaultRecruiterUserId()).isEqualTo(recruiterUserId);
-        assertThat(result.getFinalChannelUserId()).isEqualTo(channelUserId);
-        assertThat(result.getFinalRecruiterUserId()).isEqualTo(recruiterUserId);
-        assertThat(result.getChannelAttribution()).isEqualTo("native_unique_link_owner");
-        assertThat(result.getRecruiterAttribution()).isEqualTo("pick_source");
+        assertThat(result.getFinalChannelUserId()).isEqualTo(finalChannel);
+        assertThat(result.getFinalRecruiterUserId()).isEqualTo(finalRecruiter);
+        assertThat(result.getDefaultChannelAttribution()).isEqualTo("native_unique_link_owner");
+        assertThat(result.getDefaultRecruiterAttribution()).isEqualTo("pick_source");
+        assertThat(result.getChannelAttribution()).isEqualTo("EXCLUSIVE_TALENT");
+        assertThat(result.getRecruiterAttribution()).isEqualTo("EXCLUSIVE_MERCHANT");
+        assertThat(result.getAttributionRuleVersion()).isEqualTo("PERFORMANCE_ATTRIBUTION_V1");
+        assertThat(result.getAttributionDecisionSnapshot()).containsEntry("merchant", "exclusive");
         assertThat(result.getTalentId()).isEqualTo(talentId);
         assertThat(result.getPartnerId()).isEqualTo(90000001L);
         assertThat(result.getProductId()).isEqualTo("PROD-TRACE-1");

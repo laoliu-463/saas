@@ -159,6 +159,7 @@ public class OrderSyncPersistenceService {
             order.setCreateTime(existing.getCreateTime());
             order.setVersion(existing.getVersion());
             OptimisticLockSupport.requireUpdated(orderMapper.updateSyncedById(order));
+            order.setVersion(nextVersion(existing));
             runAttributionFollowUps(order);
             publishOrderSynced(order, false, previousStatus);
             return false;
@@ -180,11 +181,15 @@ public class OrderSyncPersistenceService {
             order.setCreateTime(existing.getCreateTime());
             order.setVersion(existing.getVersion());
             OptimisticLockSupport.requireUpdated(orderMapper.updateSyncedById(order));
+            order.setVersion(nextVersion(existing));
             runAttributionFollowUps(order);
             publishOrderSynced(order, false, previousStatus);
             return false;
         }
         runAttributionFollowUps(order);
+        if (order.getVersion() == null) {
+            order.setVersion(0);
+        }
         publishOrderSynced(order, true, null);
         return true;
     }
@@ -198,7 +203,7 @@ public class OrderSyncPersistenceService {
             ColonelsettlementOrder incoming,
             boolean attributionReplay) {
         if (attributionReplay || existing == null || incoming == null
-                || !AttributionService.STATUS_ATTRIBUTED.equals(existing.getAttributionStatus())) {
+                || !hasFrozenDefaultAttribution(existing)) {
             return;
         }
         incoming.setChannelUserId(existing.getChannelUserId());
@@ -211,8 +216,24 @@ public class OrderSyncPersistenceService {
         incoming.setPromotionLinkId(existing.getPromotionLinkId());
         incoming.setChannelAttributionSource(existing.getChannelAttributionSource());
         incoming.setRecruiterAttributionSource(existing.getRecruiterAttributionSource());
+        incoming.setChannelAttributionStatus(existing.getChannelAttributionStatus());
+        incoming.setRecruiterAttributionStatus(existing.getRecruiterAttributionStatus());
         incoming.setAttributionStatus(existing.getAttributionStatus());
         incoming.setAttributionRemark(existing.getAttributionRemark());
+    }
+
+    private static int nextVersion(ColonelsettlementOrder order) {
+        Integer version = order == null ? null : order.getVersion();
+        return (version == null ? 0 : version) + 1;
+    }
+
+    private static boolean hasFrozenDefaultAttribution(ColonelsettlementOrder order) {
+        if (order == null) {
+            return false;
+        }
+        return AttributionService.STATUS_ATTRIBUTED.equals(order.getChannelAttributionStatus())
+                || AttributionService.STATUS_ATTRIBUTED.equals(order.getRecruiterAttributionStatus())
+                || AttributionService.STATUS_ATTRIBUTED.equals(order.getAttributionStatus());
     }
 
     /**

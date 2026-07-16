@@ -31,15 +31,18 @@ class PromotionAttributionOwnerPolicyTest {
     }
 
     @Test
-    void rejectsChannelAndRecruiterRoleConflict() {
+    void requiresExplicitSelectionForChannelAndRecruiterRoleConflict() {
         assertThatThrownBy(() -> policy.resolve(Set.of(
                 RoleCodes.CHANNEL_STAFF,
                 RoleCodes.BIZ_STAFF)))
                 .isInstanceOfSatisfying(BusinessException.class, error -> {
                     assertThat(error.getErrorCode())
-                            .isEqualTo("ATTRIBUTION_OWNER_TYPE_AMBIGUOUS");
-                    assertThat(error.getMessage()).contains("同时属于渠道和招商");
+                            .isEqualTo("ATTRIBUTION_OWNER_TYPE_SELECTION_REQUIRED");
+                    assertThat(error.getMessage()).contains("必须明确选择");
                 });
+        assertThat(policy.resolve(
+                Set.of(RoleCodes.CHANNEL_STAFF, RoleCodes.BIZ_STAFF), AttributionOwnerType.RECRUITER))
+                .contains(AttributionOwnerType.RECRUITER);
     }
 
     @Test
