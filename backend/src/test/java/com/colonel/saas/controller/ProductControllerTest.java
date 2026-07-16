@@ -366,6 +366,23 @@ class ProductControllerTest {
     }
 
     @Test
+    void generatePromotionLink_shouldAllowChannelAndRecruiterRoles() throws Exception {
+        Method method = ProductController.class.getMethod(
+                "generatePromotionLink",
+                UUID.class,
+                ProductController.PromotionLinkRequest.class,
+                String.class,
+                UUID.class,
+                UUID.class);
+
+        assertThat(method.getAnnotation(RequireRoles.class).value()).containsExactly(
+                RoleCodes.CHANNEL_LEADER,
+                RoleCodes.CHANNEL_STAFF,
+                RoleCodes.BIZ_LEADER,
+                RoleCodes.BIZ_STAFF);
+    }
+
+    @Test
     void promotionLinkRequest_shouldKeepDefaultsAndHandleNullNeedShortLink() {
         ProductController.PromotionLinkRequest request = new ProductController.PromotionLinkRequest();
 

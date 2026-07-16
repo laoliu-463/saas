@@ -17,6 +17,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.constant.RoleCodes;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.same;
@@ -102,6 +105,24 @@ class ColonelActivityProductControllerCopyPromotionTest {
                 "talent-1",
                 "idem-1");
         verifyNoInteractions(productService);
+    }
+
+    @Test
+    void generatePromotionLink_shouldAllowChannelAndRecruiterRoles() throws Exception {
+        var method = ColonelActivityProductController.class.getMethod(
+                "generatePromotionLink",
+                String.class,
+                String.class,
+                ColonelActivityProductController.PromotionLinkRequest.class,
+                String.class,
+                UUID.class,
+                UUID.class);
+
+        assertThat(method.getAnnotation(RequireRoles.class).value()).containsExactly(
+                RoleCodes.CHANNEL_LEADER,
+                RoleCodes.CHANNEL_STAFF,
+                RoleCodes.BIZ_LEADER,
+                RoleCodes.BIZ_STAFF);
     }
 
     @Test

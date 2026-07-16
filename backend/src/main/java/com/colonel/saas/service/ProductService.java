@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.common.enums.ProductBizStatus;
 import com.colonel.saas.common.result.PageResult;
+import com.colonel.saas.common.result.ResultCode;
 import com.colonel.saas.constant.ProductDisplayStatus;
 import com.colonel.saas.domain.product.event.ProductDomainEventPublisher;
 import com.colonel.saas.domain.product.application.dto.ActivityProductRefreshRequest;
@@ -13,6 +14,8 @@ import com.colonel.saas.domain.product.application.ProductLibraryApplicationServ
 import com.colonel.saas.domain.product.application.port.CopyPromotionSupportPort;
 import com.colonel.saas.domain.product.policy.ProductDisplayPolicy;
 import com.colonel.saas.domain.product.policy.ProductPinPolicy;
+import com.colonel.saas.domain.product.policy.PromotionAttributionOwnerPolicy;
+import com.colonel.saas.domain.shared.attribution.AttributionOwnerType;
 import com.colonel.saas.dto.product.ProductFilterOptionItem;
 import com.colonel.saas.dto.product.ProductFilterOptionsDTO;
 import com.colonel.saas.common.enums.TalentFollowStatus;
@@ -177,6 +180,8 @@ public class ProductService implements CopyPromotionSupportPort {
                     + "([0-9]{10,30})(?![0-9])",
             Pattern.CASE_INSENSITIVE);
     public static final String FALLBACK_REASON_REAL_PROMOTION_WRITE_DISABLED = "REAL_PROMOTION_WRITE_DISABLED";
+    private static final PromotionAttributionOwnerPolicy PROMOTION_ATTRIBUTION_OWNER_POLICY =
+            new PromotionAttributionOwnerPolicy();
 
     /** 商品域转链端口，隔离 legacy 抖音推广网关（DDD-PRODUCT-004） */
     private final DouyinConvertPort douyinConvertPort;
@@ -4357,6 +4362,18 @@ public class ProductService implements CopyPromotionSupportPort {
                 && !relinkExistingProduct) {
             throw BusinessException.stateInvalid("当前状态不允许执行PROMOTION_LINK，当前状态：" + beforeStatus.name());
         }
+        Map<UUID, Set<String>> roleCodesByUser =
+                userDomainFacade.loadActiveRoleCodesByUserIds(List.of(userId));
+        Set<String> roleCodes = roleCodesByUser == null
+                ? Set.of()
+                : roleCodesByUser.getOrDefault(userId, Set.of());
+        AttributionOwnerType attributionOwnerType =
+                PROMOTION_ATTRIBUTION_OWNER_POLICY.resolve(roleCodes)
+                        .orElseThrow(() -> new BusinessException(
+                                ResultCode.FORBIDDEN.getCode(),
+                                "当前角色不能创建可归因推广链接",
+                                "PROMOTION_ATTRIBUTION_ROLE_REQUIRED",
+                                null));
         Map<UUID, String> channelCodes = userDomainFacade.loadUserChannelCodesByIds(List.of(userId));
         String userName = userDomainFacade.getUserName(userId);
         String channelUserName = StringUtils.hasText(userName) ? userName : "unknown";
@@ -4401,6 +4418,7 @@ public class ProductService implements CopyPromotionSupportPort {
             link.setTalentId(talentId);
             link.setChannelUserId(userId);
             link.setChannelUserName(channelUserName);
+            link.setAttributionOwnerType(attributionOwnerType.name());
             link.setOriginalProductUrl(snapshot.getDetailUrl());
             link.setPromotionUrl(result.promoteLink());
             link.setShortUrl(result.shortLink());
@@ -4437,7 +4455,8 @@ public class ProductService implements CopyPromotionSupportPort {
                         finalScene,
                         result.pickExtra(),
                         nativeColonelBuyin.colonelBuyinId(),
-                        PickSourceMappingService.SOURCE_TYPE_NATIVE
+                        PickSourceMappingService.SOURCE_TYPE_NATIVE,
+                        attributionOwnerType.name()
                 );
             } else {
                 log.warn("Skip native mapping creation because colonel_buyin_id is unresolved, activityId={}, productId={}, source={}",
@@ -4459,7 +4478,10 @@ public class ProductService implements CopyPromotionSupportPort {
                         result.promoteLink(),
                         link.getId(),
                         finalScene,
-                        result.pickExtra()
+                        result.pickExtra(),
+                        null,
+                        PickSourceMappingService.SOURCE_TYPE_PICK_SOURCE,
+                        attributionOwnerType.name()
                 );
             }
             log.info("promotion_convert_result=success product_id={} channel_id={} activity_id={} pick_source={} scene={} result=success",
