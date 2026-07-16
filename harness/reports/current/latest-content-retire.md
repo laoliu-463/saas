@@ -2,10 +2,10 @@
 
 ## Metadata
 
-- Time: 2026-07-16 23:00:40 +08:00
+- Time: 2026-07-16 23:19:11 +08:00
 - Action: Plan
 - DryRun: False
-- Reason: fix: query performance activity column
+- Reason: harness: split local and remote probe credentials
 - Manifest: (none)
 - ArchiveRoot: harness/archive/retired-content
 - AllowSourceCode: False
