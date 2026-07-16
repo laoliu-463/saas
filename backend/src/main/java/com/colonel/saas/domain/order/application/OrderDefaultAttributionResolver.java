@@ -57,7 +57,11 @@ public class OrderDefaultAttributionResolver {
                 input.secondColonelBuyinId(),
                 input.secondActivityId(),
                 input.talentUid(),
-                talentId);
+                talentId,
+                input.colonelBuyinId(),
+                input.secondColonelBuyinId(),
+                input.secondActivityId(),
+                input.businessTime());
 
         PickSourceMapping channelMapping = resolveChannelMapping(enriched);
         RecruiterLookup recruiterLookup = loadRecruiterLookup(enriched.activityId(), enriched.productId());
