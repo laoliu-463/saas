@@ -11,11 +11,16 @@ import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.util.ArrayDeque;
 import java.util.List;
+import java.util.Queue;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -66,28 +71,107 @@ class ComplaintAttachmentStorageTest {
     }
 
     @Test
-    void store_shouldFallbackWithinSameDirectoryWhenAtomicMoveIsUnsupported() {
+    void store_shouldFallbackToNonReplacingMoveWhenHardLinkIsUnsupported() {
         AtomicInteger moveCalls = new AtomicInteger();
         ComplaintAttachmentStorage storage = new ComplaintAttachmentStorage(
                 tempDir,
                 UUID::randomUUID,
                 (source, target, atomic) -> {
                     moveCalls.incrementAndGet();
-                    if (atomic) {
-                        throw new AtomicMoveNotSupportedException(
-                                source.toString(), target.toString(), "test filesystem");
-                    }
+                    assertThat(atomic).isFalse();
                     assertThat(source.getParent()).isEqualTo(target.getParent());
                     Files.move(source, target);
-                });
+                },
+                (target, source) -> {
+                    throw new UnsupportedOperationException("hard links unavailable");
+                },
+                Files::deleteIfExists,
+                path -> Files.readAttributes(
+                        path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS));
         byte[] content = jpeg(3);
         ComplaintImagePolicy.ValidatedImage image = new ComplaintImagePolicy().validate(List.of(
                 new MockMultipartFile("files", "proof.jpg", "image/jpeg", content))).get(0);
 
         ComplaintAttachmentStorage.StoredAttachment stored = storage.store(image);
 
-        assertThat(moveCalls).hasValue(2);
+        assertThat(moveCalls).hasValue(1);
         assertThat(storage.load(stored.storageKey())).containsExactly(content);
+    }
+
+    @Test
+    void store_shouldNotOverwriteTargetClaimedBetweenSelectionAndFallbackMove() throws Exception {
+        UUID fixed = UUID.fromString("00112233-4455-6677-8899-aabbccddeeff");
+        Path target = tempDir.resolve("00/00112233445566778899aabbccddeeff.jpg");
+        byte[] incumbent = new byte[]{9, 8, 7};
+        ComplaintAttachmentStorage storage = new ComplaintAttachmentStorage(
+                tempDir,
+                () -> fixed,
+                (source, destination, atomic) -> {
+                    Files.write(destination, incumbent, StandardOpenOption.CREATE_NEW);
+                    if (atomic) {
+                        Files.move(source, destination, StandardCopyOption.REPLACE_EXISTING);
+                    } else {
+                        Files.move(source, destination);
+                    }
+                },
+                (destination, source) -> {
+                    throw new UnsupportedOperationException("hard links unavailable");
+                },
+                Files::deleteIfExists,
+                path -> Files.readAttributes(
+                        path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS));
+        ComplaintImagePolicy.ValidatedImage image = new ComplaintImagePolicy().validate(List.of(
+                new MockMultipartFile("files", "proof.jpg", "image/jpeg", jpeg(5)))).get(0);
+
+        assertThatThrownBy(() -> storage.store(image))
+                .isInstanceOf(IllegalStateException.class)
+                .hasCauseInstanceOf(FileAlreadyExistsException.class);
+        assertThat(Files.readAllBytes(target)).containsExactly(incumbent);
+        assertThat(countFiles()).isEqualTo(1);
+    }
+
+    @Test
+    void store_shouldRetryWithAnotherRandomKeyWhenTargetAlreadyExists() throws Exception {
+        UUID collision = UUID.fromString("00112233-4455-6677-8899-aabbccddeeff");
+        UUID available = UUID.fromString("11112233-4455-6677-8899-aabbccddeeff");
+        Path occupied = tempDir.resolve("00/00112233445566778899aabbccddeeff.jpg");
+        Files.createDirectories(occupied.getParent());
+        Files.write(occupied, new byte[]{9});
+        Queue<UUID> generated = new ArrayDeque<>(List.of(collision, available));
+        ComplaintAttachmentStorage storage = new ComplaintAttachmentStorage(
+                tempDir,
+                generated::remove,
+                (source, target, atomic) -> Files.move(source, target));
+        ComplaintImagePolicy.ValidatedImage image = new ComplaintImagePolicy().validate(List.of(
+                new MockMultipartFile("files", "proof.jpg", "image/jpeg", jpeg(6)))).get(0);
+
+        ComplaintAttachmentStorage.StoredAttachment stored = storage.store(image);
+
+        assertThat(stored.storageKey())
+                .isEqualTo("11/11112233445566778899aabbccddeeff.jpg");
+        assertThat(Files.readAllBytes(occupied)).containsExactly(9);
+        assertThat(storage.load(stored.storageKey())).containsExactly(jpeg(6));
+    }
+
+    @Test
+    void store_shouldRetryTemporaryDeletionThreeTimes() throws Exception {
+        AtomicInteger deletes = new AtomicInteger();
+        ChangingMultipartFile file = new ChangingMultipartFile(jpeg(7), jpeg(8));
+        ComplaintImagePolicy.ValidatedImage image = new ComplaintImagePolicy().validate(List.of(file)).get(0);
+        ComplaintAttachmentStorage storage = new ComplaintAttachmentStorage(
+                tempDir,
+                UUID::randomUUID,
+                (source, target, atomic) -> Files.move(source, target),
+                path -> {
+                    if (deletes.incrementAndGet() < 3) {
+                        throw new IOException("transient delete failure");
+                    }
+                    return Files.deleteIfExists(path);
+                });
+
+        assertThatThrownBy(() -> storage.store(image)).isInstanceOf(BusinessException.class);
+        assertThat(deletes).hasValue(3);
+        assertThat(countFiles()).isZero();
     }
 
     @Test

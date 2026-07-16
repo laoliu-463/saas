@@ -58,8 +58,7 @@ public class OperationLogInterceptor implements HandlerInterceptor {
 
     /** request attribute 键名，用于在 preHandle 和 afterCompletion 之间传递请求开始时间 */
     private static final String ATTR_STARTED_AT = "operationLog.startedAt";
-    private static final int MAX_COMPLAINT_AUDIT_VALUE_CODE_POINTS = 256;
-    private static final int MAX_COMPLAINT_AUDIT_VALUES = 16;
+    private static final int MAX_IGNORED_COMPLAINT_PARAMETERS = 1_000;
     private static final Set<String> COMPLAINT_REASONS = Set.of(
             TalentComplaintPolicy.REPEATED_NO_FULFILLMENT,
             TalentComplaintPolicy.LOW_PRICE_RESALE,
@@ -243,25 +242,11 @@ public class OperationLogInterceptor implements HandlerInterceptor {
         if (parameterMap == null || parameterMap.isEmpty()) {
             return null;
         }
+        if (isComplaintCreateRoute(requestUri)) {
+            return copyComplaintCreateParams(parameterMap);
+        }
         Map<String, Object> result = new LinkedHashMap<>();
-        boolean complaintCreate = isComplaintCreateRoute(requestUri);
         parameterMap.forEach((key, value) -> {
-            if (complaintCreate && "content".equals(key)) {
-                result.put(key, "[REDACTED]");
-                return;
-            }
-            if (complaintCreate && "reason".equals(key)) {
-                result.put(key, value != null
-                                && value.length == 1
-                                && COMPLAINT_REASONS.contains(value[0])
-                        ? value[0]
-                        : "[INVALID]");
-                return;
-            }
-            if (complaintCreate) {
-                result.put(key, sanitizeComplaintAuditValues(value));
-                return;
-            }
             if (value == null) {
                 result.put(key, null);
             } else if (value.length == 1) {
@@ -273,23 +258,28 @@ public class OperationLogInterceptor implements HandlerInterceptor {
         return result;
     }
 
-    private Object sanitizeComplaintAuditValues(String[] values) {
-        if (values == null) {
-            return null;
+    private Map<String, Object> copyComplaintCreateParams(
+            Map<String, String[]> parameterMap) {
+        Map<String, Object> result = new LinkedHashMap<>(3);
+        if (parameterMap.containsKey("reason")) {
+            String[] reason = parameterMap.get("reason");
+            result.put("reason", reason != null
+                            && reason.length == 1
+                            && COMPLAINT_REASONS.contains(reason[0])
+                    ? reason[0]
+                    : "[INVALID]");
         }
-        if (values.length > MAX_COMPLAINT_AUDIT_VALUES) {
-            return "[TRUNCATED]";
+        if (parameterMap.containsKey("content")) {
+            result.put("content", "[REDACTED]");
         }
-        String[] sanitized = new String[values.length];
-        for (int index = 0; index < values.length; index++) {
-            String value = values[index];
-            sanitized[index] = value != null
-                    && value.codePointCount(0, value.length())
-                            <= MAX_COMPLAINT_AUDIT_VALUE_CODE_POINTS
-                    ? value
-                    : "[TRUNCATED]";
+        int ignored = parameterMap.size()
+                - (parameterMap.containsKey("reason") ? 1 : 0)
+                - (parameterMap.containsKey("content") ? 1 : 0);
+        if (ignored > 0) {
+            result.put("ignoredParameterCount", Math.min(
+                    ignored, MAX_IGNORED_COMPLAINT_PARAMETERS));
         }
-        return sanitized.length == 1 ? sanitized[0] : sanitized;
+        return result;
     }
 
     private boolean isComplaintCreateRoute(String requestUri) {

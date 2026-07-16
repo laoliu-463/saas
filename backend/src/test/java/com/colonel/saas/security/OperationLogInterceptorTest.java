@@ -161,7 +161,8 @@ class OperationLogInterceptorTest {
         assertThat(captor.getValue().getRequestParams())
                 .containsEntry("reason", "[INVALID]")
                 .containsEntry("content", "[REDACTED]")
-                .containsEntry("note", "[TRUNCATED]");
+                .containsEntry("ignoredParameterCount", 1)
+                .doesNotContainKey("note");
     }
 
     @Test
@@ -198,5 +199,44 @@ class OperationLogInterceptorTest {
         assertThat(captor.getValue().getRequestParams())
                 .containsEntry("content", "普通业务内容")
                 .containsEntry("reason", "not-a-complaint-reason");
+    }
+
+    @Test
+    void afterCompletion_keepsComplaintAuditMapFixedUnderThousandsOfHostileParameters() {
+        OperationLogInterceptor interceptor = new OperationLogInterceptor(operationLogService);
+        MockHttpServletRequest request = new MockHttpServletRequest(
+                "POST", "/samples/" + UUID.randomUUID() + "/complaints");
+        request.addParameter("reason", "LOW_PRICE_RESALE");
+        request.addParameter("content", "secret-one", "secret-two");
+        for (int index = 0; index < 5_000; index++) {
+            request.addParameter("attacker-key-" + index + "-" + "k".repeat(1_000),
+                    "attacker-value-" + index + "-" + "v".repeat(1_000));
+        }
+
+        interceptor.afterCompletion(
+                request, new MockHttpServletResponse(), new Object(), null);
+
+        ArgumentCaptor<OperationLog> captor = ArgumentCaptor.forClass(OperationLog.class);
+        verify(operationLogService).record(captor.capture());
+        Map<String, Object> params = captor.getValue().getRequestParams();
+        assertThat(params).containsOnly(
+                Map.entry("reason", "LOW_PRICE_RESALE"),
+                Map.entry("content", "[REDACTED]"),
+                Map.entry("ignoredParameterCount", 1_000));
+        assertThat(params.toString()).doesNotContain("attacker-key", "attacker-value", "secret-one");
+    }
+
+    @Test
+    void afterCompletion_keepsEmptyComplaintParametersStable() {
+        OperationLogInterceptor interceptor = new OperationLogInterceptor(operationLogService);
+        MockHttpServletRequest request = new MockHttpServletRequest(
+                "POST", "/samples/" + UUID.randomUUID() + "/complaints");
+
+        interceptor.afterCompletion(
+                request, new MockHttpServletResponse(), new Object(), null);
+
+        ArgumentCaptor<OperationLog> captor = ArgumentCaptor.forClass(OperationLog.class);
+        verify(operationLogService).record(captor.capture());
+        assertThat(captor.getValue().getRequestParams()).isNull();
     }
 }

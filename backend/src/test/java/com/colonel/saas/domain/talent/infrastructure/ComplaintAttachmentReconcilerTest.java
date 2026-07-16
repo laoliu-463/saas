@@ -15,7 +15,10 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -44,10 +47,11 @@ class ComplaintAttachmentReconcilerTest {
         Path orphanPath = create(orphan, OLD);
         Path referencedPath = create(referenced, OLD);
         Path recentPath = create(recent, NEW);
-        Path temp = tempDir.resolve("01/.upload.tmp");
+        Path temp = tempDir.resolve(
+                "01/.01112233445566778899aabbccddeeff-123456.tmp");
         Files.createDirectories(temp.getParent());
         Files.write(temp, new byte[]{1});
-        Files.setLastModifiedTime(temp, OLD);
+        Files.setLastModifiedTime(temp, NEW);
         Path malformed = tempDir.resolve("01/not-a-generated-key.jpg");
         Files.write(malformed, new byte[]{2});
         Files.setLastModifiedTime(malformed, OLD);
@@ -143,6 +147,15 @@ class ComplaintAttachmentReconcilerTest {
         assertThat(failingDeletes).hasValue(3);
         assertThat(failing).exists();
         assertThat(successful).doesNotExist();
+
+        Path next = create(key(12), OLD);
+        ComplaintAttachmentReconciler.ReconcileResult nextRun = reconciler(
+                new ComplaintAttachmentStorage(tempDir), mapper)
+                .reconcile(Duration.ofHours(24), 1);
+
+        assertThat(nextRun.deletedCount()).isEqualTo(1);
+        assertThat(next).doesNotExist();
+        assertThat(failing).exists();
     }
 
     @Test
@@ -186,6 +199,139 @@ class ComplaintAttachmentReconcilerTest {
         assertThat(changed).exists();
     }
 
+    @Test
+    void reconcile_shouldRetryOldTemporaryDeletionAndDeleteItOnNextRun() throws Exception {
+        Path temporary = tempDir.resolve(
+                "00/.00112233445566778899aabbccddeeff-123456.tmp");
+        Files.createDirectories(temporary.getParent());
+        Files.write(temporary, new byte[]{4, 5, 6});
+        Files.setLastModifiedTime(temporary, OLD);
+        AtomicInteger deleteAttempts = new AtomicInteger();
+        ComplaintAttachmentStorage failingStorage = new ComplaintAttachmentStorage(
+                tempDir,
+                UUID::randomUUID,
+                (source, target, atomic) -> Files.move(source, target),
+                path -> {
+                    deleteAttempts.incrementAndGet();
+                    throw new IOException("persistent temporary delete failure");
+                });
+        TalentComplaintAttachmentMapper mapper = mock(TalentComplaintAttachmentMapper.class);
+
+        ComplaintAttachmentReconciler.ReconcileResult first =
+                reconciler(failingStorage, mapper).reconcile(Duration.ofHours(24), 100);
+
+        assertThat(first.candidateCount()).isEqualTo(1);
+        assertThat(first.failedCount()).isEqualTo(1);
+        assertThat(deleteAttempts).hasValue(3);
+        assertThat(temporary).exists();
+
+        ComplaintAttachmentReconciler.ReconcileResult second = reconciler(
+                new ComplaintAttachmentStorage(tempDir), mapper)
+                .reconcile(Duration.ofHours(24), 100);
+
+        assertThat(second.deletedCount()).isEqualTo(1);
+        assertThat(temporary).doesNotExist();
+    }
+
+    @Test
+    void reconcile_shouldReachTheOrphanAfterOneHundredReferencedFilesAcrossRestart()
+            throws Exception {
+        Set<String> referenced = new HashSet<>();
+        for (int index = 0; index < 100; index++) {
+            referenced.add(key(index));
+            create(key(index), OLD);
+        }
+        String orphan = key(100);
+        Path orphanPath = create(orphan, OLD);
+        TalentComplaintAttachmentMapper mapper = mock(TalentComplaintAttachmentMapper.class);
+        List<List<String>> batches = new ArrayList<>();
+        when(mapper.selectExistingStorageKeys(anyList())).thenAnswer(invocation -> {
+            List<String> requested = List.copyOf(invocation.getArgument(0));
+            batches.add(requested);
+            return requested.stream().filter(referenced::contains).toList();
+        });
+
+        ComplaintAttachmentReconciler.ReconcileResult first = reconciler(
+                new ComplaintAttachmentStorage(tempDir), mapper)
+                .reconcile(Duration.ofHours(24), 100);
+        assertThat(first.candidateCount()).isEqualTo(100);
+        assertThat(orphanPath).exists();
+
+        ComplaintAttachmentReconciler.ReconcileResult second = reconciler(
+                new ComplaintAttachmentStorage(tempDir), mapper)
+                .reconcile(Duration.ofHours(24), 100);
+
+        assertThat(second.candidateCount()).isEqualTo(100);
+        assertThat(orphanPath).doesNotExist();
+        assertThat(batches).hasSize(2).allSatisfy(batch -> assertThat(batch).hasSize(100));
+        verify(mapper, times(2)).selectExistingStorageKeys(anyList());
+    }
+
+    @Test
+    void reconcile_shouldRecoverFromCorruptCursorAndRepairItWithLastProcessedKey()
+            throws Exception {
+        String first = key(200);
+        create(first, OLD);
+        create(key(201), OLD);
+        Path cursor = tempDir.resolve(".reconcile-cursor");
+        Files.writeString(cursor, "../../sensitive-path\n" + "x".repeat(256));
+        TalentComplaintAttachmentMapper mapper = mock(TalentComplaintAttachmentMapper.class);
+        when(mapper.selectExistingStorageKeys(anyList())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        reconciler(new ComplaintAttachmentStorage(tempDir), mapper)
+                .reconcile(Duration.ofHours(24), 1);
+
+        assertThat(Files.readString(cursor)).isEqualTo(first);
+    }
+
+    @Test
+    void reconcile_shouldContinueDeterministicallyWhenFilesAreAddedAndRemoved() throws Exception {
+        String first = key(300);
+        String removed = key(320);
+        create(first, OLD);
+        Path removedPath = create(removed, OLD);
+        TalentComplaintAttachmentMapper mapper = mock(TalentComplaintAttachmentMapper.class);
+        when(mapper.selectExistingStorageKeys(anyList())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        reconciler(new ComplaintAttachmentStorage(tempDir), mapper)
+                .reconcile(Duration.ofHours(24), 1);
+        Files.delete(removedPath);
+        String addedAfterCursor = key(310);
+        create(addedAfterCursor, OLD);
+        create(key(330), OLD);
+
+        reconciler(new ComplaintAttachmentStorage(tempDir), mapper)
+                .reconcile(Duration.ofHours(24), 1);
+
+        assertThat(Files.readString(tempDir.resolve(".reconcile-cursor")))
+                .isEqualTo(addedAfterCursor);
+        verify(mapper, times(2)).selectExistingStorageKeys(anyList());
+    }
+
+    @Test
+    void reconcileCursor_shouldNeverFollowSymbolicLink() throws Exception {
+        Path outside = tempDir.resolveSibling("outside-complaint-cursor.txt");
+        Files.writeString(outside, "outside-must-not-change");
+        Path cursor = tempDir.resolve(".reconcile-cursor");
+        try {
+            Files.createSymbolicLink(cursor, outside);
+        } catch (IOException | UnsupportedOperationException exception) {
+            Assumptions.assumeTrue(false, "symbolic links unavailable: " + exception.getClass());
+        }
+        create(key(400), OLD);
+        TalentComplaintAttachmentMapper mapper = mock(TalentComplaintAttachmentMapper.class);
+        when(mapper.selectExistingStorageKeys(anyList()))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        reconciler(new ComplaintAttachmentStorage(tempDir), mapper)
+                .reconcile(Duration.ofHours(24), 1);
+
+        assertThat(Files.readString(outside)).isEqualTo("outside-must-not-change");
+        assertThat(Files.isSymbolicLink(cursor)).isTrue();
+        Files.deleteIfExists(cursor);
+        Files.deleteIfExists(outside);
+    }
+
     private ComplaintAttachmentReconciler reconciler(
             ComplaintAttachmentStorage storage,
             TalentComplaintAttachmentMapper mapper) {
@@ -205,7 +351,11 @@ class ComplaintAttachmentReconcilerTest {
 
     private long countGeneratedFiles() throws IOException {
         try (var paths = Files.walk(tempDir)) {
-            return paths.filter(Files::isRegularFile).count();
+            return paths.filter(Files::isRegularFile)
+                    .map(tempDir::relativize)
+                    .map(path -> path.toString().replace('\\', '/'))
+                    .filter(path -> path.matches("[0-9a-f]{2}/[0-9a-f]{32}\\.(jpg|png|webp)"))
+                    .count();
         }
     }
 

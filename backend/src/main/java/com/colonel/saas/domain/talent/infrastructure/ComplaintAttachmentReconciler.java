@@ -47,10 +47,44 @@ public class ComplaintAttachmentReconciler {
         }
         int batchSize = Math.max(1, Math.min(requestedBatchSize, MAX_BATCH_SIZE));
         Instant cutoff = clock.instant().minus(grace);
+        int temporaryBudget = batchSize == 1 ? 1 : Math.max(1, batchSize / 4);
+        List<ComplaintAttachmentStorage.TemporaryCandidate> temporaryCandidates =
+                storage.findTemporaryCandidates(cutoff, temporaryBudget);
+        int deleted = 0;
+        int skipped = 0;
+        int failed = 0;
+        int temporaryIndex = 0;
+        for (ComplaintAttachmentStorage.TemporaryCandidate candidate : temporaryCandidates) {
+            temporaryIndex++;
+            try {
+                ComplaintAttachmentStorage.DeleteResult result =
+                        storage.deleteTemporaryCandidate(candidate);
+                if (result == ComplaintAttachmentStorage.DeleteResult.DELETED) {
+                    deleted++;
+                } else if (result == ComplaintAttachmentStorage.DeleteResult.FAILED) {
+                    failed++;
+                } else {
+                    skipped++;
+                }
+            } catch (RuntimeException exception) {
+                failed++;
+                log.warn(
+                        "complaint_attachment_reconcile_temporary_failed candidateIndex={} errorType={}",
+                        temporaryIndex,
+                        exception.getClass().getSimpleName());
+            }
+        }
+
+        int attachmentBudget = batchSize - temporaryCandidates.size();
+        if (attachmentBudget <= 0) {
+            return new ReconcileResult(
+                    temporaryCandidates.size(), 0, deleted, skipped, failed);
+        }
         List<ComplaintAttachmentStorage.ReconcileCandidate> candidates =
-                storage.findReconcileCandidates(cutoff, batchSize);
+                storage.findReconcileCandidates(cutoff, attachmentBudget);
         if (candidates == null || candidates.isEmpty()) {
-            return ReconcileResult.empty();
+            return new ReconcileResult(
+                    temporaryCandidates.size(), 0, deleted, skipped, failed);
         }
 
         List<String> candidateKeys = candidates.stream()
@@ -60,13 +94,15 @@ public class ComplaintAttachmentReconciler {
                 .distinct()
                 .toList();
         if (candidateKeys.isEmpty()) {
-            return new ReconcileResult(candidates.size(), 0, 0, candidates.size(), 0);
+            return new ReconcileResult(
+                    temporaryCandidates.size() + candidates.size(),
+                    0,
+                    deleted,
+                    skipped + candidates.size(),
+                    failed);
         }
         Set<String> existingKeys = toSet(
                 attachmentMapper.selectExistingStorageKeys(candidateKeys));
-        int deleted = 0;
-        int skipped = 0;
-        int failed = 0;
         int candidateIndex = 0;
         for (ComplaintAttachmentStorage.ReconcileCandidate candidate : candidates) {
             candidateIndex++;
@@ -91,8 +127,10 @@ public class ComplaintAttachmentReconciler {
                         exception.getClass().getSimpleName());
             }
         }
+        storage.advanceReconcileCursor(candidates.get(candidates.size() - 1).storageKey());
         return new ReconcileResult(
-                candidates.size(), existingKeys.size(), deleted, skipped, failed);
+                temporaryCandidates.size() + candidates.size(),
+                existingKeys.size(), deleted, skipped, failed);
     }
 
     private Set<String> toSet(Collection<String> keys) {
