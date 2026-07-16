@@ -53,6 +53,8 @@
         <result property="settleTime" column="settle_time"/>
         <result property="attributionStatus" column="attribution_status"/>
         <result property="attributionRemark" column="attribution_remark"/>
+        <result property="channelAttributionSource" column="channel_attribution_source"/>
+        <result property="recruiterAttributionSource" column="recruiter_attribution_source"/>
         <result property="createTime" column="create_time"/>
         <result property="updateTime" column="update_time"/>
         <result property="version" column="version"/>
@@ -82,7 +84,8 @@
             channel_user_id, channel_user_name, channel_dept_id,
             user_id, dept_id, colonel_user_id, colonel_user_name, promotion_link_id, product_title, talent_name,
             colonel_activity_id, pay_time, order_create_time, settle_time,
-            attribution_status, attribution_remark, create_time, update_time, version, deleted, extra_data
+            attribution_status, attribution_remark, channel_attribution_source, recruiter_attribution_source,
+            create_time, update_time, version, deleted, extra_data
         )
         SELECT
             #{id}, #{orderId}, #{productId}, #{productName}, #{shopId}, #{shopName},
@@ -97,7 +100,8 @@
             #{channelUserId}, #{channelUserName}, #{channelDeptId},
             #{userId}, #{deptId}, #{colonelUserId}, #{colonelUserName}, #{promotionLinkId}, #{productTitle}, #{talentName},
             #{activityId}, #{payTime}, #{orderCreateTime}, #{settleTime},
-            #{attributionStatus}, #{attributionRemark}, #{createTime}, #{updateTime},
+            #{attributionStatus}, #{attributionRemark}, #{channelAttributionSource}, #{recruiterAttributionSource},
+            #{createTime}, #{updateTime},
             COALESCE(#{version}, 0), #{deleted},
             CAST(#{extraData, typeHandler=com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler} AS JSONB)
         WHERE NOT EXISTS (
@@ -153,6 +157,8 @@
             settle_time = #{settleTime},
             attribution_status = #{attributionStatus},
             attribution_remark = #{attributionRemark},
+            channel_attribution_source = #{channelAttributionSource},
+            recruiter_attribution_source = #{recruiterAttributionSource},
             update_time = #{updateTime},
             version = COALESCE(version, 0) + 1,
             deleted = #{deleted},
@@ -263,6 +269,8 @@
             co.order_create_time,
             co.attribution_status,
             co.attribution_remark,
+            co.channel_attribution_source,
+            co.recruiter_attribution_source,
             co.create_time,
             co.update_time,
             co.deleted
