@@ -65,6 +65,20 @@ Local health verification: PASS
 Business validation: PASS (npm run e2e:real-pre:p0:preflight)
 ~~~
 
+## 订单 6927995582750227729 定向修复核验（2026-07-16）
+
+- 变更前已记录：壮云（`1c34b680-30b2-41ec-bdc7-2dde1f37e786`）有效角色为 `channel_staff`；本轮后远端仅为 `biz_staff`。
+- 远端审计日志（UTC）已记录角色替换：`2026-07-16 09:22:42`，目标为该用户 ID。
+- 仅目标推广链接 `1df7d10a-50cc-4306-b773-81b71513bb00` 与映射 `e16ba019-b05e-4e24-a832-526ea8452923` 已分类为 `RECRUITER`；审计日志记录了 dry-run（09:26:07 UTC）和 apply（09:26:36 UTC），均为 `scanned=1`。
+- 同一账号另一条映射 `b2846567-0119-422d-8f2c-8d96faacd4ed` 仍为 `NULL`，未被本轮修改。
+- 当前订单事实已显示招商归属壮云，来源为 `native_unique_link_owner`；但 `performance_records` 仍有 1 条最终招商归属“招商组长测试”（`1f17391b-67fe-40aa-a336-0f41faafe15b`），壮云为 0 条。
+- 审计日志未找到该订单的 `replay-attribution` 成功记录，因此不能将订单事实变更视为已完成受审计的单笔重放，也不能宣称壮云已可查询该笔招商业绩。
+- 远端 `ADMIN_PASSWORD` 登录被 401 拒绝，说明部署环境变量与当前管理员密码已漂移；为保持审计边界，未绕过鉴权或直接改写订单/业绩表。
+
+### 后续受阻步骤
+
+提供当前可用的远端管理员凭据后，按以下固定范围继续：先以 `dryRun=true` 调用 `/api/orders/replay-attribution`，仅传 `orderIds=["6927995582750227729"]` 且 `limit=1`；预演通过后以相同单号 apply。该服务会在同一事务内持久化订单并 `upsertFromOrder`，从而将该订单的 `performance_records` 招商归属同步到壮云。随后复核金额、渠道维度和原组长查询结果。
+
 ## Content Maintenance Result
 
 ~~~text
@@ -83,8 +97,9 @@ No actionable Harness improvement was recorded; no standalone retro is required.
 
 ## Conclusion
 
-PASS
+PARTIAL
 
 ## Residual Risk
 
 - Items marked as not collected are not proof of success.
+- 订单业绩记录尚未完成受审计的单笔重放；在提供有效远端管理员凭据前，不得声明该订单的招商业绩修复完成。
