@@ -185,7 +185,7 @@ const renderChannelInfo = (row: any) => {
 }
 
 const renderRecruiterInfo = (row: any) => {
-  const recruiterName = firstDisplayValue(row, ['recruiterName', 'recruiter_name', 'colonelName', 'colonel_name', 'colonelUserName', 'colonel_user_name'])
+  const recruiterName = firstDisplayValue(row, ['recruiterName', 'recruiter_name'])
   return h('div', { class: 'od-cell' }, [
     recruiterName ? h('div', { class: 'od-main' }, String(recruiterName)) : h('span', { class: 'od-empty' }, '-')
   ])

@@ -13,6 +13,17 @@ export interface ProductActionContext {
   isAdmin?: boolean
 }
 
+/** 可生成可归因推广链接的角色；管理员身份本身不代表可确定归属维度。 */
+export const PROMOTION_LINK_ROLES = new Set([
+  'channel_leader',
+  'channel_staff',
+  'biz_leader',
+  'biz_staff'
+])
+
+export const canGenerateAttributionPromotionLink = (context: ProductActionContext) =>
+  (context.roles || []).some((role) => PROMOTION_LINK_ROLES.has(role))
+
 const officialStatusValues = new Set<ProductOfficialStatus>([
   'PENDING_REVIEW',
   'PROMOTING',
@@ -162,7 +173,8 @@ export function getProductActions(row: ProductManageRow, context: ProductActionC
   const canResume = canByRow(row, 'canResume', canOperateProduct)
   const canExtendPromotion = canByRow(row, 'canExtendPromotion', canOperateProduct)
   const canCopyScript = canByRow(row, 'canCopyScript', hasRole(context, ['biz_leader', 'biz_staff', 'channel_leader', 'channel_staff']))
-  const canCopyLink = canByRow(row, 'canCopyLink', hasRole(context, ['biz_leader', 'biz_staff', 'channel_leader', 'channel_staff']))
+  const canCopyLink = canGenerateAttributionPromotionLink(context)
+    && canByRow(row, 'canCopyLink', true)
   const canDownloadHandCard = canByRow(row, 'canDownloadHandCard', true)
 
   if (officialStatus === 'REJECTED' || (isLocalRejected && !isUpstreamPromoting)) {
