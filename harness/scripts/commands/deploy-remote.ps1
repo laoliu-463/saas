@@ -129,6 +129,16 @@ if [ ! -f "`$role_aware_attribution_migration" ]; then
   echo "Required role-aware attribution migration not found: `$role_aware_attribution_migration"
   exit 1
 fi
+order_attribution_dimensions_migration="backend/src/main/resources/db/alter-order-default-attribution-dimensions-20260716.sql"
+if [ ! -f "`$order_attribution_dimensions_migration" ]; then
+  echo "Required order attribution dimensions migration not found: `$order_attribution_dimensions_migration"
+  exit 1
+fi
+performance_final_attribution_migration="backend/src/main/resources/db/alter-performance-final-attribution-20260716.sql"
+if [ ! -f "`$performance_final_attribution_migration" ]; then
+  echo "Required performance final attribution migration not found: `$performance_final_attribution_migration"
+  exit 1
+fi
 pg_container="`$(compose ps -q postgres-real-pre)"
 if [ -z "`$pg_container" ]; then
   echo "postgres-real-pre container id not found"
@@ -164,6 +174,29 @@ if [ "`$role_aware_attribution_schema_count" != "4" ]; then
   exit 1
 fi
 echo "Role-aware attribution schema guard passed."
+echo "Applying required order attribution dimensions migration ..."
+docker cp "`$order_attribution_dimensions_migration" "`$pg_container:/tmp/alter-order-default-attribution-dimensions-20260716.sql"
+compose exec -T postgres-real-pre sh -lc 'psql -U "`$POSTGRES_USER" -d "`$POSTGRES_DB" -v ON_ERROR_STOP=1 -f /tmp/alter-order-default-attribution-dimensions-20260716.sql' </dev/null
+order_attribution_dimensions_schema_count="`$(compose exec -T postgres-real-pre sh -lc 'psql -U "`$POSTGRES_USER" -d "`$POSTGRES_DB" -tAc "SELECT count(*) FROM information_schema.columns WHERE table_schema = '\''public'\'' AND table_name = '\''colonelsettlement_order'\'' AND column_name IN ('\''channel_attribution_status'\'', '\''recruiter_attribution_status'\'')"' </dev/null | tr -d '[:space:]')"
+if [ "`$order_attribution_dimensions_schema_count" != "2" ]; then
+  echo "Order attribution dimensions schema guard failed: expected 2 columns, got `$order_attribution_dimensions_schema_count"
+  exit 1
+fi
+echo "Order attribution dimensions schema guard passed."
+echo "Applying required performance final attribution migration ..."
+docker cp "`$performance_final_attribution_migration" "`$pg_container:/tmp/alter-performance-final-attribution-20260716.sql"
+compose exec -T postgres-real-pre sh -lc 'psql -U "`$POSTGRES_USER" -d "`$POSTGRES_DB" -v ON_ERROR_STOP=1 -f /tmp/alter-performance-final-attribution-20260716.sql' </dev/null
+performance_final_attribution_schema_count="`$(compose exec -T postgres-real-pre sh -lc 'psql -U "`$POSTGRES_USER" -d "`$POSTGRES_DB" -tAc "SELECT count(*) FROM information_schema.columns WHERE table_schema = '\''public'\'' AND ((table_name = '\''performance_records'\'' AND column_name IN ('\''default_channel_dept_id'\'', '\''default_recruiter_dept_id'\'', '\''default_channel_attribution'\'', '\''default_recruiter_attribution'\'', '\''final_channel_dept_id'\'', '\''final_recruiter_dept_id'\'', '\''attribution_rule_version'\'', '\''attribution_decision_snapshot'\'', '\''talent_commission'\'')) OR (table_name IN ('\''promotion_link'\'', '\''pick_source_mapping'\'') AND column_name = '\''attribution_snapshot'\''))"' </dev/null | tr -d '[:space:]')"
+if [ "`$performance_final_attribution_schema_count" != "11" ]; then
+  echo "Performance final attribution schema guard failed: expected 11 columns, got `$performance_final_attribution_schema_count"
+  exit 1
+fi
+performance_final_attribution_table_count="`$(compose exec -T postgres-real-pre sh -lc 'psql -U "`$POSTGRES_USER" -d "`$POSTGRES_DB" -tAc "SELECT count(*) FROM information_schema.tables WHERE table_schema = '\''public'\'' AND table_name IN ('\''performance_attribution_adjustment'\'', '\''performance_calculation_execution'\'', '\''performance_adjustment_ledger'\'')"' </dev/null | tr -d '[:space:]')"
+if [ "`$performance_final_attribution_table_count" != "3" ]; then
+  echo "Performance final attribution schema guard failed: expected 3 tables, got `$performance_final_attribution_table_count"
+  exit 1
+fi
+echo "Performance final attribution schema guard passed."
 echo "Applying required V2 config schema migration ..."
 docker cp "`$config_migration" "`$pg_container:/tmp/alter-v2-config-20260523.sql"
 compose exec -T postgres-real-pre sh -lc 'psql -U "`$POSTGRES_USER" -d "`$POSTGRES_DB" -v ON_ERROR_STOP=1 -f /tmp/alter-v2-config-20260523.sql' </dev/null
