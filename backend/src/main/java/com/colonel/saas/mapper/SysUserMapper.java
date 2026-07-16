@@ -56,6 +56,7 @@ public interface SysUserMapper extends BaseMapper<SysUser> {
               AND su.status = 1
               AND sur.deleted = 0
               AND sr.deleted = 0
+              AND sr.status = 1
             <choose>
               <when test="roleCodes != null and roleCodes.size() > 0">
                 AND sr.role_code IN

@@ -17,6 +17,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
@@ -265,5 +267,51 @@ class LegacyTalentDomainFacadeTest {
         when(talentMapper.selectById(talentId)).thenReturn(talent);
 
         assertThat(facade.findTalentById(talentId).windowSales30d()).isEqualTo(41L);
+    }
+
+    @Test
+    void findTalentById_shouldRejectInexactNonFiniteNegativeOrOutOfRangeWindowSales() {
+        List<Number> invalidValues = List.of(
+                13.5d,
+                13.5f,
+                new BigDecimal("13.5"),
+                BigInteger.valueOf(Long.MAX_VALUE).add(BigInteger.ONE),
+                new BigDecimal("9223372036854775808"),
+                (double) Long.MAX_VALUE,
+                Double.NaN,
+                Double.POSITIVE_INFINITY,
+                Double.NEGATIVE_INFINITY,
+                Float.NaN,
+                Float.POSITIVE_INFINITY,
+                -1L,
+                new BigInteger("-1"),
+                new BigDecimal("-0.1"));
+
+        invalidValues.forEach(value -> assertWindowSales(value, null));
+    }
+
+    @Test
+    void findTalentById_shouldAcceptExactNonNegativeWindowSalesWithinLongRange() {
+        assertWindowSales(13.0d, 13L);
+        assertWindowSales(13.0f, 13L);
+        assertWindowSales(BigInteger.valueOf(13L), 13L);
+        assertWindowSales(new BigDecimal("13.000"), 13L);
+        assertWindowSales(BigInteger.valueOf(Long.MAX_VALUE), Long.MAX_VALUE);
+        assertWindowSales(new BigDecimal(Long.toString(Long.MAX_VALUE)), Long.MAX_VALUE);
+    }
+
+    private void assertWindowSales(Number rawValue, Long expected) {
+        UUID talentId = UUID.randomUUID();
+        Talent talent = new Talent();
+        talent.setId(talentId);
+        talent.setRawPayload(Map.of(
+                "windowSales30d", rawValue,
+                "sales30d", 9900L,
+                "sales_30d", 8800L));
+        when(talentMapper.selectById(talentId)).thenReturn(talent);
+
+        assertThat(facade.findTalentById(talentId).windowSales30d())
+                .as("window sales raw value %s", rawValue)
+                .isEqualTo(expected);
     }
 }

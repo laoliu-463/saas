@@ -14,6 +14,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -288,11 +290,46 @@ public class LegacyTalentDomainFacade implements TalentDomainFacade {
             return null;
         }
         for (String field : List.of("windowSales30d", "window_sales_30d", "showcaseSales30d")) {
-            Object value = rawPayload.get(field);
-            if (value instanceof Number number) {
-                return number.longValue();
+            if (!rawPayload.containsKey(field)) {
+                continue;
             }
+            Object value = rawPayload.get(field);
+            return value instanceof Number number ? toExactNonNegativeLong(number) : null;
         }
         return null;
+    }
+
+    private static Long toExactNonNegativeLong(Number number) {
+        BigInteger integer;
+        try {
+            if (number instanceof BigInteger bigInteger) {
+                integer = bigInteger;
+            } else if (number instanceof BigDecimal bigDecimal) {
+                integer = bigDecimal.toBigIntegerExact();
+            } else if (number instanceof Byte
+                    || number instanceof Short
+                    || number instanceof Integer
+                    || number instanceof Long) {
+                integer = BigInteger.valueOf(number.longValue());
+            } else if (number instanceof Double doubleValue) {
+                if (!Double.isFinite(doubleValue)) {
+                    return null;
+                }
+                integer = BigDecimal.valueOf(doubleValue).toBigIntegerExact();
+            } else if (number instanceof Float floatValue) {
+                if (!Float.isFinite(floatValue)) {
+                    return null;
+                }
+                integer = new BigDecimal(Float.toString(floatValue)).toBigIntegerExact();
+            } else {
+                return null;
+            }
+        } catch (ArithmeticException exception) {
+            return null;
+        }
+        if (integer.signum() < 0 || integer.compareTo(BigInteger.valueOf(Long.MAX_VALUE)) > 0) {
+            return null;
+        }
+        return integer.longValue();
     }
 }

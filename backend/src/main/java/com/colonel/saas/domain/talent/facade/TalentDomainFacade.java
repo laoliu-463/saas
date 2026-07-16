@@ -9,11 +9,11 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * 达人域只读门面（DDD-TALENT-001）。
+ * 达人域查询与受控写入门面（DDD-TALENT-001）。
  * <p>
  * 寄样域、订单归因、业绩域等应通过本接口读取达人主数据，
  * 禁止新增跨域 {@code TalentMapper} / {@code TalentClaimMapper} 注入。
- * 第一版内部委派既有 Mapper，不改变线上行为。
+ * 第一版内部委派既有 Mapper，并将认领地址写入限制在达人域边界内。
  * </p>
  */
 public interface TalentDomainFacade {
