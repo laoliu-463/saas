@@ -1,6 +1,7 @@
 package com.colonel.saas.controller;
 
 import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.domain.talent.facade.TalentComplaintFacade;
@@ -56,8 +57,13 @@ public class TalentComplaintController {
     })
     @PostMapping("/risks")
     public ApiResult<List<TalentComplaintRiskDTO>> loadRisks(
-            @Valid @RequestBody TalentComplaintRiskRequest request) {
-        return ApiResult.ok(talentComplaintFacade.loadRisks(request));
+            @Valid @RequestBody TalentComplaintRiskRequest request,
+            @RequestAttribute("userId") UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
+            @RequestAttribute("dataScope") DataScope dataScope,
+            @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
+        return ApiResult.ok(talentComplaintFacade.loadRisks(
+                request, userId, deptId, dataScope, roleCodes));
     }
 
     @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER})

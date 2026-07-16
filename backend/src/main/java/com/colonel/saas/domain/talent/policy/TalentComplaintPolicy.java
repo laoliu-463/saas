@@ -20,12 +20,12 @@ public class TalentComplaintPolicy {
             OTHER);
 
     public ValidatedComplaint validate(String reason, String content) {
-        String normalizedReason = reason == null ? null : reason.trim();
+        String normalizedReason = reason == null ? null : reason.strip();
         if (!ALLOWED_REASONS.contains(normalizedReason)) {
             throw BusinessException.param("投诉原因不合法");
         }
-        String normalizedContent = content == null ? "" : content.trim();
-        if (OTHER.equals(normalizedReason) && normalizedContent.isEmpty()) {
+        String normalizedContent = content == null ? "" : content.strip();
+        if (OTHER.equals(normalizedReason) && normalizedContent.isBlank()) {
             throw BusinessException.param("选择其他原因时必须填写投诉内容");
         }
         if (normalizedContent.codePointCount(0, normalizedContent.length())

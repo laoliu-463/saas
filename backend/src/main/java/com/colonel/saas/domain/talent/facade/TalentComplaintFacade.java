@@ -1,5 +1,6 @@
 package com.colonel.saas.domain.talent.facade;
 
+import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.domain.talent.facade.dto.TalentComplaintRiskDTO;
 import com.colonel.saas.dto.talent.TalentComplaintCreateRequest;
 import com.colonel.saas.dto.talent.TalentComplaintRiskRequest;
@@ -22,7 +23,12 @@ public interface TalentComplaintFacade {
             TalentComplaintCreateRequest request,
             List<? extends MultipartFile> files);
 
-    List<TalentComplaintRiskDTO> loadRisks(TalentComplaintRiskRequest request);
+    List<TalentComplaintRiskDTO> loadRisks(
+            TalentComplaintRiskRequest request,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            Object roleCodes);
 
     TalentComplaintVO getDetail(UUID complaintId, Object roleCodes);
 

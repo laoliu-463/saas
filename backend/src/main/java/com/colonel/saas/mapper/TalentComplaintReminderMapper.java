@@ -60,6 +60,7 @@ public interface TalentComplaintReminderMapper extends BaseMapper<TalentComplain
     @Update("""
             UPDATE talent_complaint_reminder
             SET read_at = #{readAt},
+                update_by = #{recipientUserId},
                 update_time = now(),
                 version = version + 1
             WHERE id = #{id}

@@ -27,6 +27,13 @@ class TalentComplaintPolicyTest {
                 .hasMessageContaining("投诉内容");
         assertThat(policy.validate(TalentComplaintPolicy.OTHER, "  其他原因  ").content())
                 .isEqualTo("其他原因");
+        assertThatThrownBy(() -> policy.validate(
+                TalentComplaintPolicy.OTHER, "\u2003\u2003"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("投诉内容");
+        assertThat(policy.validate(
+                TalentComplaintPolicy.OTHER, "\u2003其他原因\u2003").content())
+                .isEqualTo("其他原因");
     }
 
     @Test
@@ -36,6 +43,15 @@ class TalentComplaintPolicyTest {
                 .isEqualTo("😀".repeat(200));
         assertThatThrownBy(() -> policy.validate(
                 TalentComplaintPolicy.LOW_PRICE_RESALE, "😀".repeat(201)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("200");
+    }
+
+    @Test
+    void validate_shouldRejectOneMegabyteContentBeforePersistence() {
+        String oversized = "a".repeat(1024 * 1024);
+
+        assertThatThrownBy(() -> policy.validate(TalentComplaintPolicy.OTHER, oversized))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("200");
     }

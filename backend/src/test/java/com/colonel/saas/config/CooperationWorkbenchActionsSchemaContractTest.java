@@ -351,6 +351,7 @@ class CooperationWorkbenchActionsSchemaContractTest {
                 LocalDateTime.class);
         assertThat(updateSql(markReadMethod))
                 .contains(
+                        "update_by = #{recipientuserid}",
                         "where id = #{id}",
                         "recipient_user_id = #{recipientuserid}",
                         "deleted = 0",

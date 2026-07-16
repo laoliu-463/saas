@@ -2,10 +2,12 @@ package com.colonel.saas.domain.talent.application;
 
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.exception.ForbiddenException;
+import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.domain.talent.infrastructure.ComplaintAttachmentStorage;
 import com.colonel.saas.domain.talent.policy.ComplaintImagePolicy;
 import com.colonel.saas.domain.talent.policy.TalentComplaintPolicy;
+import com.colonel.saas.domain.talent.port.TalentVisibilityLookup;
 import com.colonel.saas.domain.user.port.UserRoleRecipientLookup;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
@@ -66,6 +68,8 @@ class TalentComplaintApplicationServiceTest {
     private ComplaintAttachmentStorage storage;
     @Mock
     private OperationLogService operationLogService;
+    @Mock
+    private TalentVisibilityLookup talentVisibilityLookup;
 
     private TalentComplaintApplicationService service;
 
@@ -80,7 +84,8 @@ class TalentComplaintApplicationServiceTest {
                 new ComplaintImagePolicy(),
                 storage,
                 new CurrentUserPermissionChecker(new CurrentUserPermissionPolicy()),
-                operationLogService);
+                operationLogService,
+                talentVisibilityLookup);
     }
 
     @Test
@@ -202,6 +207,34 @@ class TalentComplaintApplicationServiceTest {
     }
 
     @Test
+    void create_shouldValidateEveryFileAndNormalizedFilenameBeforeFirstWrite() {
+        MockMultipartFile valid = new MockMultipartFile(
+                "files", "proof.jpg", "image/jpeg",
+                new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, 0x01});
+        MockMultipartFile invalidSecond = new MockMultipartFile(
+                "files", "fake.jpg", "image/jpeg",
+                new byte[]{(byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A});
+
+        assertThatThrownBy(() -> service.create(
+                UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
+                new TalentComplaintCreateRequest("LOW_PRICE_RESALE", null),
+                List.of(valid, invalidSecond)))
+                .isInstanceOf(BusinessException.class);
+
+        verifyNoInteractions(complaintMapper, attachmentMapper, reminderMapper, recipientLookup, storage);
+
+        MockMultipartFile longName = new MockMultipartFile(
+                "files", "名".repeat(252) + ".jpg", "image/jpeg",
+                new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, 0x01});
+        assertThatThrownBy(() -> service.create(
+                UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
+                new TalentComplaintCreateRequest("LOW_PRICE_RESALE", null), List.of(longName)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("255");
+        verifyNoInteractions(complaintMapper, attachmentMapper, reminderMapper, recipientLookup, storage);
+    }
+
+    @Test
     void create_shouldNotInsertAttachmentOrReminderWhenStorageFails() {
         MockMultipartFile file = new MockMultipartFile(
                 "files", "proof.jpg", "image/jpeg",
@@ -232,7 +265,8 @@ class TalentComplaintApplicationServiceTest {
                 new ComplaintImagePolicy(),
                 realStorage,
                 new CurrentUserPermissionChecker(new CurrentUserPermissionPolicy()),
-                operationLogService);
+                operationLogService,
+                talentVisibilityLookup);
         MockMultipartFile file = new MockMultipartFile(
                 "files", "proof.jpg", "image/jpeg",
                 new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, 0x01});
@@ -283,10 +317,87 @@ class TalentComplaintApplicationServiceTest {
             ids.add(UUID.randomUUID());
         }
 
-        assertThatThrownBy(() -> service.loadRisks(new TalentComplaintRiskRequest(ids)))
+        assertThatThrownBy(() -> service.loadRisks(
+                new TalentComplaintRiskRequest(ids), UUID.randomUUID(), UUID.randomUUID(),
+                DataScope.PERSONAL, List.of(RoleCodes.BIZ_STAFF)))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("100");
         verifyNoInteractions(complaintMapper);
+    }
+
+    @Test
+    void risks_shouldAcceptExactlyOneHundredIds() {
+        List<UUID> ids = new ArrayList<>();
+        for (int index = 0; index < 100; index++) {
+            ids.add(UUID.randomUUID());
+        }
+        UUID userId = UUID.randomUUID();
+        when(talentVisibilityLookup.retainVisibleTalentIds(
+                ids, userId, null, DataScope.PERSONAL, false)).thenReturn(List.of());
+
+        assertThat(service.loadRisks(
+                new TalentComplaintRiskRequest(ids), userId, null,
+                DataScope.PERSONAL, List.of(RoleCodes.BIZ_STAFF))).isEmpty();
+
+        verify(talentVisibilityLookup).retainVisibleTalentIds(
+                ids, userId, null, DataScope.PERSONAL, false);
+        verify(complaintMapper, never()).selectRiskSummariesByTalentIds(any());
+    }
+
+    @Test
+    void risks_shouldIntersectRequestedIdsWithPersonalVisibilityBeforeAggregate() {
+        UUID userId = UUID.randomUUID();
+        UUID visible = UUID.randomUUID();
+        UUID hidden = UUID.randomUUID();
+        when(talentVisibilityLookup.retainVisibleTalentIds(
+                List.of(visible, hidden), userId, null, DataScope.PERSONAL, false))
+                .thenReturn(List.of(visible));
+        when(complaintMapper.selectRiskSummariesByTalentIds(List.of(visible)))
+                .thenReturn(List.of(new TalentComplaintMapper.TalentRiskSummary(
+                        visible, 2L, LocalDateTime.of(2026, 7, 16, 12, 0))));
+
+        var result = service.loadRisks(
+                new TalentComplaintRiskRequest(List.of(visible, hidden)),
+                userId, null, DataScope.PERSONAL, List.of(RoleCodes.BIZ_STAFF));
+
+        assertThat(result).extracting(item -> item.talentId()).containsExactly(visible);
+        verify(complaintMapper).selectRiskSummariesByTalentIds(List.of(visible));
+    }
+
+    @Test
+    void risks_shouldTreatAdminAsUnrestrictedAndDeduplicateBeforeVisibilityLookup() {
+        UUID first = UUID.randomUUID();
+        UUID second = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        when(talentVisibilityLookup.retainVisibleTalentIds(
+                List.of(first, second), userId, null, DataScope.PERSONAL, true))
+                .thenReturn(List.of(first, second));
+        when(complaintMapper.selectRiskSummariesByTalentIds(List.of(first, second)))
+                .thenReturn(List.of());
+
+        assertThat(service.loadRisks(
+                new TalentComplaintRiskRequest(List.of(first, first, second)),
+                userId, null, DataScope.PERSONAL, List.of(RoleCodes.ADMIN)))
+                .isEmpty();
+
+        verify(talentVisibilityLookup).retainVisibleTalentIds(
+                List.of(first, second), userId, null, DataScope.PERSONAL, true);
+    }
+
+    @Test
+    void risks_shouldNotQueryComplaintAggregateWhenNoRequestedTalentIsVisible() {
+        UUID hidden = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+        when(talentVisibilityLookup.retainVisibleTalentIds(
+                List.of(hidden), null, deptId, DataScope.DEPT, false))
+                .thenReturn(List.of());
+
+        assertThat(service.loadRisks(
+                new TalentComplaintRiskRequest(List.of(hidden)),
+                null, deptId, DataScope.DEPT, List.of(RoleCodes.CHANNEL_STAFF)))
+                .isEmpty();
+
+        verify(complaintMapper, never()).selectRiskSummariesByTalentIds(any());
     }
 
     @Test

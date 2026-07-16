@@ -18,11 +18,13 @@ import org.springframework.web.servlet.HandlerMapping;
 import java.lang.reflect.Method;
 import java.util.Map;
 import java.util.UUID;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.reset;
 
 @ExtendWith(MockitoExtension.class)
 class OperationLogInterceptorTest {
@@ -143,17 +145,58 @@ class OperationLogInterceptorTest {
     }
 
     @Test
-    void afterCompletion_doesNotRedactContentForUnrelatedRoutes() {
+    void afterCompletion_replacesOversizedOrUnknownComplaintReasonWithInvalidMarker() {
         OperationLogInterceptor interceptor = new OperationLogInterceptor(operationLogService);
-        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/test/path");
+        MockHttpServletRequest request = new MockHttpServletRequest(
+                "POST", "/api/samples/" + UUID.randomUUID() + "/complaints");
         MockHttpServletResponse response = new MockHttpServletResponse();
-        request.addParameter("content", "普通业务内容");
+        request.addParameter("reason", "x".repeat(1024 * 1024));
+        request.addParameter("content", "secret");
+        request.addParameter("note", "n".repeat(300));
 
         interceptor.afterCompletion(request, response, new Object(), null);
 
         ArgumentCaptor<OperationLog> captor = ArgumentCaptor.forClass(OperationLog.class);
         verify(operationLogService).record(captor.capture());
         assertThat(captor.getValue().getRequestParams())
-                .containsEntry("content", "普通业务内容");
+                .containsEntry("reason", "[INVALID]")
+                .containsEntry("content", "[REDACTED]")
+                .containsEntry("note", "[TRUNCATED]");
+    }
+
+    @Test
+    void afterCompletion_keepsOnlyTheThreeExactComplaintReasonValues() {
+        for (String reason : List.of(
+                "REPEATED_NO_FULFILLMENT", "LOW_PRICE_RESALE", "OTHER")) {
+            reset(operationLogService);
+            OperationLogInterceptor interceptor = new OperationLogInterceptor(operationLogService);
+            MockHttpServletRequest request = new MockHttpServletRequest(
+                    "POST", "/samples/" + UUID.randomUUID() + "/complaints");
+            request.addParameter("reason", reason);
+
+            interceptor.afterCompletion(
+                    request, new MockHttpServletResponse(), new Object(), null);
+
+            ArgumentCaptor<OperationLog> captor = ArgumentCaptor.forClass(OperationLog.class);
+            verify(operationLogService).record(captor.capture());
+            assertThat(captor.getValue().getRequestParams()).containsEntry("reason", reason);
+        }
+    }
+
+    @Test
+    void afterCompletion_doesNotRedactContentForUnrelatedRoutes() {
+        OperationLogInterceptor interceptor = new OperationLogInterceptor(operationLogService);
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/test/path");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        request.addParameter("content", "普通业务内容");
+        request.addParameter("reason", "not-a-complaint-reason");
+
+        interceptor.afterCompletion(request, response, new Object(), null);
+
+        ArgumentCaptor<OperationLog> captor = ArgumentCaptor.forClass(OperationLog.class);
+        verify(operationLogService).record(captor.capture());
+        assertThat(captor.getValue().getRequestParams())
+                .containsEntry("content", "普通业务内容")
+                .containsEntry("reason", "not-a-complaint-reason");
     }
 }

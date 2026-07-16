@@ -1,6 +1,7 @@
 package com.colonel.saas.controller;
 
 import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.domain.talent.facade.TalentComplaintFacade;
 import com.colonel.saas.domain.sample.application.SampleApplicationService;
@@ -45,13 +46,17 @@ class TalentComplaintControllerTest {
 
     private MockMvc mockMvc;
     private UUID userId;
+    private UUID deptId;
 
     @BeforeEach
     void setUp() {
         userId = UUID.randomUUID();
+        deptId = UUID.randomUUID();
         mockMvc = MockMvcBuilders.standaloneSetup(new TalentComplaintController(facade))
                 .defaultRequest(get("/")
                         .requestAttr("userId", userId)
+                        .requestAttr("deptId", deptId)
+                        .requestAttr("dataScope", DataScope.DEPT)
                         .requestAttr("roleCodes", List.of(RoleCodes.BIZ_LEADER)))
                 .build();
     }
@@ -60,7 +65,9 @@ class TalentComplaintControllerTest {
     void risks_shouldBindAtMostOneHundredTalentIdsAndReturnMinimalSummary() throws Exception {
         UUID talentId = UUID.randomUUID();
         LocalDateTime latest = LocalDateTime.of(2026, 7, 16, 12, 0);
-        when(facade.loadRisks(any())).thenReturn(List.of(
+        when(facade.loadRisks(
+                any(), eq(userId), eq(deptId), eq(DataScope.DEPT),
+                eq(List.of(RoleCodes.BIZ_LEADER)))).thenReturn(List.of(
                 new TalentComplaintRiskDTO(talentId, 2, latest)));
 
         mockMvc.perform(post("/talent-complaints/risks")
@@ -75,7 +82,9 @@ class TalentComplaintControllerTest {
                 .andExpect(jsonPath("$.data[0].attachments").doesNotExist())
                 .andExpect(jsonPath("$.data[0].reporterUserId").doesNotExist());
 
-        verify(facade).loadRisks(any());
+        verify(facade).loadRisks(
+                any(), eq(userId), eq(deptId), eq(DataScope.DEPT),
+                eq(List.of(RoleCodes.BIZ_LEADER)));
     }
 
     @Test
@@ -94,7 +103,7 @@ class TalentComplaintControllerTest {
                         .content(json.toString()))
                 .andExpect(status().isBadRequest());
 
-        verify(facade, never()).loadRisks(any());
+        verify(facade, never()).loadRisks(any(), any(), any(), any(), any());
     }
 
     @Test

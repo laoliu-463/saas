@@ -1,6 +1,7 @@
 package com.colonel.saas.security;
 
 import com.colonel.saas.entity.OperationLog;
+import com.colonel.saas.domain.talent.policy.TalentComplaintPolicy;
 import com.colonel.saas.service.OperationLogService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -15,6 +16,7 @@ import org.springframework.web.servlet.HandlerMapping;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -56,6 +58,12 @@ public class OperationLogInterceptor implements HandlerInterceptor {
 
     /** request attribute 键名，用于在 preHandle 和 afterCompletion 之间传递请求开始时间 */
     private static final String ATTR_STARTED_AT = "operationLog.startedAt";
+    private static final int MAX_COMPLAINT_AUDIT_VALUE_CODE_POINTS = 256;
+    private static final int MAX_COMPLAINT_AUDIT_VALUES = 16;
+    private static final Set<String> COMPLAINT_REASONS = Set.of(
+            TalentComplaintPolicy.REPEATED_NO_FULFILLMENT,
+            TalentComplaintPolicy.LOW_PRICE_RESALE,
+            TalentComplaintPolicy.OTHER);
 
     /** 操作日志持久化服务 */
     private final OperationLogService operationLogService;
@@ -242,6 +250,18 @@ public class OperationLogInterceptor implements HandlerInterceptor {
                 result.put(key, "[REDACTED]");
                 return;
             }
+            if (complaintCreate && "reason".equals(key)) {
+                result.put(key, value != null
+                                && value.length == 1
+                                && COMPLAINT_REASONS.contains(value[0])
+                        ? value[0]
+                        : "[INVALID]");
+                return;
+            }
+            if (complaintCreate) {
+                result.put(key, sanitizeComplaintAuditValues(value));
+                return;
+            }
             if (value == null) {
                 result.put(key, null);
             } else if (value.length == 1) {
@@ -251,6 +271,25 @@ public class OperationLogInterceptor implements HandlerInterceptor {
             }
         });
         return result;
+    }
+
+    private Object sanitizeComplaintAuditValues(String[] values) {
+        if (values == null) {
+            return null;
+        }
+        if (values.length > MAX_COMPLAINT_AUDIT_VALUES) {
+            return "[TRUNCATED]";
+        }
+        String[] sanitized = new String[values.length];
+        for (int index = 0; index < values.length; index++) {
+            String value = values[index];
+            sanitized[index] = value != null
+                    && value.codePointCount(0, value.length())
+                            <= MAX_COMPLAINT_AUDIT_VALUE_CODE_POINTS
+                    ? value
+                    : "[TRUNCATED]";
+        }
+        return sanitized.length == 1 ? sanitized[0] : sanitized;
     }
 
     private boolean isComplaintCreateRoute(String requestUri) {

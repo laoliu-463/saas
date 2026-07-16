@@ -2,12 +2,14 @@ package com.colonel.saas.domain.talent.application;
 
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.exception.ForbiddenException;
+import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.domain.talent.facade.TalentComplaintFacade;
 import com.colonel.saas.domain.talent.facade.dto.TalentComplaintRiskDTO;
 import com.colonel.saas.domain.talent.infrastructure.ComplaintAttachmentStorage;
 import com.colonel.saas.domain.talent.policy.ComplaintImagePolicy;
 import com.colonel.saas.domain.talent.policy.TalentComplaintPolicy;
+import com.colonel.saas.domain.talent.port.TalentVisibilityLookup;
 import com.colonel.saas.domain.user.port.UserRoleRecipientLookup;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
 import com.colonel.saas.dto.talent.TalentComplaintCreateRequest;
@@ -55,6 +57,7 @@ public class TalentComplaintApplicationService {
     private final ComplaintAttachmentStorage storage;
     private final CurrentUserPermissionChecker permissionChecker;
     private final OperationLogService operationLogService;
+    private final TalentVisibilityLookup talentVisibilityLookup;
 
     public TalentComplaintApplicationService(
             TalentComplaintMapper complaintMapper,
@@ -65,7 +68,8 @@ public class TalentComplaintApplicationService {
             ComplaintImagePolicy imagePolicy,
             ComplaintAttachmentStorage storage,
             CurrentUserPermissionChecker permissionChecker,
-            OperationLogService operationLogService) {
+            OperationLogService operationLogService,
+            TalentVisibilityLookup talentVisibilityLookup) {
         this.complaintMapper = complaintMapper;
         this.attachmentMapper = attachmentMapper;
         this.reminderMapper = reminderMapper;
@@ -75,6 +79,7 @@ public class TalentComplaintApplicationService {
         this.storage = storage;
         this.permissionChecker = permissionChecker;
         this.operationLogService = operationLogService;
+        this.talentVisibilityLookup = talentVisibilityLookup;
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -162,7 +167,12 @@ public class TalentComplaintApplicationService {
         }
     }
 
-    public List<TalentComplaintRiskDTO> loadRisks(TalentComplaintRiskRequest request) {
+    public List<TalentComplaintRiskDTO> loadRisks(
+            TalentComplaintRiskRequest request,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            Object roleCodes) {
         if (request == null || request.talentIds() == null || request.talentIds().isEmpty()) {
             throw BusinessException.param("talentIds 不能为空");
         }
@@ -176,8 +186,15 @@ public class TalentComplaintApplicationService {
         if (talentIds.isEmpty()) {
             throw BusinessException.param("talentIds 不能为空");
         }
+        boolean unrestricted = dataScope == DataScope.ALL
+                || permissionChecker.hasAnyRole(roleCodes, RoleCodes.ADMIN);
+        List<UUID> visibleTalentIds = talentVisibilityLookup.retainVisibleTalentIds(
+                talentIds, userId, deptId, dataScope, unrestricted);
+        if (visibleTalentIds == null || visibleTalentIds.isEmpty()) {
+            return List.of();
+        }
         List<TalentComplaintMapper.TalentRiskSummary> summaries =
-                complaintMapper.selectRiskSummariesByTalentIds(talentIds);
+                complaintMapper.selectRiskSummariesByTalentIds(visibleTalentIds);
         if (summaries == null || summaries.isEmpty()) {
             return List.of();
         }

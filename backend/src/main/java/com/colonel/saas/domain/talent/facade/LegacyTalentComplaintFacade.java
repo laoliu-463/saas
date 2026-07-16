@@ -1,5 +1,6 @@
 package com.colonel.saas.domain.talent.facade;
 
+import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.domain.talent.application.TalentComplaintApplicationService;
 import com.colonel.saas.domain.talent.facade.dto.TalentComplaintRiskDTO;
 import com.colonel.saas.dto.talent.TalentComplaintCreateRequest;
@@ -36,8 +37,13 @@ public class LegacyTalentComplaintFacade implements TalentComplaintFacade {
     }
 
     @Override
-    public List<TalentComplaintRiskDTO> loadRisks(TalentComplaintRiskRequest request) {
-        return applicationService.loadRisks(request);
+    public List<TalentComplaintRiskDTO> loadRisks(
+            TalentComplaintRiskRequest request,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            Object roleCodes) {
+        return applicationService.loadRisks(request, userId, deptId, dataScope, roleCodes);
     }
 
     @Override

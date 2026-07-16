@@ -7,6 +7,7 @@ import com.baomidou.mybatisplus.core.toolkit.GlobalConfigUtils;
 import com.colonel.saas.common.handler.UUIDTypeHandler;
 import com.colonel.saas.config.CustomMetaObjectHandler;
 import com.colonel.saas.domain.talent.infrastructure.ComplaintAttachmentStorage;
+import com.colonel.saas.domain.talent.port.TalentVisibilityLookup;
 import com.colonel.saas.domain.talent.policy.ComplaintImagePolicy;
 import com.colonel.saas.domain.talent.policy.TalentComplaintPolicy;
 import com.colonel.saas.domain.user.port.UserRoleRecipientLookup;
@@ -209,6 +210,33 @@ class TalentComplaintApplicationServicePostgresTest {
     }
 
     @Test
+    void create_shouldDeleteFirstStoredFileWhenSecondAttachmentStorageFails() {
+        FailSecondComplaintAttachmentStorage storage =
+                new FailSecondComplaintAttachmentStorage(tempDir);
+        TalentComplaintApplicationService service =
+                createTransactionalService(storage, List.of(recipientId));
+
+        Throwable thrown = catchThrowable(() -> service.create(
+                sampleId,
+                talentId,
+                productId,
+                reporterId,
+                new TalentComplaintCreateRequest("LOW_PRICE_RESALE", ""),
+                List.of(jpeg(), new MockMultipartFile(
+                        "files",
+                        "proof-two.jpg",
+                        "image/jpeg",
+                        new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, 0x02}))));
+
+        assertThat(rootCause(thrown))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("second attachment failed");
+        assertTableCounts(0, 0, 0);
+        assertSampleStatusUnchanged();
+        assertThat(countRegularFiles(tempDir)).isZero();
+    }
+
+    @Test
     void create_shouldRollbackComplaintWhenRealStorageRootIsAFile() throws Exception {
         Path conflictingRoot = tempDir.resolve("not-a-directory");
         Files.writeString(conflictingRoot, "controlled storage conflict");
@@ -271,6 +299,9 @@ class TalentComplaintApplicationServicePostgresTest {
         context.registerBean(TalentComplaintReminderMapper.class,
                 () -> sqlSessionTemplate.getMapper(TalentComplaintReminderMapper.class));
         context.registerBean(UserRoleRecipientLookup.class, () -> roleCodes -> recipients);
+        context.registerBean(TalentVisibilityLookup.class,
+                () -> (requestedTalentIds, userId, deptId, dataScope, unrestricted) ->
+                        List.copyOf(requestedTalentIds));
         context.registerBean(TalentComplaintPolicy.class, TalentComplaintPolicy::new);
         context.registerBean(ComplaintImagePolicy.class, ComplaintImagePolicy::new);
         context.registerBean(ComplaintAttachmentStorage.class, () -> storage);
@@ -388,6 +419,26 @@ class TalentComplaintApplicationServicePostgresTest {
 
         private boolean complaintExistedBeforeStore() {
             return complaintExistedBeforeStore;
+        }
+    }
+
+    private static final class FailSecondComplaintAttachmentStorage
+            extends ComplaintAttachmentStorage {
+
+        private int stores;
+
+        private FailSecondComplaintAttachmentStorage(Path root) {
+            super(root);
+        }
+
+        @Override
+        public StoredAttachment store(ComplaintImagePolicy.ValidatedImage image) {
+            stores++;
+            if (stores == 2) {
+                throw new IllegalStateException(
+                        "投诉附件写入失败", new IOException("second attachment failed"));
+            }
+            return super.store(image);
         }
     }
 }
