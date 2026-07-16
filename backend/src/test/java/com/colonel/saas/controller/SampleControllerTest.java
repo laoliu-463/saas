@@ -80,6 +80,7 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 
 import java.math.BigDecimal;
@@ -216,6 +217,9 @@ class SampleControllerTest {
                 new com.colonel.saas.dto.sample.SamplePrivateNoteRequest("updated note");
         com.colonel.saas.vo.sample.SamplePrivateNoteVO updatedNote =
                 new com.colonel.saas.vo.sample.SamplePrivateNoteVO("updated note", 2);
+        com.colonel.saas.vo.sample.SampleCopyTextVO copyText =
+                new com.colonel.saas.vo.sample.SampleCopyTextVO(
+                        "推广正文", true, "https://short.example/p1", null);
         Object roles = List.of(RoleCodes.CHANNEL_STAFF);
         when(sampleService.getEditContext(sampleId, userId, null, DataScope.PERSONAL, roles))
                 .thenReturn(editContext);
@@ -227,6 +231,9 @@ class SampleControllerTest {
         when(sampleService.updatePrivateNote(
                 sampleId, noteRequest, userId, null, DataScope.PERSONAL, roles))
                 .thenReturn(updatedNote);
+        when(sampleService.copyPromotion(
+                sampleId, userId, null, DataScope.PERSONAL, roles, "request-idem-1"))
+                .thenReturn(copyText);
 
         assertThat(controller.getEditContext(
                 sampleId, userId, null, DataScope.PERSONAL, roles).getData())
@@ -240,6 +247,9 @@ class SampleControllerTest {
         assertThat(controller.updatePrivateNote(
                 sampleId, noteRequest, userId, null, DataScope.PERSONAL, roles).getData())
                 .isSameAs(updatedNote);
+        assertThat(controller.copyPromotion(
+                sampleId, "request-idem-1", userId, null, DataScope.PERSONAL, roles).getData())
+                .isSameAs(copyText);
 
         assertThat(SampleController.class.getMethod(
                 "getEditContext", UUID.class, UUID.class, UUID.class, DataScope.class, Object.class)
@@ -269,6 +279,16 @@ class SampleControllerTest {
                 Object.class)
                 .getAnnotation(PutMapping.class).value())
                 .containsExactly("/{id:[0-9a-fA-F\\-]{36}}/private-note");
+        assertThat(SampleController.class.getMethod(
+                "copyPromotion",
+                UUID.class,
+                String.class,
+                UUID.class,
+                UUID.class,
+                DataScope.class,
+                Object.class)
+                .getAnnotation(PostMapping.class).value())
+                .containsExactly("/{id:[0-9a-fA-F\\-]{36}}/promotion-copy");
     }
 
     @Test

@@ -16,6 +16,7 @@ import com.colonel.saas.dto.sample.SampleCooperationUpdateRequest;
 import com.colonel.saas.dto.sample.SamplePrivateNoteRequest;
 import com.colonel.saas.vo.SampleTalentVO;
 import com.colonel.saas.vo.sample.SampleBoardCard;
+import com.colonel.saas.vo.sample.SampleCopyTextVO;
 import com.colonel.saas.vo.sample.SampleEligibilityCheckVO;
 import com.colonel.saas.vo.sample.SampleEditContextVO;
 import com.colonel.saas.vo.sample.SampleLogisticsVO;
@@ -41,6 +42,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestPart;
@@ -203,6 +205,18 @@ public class SampleController {
             @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
         return ApiResult.ok(sampleApplicationService.updatePrivateNote(
                 id, request, userId, deptId, dataScope, roleCodes));
+    }
+
+    @PostMapping("/{id:[0-9a-fA-F\\-]{36}}/promotion-copy")
+    public ApiResult<SampleCopyTextVO> copyPromotion(
+            @PathVariable UUID id,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+            @RequestAttribute("userId") UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
+            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
+            @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
+        return ApiResult.ok(sampleApplicationService.copyPromotion(
+                id, userId, deptId, dataScope, roleCodes, idempotencyKey));
     }
 
     @GetMapping("/{id:[0-9a-fA-F\\-]{36}}/status-logs")

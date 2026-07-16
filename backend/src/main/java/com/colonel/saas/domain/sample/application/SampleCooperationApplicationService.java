@@ -4,6 +4,8 @@ import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.enums.SampleStatus;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.exception.OptimisticLockSupport;
+import com.colonel.saas.domain.product.facade.ProductPromotionFacade;
+import com.colonel.saas.domain.product.facade.dto.ProductPromotionCopyDTO;
 import com.colonel.saas.domain.sample.policy.SampleCooperationActionPolicy;
 import com.colonel.saas.domain.sample.policy.SampleRemarkPolicy;
 import com.colonel.saas.domain.talent.facade.TalentDomainFacade;
@@ -16,8 +18,10 @@ import com.colonel.saas.entity.SampleRequest;
 import com.colonel.saas.mapper.SamplePrivateNoteMapper;
 import com.colonel.saas.mapper.SampleRequestMapper;
 import com.colonel.saas.vo.sample.SampleEditContextVO;
+import com.colonel.saas.vo.sample.SampleCopyTextVO;
 import com.colonel.saas.vo.sample.SamplePrivateNoteVO;
 import com.colonel.saas.vo.sample.SampleVO;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -38,7 +42,9 @@ public class SampleCooperationApplicationService {
     private final TalentDomainFacade talentDomainFacade;
     private final SampleCooperationActionPolicy actionPolicy;
     private final SampleRemarkPolicy remarkPolicy;
+    private final ProductPromotionFacade productPromotionFacade;
 
+    /** 保留 Task 3 既有测试和非 Spring 调用方的构造方式。 */
     public SampleCooperationApplicationService(
             SampleQueryApplicationService sampleQueryApplicationService,
             SampleRequestMapper sampleRequestMapper,
@@ -46,12 +52,78 @@ public class SampleCooperationApplicationService {
             TalentDomainFacade talentDomainFacade,
             SampleCooperationActionPolicy actionPolicy,
             SampleRemarkPolicy remarkPolicy) {
+        this(
+                sampleQueryApplicationService,
+                sampleRequestMapper,
+                samplePrivateNoteMapper,
+                talentDomainFacade,
+                actionPolicy,
+                remarkPolicy,
+                null);
+    }
+
+    /** Spring 运行路径使用包含商品推广门面的完整构造器。 */
+    @Autowired
+    public SampleCooperationApplicationService(
+            SampleQueryApplicationService sampleQueryApplicationService,
+            SampleRequestMapper sampleRequestMapper,
+            SamplePrivateNoteMapper samplePrivateNoteMapper,
+            TalentDomainFacade talentDomainFacade,
+            SampleCooperationActionPolicy actionPolicy,
+            SampleRemarkPolicy remarkPolicy,
+            ProductPromotionFacade productPromotionFacade) {
         this.sampleQueryApplicationService = sampleQueryApplicationService;
         this.sampleRequestMapper = sampleRequestMapper;
         this.samplePrivateNoteMapper = samplePrivateNoteMapper;
         this.talentDomainFacade = talentDomainFacade;
         this.actionPolicy = actionPolicy;
         this.remarkPolicy = remarkPolicy;
+        this.productPromotionFacade = productPromotionFacade;
+    }
+
+    /**
+     * 基于当前用户可见的寄样事实生成抖音推广复制文本。
+     */
+    public SampleCopyTextVO copyPromotion(
+            UUID sampleId,
+            UUID currentUserId,
+            UUID currentDeptId,
+            DataScope dataScope,
+            Object roleCodes,
+            String idempotencyKey) {
+        SampleVO visible = requireVisibleSample(
+                sampleId, currentUserId, currentDeptId, dataScope, roleCodes);
+        if (productPromotionFacade == null) {
+            throw BusinessException.stateInvalid("商品推广复制能力不可用，请检查应用服务装配");
+        }
+
+        String activityId = trimToNull(visible.getActivityId());
+        String productId = trimToNull(visible.getProductExternalId());
+        String talentId = firstText(
+                visible.getTalentUid(),
+                visible.getTalentId() == null ? null : visible.getTalentId().toString());
+        if (activityId == null || productId == null || talentId == null) {
+            throw BusinessException.stateInvalid("寄样单缺少活动、商品或达人推广事实，暂无法复制推广文案");
+        }
+        String requestKey = trimToNull(idempotencyKey);
+        if (requestKey == null) {
+            requestKey = UUID.randomUUID().toString();
+        }
+        ProductPromotionCopyDTO result = productPromotionFacade.copyForSample(
+                activityId,
+                productId,
+                currentUserId,
+                currentDeptId,
+                talentId,
+                requestKey);
+        if (result == null) {
+            throw BusinessException.conflict("商品推广复制未返回结果，请重试");
+        }
+        return new SampleCopyTextVO(
+                result.text(),
+                result.promotionLinkGenerated(),
+                result.promotionLink(),
+                result.fallbackReason());
     }
 
     public SampleEditContextVO getEditContext(

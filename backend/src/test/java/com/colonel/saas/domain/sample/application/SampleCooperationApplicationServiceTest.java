@@ -5,6 +5,8 @@ import com.colonel.saas.common.enums.SampleStatus;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.result.PageResult;
 import com.colonel.saas.constant.RoleCodes;
+import com.colonel.saas.domain.product.facade.ProductPromotionFacade;
+import com.colonel.saas.domain.product.facade.dto.ProductPromotionCopyDTO;
 import com.colonel.saas.domain.sample.policy.SampleCooperationActionPolicy;
 import com.colonel.saas.domain.sample.policy.SampleRemarkPolicy;
 import com.colonel.saas.domain.talent.facade.TalentDomainFacade;
@@ -20,6 +22,7 @@ import com.colonel.saas.entity.SampleRequest;
 import com.colonel.saas.mapper.SamplePrivateNoteMapper;
 import com.colonel.saas.mapper.SampleRequestMapper;
 import com.colonel.saas.vo.sample.SampleEditContextVO;
+import com.colonel.saas.vo.sample.SampleCopyTextVO;
 import com.colonel.saas.vo.sample.SamplePrivateNoteVO;
 import com.colonel.saas.vo.sample.SampleVO;
 import org.junit.jupiter.api.BeforeEach;
@@ -47,6 +50,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -65,6 +69,8 @@ class SampleCooperationApplicationServiceTest {
     private SamplePrivateNoteMapper samplePrivateNoteMapper;
     @Mock
     private TalentDomainFacade talentDomainFacade;
+    @Mock
+    private ProductPromotionFacade productPromotionFacade;
 
     private SampleCooperationApplicationService service;
 
@@ -79,6 +85,138 @@ class SampleCooperationApplicationServiceTest {
                 talentDomainFacade,
                 new SampleCooperationActionPolicy(checker),
                 new SampleRemarkPolicy());
+    }
+
+    @Test
+    void copyPromotion_shouldCheckVisibilityAndForwardRealSampleFactsAndCallerContext() {
+        UUID sampleId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+        Object roles = List.of(RoleCodes.CHANNEL_STAFF);
+        SampleVO visible = new SampleVO();
+        visible.setId(sampleId);
+        visible.setActivityId("ACT-1");
+        visible.setProductExternalId("3820194249627009436");
+        visible.setTalentId(UUID.randomUUID());
+        visible.setTalentUid("douyin-talent-1");
+        when(sampleQueryApplicationService.getSampleById(
+                sampleId, userId, deptId, DataScope.DEPT, roles))
+                .thenReturn(visible);
+        when(productPromotionFacade.copyForSample(
+                "ACT-1", "3820194249627009436", userId, deptId,
+                "douyin-talent-1", "request-idem-1"))
+                .thenReturn(new ProductPromotionCopyDTO(
+                        "分享正文", true, "https://short.example/p1", null));
+        SampleCooperationApplicationService promotionService = serviceWithPromotionFacade();
+
+        SampleCopyTextVO result = promotionService.copyPromotion(
+                sampleId, userId, deptId, DataScope.DEPT, roles, "request-idem-1");
+
+        assertThat(result).isEqualTo(new SampleCopyTextVO(
+                "分享正文", true, "https://short.example/p1", null));
+        InOrder order = inOrder(sampleQueryApplicationService, productPromotionFacade);
+        order.verify(sampleQueryApplicationService).getSampleById(
+                sampleId, userId, deptId, DataScope.DEPT, roles);
+        order.verify(productPromotionFacade).copyForSample(
+                "ACT-1", "3820194249627009436", userId, deptId,
+                "douyin-talent-1", "request-idem-1");
+    }
+
+    @Test
+    void copyPromotion_shouldGenerateDifferentRequestKeysWhenHeaderIsMissing() {
+        UUID sampleId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        SampleVO visible = new SampleVO();
+        visible.setId(sampleId);
+        visible.setActivityId("ACT-1");
+        visible.setProductExternalId("P-1");
+        visible.setTalentUid("talent-1");
+        when(sampleQueryApplicationService.getSampleById(
+                sampleId, userId, null, DataScope.PERSONAL, List.of(RoleCodes.CHANNEL_STAFF)))
+                .thenReturn(visible);
+        when(productPromotionFacade.copyForSample(
+                any(), any(), any(), any(), any(), any()))
+                .thenReturn(new ProductPromotionCopyDTO("正文", false, null, "DISABLED"));
+        SampleCooperationApplicationService promotionService = serviceWithPromotionFacade();
+
+        promotionService.copyPromotion(
+                sampleId, userId, null, DataScope.PERSONAL,
+                List.of(RoleCodes.CHANNEL_STAFF), null);
+        promotionService.copyPromotion(
+                sampleId, userId, null, DataScope.PERSONAL,
+                List.of(RoleCodes.CHANNEL_STAFF), "  ");
+
+        org.mockito.ArgumentCaptor<String> keyCaptor =
+                org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(productPromotionFacade, times(2)).copyForSample(
+                eq("ACT-1"), eq("P-1"), eq(userId), eq(null), eq("talent-1"), keyCaptor.capture());
+        assertThat(keyCaptor.getAllValues())
+                .allMatch(key -> key != null && !key.isBlank())
+                .doesNotHaveDuplicates();
+    }
+
+    @Test
+    void copyPromotion_shouldPreserveVisibilityFailureBeforeCallingProductFacade() {
+        UUID sampleId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        when(sampleQueryApplicationService.getSampleById(
+                sampleId, userId, null, DataScope.PERSONAL, List.of(RoleCodes.CHANNEL_STAFF)))
+                .thenThrow(BusinessException.forbidden("无权查看该寄样单"));
+        SampleCooperationApplicationService promotionService = serviceWithPromotionFacade();
+
+        assertThatThrownBy(() -> promotionService.copyPromotion(
+                sampleId, userId, null, DataScope.PERSONAL,
+                List.of(RoleCodes.CHANNEL_STAFF), "request-idem-1"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("无权查看");
+
+        verify(productPromotionFacade, never()).copyForSample(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void copyPromotion_shouldFailFastWhenLegacyConstructorHasNoProductFacade() {
+        UUID sampleId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        SampleVO visible = new SampleVO();
+        visible.setId(sampleId);
+        visible.setActivityId("ACT-1");
+        visible.setProductExternalId("P-1");
+        visible.setTalentUid("talent-1");
+        when(sampleQueryApplicationService.getSampleById(
+                sampleId, userId, null, DataScope.PERSONAL, List.of(RoleCodes.CHANNEL_STAFF)))
+                .thenReturn(visible);
+
+        assertThatThrownBy(() -> service.copyPromotion(
+                sampleId, userId, null, DataScope.PERSONAL,
+                List.of(RoleCodes.CHANNEL_STAFF), "request-idem-1"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("推广复制能力不可用");
+    }
+
+    @Test
+    void sampleCooperationService_shouldUseOneAutowiredFullConstructorAndNoCrossDomainMapper() throws Exception {
+        var legacy = SampleCooperationApplicationService.class.getConstructor(
+                SampleQueryApplicationService.class,
+                SampleRequestMapper.class,
+                SamplePrivateNoteMapper.class,
+                TalentDomainFacade.class,
+                SampleCooperationActionPolicy.class,
+                SampleRemarkPolicy.class);
+        var spring = SampleCooperationApplicationService.class.getConstructor(
+                SampleQueryApplicationService.class,
+                SampleRequestMapper.class,
+                SamplePrivateNoteMapper.class,
+                TalentDomainFacade.class,
+                SampleCooperationActionPolicy.class,
+                SampleRemarkPolicy.class,
+                ProductPromotionFacade.class);
+
+        assertThat(SampleCooperationApplicationService.class.getConstructors()).hasSize(2);
+        assertThat(legacy.getAnnotation(Autowired.class)).isNull();
+        assertThat(spring.getAnnotation(Autowired.class)).isNotNull();
+        assertThat(java.util.Arrays.stream(SampleCooperationApplicationService.class.getDeclaredFields())
+                .map(field -> field.getType().getName()))
+                .noneMatch(type -> type.contains("ProductMapper") || type.contains("Douyin"));
     }
 
     @Test
@@ -626,6 +764,19 @@ class SampleCooperationApplicationServiceTest {
                 talentDomainFacade,
                 new SampleCooperationActionPolicy(checker),
                 new SampleRemarkPolicy());
+    }
+
+    private SampleCooperationApplicationService serviceWithPromotionFacade() {
+        CurrentUserPermissionChecker checker =
+                new CurrentUserPermissionChecker(new CurrentUserPermissionPolicy());
+        return new SampleCooperationApplicationService(
+                sampleQueryApplicationService,
+                sampleRequestMapper,
+                samplePrivateNoteMapper,
+                talentDomainFacade,
+                new SampleCooperationActionPolicy(checker),
+                new SampleRemarkPolicy(),
+                productPromotionFacade);
     }
 
     private static SampleVO sampleView(

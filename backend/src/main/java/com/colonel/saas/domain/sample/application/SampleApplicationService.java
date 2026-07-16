@@ -17,6 +17,7 @@ import com.colonel.saas.domain.talent.facade.TalentDomainFacade;
 import com.colonel.saas.domain.talent.facade.dto.TalentComplaintRiskDTO;
 import com.colonel.saas.vo.SampleTalentVO;
 import com.colonel.saas.vo.sample.SampleBoardCard;
+import com.colonel.saas.vo.sample.SampleCopyTextVO;
 import com.colonel.saas.vo.sample.SampleEligibilityCheckVO;
 import com.colonel.saas.vo.sample.SampleEditContextVO;
 import com.colonel.saas.vo.sample.SampleLogisticsVO;
@@ -171,6 +172,21 @@ public class SampleApplicationService {
             Object roleCodes) {
         return sampleCooperationApplicationService.updatePrivateNote(
                 id, request, userId, deptId, dataScope, roleCodes);
+    }
+
+    public SampleCopyTextVO copyPromotion(
+            UUID id,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            Object roleCodes,
+            String idempotencyKey) {
+        if (sampleCooperationApplicationService == null) {
+            throw com.colonel.saas.common.exception.BusinessException.stateInvalid(
+                    "商品推广复制能力不可用，请检查应用服务装配");
+        }
+        return sampleCooperationApplicationService.copyPromotion(
+                id, userId, deptId, dataScope, roleCodes, idempotencyKey);
     }
 
     public ApiResult<List<StatusLogVO>> getStatusLogs(
