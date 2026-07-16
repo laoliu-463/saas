@@ -371,7 +371,11 @@ class QuickSampleApplyTest {
         assertThat(saved.getProductId()).isEqualTo(relationId);
         assertThat(saved.getActivityProductId()).isEqualTo("9001");
         assertThat(saved.getActivityId()).isEqualTo("10001");
-        assertThat(saved.getExtraData()).containsEntry("applyReason", "申请原因");
+        assertThat(saved.getRemark()).isEqualTo("申请原因");
+        assertThat(saved.getExtraData())
+                .containsEntry("applyReason", "申请原因")
+                .containsEntry("specification", "红色/L")
+                .containsEntry("applyChannel", "QUICK_PRODUCT_LIBRARY");
     }
 
     // ==================== 多达人快速寄样 ====================

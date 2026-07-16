@@ -3329,6 +3329,7 @@ class SampleControllerTest {
         sample.setCloseReason(null);
         sample.setRemark("详情测试备注");
         sample.setExtraData(Map.of(
+                "activityId", "EXTRA-ACTIVITY-SHOULD-NOT-WIN",
                 "applySource", "INTERNAL_QUICK_SAMPLE",
                 "cooperationType", "PAID_SAMPLE",
                 "sampleOwnerType", "COLONEL",
@@ -3395,6 +3396,74 @@ class SampleControllerTest {
         assertThat(vo.getHomeworkTypeLabel()).isEqualTo("VIDEO");
         assertThat(vo.getEligibilityCheck()).containsEntry("passed", true);
         assertThat(vo.getRequirementSnapshot()).containsEntry("actualLevel", "LV2");
+        verify(sampleRequestMapper, never()).updateById(any(SampleRequest.class));
+    }
+
+    @Test
+    void getSampleById_shouldReadHistoricalActivityIdFromCamelCaseExtraDataWithoutWriteBack() {
+        UUID sampleId = UUID.randomUUID();
+        UUID productId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+
+        Product product = new Product();
+        product.setId(productId);
+        product.setProductId("HISTORICAL-PRODUCT-001");
+
+        ProductSnapshot snapshot = new ProductSnapshot();
+        snapshot.setId(productId);
+        snapshot.setActivityId("   ");
+
+        SampleRequest sample = new SampleRequest();
+        sample.setId(sampleId);
+        sample.setProductId(productId);
+        sample.setUserId(ownerId);
+        sample.setChannelUserId(ownerId);
+        sample.setDeptId(deptId);
+        sample.setStatus(SampleStatus.PENDING_AUDIT.getCode());
+        sample.setExtraData(Map.of("activityId", "  EXTRA-ACTIVITY-001  "));
+
+        when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
+        when(productDomainFacade.findProductById(productId)).thenReturn(toProductRead(product));
+        when(productDomainFacade.findOrMaterializeSampleProduct(productId)).thenReturn(toProductRead(product));
+        when(productDomainFacade.findSnapshotById(productId)).thenReturn(toSnapshotRead(snapshot));
+
+        var response = sampleController.getSampleById(
+                sampleId, ownerId, deptId, DataScope.PERSONAL, null);
+
+        assertThat(response.getData().getActivityId()).isEqualTo("EXTRA-ACTIVITY-001");
+        verify(sampleRequestMapper, never()).updateById(any(SampleRequest.class));
+    }
+
+    @Test
+    void getSampleById_shouldReadHistoricalActivityIdFromSnakeCaseExtraDataWithoutWriteBack() {
+        UUID sampleId = UUID.randomUUID();
+        UUID productId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+
+        Product product = new Product();
+        product.setId(productId);
+        product.setProductId("HISTORICAL-PRODUCT-002");
+
+        SampleRequest sample = new SampleRequest();
+        sample.setId(sampleId);
+        sample.setProductId(productId);
+        sample.setUserId(ownerId);
+        sample.setChannelUserId(ownerId);
+        sample.setDeptId(deptId);
+        sample.setStatus(SampleStatus.PENDING_AUDIT.getCode());
+        sample.setExtraData(Map.of("activity_id", "  EXTRA-ACTIVITY-002  "));
+
+        when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
+        when(productDomainFacade.findProductById(productId)).thenReturn(toProductRead(product));
+        when(productDomainFacade.findOrMaterializeSampleProduct(productId)).thenReturn(toProductRead(product));
+        when(productDomainFacade.findSnapshotById(productId)).thenReturn(null);
+
+        var response = sampleController.getSampleById(
+                sampleId, ownerId, deptId, DataScope.PERSONAL, null);
+
+        assertThat(response.getData().getActivityId()).isEqualTo("EXTRA-ACTIVITY-002");
         verify(sampleRequestMapper, never()).updateById(any(SampleRequest.class));
     }
 

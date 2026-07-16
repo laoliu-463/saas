@@ -199,7 +199,6 @@ public class SampleApplicationPortImpl implements SampleApplicationPort {
         sample.setRecipientPhone(trimToNull(cmd.receiverPhone()));
         sample.setRecipientAddress(trimToNull(cmd.receiverAddress()));
         sample.setStatus(SAMPLE_STATUS_PENDING_AUDIT);
-        sample.setRemark(buildRemark(cmd));
 
         if (item.isExternalApplied() && externalResult != null) {
             sample.setApplySource(APPLY_SOURCE_DOUYIN_QUICK);
@@ -216,6 +215,7 @@ public class SampleApplicationPortImpl implements SampleApplicationPort {
         }
 
         sample.setExtraData(buildExtraData(cmd, eligibility, item.isExternalApplied()));
+        SAMPLE_REMARK_POLICY.apply(sample, cmd.remark());
         sampleRequestMapper.insert(sample);
 
         /* 回写收货地址到认领记录 */
@@ -337,21 +337,6 @@ public class SampleApplicationPortImpl implements SampleApplicationPort {
         extra.put("gatewayStatus", externalApplied ? "REAL_CONNECTED" : GATEWAY_STATUS_UNSUPPORTED);
         extra.put("fallbackType", externalApplied ? null : FALLBACK_TYPE_LOCAL);
         return extra;
-    }
-
-    private String buildRemark(ApplySampleFromProductCommand cmd) {
-        StringBuilder remark = new StringBuilder();
-        if (StringUtils.hasText(cmd.spec())) {
-            remark.append("规格: ").append(cmd.spec().trim());
-        }
-        String applyReason = SAMPLE_REMARK_POLICY.normalize(cmd.remark());
-        if (StringUtils.hasText(applyReason)) {
-            if (!remark.isEmpty()) {
-                remark.append("；");
-            }
-            remark.append(applyReason);
-        }
-        return remark.isEmpty() ? null : remark.toString();
     }
 
     private void writeBackClaimAddress(UUID channelUserId, UUID talentId, SampleRequest sample) {

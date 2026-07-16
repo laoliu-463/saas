@@ -193,6 +193,12 @@ public class SampleCooperationApplicationService {
         TalentClaimAddressDTO address = talentDomainFacade.findActiveClaimAddress(
                 sample.getTalentId(), sample.getUserId());
         Map<String, Object> threshold = readMap(sample.getExtraData(), "requirementSnapshot");
+        String recipientName = address == null ? null : trimToNull(address.recipientName());
+        String recipientPhone = address == null ? null : trimToNull(address.recipientPhone());
+        String recipientAddress = address == null ? null : trimToNull(address.recipientAddress());
+        boolean addressAvailable = recipientName != null
+                && recipientPhone != null
+                && recipientAddress != null;
         return new SampleEditContextVO(
                 sample.getId(),
                 firstText(talent == null ? null : talent.nickname(), visible.getTalentName()),
@@ -209,10 +215,10 @@ public class SampleCooperationApplicationService {
                 firstText(sample.getActivityId(), visible.getActivityId()),
                 readText(sample.getExtraData(), "activityName"),
                 remarkPolicy.displayRemark(sample.getExtraData(), sample.getRemark()),
-                address != null,
-                address == null ? null : address.recipientName(),
-                address == null ? null : address.recipientPhone(),
-                address == null ? null : address.recipientAddress(),
+                addressAvailable,
+                recipientName,
+                recipientPhone,
+                recipientAddress,
                 sample.getVersion());
     }
 

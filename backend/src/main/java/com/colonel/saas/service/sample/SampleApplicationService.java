@@ -2961,9 +2961,7 @@ public class SampleApplicationService extends BaseController {
         vo.setTalentMainCategory(sample.getTalentMainCategory());
         vo.setTalentName(StringUtils.hasText(talentName) ? talentName : sample.getTalentNickname());
         vo.setProductId(sample.getProductId());
-        vo.setActivityId(StringUtils.hasText(sample.getActivityId())
-                ? sample.getActivityId()
-                : (snapshot == null ? null : snapshot.getActivityId()));
+        vo.setActivityId(resolveActivityId(sample, snapshot));
         vo.setProductExternalId(resolveProductExternalId(resolvedProduct, snapshot));
         vo.setProductName(StringUtils.hasText(productName)
                 ? productName
@@ -3191,6 +3189,22 @@ public class SampleApplicationService extends BaseController {
         }
         Object value = extraData.get(key);
         return value == null ? null : String.valueOf(value);
+    }
+
+    private String resolveActivityId(SampleRequest sample, ProductSnapshot snapshot) {
+        String[] candidates = {
+                sample.getActivityId(),
+                snapshot == null ? null : snapshot.getActivityId(),
+                readExtraText(sample.getExtraData(), "activityId"),
+                readExtraText(sample.getExtraData(), "activity_id")
+        };
+        for (String candidate : candidates) {
+            String normalized = trimToNull(candidate);
+            if (normalized != null) {
+                return normalized;
+            }
+        }
+        return null;
     }
 
     /**

@@ -136,6 +136,47 @@ class SampleCooperationApplicationServiceTest {
     }
 
     @Test
+    void getEditContext_shouldOnlyMarkCompleteTrimmedOwnerAddressAvailable() {
+        UUID sampleId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        UUID talentId = UUID.randomUUID();
+        SampleRequest sample = sample(sampleId, ownerId, talentId, SampleStatus.PENDING_AUDIT, 1);
+        sample.setRecipientName("不得回退的样本收件人");
+        sample.setRecipientPhone("13100000000");
+        sample.setRecipientAddress("不得回退的样本地址");
+        SampleVO visible = visibleSample(sample);
+
+        when(sampleQueryApplicationService.getSampleById(
+                sampleId, ownerId, null, DataScope.PERSONAL, List.of(RoleCodes.CHANNEL_STAFF)))
+                .thenReturn(visible);
+        when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
+        when(talentDomainFacade.findActiveClaimAddress(talentId, ownerId)).thenReturn(
+                new TalentClaimAddressDTO(talentId, ownerId, null, "13800000000", "完整地址"),
+                new TalentClaimAddressDTO(talentId, ownerId, "   ", "13800000000", "完整地址"),
+                new TalentClaimAddressDTO(talentId, ownerId, "半地址", "13800000000", null),
+                new TalentClaimAddressDTO(talentId, ownerId, "  完整收件人  ", "  13800000000  ", "  完整地址  "));
+
+        SampleEditContextVO missingName = service.getEditContext(
+                sampleId, ownerId, null, DataScope.PERSONAL, List.of(RoleCodes.CHANNEL_STAFF));
+        SampleEditContextVO blankName = service.getEditContext(
+                sampleId, ownerId, null, DataScope.PERSONAL, List.of(RoleCodes.CHANNEL_STAFF));
+        SampleEditContextVO partialAddress = service.getEditContext(
+                sampleId, ownerId, null, DataScope.PERSONAL, List.of(RoleCodes.CHANNEL_STAFF));
+        SampleEditContextVO completeAddress = service.getEditContext(
+                sampleId, ownerId, null, DataScope.PERSONAL, List.of(RoleCodes.CHANNEL_STAFF));
+
+        assertThat(missingName.addressAvailable()).isFalse();
+        assertThat(blankName.addressAvailable()).isFalse();
+        assertThat(partialAddress.addressAvailable()).isFalse();
+        assertThat(completeAddress.addressAvailable()).isTrue();
+        assertThat(completeAddress.recipientName()).isEqualTo("完整收件人");
+        assertThat(completeAddress.recipientPhone()).isEqualTo("13800000000");
+        assertThat(completeAddress.recipientAddress()).isEqualTo("完整地址");
+        assertThat(missingName.recipientName()).isNotEqualTo("不得回退的样本收件人");
+        assertThat(partialAddress.recipientAddress()).isNotEqualTo("不得回退的样本地址");
+    }
+
+    @Test
     void updateCooperationDetails_shouldUpdateSampleBeforeOwnerClaimAddressAndPreserveExtraData() {
         UUID sampleId = UUID.randomUUID();
         UUID ownerId = UUID.randomUUID();
