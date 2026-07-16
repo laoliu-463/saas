@@ -2,11 +2,11 @@
 
 ## Metadata
 
-- Time: 2026-07-16 16:40:39 +08:00
+- Time: 2026-07-16 16:40:52 +08:00
 - Environment: real-pre
 - Scope: full
 - Branch: codex/role-aware-link-attribution
-- Commit: c1f8bcf4
+- Commit: a1e93fc8
 - Owned worktree: clean
 - Deploy remote: true
 
@@ -111,13 +111,13 @@ Frontend build: PASS (npm --prefix frontend ci; npm --prefix frontend run build)
 
 ~~~text
 NAME                              IMAGE                            COMMAND                  SERVICE             CREATED          STATUS                    PORTS
-saas-active-backend-real-pre-1    colonel-saas/backend:real-pre    "sh -c 'java $JAVA_O…"   backend-real-pre    26 seconds ago   Up 23 seconds (healthy)   127.0.0.1:8081->8080/tcp
-saas-active-frontend-real-pre-1   colonel-saas/frontend:real-pre   "/docker-entrypoint.…"   frontend-real-pre   24 seconds ago   Up 6 seconds (healthy)    127.0.0.1:3001->80/tcp
+saas-active-backend-real-pre-1    colonel-saas/backend:real-pre    "sh -c 'java $JAVA_O…"   backend-real-pre    39 seconds ago   Up 36 seconds (healthy)   127.0.0.1:8081->8080/tcp
+saas-active-frontend-real-pre-1   colonel-saas/frontend:real-pre   "/docker-entrypoint.…"   frontend-real-pre   37 seconds ago   Up 19 seconds (healthy)   127.0.0.1:3001->80/tcp
 saas-active-postgres-real-pre-1   postgres:15-alpine               "docker-entrypoint.s…"   postgres-real-pre   8 minutes ago    Up 8 minutes (healthy)    5432/tcp
 saas-active-redis-real-pre-1      redis:7-alpine                   "docker-entrypoint.s…"   redis-real-pre      25 hours ago     Up 25 hours (healthy)     6379/tcp
 NAMES                             STATUS                    PORTS
-saas-active-frontend-real-pre-1   Up 7 seconds (healthy)    127.0.0.1:3001->80/tcp
-saas-active-backend-real-pre-1    Up 23 seconds (healthy)   127.0.0.1:8081->8080/tcp
+saas-active-frontend-real-pre-1   Up 20 seconds (healthy)   127.0.0.1:3001->80/tcp
+saas-active-backend-real-pre-1    Up 36 seconds (healthy)   127.0.0.1:8081->8080/tcp
 saas-active-postgres-real-pre-1   Up 8 minutes (healthy)    5432/tcp
 saas-active-redis-real-pre-1      Up 25 hours (healthy)     6379/tcp
 campus_frontend                   Up 2 days                 0.0.0.0:5173->5173/tcp, [::]:5173->5173/tcp
@@ -152,11 +152,11 @@ remote not deployed
 
 ## Retro Summary
 
-No actionable Harness improvement was recorded; no standalone retro is required.
+agent-do failed: Remote deploy failed with exit code 1.
 
 ## Conclusion
 
-PARTIAL
+FAIL
 
 ## Residual Risk
 
