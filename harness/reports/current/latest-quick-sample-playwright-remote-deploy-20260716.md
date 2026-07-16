@@ -100,9 +100,20 @@ Content maintenance: Plan. Manifest=. DryRun=False.
 Remote deploy: PASS
 ~~~
 
+## Playwright Remote Business Verification
+
+~~~text
+远端真实页面：http://1.14.108.159，账号角色：channel_staff（渠道专员测试）。
+部署前基线：选择 QA20260618164425_t33_1781772268238，保存地址和备注后提交；POST /api/products/7d404f72-6618-3339-a266-d6551ac1144d/quick-sample 返回 HTTP 200，successCount=1、failureCount=0，sampleRequestId=b3f76060-b475-434e-a5e0-7a8218345996。
+部署后复测：选择 QA20260618_164518_t33_1781772366255，显示昵称、抖音号和 L5 等级；地址保存后重新打开选择达人页面仍回显；提交返回 HTTP 200，successCount=1、failureCount=0，sampleRequestId=ec15c84b-4fe3-4ed9-93bb-1f3aa24c6a22。
+数据库核对：第二条 sample_request 已落库，status=1、expected_sample_num=1、apply_source=LOCAL_FALLBACK，收货人、电话、地址、备注均与页面填写一致。
+远端运行核对：应用提交时运行提交 954cdd4a，backend/frontend/postgres/redis 均 healthy，/api/system/health 返回 UP，/healthz 返回 ok；后端日志中该请求 HTTP 200 且无“达人不符合”或“默认寄样要求”错误。
+外部能力边界：接口返回 externalEnabled=false、externalSupported=false、gatewayStatus=UNSUPPORTED_BY_SDK；因此本次 PASS 证明系统内寄样申请可创建，不证明抖店外部寄样已接通。
+~~~
+
 ## Retro Summary
 
-Playwright 已在远端真实页面完成添加达人、保存地址、填写备注并提交；接口 HTTP 200 且 successCount=1，数据库已核对申请记录。部署后需用另一条 QA 数据再次验证。
+Playwright 已完成部署前基线与部署后第二条 QA 数据复测；地址持久化、达人信息回显、快速寄样系统内申请创建均通过。外部抖店寄样仍受 SDK 未接通限制，后续若要验证外部发送需先接通对应 SDK 能力。
 
 ## Conclusion
 
@@ -111,3 +122,4 @@ PASS
 ## Residual Risk
 
 - Items marked as not collected are not proof of success.
+- 本次真实链路的“发送成功”范围是系统内寄样申请创建；抖店外部寄样仍为 UNSUPPORTED_BY_SDK。
