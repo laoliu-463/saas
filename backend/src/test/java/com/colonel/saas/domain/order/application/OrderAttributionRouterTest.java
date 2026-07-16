@@ -7,6 +7,7 @@ import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.PickSourceMapping;
 import com.colonel.saas.service.AttributionService;
 import com.colonel.saas.domain.order.policy.OrderDefaultAttributionResult;
+import com.colonel.saas.domain.shared.attribution.AttributionSource;
 import com.colonel.saas.service.AttributionService.AttributionResult;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -83,18 +84,17 @@ class OrderAttributionRouterTest {
 
         ColonelsettlementOrder order = new ColonelsettlementOrder();
         UUID channelUserId = UUID.randomUUID();
-        LocalDateTime mappingCreatedAt = LocalDateTime.of(2026, 5, 10, 6, 41, 19);
-        PickSourceMapping mapping = new PickSourceMapping();
-        mapping.setUserId(channelUserId);
-        mapping.setDeptId(channelUserId);
-        mapping.setActivityId("act-1");
-        mapping.setCreateTime(mappingCreatedAt);
-        OrderDefaultAttributionResult result = OrderDefaultAttributionPolicy.resolve(
-                new OrderAttributionInput("product-1", "act-1", "pick-1", null, null, null),
-                mapping,
-                new OrderDefaultAttributionPolicy.RecruiterLookup(null, null, false));
-        when(defaultAttributionResolver.resolveWithTrace(any(), any())).thenReturn(
-                new OrderDefaultAttributionResolver.Resolution(result, true, mappingCreatedAt));
+        OrderDefaultAttributionResult result = OrderDefaultAttributionResult.attributed(
+                channelUserId,
+                channelUserId,
+                null,
+                AttributionSource.PICK_SOURCE,
+                AttributionSource.UNATTRIBUTED,
+                null,
+                null,
+                "act-1",
+                null);
+        when(defaultAttributionResolver.resolve(any(), any())).thenReturn(result);
 
         AttributionResult applied = router.resolveAndApply(order, Map.of(), "达人A");
 
