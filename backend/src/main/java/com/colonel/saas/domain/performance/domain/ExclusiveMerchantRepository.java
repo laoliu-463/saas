@@ -11,6 +11,8 @@ public interface ExclusiveMerchantRepository {
 
     Optional<ExclusiveMerchant> findByMerchantIdAndMonth(String merchantId, String month);
 
+    Optional<ExclusiveMerchant> findActiveByMerchantIdAndMonth(String merchantId, String month);
+
     List<ExclusiveMerchant> listByEffectiveMonth(String month);
 
     void save(ExclusiveMerchant record);

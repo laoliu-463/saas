@@ -32,6 +32,18 @@ public class ExclusiveMerchantRepositoryAdapter implements ExclusiveMerchantRepo
     }
 
     @Override
+    public Optional<ExclusiveMerchant> findActiveByMerchantIdAndMonth(String merchantId, String month) {
+        ExclusiveMerchant record = mapper.selectOne(new LambdaQueryWrapper<ExclusiveMerchant>()
+                .eq(ExclusiveMerchant::getMerchantId, merchantId)
+                .eq(ExclusiveMerchant::getEffectiveMonth, month)
+                .eq(ExclusiveMerchant::getStatus, 1)
+                .eq(ExclusiveMerchant::getDeleted, 0)
+                .orderByDesc(ExclusiveMerchant::getCreateTime)
+                .last("limit 1"));
+        return Optional.ofNullable(record);
+    }
+
+    @Override
     public List<ExclusiveMerchant> listByEffectiveMonth(String month) {
         return mapper.selectList(new LambdaQueryWrapper<ExclusiveMerchant>()
                 .eq(ExclusiveMerchant::getEffectiveMonth, month)

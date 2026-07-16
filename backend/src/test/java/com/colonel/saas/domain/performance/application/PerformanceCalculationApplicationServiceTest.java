@@ -2,6 +2,7 @@ package com.colonel.saas.domain.performance.application;
 
 import com.colonel.saas.config.SystemConfigKeys;
 import com.colonel.saas.domain.config.facade.ConfigDomainFacade;
+import com.colonel.saas.domain.performance.policy.PerformanceAttributionPolicy;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.PerformanceRecord;
 import com.colonel.saas.mapper.PerformanceRecordMapper;
@@ -37,6 +38,8 @@ class PerformanceCalculationApplicationServiceTest {
     @Mock
     private PerformanceRecordMapper performanceRecordMapper;
     @Mock
+    private PerformanceAttributionResolver attributionResolver;
+    @Mock
     private ConfigDomainFacade configDomainFacade;
     @Mock
     private CommissionRuleService commissionRuleService;
@@ -65,8 +68,21 @@ class PerformanceCalculationApplicationServiceTest {
                     }
                     return null;
                 });
+        lenient().when(attributionResolver.resolve(any())).thenAnswer(invocation -> {
+            ColonelsettlementOrder order = invocation.getArgument(0);
+            UUID channelUserId = order == null ? null : order.getChannelUserId();
+            UUID recruiterUserId = order == null ? null
+                    : order.getColonelUserId() != null ? order.getColonelUserId() : order.getUserId();
+            return new PerformanceAttributionPolicy.AttributionResult(
+                    channelUserId,
+                    recruiterUserId,
+                    order == null ? null : order.getChannelDeptId(),
+                    order == null ? null : order.getDeptId(),
+                    channelUserId == null ? "UNATTRIBUTED" : "DEFAULT",
+                    recruiterUserId == null ? "UNATTRIBUTED" : "DEFAULT");
+        });
         applicationService = new PerformanceCalculationApplicationService(
-                performanceRecordMapper, commissionService);
+                performanceRecordMapper, commissionService, attributionResolver);
     }
 
     @Test
@@ -141,14 +157,57 @@ class PerformanceCalculationApplicationServiceTest {
         assertThat(result.getDefaultRecruiterUserId()).isEqualTo(recruiterUserId);
         assertThat(result.getFinalChannelUserId()).isEqualTo(channelUserId);
         assertThat(result.getFinalRecruiterUserId()).isEqualTo(recruiterUserId);
-        assertThat(result.getChannelAttribution()).isEqualTo("pick_source");
-        assertThat(result.getRecruiterAttribution()).isEqualTo("activity_owner");
+        assertThat(result.getChannelAttribution()).isEqualTo("DEFAULT");
+        assertThat(result.getRecruiterAttribution()).isEqualTo("DEFAULT");
         assertThat(result.getTalentId()).isEqualTo(talentId);
         assertThat(result.getPartnerId()).isEqualTo(90000001L);
         assertThat(result.getProductId()).isEqualTo("PROD-TRACE-1");
         assertThat(result.getActivityId()).isEqualTo("ACT-TRACE-1");
     }
 
+    @Test
+    void upsertFromOrder_shouldUseResolvedFinalAttributionInsteadOfCopyingOrderDefaults() {
+        UUID defaultChannelId = UUID.randomUUID();
+        UUID defaultRecruiterId = UUID.randomUUID();
+        UUID defaultChannelDeptId = UUID.randomUUID();
+        UUID defaultRecruiterDeptId = UUID.randomUUID();
+        UUID exclusiveMerchantUserId = UUID.randomUUID();
+        UUID exclusiveMerchantDeptId = UUID.randomUUID();
+
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setId(UUID.randomUUID());
+        order.setOrderId("ORD-FINAL-ATTRIBUTION");
+        order.setChannelUserId(defaultChannelId);
+        order.setChannelDeptId(defaultChannelDeptId);
+        order.setColonelUserId(defaultRecruiterId);
+        order.setUserId(UUID.randomUUID());
+        order.setDeptId(defaultRecruiterDeptId);
+        order.setShopId(90000002L);
+        order.setOrderStatus(1);
+        order.setEstimateServiceFee(1000L);
+        order.setEstimateTechServiceFee(100L);
+        order.setEstimateServiceFeeExpense(100L);
+
+        when(performanceRecordMapper.findByOrderId("ORD-FINAL-ATTRIBUTION")).thenReturn(null);
+        when(performanceRecordMapper.upsert(any())).thenReturn(1);
+        when(attributionResolver.resolve(order)).thenReturn(
+                new PerformanceAttributionPolicy.AttributionResult(
+                        defaultChannelId,
+                        exclusiveMerchantUserId,
+                        defaultChannelDeptId,
+                        exclusiveMerchantDeptId,
+                        "DEFAULT",
+                        "EXCLUSIVE_MERCHANT"));
+
+        PerformanceRecord result = applicationService.upsertFromOrder(order);
+
+        assertThat(result.getDefaultChannelUserId()).isEqualTo(defaultChannelId);
+        assertThat(result.getDefaultRecruiterUserId()).isEqualTo(defaultRecruiterId);
+        assertThat(result.getFinalChannelUserId()).isEqualTo(defaultChannelId);
+        assertThat(result.getFinalRecruiterUserId()).isEqualTo(exclusiveMerchantUserId);
+        assertThat(result.getChannelAttribution()).isEqualTo("DEFAULT");
+        assertThat(result.getRecruiterAttribution()).isEqualTo("EXCLUSIVE_MERCHANT");
+    }
     @Test
     void upsertFromOrder_existingRecordShouldReuseIdAndAdvanceVersionForDuplicateConsumption() {
         UUID existingId = UUID.randomUUID();
