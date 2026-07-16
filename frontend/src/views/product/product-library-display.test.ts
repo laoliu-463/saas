@@ -453,6 +453,15 @@ describe('product-library-display', () => {
   })
 
   describe('normalizeProductCard - 商品库 hover 抽屉字段', () => {
+    it('透传招商填写的投流说明', () => {
+      const view = normalizeProductCard({
+        productId: 'P-1000',
+        auditSupplement: { adsRule: '投流比例 1:0.5' }
+      })
+
+      expect(view.adsRule).toBe('投流比例 1:0.5')
+    })
+
     it('透传 merchantName / productStock / shopScore', () => {
       const view = normalizeProductCard({
         productId: 'P-1001',

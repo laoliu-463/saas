@@ -377,6 +377,8 @@ export interface ProductCardView {
   shopScore: number | null
   isPinned: boolean
   supportInvestment: boolean
+  /** 招商审核补充的投流说明，用于商品库卡片提示。 */
+  adsRule: string
   /**
    * 上游原始商品链接（详情页 H5 / 商详页 URL）。
    * 不允许把真实转链 / 百应后台链接兜底到这里 — 见 ADR-003。
@@ -567,6 +569,7 @@ export function normalizeProductCard(raw: any): ProductCardView {
     shopScore: parseShopScore(raw?.shopScore ?? raw?.shop_score),
     isPinned: Boolean(raw?.isPinned ?? raw?.pinned),
     supportInvestment: resolveSupportInvestment(raw),
+    adsRule: normalizeText(raw?.adsRule) || normalizeText(supplement?.adsRule),
     productUrl,
     baiyingUrl,
     promotionUrl,
