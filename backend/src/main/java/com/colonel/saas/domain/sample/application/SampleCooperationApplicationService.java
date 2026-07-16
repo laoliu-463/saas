@@ -3,7 +3,9 @@ package com.colonel.saas.domain.sample.application;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.enums.SampleStatus;
 import com.colonel.saas.common.exception.BusinessException;
+import com.colonel.saas.common.exception.ForbiddenException;
 import com.colonel.saas.common.exception.OptimisticLockSupport;
+import com.colonel.saas.common.result.ResultCode;
 import com.colonel.saas.domain.product.facade.ProductPromotionFacade;
 import com.colonel.saas.domain.product.facade.dto.ProductPromotionCopyDTO;
 import com.colonel.saas.domain.sample.policy.SampleCooperationActionPolicy;
@@ -140,7 +142,7 @@ public class SampleCooperationApplicationService {
             UUID currentDeptId,
             DataScope dataScope,
             Object roleCodes) {
-        SampleVO visible = requireVisibleSample(
+        SampleVO visible = requireOrderCopyVisibleSample(
                 sampleId, currentUserId, currentDeptId, dataScope, roleCodes);
         SampleRequest sample = requireSample(sampleId);
         SampleEditContextVO context = buildEditContext(sample, visible);
@@ -288,6 +290,35 @@ public class SampleCooperationApplicationService {
             Object roleCodes) {
         return sampleQueryApplicationService.getSampleById(
                 sampleId, currentUserId, currentDeptId, dataScope, roleCodes);
+    }
+
+    private SampleVO requireOrderCopyVisibleSample(
+            UUID sampleId,
+            UUID currentUserId,
+            UUID currentDeptId,
+            DataScope dataScope,
+            Object roleCodes) {
+        SampleVO visible;
+        try {
+            visible = sampleQueryApplicationService.getVisibleSampleById(
+                    sampleId, currentUserId, currentDeptId, dataScope, roleCodes);
+        } catch (ForbiddenException ex) {
+            throw hiddenSample();
+        } catch (BusinessException ex) {
+            if (ex.getCode() == ResultCode.NOT_FOUND.getCode()
+                    || ex.getCode() == ResultCode.FORBIDDEN.getCode()) {
+                throw hiddenSample();
+            }
+            throw ex;
+        }
+        if (visible == null) {
+            throw hiddenSample();
+        }
+        return visible;
+    }
+
+    private BusinessException hiddenSample() {
+        return BusinessException.notFound("Sample request not found");
     }
 
     private SampleRequest requireSample(UUID sampleId) {

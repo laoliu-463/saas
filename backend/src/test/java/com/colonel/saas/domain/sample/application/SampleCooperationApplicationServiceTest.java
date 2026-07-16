@@ -3,10 +3,14 @@ package com.colonel.saas.domain.sample.application;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.enums.SampleStatus;
 import com.colonel.saas.common.exception.BusinessException;
+import com.colonel.saas.common.exception.ForbiddenException;
 import com.colonel.saas.common.result.PageResult;
+import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.domain.product.facade.ProductPromotionFacade;
 import com.colonel.saas.domain.product.facade.dto.ProductPromotionCopyDTO;
+import com.colonel.saas.domain.sample.application.port.SampleDetailQueryPort;
+import com.colonel.saas.domain.sample.facade.SampleDomainFacade;
 import com.colonel.saas.domain.sample.policy.SampleCooperationActionPolicy;
 import com.colonel.saas.domain.sample.policy.SampleOrderCopyPolicy;
 import com.colonel.saas.domain.sample.policy.SampleRemarkPolicy;
@@ -214,7 +218,7 @@ class SampleCooperationApplicationServiceTest {
         visible.setEligibilityCheck(Map.of("sales30d", 990000L, "sales_30d", 880000L));
         Object roles = List.of(RoleCodes.CHANNEL_STAFF);
 
-        when(sampleQueryApplicationService.getSampleById(
+        when(sampleQueryApplicationService.getVisibleSampleById(
                 sampleId, viewerId, null, DataScope.PERSONAL, roles))
                 .thenReturn(visible);
         when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
@@ -245,7 +249,7 @@ class SampleCooperationApplicationServiceTest {
         assertThat(result.text()).doesNotContain("990000", "880000");
 
         InOrder order = inOrder(sampleQueryApplicationService, sampleRequestMapper, talentDomainFacade);
-        order.verify(sampleQueryApplicationService).getSampleById(
+        order.verify(sampleQueryApplicationService).getVisibleSampleById(
                 sampleId, viewerId, null, DataScope.PERSONAL, roles);
         order.verify(sampleRequestMapper).selectById(sampleId);
         order.verify(talentDomainFacade).findTalentById(talentId);
@@ -268,7 +272,7 @@ class SampleCooperationApplicationServiceTest {
         visible.setQuantity(1);
         Object roles = List.of(RoleCodes.CHANNEL_STAFF);
 
-        when(sampleQueryApplicationService.getSampleById(
+        when(sampleQueryApplicationService.getVisibleSampleById(
                 sampleId, viewerId, null, DataScope.PERSONAL, roles))
                 .thenReturn(visible);
         when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
@@ -280,7 +284,7 @@ class SampleCooperationApplicationServiceTest {
                 .contains("申请数量：---")
                 .doesNotContain("申请数量：1");
         InOrder order = inOrder(sampleQueryApplicationService, sampleRequestMapper);
-        order.verify(sampleQueryApplicationService).getSampleById(
+        order.verify(sampleQueryApplicationService).getVisibleSampleById(
                 sampleId, viewerId, null, DataScope.PERSONAL, roles);
         order.verify(sampleRequestMapper).selectById(sampleId);
         verify(sampleRequestMapper, never()).insert(any(SampleRequest.class));
@@ -288,18 +292,89 @@ class SampleCooperationApplicationServiceTest {
     }
 
     @Test
+    void copyOrder_realDddQueryShouldAuthorizeThroughScopedDetailBeforeRawReadWithoutExistenceProbe() {
+        UUID sampleId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        UUID viewerId = UUID.randomUUID();
+        UUID talentId = UUID.randomUUID();
+        Object roles = List.of(RoleCodes.CHANNEL_STAFF);
+        SampleRequest sample = sample(sampleId, ownerId, talentId, SampleStatus.PENDING_AUDIT, 1);
+        SampleVO visible = visibleSample(sample);
+        SampleDetailQueryPort detailQueryPort = mock(SampleDetailQueryPort.class);
+        SampleDomainFacade sampleDomainFacade = mock(SampleDomainFacade.class);
+        SampleCooperationApplicationService realChainService =
+                serviceWithRealDddQuery(detailQueryPort, sampleDomainFacade);
+        when(detailQueryPort.getSampleById(
+                sampleId, viewerId, null, DataScope.PERSONAL, roles))
+                .thenReturn(visible);
+        when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
+
+        SampleCopyTextVO result = realChainService.copyOrder(
+                sampleId, viewerId, null, DataScope.PERSONAL, roles);
+
+        assertThat(result.text()).contains("申请数量：1");
+        InOrder order = inOrder(detailQueryPort, sampleRequestMapper);
+        order.verify(detailQueryPort).getSampleById(
+                sampleId, viewerId, null, DataScope.PERSONAL, roles);
+        order.verify(sampleRequestMapper).selectById(sampleId);
+        verify(sampleDomainFacade, never()).existsById(any());
+    }
+
+    @Test
+    void copyOrder_realDddQueryShouldMaskForbiddenAndMissingWithoutRawRead() {
+        UUID forbiddenId = UUID.randomUUID();
+        UUID missingId = UUID.randomUUID();
+        UUID viewerId = UUID.randomUUID();
+        Object roles = List.of(RoleCodes.CHANNEL_STAFF);
+        SampleDetailQueryPort detailQueryPort = mock(SampleDetailQueryPort.class);
+        SampleDomainFacade sampleDomainFacade = mock(SampleDomainFacade.class);
+        SampleCooperationApplicationService realChainService =
+                serviceWithRealDddQuery(detailQueryPort, sampleDomainFacade);
+        when(detailQueryPort.getSampleById(
+                forbiddenId, viewerId, null, DataScope.PERSONAL, roles))
+                .thenThrow(new ForbiddenException("无权访问该寄样单"));
+        when(detailQueryPort.getSampleById(
+                missingId, viewerId, null, DataScope.PERSONAL, roles))
+                .thenThrow(BusinessException.notFound("Sample request not found"));
+
+        Throwable forbidden = org.assertj.core.api.Assertions.catchThrowable(() ->
+                realChainService.copyOrder(
+                        forbiddenId, viewerId, null, DataScope.PERSONAL, roles));
+        Throwable missing = org.assertj.core.api.Assertions.catchThrowable(() ->
+                realChainService.copyOrder(
+                        missingId, viewerId, null, DataScope.PERSONAL, roles));
+
+        assertThat(forbidden)
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Sample request not found");
+        assertThat(((BusinessException) forbidden).getCode()).isEqualTo(404);
+        assertThat(missing)
+                .isInstanceOf(BusinessException.class)
+                .hasMessage(forbidden.getMessage());
+        assertThat(((BusinessException) missing).getCode()).isEqualTo(404);
+        verify(detailQueryPort).getSampleById(
+                forbiddenId, viewerId, null, DataScope.PERSONAL, roles);
+        verify(detailQueryPort).getSampleById(
+                missingId, viewerId, null, DataScope.PERSONAL, roles);
+        verify(sampleDomainFacade, never()).existsById(any());
+        verify(sampleRequestMapper, never()).selectById(forbiddenId);
+        verify(sampleRequestMapper, never()).selectById(missingId);
+    }
+
+    @Test
     void copyOrder_shouldPreserveVisibilityFailureWithoutReadingOrWritingSampleFacts() {
         UUID sampleId = UUID.randomUUID();
         UUID viewerId = UUID.randomUUID();
         Object roles = List.of(RoleCodes.CHANNEL_STAFF);
-        when(sampleQueryApplicationService.getSampleById(
+        when(sampleQueryApplicationService.getVisibleSampleById(
                 sampleId, viewerId, null, DataScope.PERSONAL, roles))
                 .thenThrow(BusinessException.forbidden("无权查看该寄样单"));
 
         assertThatThrownBy(() -> service.copyOrder(
                 sampleId, viewerId, null, DataScope.PERSONAL, roles))
                 .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("无权查看");
+                .hasFieldOrPropertyWithValue("code", 404)
+                .hasMessage("Sample request not found");
 
         verify(sampleRequestMapper, never()).selectById(any());
         verify(sampleRequestMapper, never()).insert(any(SampleRequest.class));
@@ -886,6 +961,30 @@ class SampleCooperationApplicationServiceTest {
                 new CurrentUserPermissionChecker(new CurrentUserPermissionPolicy());
         return new SampleCooperationApplicationService(
                 sampleQueryApplicationService,
+                sampleRequestMapper,
+                samplePrivateNoteMapper,
+                talentDomainFacade,
+                new SampleCooperationActionPolicy(checker),
+                new SampleRemarkPolicy(),
+                productPromotionFacade,
+                new SampleOrderCopyPolicy());
+    }
+
+    private SampleCooperationApplicationService serviceWithRealDddQuery(
+            SampleDetailQueryPort detailQueryPort,
+            SampleDomainFacade sampleDomainFacade) {
+        DddRefactorProperties properties = new DddRefactorProperties();
+        properties.setEnabled(true);
+        properties.getSampleApplication().setEnabled(true);
+        SampleQueryApplicationService realQueryService = new SampleQueryApplicationService(
+                null,
+                detailQueryPort,
+                sampleDomainFacade,
+                properties);
+        CurrentUserPermissionChecker checker =
+                new CurrentUserPermissionChecker(new CurrentUserPermissionPolicy());
+        return new SampleCooperationApplicationService(
+                realQueryService,
                 sampleRequestMapper,
                 samplePrivateNoteMapper,
                 talentDomainFacade,
