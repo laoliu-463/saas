@@ -74,14 +74,29 @@ Content maintenance skipped by -ContentMaintenance off.
 Remote deploy: PASS
 ~~~
 
+## Remote Attribution Verification
+
+~~~text
+Read-only verification at 2026-07-16 17:02 +08:00:
+- Remote runtime: feature/auth-system@90edfa7a; backend and frontend health checks PASS.
+- User 壮云 (1c34b680-30b2-41ec-bdc7-2dde1f37e786) currently has only active role channel_staff.
+- Promotion link 1df7d10a-50cc-4306-b773-81b71513bb00 and native pick_source mapping v.Ovyq8S were created by 壮云, but both attribution_owner_type values are NULL because they predate this release.
+- Historical order 6927995582750227729 still has recruiter=招商组长测试 and recruiter_attribution_source=activity_owner; channel attribution is empty/unattributed.
+- Under the deployed policy, channel_staff resolves as CHANNEL. That would give 壮云 channel attribution while still falling back to the activity recruiter for the recruiter dimension; it does not satisfy the requested recruiting-person attribution.
+- No role change, mapping reconciliation, or order replay was executed.
+~~~
+
 ## Retro Summary
 
-No actionable Harness improvement was recorded; no standalone retro is required.
+Actionable: agent-do rendered the multi-file OwnedFiles argument as System.Object[] in this report. Add a PowerShell regression test that verifies semicolon-joined paths are preserved in evidence output before the next Harness change.
 
 ## Conclusion
 
-PASS
+PARTIAL
 
 ## Residual Risk
 
+- The requested historic order is not yet attributed to 壮云 in the recruiter dimension.
+- Correcting it requires an explicit business authorization to replace 壮云's channel_staff role with the intended unique recruiting role, then run the audited mapping reconciliation and order replay.
+- Harness limit check is BLOCKED by the pre-existing untracked root report harness/reports/evidence-20260713-131800.md in the release worktree; it was not created, modified, moved, or deleted by this task.
 - Items marked as not collected are not proof of success.
