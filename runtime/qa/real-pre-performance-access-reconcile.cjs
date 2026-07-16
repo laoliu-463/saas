@@ -10,6 +10,7 @@ const {
   isRealPreRuntime,
   normalizeSystemEnv,
   redactSecretLikeKeys,
+  resolveQaAdminCredential,
   resolveRealPreDbContainer,
   stripTrailingSlash,
   unwrapApiBody,
@@ -164,7 +165,10 @@ function classifyRoleEvidence(evidence) {
 
 function summarizeStatus(roles) {
   if ((roles || []).some((role) => role.status === 'FAIL')) return 'FAIL';
-  if ((roles || []).some((role) => String(role.status).startsWith('PARTIAL_'))) return 'PARTIAL';
+  if ((roles || []).some((role) => {
+    const status = String(role.status);
+    return status.startsWith('PARTIAL_') || status.startsWith('BLOCKED_');
+  })) return 'PARTIAL';
   return 'PASS';
 }
 
@@ -251,11 +255,26 @@ async function loginRole(fetchImpl, backendUrl, account) {
   return token;
 }
 
+function assertSuccessfulApiResponse(response, apiPath) {
+  const httpStatus = Number(response?.status || 0);
+  if (!response?.ok) {
+    throw new Error(`${apiPath} failed: HTTP ${httpStatus}`);
+  }
+  const rawCode = response?.body?.code;
+  if (rawCode === undefined || rawCode === null || rawCode === '') return response;
+  const businessCode = Number(rawCode);
+  if (![0, 200].includes(businessCode)) {
+    const safeCode = String(rawCode).slice(0, 64);
+    throw new Error(`${apiPath} failed: HTTP ${httpStatus}, business code ${safeCode}`);
+  }
+  return response;
+}
+
 async function fetchData(fetchImpl, backendUrl, token, apiPath) {
   const response = await requestJson(fetchImpl, apiUrl(backendUrl, apiPath), {
     headers: bearer(token)
   });
-  if (!response.ok) throw new Error(`${apiPath} failed: HTTP ${response.status}`);
+  assertSuccessfulApiResponse(response, apiPath);
   return unwrapApiBody(response.body) || {};
 }
 
@@ -264,17 +283,28 @@ function isForbidden(response) {
   return [401, 403].includes(Number(response?.status)) || [401, 403].includes(code);
 }
 
-function loadRoleCases(root = ROOT) {
-  const file = path.join(root, 'runtime', 'qa', 'role-page-cases.json');
-  const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
-  const roles = parsed.roles || {};
+function resolveRoleCases(rawRoles, options = {}) {
+  const adminCredential = String(options.adminCredential || '').trim();
   return Object.fromEntries(ROLE_NAMES.map((roleName) => {
-    const account = roles[roleName];
-    if (!account?.username || !account?.password) {
+    const account = rawRoles?.[roleName];
+    const password = roleName === 'admin' && adminCredential
+      ? adminCredential
+      : String(account?.password || '').trim();
+    if (!account?.username || !password) {
       throw new Error(`Missing QA role credentials for ${roleName}`);
     }
-    return [roleName, { username: account.username, password: account.password }];
+    return [roleName, { username: account.username, password }];
   }));
+}
+
+function loadRoleCases(root = ROOT, env = process.env) {
+  const file = path.join(root, 'runtime', 'qa', 'role-page-cases.json');
+  const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+  return resolveRoleCases(parsed.roles || {}, {
+    adminCredential: resolveQaAdminCredential(env, {
+      envFile: path.join(root, '.env.real-pre')
+    })
+  });
 }
 
 function normalizePage(data) {
@@ -446,7 +476,7 @@ async function runRealPrePerformanceAccessReconcile(options = {}) {
   const evidenceDir = options.evidenceDir
     ? ensureEvidenceDir(path.resolve(options.evidenceDir))
     : createEvidenceDir(root, SCRIPT_NAME);
-  const roleCases = options.roles || loadRoleCases(root);
+  const roleCases = options.roles || loadRoleCases(root, env);
   const ctx = {
     env,
     backendUrl,
@@ -499,7 +529,7 @@ async function runRealPrePerformanceAccessReconcile(options = {}) {
         ownershipChecks: [],
         negativeChecks: [],
         errors: [identityErrors[roleName] || 'identity unavailable'],
-        status: 'FAIL'
+        status: 'BLOCKED_AUTH'
       });
       continue;
     }
@@ -557,12 +587,14 @@ if (require.main === module) {
 }
 
 module.exports = {
+  assertSuccessfulApiResponse,
   buildCountSql,
   buildOutOfScopeSql,
   classifyRoleEvidence,
   isOwnershipInScope,
   isPassingRealPreEnv,
   normalizeCurrentUser,
+  resolveRoleCases,
   resolvePerformanceScope,
   runRealPrePerformanceAccessReconcile,
   summarizeStatus

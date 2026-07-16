@@ -2,12 +2,14 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
+  assertSuccessfulApiResponse,
   buildCountSql,
   buildOutOfScopeSql,
   classifyRoleEvidence,
   isOwnershipInScope,
   isPassingRealPreEnv,
   normalizeCurrentUser,
+  resolveRoleCases,
   resolvePerformanceScope,
   summarizeStatus
 } = require('./real-pre-performance-access-reconcile.cjs');
@@ -15,6 +17,19 @@ const {
 const USER_ID = '00000000-0000-0000-0000-000000000001';
 const OTHER_ID = '00000000-0000-0000-0000-000000000002';
 const DEPT_ID = '00000000-0000-0000-0000-000000000003';
+
+test('assertSuccessfulApiResponse rejects failed business envelopes behind HTTP 200', () => {
+  assert.throws(
+    () => assertSuccessfulApiResponse({ ok: true, status: 200, body: { code: 500, message: 'server error' } }, '/performance'),
+    /\/performance failed: HTTP 200, business code 500/
+  );
+  assert.doesNotThrow(
+    () => assertSuccessfulApiResponse({ ok: true, status: 200, body: { code: 200, data: {} } }, '/performance')
+  );
+  assert.doesNotThrow(
+    () => assertSuccessfulApiResponse({ ok: true, status: 200, body: { status: 'UP' } }, '/system/health')
+  );
+});
 
 test('isPassingRealPreEnv only accepts guarded real-pre runtime', () => {
   assert.equal(isPassingRealPreEnv({
@@ -98,7 +113,20 @@ test('role evidence distinguishes pass, missing positive sample and failures', (
 test('overall status preserves partial and fail evidence', () => {
   assert.equal(summarizeStatus([{ status: 'PASS' }, { status: 'PASS' }]), 'PASS');
   assert.equal(summarizeStatus([{ status: 'PASS' }, { status: 'PARTIAL_NO_POSITIVE_SAMPLE' }]), 'PARTIAL');
+  assert.equal(summarizeStatus([{ status: 'PASS' }, { status: 'BLOCKED_AUTH' }]), 'PARTIAL');
   assert.equal(summarizeStatus([{ status: 'PASS' }, { status: 'FAIL' }]), 'FAIL');
+});
+
+test('resolveRoleCases overrides only admin from the local real-pre credential source', () => {
+  const roles = resolveRoleCases({
+    admin: { username: 'admin', password: 'stale-admin' },
+    biz_leader: { username: 'biz_leader', password: 'leader-current' },
+    biz_staff: { username: 'biz_staff', password: 'staff-current' },
+    channel_staff: { username: 'channel_staff', password: 'channel-current' }
+  }, { adminCredential: 'admin-current' });
+  assert.equal(roles.admin.password, 'admin-current');
+  assert.equal(roles.biz_staff.password, 'staff-current');
+  assert.equal(roles.channel_staff.password, 'channel-current');
 });
 
 test('normalizeCurrentUser accepts wrapped current-user fields without credentials', () => {

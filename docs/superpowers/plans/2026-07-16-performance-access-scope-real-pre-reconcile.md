@@ -34,12 +34,14 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
+  assertSuccessfulApiResponse,
   buildCountSql,
   buildOutOfScopeSql,
   classifyRoleEvidence,
   isOwnershipInScope,
   isPassingRealPreEnv,
   normalizeCurrentUser,
+  resolveRoleCases,
   resolvePerformanceScope,
   summarizeStatus
 } = require('./real-pre-performance-access-reconcile.cjs');
@@ -47,6 +49,16 @@ const {
 const USER_ID = '00000000-0000-0000-0000-000000000001';
 const OTHER_ID = '00000000-0000-0000-0000-000000000002';
 const DEPT_ID = '00000000-0000-0000-0000-000000000003';
+
+test('assertSuccessfulApiResponse rejects failed business envelopes behind HTTP 200', () => {
+  assert.throws(
+    () => assertSuccessfulApiResponse({ ok: true, status: 200, body: { code: 500 } }, '/performance'),
+    /business code 500/
+  );
+  assert.doesNotThrow(
+    () => assertSuccessfulApiResponse({ ok: true, status: 200, body: { code: 200, data: {} } }, '/performance')
+  );
+});
 
 test('isPassingRealPreEnv only accepts guarded real-pre runtime', () => {
   assert.equal(isPassingRealPreEnv({
@@ -130,7 +142,20 @@ test('role evidence distinguishes pass, missing positive sample and failures', (
 test('overall status preserves partial and fail evidence', () => {
   assert.equal(summarizeStatus([{ status: 'PASS' }, { status: 'PASS' }]), 'PASS');
   assert.equal(summarizeStatus([{ status: 'PASS' }, { status: 'PARTIAL_NO_POSITIVE_SAMPLE' }]), 'PARTIAL');
+  assert.equal(summarizeStatus([{ status: 'PASS' }, { status: 'BLOCKED_AUTH' }]), 'PARTIAL');
   assert.equal(summarizeStatus([{ status: 'PASS' }, { status: 'FAIL' }]), 'FAIL');
+});
+
+test('resolveRoleCases overrides only admin from the local real-pre credential source', () => {
+  const roles = resolveRoleCases({
+    admin: { username: 'admin', password: 'stale-admin' },
+    biz_leader: { username: 'biz_leader', password: 'leader-current' },
+    biz_staff: { username: 'biz_staff', password: 'staff-current' },
+    channel_staff: { username: 'channel_staff', password: 'channel-current' }
+  }, { adminCredential: 'admin-current' });
+  assert.equal(roles.admin.password, 'admin-current');
+  assert.equal(roles.biz_staff.password, 'staff-current');
+  assert.equal(roles.channel_staff.password, 'channel-current');
 });
 
 test('normalizeCurrentUser accepts wrapped current-user fields without credentials', () => {
@@ -322,12 +347,14 @@ async function runRealPrePerformanceAccessReconcile(options = {}) {
 
 ```javascript
 module.exports = {
+  assertSuccessfulApiResponse,
   buildCountSql,
   buildOutOfScopeSql,
   classifyRoleEvidence,
   isOwnershipInScope,
   isPassingRealPreEnv,
   normalizeCurrentUser,
+  resolveRoleCases,
   resolvePerformanceScope,
   runRealPrePerformanceAccessReconcile,
   summarizeStatus
@@ -355,7 +382,7 @@ if (require.main === module) {
 node --test runtime/qa/real-pre-performance-access-reconcile.test.cjs
 ```
 
-预期：9 tests PASS，零失败、零跳过。
+预期：11 tests PASS，零失败、零跳过。
 
 - [ ] **Step 6: 检查只读边界和最小差异**
 
@@ -405,7 +432,7 @@ node --test runtime/qa/real-pre-performance-access-reconcile.test.cjs
 npm run e2e:real-pre:performance-access-reconcile -- --evidence-dir runtime/qa/out/ddd-performance-access-real-pre-reconcile-current
 ```
 
-预期：环境守卫通过；admin、`biz_leader`、`biz_staff` 的 API total 与 SQL total 相等且当前页归属无泄漏；staff 越权筛选和详情返回 403；`channel_staff` 因没有正向渠道归属样本记 `PARTIAL_NO_POSITIVE_SAMPLE`；总体 `PARTIAL` 且进程码 0。若实际数据变化，以本次真实输出为准，不硬改预期。
+预期：环境守卫通过；admin 凭证按项目既有规则优先读取本地 `.env.real-pre`，admin、`biz_leader`、`biz_staff` 的 API total 与 SQL total 相等且当前页归属无泄漏；已认证 staff 的越权筛选和详情返回 403。若 `channel_staff` 仍因配置凭证 401 无法登录，记 `BLOCKED_AUTH`；若可登录但没有正向渠道归属样本，记 `PARTIAL_NO_POSITIVE_SAMPLE`。总体 `PARTIAL` 且进程码 0。若实际数据变化，以本次真实输出为准，不硬改预期。
 
 - [ ] **Step 4: 检查 evidence 脱敏和只读结果**
 
@@ -501,5 +528,5 @@ git rev-list --left-right --count HEAD...@{upstream}
 - 设计要求均有任务映射：Task 1/2 固化正确权限口径和安全分级，Task 3 生成真实只读证据，Task 4 如实更新 Y-17，Task 5 覆盖构建、重启、健康、业务验证、evidence、retro 和推送。
 - 计划不调用 export、seed、backfill、recalculate 或任何业务写接口；SQL 仅为 `SELECT`。
 - 类型和路径与当前源码一致：`PerformancePageResponse.total/items`、`PerformanceListItemDTO.finalChannelId/finalRecruiterId`、`/api/users/current`、`/api/performance`、`performance_records.final_channel_user_id/final_recruiter_user_id`。
-- 渠道 0 样本只会得到 `PARTIAL_NO_POSITIVE_SAMPLE`，不会推进 Y-17 到 `DONE`。
+- 渠道 0 样本得到 `PARTIAL_NO_POSITIVE_SAMPLE`，账号认证阻塞得到 `BLOCKED_AUTH`；两者都不会推进 Y-17 到 `DONE`。
 - 未引入生产代码、schema、业务规则、前端或远端部署变更。

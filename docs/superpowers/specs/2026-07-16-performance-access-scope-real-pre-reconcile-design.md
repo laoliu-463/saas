@@ -96,15 +96,16 @@ real-pre 环境守卫
 
 - `PASS`：登录成功、API total 与 SQL 一致、当前页每条归属均合法、越权负向验证通过，并且该角色有正向样本。
 - `PARTIAL_NO_POSITIVE_SAMPLE`：API 与 SQL 均为 0 且负向验证通过，但没有属于该角色的正向记录。
-- `FAIL`：环境不符、登录失败、API/SQL 不一致、出现范围泄漏、越权请求未被拒绝或 SQL 上下文缺失。
+- `BLOCKED_AUTH`：配置中的真实账号无法登录，当前角色证据未采集；该状态不是权限行为通过或失败。
+- `FAIL`：环境不符、已认证角色 API/SQL 不一致、出现范围泄漏、越权请求未被拒绝或 SQL 上下文缺失。
 
 总体状态：
 
 - 任一角色 `FAIL` 则总体 `FAIL`。
-- 无失败但存在 `PARTIAL_NO_POSITIVE_SAMPLE`，总体为 `PARTIAL`。
+- 无失败但存在 `PARTIAL_NO_POSITIVE_SAMPLE` 或 `BLOCKED_AUTH`，总体为 `PARTIAL`。
 - 所有纳入验收的角色都有正向样本且全部通过，才为 `PASS`。
 
-因此，按当前 real-pre 数据，本轮预期招商角色可形成真实 `PASS`，渠道角色预期为 `PARTIAL_NO_POSITIVE_SAMPLE`，Y-17 仍保持 `PARTIAL`。
+因此，按当前 real-pre 数据，本轮预期招商角色可形成真实 `PASS`；渠道账号若可认证但没有归属样本则为 `PARTIAL_NO_POSITIVE_SAMPLE`，若凭证已漂移则为 `BLOCKED_AUTH`；Y-17 均保持 `PARTIAL`。
 
 ## 安全与错误处理
 
@@ -112,7 +113,8 @@ real-pre 环境守卫
 - 除鉴权所需的登录 `POST` 外，业绩业务接口只允许 `GET` 列表、详情和当前用户；不调用导出、seed、backfill、重算或任何可能写入审计/业务数据的接口。
 - SQL 只使用 `SELECT`；脚本中不出现 `INSERT`、`UPDATE`、`DELETE`、`TRUNCATE` 或 DDL。
 - token、密码、Authorization 和 secret-like 字段在写 evidence 前统一脱敏。
-- 单个角色失败会记录错误并继续采集其他角色，最终总体如实失败，便于定位是账号、接口还是口径问题。
+- HTTP 状态成功但业务响应码非 `0/200` 时按接口失败处理，不能把空 `data` 误报为 0 条记录。
+- 单个角色认证阻塞会记录为 `BLOCKED_AUTH` 并继续采集其他角色；已认证角色的接口或口径问题仍如实记为 `FAIL`。
 
 ## TDD 实施顺序
 
@@ -129,7 +131,7 @@ real-pre 环境守卫
 - real-pre 探针没有业务表写入，也不调用业务写接口。
 - `biz_leader`、`biz_staff` 和 admin 的 API total 与 SQL 期望一致，且当前页记录不存在跨范围泄漏。
 - staff 的跨范围只读访问被拒绝；导出权限继续由既有后端正反例覆盖。
-- 渠道账号无正向样本时明确输出 `PARTIAL_NO_POSITIVE_SAMPLE`；Y-17 不得因此标记 `DONE`。
+- 渠道账号无正向样本时明确输出 `PARTIAL_NO_POSITIVE_SAMPLE`，认证阻塞时输出 `BLOCKED_AUTH`；Y-17 不得因此标记 `DONE`。
 - evidence 包含环境、角色结果、API/SQL 比较、样本充分性、结论和剩余风险，且不包含 token 或密码。
 - Harness 报告如实记录构建、容器、健康、业务验证和仓库健康；未验证项不得标记为 `PASS`。
 
