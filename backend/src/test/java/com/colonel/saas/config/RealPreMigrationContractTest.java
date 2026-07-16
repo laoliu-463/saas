@@ -117,6 +117,23 @@ class RealPreMigrationContractTest {
                 .contains("alter-role-aware-promotion-link-attribution-20260716.sql");
     }
 
+    @Test
+    void performanceAttributionMigrations_shouldBeAppliedAndVerifiedByRemoteDeploy() throws IOException {
+        Path orderDimensionsMigration = DB_DIR.resolve("alter-order-default-attribution-dimensions-20260716.sql");
+        Path performanceMigration = DB_DIR.resolve("alter-performance-final-attribution-20260716.sql");
+
+        assertThat(orderDimensionsMigration).exists();
+        assertThat(performanceMigration).exists();
+
+        String deployScript = Files.readString(
+                REPO_ROOT.resolve("harness/scripts/commands/deploy-remote.ps1"));
+        assertThat(deployScript)
+                .contains("alter-order-default-attribution-dimensions-20260716.sql")
+                .contains("alter-performance-final-attribution-20260716.sql")
+                .contains("Order attribution dimensions schema guard passed.")
+                .contains("Performance final attribution schema guard passed.");
+    }
+
     private static void assertFinancialAndExclusiveConstraints(String sql) {
         assertThat(sql).contains("ck_exclusive_talent_non_negative_financials");
         assertThat(sql).contains("service_fee >= 0");
