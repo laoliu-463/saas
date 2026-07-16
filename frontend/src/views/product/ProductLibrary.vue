@@ -88,7 +88,6 @@
             @detail="openDetail"
             @copy-brief="copyPromotionLink"
             @quick-sample="openSampleApply"
-            @refresh="refreshProductRow"
           />
         </div>
         <template v-else>
@@ -102,7 +101,6 @@
             @detail="openDetail"
             @copy-brief="copyPromotionLink"
             @quick-sample="openSampleApply"
-            @refresh="refreshProductRow"
           />
         </template>
       </div>
@@ -804,31 +802,6 @@ const retryManualCopy = async () => {
   }
 }
 
-const refreshProductRow = async (item: any) => {
-  const productId = String(item?.productId || '')
-  if (!productId) {
-    message.warning('商品信息不完整，无法刷新')
-    return
-  }
-  try {
-    const res: any = await getProducts(
-      buildProductLibraryQueryParams({ ...DEFAULT_PRODUCT_FILTERS(), productId }, {
-        page: 1,
-        size: 1
-      })
-    )
-    const record = Array.isArray(res?.data?.records) ? res.data.records[0] : null
-    if (!record) {
-      message.warning('未找到该商品，请稍后重试')
-      return
-    }
-    replaceProductRow(productId, normalizeItem({ ...record, productId }))
-    message.success('商品信息已刷新')
-  } catch (error: any) {
-    notifyApiFailure(error, message, { fallbackMessage: '刷新商品失败' })
-  }
-}
-
 const openSampleApply = (item: any) => {
   const relationId = String(item?.id || item?.relationId || '')
   if (!relationId) {
@@ -1011,7 +984,7 @@ onBeforeUnmount(() => {
 .product-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
-  gap: 16px;
+  gap: 8px;
   align-items: start;
   justify-items: center;
 }
@@ -1026,7 +999,7 @@ onBeforeUnmount(() => {
   position: absolute;
   inset: 0 0 auto;
   display: grid;
-  gap: 16px;
+  gap: 8px;
   align-items: start;
   justify-items: center;
   will-change: transform;

@@ -6,7 +6,7 @@
        并提供逐字段复制按钮。
 
   布局：
-    - 默认态：252px × 432px 固定尺寸（响应式断点降为 4 列 / 3 列 / 1 列）
+    - 默认态：252px × 492px 固定尺寸（响应式断点降为 4 列 / 3 列 / 1 列）
     - 顶部图片区（aspect-ratio 1:1）+ 底部标题+销量+核心指标
     - 鼠标悬浮：图片区浮现“复制简介”和“快速寄样”按钮，且从卡片底部覆盖弹出字段抽屉，不改变商品网格布局
 
@@ -20,7 +20,6 @@
     - detail: 点击卡片或"查看详情"按钮时触发
     - copyBrief: 点击"复制简介"按钮时触发
     - quickSample: 点击"快速寄样"按钮时触发
-    - refresh: 点击"刷新"按钮时触发
 -->
 <template>
   <article
@@ -110,50 +109,25 @@
             </svg>
             {{ card.productName }}
           </h3>
-          <div class="selection-card__quick-actions" @click.stop>
-            <button
-              type="button"
-              class="selection-card__icon-btn"
-              title="复制ID"
-              data-testid="product-copy-id"
-              @click="copyField(card.productId, '商品ID')"
-            >
-              ID
-            </button>
-            <button
-              type="button"
-              class="selection-card__icon-btn"
-              title="复制图文链接"
-              data-testid="product-copy-url"
-              :disabled="!canCopyBrief || copyBriefLoading"
-              @click="$emit('copyBrief', card.raw)"
-            >
-              <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5">
-                <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71" />
-                <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" />
-              </svg>
-            </button>
-            <button
-              type="button"
-              class="selection-card__icon-btn"
-              title="刷新"
-              data-testid="product-refresh"
-              @click="$emit('refresh', card.raw)"
-            >
-              <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5">
-                <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 11-.57-8.38l5.67-5.67" />
-              </svg>
-            </button>
-            <button
-              type="button"
-              class="selection-card__icon-btn"
-              title="查看详情"
-              data-testid="product-detail-btn"
-              @click="$emit('detail', card.raw)"
-            >
-              详情
-            </button>
-          </div>
+        </div>
+
+        <div class="selection-card__product-id-row" @click.stop>
+          <span class="selection-card__product-id-label">商品 ID</span>
+          <code
+            class="selection-card__product-id-value"
+            data-testid="product-id-value"
+            :title="card.productId"
+          >{{ card.productId || '-' }}</code>
+          <button
+            type="button"
+            class="selection-card__icon-btn"
+            title="复制ID"
+            aria-label="复制商品ID"
+            data-testid="product-copy-id"
+            @click="copyField(card.productId, '商品ID')"
+          >
+            复制 ID
+          </button>
         </div>
 
         <div class="selection-card__sales-row">
@@ -295,7 +269,6 @@ const emit = defineEmits<{
   detail: [raw: Record<string, unknown>]
   copyBrief: [raw: Record<string, unknown>]
   quickSample: [raw: Record<string, unknown>]
-  refresh: [raw: Record<string, unknown>]
 }>()
 
 type InfoField = {
@@ -559,7 +532,7 @@ const copyField = async (text: string | undefined, label: string) => {
 <style scoped>
 /* ============================================================
    容器
-   - 默认主卡保持 252×432 紧凑高度（响应式断点由父级 grid 控制列数）
+   - 默认主卡保持 252×492 高度（响应式断点由父级 grid 控制列数）
    - 桌面详情抽屉 absolute 覆盖下方卡片，不参与商品网格布局
    ============================================================ */
 .selection-card {
@@ -786,9 +759,7 @@ const copyField = async (text: string | undefined, label: string) => {
 .selection-card__title-row {
   display: flex;
   align-items: flex-start;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
 .selection-card__title {
@@ -797,11 +768,10 @@ const copyField = async (text: string | undefined, label: string) => {
   font-weight: 600;
   line-height: 1.4;
   color: #0f172a;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  word-break: break-all;
+  display: block;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  word-break: break-word;
   flex: 1;
 }
 
@@ -813,26 +783,48 @@ const copyField = async (text: string | undefined, label: string) => {
   color: #000000;
 }
 
-.selection-card__quick-actions {
-  display: flex;
-  gap: 4px;
-  flex-shrink: 0;
+.selection-card__product-id-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.selection-card__product-id-label {
+  color: #94a3b8;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 22px;
+  white-space: nowrap;
+}
+
+.selection-card__product-id-value {
+  min-width: 0;
+  color: #475569;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10px;
+  line-height: 22px;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  word-break: break-all;
 }
 
 .selection-card__icon-btn {
   border: 1px solid #e2e8f0;
   background: #fff;
   border-radius: 4px;
-  padding: 2px 5px;
-  font-size: 9px;
+  padding: 2px 8px;
+  font-size: 10px;
   color: #64748b;
   cursor: pointer;
   transition: all 0.2s ease;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  height: 18px;
+  height: 22px;
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .selection-card__icon-btn:hover {
