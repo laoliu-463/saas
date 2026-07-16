@@ -24,15 +24,11 @@ public class TalentComplaintPolicy {
         if (!ALLOWED_REASONS.contains(normalizedReason)) {
             throw BusinessException.param("投诉原因不合法");
         }
-        String normalizedContent = content == null ? null : content.trim();
-        if (normalizedContent != null && normalizedContent.isEmpty()) {
-            normalizedContent = null;
-        }
-        if (OTHER.equals(normalizedReason) && normalizedContent == null) {
+        String normalizedContent = content == null ? "" : content.trim();
+        if (OTHER.equals(normalizedReason) && normalizedContent.isEmpty()) {
             throw BusinessException.param("选择其他原因时必须填写投诉内容");
         }
-        if (normalizedContent != null
-                && normalizedContent.codePointCount(0, normalizedContent.length())
+        if (normalizedContent.codePointCount(0, normalizedContent.length())
                 > MAX_CONTENT_CODE_POINTS) {
             throw BusinessException.param("投诉内容最多 200 字");
         }

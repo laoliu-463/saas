@@ -112,6 +112,26 @@ class TalentComplaintApplicationServiceTest {
     }
 
     @Test
+    void create_shouldPersistSafeEmptyStringForMissingNonOtherContent() {
+        when(complaintMapper.insert(any(TalentComplaint.class))).thenReturn(1);
+        when(recipientLookup.findActiveUserIdsByRoleCodes(any())).thenReturn(List.of());
+
+        var result = service.create(
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                new TalentComplaintCreateRequest("LOW_PRICE_RESALE", "   "),
+                List.of());
+
+        ArgumentCaptor<TalentComplaint> complaintCaptor =
+                ArgumentCaptor.forClass(TalentComplaint.class);
+        verify(complaintMapper).insert(complaintCaptor.capture());
+        assertThat(complaintCaptor.getValue().getContent()).isEmpty();
+        assertThat(result.content()).isEmpty();
+    }
+
+    @Test
     void create_shouldTrimContentByUnicodeCodePointPersistAttachmentsAndDeduplicateRecipients() {
         UUID sampleId = UUID.randomUUID();
         UUID talentId = UUID.randomUUID();
