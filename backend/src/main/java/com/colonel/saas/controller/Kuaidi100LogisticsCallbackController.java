@@ -1,5 +1,6 @@
 package com.colonel.saas.controller;
 
+import com.colonel.saas.domain.logistics.application.Kuaidi100CallbackApplicationService;
 import com.colonel.saas.service.Kuaidi100LogisticsCallbackService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -57,19 +58,19 @@ public class Kuaidi100LogisticsCallbackController {
      *
      * @param param 快递100回调参数（加密的物流状态 JSON），可为空
      * @param sign  快递100回调签名，用于验证请求合法性，可为空
-     * @return 快递100要求的应答对象 {@link Kuaidi100LogisticsCallbackService.CallbackAck}，包含成功/失败标识、应答码和消息
+     * @return 快递100要求的应答对象 {@link Kuaidi100CallbackApplicationService.CallbackAck}，包含成功/失败标识、应答码和消息
      */
     @Operation(summary = "接收快递100订阅推送回调", description = "快递100企业版订阅回调入口。请求为 form 表单 sign + param。")
     @PostMapping(
             value = {"/public/logistics/kuaidi100/callback", "/api/public/logistics/kuaidi100/callback"},
             consumes = MediaType.ALL_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
-    public Kuaidi100LogisticsCallbackService.CallbackAck callback(
+    public Kuaidi100CallbackApplicationService.CallbackAck callback(
             @RequestParam(value = "param", required = false) String param,
             @RequestParam(value = "sign", required = false) String sign) {
         // 第一步：校验回调参数完整性
         if (!StringUtils.hasText(param) || !StringUtils.hasText(sign)) {
-            return new Kuaidi100LogisticsCallbackService.CallbackAck(false, "500", "缺少参数");
+            return new Kuaidi100CallbackApplicationService.CallbackAck(false, "500", "缺少参数");
         }
         // 第二步：将参数交由回调服务处理（解密、验签、更新物流状态）
         return callbackService.handleCallback(param, sign);
