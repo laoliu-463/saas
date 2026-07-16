@@ -2,12 +2,13 @@ package com.colonel.saas.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.colonel.saas.domain.order.application.OrderDefaultAttributionResolver;
+import com.colonel.saas.domain.order.event.OrderAttributionReplayedEvent;
+import com.colonel.saas.domain.order.event.OrderDomainEventPublisher;
 import com.colonel.saas.domain.order.policy.OrderAttributionInput;
 import com.colonel.saas.domain.order.policy.OrderDefaultAttributionPolicy;
 import com.colonel.saas.domain.order.policy.OrderDefaultAttributionResult;
 import com.colonel.saas.domain.order.policy.OrderLinkAttributionResolution;
 import com.colonel.saas.domain.order.policy.OrderLinkAttributionResolution.Status;
-import com.colonel.saas.domain.performance.application.PerformanceCalculationApplicationService;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import org.springframework.stereotype.Service;
@@ -36,21 +37,22 @@ public class OrderAttributionReplayService {
     private final ColonelsettlementOrderMapper orderMapper;
     private final OrderDefaultAttributionResolver defaultAttributionResolver;
     private final OrderSyncPersistenceService persistenceService;
-    private final PerformanceCalculationApplicationService performanceCalculationApplicationService;
+    private final OrderDomainEventPublisher orderDomainEventPublisher;
 
     public OrderAttributionReplayService(
             ColonelsettlementOrderMapper orderMapper,
             OrderDefaultAttributionResolver defaultAttributionResolver,
             OrderSyncPersistenceService persistenceService,
-            PerformanceCalculationApplicationService performanceCalculationApplicationService) {
+            OrderDomainEventPublisher orderDomainEventPublisher) {
         this.orderMapper = orderMapper;
         this.defaultAttributionResolver = defaultAttributionResolver;
         this.persistenceService = persistenceService;
-        this.performanceCalculationApplicationService = performanceCalculationApplicationService;
+        this.orderDomainEventPublisher = orderDomainEventPublisher;
     }
 
     /**
-     * 逐笔重放订单归属。dry-run 永不写订单或业绩；apply 时订单写入先于业绩 upsert。
+     * 逐笔重放订单归属。dry-run 永不写订单或业绩；apply 时订单写入归因事实后，
+     * 以版本化 Outbox 事件通知业绩域读取最新订单事实并 upsert。
      */
     @Transactional(rollbackFor = Exception.class)
     public ReplayResult replay(List<String> orderIds, String reason, Integer limit, boolean dryRun) {
@@ -118,8 +120,11 @@ public class OrderAttributionReplayService {
             OrderDefaultAttributionPolicy.applyToOrder(order, result, order.getTalentName());
             order.setUpdateTime(LocalDateTime.now());
             fillUserNames(order);
-            persistenceService.persistOrder(order);
-            performanceCalculationApplicationService.upsertFromOrder(order);
+            persistenceService.persistOrderForAttributionReplay(order);
+            orderDomainEventPublisher.publishOrderAttributionReplayed(new OrderAttributionReplayedEvent(
+                    order.getOrderId(),
+                    order.getId(),
+                    nextOrderVersion(order)));
             updated++;
         }
 
@@ -197,6 +202,11 @@ public class OrderAttributionReplayService {
                 || !Objects.equals(order.getRecruiterAttributionSource(), result.recruiterAttributionSource())
                 || !Objects.equals(order.getAttributionStatus(), result.attributionStatus())
                 || !Objects.equals(order.getAttributionRemark(), result.attributionRemark());
+    }
+
+    private int nextOrderVersion(ColonelsettlementOrder order) {
+        Integer current = order == null ? null : order.getVersion();
+        return (current == null ? 0 : current) + 1;
     }
 
     private void fillUserNames(ColonelsettlementOrder order) {

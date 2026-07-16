@@ -1,7 +1,7 @@
 package com.colonel.saas.listener;
 
 import com.colonel.saas.domain.order.event.OrderRefundFactSyncedEvent;
-import com.colonel.saas.domain.order.application.OrderAttributionRouter;
+import com.colonel.saas.domain.order.event.OrderAttributionReplayedEvent;
 import com.colonel.saas.domain.order.facade.OrderReadFacade;
 import com.colonel.saas.domain.performance.application.PerformanceCalculationApplicationService;
 import com.colonel.saas.domain.product.event.ProductOwnerChangedEvent;
@@ -53,7 +53,7 @@ public class PerformanceRecordSyncListener {
         }
         try {
             ColonelsettlementOrder order = orderReadFacade.findByOrderId(event.orderId());
-            recalculate(order, event.orderId());
+            recalculateOrThrow(order, event.orderId());
         } catch (Exception ex) {
             log.warn("Performance calculation failed, orderId={}", event.orderId(), ex);
         }
@@ -69,57 +69,30 @@ public class PerformanceRecordSyncListener {
     }
 
     /**
-     * 商品负责人变更后，重算该活动商品下仍未结算的订单。
-     *
-     * <p>商品负责人是业绩域的默认招商归属来源。负责人变更只影响未结算订单，
-     * 已结算订单保留历史归属，避免改写已结算业绩。</p>
+     * 受控归因更正由 Outbox dispatcher 同步投递；异常必须向上抛出，
+     * 使既有 FAILED/retry/DEAD 机制能够可靠处理。
      */
-    @Async
     @EventListener
-    public void onProductOwnerChanged(ProductOwnerChangedEvent event) {
-        if (event == null || event.activityId() == null || event.productId() == null) {
+    public void onOrderAttributionReplayed(OrderAttributionReplayedEvent event) {
+        if (event == null || event.orderId() == null) {
             return;
         }
-        try {
-            List<ColonelsettlementOrder> orders = orderReadFacade.findUnsettledOrdersByActivityAndProduct(
-                    event.activityId(), event.productId());
-            if (orders == null) {
-                return;
-            }
-            for (ColonelsettlementOrder order : orders) {
-                if (order == null || order.getOrderId() == null) {
-                    continue;
-                }
-                try {
-                    // 商品负责人变更后，订单中保存的是旧默认归属快照；未结算订单必须按当前商品负责人重新解析，
-                    // 再交给业绩域计算最终归属。已结算订单已在查询层排除。
-                    orderAttributionRouter.resolveAndApply(
-                            order, order.getExtraData(), order.getTalentName());
-                    recalculate(order, order.getOrderId());
-                } catch (Exception ex) {
-                    log.warn("Performance recalculation failed after product owner change, orderId={}",
-                            order.getOrderId(), ex);
-                }
-            }
-        } catch (Exception ex) {
-            log.warn("Performance recalculation lookup failed after product owner change, activityId={}, productId={}",
-                    event.activityId(), event.productId(), ex);
-        }
+        ColonelsettlementOrder order = orderReadFacade.findByOrderId(event.orderId());
+        recalculateOrThrow(order, event.orderId());
     }
 
     private void recalculate(String orderId) {
         try {
             ColonelsettlementOrder order = orderReadFacade.findByOrderId(orderId);
-            recalculate(order, orderId);
+            recalculateOrThrow(order, orderId);
         } catch (Exception ex) {
             log.warn("Performance calculation failed, orderId={}", orderId, ex);
         }
     }
 
-    private void recalculate(ColonelsettlementOrder order, String orderId) {
+    private void recalculateOrThrow(ColonelsettlementOrder order, String orderId) {
         if (order == null) {
-            log.warn("Performance calculation skipped, order not found: {}", orderId);
-            return;
+            throw new IllegalStateException("Performance calculation order not found: " + orderId);
         }
         PerformanceRecord record = performanceCalculationApplicationService.upsertFromOrder(order);
         if (record == null) {

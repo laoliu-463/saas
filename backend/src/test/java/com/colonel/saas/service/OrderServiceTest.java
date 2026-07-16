@@ -10,8 +10,11 @@ import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.domain.product.facade.ProductDomainFacade;
 import com.colonel.saas.domain.product.facade.dto.ProductOrderDisplayDTO;
 import com.colonel.saas.domain.product.facade.dto.ProductSnapshotOrderDisplayDTO;
+import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.domain.user.policy.DataScopeResolver;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeEach;
@@ -59,7 +62,13 @@ class OrderServiceTest {
     @BeforeEach
     void setUp() {
         initTableInfo(ColonelsettlementOrder.class);
-        service = new OrderService(orderMapper, dashboardService, productDomainFacade, newDataScopeResolver(), new com.colonel.saas.config.DddRefactorProperties());
+        service = new OrderService(
+                orderMapper,
+                dashboardService,
+                productDomainFacade,
+                newDataScopeResolver(),
+                new CurrentUserPermissionChecker(new CurrentUserPermissionPolicy()),
+                new com.colonel.saas.config.DddRefactorProperties());
     }
 
     private void initTableInfo(Class<?> entityClass) {
@@ -81,6 +90,21 @@ class OrderServiceTest {
                 .contains("dataScopeResolver.applyTo(wrapper, userId, deptId, dataScope, \"user_id\", \"dept_id\")")
                 .contains("DataScopeResolver")
                 .doesNotContain("DataScopePolicy.Decision decision = dataScopePolicy.decide");
+    }
+
+    @Test
+    void roleAwareScope_shouldUseRecruiterAttributionForBizStaff() {
+        UUID userId = UUID.randomUUID();
+        LambdaQueryWrapper<ColonelsettlementOrder> listWrapper = new LambdaQueryWrapper<>();
+        QueryWrapper<ColonelsettlementOrder> statsWrapper = new QueryWrapper<>();
+
+        service.applyDataScope(listWrapper, userId, UUID.randomUUID(), DataScope.PERSONAL, List.of(RoleCodes.BIZ_STAFF));
+        service.applyQueryDataScope(statsWrapper, userId, UUID.randomUUID(), DataScope.PERSONAL, List.of(RoleCodes.BIZ_STAFF));
+
+        assertThat(listWrapper.getSqlSegment()).contains("colonel_user_id");
+        assertThat(statsWrapper.getSqlSegment()).contains("colonel_user_id");
+        assertThat(listWrapper.getParamNameValuePairs().values()).contains(userId);
+        assertThat(statsWrapper.getParamNameValuePairs().values()).contains(userId);
     }
 
     private Path orderServiceSourcePath() {
@@ -455,6 +479,7 @@ class OrderServiceTest {
                 dashboardService,
                 productDomainFacade,
                 newDataScopeResolver(),
+                new CurrentUserPermissionChecker(new CurrentUserPermissionPolicy()),
                 properties);
     }
 
@@ -706,6 +731,22 @@ class OrderServiceTest {
                 null, null, null, null, List.of(), List.of(),
                 UUID.randomUUID(), null, DataScope.ALL);
         verify(orderMapper).selectPage(any(), any(LambdaQueryWrapper.class));
+    }
+
+    @Test
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    void findPage_withBizStaffRoleShouldUseRecruiterAttributionScope() {
+        UUID userId = UUID.randomUUID();
+        when(orderMapper.selectPage(any(), any())).thenAnswer(inv -> inv.getArgument(0));
+
+        service.findPage(1L, 20L, "ORDER-1", null, null, null, null, null, null, null,
+                null, null, null, null, List.of(), List.of(),
+                userId, UUID.randomUUID(), DataScope.PERSONAL, List.of(RoleCodes.BIZ_STAFF));
+
+        ArgumentCaptor<LambdaQueryWrapper> wrapperCaptor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(orderMapper).selectPage(any(), wrapperCaptor.capture());
+        assertThat(wrapperCaptor.getValue().getSqlSegment()).contains("colonel_user_id");
+        assertThat(wrapperCaptor.getValue().getParamNameValuePairs().values()).contains(userId);
     }
 
     @Test

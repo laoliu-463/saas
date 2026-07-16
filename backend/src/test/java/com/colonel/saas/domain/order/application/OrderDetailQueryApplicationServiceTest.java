@@ -4,8 +4,11 @@ import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.exception.ForbiddenException;
 import com.colonel.saas.config.DddRefactorProperties;
+import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.domain.user.policy.DataScopeResolver;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.dto.order.OrderDetailResponse;
 import com.colonel.saas.service.AttributionService;
 import org.junit.jupiter.api.BeforeEach;
@@ -47,7 +50,10 @@ class OrderDetailQueryApplicationServiceTest {
     @BeforeEach
     void setUp() {
         applicationService = new OrderDetailQueryApplicationService(
-                jdbcTemplate, newDataScopeResolver(), new DddRefactorProperties());
+                jdbcTemplate,
+                newDataScopeResolver(),
+                new CurrentUserPermissionChecker(new CurrentUserPermissionPolicy()),
+                new DddRefactorProperties());
     }
 
     @Test
@@ -285,11 +291,37 @@ class OrderDetailQueryApplicationServiceTest {
     }
 
     @Test
+    void getOrderDetail_shouldAllowBizStaffWhenRecruiterAttributionMatches() {
+        UUID recruiterUserId = UUID.randomUUID();
+        when(jdbcTemplate.queryForList(anyString(), eq("biz-staff-order")))
+                .thenReturn(List.of(Map.ofEntries(
+                        Map.entry("order_id", "biz-staff-order"),
+                        Map.entry("order_status", 1),
+                        Map.entry("product_id", "10901831"),
+                        Map.entry("order_user_id", UUID.randomUUID()),
+                        Map.entry("order_dept_id", UUID.randomUUID()),
+                        Map.entry("colonel_user_id", recruiterUserId)
+                )));
+
+        OrderDetailResponse detail = applicationService.getOrderDetail(
+                "biz-staff-order",
+                recruiterUserId,
+                UUID.randomUUID(),
+                DataScope.PERSONAL,
+                List.of(RoleCodes.BIZ_STAFF));
+
+        assertThat(detail.getOrderId()).isEqualTo("biz-staff-order");
+    }
+
+    @Test
     void getOrderDetail_dataScopePolicyEnabledPathShouldPreserveRejectSemantics() {
         DddRefactorProperties properties = new DddRefactorProperties();
         properties.getDataScopePolicy().setEnabled(true);
         OrderDetailQueryApplicationService enabledApp = new OrderDetailQueryApplicationService(
-                jdbcTemplate, newDataScopeResolver(), properties);
+                jdbcTemplate,
+                newDataScopeResolver(),
+                new CurrentUserPermissionChecker(new CurrentUserPermissionPolicy()),
+                properties);
         UUID orderUserId = UUID.randomUUID();
         UUID orderDeptId = UUID.randomUUID();
         when(jdbcTemplate.queryForList(anyString(), eq("policy-scoped-order")))

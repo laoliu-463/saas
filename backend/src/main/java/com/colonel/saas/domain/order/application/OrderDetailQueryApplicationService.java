@@ -4,6 +4,9 @@ import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.exception.ForbiddenException;
 import com.colonel.saas.config.DddRefactorProperties;
+import com.colonel.saas.domain.order.policy.OrderAccessContext;
+import com.colonel.saas.domain.order.policy.OrderAccessScope;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
 import com.colonel.saas.domain.user.policy.DataScopeResolver;
 import com.colonel.saas.dto.order.OrderDetailResponse;
 import com.colonel.saas.service.AttributionService;
@@ -41,13 +44,16 @@ public class OrderDetailQueryApplicationService {
     private final JdbcTemplate jdbcTemplate;
     private final DataScopeResolver dataScopeResolver;
     private final DddRefactorProperties dddRefactorProperties;
+    private final CurrentUserPermissionChecker currentUserPermissionChecker;
 
     public OrderDetailQueryApplicationService(
             JdbcTemplate jdbcTemplate,
             DataScopeResolver dataScopeResolver,
+            CurrentUserPermissionChecker currentUserPermissionChecker,
             DddRefactorProperties dddRefactorProperties) {
         this.jdbcTemplate = jdbcTemplate;
         this.dataScopeResolver = dataScopeResolver;
+        this.currentUserPermissionChecker = currentUserPermissionChecker;
         this.dddRefactorProperties = dddRefactorProperties;
     }
 
@@ -59,11 +65,27 @@ public class OrderDetailQueryApplicationService {
             UUID currentUserId,
             UUID currentDeptId,
             DataScope dataScope) {
+        return getOrderDetail(orderId, currentUserId, currentDeptId, dataScope, null);
+    }
+
+    /**
+     * 订单详情查询，使用当前认证请求携带的角色事实选择归因维度。
+     */
+    public OrderDetailResponse getOrderDetail(
+            String orderId,
+            UUID currentUserId,
+            UUID currentDeptId,
+            DataScope dataScope,
+            Object roleCodes) {
         Map<String, Object> row = findOrderDetailRow(orderId);
         if (row == null || row.isEmpty()) {
             throw BusinessException.notFound("订单不存在");
         }
-        assertCanAccess(row, currentUserId, currentDeptId, dataScope);
+        if (roleCodes == null) {
+            assertCanAccess(row, currentUserId, currentDeptId, dataScope);
+        } else {
+            assertCanAccessByAttribution(row, currentUserId, currentDeptId, dataScope, roleCodes);
+        }
 
         String attributionStatus = asText(row.get("attribution_status"));
         String attributionRemark = asText(row.get("attribution_remark"));
@@ -245,6 +267,30 @@ public class OrderDetailQueryApplicationService {
         }
     }
 
+    void assertCanAccessByAttribution(
+            Map<String, Object> row,
+            UUID currentUserId,
+            UUID currentDeptId,
+            DataScope dataScope,
+            Object roleCodes) {
+        boolean allowed = OrderAccessScope.canAccess(
+                uuidValue(asText(row.get("channel_user_id"))),
+                uuidValue(asText(row.get("colonel_user_id"))),
+                uuidValue(asText(row.get("order_channel_dept_id"))),
+                uuidValue(asText(row.get("order_recruiter_dept_id"))),
+                uuidValue(asText(row.get("order_user_id"))),
+                uuidValue(asText(row.get("order_dept_id"))),
+                new OrderAccessContext(
+                        currentUserId,
+                        currentDeptId,
+                        dataScope,
+                        currentUserPermissionChecker.normalizeRoleCodes(roleCodes)),
+                currentUserPermissionChecker);
+        if (!allowed) {
+            throw new ForbiddenException("无权查看该订单详情");
+        }
+    }
+
     Map<String, Object> findOrderDetailRow(String orderId) {
         String sql = """
                 SELECT
@@ -259,6 +305,7 @@ public class OrderDetailQueryApplicationService {
                     co.colonel_activity_id AS activity_id,
                     co.user_id AS order_user_id,
                     co.dept_id AS order_dept_id,
+                    co.channel_dept_id AS order_channel_dept_id,
                     co.channel_user_id,
                     co.channel_user_name,
                     co.colonel_user_id,
@@ -296,7 +343,8 @@ public class OrderDetailQueryApplicationService {
                     su.real_name AS colonel_real_name,
                     ps.title AS snapshot_title,
                     t.nickname AS talent_nickname,
-                    cti.nickname AS crawler_talent_name
+                    cti.nickname AS crawler_talent_name,
+                    recruiter_scope.dept_id AS order_recruiter_dept_id
                 FROM colonelsettlement_order co
                 LEFT JOIN pick_source_mapping psm
                     ON psm.pick_source = co.pick_source
@@ -315,6 +363,9 @@ public class OrderDetailQueryApplicationService {
                 LEFT JOIN sys_user su
                     ON su.id = COALESCE(co.colonel_user_id, pos.assignee_id)
                    AND su.deleted = 0
+                LEFT JOIN sys_user recruiter_scope
+                    ON recruiter_scope.id = co.colonel_user_id
+                   AND recruiter_scope.deleted = 0
                 LEFT JOIN product_snapshot ps
                     ON ps.activity_id = co.colonel_activity_id
                    AND ps.product_id = co.product_id
