@@ -173,6 +173,16 @@ class LegacyUserDomainFacadeTest extends BaseIntegrationTest {
     }
 
     @Test
+    void loadActiveRoleCodesByUserIdsShouldReturnOnlyBoundActiveRoles() {
+        Map<UUID, java.util.Set<String>> roles =
+                userDomainFacade.loadActiveRoleCodesByUserIds(List.of(channelStaffId, bizLeaderId));
+
+        assertThat(roles)
+                .containsEntry(channelStaffId, java.util.Set.of(RoleCodes.CHANNEL_STAFF))
+                .containsEntry(bizLeaderId, java.util.Set.of(RoleCodes.BIZ_LEADER));
+    }
+
+    @Test
     void hasPermission_adminAlwaysAllowed() {
         assertThat(userDomainFacade.hasPermission(adminId, "order", "export")).isTrue();
     }

@@ -41,7 +41,8 @@ class LegacyUserDomainFacadeBoundaryTest {
                 null,
                 null,
                 null,
-                new CurrentUserPermissionChecker(oracle));
+                new CurrentUserPermissionChecker(oracle),
+                null);
         List<String> roleCodes = List.of(" ADMIN ", "biz_leader", "ADMIN");
         String rawRoleCodes = "[ ADMIN , biz_leader , ADMIN ]";
 
