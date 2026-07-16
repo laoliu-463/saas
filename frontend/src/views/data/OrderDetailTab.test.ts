@@ -292,6 +292,29 @@ describe('OrderDetailTab', () => {
     expect(cellText('毛利')).toContain('预估:¥0.54')
   })
 
+  it('does not use the colonel name as the recruiter display fallback', async () => {
+    vi.mocked(getOrderDetailPage).mockResolvedValue({
+      data: {
+        records: [{
+          ...row,
+          colonelName: '团长不能显示为招商',
+          recruiterName: null,
+          recruiter_name: null
+        }],
+        total: 1
+      }
+    } as any)
+
+    const wrapper = mountTab()
+    await flushPromises()
+
+    const headers = wrapper.findAll('th').map((th) => th.text()).filter(Boolean)
+    const cells = wrapper.findAll('tbody td')
+    const cellText = (header: string) => cells[headers.indexOf(header)].text()
+    expect(cellText('合作方信息')).toContain('团长不能显示为招商')
+    expect(cellText('招商')).toBe('-')
+  })
+
   it('renders explicit zero settlement money instead of dash', async () => {
     vi.mocked(getOrderDetailPage).mockResolvedValue({
       data: {
