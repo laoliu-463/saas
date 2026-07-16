@@ -6,6 +6,8 @@ import com.colonel.saas.service.AttributionService;
 import com.colonel.saas.domain.order.policy.OrderDefaultAttributionPolicy.RecruiterLookup;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.RecordComponent;
+import java.util.Arrays;
 import java.util.Map;
 import java.util.UUID;
 
@@ -14,7 +16,75 @@ import static org.assertj.core.api.Assertions.assertThat;
 class OrderDefaultAttributionPolicyTest {
 
     @Test
-    void resolve_pickSourceHit_shouldAttributeChannel() {
+    void resolve_shouldExposeChannelAndRecruiterAttributionStatesIndependently() {
+        UUID channelUserId = UUID.randomUUID();
+        UUID channelDeptId = UUID.randomUUID();
+        PickSourceMapping mapping = new PickSourceMapping();
+        mapping.setUserId(channelUserId);
+        mapping.setDeptId(channelDeptId);
+
+        OrderAttributionInput input = new OrderAttributionInput("prod-1", "act-1", "ps-1", null, "uid-1", null);
+        OrderDefaultAttributionResult result = OrderDefaultAttributionPolicy.resolve(
+                input,
+                mapping,
+                new RecruiterLookup(null, null, false));
+
+        assertThat(result.defaultChannelUserId()).isEqualTo(channelUserId);
+        assertThat(result.defaultRecruiterId()).isNull();
+        assertThat(result.channelAttributionStatus())
+                .isEqualTo(OrderDefaultAttributionResult.CHANNEL_ATTRIBUTED);
+        assertThat(result.recruiterAttributionStatus())
+                .isEqualTo(OrderDefaultAttributionResult.RECRUITER_UNATTRIBUTED);
+    }
+
+    @Test
+    void resolve_whenProductAssigneeAndPickSourceMissing_shouldExposeOnlyRecruiterAttribution() {
+        UUID recruiterId = UUID.randomUUID();
+        OrderAttributionInput input = new OrderAttributionInput("prod-1", "act-1", null, null, null, null);
+        OrderDefaultAttributionResult result = OrderDefaultAttributionPolicy.resolve(
+                input,
+                null,
+                new RecruiterLookup(recruiterId, null, false));
+
+        assertThat(result.defaultChannelUserId()).isNull();
+        assertThat(result.defaultRecruiterId()).isEqualTo(recruiterId);
+        assertThat(result.channelAttributionStatus())
+                .isEqualTo(OrderDefaultAttributionResult.CHANNEL_UNATTRIBUTED);
+        assertThat(result.recruiterAttributionStatus())
+                .isEqualTo(OrderDefaultAttributionResult.RECRUITER_ATTRIBUTED);
+    }
+
+    @Test
+    void resolve_whenPickSourceHitAndProductAssigneePresent_shouldExposeBothAttributed() {
+        UUID channelUserId = UUID.randomUUID();
+        UUID recruiterId = UUID.randomUUID();
+        PickSourceMapping mapping = new PickSourceMapping();
+        mapping.setUserId(channelUserId);
+        mapping.setDeptId(UUID.randomUUID());
+
+        OrderAttributionInput input = new OrderAttributionInput("prod-1", "act-1", "ps-1", null, "uid-1", null);
+        OrderDefaultAttributionResult result = OrderDefaultAttributionPolicy.resolve(
+                input,
+                mapping,
+                new RecruiterLookup(recruiterId, null, false));
+
+        assertThat(result.channelAttributionStatus())
+                .isEqualTo(OrderDefaultAttributionResult.CHANNEL_ATTRIBUTED);
+        assertThat(result.recruiterAttributionStatus())
+                .isEqualTo(OrderDefaultAttributionResult.RECRUITER_ATTRIBUTED);
+    }
+
+    @Test
+    void attributionResultContractShouldExposeDualDimensionStatusFields() {
+        assertThat(Arrays.stream(OrderDefaultAttributionResult.class.getRecordComponents())
+                .map(RecordComponent::getName))
+                .contains(
+                        "channelAttributionStatus",
+                        "recruiterAttributionStatus");
+    }
+
+    @Test
+    void resolve_pickSourceHit_shouldAttributeChannelButNotRecruiter() {
         UUID channelUserId = UUID.randomUUID();
         UUID deptId = UUID.randomUUID();
         PickSourceMapping mapping = new PickSourceMapping();
@@ -29,7 +99,11 @@ class OrderDefaultAttributionPolicyTest {
                 new RecruiterLookup(null, null, false));
 
         assertThat(result.defaultChannelUserId()).isEqualTo(channelUserId);
-        assertThat(result.attributionStatus()).isEqualTo(AttributionService.STATUS_ATTRIBUTED);
+        assertThat(result.channelAttributionStatus())
+                .isEqualTo(OrderDefaultAttributionResult.CHANNEL_ATTRIBUTED);
+        assertThat(result.recruiterAttributionStatus())
+                .isEqualTo(OrderDefaultAttributionResult.RECRUITER_UNATTRIBUTED);
+        assertThat(result.attributionStatus()).isEqualTo(AttributionService.STATUS_UNATTRIBUTED);
     }
 
     @Test
@@ -90,7 +164,11 @@ class OrderDefaultAttributionPolicyTest {
 
         assertThat(result.defaultRecruiterId()).isNull();
         assertThat(result.defaultChannelUserId()).isEqualTo(channelUserId);
-        assertThat(result.attributionStatus()).isEqualTo(AttributionService.STATUS_ATTRIBUTED);
+        assertThat(result.channelAttributionStatus())
+                .isEqualTo(OrderDefaultAttributionResult.CHANNEL_ATTRIBUTED);
+        assertThat(result.recruiterAttributionStatus())
+                .isEqualTo(OrderDefaultAttributionResult.RECRUITER_UNATTRIBUTED);
+        assertThat(result.attributionStatus()).isEqualTo(AttributionService.STATUS_UNATTRIBUTED);
     }
 
     @Test

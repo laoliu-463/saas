@@ -115,16 +115,19 @@ class DddOrderDefaultAttributionInputContractTest {
     }
 
     @Test
-    void attributionResultContractShouldOnlyExposeDefaultAttributionFields() {
+    void attributionResultContractShouldExposeDefaultAttributionFieldsWithDualDimension() {
         assertThat(Arrays.stream(OrderDefaultAttributionResult.class.getRecordComponents())
                 .map(RecordComponent::getName))
                 .containsExactly(
                         "defaultChannelUserId",
                         "channelDeptId",
                         "defaultRecruiterId",
+                        "recruiterDeptId",
                         "talentId",
                         "talentUid",
                         "activityId",
+                        "channelAttributionStatus",
+                        "recruiterAttributionStatus",
                         "attributionStatus",
                         "attributionRemark");
     }
