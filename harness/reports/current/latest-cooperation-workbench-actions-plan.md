@@ -2,11 +2,11 @@
 
 ## Metadata
 
-- Time: 2026-07-16 13:21:06 +08:00
+- Time: 2026-07-16 13:22:28 +08:00
 - Environment: real-pre
 - Scope: docs
 - Branch: codex/ddd-user-role-application
-- Commit: 26fce056
+- Commit: bc578111
 - Owned worktree: dirty
 - Deploy remote: false
 
@@ -25,13 +25,11 @@ docs/superpowers/specs/2026-07-16-cooperation-workbench-actions-design.md
 ## Owned Git Status
 
 ~~~text
-M docs/superpowers/specs/2026-07-16-cooperation-workbench-actions-design.md
-?? docs/superpowers/plans/2026-07-16-cooperation-workbench-actions.md
-?? docs/superpowers/plans/cooperation-workbench-actions/01-backend-foundation.md
-?? docs/superpowers/plans/cooperation-workbench-actions/02-sample-product-actions.md
-?? docs/superpowers/plans/cooperation-workbench-actions/03-complaints-storage.md
-?? docs/superpowers/plans/cooperation-workbench-actions/04-frontend-actions.md
-?? docs/superpowers/plans/cooperation-workbench-actions/05-verification-harness.md
+A  docs/superpowers/plans/cooperation-workbench-actions/01-backend-foundation.md
+A  docs/superpowers/plans/cooperation-workbench-actions/02-sample-product-actions.md
+A  docs/superpowers/plans/cooperation-workbench-actions/03-complaints-storage.md
+A  docs/superpowers/plans/cooperation-workbench-actions/04-frontend-actions.md
+A  docs/superpowers/plans/cooperation-workbench-actions/05-verification-harness.md
 ~~~
 
 ## Build Result
