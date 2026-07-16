@@ -89,6 +89,18 @@ class BusinessRuleConfigServiceTest {
     }
 
     @Test
+    void shouldTreatEmptySampleDefaultStandardAsUnset() {
+        when(systemConfigMapper.findByConfigKey(SystemConfigKeys.SAMPLE_DEFAULT_STANDARD))
+                .thenReturn(Optional.of(config("{}")));
+
+        var standard = service.getSampleDefaultStandard();
+
+        assertThat(standard.min30DaySales()).isNull();
+        assertThat(standard.minLevel()).isNull();
+        assertThat(standard.raw()).isEmpty();
+    }
+
+    @Test
     void shouldParsePromotionPickExtraRuleFromConfig() {
         when(systemConfigMapper.findByConfigKey(SystemConfigKeys.PROMOTION_PICK_EXTRA_RULE))
                 .thenReturn(Optional.of(config("{\"format\":\"channel_{channel_code}_{product_id}\",\"encode\":\"none\"}")));

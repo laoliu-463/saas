@@ -98,6 +98,8 @@ class TalentProfileApplicationServiceTest {
         request.setDouyinUid("dy_prefilled");
         request.setDataSource("manual");
         request.setSyncStatus("success");
+        request.setTalentLevel("LV2");
+        request.setSales30d(68000L);
 
         when(talentMapper.selectOne(any())).thenReturn(null);
         when(talentMapper.insert(any(Talent.class))).thenReturn(1);
@@ -106,6 +108,7 @@ class TalentProfileApplicationServiceTest {
         Talent result = service.create(request);
 
         assertThat(result.getLastSyncTime()).isNotNull();
+        assertThat(result.getUnsupportedFields()).isEmpty();
         verify(talentEnrichOrchestrator, never()).enrich(any(Talent.class), eq(false));
         verify(talentEnrichTaskMapper, never()).insert(any(TalentEnrichTask.class));
     }
@@ -125,6 +128,9 @@ class TalentProfileApplicationServiceTest {
         request.setIntro(" 重点跟进 ");
         request.setFans(1000L);
         request.setWorksCount(12L);
+        request.setTalentLevel("LV2");
+        request.setSales30d(52000L);
+        request.setUnsupportedFields(List.of("talentLevel", "sales30d"));
 
         when(talentMapper.selectById(talentId)).thenReturn(talent);
         when(talentMapper.updateById(any(Talent.class))).thenReturn(1);
@@ -137,6 +143,9 @@ class TalentProfileApplicationServiceTest {
         assertThat(result.getIntro()).isEqualTo("重点跟进");
         assertThat(result.getFans()).isEqualTo(1000L);
         assertThat(result.getWorksCount()).isEqualTo(12L);
+        assertThat(result.getTalentLevel()).isEqualTo("LV2");
+        assertThat(result.getSales30d()).isEqualTo(52000L);
+        assertThat(result.getUnsupportedFields()).isEmpty();
         assertThat(result.getDataSource()).isEqualTo("MANUAL");
         assertThat(result.getEnrichStatus()).isEqualTo("SUCCESS");
         assertThat(result.getLastEnrichTime()).isNotNull();

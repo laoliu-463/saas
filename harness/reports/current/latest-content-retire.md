@@ -2,18 +2,22 @@
 
 ## Metadata
 
-- Time: 2026-07-18 23:27:43 +08:00
-- Action: Archive
+- Time: 2026-07-16 11:06:46 +08:00
+- Action: Plan
 - DryRun: False
-- Reason: post-task content maintenance
-- Manifest: harness/manifests/single-channel-cd-current-report-retirement-extra-20260718.json
+- Reason: fix: bypass default sample standard and preserve talent fields/data
+- Manifest: (none)
 - ArchiveRoot: harness/archive/retired-content
 - AllowSourceCode: False
 
 ## Auto Candidates
 
 ~~~text
-(none)
+- docs/06-技术架构与数据模型.md [document-debt] -> review/resolve-from-debt-register; evidence=listed in harness/rules/state/snapshots/05-*.md debt register
+- docs/deploy/02-jenkins-later.md [document-debt] -> review/resolve-from-debt-register; evidence=listed in harness/rules/state/snapshots/05-*.md debt register
+- docs/deploy/07-Jenkins自动化部署规划.md [document-debt] -> review/resolve-from-debt-register; evidence=listed in harness/rules/state/snapshots/05-*.md debt register
+- docs/归档/旧版V2.2完整方案.md [document-debt] -> review/resolve-from-debt-register; evidence=listed in harness/rules/state/snapshots/05-*.md debt register
+- docs/领域/业绩域.md [document-debt] -> review/resolve-from-debt-register; evidence=listed in harness/rules/state/snapshots/05-*.md debt register
 ~~~
 
 ## Planned / Applied Operations

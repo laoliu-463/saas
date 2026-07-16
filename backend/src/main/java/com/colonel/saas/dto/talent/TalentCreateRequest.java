@@ -53,6 +53,14 @@ public class TalentCreateRequest {
     @Size(max = 64, message = "达人等级不能超过 64 个字符")
     private String level;
 
+    /** 平台达人等级，最大 64 字符 */
+    @Size(max = 64, message = "平台达人等级不能超过 64 个字符")
+    private String talentLevel;
+
+    /** 近 30 天销售额，单位：分，不能为负数 */
+    @PositiveOrZero(message = "近 30 天销售额不能为负数")
+    private Long sales30d;
+
     /** 达人头像链接，最大 512 字符 */
     @Size(max = 512, message = "头像链接不能超过 512 个字符")
     private String avatarUrl;
@@ -120,6 +128,8 @@ public class TalentCreateRequest {
         talent.setNickname(trimToNull(nickname));
         talent.setFans(fansCount);
         talent.setLevel(trimToNull(level));
+        talent.setTalentLevel(trimToNull(talentLevel));
+        talent.setSales30d(sales30d);
         talent.setAvatarUrl(trimToNull(avatarUrl));
         talent.setCategories(trimToNull(categories));
         talent.setContactPhone(trimToNull(contactPhone));

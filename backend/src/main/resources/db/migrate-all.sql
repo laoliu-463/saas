@@ -1597,6 +1597,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uk_sample_private_note_owner
 \i alter-product-activity-backfill-state-20260615.sql
 \i alter-product-library-query-performance-20260625.sql
 \i migrate-sys-dept-dept-type.sql
+\i alter-sample-default-standard-disable-20260716.sql
 \i alter-authorization-foundation-20260713.sql
 \i alter-authorization-permission-catalog-20260720.sql
 \i alter-cso-dual-attribution-status-20260716.sql

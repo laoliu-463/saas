@@ -46,6 +46,7 @@ class TalentEnrichOrchestratorTest {
         UUID talentId = UUID.randomUUID();
         Talent talent = new Talent();
         talent.setId(talentId);
+        talent.setUnsupportedFields(List.of("talentLevel", "sales30d"));
         List<String> calls = new ArrayList<>();
         StubProvider emptyFirst = new StubProvider(
                 "empty",
@@ -71,6 +72,8 @@ class TalentEnrichOrchestratorTest {
         fields.put("followingCount", " ");
         fields.put("worksCount", "bad-number");
         fields.put("ipLocation", "广东");
+        fields.put("talentLevel", "LV2");
+        fields.put("sales30d", "68000");
         fields.put("unsupportedField", "kept-as-source");
         fields.put("nullField", null);
         StubProvider updateThird = new StubProvider(
@@ -105,12 +108,15 @@ class TalentEnrichOrchestratorTest {
         assertThat(talent.getFollowingCount()).isNull();
         assertThat(talent.getWorksCount()).isNull();
         assertThat(talent.getIpLocation()).isEqualTo("广东");
+        assertThat(talent.getTalentLevel()).isEqualTo("LV2");
+        assertThat(talent.getSales30d()).isEqualTo(68000L);
+        assertThat(talent.getUnsupportedFields()).isEmpty();
         assertThat(talent.getDataSource()).isEqualTo("MANUAL");
         assertThat(talent.getEnrichStatus()).isEqualTo("SUCCESS");
         assertThat(talent.getLastEnrichTime()).isNotNull();
 
         ArgumentCaptor<TalentFieldSource> sourceCaptor = ArgumentCaptor.forClass(TalentFieldSource.class);
-        verify(talentFieldSourceMapper, times(8)).insert(sourceCaptor.capture());
+        verify(talentFieldSourceMapper, times(10)).insert(sourceCaptor.capture());
         assertThat(sourceCaptor.getAllValues())
                 .allSatisfy(source -> {
                     assertThat(source.getTalentId()).isEqualTo(talentId);
@@ -126,6 +132,8 @@ class TalentEnrichOrchestratorTest {
                         "followingCount",
                         "worksCount",
                         "ipLocation",
+                        "talentLevel",
+                        "sales30d",
                         "unsupportedField"
                 );
     }

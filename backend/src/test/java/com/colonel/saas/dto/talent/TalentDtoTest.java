@@ -2,6 +2,7 @@ package com.colonel.saas.dto.talent;
 
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.entity.Talent;
+import com.colonel.saas.vo.TalentVO;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -32,6 +33,8 @@ class TalentDtoTest {
         request.setNickname(" 达人 ");
         request.setFansCount(123L);
         request.setLevel(" L3 ");
+        request.setTalentLevel(" LV2 ");
+        request.setSales30d(45678L);
         request.setAvatarUrl(" https://avatar ");
         request.setCategories(" 美妆 ");
         request.setContactPhone(" 13800000000 ");
@@ -47,6 +50,8 @@ class TalentDtoTest {
         assertThat(talent.getNickname()).isEqualTo("达人");
         assertThat(talent.getFans()).isEqualTo(123L);
         assertThat(talent.getLevel()).isEqualTo("L3");
+        assertThat(talent.getTalentLevel()).isEqualTo("LV2");
+        assertThat(talent.getSales30d()).isEqualTo(45678L);
         assertThat(talent.getAvatarUrl()).isEqualTo("https://avatar");
         assertThat(talent.getCategories()).isEqualTo("美妆");
         assertThat(talent.getContactPhone()).isEqualTo("13800000000");
@@ -112,6 +117,8 @@ class TalentDtoTest {
         request.setFollowingCount(20L);
         request.setWorksCount(30L);
         request.setIpLocation(" 上海 ");
+        request.setTalentLevel(" LV2 ");
+        request.setSales30d(12345L);
         request.setContactPhone(" 13900000000 ");
         request.setIntro(" 更新简介 ");
 
@@ -129,6 +136,8 @@ class TalentDtoTest {
         assertThat(manualFillTalent.getFollowingCount()).isEqualTo(20L);
         assertThat(manualFillTalent.getWorksCount()).isEqualTo(30L);
         assertThat(manualFillTalent.getIpLocation()).isEqualTo("上海");
+        assertThat(manualFillTalent.getTalentLevel()).isEqualTo("LV2");
+        assertThat(manualFillTalent.getSales30d()).isEqualTo(12345L);
     }
 
     @Test
@@ -210,5 +219,19 @@ class TalentDtoTest {
         assertThat(payload.getIpLocation()).isEqualTo("上海");
         assertThat(payload.getTalentLevel()).isEqualTo("L5");
         assertThat(payload.getSales30d()).isEqualTo(5L);
+    }
+
+    @Test
+    void talentVo_shouldExposeProfileMetrics() {
+        Talent talent = new Talent();
+        talent.setTalentLevel("LV2");
+        talent.setSales30d(68000L);
+        talent.setUnsupportedFields(java.util.List.of("talentLevel"));
+
+        TalentVO vo = TalentVO.from(talent);
+
+        assertThat(vo.getTalentLevel()).isEqualTo("LV2");
+        assertThat(vo.getSales30d()).isEqualTo(68000L);
+        assertThat(vo.getUnsupportedFields()).containsExactly("talentLevel");
     }
 }

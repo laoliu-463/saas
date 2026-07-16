@@ -158,6 +158,8 @@ public class ThirdPartyTalentProvider implements TalentDataProvider {
         putIfPresent(fields, "followingCount", profile.getFollowingCount());
         putIfPresent(fields, "worksCount", profile.getWorksCount());
         putIfText(fields, "ipLocation", profile.getIpLocation());
+        putIfText(fields, "talentLevel", profile.getTalentLevel());
+        putIfPresent(fields, "sales30d", profile.getSales30d());
         return fields;
     }
 
