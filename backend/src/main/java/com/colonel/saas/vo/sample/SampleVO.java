@@ -1,5 +1,6 @@
 package com.colonel.saas.vo.sample;
 
+import com.colonel.saas.domain.talent.facade.dto.TalentComplaintRiskDTO;
 import lombok.Data;
 
 import java.time.LocalDateTime;
@@ -32,6 +33,9 @@ public class SampleVO {
 
     /** 寄样单唯一标识（UUID）。 */
     private UUID id;
+
+    /** 乐观锁版本号。 */
+    private Integer version;
 
     /**
      * 寄样单业务编号。
@@ -72,6 +76,9 @@ public class SampleVO {
     /** 关联商品 ID（UUID）。 */
     private UUID productId;
 
+    /** 申请活动 ID；历史数据仅从商品快照读取返回，不回写寄样单。 */
+    private String activityId;
+
     /**
      * 商品外部 ID。
      * <p>
@@ -82,6 +89,9 @@ public class SampleVO {
 
     /** 商品标题/名称。 */
     private String productName;
+
+    /** 申请时的商品规格。 */
+    private String productSpecification;
 
     /** 商品封面图 URL。 */
     private String productCover;
@@ -253,6 +263,12 @@ public class SampleVO {
      * </p>
      */
     private String status;
+
+    /** 固定八键、有序的合作台操作能力矩阵。 */
+    private Map<String, SampleActionAvailabilityVO> actionAvailability;
+
+    /** 达人投诉风险摘要，不包含投诉正文或举报人。 */
+    private TalentComplaintRiskDTO complaintRisk;
 
     /** 创建时间（寄样申请提交时间）。 */
     private LocalDateTime createTime;

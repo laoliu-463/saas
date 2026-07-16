@@ -80,6 +80,7 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 
 import java.math.BigDecimal;
 import java.lang.reflect.InvocationTargetException;
@@ -197,6 +198,105 @@ class SampleControllerTest {
     }
 
     @Test
+    void cooperationEndpoints_shouldDelegateThroughUnifiedSampleApplicationService() throws Exception {
+        com.colonel.saas.domain.sample.application.SampleApplicationService sampleService =
+                mock(com.colonel.saas.domain.sample.application.SampleApplicationService.class);
+        SampleController controller = new SampleController(sampleService);
+        UUID sampleId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        com.colonel.saas.vo.sample.SampleEditContextVO editContext =
+                mock(com.colonel.saas.vo.sample.SampleEditContextVO.class);
+        com.colonel.saas.vo.sample.SampleEditContextVO updatedContext =
+                mock(com.colonel.saas.vo.sample.SampleEditContextVO.class);
+        com.colonel.saas.dto.sample.SampleCooperationUpdateRequest updateRequest =
+                new com.colonel.saas.dto.sample.SampleCooperationUpdateRequest(1, "reason", null, null, null);
+        com.colonel.saas.vo.sample.SamplePrivateNoteVO privateNote =
+                new com.colonel.saas.vo.sample.SamplePrivateNoteVO("note", 1);
+        com.colonel.saas.dto.sample.SamplePrivateNoteRequest noteRequest =
+                new com.colonel.saas.dto.sample.SamplePrivateNoteRequest("updated note");
+        com.colonel.saas.vo.sample.SamplePrivateNoteVO updatedNote =
+                new com.colonel.saas.vo.sample.SamplePrivateNoteVO("updated note", 2);
+        Object roles = List.of(RoleCodes.CHANNEL_STAFF);
+        when(sampleService.getEditContext(sampleId, userId, null, DataScope.PERSONAL, roles))
+                .thenReturn(editContext);
+        when(sampleService.updateCooperationDetails(
+                sampleId, updateRequest, userId, null, DataScope.PERSONAL, roles))
+                .thenReturn(updatedContext);
+        when(sampleService.getPrivateNote(sampleId, userId, null, DataScope.PERSONAL, roles))
+                .thenReturn(privateNote);
+        when(sampleService.updatePrivateNote(
+                sampleId, noteRequest, userId, null, DataScope.PERSONAL, roles))
+                .thenReturn(updatedNote);
+
+        assertThat(controller.getEditContext(
+                sampleId, userId, null, DataScope.PERSONAL, roles).getData())
+                .isSameAs(editContext);
+        assertThat(controller.updateCooperationDetails(
+                sampleId, updateRequest, userId, null, DataScope.PERSONAL, roles).getData())
+                .isSameAs(updatedContext);
+        assertThat(controller.getPrivateNote(
+                sampleId, userId, null, DataScope.PERSONAL, roles).getData())
+                .isSameAs(privateNote);
+        assertThat(controller.updatePrivateNote(
+                sampleId, noteRequest, userId, null, DataScope.PERSONAL, roles).getData())
+                .isSameAs(updatedNote);
+
+        assertThat(SampleController.class.getMethod(
+                "getEditContext", UUID.class, UUID.class, UUID.class, DataScope.class, Object.class)
+                .getAnnotation(GetMapping.class).value())
+                .containsExactly("/{id:[0-9a-fA-F\\-]{36}}/edit-context");
+        assertThat(SampleController.class.getMethod(
+                "updateCooperationDetails",
+                UUID.class,
+                com.colonel.saas.dto.sample.SampleCooperationUpdateRequest.class,
+                UUID.class,
+                UUID.class,
+                DataScope.class,
+                Object.class)
+                .getAnnotation(PutMapping.class).value())
+                .containsExactly("/{id:[0-9a-fA-F\\-]{36}}/cooperation-details");
+        assertThat(SampleController.class.getMethod(
+                "getPrivateNote", UUID.class, UUID.class, UUID.class, DataScope.class, Object.class)
+                .getAnnotation(GetMapping.class).value())
+                .containsExactly("/{id:[0-9a-fA-F\\-]{36}}/private-note");
+        assertThat(SampleController.class.getMethod(
+                "updatePrivateNote",
+                UUID.class,
+                com.colonel.saas.dto.sample.SamplePrivateNoteRequest.class,
+                UUID.class,
+                UUID.class,
+                DataScope.class,
+                Object.class)
+                .getAnnotation(PutMapping.class).value())
+                .containsExactly("/{id:[0-9a-fA-F\\-]{36}}/private-note");
+    }
+
+    @Test
+    void cooperationRequestDtos_shouldEnforceBeanValidationContracts() {
+        try (jakarta.validation.ValidatorFactory factory =
+                     jakarta.validation.Validation.buildDefaultValidatorFactory()) {
+            jakarta.validation.Validator validator = factory.getValidator();
+            var cooperationViolations = validator.validate(
+                    new com.colonel.saas.dto.sample.SampleCooperationUpdateRequest(
+                            null,
+                            "x".repeat(201),
+                            "x".repeat(101),
+                            "x".repeat(33),
+                            "x".repeat(513)));
+            assertThat(cooperationViolations)
+                    .extracting(violation -> violation.getPropertyPath().toString())
+                    .containsExactlyInAnyOrder(
+                            "version", "remark", "recipientName", "recipientPhone", "recipientAddress");
+
+            var privateNoteViolations = validator.validate(
+                    new com.colonel.saas.dto.sample.SamplePrivateNoteRequest("x".repeat(201)));
+            assertThat(privateNoteViolations)
+                    .extracting(violation -> violation.getPropertyPath().toString())
+                    .containsExactly("content");
+        }
+    }
+
+    @Test
     void createSample_shouldRejectWhenDuplicateWithinSevenDays() {
         UUID talentUuid = UUID.randomUUID();
         UUID productId = UUID.randomUUID();
@@ -284,6 +384,54 @@ class SampleControllerTest {
         assertThat(saved.getExtraData()).isNotNull();
         assertThat(((java.util.Map<?, ?>) saved.getExtraData().get("eligibilityCheck")).get("passed")).isEqualTo(true);
         assertThat(((java.util.Map<?, ?>) saved.getExtraData().get("requirementSnapshot")).get("minLevel")).isEqualTo("LV1");
+    }
+
+    @Test
+    void createSample_shouldPersistSelectedActivityIdentifiersAndTrimApplyReason() {
+        UUID selectedSnapshotId = UUID.randomUUID();
+        UUID canonicalProductId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID talentId = UUID.randomUUID();
+
+        Product product = new Product();
+        product.setId(canonicalProductId);
+        product.setProductId("PRODUCT-SELECTED-001");
+        product.setName("活动寄样商品");
+        ProductSnapshot snapshot = new ProductSnapshot();
+        snapshot.setId(selectedSnapshotId);
+        snapshot.setActivityId("ACTIVITY-SELECTED-001");
+        snapshot.setProductId("PRODUCT-SELECTED-001");
+
+        CrawlerTalentInfo crawlerTalentInfo = new CrawlerTalentInfo();
+        crawlerTalentInfo.setTalentId("talent_activity_001");
+        crawlerTalentInfo.setNickname("活动寄样达人");
+        Talent talent = new Talent();
+        talent.setId(talentId);
+        talent.setDouyinUid("talent_activity_001");
+
+        SampleApplyRequest request = new SampleApplyRequest();
+        request.setTalentId("talent_activity_001");
+        request.setProductId(selectedSnapshotId);
+        request.setQuantity(1);
+        request.setRemark("  申请原因  ");
+
+        when(productDomainFacade.findProductById(selectedSnapshotId)).thenReturn(null);
+        when(productDomainFacade.findOrMaterializeSampleProduct(selectedSnapshotId)).thenReturn(toProductRead(product));
+        when(productDomainFacade.findSnapshotById(selectedSnapshotId)).thenReturn(toSnapshotRead(snapshot));
+        when(crawlerTalentInfoService.findByTalentId("talent_activity_001")).thenReturn(crawlerTalentInfo);
+        when(talentDomainFacade.findOrCreateSampleTalent(any(), any(), any())).thenReturn(toTalentRead(talent));
+        when(sampleRequestMapper.selectCount(any())).thenReturn(0L);
+
+        sampleController.createSample(request, userId, List.of(RoleCodes.CHANNEL_STAFF));
+
+        ArgumentCaptor<SampleRequest> captor = ArgumentCaptor.forClass(SampleRequest.class);
+        verify(sampleRequestMapper).insert(captor.capture());
+        SampleRequest saved = captor.getValue();
+        assertThat(saved.getProductId()).isEqualTo(canonicalProductId);
+        assertThat(saved.getActivityProductId()).isEqualTo("PRODUCT-SELECTED-001");
+        assertThat(saved.getActivityId()).isEqualTo("ACTIVITY-SELECTED-001");
+        assertThat(saved.getRemark()).isEqualTo("申请原因");
+        assertThat(saved.getExtraData()).containsEntry("applyReason", "申请原因");
     }
 
     @Test
@@ -3147,6 +3295,7 @@ class SampleControllerTest {
         ProductSnapshot snapshot = new ProductSnapshot();
         snapshot.setId(productId);
         snapshot.setProductId("DETAIL-SNAPSHOT-001");
+        snapshot.setActivityId("DETAIL-ACTIVITY-001");
         snapshot.setCover("https://example.test/detail-snapshot-cover.png");
         snapshot.setPriceText("¥199.0");
         snapshot.setShopId(789012L);
@@ -3154,6 +3303,7 @@ class SampleControllerTest {
 
         SampleRequest sample = new SampleRequest();
         sample.setId(sampleId);
+        sample.setVersion(5);
         sample.setProductId(productId);
         sample.setUserId(ownerId);
         sample.setChannelUserId(ownerId);
@@ -3183,6 +3333,7 @@ class SampleControllerTest {
                 "cooperationType", "PAID_SAMPLE",
                 "sampleOwnerType", "COLONEL",
                 "homeworkType", "VIDEO",
+                "specification", "蓝色 / L",
                 "applyReason", "详情测试申请理由",
                 "eligibilityCheck", Map.of("passed", true, "failedRules", List.of()),
                 "requirementSnapshot", Map.of("minLevel", "LV1", "actualLevel", "LV2")
@@ -3199,6 +3350,7 @@ class SampleControllerTest {
         var vo = response.getData();
 
         assertThat(vo.getId()).isEqualTo(sampleId);
+        assertThat(vo.getVersion()).isEqualTo(5);
         assertThat(vo.getRequestNo()).isEqualTo("SR-DETAIL-001");
         assertThat(vo.getTalentId()).isNotNull();
         assertThat(vo.getTalentUid()).isEqualTo("talent_detail_001");
@@ -3207,8 +3359,10 @@ class SampleControllerTest {
         assertThat(vo.getTalentCreditScore()).isEqualTo("4.92");
         assertThat(vo.getTalentMainCategory()).isEqualTo("服饰");
         assertThat(vo.getProductId()).isEqualTo(productId);
+        assertThat(vo.getActivityId()).isEqualTo("DETAIL-ACTIVITY-001");
         assertThat(vo.getProductExternalId()).isEqualTo("DETAIL-PRODUCT-001");
         assertThat(vo.getProductName()).isEqualTo("详情测试商品");
+        assertThat(vo.getProductSpecification()).isEqualTo("蓝色 / L");
         assertThat(vo.getProductCover()).isEqualTo("https://example.test/detail-cover.png");
         assertThat(vo.getProductPriceText()).isEqualTo("¥199.0");
         assertThat(vo.getShopId()).isEqualTo("789012");
@@ -3229,7 +3383,7 @@ class SampleControllerTest {
         assertThat(vo.getDeliverTime()).isEqualTo(LocalDateTime.of(2026, 5, 18, 15, 0));
         assertThat(vo.getRejectReason()).isNull();
         assertThat(vo.getCloseReason()).isNull();
-        assertThat(vo.getRemark()).isEqualTo("详情测试备注");
+        assertThat(vo.getRemark()).isEqualTo("详情测试申请理由");
         assertThat(vo.getApplyReason()).isEqualTo("详情测试申请理由");
         assertThat(vo.getApplySource()).isEqualTo("INTERNAL_QUICK_SAMPLE");
         assertThat(vo.getApplySourceLabel()).isEqualTo("内部寄样");
@@ -3241,6 +3395,7 @@ class SampleControllerTest {
         assertThat(vo.getHomeworkTypeLabel()).isEqualTo("VIDEO");
         assertThat(vo.getEligibilityCheck()).containsEntry("passed", true);
         assertThat(vo.getRequirementSnapshot()).containsEntry("actualLevel", "LV2");
+        verify(sampleRequestMapper, never()).updateById(any(SampleRequest.class));
     }
 
     @Test

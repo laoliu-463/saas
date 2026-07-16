@@ -12,11 +12,15 @@ import com.colonel.saas.dto.sample.LogisticsImportResult;
 import com.colonel.saas.dto.sample.SampleActionRequest;
 import com.colonel.saas.dto.sample.SampleBatchActionRequest;
 import com.colonel.saas.dto.sample.SampleBatchShipRequest;
+import com.colonel.saas.dto.sample.SampleCooperationUpdateRequest;
+import com.colonel.saas.dto.sample.SamplePrivateNoteRequest;
 import com.colonel.saas.vo.SampleTalentVO;
 import com.colonel.saas.vo.sample.SampleBoardCard;
 import com.colonel.saas.vo.sample.SampleEligibilityCheckVO;
+import com.colonel.saas.vo.sample.SampleEditContextVO;
 import com.colonel.saas.vo.sample.SampleLogisticsVO;
 import com.colonel.saas.vo.sample.SampleProductVO;
+import com.colonel.saas.vo.sample.SamplePrivateNoteVO;
 import com.colonel.saas.vo.sample.SampleStatusTransitionVO;
 import com.colonel.saas.vo.sample.SampleVO;
 import com.colonel.saas.vo.sample.StatusLogVO;
@@ -153,6 +157,52 @@ public class SampleController {
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
             @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
         return ApiResult.ok(sampleApplicationService.getSampleById(id, userId, deptId, dataScope, roleCodes));
+    }
+
+    @GetMapping("/{id:[0-9a-fA-F\\-]{36}}/edit-context")
+    public ApiResult<SampleEditContextVO> getEditContext(
+            @PathVariable UUID id,
+            @RequestAttribute("userId") UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
+            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
+            @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
+        return ApiResult.ok(sampleApplicationService.getEditContext(
+                id, userId, deptId, dataScope, roleCodes));
+    }
+
+    @PutMapping("/{id:[0-9a-fA-F\\-]{36}}/cooperation-details")
+    public ApiResult<SampleEditContextVO> updateCooperationDetails(
+            @PathVariable UUID id,
+            @Valid @RequestBody SampleCooperationUpdateRequest request,
+            @RequestAttribute("userId") UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
+            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
+            @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
+        return ApiResult.ok(sampleApplicationService.updateCooperationDetails(
+                id, request, userId, deptId, dataScope, roleCodes));
+    }
+
+    @GetMapping("/{id:[0-9a-fA-F\\-]{36}}/private-note")
+    public ApiResult<SamplePrivateNoteVO> getPrivateNote(
+            @PathVariable UUID id,
+            @RequestAttribute("userId") UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
+            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
+            @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
+        return ApiResult.ok(sampleApplicationService.getPrivateNote(
+                id, userId, deptId, dataScope, roleCodes));
+    }
+
+    @PutMapping("/{id:[0-9a-fA-F\\-]{36}}/private-note")
+    public ApiResult<SamplePrivateNoteVO> updatePrivateNote(
+            @PathVariable UUID id,
+            @Valid @RequestBody SamplePrivateNoteRequest request,
+            @RequestAttribute("userId") UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
+            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
+            @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
+        return ApiResult.ok(sampleApplicationService.updatePrivateNote(
+                id, request, userId, deptId, dataScope, roleCodes));
     }
 
     @GetMapping("/{id:[0-9a-fA-F\\-]{36}}/status-logs")
