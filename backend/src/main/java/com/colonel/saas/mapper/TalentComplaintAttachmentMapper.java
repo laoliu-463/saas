@@ -6,6 +6,7 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 
@@ -35,4 +36,17 @@ public interface TalentComplaintAttachmentMapper extends BaseMapper<TalentCompla
     TalentComplaintAttachment selectByIdAndComplaintId(
             @Param("attachmentId") UUID attachmentId,
             @Param("complaintId") UUID complaintId);
+
+    @Select("""
+            <script>
+            SELECT storage_key
+            FROM talent_complaint_attachment
+            WHERE storage_key IN
+            <foreach collection="storageKeys" item="storageKey" open="(" separator="," close=")">
+              #{storageKey}
+            </foreach>
+            </script>
+            """)
+    List<String> selectExistingStorageKeys(
+            @Param("storageKeys") Collection<String> storageKeys);
 }

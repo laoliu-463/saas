@@ -266,6 +266,11 @@ order:
 talent:
   complaint:
     storage-root: ${TALENT_COMPLAINT_STORAGE_ROOT:/var/lib/colonel-saas/complaints}
+    reconcile:
+      enabled: ${TALENT_COMPLAINT_RECONCILE_ENABLED:true}
+      cron: ${TALENT_COMPLAINT_RECONCILE_CRON:0 40 3 * * ?}
+      grace-hours: ${TALENT_COMPLAINT_RECONCILE_GRACE_HOURS:24}
+      batch-size: ${TALENT_COMPLAINT_RECONCILE_BATCH_SIZE:100}
   enrich:
     mode: ${TALENT_ENRICH_MODE:real}
   collect:

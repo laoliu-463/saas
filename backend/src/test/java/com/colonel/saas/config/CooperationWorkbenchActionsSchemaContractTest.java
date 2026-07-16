@@ -3,6 +3,7 @@ package com.colonel.saas.config;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.MybatisSqlSessionFactoryBuilder;
 import com.colonel.saas.entity.TalentComplaintReminder;
+import com.colonel.saas.mapper.TalentComplaintAttachmentMapper;
 import com.colonel.saas.mapper.TalentComplaintMapper;
 import com.colonel.saas.mapper.TalentComplaintReminderMapper;
 import com.colonel.saas.common.handler.UUIDTypeHandler;
@@ -602,6 +603,28 @@ class CooperationWorkbenchActionsSchemaContractTest {
                         reminderMapper, seed.reminderId3(), seed.recipientUserId(), readAt.plusSeconds(1)))
                         .isEqualTo(0);
                 assertThat(countMethod.invoke(reminderMapper, seed.recipientUserId())).isEqualTo(1L);
+
+                UUID complaintId = jdbc.queryForObject(
+                        "SELECT id FROM talent_complaint ORDER BY create_time LIMIT 1",
+                        UUID.class);
+                List<String> requestedStorageKeys = new ArrayList<>();
+                for (int index = 0; index < 100; index++) {
+                    requestedStorageKeys.add("00/%032x.jpg".formatted(index));
+                }
+                jdbc.update("""
+                        INSERT INTO talent_complaint_attachment(
+                            id, complaint_id, storage_key, original_name,
+                            content_type, file_size, sha256, deleted)
+                        VALUES (?, ?, ?, 'first.jpg', 'image/jpeg', 3, ?, 0),
+                               (?, ?, ?, 'deleted.jpg', 'image/jpeg', 3, ?, 1)
+                        """,
+                        UUID.randomUUID(), complaintId, requestedStorageKeys.get(0), "a".repeat(64),
+                        UUID.randomUUID(), complaintId, requestedStorageKeys.get(99), "b".repeat(64));
+                TalentComplaintAttachmentMapper attachmentMapper =
+                        session.getMapper(TalentComplaintAttachmentMapper.class);
+                assertThat(attachmentMapper.selectExistingStorageKeys(requestedStorageKeys))
+                        .containsExactlyInAnyOrder(
+                                requestedStorageKeys.get(0), requestedStorageKeys.get(99));
             }
         }
 
@@ -619,6 +642,7 @@ class CooperationWorkbenchActionsSchemaContractTest {
                     dataSource));
             configuration.addMapper(TalentComplaintMapper.class);
             configuration.addMapper(TalentComplaintReminderMapper.class);
+            configuration.addMapper(TalentComplaintAttachmentMapper.class);
             return new MybatisSqlSessionFactoryBuilder().build(configuration);
         }
 

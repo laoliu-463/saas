@@ -32,6 +32,9 @@ public final class JobLockKeys {
     public static final String TALENT_WEEKLY_REFRESH = "talent:weekly:refresh:job:lock";
     /** 达人认领到期自动释放任务锁 */
     public static final String TALENT_CLAIM_RELEASE = "talent:claim:release:job:lock";
+    /** 达人投诉附件孤儿文件对账任务锁 */
+    public static final String TALENT_COMPLAINT_ATTACHMENT_RECONCILE =
+            "talent:complaint:attachment:reconcile:job:lock";
     /** 独家达人资格月度评估任务锁 */
     public static final String EXCLUSIVE_TALENT_EVALUATE = "exclusive:talent:evaluate:job:lock";
     /** 独家商家资格月度评估任务锁 */
