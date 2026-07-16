@@ -2992,7 +2992,7 @@ public class SampleApplicationService extends BaseController {
         vo.setSignedAt(sample.getSignedAt());
         vo.setRejectReason(sample.getRejectReason());
         vo.setCloseReason(sample.getCloseReason());
-        String displayRemark = SAMPLE_REMARK_POLICY.displayRemark(sample.getExtraData(), sample.getRemark());
+        String displayRemark = SAMPLE_REMARK_POLICY.resolve(sample.getExtraData(), sample.getRemark());
         vo.setRemark(displayRemark);
         vo.setApplyReason(displayRemark);
         vo.setApplySource(readExtraText(sample.getExtraData(), "applySource"));

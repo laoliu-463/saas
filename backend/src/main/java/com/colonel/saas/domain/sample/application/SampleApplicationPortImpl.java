@@ -331,7 +331,7 @@ public class SampleApplicationPortImpl implements SampleApplicationPort {
         extra.put("eligibilityCheck", eligibilityCheck);
         extra.put("applySource", externalApplied ? APPLY_SOURCE_DOUYIN_QUICK : APPLY_SOURCE_LOCAL_FALLBACK);
         extra.put("specification", trimToNull(cmd.spec()));
-        extra.put("applyReason", SAMPLE_REMARK_POLICY.normalize(cmd.remark()));
+        extra.put("applyReason", SAMPLE_REMARK_POLICY.normalizeForWrite(cmd.remark()));
         extra.put("externalApply", externalApplied);
         extra.put("applyChannel", "QUICK_PRODUCT_LIBRARY");
         extra.put("gatewayStatus", externalApplied ? "REAL_CONNECTED" : GATEWAY_STATUS_UNSUPPORTED);

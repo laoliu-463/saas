@@ -18,25 +18,25 @@ public class SampleRemarkPolicy {
     private static final String SPECIFICATION_KEY = "specification";
     private static final String APPLY_REASON_KEY = "applyReason";
 
-    public String displayRemark(Map<String, Object> extraData, String legacyRemark) {
+    public String resolve(Map<String, Object> extraData, String legacyRemark) {
         String applyReason = readText(extraData, APPLY_REASON_KEY);
         if (StringUtils.hasText(applyReason)) {
-            return normalize(applyReason);
+            return trimToNull(applyReason);
         }
-        String normalizedLegacy = normalize(legacyRemark);
+        String normalizedLegacy = trimToNull(legacyRemark);
         String specification = readText(extraData, SPECIFICATION_KEY);
         if (!StringUtils.hasText(normalizedLegacy) || !StringUtils.hasText(specification)) {
             return normalizedLegacy;
         }
         String prefix = "规格: " + specification.trim() + "；";
         if (normalizedLegacy.startsWith(prefix)) {
-            return normalize(normalizedLegacy.substring(prefix.length()));
+            return trimToNull(normalizedLegacy.substring(prefix.length()));
         }
         return normalizedLegacy;
     }
 
     public String apply(SampleRequest sample, String value) {
-        String normalized = normalize(value);
+        String normalized = normalizeForWrite(value);
         sample.setRemark(normalized);
         Map<String, Object> extra = sample.getExtraData() == null
                 ? new LinkedHashMap<>()
@@ -46,7 +46,7 @@ public class SampleRemarkPolicy {
         return normalized;
     }
 
-    public String normalize(String value) {
+    public String normalizeForWrite(String value) {
         if (!StringUtils.hasText(value)) {
             return null;
         }
@@ -55,6 +55,10 @@ public class SampleRemarkPolicy {
             throw BusinessException.param("备注不能超过 200 个字符");
         }
         return normalized;
+    }
+
+    private String trimToNull(String value) {
+        return StringUtils.hasText(value) ? value.trim() : null;
     }
 
     private String readText(Map<String, Object> extraData, String key) {

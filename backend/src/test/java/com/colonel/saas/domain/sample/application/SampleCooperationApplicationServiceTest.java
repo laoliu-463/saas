@@ -372,15 +372,19 @@ class SampleCooperationApplicationServiceTest {
         note.setUserId(adminId);
         note.setContent("仅管理员本人可见");
         note.setVersion(5);
-        when(samplePrivateNoteMapper.selectBySampleRequestAndUser(sampleId, adminId)).thenReturn(note);
-        when(samplePrivateNoteMapper.updateById(note)).thenReturn(1);
+        SamplePrivateNoteMapper atomicMapper = mock(SamplePrivateNoteMapper.class, invocation ->
+                invocation.getMethod().getReturnType() == int.class
+                        ? 1
+                        : org.mockito.Answers.RETURNS_DEFAULTS.answer(invocation));
+        when(atomicMapper.selectBySampleRequestAndUser(sampleId, adminId)).thenReturn(note);
+        SampleCooperationApplicationService atomicService = serviceWithPrivateNoteMapper(atomicMapper);
 
-        SamplePrivateNoteVO read = service.getPrivateNote(
+        SamplePrivateNoteVO read = atomicService.getPrivateNote(
                 sampleId, adminId, null, DataScope.ALL, List.of(RoleCodes.ADMIN));
         assertThat(read.content()).isEqualTo("仅管理员本人可见");
         assertThat(read.version()).isEqualTo(5);
 
-        SamplePrivateNoteVO deleted = service.updatePrivateNote(
+        SamplePrivateNoteVO deleted = atomicService.updatePrivateNote(
                 sampleId,
                 new SamplePrivateNoteRequest("   "),
                 adminId,
@@ -388,9 +392,14 @@ class SampleCooperationApplicationServiceTest {
                 DataScope.ALL,
                 List.of(RoleCodes.ADMIN));
         assertThat(deleted.content()).isNull();
-        assertThat(note.getDeleted()).isEqualTo(1);
-        verify(samplePrivateNoteMapper, times(2)).selectBySampleRequestAndUser(sampleId, adminId);
-        verify(samplePrivateNoteMapper, never()).selectBySampleRequestAndUser(sampleId, ownerId);
+        assertThat(deleted.version()).isEqualTo(6);
+        assertThat(note.getDeleted()).isZero();
+        List<String> writeMethods = org.mockito.Mockito.mockingDetails(atomicMapper).getInvocations().stream()
+                .map(invocation -> invocation.getMethod().getName())
+                .toList();
+        assertThat(writeMethods).contains("softDeleteActive").doesNotContain("updateById");
+        verify(atomicMapper, times(2)).selectBySampleRequestAndUser(sampleId, adminId);
+        verify(atomicMapper, never()).selectBySampleRequestAndUser(sampleId, ownerId);
     }
 
     @Test
@@ -408,10 +417,16 @@ class SampleCooperationApplicationServiceTest {
         note.setUserId(currentUserId);
         note.setContent("旧备注");
         note.setVersion(2);
-        when(samplePrivateNoteMapper.selectBySampleRequestAndUser(sampleId, currentUserId)).thenReturn(note);
-        when(samplePrivateNoteMapper.updateById(note)).thenReturn(1);
+        SamplePrivateNoteMapper atomicMapper = mock(SamplePrivateNoteMapper.class, invocation ->
+                invocation.getMethod().getReturnType() == int.class
+                        ? 1
+                        : org.mockito.Answers.RETURNS_DEFAULTS.answer(invocation));
+        note.setContent("新备注");
+        note.setVersion(3);
+        when(atomicMapper.selectBySampleRequestAndUser(sampleId, currentUserId)).thenReturn(note);
+        SampleCooperationApplicationService atomicService = serviceWithPrivateNoteMapper(atomicMapper);
 
-        SamplePrivateNoteVO updated = service.updatePrivateNote(
+        SamplePrivateNoteVO updated = atomicService.updatePrivateNote(
                 sampleId,
                 new SamplePrivateNoteRequest("  新备注  "),
                 currentUserId,
@@ -422,11 +437,14 @@ class SampleCooperationApplicationServiceTest {
         assertThat(updated.content()).isEqualTo("新备注");
         assertThat(note.getContent()).isEqualTo("新备注");
         assertThat(note.getDeleted()).isZero();
-        verify(samplePrivateNoteMapper).updateById(note);
+        List<String> writeMethods = org.mockito.Mockito.mockingDetails(atomicMapper).getInvocations().stream()
+                .map(invocation -> invocation.getMethod().getName())
+                .toList();
+        assertThat(writeMethods).contains("upsertActive").doesNotContain("insert", "updateById");
     }
 
     @Test
-    void updatePrivateNote_shouldInsertTrimmedNoteForCurrentUserWhenMissing() {
+    void updatePrivateNote_shouldUpsertTrimmedNoteForCurrentUser() {
         UUID sampleId = UUID.randomUUID();
         UUID currentUserId = UUID.randomUUID();
         SampleVO visible = new SampleVO();
@@ -434,8 +452,15 @@ class SampleCooperationApplicationServiceTest {
         when(sampleQueryApplicationService.getSampleById(
                 sampleId, currentUserId, null, DataScope.PERSONAL, List.of(RoleCodes.CHANNEL_STAFF)))
                 .thenReturn(visible);
-        when(samplePrivateNoteMapper.selectBySampleRequestAndUser(sampleId, currentUserId)).thenReturn(null);
-        when(samplePrivateNoteMapper.insert(any(SamplePrivateNote.class))).thenReturn(1);
+        SamplePrivateNote persisted = new SamplePrivateNote();
+        persisted.setId(UUID.randomUUID());
+        persisted.setSampleRequestId(sampleId);
+        persisted.setUserId(currentUserId);
+        persisted.setContent("首次备注");
+        persisted.setVersion(0);
+        when(samplePrivateNoteMapper.upsertActive(any(SamplePrivateNote.class))).thenReturn(1);
+        when(samplePrivateNoteMapper.selectBySampleRequestAndUser(sampleId, currentUserId))
+                .thenReturn(persisted);
 
         SamplePrivateNoteVO created = service.updatePrivateNote(
                 sampleId,
@@ -447,11 +472,15 @@ class SampleCooperationApplicationServiceTest {
 
         org.mockito.ArgumentCaptor<SamplePrivateNote> captor =
                 org.mockito.ArgumentCaptor.forClass(SamplePrivateNote.class);
-        verify(samplePrivateNoteMapper).insert(captor.capture());
+        verify(samplePrivateNoteMapper).upsertActive(captor.capture());
         assertThat(captor.getValue().getSampleRequestId()).isEqualTo(sampleId);
         assertThat(captor.getValue().getUserId()).isEqualTo(currentUserId);
         assertThat(captor.getValue().getContent()).isEqualTo("首次备注");
+        assertThat(captor.getValue().getCreateBy()).isEqualTo(currentUserId);
+        assertThat(captor.getValue().getUpdateBy()).isEqualTo(currentUserId);
         assertThat(created.content()).isEqualTo("首次备注");
+        verify(samplePrivateNoteMapper, never()).insert(any(SamplePrivateNote.class));
+        verify(samplePrivateNoteMapper, never()).updateById(any(SamplePrivateNote.class));
     }
 
     @Test
@@ -464,15 +493,6 @@ class SampleCooperationApplicationServiceTest {
         when(sampleQueryApplicationService.getSampleById(
                 sampleId, currentUserId, null, DataScope.PERSONAL, List.of(RoleCodes.CHANNEL_STAFF)))
                 .thenReturn(visible);
-        SamplePrivateNote note = new SamplePrivateNote();
-        note.setId(UUID.randomUUID());
-        note.setSampleRequestId(sampleId);
-        note.setUserId(currentUserId);
-        note.setContent("旧备注");
-        note.setVersion(2);
-        when(samplePrivateNoteMapper.selectBySampleRequestAndUser(sampleId, currentUserId)).thenReturn(note);
-        when(samplePrivateNoteMapper.updateById(note)).thenReturn(0);
-
         assertThatThrownBy(() -> service.updatePrivateNote(
                 sampleId,
                 new SamplePrivateNoteRequest(sensitiveContent),
@@ -482,6 +502,7 @@ class SampleCooperationApplicationServiceTest {
                 List.of(RoleCodes.CHANNEL_STAFF)))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(error -> assertThat(error.getMessage()).doesNotContain(sensitiveContent));
+        verify(samplePrivateNoteMapper).upsertActive(any(SamplePrivateNote.class));
 
         List<String> dependencyTypes = java.util.Arrays.stream(
                         SampleCooperationApplicationService.class.getDeclaredFields())
@@ -489,6 +510,37 @@ class SampleCooperationApplicationServiceTest {
                 .toList();
         assertThat(dependencyTypes).noneMatch(type ->
                 type.contains("OperationLog") || type.contains("Logger"));
+    }
+
+    @Test
+    void updatePrivateNote_shouldMapAtomicSoftDeleteMissToConflict() {
+        UUID sampleId = UUID.randomUUID();
+        UUID currentUserId = UUID.randomUUID();
+        SampleVO visible = new SampleVO();
+        visible.setId(sampleId);
+        when(sampleQueryApplicationService.getSampleById(
+                sampleId, currentUserId, null, DataScope.PERSONAL, List.of(RoleCodes.CHANNEL_STAFF)))
+                .thenReturn(visible);
+        SamplePrivateNote note = new SamplePrivateNote();
+        note.setId(UUID.randomUUID());
+        note.setSampleRequestId(sampleId);
+        note.setUserId(currentUserId);
+        note.setVersion(4);
+        when(samplePrivateNoteMapper.selectBySampleRequestAndUser(sampleId, currentUserId)).thenReturn(note);
+
+        assertThatThrownBy(() -> service.updatePrivateNote(
+                sampleId,
+                new SamplePrivateNoteRequest(" "),
+                currentUserId,
+                null,
+                DataScope.PERSONAL,
+                List.of(RoleCodes.CHANNEL_STAFF)))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(409));
+
+        assertThat(org.mockito.Mockito.mockingDetails(samplePrivateNoteMapper).getInvocations().stream()
+                .map(invocation -> invocation.getMethod().getName()))
+                .contains("softDeleteActive");
     }
 
     @Test
@@ -561,6 +613,19 @@ class SampleCooperationApplicationServiceTest {
                 "APPROVE", "REJECT", "EDIT", "PROGRESS",
                 "COPY_LINK", "COPY_ORDER", "COMPLAIN", "NOTE");
         assertThat(sample.getComplaintRisk()).isEqualTo(risk);
+    }
+
+    private SampleCooperationApplicationService serviceWithPrivateNoteMapper(
+            SamplePrivateNoteMapper privateNoteMapper) {
+        CurrentUserPermissionChecker checker =
+                new CurrentUserPermissionChecker(new CurrentUserPermissionPolicy());
+        return new SampleCooperationApplicationService(
+                sampleQueryApplicationService,
+                sampleRequestMapper,
+                privateNoteMapper,
+                talentDomainFacade,
+                new SampleCooperationActionPolicy(checker),
+                new SampleRemarkPolicy());
     }
 
     private static SampleVO sampleView(

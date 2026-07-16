@@ -16,6 +16,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class SampleCooperationActionPolicyTest {
 
@@ -141,11 +142,11 @@ class SampleCooperationActionPolicyTest {
         extra.put("specification", "红色 / M");
         extra.put("preserved", "yes");
 
-        assertThat(remarkPolicy.displayRemark(extra, "规格: 红色 / M；  历史原因  "))
+        assertThat(remarkPolicy.resolve(extra, "规格: 红色 / M；  历史原因  "))
                 .isEqualTo("历史原因");
 
         extra.put("applyReason", "  结构化原因  ");
-        assertThat(remarkPolicy.displayRemark(extra, "规格: 红色 / M；历史原因"))
+        assertThat(remarkPolicy.resolve(extra, "规格: 红色 / M；历史原因"))
                 .isEqualTo("结构化原因");
 
         SampleRequest sample = new SampleRequest();
@@ -156,5 +157,14 @@ class SampleCooperationActionPolicyTest {
                 .containsEntry("applyReason", "更新原因")
                 .containsEntry("preserved", "yes")
                 .containsEntry("specification", "红色 / M");
+
+        String historicalReason = "历史".repeat(101);
+        assertThat(remarkPolicy.resolve(
+                Map.of("applyReason", "  " + historicalReason + "  "),
+                null)).isEqualTo(historicalReason);
+
+        SampleRequest tooLong = new SampleRequest();
+        assertThatThrownBy(() -> remarkPolicy.apply(tooLong, historicalReason))
+                .hasMessageContaining("200");
     }
 }

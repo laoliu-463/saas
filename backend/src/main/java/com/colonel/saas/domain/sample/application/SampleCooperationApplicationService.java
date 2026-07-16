@@ -106,7 +106,7 @@ public class SampleCooperationApplicationService {
         }
 
         visible.setVersion(sample.getVersion());
-        visible.setRemark(remarkPolicy.displayRemark(sample.getExtraData(), sample.getRemark()));
+        visible.setRemark(remarkPolicy.resolve(sample.getExtraData(), sample.getRemark()));
         visible.setApplyReason(visible.getRemark());
         if (address.present()) {
             visible.setRecipientName(address.recipientName());
@@ -138,36 +138,39 @@ public class SampleCooperationApplicationService {
             DataScope dataScope,
             Object roleCodes) {
         requireVisibleSample(sampleId, currentUserId, currentDeptId, dataScope, roleCodes);
-        String content = remarkPolicy.normalize(request == null ? null : request.content());
-        SamplePrivateNote note = samplePrivateNoteMapper.selectBySampleRequestAndUser(sampleId, currentUserId);
+        String content = remarkPolicy.normalizeForWrite(request == null ? null : request.content());
 
         if (content == null) {
+            SamplePrivateNote note = samplePrivateNoteMapper.selectBySampleRequestAndUser(sampleId, currentUserId);
             if (note != null) {
-                note.setDeleted(1);
                 OptimisticLockSupport.requireUpdated(
-                        samplePrivateNoteMapper.updateById(note),
+                        samplePrivateNoteMapper.softDeleteActive(
+                                note.getId(), currentUserId, note.getVersion()),
                         "私有备注已被修改，请刷新后重试");
             }
-            return new SamplePrivateNoteVO(null, note == null ? null : note.getVersion());
+            Integer deletedVersion = note == null || note.getVersion() == null
+                    ? null
+                    : note.getVersion() + 1;
+            return new SamplePrivateNoteVO(null, deletedVersion);
         }
 
-        if (note == null) {
-            note = new SamplePrivateNote();
-            note.setId(UUID.randomUUID());
-            note.setSampleRequestId(sampleId);
-            note.setUserId(currentUserId);
-            note.setVersion(0);
-            note.setContent(content);
-            OptimisticLockSupport.requireUpdated(
-                    samplePrivateNoteMapper.insert(note),
-                    "私有备注保存失败，请重试");
-        } else {
-            note.setContent(content);
-            OptimisticLockSupport.requireUpdated(
-                    samplePrivateNoteMapper.updateById(note),
-                    "私有备注已被修改，请刷新后重试");
+        SamplePrivateNote candidate = new SamplePrivateNote();
+        candidate.setId(UUID.randomUUID());
+        candidate.setSampleRequestId(sampleId);
+        candidate.setUserId(currentUserId);
+        candidate.setVersion(0);
+        candidate.setContent(content);
+        candidate.setCreateBy(currentUserId);
+        candidate.setUpdateBy(currentUserId);
+        OptimisticLockSupport.requireUpdated(
+                samplePrivateNoteMapper.upsertActive(candidate),
+                "私有备注保存失败，请重试");
+        SamplePrivateNote persisted =
+                samplePrivateNoteMapper.selectBySampleRequestAndUser(sampleId, currentUserId);
+        if (persisted == null) {
+            throw BusinessException.conflict("私有备注保存失败，请重试");
         }
-        return new SamplePrivateNoteVO(note.getContent(), note.getVersion());
+        return new SamplePrivateNoteVO(persisted.getContent(), persisted.getVersion());
     }
 
     private SampleVO requireVisibleSample(
@@ -214,7 +217,7 @@ public class SampleCooperationApplicationService {
                 threshold,
                 firstText(sample.getActivityId(), visible.getActivityId()),
                 readText(sample.getExtraData(), "activityName"),
-                remarkPolicy.displayRemark(sample.getExtraData(), sample.getRemark()),
+                remarkPolicy.resolve(sample.getExtraData(), sample.getRemark()),
                 addressAvailable,
                 recipientName,
                 recipientPhone,

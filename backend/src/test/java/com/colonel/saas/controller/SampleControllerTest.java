@@ -3184,6 +3184,7 @@ class SampleControllerTest {
     void getSamplePage_shouldReturnAllExpectedListFields() {
         UUID productId = UUID.randomUUID();
         UUID sampleId = UUID.randomUUID();
+        String historicalLegacyReason = "旧".repeat(201);
 
         Product product = new Product();
         product.setId(productId);
@@ -3217,6 +3218,7 @@ class SampleControllerTest {
         sample.setRecipientPhone("13900139000");
         sample.setRecipientAddress("北京市朝阳区测试路 2 号");
         sample.setStatus(1);
+        sample.setRemark("规格: 红色 / M；  " + historicalLegacyReason + "  ");
         sample.setCreateTime(LocalDateTime.of(2026, 6, 1, 10, 0));
         sample.setUpdateTime(LocalDateTime.of(2026, 6, 1, 11, 0));
         sample.setExtraData(Map.of(
@@ -3224,7 +3226,7 @@ class SampleControllerTest {
                 "cooperationType", "FREE_SAMPLE",
                 "sampleOwnerType", "MERCHANT",
                 "homeworkType", "HAS_ORDER",
-                "applyReason", "测试申请理由"
+                "specification", "红色 / M"
         ));
 
         IPage<SampleRequest> page = new Page<>(1, 10);
@@ -3267,7 +3269,8 @@ class SampleControllerTest {
         assertThat(vo.getStatus()).isEqualTo("PENDING_AUDIT");
         assertThat(vo.getCreateTime()).isEqualTo(LocalDateTime.of(2026, 6, 1, 10, 0));
         assertThat(vo.getUpdateTime()).isEqualTo(LocalDateTime.of(2026, 6, 1, 11, 0));
-        assertThat(vo.getApplyReason()).isEqualTo("测试申请理由");
+        assertThat(vo.getRemark()).isEqualTo(historicalLegacyReason);
+        assertThat(vo.getApplyReason()).isEqualTo(historicalLegacyReason);
         assertThat(vo.getApplySource()).isEqualTo("MANUAL");
         assertThat(vo.getApplySourceLabel()).isEqualTo("手动申请");
         assertThat(vo.getCooperationType()).isEqualTo("FREE_SAMPLE");
@@ -3284,6 +3287,7 @@ class SampleControllerTest {
         UUID productId = UUID.randomUUID();
         UUID ownerId = UUID.randomUUID();
         UUID deptId = UUID.randomUUID();
+        String historicalStructuredReason = "结".repeat(201);
 
         Product product = new Product();
         product.setId(productId);
@@ -3335,7 +3339,7 @@ class SampleControllerTest {
                 "sampleOwnerType", "COLONEL",
                 "homeworkType", "VIDEO",
                 "specification", "蓝色 / L",
-                "applyReason", "详情测试申请理由",
+                "applyReason", "  " + historicalStructuredReason + "  ",
                 "eligibilityCheck", Map.of("passed", true, "failedRules", List.of()),
                 "requirementSnapshot", Map.of("minLevel", "LV1", "actualLevel", "LV2")
         ));
@@ -3384,8 +3388,8 @@ class SampleControllerTest {
         assertThat(vo.getDeliverTime()).isEqualTo(LocalDateTime.of(2026, 5, 18, 15, 0));
         assertThat(vo.getRejectReason()).isNull();
         assertThat(vo.getCloseReason()).isNull();
-        assertThat(vo.getRemark()).isEqualTo("详情测试申请理由");
-        assertThat(vo.getApplyReason()).isEqualTo("详情测试申请理由");
+        assertThat(vo.getRemark()).isEqualTo(historicalStructuredReason);
+        assertThat(vo.getApplyReason()).isEqualTo(historicalStructuredReason);
         assertThat(vo.getApplySource()).isEqualTo("INTERNAL_QUICK_SAMPLE");
         assertThat(vo.getApplySourceLabel()).isEqualTo("内部寄样");
         assertThat(vo.getCooperationType()).isEqualTo("PAID_SAMPLE");
