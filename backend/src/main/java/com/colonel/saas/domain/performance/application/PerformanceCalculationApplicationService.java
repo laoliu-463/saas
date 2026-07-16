@@ -3,8 +3,10 @@ package com.colonel.saas.domain.performance.application;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.PerformanceRecord;
 import com.colonel.saas.mapper.PerformanceRecordMapper;
+import com.colonel.saas.domain.performance.policy.PerformanceAttributionPolicy;
 import com.colonel.saas.service.CommissionService;
 import com.colonel.saas.service.OrderCommissionPolicy;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -35,12 +37,25 @@ public class PerformanceCalculationApplicationService {
 
     private final PerformanceRecordMapper performanceRecordMapper;
     private final CommissionService commissionService;
+    private final PerformanceAttributionResolver attributionResolver;
 
+    @Autowired
+    public PerformanceCalculationApplicationService(
+            PerformanceRecordMapper performanceRecordMapper,
+            CommissionService commissionService,
+            PerformanceAttributionResolver attributionResolver) {
+        this.performanceRecordMapper = performanceRecordMapper;
+        this.commissionService = commissionService;
+        this.attributionResolver = attributionResolver;
+    }
+
+    /**
+     * 兼容尚未接入最终归属解析器的旧测试/调用方；生产 Spring Bean 使用三参数构造器。
+     */
     public PerformanceCalculationApplicationService(
             PerformanceRecordMapper performanceRecordMapper,
             CommissionService commissionService) {
-        this.performanceRecordMapper = performanceRecordMapper;
-        this.commissionService = commissionService;
+        this(performanceRecordMapper, commissionService, PerformanceCalculationApplicationService::defaultAttribution);
     }
 
     /**
@@ -84,12 +99,16 @@ public class PerformanceCalculationApplicationService {
         // 第一步（续）：归因信息 — 渠道和招商
         UUID channelUserId = order.getChannelUserId();
         UUID recruiterUserId = order.getColonelUserId() != null ? order.getColonelUserId() : order.getUserId();
+        PerformanceAttributionPolicy.AttributionResult attribution = attributionResolver.resolve(order);
+        if (attribution == null) {
+            throw new IllegalStateException("Performance attribution resolver returned null");
+        }
         record.setDefaultChannelUserId(channelUserId);
         record.setDefaultRecruiterUserId(recruiterUserId);
-        record.setFinalChannelUserId(channelUserId);
-        record.setFinalRecruiterUserId(recruiterUserId);
-        record.setChannelAttribution(channelUserId != null ? "pick_source" : "unattributed");
-        record.setRecruiterAttribution(recruiterUserId != null ? "activity_owner" : "unattributed");
+        record.setFinalChannelUserId(attribution.finalChannelId());
+        record.setFinalRecruiterUserId(attribution.finalRecruiterId());
+        record.setChannelAttribution(attribution.channelAttributionType());
+        record.setRecruiterAttribution(attribution.recruiterAttributionType());
 
         // 第一步（续）：关联实体
         record.setTalentId(order.getTalentId());
@@ -175,9 +194,25 @@ public class PerformanceCalculationApplicationService {
         return record;
     }
 
-    /**
-     * 将业绩记录的所有提成和收益字段置零（用于已取消/失效订单）。
-     */
+    private static PerformanceAttributionPolicy.AttributionResult defaultAttribution(
+            ColonelsettlementOrder order) {
+        UUID channelUserId = order == null ? null : order.getChannelUserId();
+        UUID recruiterUserId = order == null ? null
+                : order.getColonelUserId() != null ? order.getColonelUserId() : order.getUserId();
+        UUID channelDeptId = order == null ? null : order.getChannelDeptId();
+        UUID recruiterDeptId = order == null ? null : order.getDeptId();
+        String channelType = channelUserId == null ? "unattributed" : "pick_source";
+        String recruiterType = recruiterUserId == null ? "unattributed" : "activity_owner";
+        return new PerformanceAttributionPolicy.AttributionResult(
+                channelUserId,
+                recruiterUserId,
+                channelDeptId,
+                recruiterDeptId,
+                channelType,
+                recruiterType);
+    }
+
+
     private void zeroCommissions(PerformanceRecord record) {
         record.setEstimateServiceProfit(0L);
         record.setEffectiveServiceProfit(0L);
