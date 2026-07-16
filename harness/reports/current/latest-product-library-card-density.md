@@ -2,11 +2,11 @@
 
 ## Metadata
 
-- Time: 2026-07-16 18:17:08 +08:00
+- Time: 2026-07-16 18:19:34 +08:00
 - Environment: real-pre
 - Scope: full
 - Branch: codex/deploy-product-library-density-v2
-- Commit: 3752a850
+- Commit: e9e39f1d
 - Owned worktree: clean
 - Deploy remote: true
 
@@ -40,20 +40,20 @@ Frontend build: PASS (npm --prefix frontend ci; npm --prefix frontend run build)
 ## Docker Status
 
 ~~~text
-NAME                              IMAGE                            COMMAND                  SERVICE             CREATED              STATUS                        PORTS
-saas-active-backend-real-pre-1    colonel-saas/backend:real-pre    "sh -c 'java $JAVA_O…"   backend-real-pre    About a minute ago   Up About a minute (healthy)   127.0.0.1:8081->8080/tcp
-saas-active-frontend-real-pre-1   colonel-saas/frontend:real-pre   "/docker-entrypoint.…"   frontend-real-pre   About a minute ago   Up 49 seconds (healthy)       127.0.0.1:3001->80/tcp
-saas-active-postgres-real-pre-1   postgres:15-alpine               "docker-entrypoint.s…"   postgres-real-pre   About a minute ago   Up About a minute (healthy)   5432/tcp
-saas-active-redis-real-pre-1      redis:7-alpine                   "docker-entrypoint.s…"   redis-real-pre      27 hours ago         Up 27 hours (healthy)         6379/tcp
-NAMES                             STATUS                        PORTS
-saas-active-frontend-real-pre-1   Up 49 seconds (healthy)       127.0.0.1:3001->80/tcp
-saas-active-backend-real-pre-1    Up About a minute (healthy)   127.0.0.1:8081->8080/tcp
-saas-active-postgres-real-pre-1   Up About a minute (healthy)   5432/tcp
-saas-active-redis-real-pre-1      Up 27 hours (healthy)         6379/tcp
-campus_frontend                   Up 2 days                     0.0.0.0:5173->5173/tcp, [::]:5173->5173/tcp
-campus_backend                    Up 2 days (healthy)           0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp
-campus_postgres                   Up 2 days (healthy)           0.0.0.0:5433->5432/tcp, [::]:5433->5432/tcp
-saas-test-backend-1               Up 2 days (unhealthy)         0.0.0.0:5005->5005/tcp, [::]:5005->5005/tcp, 0.0.0.0:8080->8080/tcp, [::]:8080->8080/tcp
+NAME                              IMAGE                            COMMAND                  SERVICE             CREATED         STATUS                   PORTS
+saas-active-backend-real-pre-1    colonel-saas/backend:real-pre    "sh -c 'java $JAVA_O…"   backend-real-pre    3 minutes ago   Up 3 minutes (healthy)   127.0.0.1:8081->8080/tcp
+saas-active-frontend-real-pre-1   colonel-saas/frontend:real-pre   "/docker-entrypoint.…"   frontend-real-pre   3 minutes ago   Up 3 minutes (healthy)   127.0.0.1:3001->80/tcp
+saas-active-postgres-real-pre-1   postgres:15-alpine               "docker-entrypoint.s…"   postgres-real-pre   4 minutes ago   Up 3 minutes (healthy)   5432/tcp
+saas-active-redis-real-pre-1      redis:7-alpine                   "docker-entrypoint.s…"   redis-real-pre      27 hours ago    Up 27 hours (healthy)    6379/tcp
+NAMES                             STATUS                   PORTS
+saas-active-frontend-real-pre-1   Up 3 minutes (healthy)   127.0.0.1:3001->80/tcp
+saas-active-backend-real-pre-1    Up 3 minutes (healthy)   127.0.0.1:8081->8080/tcp
+saas-active-postgres-real-pre-1   Up 3 minutes (healthy)   5432/tcp
+saas-active-redis-real-pre-1      Up 27 hours (healthy)    6379/tcp
+campus_frontend                   Up 2 days                0.0.0.0:5173->5173/tcp, [::]:5173->5173/tcp
+campus_backend                    Up 2 days (healthy)      0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp
+campus_postgres                   Up 2 days (healthy)      0.0.0.0:5433->5432/tcp, [::]:5433->5432/tcp
+saas-test-backend-1               Up 2 days (unhealthy)    0.0.0.0:5005->5005/tcp, [::]:5005->5005/tcp, 0.0.0.0:8080->8080/tcp, [::]:8080->8080/tcp
 ~~~
 
 ## Health Check Result
@@ -77,7 +77,7 @@ Content maintenance skipped by -ContentMaintenance off.
 ## Remote Deploy Result
 
 ~~~text
-remote not deployed
+Remote deploy: PASS
 ~~~
 
 ## Retro Summary
@@ -86,7 +86,7 @@ remote not deployed
 
 ## Conclusion
 
-PARTIAL
+PASS
 
 ## Residual Risk
 
