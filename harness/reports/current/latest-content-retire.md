@@ -2,10 +2,10 @@
 
 ## Metadata
 
-- Time: 2026-07-16 21:30:27 +08:00
+- Time: 2026-07-16 21:35:05 +08:00
 - Action: Plan
 - DryRun: False
-- Reason: fix: deploy performance attribution schema guard
+- Reason: fix: pin remote deploy to feature auth branch
 - Manifest: (none)
 - ArchiveRoot: harness/archive/retired-content
 - AllowSourceCode: False
