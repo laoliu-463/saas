@@ -1,6 +1,13 @@
 package com.colonel.saas.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.colonel.saas.domain.order.application.OrderDefaultAttributionResolver;
+import com.colonel.saas.domain.order.policy.OrderAttributionInput;
+import com.colonel.saas.domain.order.policy.OrderDefaultAttributionPolicy;
+import com.colonel.saas.domain.order.policy.OrderDefaultAttributionResult;
+import com.colonel.saas.domain.order.policy.OrderLinkAttributionResolution;
+import com.colonel.saas.domain.order.policy.OrderLinkAttributionResolution.Status;
+import com.colonel.saas.domain.performance.application.PerformanceCalculationApplicationService;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import org.springframework.stereotype.Service;
@@ -8,80 +15,46 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
- * 订单归因回放服务，对未归因或需要重新归因的订单执行批量归因重算。
+ * 历史订单归属回放服务。
  *
- * <p>核心逻辑：加载目标订单列表，逐笔调用归因服务重新解析归因结果，
- * 仅在满足安全条件（归因结果早于订单创建时间）时才持久化更新。</p>
- *
- * <ul>
- *   <li>支持 dry-run 模式：仅统计不写入，用于预览归因结果</li>
- *   <li>安全检查：当原生键映射的创建时间晚于订单创建时间时，标记为不安全并跳过更新</li>
- *   <li>支持按订单 ID 列表或未归因状态 + 原因筛选待回放订单</li>
- *   <li>提供详细的回放统计：归因成功数、未归因数、原生键匹配数、不安全跳过数等</li>
- * </ul>
- *
- * <p><b>业务领域：</b>业绩域 — 归因回放</p>
- * <p><b>协作关系：</b>依赖 {@link AttributionService} 执行归因解析；
- * 依赖 {@link OrderSyncPersistenceService} 持久化更新后的订单；
- * 依赖 {@link ColonelsettlementOrderMapper} 查询待回放订单</p>
- *
- * @see AttributionService
- * @see OrderSyncPersistenceService
+ * <p>实时同步和历史回放都必须经 {@link OrderDefaultAttributionResolver} 解析，
+ * 这样两条链路共享同一套链接拥有者、活动招商回退和映射时间安全规则。</p>
  */
 @Service
 public class OrderAttributionReplayService {
 
-    /** 默认查询订单数上限 */
     private static final int DEFAULT_LIMIT = 50;
-
-    /** 单次查询最大订单数上限 */
     private static final int MAX_LIMIT = 200;
 
-    /** 订单 Mapper，查询待回放的订单列表 */
     private final ColonelsettlementOrderMapper orderMapper;
-
-    /** 归因服务，执行单笔订单的归因解析 */
-    private final AttributionService attributionService;
-
-    /** 订单持久化服务，用于更新归因结果并查询用户信息 */
+    private final OrderDefaultAttributionResolver defaultAttributionResolver;
     private final OrderSyncPersistenceService persistenceService;
+    private final PerformanceCalculationApplicationService performanceCalculationApplicationService;
 
     public OrderAttributionReplayService(
             ColonelsettlementOrderMapper orderMapper,
-            AttributionService attributionService,
-            OrderSyncPersistenceService persistenceService) {
+            OrderDefaultAttributionResolver defaultAttributionResolver,
+            OrderSyncPersistenceService persistenceService,
+            PerformanceCalculationApplicationService performanceCalculationApplicationService) {
         this.orderMapper = orderMapper;
-        this.attributionService = attributionService;
+        this.defaultAttributionResolver = defaultAttributionResolver;
         this.persistenceService = persistenceService;
+        this.performanceCalculationApplicationService = performanceCalculationApplicationService;
     }
 
     /**
-     * 执行订单归因回放，对目标订单重新解析归因并选择性持久化。
-     *
-     * <ol>
-     *   <li>第一步：通过 {@link #loadOrders} 加载待回放订单列表</li>
-     *   <li>第二步：逐笔归一化 extraData 并调用归因服务解析归因结果</li>
-     *   <li>第三步：统计原生键匹配、归因状态、安全检查等指标</li>
-     *   <li>第四步：若非 dry-run 且安全检查通过，应用归因结果并持久化</li>
-     *   <li>第五步：构建并返回回放结果统计</li>
-     * </ol>
-     *
-     * @param orderIds 指定订单 ID 列表（优先级高于按状态筛选），可为 null
-     * @param reason   筛选条件：归因备注内容，仅在 orderIds 为空时生效
-     * @param limit    查询订单数上限，超过 {@value MAX_LIMIT} 会被截断
-     * @param dryRun   是否为试运行模式（true 仅统计不写入）
-     * @return 回放结果，包含详细统计数据
+     * 逐笔重放订单归属。dry-run 永不写订单或业绩；apply 时订单写入先于业绩 upsert。
      */
     @Transactional(rollbackFor = Exception.class)
     public ReplayResult replay(List<String> orderIds, String reason, Integer limit, boolean dryRun) {
-        // 第一步：加载待回放订单
         List<ColonelsettlementOrder> orders = loadOrders(orderIds, reason, limit);
-        // 初始化各统计计数器
         int scanned = 0;
         int attributed = 0;
         int unattributed = 0;
@@ -92,50 +65,61 @@ public class OrderAttributionReplayService {
         int colonelBuyinIdMismatch = 0;
         int ambiguousMapping = 0;
         int stillUnattributed = 0;
+        List<ReplayDecision> decisions = new ArrayList<>();
 
-        // 第二步：逐笔归一化 extraData 并执行归因解析
         for (ColonelsettlementOrder order : orders) {
             scanned++;
-            // 注意：先归一化 extraData 再调用归因服务
             Map<String, Object> normalizedSource = AttributionSourceNormalizer.normalize(order.getExtraData());
-            AttributionService.AttributionResult result = attributionService.resolveAttribution(order, normalizedSource);
-            AttributionService.NativeMappingTrace nativeTrace = result.nativeTrace();
-            if (nativeTrace != null && nativeTrace.nativeKeyMatched()) {
+            OrderDefaultAttributionResult result = defaultAttributionResolver.resolve(order, normalizedSource);
+            OrderLinkAttributionResolution linkResolution = result.linkResolution();
+            OrderAttributionInput input = OrderAttributionInput.from(order, normalizedSource);
+
+            if (linkResolution != null && linkResolution.nativeKeyMatched()) {
                 nativeKeyMatched++;
             }
-            if (nativeTrace != null && nativeTrace.colonelBuyinIdMismatch()) {
+            if (linkResolution != null && linkResolution.colonelBuyinIdMismatch()) {
                 colonelBuyinIdMismatch++;
             }
-            if (nativeTrace != null && nativeTrace.ambiguousMapping()) {
+            if (linkResolution != null && linkResolution.status() == Status.AMBIGUOUS) {
                 ambiguousMapping++;
             }
-            // 第三步：统计原生键匹配和归因状态指标
-            if (AttributionService.STATUS_ATTRIBUTED.equals(result.attributionStatus())) {
+
+            boolean isAttributed = AttributionService.STATUS_ATTRIBUTED.equals(result.attributionStatus());
+            if (isAttributed) {
                 attributed++;
             } else {
                 unattributed++;
                 stillUnattributed++;
             }
-            boolean safeForHistoricalUpdate = isSafeForHistoricalUpdate(order, result);
-            if (nativeTrace != null && nativeTrace.nativeKeyMatched() && AttributionService.STATUS_ATTRIBUTED.equals(result.attributionStatus())) {
-                if (safeForHistoricalUpdate) {
-                    safeToUpdate++;
-                } else if (nativeTrace.mappingCreatedAt() != null && order.getCreateTime() != null
-                        && nativeTrace.mappingCreatedAt().isAfter(order.getCreateTime())) {
-                    unsafeBecauseCreatedAfterOrder++;
-                }
+
+            boolean safe = isSafeForHistoricalUpdate(input.businessTime(), result);
+            if (safe) {
+                safeToUpdate++;
+            } else if (isMappingCreatedAfterBusinessTime(input.businessTime(), linkResolution)) {
+                unsafeBecauseCreatedAfterOrder++;
             }
-            // 第四步：dry-run 模式仅统计，不持久化
-            if (dryRun) {
+
+            boolean changed = wouldChange(order, result);
+            if (decisions.size() < MAX_LIMIT) {
+                decisions.add(new ReplayDecision(
+                        order.getOrderId(),
+                        result.defaultChannelUserId(),
+                        result.defaultRecruiterId(),
+                        result.channelAttributionSource(),
+                        result.recruiterAttributionSource(),
+                        result.attributionRemark(),
+                        safe,
+                        changed));
+            }
+            if (dryRun || !safe) {
                 continue;
             }
-            // 注意：安全检查未通过的订单跳过更新
-            if (!safeForHistoricalUpdate) {
-                continue;
-            }
-            // 第四步（续）：应用归因结果并持久化
-            applyAttribution(order, result);
+
+            OrderDefaultAttributionPolicy.applyToOrder(order, result, order.getTalentName());
+            order.setUpdateTime(LocalDateTime.now());
+            fillUserNames(order);
             persistenceService.persistOrder(order);
+            performanceCalculationApplicationService.upsertFromOrder(order);
             updated++;
         }
 
@@ -150,19 +134,10 @@ public class OrderAttributionReplayService {
                 unsafeBecauseCreatedAfterOrder,
                 colonelBuyinIdMismatch,
                 ambiguousMapping,
-                stillUnattributed
-        );
+                stillUnattributed,
+                decisions);
     }
 
-    /**
-     * 加载待回放订单列表，支持按订单 ID 或未归因状态筛选。
-     *
-     * <ol>
-     *   <li>第一步：若提供了订单 ID 列表，直接按 ID 查询</li>
-     *   <li>第二步：否则按未归因状态筛选，可选附加 reason 条件</li>
-     *   <li>第三步：按更新时间、创建时间倒序排列，限制返回数量</li>
-     * </ol>
-     */
     private List<ColonelsettlementOrder> loadOrders(List<String> orderIds, String reason, Integer limit) {
         LambdaQueryWrapper<ColonelsettlementOrder> wrapper = new LambdaQueryWrapper<ColonelsettlementOrder>()
                 .eq(ColonelsettlementOrder::getDeleted, 0);
@@ -177,12 +152,9 @@ public class OrderAttributionReplayService {
         }
         wrapper.orderByDesc(ColonelsettlementOrder::getUpdateTime)
                 .orderByDesc(ColonelsettlementOrder::getCreateTime);
-        return orderMapper.selectList(wrapper);
+        return orderMapper.selectList(wrapper).stream().limit(MAX_LIMIT).toList();
     }
 
-    /**
-     * 规范化查询数量限制，默认 {@value DEFAULT_LIMIT}，上限 {@value MAX_LIMIT}。
-     */
     private int normalizeLimit(Integer limit) {
         if (limit == null || limit <= 0) {
             return DEFAULT_LIMIT;
@@ -190,82 +162,65 @@ public class OrderAttributionReplayService {
         return Math.min(limit, MAX_LIMIT);
     }
 
-    /**
-     * 将归因结果应用到订单实体，更新渠道、招商员、达人等归因字段。
-     *
-     * @param order  待更新的订单实体
-     * @param result 归因解析结果
-     */
-    private void applyAttribution(ColonelsettlementOrder order, AttributionService.AttributionResult result) {
-        order.setChannelUserId(result.channelUserId());
-        order.setChannelDeptId(result.deptId());
-        order.setUserId(result.userId());
-        order.setDeptId(result.deptId());
-        order.setColonelUserId(result.colonelUserId());
-        order.setTalentId(result.talentId());
-        if (StringUtils.hasText(result.activityId())) {
-            order.setActivityId(result.activityId());
+    private boolean isSafeForHistoricalUpdate(
+            LocalDateTime businessTime,
+            OrderDefaultAttributionResult result) {
+        if (result == null || !AttributionService.STATUS_ATTRIBUTED.equals(result.attributionStatus())) {
+            return false;
         }
-        order.setAttributionStatus(result.attributionStatus());
-        order.setAttributionRemark(result.attributionRemark());
-        order.setUpdateTime(LocalDateTime.now());
-        fillUserNames(order);
+        OrderLinkAttributionResolution resolution = result.linkResolution();
+        if (resolution == null || resolution.mappingCreatedAt() == null) {
+            return resolution == null || !resolution.nativeKeyMatched();
+        }
+        if (businessTime == null) {
+            return false;
+        }
+        return !resolution.mappingCreatedAt().isAfter(businessTime);
     }
 
-    /**
-     * 填充订单上的渠道员和招商员用户名字段。
-     */
+    private boolean isMappingCreatedAfterBusinessTime(
+            LocalDateTime businessTime,
+            OrderLinkAttributionResolution resolution) {
+        return businessTime != null
+                && resolution != null
+                && resolution.mappingCreatedAt() != null
+                && resolution.mappingCreatedAt().isAfter(businessTime);
+    }
+
+    private boolean wouldChange(ColonelsettlementOrder order, OrderDefaultAttributionResult result) {
+        return !Objects.equals(order.getChannelUserId(), result.defaultChannelUserId())
+                || !Objects.equals(order.getChannelDeptId(), result.channelDeptId())
+                || !Objects.equals(order.getColonelUserId(), result.defaultRecruiterId())
+                || !Objects.equals(order.getTalentId(), result.talentId())
+                || !Objects.equals(order.getActivityId(), result.activityId())
+                || !Objects.equals(order.getChannelAttributionSource(), result.channelAttributionSource())
+                || !Objects.equals(order.getRecruiterAttributionSource(), result.recruiterAttributionSource())
+                || !Objects.equals(order.getAttributionStatus(), result.attributionStatus())
+                || !Objects.equals(order.getAttributionRemark(), result.attributionRemark());
+    }
+
     private void fillUserNames(ColonelsettlementOrder order) {
         order.setChannelUserName(resolveUserName(order.getChannelUserId()));
         order.setColonelUserName(resolveUserName(order.getColonelUserId()));
     }
 
-    /**
-     * 根据用户 ID 查询真实姓名，用于填充订单上的用户名字段。
-     */
     private String resolveUserName(UUID userId) {
-        return persistenceService.getUserName(userId);
+        return userId == null ? null : persistenceService.getUserName(userId);
     }
 
-    /**
-     * 判断归因结果是否安全应用于历史订单更新。
-     *
-     * <p>安全条件：归因成功且（无原生键匹配 或 原生键映射创建时间不晚于订单创建时间）。
-     * 若映射创建时间晚于订单创建时间，则归因结果可能是后补的，不应覆盖历史数据。</p>
-     *
-     * @param order  订单实体
-     * @param result 归因解析结果
-     * @return true 表示可以安全更新，false 表示应跳过
-     */
-    private boolean isSafeForHistoricalUpdate(ColonelsettlementOrder order, AttributionService.AttributionResult result) {
-        if (!AttributionService.STATUS_ATTRIBUTED.equals(result.attributionStatus())) {
-            return false;
-        }
-        AttributionService.NativeMappingTrace nativeTrace = result.nativeTrace();
-        if (nativeTrace == null || !nativeTrace.nativeKeyMatched()) {
-            return true;
-        }
-        if (nativeTrace.mappingCreatedAt() == null || order.getCreateTime() == null) {
-            return false;
-        }
-        return !nativeTrace.mappingCreatedAt().isAfter(order.getCreateTime());
+    /** 单笔回放的可审计决策，最多返回 {@value MAX_LIMIT} 条。 */
+    public record ReplayDecision(
+            String orderId,
+            UUID channelUserId,
+            UUID recruiterUserId,
+            String channelSource,
+            String recruiterSource,
+            String mappingReason,
+            boolean safe,
+            boolean changed) {
     }
 
-    /**
-     * 归因回放结果记录，包含详细的统计数据。
-     *
-     * @param scanned                     扫描订单总数
-     * @param attributed                  归因成功数
-     * @param unattributed                未归因数
-     * @param updated                     实际更新持久化的订单数
-     * @param dryRun                      是否为试运行模式
-     * @param nativeKeyMatched            原生键匹配数
-     * @param safeToUpdate                安全可更新数
-     * @param unsafeBecauseCreatedAfterOrder 因映射创建时间晚于订单而标记为不安全的数量
-     * @param colonelBuyinIdMismatch      招商员 buyinId 不匹配数
-     * @param ambiguousMapping            歧义映射数
-     * @param stillUnattributed           回放后仍未归因的数量
-     */
+    /** 回放统计及逐笔决策证据。 */
     public record ReplayResult(
             int scanned,
             int attributed,
@@ -277,6 +232,29 @@ public class OrderAttributionReplayService {
             int unsafeBecauseCreatedAfterOrder,
             int colonelBuyinIdMismatch,
             int ambiguousMapping,
-            int stillUnattributed) {
+            int stillUnattributed,
+            List<ReplayDecision> decisions) {
+
+        public ReplayResult {
+            decisions = decisions == null ? List.of() : List.copyOf(decisions);
+        }
+
+        /** 兼容旧控制器与测试中的统计结果构造。 */
+        public ReplayResult(
+                int scanned,
+                int attributed,
+                int unattributed,
+                int updated,
+                boolean dryRun,
+                int nativeKeyMatched,
+                int safeToUpdate,
+                int unsafeBecauseCreatedAfterOrder,
+                int colonelBuyinIdMismatch,
+                int ambiguousMapping,
+                int stillUnattributed) {
+            this(scanned, attributed, unattributed, updated, dryRun, nativeKeyMatched, safeToUpdate,
+                    unsafeBecauseCreatedAfterOrder, colonelBuyinIdMismatch, ambiguousMapping,
+                    stillUnattributed, List.of());
+        }
     }
 }

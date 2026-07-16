@@ -1,12 +1,20 @@
 package com.colonel.saas.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.colonel.saas.domain.order.application.OrderDefaultAttributionResolver;
+import com.colonel.saas.domain.order.policy.OrderDefaultAttributionResult;
+import com.colonel.saas.domain.order.policy.OrderLinkAttributionResolution;
+import com.colonel.saas.domain.order.policy.OrderLinkAttributionResolution.Status;
+import com.colonel.saas.domain.performance.application.PerformanceCalculationApplicationService;
+import com.colonel.saas.domain.shared.attribution.AttributionOwnerType;
+import com.colonel.saas.domain.shared.attribution.AttributionSource;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -17,6 +25,10 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -26,137 +38,152 @@ class OrderAttributionReplayServiceTest {
     @Mock
     private ColonelsettlementOrderMapper orderMapper;
     @Mock
-    private AttributionService attributionService;
+    private OrderDefaultAttributionResolver defaultAttributionResolver;
     @Mock
     private OrderSyncPersistenceService persistenceService;
+    @Mock
+    private PerformanceCalculationApplicationService performanceService;
 
     private OrderAttributionReplayService service;
 
     @BeforeEach
     void setUp() {
-        service = new OrderAttributionReplayService(orderMapper, attributionService, persistenceService);
+        service = new OrderAttributionReplayService(
+                orderMapper,
+                defaultAttributionResolver,
+                persistenceService,
+                performanceService);
     }
 
     @Test
-    void replay_shouldNormalizeNestedColonelInfoBeforeResolvingAttribution() {
-        ColonelsettlementOrder order = new ColonelsettlementOrder();
-        order.setId(UUID.randomUUID());
-        order.setOrderId("o-1");
-        order.setProductId("p-1");
-        order.setCreateTime(LocalDateTime.now());
-        order.setUpdateTime(LocalDateTime.now());
-        order.setDeleted(0);
+    void replayShouldUseDefaultResolverThenPersistOrderAndUpsertPerformance() {
+        LocalDateTime businessTime = LocalDateTime.of(2026, 7, 16, 14, 6, 24);
+        ColonelsettlementOrder order = order("o-1", businessTime);
         order.setExtraData(Map.of(
                 "colonel_order_info_second", Map.of(
                         "colonel_buyin_id", "second-buyin",
                         "activity_id", "3543332"
-                )
-        ));
+                )));
         when(orderMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(order));
 
-        UUID userId = UUID.randomUUID();
-        UUID deptId = UUID.randomUUID();
-        UUID colonelUserId = UUID.randomUUID();
-        when(attributionService.resolveAttribution(any(), any())).thenReturn(
-                AttributionService.AttributionResult.attributed(
-                        userId,
-                        deptId,
-                        userId,
-                        null,
-                        null,
-                        "3543332",
-                        colonelUserId,
-                        AttributionService.REASON_COLONEL_ORDER_INFO
-                )
-        );
-        when(persistenceService.getUserName(userId)).thenReturn("渠道A");
-        when(persistenceService.getUserName(colonelUserId)).thenReturn("团长A");
+        UUID channelUserId = UUID.randomUUID();
+        UUID recruiterUserId = UUID.randomUUID();
+        UUID channelDeptId = UUID.randomUUID();
+        when(defaultAttributionResolver.resolve(eq(order), anyMap())).thenReturn(attributed(
+                channelUserId,
+                channelDeptId,
+                recruiterUserId,
+                new OrderLinkAttributionResolution(
+                        Status.UNIQUE, recruiterUserId, null, AttributionOwnerType.RECRUITER,
+                        AttributionSource.PICK_SOURCE, "UNIQUE_LINK_OWNER", true, false,
+                        businessTime.minusDays(1))));
+        when(persistenceService.getUserName(channelUserId)).thenReturn("渠道A");
+        when(persistenceService.getUserName(recruiterUserId)).thenReturn("招商A");
 
         OrderAttributionReplayService.ReplayResult result =
-                service.replay(null, AttributionService.REASON_COLONEL_MAPPING_NOT_FOUND, 20, false);
+                service.replay(List.of(order.getOrderId()), "verified role-aware correction", 1, false);
 
         assertThat(result.scanned()).isEqualTo(1);
         assertThat(result.attributed()).isEqualTo(1);
-        assertThat(result.unattributed()).isEqualTo(0);
         assertThat(result.updated()).isEqualTo(1);
-        assertThat(result.safeToUpdate()).isEqualTo(0);
+        assertThat(result.decisions()).singleElement()
+                .extracting(
+                        OrderAttributionReplayService.ReplayDecision::safe,
+                        OrderAttributionReplayService.ReplayDecision::recruiterUserId,
+                        OrderAttributionReplayService.ReplayDecision::recruiterSource)
+                .containsExactly(true, recruiterUserId, AttributionSource.PICK_SOURCE);
 
         ArgumentCaptor<Map<String, Object>> sourceCaptor = ArgumentCaptor.forClass(Map.class);
-        verify(attributionService).resolveAttribution(any(), sourceCaptor.capture());
+        verify(defaultAttributionResolver).resolve(eq(order), sourceCaptor.capture());
         assertThat(sourceCaptor.getValue().get("second_colonel_buyin_id")).isEqualTo("second-buyin");
         assertThat(sourceCaptor.getValue().get("second_colonel_activity_id")).isEqualTo("3543332");
 
-        ArgumentCaptor<ColonelsettlementOrder> orderCaptor = ArgumentCaptor.forClass(ColonelsettlementOrder.class);
-        verify(persistenceService).persistOrder(orderCaptor.capture());
-        assertThat(orderCaptor.getValue().getAttributionStatus()).isEqualTo(AttributionService.STATUS_ATTRIBUTED);
-        assertThat(orderCaptor.getValue().getActivityId()).isEqualTo("3543332");
-        assertThat(orderCaptor.getValue().getChannelUserName()).isEqualTo("渠道A");
-        assertThat(orderCaptor.getValue().getColonelUserName()).isEqualTo("团长A");
+        InOrder writes = inOrder(persistenceService, performanceService);
+        writes.verify(persistenceService).persistOrder(order);
+        writes.verify(performanceService).upsertFromOrder(order);
+        assertThat(order.getAttributionStatus()).isEqualTo(AttributionService.STATUS_ATTRIBUTED);
+        assertThat(order.getRecruiterAttributionSource()).isEqualTo(AttributionSource.PICK_SOURCE);
+        assertThat(order.getChannelUserName()).isEqualTo("渠道A");
+        assertThat(order.getColonelUserName()).isEqualTo("招商A");
     }
 
     @Test
-    void replay_shouldSupportDryRunWithoutPersisting() {
-        ColonelsettlementOrder order = new ColonelsettlementOrder();
-        order.setOrderId("o-2");
-        order.setDeleted(0);
-        order.setUpdateTime(LocalDateTime.now());
+    void replayDryRunShouldNotWriteOrderOrPerformance() {
+        ColonelsettlementOrder order = order("o-2", LocalDateTime.of(2026, 7, 16, 14, 6, 24));
         when(orderMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(order));
-        when(attributionService.resolveAttribution(any(), any())).thenReturn(
-                AttributionService.AttributionResult.unattributed(
-                        null,
-                        null,
-                        null,
-                        null,
-                        AttributionService.REASON_COLONEL_MAPPING_NOT_FOUND
-                )
-        );
+        when(defaultAttributionResolver.resolve(eq(order), anyMap())).thenReturn(unattributed());
 
-        OrderAttributionReplayService.ReplayResult result = service.replay(List.of("o-2"), null, null, true);
+        OrderAttributionReplayService.ReplayResult result =
+                service.replay(List.of(order.getOrderId()), null, null, true);
 
         assertThat(result.scanned()).isEqualTo(1);
-        assertThat(result.updated()).isEqualTo(0);
+        assertThat(result.updated()).isZero();
         assertThat(result.stillUnattributed()).isEqualTo(1);
-        verify(attributionService).resolveAttribution(any(), any());
+        verify(persistenceService, never()).persistOrder(any());
+        verify(performanceService, never()).upsertFromOrder(any());
     }
 
     @Test
-    void replay_shouldReportUnsafeWhenNativeMappingCreatedAfterOrder() {
-        ColonelsettlementOrder order = new ColonelsettlementOrder();
-        order.setOrderId("o-3");
-        order.setProductId("3816127512791089531");
-        order.setActivityId("3859423");
-        order.setCreateTime(LocalDateTime.of(2026, 5, 10, 1, 4, 11));
-        order.setUpdateTime(LocalDateTime.now());
-        order.setDeleted(0);
+    void replayShouldSkipMappingCreatedAfterOrderBusinessTime() {
+        LocalDateTime businessTime = LocalDateTime.of(2026, 5, 10, 1, 4, 11);
+        ColonelsettlementOrder order = order("o-3", businessTime);
         when(orderMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(order));
+        UUID recruiterUserId = UUID.randomUUID();
+        when(defaultAttributionResolver.resolve(eq(order), anyMap())).thenReturn(attributed(
+                null,
+                null,
+                recruiterUserId,
+                new OrderLinkAttributionResolution(
+                        Status.UNIQUE, recruiterUserId, null, AttributionOwnerType.RECRUITER,
+                        AttributionSource.NATIVE_UNIQUE_LINK_OWNER, "UNIQUE_LINK_OWNER", true, true,
+                        businessTime.plusHours(5))));
 
-        when(attributionService.resolveAttribution(any(), any())).thenReturn(
-                AttributionService.AttributionResult.attributed(
-                        UUID.randomUUID(),
-                        UUID.randomUUID(),
-                        UUID.randomUUID(),
-                        null,
-                        null,
-                        "3859423",
-                        null,
-                        AttributionService.REASON_COLONEL_ORDER_INFO,
-                        new AttributionService.NativeMappingTrace(
-                                true,
-                                true,
-                                false,
-                                true,
-                                LocalDateTime.of(2026, 5, 10, 6, 41, 19)
-                        )
-                )
-        );
+        OrderAttributionReplayService.ReplayResult result =
+                service.replay(List.of(order.getOrderId()), null, null, true);
 
-        OrderAttributionReplayService.ReplayResult result = service.replay(List.of("o-3"), null, null, true);
-
-        assertThat(result.scanned()).isEqualTo(1);
         assertThat(result.nativeKeyMatched()).isEqualTo(1);
-        assertThat(result.safeToUpdate()).isEqualTo(0);
+        assertThat(result.safeToUpdate()).isZero();
         assertThat(result.unsafeBecauseCreatedAfterOrder()).isEqualTo(1);
         assertThat(result.colonelBuyinIdMismatch()).isEqualTo(1);
-        assertThat(result.updated()).isEqualTo(0);
+        assertThat(result.updated()).isZero();
+        assertThat(result.decisions()).singleElement()
+                .extracting(OrderAttributionReplayService.ReplayDecision::safe)
+                .isEqualTo(false);
+    }
+
+    private ColonelsettlementOrder order(String orderId, LocalDateTime businessTime) {
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setId(UUID.randomUUID());
+        order.setOrderId(orderId);
+        order.setProductId("p-1");
+        order.setActivityId("3543332");
+        order.setPayTime(businessTime);
+        order.setCreateTime(businessTime.plusMinutes(1));
+        order.setUpdateTime(businessTime.plusMinutes(1));
+        order.setDeleted(0);
+        return order;
+    }
+
+    private OrderDefaultAttributionResult attributed(
+            UUID channelUserId,
+            UUID channelDeptId,
+            UUID recruiterUserId,
+            OrderLinkAttributionResolution resolution) {
+        return OrderDefaultAttributionResult.attributed(
+                channelUserId,
+                channelDeptId,
+                recruiterUserId,
+                channelUserId == null ? AttributionSource.UNATTRIBUTED : resolution.source(),
+                recruiterUserId == null ? AttributionSource.UNATTRIBUTED : resolution.source(),
+                null,
+                null,
+                "3543332",
+                resolution);
+    }
+
+    private OrderDefaultAttributionResult unattributed() {
+        return OrderDefaultAttributionResult.unattributed(
+                null, null, "3543332", AttributionSource.UNATTRIBUTED,
+                AttributionSource.UNATTRIBUTED, "MAPPING_NOT_FOUND", null);
     }
 }
