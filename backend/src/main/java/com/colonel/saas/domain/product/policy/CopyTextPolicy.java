@@ -9,6 +9,7 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 /**
  * 复制推广简介纯文本渲染 Policy（DDD-PRODUCT-004）。
@@ -18,6 +19,8 @@ import java.util.Map;
  * 缺失时回退硬编码简介。输入和输出均为值对象，便于单元测试。</p>
  */
 public final class CopyTextPolicy {
+
+    private static final Pattern LINE_SEPARATOR_PATTERN = Pattern.compile("[\\r\\n\\u2028\\u2029]+");
 
     private CopyTextPolicy() {
     }
@@ -66,14 +69,14 @@ public final class CopyTextPolicy {
                 : formatBasisPointRate(snapshot.getActivityAdCosRatio());
 
         List<String> lines = new ArrayList<>();
-        lines.add("【抖音】" + displayText(snapshot == null ? null : snapshot.getTitle()));
-        lines.add("【店铺名称】" + displayText(snapshot == null ? null : snapshot.getShopName()));
-        lines.add("【售价】" + formatPrice(snapshot));
-        lines.add("【佣金率】" + displayText(commissionRate));
-        lines.add("【投放期佣金】" + displayText(activityAdCommissionRate));
-        lines.add("【奖励说明】" + displayText(readString(auditSupplement, "rewardRemark")));
-        lines.add("【开始时间】" + displayText(promotionStartTime));
-        lines.add("【结束时间】" + displayText(promotionEndTime));
+        lines.add("【抖音】" + displaySingleLineText(snapshot == null ? null : snapshot.getTitle()));
+        lines.add("【店铺名称】" + displaySingleLineText(snapshot == null ? null : snapshot.getShopName()));
+        lines.add("【售价】" + displaySingleLineText(formatPrice(snapshot)));
+        lines.add("【佣金率】" + displaySingleLineText(commissionRate));
+        lines.add("【投放期佣金】" + displaySingleLineText(activityAdCommissionRate));
+        lines.add("【奖励说明】" + displaySingleLineText(readString(auditSupplement, "rewardRemark")));
+        lines.add("【开始时间】" + displaySingleLineText(promotionStartTime));
+        lines.add("【结束时间】" + displaySingleLineText(promotionEndTime));
         lines.add("【推广链接】");
         lines.add(displayPromotionLink(promotionLink));
         return String.join("\n", lines);
@@ -152,6 +155,24 @@ public final class CopyTextPolicy {
             if (DomainText.hasText(candidate)) {
                 return candidate.trim();
             }
+        }
+        return null;
+    }
+
+    /**
+     * 选择首个非空推广链接；链接原值包含控制字符或行分隔符时视为非法。
+     */
+    public static String safePromotionLink(String... candidates) {
+        if (candidates == null) {
+            return null;
+        }
+        for (String candidate : candidates) {
+            if (!DomainText.hasText(candidate)) {
+                continue;
+            }
+            boolean unsafe = candidate.codePoints().anyMatch(codePoint ->
+                    Character.isISOControl(codePoint) || codePoint == 0x2028 || codePoint == 0x2029);
+            return unsafe ? null : candidate.trim();
         }
         return null;
     }
@@ -242,7 +263,20 @@ public final class CopyTextPolicy {
     }
 
     private static String displayPromotionLink(String promotionLink) {
-        String link = firstText(promotionLink);
+        String link = safePromotionLink(promotionLink);
         return DomainText.hasText(link) ? link : "未生成";
+    }
+
+    private static String displaySingleLineText(Object value) {
+        if (value == null) {
+            return "-";
+        }
+        String text = LINE_SEPARATOR_PATTERN.matcher(String.valueOf(value)).replaceAll(" ").trim();
+        if (!DomainText.hasText(text)
+                || "null".equalsIgnoreCase(text)
+                || "undefined".equalsIgnoreCase(text)) {
+            return "-";
+        }
+        return text;
     }
 }

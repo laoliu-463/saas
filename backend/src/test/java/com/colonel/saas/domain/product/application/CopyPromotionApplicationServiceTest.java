@@ -111,6 +111,33 @@ class CopyPromotionApplicationServiceTest {
     }
 
     @Test
+    void copyPromotionForSample_shouldNotMarkControlCharacterLinkAsGenerated() {
+        ProductSnapshot snapshot = new ProductSnapshot();
+        snapshot.setProductId("P-1");
+        snapshot.setTitle("样品商品");
+        snapshot.setShopName("样品店铺");
+        when(copyPromotionSupportPort.prepareCopyPromotionContext("ACT-1", "P-1", "复制寄样推广文案"))
+                .thenReturn(new CopyPromotionSupportPort.Context(snapshot, new ProductOperationState()));
+        when(copyPromotionSupportPort.generatePromotionLinkForCopy(
+                any(), any(), any(), any(), any(), any(), anyBoolean(), any(), any(), any()))
+                .thenReturn(new CopyPromotionSupportPort.GeneratedPromotionLink(
+                        "https://short.example/p1" + (char) 0x0007,
+                        "https://promote.example/p1",
+                        "PS-TRACE-1"));
+
+        PromotionLinkCopyResult result = applicationService.copyPromotionForSample(
+                "ACT-1", "P-1", UUID.randomUUID(), UUID.randomUUID(),
+                "talent-1", "idem-1", true, true);
+
+        assertThat(result.copyText().lines()).hasSize(10);
+        assertThat(result.copyText()).endsWith("【推广链接】\n未生成");
+        assertThat(result.promotionLinkGenerated()).isFalse();
+        assertThat(result.promotionLink()).isNull();
+        assertThat(result.fallbackReason())
+                .isEqualTo(CopyPromotionApplicationService.FALLBACK_REASON_PROMOTION_LINK_EMPTY);
+    }
+
+    @Test
     void copyPromotionForSample_shouldReturnExplicitFallbackWhenWriteIsDisabled() {
         ProductSnapshot snapshot = new ProductSnapshot();
         snapshot.setProductId("P-1");

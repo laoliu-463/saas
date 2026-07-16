@@ -136,7 +136,7 @@ public class CopyPromotionApplicationService {
                             SAMPLE_COOPERATION_SCENE,
                             talentId,
                             idempotencyKey);
-            String promotionLink = CopyTextPolicy.firstText(
+            String promotionLink = CopyTextPolicy.safePromotionLink(
                     result.shortLink(), result.promoteLink());
             if (promotionLink == null) {
                 return sampleFallback(

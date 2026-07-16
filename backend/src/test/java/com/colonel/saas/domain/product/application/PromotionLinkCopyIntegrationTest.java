@@ -1,5 +1,6 @@
 package com.colonel.saas.domain.product.application;
 
+import com.colonel.saas.douyin.DouyinApiException;
 import com.colonel.saas.domain.product.application.port.CopyPromotionSupportPort;
 import com.colonel.saas.domain.product.application.port.DouyinConvertPort;
 import com.colonel.saas.domain.product.infrastructure.DouyinPromotionGatewayConvertAdapter;
@@ -60,6 +61,42 @@ class PromotionLinkCopyIntegrationTest {
         assertThat(gatewayCommand.context().scene()).isEqualTo("PRODUCT_LIBRARY");
         assertThat(gatewayCommand.context().talentId()).isEqualTo("talent-20");
         assertThat(gatewayCommand.context().pickExtra()).contains("idem-20");
+    }
+
+    @Test
+    void copyPromotionForSample_shouldFallbackWhenRealGatewayThrowsDouyinApiException() {
+        DouyinConvertPort convertPort = new DouyinPromotionGatewayConvertAdapter(new FailingPromotionGateway());
+        CopyPromotionSupportPort supportPort = new AdapterBackedCopyPromotionSupportPort(convertPort);
+        CopyPromotionApplicationService applicationService = new CopyPromotionApplicationService(
+                supportPort,
+                null);
+
+        var result = applicationService.copyPromotionForSample(
+                "ACT-20",
+                "P-20",
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                "talent-20",
+                "idem-20",
+                true,
+                true);
+
+        assertThat(result.copyText()).isEqualTo(String.join("\n",
+                "【抖音】集成转链商品",
+                "【店铺名称】集成测试店铺",
+                "【售价】99元",
+                "【佣金率】30%",
+                "【投放期佣金】-",
+                "【奖励说明】-",
+                "【开始时间】-",
+                "【结束时间】-",
+                "【推广链接】",
+                "未生成"));
+        assertThat(result.copyText().lines()).hasSize(10);
+        assertThat(result.promotionLinkGenerated()).isFalse();
+        assertThat(result.promotionLink()).isNull();
+        assertThat(result.fallbackReason())
+                .isEqualTo(CopyPromotionApplicationService.FALLBACK_REASON_PROMOTION_LINK_GENERATION_FAILED);
     }
 
     private static final class AdapterBackedCopyPromotionSupportPort implements CopyPromotionSupportPort {
@@ -134,6 +171,24 @@ class PromotionLinkCopyIntegrationTest {
                     "https://short.example/" + productId,
                     "https://promote.example/" + productId,
                     "uuid-" + productId);
+        }
+
+        @Override
+        public Map<String, Object> rawUpstreamPost(String appId, String method, Map<String, Object> payload) {
+            throw new UnsupportedOperationException("raw upstream probe is outside this copy promotion test");
+        }
+    }
+
+    private static final class FailingPromotionGateway implements DouyinPromotionGateway {
+
+        @Override
+        public PromotionLinkResult generateLink(PromotionLinkCommand command) {
+            throw new DouyinApiException(
+                    401,
+                    "access token expired",
+                    "isv.business-failed:4197",
+                    "log-1",
+                    "buyin.instPickSourceConvert");
         }
 
         @Override

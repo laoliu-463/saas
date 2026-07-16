@@ -83,4 +83,38 @@ class CopyTextPolicyDouyinShareTest {
                 .contains("【开始时间】-\n")
                 .contains("【结束时间】-\n");
     }
+
+    @Test
+    void renderDouyinShare_shouldKeepExactlyTenLinesAndRejectInjectedPromotionLink() throws Exception {
+        ProductSnapshot snapshot = new ProductSnapshot();
+        snapshot.setTitle("  正常中文\r\n第二行" + (char) 0x2028 + "第三行  ");
+        snapshot.setShopName("店铺\r二号\n三号" + (char) 0x2029 + "四号");
+        snapshot.setPrice(2990L);
+        snapshot.setActivityCosRatio(1500L);
+        snapshot.setActivityAdCosRatio(500L);
+
+        ProductOperationState state = new ProductOperationState();
+        state.setAuditPayload(new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(java.util.Map.of(
+                "rewardRemark", "奖励一\r\n奖励二\r奖励三\n奖励四"
+                        + (char) 0x2028 + "奖励五" + (char) 0x2029 + "奖励六",
+                "promotionStartTime", "2026-07-16\r\n00:00:00",
+                "promotionEndTime", "2027-07-31" + (char) 0x2029 + "23:59:59")));
+        String unsafeLink = "https://safe.example/item" + (char) 0x2028 + "injected";
+
+        String text = CopyTextPolicy.renderDouyinShare(snapshot, state, unsafeLink);
+
+        assertThat(text).isEqualTo(String.join("\n",
+                "【抖音】正常中文 第二行 第三行",
+                "【店铺名称】店铺 二号 三号 四号",
+                "【售价】29.9元",
+                "【佣金率】15%",
+                "【投放期佣金】5%",
+                "【奖励说明】奖励一 奖励二 奖励三 奖励四 奖励五 奖励六",
+                "【开始时间】2026-07-16 00:00:00",
+                "【结束时间】2027-07-31 23:59:59",
+                "【推广链接】",
+                "未生成"));
+        assertThat(text.lines()).hasSize(10);
+        assertThat(text).doesNotContain("injected");
+    }
 }
