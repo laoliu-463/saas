@@ -442,17 +442,16 @@ public class ColonelsettlementOrder implements Serializable {
     private String unattributedReason;
 
     /**
-     * 渠道归属状态（双维度归属事实，非数据库持久化字段）。
-     * <p>当前切片作为内存内事实使用，由 {@code OrderDefaultAttributionPolicy.applyToOrder}
-     * 写入，下一切片升级为持久化字段并补 SQL / Mapper XML。</p>
+     * 渠道归属状态（双维度归属事实，持久化字段，对应数据库列 {@code channel_attribution_status}）。
+     * <p>由 {@code OrderDefaultAttributionPolicy.applyToOrder} 写入。</p>
      */
-    @TableField(exist = false)
+    @TableField("channel_attribution_status")
     private String channelAttributionStatus;
 
     /**
-     * 招商归属状态（双维度归属事实，非数据库持久化字段）。
+     * 招商归属状态（双维度归属事实，持久化字段，对应数据库列 {@code recruiter_attribution_status}）。
      */
-    @TableField(exist = false)
+    @TableField("recruiter_attribution_status")
     private String recruiterAttributionStatus;
 
     /**

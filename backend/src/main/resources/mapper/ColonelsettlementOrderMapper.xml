@@ -34,10 +34,12 @@
         <result property="channelUserId" column="channel_user_id"/>
         <result property="channelUserName" column="channel_user_name"/>
         <result property="channelDeptId" column="channel_dept_id"/>
+        <result property="channelAttributionStatus" column="channel_attribution_status"/>
         <result property="userId" column="user_id"/>
         <result property="deptId" column="dept_id"/>
         <result property="colonelUserId" column="colonel_user_id"/>
         <result property="colonelUserName" column="colonel_user_name"/>
+        <result property="recruiterAttributionStatus" column="recruiter_attribution_status"/>
         <result property="promotionLinkId" column="promotion_link_id"/>
         <result property="productTitle" column="product_title"/>
         <result property="productPic" column="product_pic"/>
@@ -79,8 +81,9 @@
             second_colonel_buyin_id, second_colonel_activity_id, settle_second_colonel_commission, flow_point, phase_id,
             order_status, order_type, pick_source, cursor,
             talent_id,
-            channel_user_id, channel_user_name, channel_dept_id,
-            user_id, dept_id, colonel_user_id, colonel_user_name, promotion_link_id, product_title, talent_name,
+            channel_user_id, channel_user_name, channel_dept_id, channel_attribution_status,
+            user_id, dept_id, colonel_user_id, colonel_user_name, recruiter_attribution_status,
+            promotion_link_id, product_title, talent_name,
             colonel_activity_id, pay_time, order_create_time, settle_time,
             attribution_status, attribution_remark, create_time, update_time, version, deleted, extra_data
         )
@@ -94,8 +97,9 @@
             #{secondColonelBuyinId}, #{secondActivityId}, #{settleSecondColonelCommission}, #{flowPoint}, #{phaseId},
             #{orderStatus}, #{orderType}, #{pickSource}, #{cursor},
             #{talentId},
-            #{channelUserId}, #{channelUserName}, #{channelDeptId},
-            #{userId}, #{deptId}, #{colonelUserId}, #{colonelUserName}, #{promotionLinkId}, #{productTitle}, #{talentName},
+            #{channelUserId}, #{channelUserName}, #{channelDeptId}, #{channelAttributionStatus},
+            #{userId}, #{deptId}, #{colonelUserId}, #{colonelUserName}, #{recruiterAttributionStatus},
+            #{promotionLinkId}, #{productTitle}, #{talentName},
             #{activityId}, #{payTime}, #{orderCreateTime}, #{settleTime},
             #{attributionStatus}, #{attributionRemark}, #{createTime}, #{updateTime},
             COALESCE(#{version}, 0), #{deleted},
@@ -140,10 +144,12 @@
             channel_user_id = #{channelUserId},
             channel_user_name = #{channelUserName},
             channel_dept_id = #{channelDeptId},
+            channel_attribution_status = #{channelAttributionStatus},
             user_id = #{userId},
             dept_id = #{deptId},
             colonel_user_id = #{colonelUserId},
             colonel_user_name = #{colonelUserName},
+            recruiter_attribution_status = #{recruiterAttributionStatus},
             promotion_link_id = #{promotionLinkId},
             product_title = #{productTitle},
             talent_name = #{talentName},
@@ -195,10 +201,12 @@
             co.channel_user_id,
             co.channel_user_name,
             co.channel_dept_id,
+            co.channel_attribution_status,
             co.user_id,
             co.dept_id,
             co.colonel_user_id,
             co.colonel_user_name,
+            co.recruiter_attribution_status,
             co.promotion_link_id,
             co.product_title,
             COALESCE(
