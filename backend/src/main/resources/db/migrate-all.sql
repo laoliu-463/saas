@@ -121,6 +121,7 @@ CREATE TABLE IF NOT EXISTS promotion_link (
     talent_name       VARCHAR(200),
     channel_user_id   UUID,
     channel_user_name VARCHAR(100),
+    attribution_owner_type VARCHAR(32),
     original_product_url TEXT,
     promotion_url     TEXT,
     short_url         TEXT,
@@ -1573,3 +1574,4 @@ CREATE INDEX IF NOT EXISTS idx_order_sync_dedup_claim_row_id
 \i alter-product-library-query-performance-20260625.sql
 \i migrate-sys-dept-dept-type.sql
 \i alter-authorization-foundation-20260713.sql
+\i alter-role-aware-promotion-link-attribution-20260716.sql

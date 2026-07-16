@@ -128,6 +128,10 @@ public class PickSourceMapping extends VersionedEntity {
     @TableField("channel_user_name")
     private String channelUserName;
 
+    /** 创建推广链接时固化的归属维度：CHANNEL 或 RECRUITER。 */
+    @TableField("attribution_owner_type")
+    private String attributionOwnerType;
+
     /**
      * 达人 ID
      * <p>对应数据库列：{@code talent_id}，推广来源关联的达人标识</p>

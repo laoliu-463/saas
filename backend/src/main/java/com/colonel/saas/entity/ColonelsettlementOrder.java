@@ -433,6 +433,14 @@ public class ColonelsettlementOrder implements Serializable {
     @TableField("attribution_remark")
     private String attributionRemark;
 
+    /** 渠道归属的稳定来源值。 */
+    @TableField("channel_attribution_source")
+    private String channelAttributionSource;
+
+    /** 招商归属的稳定来源值。 */
+    @TableField("recruiter_attribution_source")
+    private String recruiterAttributionSource;
+
     /**
      * 未归属原因
      * <p>非数据库持久化字段（exist = false），仅在未归属时填充，

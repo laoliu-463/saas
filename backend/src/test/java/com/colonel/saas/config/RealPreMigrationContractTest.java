@@ -96,6 +96,27 @@ class RealPreMigrationContractTest {
         assertFinancialAndExclusiveConstraints(migrationSql);
     }
 
+    @Test
+    void roleAwareAttributionMigration_shouldBeDeployedWithRequiredFacts() throws IOException {
+        Path migrationPath = DB_DIR.resolve("alter-role-aware-promotion-link-attribution-20260716.sql");
+
+        assertThat(migrationPath).exists();
+        String migration = readLower(migrationPath);
+        assertThat(migration)
+                .contains("alter table promotion_link")
+                .contains("add column if not exists attribution_owner_type")
+                .contains("alter table pick_source_mapping")
+                .contains("alter table colonelsettlement_order")
+                .contains("add column if not exists channel_attribution_source")
+                .contains("add column if not exists recruiter_attribution_source")
+                .contains("'channel', 'recruiter'");
+
+        String deployScript = Files.readString(
+                REPO_ROOT.resolve("harness/scripts/commands/deploy-remote.ps1"));
+        assertThat(deployScript)
+                .contains("alter-role-aware-promotion-link-attribution-20260716.sql");
+    }
+
     private static void assertFinancialAndExclusiveConstraints(String sql) {
         assertThat(sql).contains("ck_exclusive_talent_non_negative_financials");
         assertThat(sql).contains("service_fee >= 0");
