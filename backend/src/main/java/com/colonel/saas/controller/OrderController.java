@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.colonel.saas.annotation.RequireRoles;
 import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.enums.DataScope;
+import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.config.OrderDerivedCacheKeys;
 import com.colonel.saas.constant.DeptType;
@@ -450,6 +451,9 @@ public class OrderController extends BaseController {
             @RequestAttribute("userId") UUID userId) {
         ReplayAttributionRequest safeRequest = request == null ? new ReplayAttributionRequest() : request;
         boolean dryRun = Boolean.TRUE.equals(safeRequest.getDryRun());
+        if (!dryRun && !StringUtils.hasText(safeRequest.getReason())) {
+            throw BusinessException.param("实际执行历史订单归因重算必须填写 reason");
+        }
         OrderAttributionReplayService.ReplayResult result = orderAttributionReplayService.replay(
                 safeRequest.getOrderIds(),
                 safeRequest.getReason(),
