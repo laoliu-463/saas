@@ -59,7 +59,11 @@ class OrderDefaultAttributionResolverTest {
         OrderDefaultAttributionResult result = resolver.resolve(order, Map.of());
 
         assertThat(result.defaultChannelUserId()).isEqualTo(channelUserId);
-        assertThat(result.attributionStatus()).isEqualTo(AttributionService.STATUS_ATTRIBUTED);
+        assertThat(result.channelAttributionStatus())
+                .isEqualTo(OrderDefaultAttributionResult.CHANNEL_ATTRIBUTED);
+        assertThat(result.recruiterAttributionStatus())
+                .isEqualTo(OrderDefaultAttributionResult.RECRUITER_UNATTRIBUTED);
+        assertThat(result.attributionStatus()).isEqualTo(AttributionService.STATUS_UNATTRIBUTED);
     }
 
     @Test
