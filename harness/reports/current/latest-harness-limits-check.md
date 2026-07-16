@@ -20,3 +20,4 @@
 
 ## Historical Debt
 - [DIRECT_FILE_COUNT_EXCEEDED] harness/reports: Repository file count 24 exceeds 20.
+- [DIRECT_FILE_COUNT_EXCEEDED] harness/reports/current: Repository file count 55 exceeds 50.
