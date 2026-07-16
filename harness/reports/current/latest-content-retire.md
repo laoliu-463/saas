@@ -2,10 +2,10 @@
 
 ## Metadata
 
-- Time: 2026-07-16 22:55:18 +08:00
+- Time: 2026-07-16 23:00:59 +08:00
 - Action: Plan
 - DryRun: False
-- Reason: refactor(ddd): keep a single performance order event consumer
+- Reason: chore(ddd): verify single-consumer backend slice
 - Manifest: (none)
 - ArchiveRoot: harness/archive/retired-content
 - AllowSourceCode: False
