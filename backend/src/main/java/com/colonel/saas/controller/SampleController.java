@@ -219,6 +219,17 @@ public class SampleController {
                 id, userId, deptId, dataScope, roleCodes, idempotencyKey));
     }
 
+    @GetMapping("/{id:[0-9a-fA-F\\-]{36}}/order-copy")
+    public ApiResult<SampleCopyTextVO> copyOrder(
+            @PathVariable UUID id,
+            @RequestAttribute("userId") UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
+            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
+            @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
+        return ApiResult.ok(sampleApplicationService.copyOrder(
+                id, userId, deptId, dataScope, roleCodes));
+    }
+
     @GetMapping("/{id:[0-9a-fA-F\\-]{36}}/status-logs")
     public ApiResult<List<StatusLogVO>> getStatusLogs(
             @Parameter(description = "寄样申请 ID，使用 UUID 格式。") @PathVariable UUID id,

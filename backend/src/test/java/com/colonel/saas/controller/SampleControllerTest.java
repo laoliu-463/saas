@@ -220,6 +220,8 @@ class SampleControllerTest {
         com.colonel.saas.vo.sample.SampleCopyTextVO copyText =
                 new com.colonel.saas.vo.sample.SampleCopyTextVO(
                         "推广正文", true, "https://short.example/p1", null);
+        com.colonel.saas.vo.sample.SampleCopyTextVO orderCopyText =
+                new com.colonel.saas.vo.sample.SampleCopyTextVO("订单正文");
         Object roles = List.of(RoleCodes.CHANNEL_STAFF);
         when(sampleService.getEditContext(sampleId, userId, null, DataScope.PERSONAL, roles))
                 .thenReturn(editContext);
@@ -234,6 +236,9 @@ class SampleControllerTest {
         when(sampleService.copyPromotion(
                 sampleId, userId, null, DataScope.PERSONAL, roles, "request-idem-1"))
                 .thenReturn(copyText);
+        when(sampleService.copyOrder(
+                sampleId, userId, null, DataScope.PERSONAL, roles))
+                .thenReturn(orderCopyText);
 
         assertThat(controller.getEditContext(
                 sampleId, userId, null, DataScope.PERSONAL, roles).getData())
@@ -250,6 +255,9 @@ class SampleControllerTest {
         assertThat(controller.copyPromotion(
                 sampleId, "request-idem-1", userId, null, DataScope.PERSONAL, roles).getData())
                 .isSameAs(copyText);
+        assertThat(controller.copyOrder(
+                sampleId, userId, null, DataScope.PERSONAL, roles).getData())
+                .isSameAs(orderCopyText);
 
         assertThat(SampleController.class.getMethod(
                 "getEditContext", UUID.class, UUID.class, UUID.class, DataScope.class, Object.class)
@@ -289,6 +297,17 @@ class SampleControllerTest {
                 Object.class)
                 .getAnnotation(PostMapping.class).value())
                 .containsExactly("/{id:[0-9a-fA-F\\-]{36}}/promotion-copy");
+        assertThat(SampleController.class.getMethod(
+                "copyOrder",
+                UUID.class,
+                UUID.class,
+                UUID.class,
+                DataScope.class,
+                Object.class)
+                .getAnnotation(GetMapping.class).value())
+                .containsExactly("/{id:[0-9a-fA-F\\-]{36}}/order-copy");
+        verify(sampleService).copyOrder(
+                sampleId, userId, null, DataScope.PERSONAL, roles);
     }
 
     @Test

@@ -7,6 +7,7 @@ import com.colonel.saas.common.exception.OptimisticLockSupport;
 import com.colonel.saas.domain.product.facade.ProductPromotionFacade;
 import com.colonel.saas.domain.product.facade.dto.ProductPromotionCopyDTO;
 import com.colonel.saas.domain.sample.policy.SampleCooperationActionPolicy;
+import com.colonel.saas.domain.sample.policy.SampleOrderCopyPolicy;
 import com.colonel.saas.domain.sample.policy.SampleRemarkPolicy;
 import com.colonel.saas.domain.talent.facade.TalentDomainFacade;
 import com.colonel.saas.domain.talent.facade.dto.TalentClaimAddressDTO;
@@ -43,6 +44,7 @@ public class SampleCooperationApplicationService {
     private final SampleCooperationActionPolicy actionPolicy;
     private final SampleRemarkPolicy remarkPolicy;
     private final ProductPromotionFacade productPromotionFacade;
+    private final SampleOrderCopyPolicy orderCopyPolicy;
 
     /** 保留 Task 3 既有测试和非 Spring 调用方的构造方式。 */
     public SampleCooperationApplicationService(
@@ -59,7 +61,8 @@ public class SampleCooperationApplicationService {
                 talentDomainFacade,
                 actionPolicy,
                 remarkPolicy,
-                null);
+                null,
+                new SampleOrderCopyPolicy());
     }
 
     /** Spring 运行路径使用包含商品推广门面的完整构造器。 */
@@ -71,7 +74,8 @@ public class SampleCooperationApplicationService {
             TalentDomainFacade talentDomainFacade,
             SampleCooperationActionPolicy actionPolicy,
             SampleRemarkPolicy remarkPolicy,
-            ProductPromotionFacade productPromotionFacade) {
+            ProductPromotionFacade productPromotionFacade,
+            SampleOrderCopyPolicy orderCopyPolicy) {
         this.sampleQueryApplicationService = sampleQueryApplicationService;
         this.sampleRequestMapper = sampleRequestMapper;
         this.samplePrivateNoteMapper = samplePrivateNoteMapper;
@@ -79,6 +83,7 @@ public class SampleCooperationApplicationService {
         this.actionPolicy = actionPolicy;
         this.remarkPolicy = remarkPolicy;
         this.productPromotionFacade = productPromotionFacade;
+        this.orderCopyPolicy = orderCopyPolicy;
     }
 
     /**
@@ -124,6 +129,35 @@ public class SampleCooperationApplicationService {
                 result.promotionLinkGenerated(),
                 result.promotionLink(),
                 result.fallbackReason());
+    }
+
+    /**
+     * 基于可见寄样单、商品快照读模型和合作 owner 的达人事实生成订单文本。
+     */
+    public SampleCopyTextVO copyOrder(
+            UUID sampleId,
+            UUID currentUserId,
+            UUID currentDeptId,
+            DataScope dataScope,
+            Object roleCodes) {
+        SampleVO visible = requireVisibleSample(
+                sampleId, currentUserId, currentDeptId, dataScope, roleCodes);
+        SampleRequest sample = requireSample(sampleId);
+        SampleEditContextVO context = buildEditContext(sample, visible);
+        String text = orderCopyPolicy.format(new SampleOrderCopyPolicy.OrderCopyFacts(
+                context.productName(),
+                context.productExternalId(),
+                context.shopName(),
+                context.productSpecification(),
+                context.remark(),
+                context.talentNickname(),
+                context.talentDouyinNo(),
+                context.talentFansCount(),
+                context.talentWindowSales30d(),
+                context.recipientName(),
+                context.recipientPhone(),
+                context.recipientAddress()));
+        return new SampleCopyTextVO(text);
     }
 
     public SampleEditContextVO getEditContext(

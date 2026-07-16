@@ -8,6 +8,7 @@ import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.domain.product.facade.ProductPromotionFacade;
 import com.colonel.saas.domain.product.facade.dto.ProductPromotionCopyDTO;
 import com.colonel.saas.domain.sample.policy.SampleCooperationActionPolicy;
+import com.colonel.saas.domain.sample.policy.SampleOrderCopyPolicy;
 import com.colonel.saas.domain.sample.policy.SampleRemarkPolicy;
 import com.colonel.saas.domain.talent.facade.TalentDomainFacade;
 import com.colonel.saas.domain.talent.facade.dto.TalentClaimAddressDTO;
@@ -56,6 +57,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -194,6 +196,85 @@ class SampleCooperationApplicationServiceTest {
     }
 
     @Test
+    void copyOrder_shouldUseVisibleProductFactsTalentWindowSalesAndOwnerClaimAddress() {
+        UUID sampleId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        UUID viewerId = UUID.randomUUID();
+        UUID talentId = UUID.randomUUID();
+        SampleRequest sample = sample(sampleId, ownerId, talentId, SampleStatus.PENDING_AUDIT, 3);
+        sample.setExtraData(new LinkedHashMap<>(Map.of(
+                "applyReason", "  主播试用  ",
+                "specification", "  50ml  ")));
+        SampleVO visible = visibleSample(sample);
+        visible.setProductExternalId("3820194249627009436");
+        visible.setProductName("轻奢防晒霜");
+        visible.setShopName("轻奢美妆旗舰店");
+        visible.setEligibilityCheck(Map.of("sales30d", 990000L, "sales_30d", 880000L));
+        Object roles = List.of(RoleCodes.CHANNEL_STAFF);
+
+        when(sampleQueryApplicationService.getSampleById(
+                sampleId, viewerId, null, DataScope.PERSONAL, roles))
+                .thenReturn(visible);
+        when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
+        when(talentDomainFacade.findTalentById(talentId)).thenReturn(new TalentReadDTO(
+                talentId, "uid-1", "dy001", "达人甲", 68000L, 1,
+                null, null, null, null, 321L));
+        when(talentDomainFacade.findActiveClaimAddress(talentId, ownerId)).thenReturn(
+                new TalentClaimAddressDTO(
+                        talentId, ownerId, "张三", "13800000000", "杭州市西湖区测试路 1 号"));
+
+        SampleCopyTextVO result = service.copyOrder(
+                sampleId, viewerId, null, DataScope.PERSONAL, roles);
+
+        assertThat(result).isEqualTo(new SampleCopyTextVO(String.join("\n",
+                "商品名称：轻奢防晒霜",
+                "商品ID：3820194249627009436",
+                "店铺：轻奢美妆旗舰店",
+                "申请数量：1",
+                "商品规格：50ml",
+                "申样备注：主播试用",
+                "达人昵称：达人甲",
+                "抖音号：dy001",
+                "粉丝数：6.8W",
+                "近30天橱窗销量：321",
+                "收货人：张三",
+                "收货电话：13800000000",
+                "收货地址：杭州市西湖区测试路 1 号")));
+        assertThat(result.text()).doesNotContain("990000", "880000");
+
+        InOrder order = inOrder(sampleQueryApplicationService, sampleRequestMapper, talentDomainFacade);
+        order.verify(sampleQueryApplicationService).getSampleById(
+                sampleId, viewerId, null, DataScope.PERSONAL, roles);
+        order.verify(sampleRequestMapper).selectById(sampleId);
+        order.verify(talentDomainFacade).findTalentById(talentId);
+        order.verify(talentDomainFacade).findActiveClaimAddress(talentId, ownerId);
+        verify(talentDomainFacade, never()).findActiveClaimAddress(talentId, viewerId);
+        verify(sampleRequestMapper, never()).insert(any(SampleRequest.class));
+        verify(sampleRequestMapper, never()).updateById(any(SampleRequest.class));
+        verify(productPromotionFacade, never()).copyForSample(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void copyOrder_shouldPreserveVisibilityFailureWithoutReadingOrWritingSampleFacts() {
+        UUID sampleId = UUID.randomUUID();
+        UUID viewerId = UUID.randomUUID();
+        Object roles = List.of(RoleCodes.CHANNEL_STAFF);
+        when(sampleQueryApplicationService.getSampleById(
+                sampleId, viewerId, null, DataScope.PERSONAL, roles))
+                .thenThrow(BusinessException.forbidden("无权查看该寄样单"));
+
+        assertThatThrownBy(() -> service.copyOrder(
+                sampleId, viewerId, null, DataScope.PERSONAL, roles))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("无权查看");
+
+        verify(sampleRequestMapper, never()).selectById(any());
+        verify(sampleRequestMapper, never()).insert(any(SampleRequest.class));
+        verify(sampleRequestMapper, never()).updateById(any(SampleRequest.class));
+        verifyNoInteractions(talentDomainFacade, productPromotionFacade);
+    }
+
+    @Test
     void sampleCooperationService_shouldUseOneAutowiredFullConstructorAndNoCrossDomainMapper() throws Exception {
         var legacy = SampleCooperationApplicationService.class.getConstructor(
                 SampleQueryApplicationService.class,
@@ -209,7 +290,8 @@ class SampleCooperationApplicationServiceTest {
                 TalentDomainFacade.class,
                 SampleCooperationActionPolicy.class,
                 SampleRemarkPolicy.class,
-                ProductPromotionFacade.class);
+                ProductPromotionFacade.class,
+                SampleOrderCopyPolicy.class);
 
         assertThat(SampleCooperationApplicationService.class.getConstructors()).hasSize(2);
         assertThat(legacy.getAnnotation(Autowired.class)).isNull();
@@ -776,7 +858,8 @@ class SampleCooperationApplicationServiceTest {
                 talentDomainFacade,
                 new SampleCooperationActionPolicy(checker),
                 new SampleRemarkPolicy(),
-                productPromotionFacade);
+                productPromotionFacade,
+                new SampleOrderCopyPolicy());
     }
 
     private static SampleVO sampleView(

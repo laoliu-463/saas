@@ -1,0 +1,95 @@
+package com.colonel.saas.domain.sample.policy;
+
+import org.junit.jupiter.api.Test;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+class SampleOrderCopyPolicyTest {
+
+    private final SampleOrderCopyPolicy policy = new SampleOrderCopyPolicy();
+
+    @Test
+    void format_shouldProduceExactThirteenLineOrderText() {
+        String text = policy.format(new SampleOrderCopyPolicy.OrderCopyFacts(
+                "轻奢防晒霜",
+                "3820194249627009436",
+                "轻奢美妆旗舰店",
+                "50ml",
+                "主播试用",
+                "达人甲",
+                "dy001",
+                68000L,
+                321L,
+                "张三",
+                "13800000000",
+                "杭州市西湖区测试路 1 号"));
+
+        assertThat(text).isEqualTo(String.join("\n",
+                "商品名称：轻奢防晒霜",
+                "商品ID：3820194249627009436",
+                "店铺：轻奢美妆旗舰店",
+                "申请数量：1",
+                "商品规格：50ml",
+                "申样备注：主播试用",
+                "达人昵称：达人甲",
+                "抖音号：dy001",
+                "粉丝数：6.8W",
+                "近30天橱窗销量：321",
+                "收货人：张三",
+                "收货电话：13800000000",
+                "收货地址：杭州市西湖区测试路 1 号"));
+        assertThat(text.split("\n", -1)).hasSize(13);
+    }
+
+    @Test
+    void format_shouldHandleFollowerBoundariesAndFailClosedValues() {
+        assertThat(followerLine(10000L)).isEqualTo("粉丝数：1W");
+        assertThat(followerLine(9999L)).isEqualTo("粉丝数：9999");
+        assertThat(followerLine(null)).isEqualTo("粉丝数：---");
+        assertThat(followerLine(-1L)).isEqualTo("粉丝数：---");
+    }
+
+    @Test
+    void format_shouldKeepBlankRemarkLineAndUsePlaceholdersForMissingFacts() {
+        String text = policy.format(new SampleOrderCopyPolicy.OrderCopyFacts(
+                null,
+                null,
+                "  ",
+                null,
+                null,
+                null,
+                null,
+                null,
+                -1L,
+                null,
+                null,
+                null));
+
+        assertThat(text).containsSubsequence(
+                "商品名称：---\n",
+                "商品ID：---\n",
+                "店铺：---\n",
+                "申请数量：1\n",
+                "商品规格：---\n",
+                "申样备注：\n",
+                "达人昵称：---\n",
+                "抖音号：---\n",
+                "粉丝数：---\n",
+                "近30天橱窗销量：---\n",
+                "收货人：---\n",
+                "收货电话：---\n",
+                "收货地址：---");
+        assertThat(text).doesNotContain("sales30d", "sales_30d");
+    }
+
+    private String followerLine(Long followers) {
+        String text = policy.format(new SampleOrderCopyPolicy.OrderCopyFacts(
+                "商品", "P-1", "店铺", "规格", "备注",
+                "达人", "douyin", followers, 1L,
+                "收件人", "13800000000", "地址"));
+        return text.lines()
+                .filter(line -> line.startsWith("粉丝数："))
+                .findFirst()
+                .orElseThrow();
+    }
+}

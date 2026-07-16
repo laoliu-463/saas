@@ -189,6 +189,20 @@ public class SampleApplicationService {
                 id, userId, deptId, dataScope, roleCodes, idempotencyKey);
     }
 
+    public SampleCopyTextVO copyOrder(
+            UUID id,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            Object roleCodes) {
+        if (sampleCooperationApplicationService == null) {
+            throw com.colonel.saas.common.exception.BusinessException.stateInvalid(
+                    "订单复制能力不可用，请检查应用服务装配");
+        }
+        return sampleCooperationApplicationService.copyOrder(
+                id, userId, deptId, dataScope, roleCodes);
+    }
+
     public ApiResult<List<StatusLogVO>> getStatusLogs(
             UUID id, UUID userId, UUID deptId, DataScope dataScope, Object roleCodes) {
         return sampleCommandApplicationService.getStatusLogs(id, userId, deptId, dataScope, roleCodes);
