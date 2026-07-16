@@ -692,7 +692,7 @@ public class PerformanceQueryService {
                        COALESCE(co.product_name, co.product_title) AS product_name,
                        co.shop_name AS partner_name,
                        COALESCE(co.talent_name, '') AS talent_name,
-                       ca.name AS activity_name,
+                       ca.activity_name AS activity_name,
                        dc.username AS default_channel_name,
                        dr.username AS default_recruiter_name,
                        fc.username AS final_channel_name_resolved,

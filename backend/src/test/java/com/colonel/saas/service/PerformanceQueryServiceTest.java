@@ -96,6 +96,11 @@ class PerformanceQueryServiceTest {
         assertThat(response.getOrderStatus()).isEqualTo("FINISHED");
         assertThat(response.getPayTime()).isEqualTo(LocalDateTime.of(2026, 5, 24, 10, 30, 45));
         assertThat(response.getSettleTime()).isEqualTo(LocalDateTime.of(2026, 5, 25, 11, 5, 6));
+
+        ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
+        verify(jdbcTemplate).query(sqlCaptor.capture(), org.mockito.ArgumentMatchers.<RowMapper<?>>any(), any(Object[].class));
+        assertThat(sqlCaptor.getValue()).contains("ca.activity_name AS activity_name");
+        assertThat(sqlCaptor.getValue()).doesNotContain("ca.name AS activity_name");
     }
 
     @Test
