@@ -35,6 +35,9 @@ class DddPerformanceUnitClosureContractTest {
                 "src/test/java/com/colonel/saas/controller/PerformanceOrderAdminControllerTest.java",
                 "src/test/java/com/colonel/saas/service/PerformanceBackfillServiceTest.java",
                 "src/test/java/com/colonel/saas/listener/PerformanceRecordSyncListenerTest.java",
+                "src/test/java/com/colonel/saas/domain/performance/application/PerformanceCalculationExecutionServiceTest.java",
+                "src/test/java/com/colonel/saas/domain/performance/application/PerformanceCalculationRetryServiceTest.java",
+                "src/test/java/com/colonel/saas/domain/performance/application/PerformanceRefundAdjustmentServiceTest.java",
                 "src/test/java/com/colonel/saas/service/DashboardPerformanceSummaryServiceTest.java",
                 "src/test/java/com/colonel/saas/domain/performance/application/PerformanceMonthRecalculationApplicationServiceTest.java",
                 "src/test/java/com/colonel/saas/service/PerformanceMonthRecalculationServiceTest.java",
@@ -80,7 +83,7 @@ class DddPerformanceUnitClosureContractTest {
                 .contains(
                         "aggregateEstimate_shouldUseEstimateColumns",
                         "aggregateEffective_shouldUseEffectiveColumns",
-                        "COALESCE(pr.is_reversed, false) = false");
+                        "pr.is_reversed = FALSE");
         assertThat(readProjectFile("src/test/java/com/colonel/saas/service/PerformanceMetricsQueryServiceTest.java"))
                 .contains(
                         "aggregateRange_shouldUseEstimateColumnsForCreateTrack",
@@ -95,7 +98,13 @@ class DddPerformanceUnitClosureContractTest {
                 .contains(
                         "onOrderSynced_shouldUpsertPerformanceRecordAndPublishCalculatedEventWhenOrderExists",
                         "onOrderSynced_shouldPublishReversedCalculatedEventWhenRefundedOrderIsConsumed",
-                        "onOrderSynced_shouldNotCalculatePerformanceWhenOrderIsStillMissing");
+                        "onOrderSynced_shouldPropagateMissingOrderSoOutboxCanRetry");
+        assertThat(readProjectFile(
+                "src/test/java/com/colonel/saas/domain/performance/application/PerformanceRefundAdjustmentServiceTest.java"))
+                .contains(
+                        "recordRefundShouldCreateIdempotentProportionalAdjustmentForPartialRefund",
+                        "getDeltaEffectiveServiceFee()",
+                        "getDeltaTalentCommission()");
     }
 
     @Test
