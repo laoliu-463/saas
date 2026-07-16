@@ -92,6 +92,9 @@ CREATE TABLE IF NOT EXISTS talent_complaint_reminder (
 CREATE UNIQUE INDEX IF NOT EXISTS uk_talent_complaint_reminder_recipient
     ON talent_complaint_reminder(complaint_id, recipient_user_id)
     WHERE deleted = 0;
-CREATE INDEX IF NOT EXISTS idx_talent_complaint_reminder_recipient_read
-    ON talent_complaint_reminder(recipient_user_id, read_at)
+CREATE INDEX IF NOT EXISTS idx_talent_complaint_reminder_recipient_order
+    ON talent_complaint_reminder(recipient_user_id, create_time DESC, id DESC)
     WHERE deleted = 0;
+CREATE INDEX IF NOT EXISTS idx_talent_complaint_reminder_recipient_unread
+    ON talent_complaint_reminder(recipient_user_id)
+    WHERE deleted = 0 AND read_at IS NULL;

@@ -2,10 +2,13 @@ package com.colonel.saas.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.colonel.saas.entity.TalentComplaint;
+import org.apache.ibatis.annotations.Arg;
+import org.apache.ibatis.annotations.ConstructorArgs;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
+import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
@@ -16,9 +19,25 @@ import java.util.UUID;
 @Mapper
 public interface TalentComplaintMapper extends BaseMapper<TalentComplaint> {
 
+    /**
+     * 达人风险批量摘要，不暴露投诉正文或举报人。
+     */
+    record TalentRiskSummary(
+            UUID talentId,
+            long complaintCount,
+            LocalDateTime latestComplaintAt) {
+    }
+
+    @ConstructorArgs({
+            @Arg(column = "talent_id", javaType = UUID.class),
+            @Arg(column = "complaint_count", javaType = long.class),
+            @Arg(column = "latest_complaint_at", javaType = LocalDateTime.class)
+    })
     @Select("""
             <script>
-            SELECT *
+            SELECT talent_id,
+                   COUNT(*) AS complaint_count,
+                   MAX(create_time) AS latest_complaint_at
             FROM talent_complaint
             WHERE deleted = 0
             <choose>
@@ -32,8 +51,10 @@ public interface TalentComplaintMapper extends BaseMapper<TalentComplaint> {
                 AND 1 = 0
               </otherwise>
             </choose>
-            ORDER BY create_time DESC
+            GROUP BY talent_id
+            ORDER BY latest_complaint_at DESC, talent_id ASC
             </script>
             """)
-    List<TalentComplaint> selectByTalentIds(@Param("talentIds") Collection<UUID> talentIds);
+    List<TalentRiskSummary> selectRiskSummariesByTalentIds(
+            @Param("talentIds") Collection<UUID> talentIds);
 }
