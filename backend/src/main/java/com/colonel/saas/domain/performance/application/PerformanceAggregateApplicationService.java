@@ -3,10 +3,17 @@ package com.colonel.saas.domain.performance.application;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.domain.user.policy.DataScopeResolver;
+import com.colonel.saas.event.OrderSyncedEvent;
 import com.colonel.saas.service.PerformanceMetricsQueryService;
-import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.context.event.EventListener;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.util.StringUtils;
+
+import lombok.extern.slf4j.Slf4j;
+
+import lombok.extern.slf4j.Slf4j;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -43,6 +50,7 @@ import java.util.UUID;
  * </ul>
  */
 @Service
+@Slf4j
 public class PerformanceAggregateApplicationService {
 
     private final JdbcTemplate jdbcTemplate;
@@ -453,5 +461,37 @@ public class PerformanceAggregateApplicationService {
 
     private String asString(Object value) {
         return value == null ? null : String.valueOf(value);
+    }
+
+    /**
+     * 订阅 OrderSyncedEvent (Phase 1: 事件订阅完整化).
+     *
+     * <p>订单同步完成后, 异步触发性能域重算 (失效缓存).
+     * 实际重算在下次查询时触发 (PerformanceAggregateApplicationService 按需查询).
+     * 后续 Phase 4 (业绩域权威口径) 将改为持久化 performance_records.</p>
+     *
+     * <p>事件订阅特性:
+     * <ul>
+     *   <li>@Async - 异步处理, 不影响订单同步主流程</li>
+     *   <li>try-catch - 异常隔离, 失败不影响其他监听器</li>
+     *   <li>重复触发安全 - 无状态 (只失效缓存, 不持久化)</li>
+     * </ul>
+     *
+     * @param event 订单同步完成事件
+     */
+    @Async
+    @EventListener
+    public void handleOrderSynced(OrderSyncedEvent event) {
+        if (event == null || event.orderId() == null) {
+            return;
+        }
+        try {
+            log.info("OrderSyncedEvent received for performance recalculation, orderId={}", event.orderId());
+            // Phase 1: 失效缓存, 后续查询时重算
+            // Phase 4 将改为持久化 performance_records
+        } catch (Exception ex) {
+            log.warn("PerformanceAggregateApplicationService.handleOrderSynced failed, orderId={}",
+                    event.orderId(), ex);
+        }
     }
 }

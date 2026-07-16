@@ -5,6 +5,7 @@ import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.domain.user.policy.DataScopeResolver;
 import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.service.PerformanceMetricsQueryService;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -332,5 +333,15 @@ class PerformanceAggregateApplicationServiceTest {
                 .contains("GROUP BY pr.final_recruiter_user_id")
                 .contains("ORDER BY order_count DESC, order_amount_cent DESC")
                 .contains("LIMIT 10");
+    }
+
+    /**
+     * Phase 1: OrderSyncedEvent 事件订阅 (handleOrderSynced) - null 事件不抛异常.
+     *
+     * <p>测试 Phase 1 修复: 事件订阅 + 异常隔离. 验证 null 事件不抛异常.</p>
+     */
+    @Test
+    void handleOrderSynced_nullEvent_doesNotThrow() {
+        applicationService.handleOrderSynced(null);
     }
 }
