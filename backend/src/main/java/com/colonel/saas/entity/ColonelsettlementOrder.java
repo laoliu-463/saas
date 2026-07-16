@@ -442,6 +442,20 @@ public class ColonelsettlementOrder implements Serializable {
     private String unattributedReason;
 
     /**
+     * 渠道归属状态（双维度归属事实，非数据库持久化字段）。
+     * <p>当前切片作为内存内事实使用，由 {@code OrderDefaultAttributionPolicy.applyToOrder}
+     * 写入，下一切片升级为持久化字段并补 SQL / Mapper XML。</p>
+     */
+    @TableField(exist = false)
+    private String channelAttributionStatus;
+
+    /**
+     * 招商归属状态（双维度归属事实，非数据库持久化字段）。
+     */
+    @TableField(exist = false)
+    private String recruiterAttributionStatus;
+
+    /**
      * 创建时间
      * <p>对应数据库列：{@code create_time}，订单记录入库时间，同时作为分区键</p>
      */
