@@ -4,6 +4,7 @@ import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.service.AttributionService;
 import com.colonel.saas.domain.order.policy.OrderDefaultAttributionResult;
+import com.colonel.saas.domain.shared.attribution.AttributionSource;
 import com.colonel.saas.service.AttributionService.AttributionResult;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -79,14 +80,16 @@ class OrderAttributionRouterTest {
 
         ColonelsettlementOrder order = new ColonelsettlementOrder();
         UUID channelUserId = UUID.randomUUID();
-        OrderDefaultAttributionResult result = OrderDefaultAttributionResult.attributedChannel(
+        OrderDefaultAttributionResult result = OrderDefaultAttributionResult.attributed(
                 channelUserId,
                 channelUserId,
+                null,
+                AttributionSource.PICK_SOURCE,
+                AttributionSource.UNATTRIBUTED,
                 null,
                 null,
                 "act-1",
-                null,
-                AttributionService.REASON_ATTRIBUTED);
+                null);
         when(defaultAttributionResolver.resolve(any(), any())).thenReturn(result);
 
         AttributionResult applied = router.resolveAndApply(order, Map.of(), "达人A");

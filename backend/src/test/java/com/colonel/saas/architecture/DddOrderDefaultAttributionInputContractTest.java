@@ -4,11 +4,14 @@ import com.colonel.saas.domain.order.application.OrderDefaultAttributionResolver
 import com.colonel.saas.domain.order.infrastructure.OrderPickSourceMappingAdapter;
 import com.colonel.saas.domain.order.policy.OrderAttributionInput;
 import com.colonel.saas.domain.order.policy.OrderDefaultAttributionResult;
+import com.colonel.saas.domain.order.policy.OrderLinkAttributionResolution;
+import com.colonel.saas.domain.order.policy.OrderLinkAttributionResolution.Status;
 import com.colonel.saas.domain.product.facade.ProductDomainFacade;
+import com.colonel.saas.domain.shared.attribution.AttributionOwnerType;
+import com.colonel.saas.domain.shared.attribution.AttributionSource;
 import com.colonel.saas.domain.talent.facade.TalentDomainFacade;
 import com.colonel.saas.domain.talent.facade.dto.TalentReadDTO;
 import com.colonel.saas.entity.ColonelsettlementOrder;
-import com.colonel.saas.entity.PickSourceMapping;
 import com.colonel.saas.service.AttributionService;
 import org.junit.jupiter.api.Test;
 
@@ -20,6 +23,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -110,19 +114,13 @@ class DddOrderDefaultAttributionInputContractTest {
         order.setActivityId("order-act");
         order.setPickSource("ps-1");
 
-        UUID channelUserId = UUID.randomUUID();
-        UUID channelDeptId = UUID.randomUUID();
-        PickSourceMapping mapping = new PickSourceMapping();
-        mapping.setUserId(channelUserId);
-        mapping.setDeptId(channelDeptId);
-        mapping.setActivityId("mapping-act");
-
         UUID talentId = UUID.randomUUID();
         UUID recruiterId = UUID.randomUUID();
-        when(mappingAdapter.findByPickSourceOrExtra("ps-1", "extra-1")).thenReturn(mapping);
+        when(mappingAdapter.resolve(org.mockito.ArgumentMatchers.any())).thenReturn(new OrderLinkAttributionResolution(
+                Status.UNIQUE, recruiterId, UUID.randomUUID(), AttributionOwnerType.RECRUITER,
+                AttributionSource.PICK_SOURCE, "UNIQUE_LINK_OWNER", false, false, null));
         when(talentDomainFacade.findByDouyinUid("uid-1"))
                 .thenReturn(new TalentReadDTO(talentId, "uid-1", null, "Talent", null, 1, null, null, null, null));
-        when(productDomainFacade.findProductAssigneeId("order-act", "prod-1")).thenReturn(recruiterId);
         when(productDomainFacade.findActivityDefaultRecruiterId("order-act")).thenReturn(UUID.randomUUID());
 
         OrderDefaultAttributionResult result = resolver.resolve(order, Map.of(
@@ -130,16 +128,15 @@ class DddOrderDefaultAttributionInputContractTest {
                 "pick_extra", "extra-1",
                 "promotion_talent_uid", "uid-1"));
 
-        assertThat(result.defaultChannelUserId()).isEqualTo(channelUserId);
-        assertThat(result.channelDeptId()).isEqualTo(channelDeptId);
+        assertThat(result.defaultChannelUserId()).isNull();
         assertThat(result.defaultRecruiterId()).isEqualTo(recruiterId);
         assertThat(result.talentId()).isEqualTo(talentId);
         assertThat(result.talentUid()).isEqualTo("uid-1");
-        assertThat(result.activityId()).isEqualTo("mapping-act");
+        assertThat(result.activityId()).isEqualTo("order-act");
         assertThat(result.attributionStatus()).isEqualTo(AttributionService.STATUS_ATTRIBUTED);
 
-        verify(mappingAdapter).findByPickSourceOrExtra("ps-1", "extra-1");
-        verify(productDomainFacade).findProductAssigneeId("order-act", "prod-1");
+        verify(mappingAdapter).resolve(org.mockito.ArgumentMatchers.any());
+        verify(productDomainFacade, never()).findProductAssigneeId("order-act", "prod-1");
         verify(productDomainFacade).findActivityDefaultRecruiterId("order-act");
         verify(talentDomainFacade).findByDouyinUid("uid-1");
     }
@@ -152,10 +149,13 @@ class DddOrderDefaultAttributionInputContractTest {
                         "defaultChannelUserId",
                         "channelDeptId",
                         "defaultRecruiterId",
+                        "channelAttributionSource",
+                        "recruiterAttributionSource",
+                        "attributionStatus",
+                        "attributionRemark",
+                        "linkResolution",
                         "talentId",
                         "talentUid",
-                        "activityId",
-                        "attributionStatus",
-                        "attributionRemark");
+                        "activityId");
     }
 }

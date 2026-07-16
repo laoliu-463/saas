@@ -1,17 +1,19 @@
 package com.colonel.saas.domain.order.policy;
 
-import com.colonel.saas.entity.ColonelsettlementOrder;
-import com.colonel.saas.entity.PickSourceMapping;
-import com.colonel.saas.service.AttributionService;
+import com.colonel.saas.domain.order.policy.OrderLinkAttributionResolution.Status;
+import com.colonel.saas.domain.shared.attribution.AttributionOwnerType;
+import com.colonel.saas.domain.shared.attribution.AttributionSource;
 import com.colonel.saas.domain.shared.policy.DomainText;
+import com.colonel.saas.entity.ColonelsettlementOrder;
+import com.colonel.saas.service.AttributionService;
 
 import java.util.UUID;
 
 /**
  * 订单默认归因 Policy（DDD-ORDER-004）。
  *
- * <p>只计算默认渠道（pick_source → mapping → channel）与默认招商（商品负责人 / 活动默认负责人）。
- * 不应用独家达人/独家商家，不计算最终归属、提成或毛利。</p>
+ * <p>推广链接归属以创建时固化的 owner type 为准：招商链接只写招商，渠道链接只写渠道。
+ * 活动招商仅在招商维度为空时回退；商品负责人不参与默认归因。</p>
  */
 public final class OrderDefaultAttributionPolicy {
 
@@ -21,10 +23,7 @@ public final class OrderDefaultAttributionPolicy {
         NO_MAPPING
     }
 
-    public record RecruiterLookup(
-            UUID productAssigneeId,
-            UUID activityDefaultRecruiterId,
-            boolean lookupFailed) {
+    public record RecruiterLookup(UUID activityDefaultRecruiterId, boolean lookupFailed) {
     }
 
     private OrderDefaultAttributionPolicy() {
@@ -32,60 +31,59 @@ public final class OrderDefaultAttributionPolicy {
 
     public static OrderDefaultAttributionResult resolve(
             OrderAttributionInput input,
-            PickSourceMapping channelMapping,
+            OrderLinkAttributionResolution linkResolution,
             RecruiterLookup recruiterLookup) {
         if (input == null) {
             return OrderDefaultAttributionResult.unattributed(
-                    null, null, null, null, AttributionService.REASON_SYNC_FAILED);
+                    null, null, null,
+                    AttributionSource.UNATTRIBUTED,
+                    AttributionSource.UNATTRIBUTED,
+                    AttributionService.REASON_SYNC_FAILED,
+                    linkResolution);
         }
-        if (!DomainText.hasText(input.productId())) {
-            return OrderDefaultAttributionResult.unattributed(
+
+        UUID channelUserId = null;
+        UUID channelDeptId = null;
+        UUID recruiterId = null;
+        String channelSource = channelSource(linkResolution);
+        String recruiterSource = AttributionSource.UNATTRIBUTED;
+
+        if (isUniqueOwner(linkResolution, AttributionOwnerType.RECRUITER)) {
+            recruiterId = linkResolution.userId();
+            recruiterSource = linkResolution.source();
+        } else if (isUniqueOwner(linkResolution, AttributionOwnerType.CHANNEL)) {
+            channelUserId = linkResolution.userId();
+            channelDeptId = linkResolution.deptId();
+            channelSource = linkResolution.source();
+        }
+
+        if (recruiterId == null && recruiterLookup != null && !recruiterLookup.lookupFailed()
+                && recruiterLookup.activityDefaultRecruiterId() != null) {
+            recruiterId = recruiterLookup.activityDefaultRecruiterId();
+            recruiterSource = AttributionSource.ACTIVITY_OWNER;
+        }
+
+        if (channelUserId != null || recruiterId != null) {
+            return OrderDefaultAttributionResult.attributed(
+                    channelUserId,
+                    channelDeptId,
+                    recruiterId,
+                    channelSource,
+                    recruiterSource,
                     input.talentId(),
                     input.talentUid(),
                     input.activityId(),
-                    resolveDefaultRecruiter(recruiterLookup),
-                    AttributionService.REASON_PRODUCT_NOT_FOUND);
+                    linkResolution);
         }
 
-        UUID defaultRecruiterId = resolveDefaultRecruiter(recruiterLookup);
-
-        if (!DomainText.hasText(input.pickSource()) && !DomainText.hasText(input.pickExtra())) {
-            return OrderDefaultAttributionResult.unattributed(
-                    input.talentId(),
-                    input.talentUid(),
-                    input.activityId(),
-                    defaultRecruiterId,
-                    AttributionService.REASON_NO_PICK_SOURCE);
-        }
-
-        if (channelMapping == null) {
-            return OrderDefaultAttributionResult.unattributed(
-                    input.talentId(),
-                    input.talentUid(),
-                    input.activityId(),
-                    defaultRecruiterId,
-                    AttributionService.REASON_MAPPING_NOT_FOUND);
-        }
-        if (channelMapping.getUserId() == null) {
-            return OrderDefaultAttributionResult.unattributed(
-                    input.talentId(),
-                    input.talentUid(),
-                    input.activityId(),
-                    defaultRecruiterId,
-                    AttributionService.REASON_CHANNEL_NOT_FOUND);
-        }
-
-        String resolvedActivityId = firstNonBlank(
-                channelMapping.getActivityId(),
-                input.activityId());
-        return OrderDefaultAttributionResult.attributedChannel(
-                channelMapping.getUserId(),
-                channelMapping.getDeptId(),
+        return OrderDefaultAttributionResult.unattributed(
                 input.talentId(),
                 input.talentUid(),
-                resolvedActivityId,
-                defaultRecruiterId,
-                AttributionService.REASON_ATTRIBUTED);
+                input.activityId(),
+                channelSource,
+                recruiterSource,
+                unattributedRemark(input, linkResolution),
+                linkResolution);
     }
 
     public static void applyToOrder(
@@ -97,11 +95,14 @@ public final class OrderDefaultAttributionPolicy {
         }
         order.setChannelUserId(result.defaultChannelUserId());
         order.setChannelDeptId(result.channelDeptId());
+        // legacy user/dept bridge follows channel only and must not overwrite招商归属。
         order.setUserId(result.defaultChannelUserId());
         order.setDeptId(result.channelDeptId());
         order.setColonelUserId(result.defaultRecruiterId());
         order.setTalentId(result.talentId());
         order.setActivityId(firstNonBlank(result.activityId(), order.getActivityId()));
+        order.setChannelAttributionSource(result.channelAttributionSource());
+        order.setRecruiterAttributionSource(result.recruiterAttributionSource());
         order.setAttributionStatus(result.attributionStatus());
         order.setAttributionRemark(result.attributionRemark());
         order.setProductTitle(order.getProductName());
@@ -132,10 +133,9 @@ public final class OrderDefaultAttributionPolicy {
     }
 
     public static void applyInitialUnattributedStatus(ColonelsettlementOrder order) {
-        if (order == null) {
-            return;
+        if (order != null) {
+            order.setAttributionStatus(AttributionService.STATUS_UNATTRIBUTED);
         }
-        order.setAttributionStatus(AttributionService.STATUS_UNATTRIBUTED);
     }
 
     public static boolean isAttributed(String attributionStatus) {
@@ -147,7 +147,8 @@ public final class OrderDefaultAttributionPolicy {
             return UnattributedBucket.NO_PICK_SOURCE;
         }
         if (AttributionService.REASON_MAPPING_NOT_FOUND.equals(remark)
-                || AttributionService.REASON_COLONEL_MAPPING_NOT_FOUND.equals(remark)) {
+                || AttributionService.REASON_COLONEL_MAPPING_NOT_FOUND.equals(remark)
+                || "MAPPING_NOT_FOUND".equals(remark)) {
             return UnattributedBucket.NO_MAPPING;
         }
         return UnattributedBucket.NONE;
@@ -179,14 +180,38 @@ public final class OrderDefaultAttributionPolicy {
                 AttributionService.NativeMappingTrace.none());
     }
 
-    private static UUID resolveDefaultRecruiter(RecruiterLookup recruiterLookup) {
-        if (recruiterLookup == null || recruiterLookup.lookupFailed()) {
-            return null;
+    private static boolean isUniqueOwner(
+            OrderLinkAttributionResolution resolution,
+            AttributionOwnerType ownerType) {
+        return resolution != null
+                && resolution.status() == Status.UNIQUE
+                && resolution.ownerType() == ownerType
+                && resolution.userId() != null;
+    }
+
+    private static String channelSource(OrderLinkAttributionResolution resolution) {
+        if (resolution != null && resolution.status() == Status.AMBIGUOUS) {
+            return AttributionSource.AMBIGUOUS;
         }
-        if (recruiterLookup.productAssigneeId() != null) {
-            return recruiterLookup.productAssigneeId();
+        if (isUniqueOwner(resolution, AttributionOwnerType.CHANNEL)) {
+            return resolution.source();
         }
-        return recruiterLookup.activityDefaultRecruiterId();
+        return AttributionSource.UNATTRIBUTED;
+    }
+
+    private static String unattributedRemark(
+            OrderAttributionInput input,
+            OrderLinkAttributionResolution resolution) {
+        if (resolution != null && DomainText.hasText(resolution.reason())) {
+            return resolution.reason();
+        }
+        if (!DomainText.hasText(input.pickSource())
+                && !DomainText.hasText(input.pickExtra())
+                && !DomainText.hasText(input.colonelBuyinId())
+                && !DomainText.hasText(input.secondColonelBuyinId())) {
+            return AttributionService.REASON_NO_PICK_SOURCE;
+        }
+        return AttributionService.REASON_MAPPING_NOT_FOUND;
     }
 
     private static String firstNonBlank(String... values) {
