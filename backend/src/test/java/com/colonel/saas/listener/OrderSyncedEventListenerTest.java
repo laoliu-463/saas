@@ -3,7 +3,6 @@ package com.colonel.saas.listener;
 import com.colonel.saas.config.OrderDerivedCacheKeys;
 import com.colonel.saas.domain.talent.application.TalentClaimApplicationService;
 import com.colonel.saas.event.OrderSyncedEvent;
-import com.colonel.saas.service.DashboardPerformanceSummaryService;
 import com.colonel.saas.service.ShortTtlCacheService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -23,7 +22,6 @@ import static org.mockito.Mockito.verify;
 @ExtendWith(MockitoExtension.class)
 class OrderSyncedEventListenerTest {
 
-    @Mock private DashboardPerformanceSummaryService summaryService;
     @Mock private ShortTtlCacheService shortTtlCacheService;
     @Mock private TalentClaimApplicationService talentClaimApplicationService;
 
@@ -32,18 +30,16 @@ class OrderSyncedEventListenerTest {
     @BeforeEach
     void setUp() {
         listener = new OrderSyncedEventListener(
-                summaryService,
                 shortTtlCacheService,
                 talentClaimApplicationService);
     }
 
     @Test
-    void onOrderSynced_shouldRefreshDashboardSummaryAndEvictDerivedCachesAtEntrypoint() {
+    void onOrderSynced_shouldOnlyEvictDerivedCachesAndExtendTalentProtection() {
         OrderSyncedEvent event = event(1, "event_uid", Map.of("author_id", " dy_author "));
 
         listener.onOrderSynced(event);
 
-        verify(summaryService).applyOrderSynced(event);
         verify(shortTtlCacheService).evictByPrefix(OrderDerivedCacheKeys.DASHBOARD_SUMMARY_PREFIX);
         verify(shortTtlCacheService).evictByPrefix(OrderDerivedCacheKeys.DASHBOARD_METRICS_PREFIX);
         verify(shortTtlCacheService).evictByPrefix(OrderDerivedCacheKeys.ORDER_STATS_PREFIX);

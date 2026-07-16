@@ -4,10 +4,12 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler;
 import lombok.Data;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -65,6 +67,18 @@ public class PerformanceRecord {
     @TableField("default_recruiter_user_id")
     private UUID defaultRecruiterUserId;
 
+    @TableField("default_channel_dept_id")
+    private UUID defaultChannelDeptId;
+
+    @TableField("default_recruiter_dept_id")
+    private UUID defaultRecruiterDeptId;
+
+    @TableField("default_channel_attribution")
+    private String defaultChannelAttribution;
+
+    @TableField("default_recruiter_attribution")
+    private String defaultRecruiterAttribution;
+
     /**
      * 最终渠道用户 ID
      * <p>对应数据库列：{@code final_channel_user_id}，经过归属规则调整后的最终渠道归属人员，
@@ -79,6 +93,12 @@ public class PerformanceRecord {
      */
     @TableField("final_recruiter_user_id")
     private UUID finalRecruiterUserId;
+
+    @TableField("final_channel_dept_id")
+    private UUID finalChannelDeptId;
+
+    @TableField("final_recruiter_dept_id")
+    private UUID finalRecruiterDeptId;
 
     /**
      * 渠道归属方式
@@ -95,6 +115,12 @@ public class PerformanceRecord {
      */
     @TableField("recruiter_attribution")
     private String recruiterAttribution;
+
+    @TableField("attribution_rule_version")
+    private String attributionRuleVersion;
+
+    @TableField(value = "attribution_decision_snapshot", typeHandler = JacksonTypeHandler.class)
+    private Map<String, Object> attributionDecisionSnapshot;
 
     /**
      * 达人 ID
@@ -179,6 +205,10 @@ public class PerformanceRecord {
      */
     @TableField("effective_service_fee_expense")
     private Long effectiveServiceFeeExpense;
+
+    /** 达人佣金，作为业绩计算输入快照，避免报表回读订单事实。 */
+    @TableField("talent_commission")
+    private Long talentCommission;
 
     /**
      * 预估服务利润（单位：分）

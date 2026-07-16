@@ -18,8 +18,10 @@ import org.springframework.util.StringUtils;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.LinkedHashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -405,6 +407,9 @@ public class PickSourceMappingService {
                 mapping.setUserId(userId);
                 mapping.setChannelUserName(channelUserName);
                 mapping.setAttributionOwnerType(resolvedAttributionOwnerType);
+                mapping.setAttributionSnapshot(attributionSnapshot(
+                        userId, deptId, productId, activityId, talentId,
+                        resolvedSourceType, resolvedAttributionOwnerType));
                 mapping.setDeptId(deptId);
                 mapping.setTalentId(talentId);
                 mapping.setTalentName(talentName);
@@ -463,6 +468,9 @@ public class PickSourceMappingService {
                 resolvedSourceType,
                 resolvedAttributionOwnerType
         );
+        update.setAttributionSnapshot(attributionSnapshot(
+                userId, deptId, productId, activityId, talentId,
+                resolvedSourceType, resolvedAttributionOwnerType));
         try {
             persistPickSourceMapping(update);
             logNativeAmbiguousIfNeeded(materializeForLogging(existing, update));
@@ -493,6 +501,26 @@ public class PickSourceMappingService {
             }
             logNativeAmbiguousIfNeeded(recovered);
         }
+    }
+
+    private static Map<String, Object> attributionSnapshot(
+            UUID userId,
+            UUID deptId,
+            String productId,
+            String activityId,
+            String talentId,
+            String sourceType,
+            String attributionOwnerType) {
+        Map<String, Object> snapshot = new LinkedHashMap<>();
+        snapshot.put("ownerUserId", userId == null ? null : userId.toString());
+        snapshot.put("ownerDeptId", deptId == null ? null : deptId.toString());
+        snapshot.put("productId", productId);
+        snapshot.put("activityId", activityId);
+        snapshot.put("talentId", talentId);
+        snapshot.put("sourceType", sourceType);
+        snapshot.put("attributionOwnerType", attributionOwnerType);
+        snapshot.put("recordedAt", LocalDateTime.now().toString());
+        return snapshot;
     }
 
     /**

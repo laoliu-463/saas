@@ -28,26 +28,35 @@ class DddPerformanceRefundReversalSummaryContractTest {
         String test = testSource("com/colonel/saas/domain/performance/application/PerformanceSummaryApplicationServiceTest.java");
 
         assertThat(source)
-                .contains("OrderCommissionPolicy.STATUS_CANCELLED")
-                .contains("OrderCommissionPolicy.STATUS_REFUNDED")
-                .contains("COALESCE(pr.is_valid, true) = true")
-                .contains("COALESCE(pr.is_reversed, false) = false");
+                .contains("FROM performance_records pr")
+                .contains("FROM performance_adjustment_ledger")
+                .contains("pr.is_valid = TRUE")
+                .contains("pr.is_reversed = FALSE");
         assertThat(test)
-                .contains("co.order_status IS NULL OR co.order_status NOT IN (4, 5)")
-                .contains("COALESCE(pr.is_valid, true) = true")
-                .contains("COALESCE(pr.is_reversed, false) = false");
+                .contains("FROM performance_records pr")
+                .contains("FROM performance_adjustment_ledger")
+                .contains("pr.is_valid = TRUE")
+                .contains("pr.is_reversed = FALSE");
     }
 
     @Test
-    void dashboardDailySummaryShouldSkipRefundedOrders() throws IOException {
+    void refundFactsShouldWriteIdempotentAdjustmentsAndRebuildDashboardFromPerformanceFacts() throws IOException {
         String source = mainSource("com/colonel/saas/service/DashboardPerformanceSummaryService.java");
+        String refundService = mainSource("com/colonel/saas/domain/performance/application/PerformanceRefundAdjustmentService.java");
         String test = testSource("com/colonel/saas/service/DashboardPerformanceSummaryServiceTest.java");
 
         assertThat(source)
-                .contains("OrderCommissionPolicy.countsTowardPerformance(event.orderStatus())");
+                .contains("public void applyPerformanceCalculated(PerformanceCalculatedEvent event)")
+                .contains("FROM performance_records pr")
+                .contains("FROM performance_adjustment_ledger");
+        assertThat(refundService)
+                .contains("String eventKey = eventKey(event)")
+                .contains("ledgerMapper.selectOne")
+                .contains("ledgerMapper.insert(ledger)")
+                .contains("ledger.setDeltaEffectiveServiceProfit");
         assertThat(test)
-                .contains("applyOrderSynced_shouldSkipRefundedOrders")
-                .contains("verifyNoInteractions(jdbcTemplate, eventPublisher)");
+                .contains("applyPerformanceCalculated_shouldRebuildDailySummaryFromPerformanceRecord")
+                .contains("FROM performance_records");
     }
 
     private static String mainSource(String relativePath) throws IOException {

@@ -57,7 +57,7 @@ class PerformanceSummaryApplicationServiceTest {
 
     @Test
     void aggregateEstimate_shouldUseEstimateColumns() {
-        when(jdbcTemplate.queryForMap(contains("co.estimate_service_fee"), any(Object[].class)))
+        when(jdbcTemplate.queryForMap(contains("pr.estimate_service_fee"), any(Object[].class)))
                 .thenReturn(Map.of(
                         "order_count", 3L,
                         "order_amount", 9000L,
@@ -81,19 +81,19 @@ class PerformanceSummaryApplicationServiceTest {
         ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
         verify(jdbcTemplate).queryForMap(sqlCaptor.capture(), any(Object[].class));
         assertThat(sqlCaptor.getValue())
-                .contains("co.order_amount")
-                .contains("co.estimate_service_fee")
+                .contains("pr.pay_amount + COALESCE(adj.delta_pay_amount, 0)")
+                .contains("pr.estimate_service_fee + COALESCE(adj.delta_estimate_service_fee, 0)")
                 .contains("pr.estimate_service_profit")
-                .contains("co.order_status IS NULL OR co.order_status NOT IN (4, 5)")
-                .contains("COALESCE(pr.is_valid, true) = true")
-                .contains("COALESCE(pr.is_reversed, false) = false")
-                .doesNotContain("co.settle_amount")
-                .doesNotContain("co.effective_service_fee");
+                .contains("FROM performance_records pr")
+                .contains("FROM performance_adjustment_ledger")
+                .contains("pr.is_valid = TRUE")
+                .contains("pr.is_reversed = FALSE")
+                .doesNotContain("FROM colonelsettlement_order");
     }
 
     @Test
     void aggregateEffective_shouldUseEffectiveColumns() {
-        when(jdbcTemplate.queryForMap(contains("co.effective_service_fee"), any(Object[].class)))
+        when(jdbcTemplate.queryForMap(contains("pr.effective_service_fee"), any(Object[].class)))
                 .thenReturn(Map.of(
                         "order_count", 2L,
                         "order_amount", 5000L,
@@ -116,14 +116,13 @@ class PerformanceSummaryApplicationServiceTest {
         ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
         verify(jdbcTemplate).queryForMap(sqlCaptor.capture(), any(Object[].class));
         assertThat(sqlCaptor.getValue())
-                .contains("co.settle_amount")
-                .contains("co.effective_service_fee")
+                .contains("pr.settle_amount + COALESCE(adj.delta_settle_amount, 0)")
+                .contains("pr.effective_service_fee + COALESCE(adj.delta_effective_service_fee, 0)")
                 .contains("pr.effective_gross_profit")
-                .contains("co.order_status IS NULL OR co.order_status NOT IN (4, 5)")
-                .contains("COALESCE(pr.is_valid, true) = true")
-                .contains("COALESCE(pr.is_reversed, false) = false")
-                .contains("(co.settle_time IS NOT NULL OR co.effective_service_fee > 0)")
-                .doesNotContain("co.estimate_service_fee");
+                .contains("pr.is_valid = TRUE")
+                .contains("pr.is_reversed = FALSE")
+                .contains("(pr.settle_time IS NOT NULL OR pr.effective_service_fee > 0)")
+                .doesNotContain("FROM colonelsettlement_order");
     }
 
     @Test

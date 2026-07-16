@@ -4,6 +4,8 @@ import com.colonel.saas.domain.order.event.OrderRefundFactSyncedEvent;
 import com.colonel.saas.domain.order.event.OrderAttributionReplayedEvent;
 import com.colonel.saas.domain.order.facade.OrderReadFacade;
 import com.colonel.saas.domain.performance.application.PerformanceCalculationApplicationService;
+import com.colonel.saas.domain.performance.application.PerformanceCalculationExecutionService;
+import com.colonel.saas.domain.performance.application.PerformanceRefundAdjustmentService;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.PerformanceRecord;
 import com.colonel.saas.event.OrderSyncedEvent;
@@ -22,6 +24,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -37,6 +40,10 @@ class PerformanceRecordSyncListenerTest {
     private PerformanceCalculationApplicationService performanceCalculationApplicationService;
     @Mock
     private ApplicationEventPublisher eventPublisher;
+    @Mock
+    private PerformanceCalculationExecutionService executionService;
+    @Mock
+    private PerformanceRefundAdjustmentService refundAdjustmentService;
 
     private PerformanceRecordSyncListener listener;
 
@@ -150,6 +157,41 @@ class PerformanceRecordSyncListenerTest {
     }
 
     @Test
+    void onOrderRefundFactSynced_shouldPersistRetryableRefundPayloadBeforeCalculation() {
+        PerformanceRecordSyncListener retryableListener = new PerformanceRecordSyncListener(
+                orderReadFacade, performanceCalculationApplicationService, eventPublisher,
+                executionService, refundAdjustmentService);
+        OrderRefundFactSyncedEvent event = new OrderRefundFactSyncedEvent(
+                "ORD-REFUND-PAYLOAD", UUID.randomUUID(), "REFUND-PAYLOAD", 250L,
+                3, 5, "REFUND", Map.of("source", "douyin"),
+                java.time.LocalDateTime.of(2026, 7, 16, 12, 0));
+        ColonelsettlementOrder order = order("ORD-REFUND-PAYLOAD");
+        PerformanceRecord record = performanceRecord(
+                "ORD-REFUND-PAYLOAD", UUID.randomUUID(), UUID.randomUUID(),
+                0L, 0L, 0L, 0L, 0L, 0L, true);
+        when(orderReadFacade.findByOrderId(event.orderId())).thenReturn(order);
+        when(executionService.start(org.mockito.ArgumentMatchers.eq(
+                "OrderRefundFactSynced:ORD-REFUND-PAYLOAD:REFUND-PAYLOAD"),
+                org.mockito.ArgumentMatchers.eq("OrderRefundFactSynced"),
+                org.mockito.ArgumentMatchers.eq(event.orderId()),
+                org.mockito.ArgumentMatchers.anyInt(), anyMap())).thenReturn(true);
+        when(performanceCalculationApplicationService.upsertFromOrder(order)).thenReturn(record);
+
+        retryableListener.onOrderRefundFactSynced(event);
+
+        ArgumentCaptor<Map<String, Object>> payload = ArgumentCaptor.forClass(Map.class);
+        verify(executionService).start(
+                org.mockito.ArgumentMatchers.eq("OrderRefundFactSynced:ORD-REFUND-PAYLOAD:REFUND-PAYLOAD"),
+                org.mockito.ArgumentMatchers.eq("OrderRefundFactSynced"),
+                org.mockito.ArgumentMatchers.eq(event.orderId()),
+                org.mockito.ArgumentMatchers.anyInt(), payload.capture());
+        assertThat(payload.getValue()).containsEntry("refundId", "REFUND-PAYLOAD")
+                .containsEntry("refundAmount", 250L)
+                .containsEntry("occurredAt", "2026-07-16T12:00");
+        verify(refundAdjustmentService).recordRefund(record, event);
+    }
+
+    @Test
     void onOrderAttributionReplayed_shouldReadLatestFactUpsertAndPublishCalculatedEvent() {
         ColonelsettlementOrder order = order("ORD-ATTRIBUTION-REPLAY");
         PerformanceRecord record = performanceRecord(
@@ -219,25 +261,29 @@ class PerformanceRecordSyncListenerTest {
     }
 
     @Test
-    void onOrderSynced_shouldNotCalculatePerformanceWhenOrderIsStillMissing() {
+    void onOrderSynced_shouldPropagateMissingOrderSoOutboxCanRetry() {
         OrderSyncedEvent event = orderSynced("ORD-LISTENER-MISSING");
         when(orderReadFacade.findByOrderId("ORD-LISTENER-MISSING")).thenReturn(null);
 
-        listener.onOrderSynced(event);
+        assertThatThrownBy(() -> listener.onOrderSynced(event))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("Performance calculation order not found: ORD-LISTENER-MISSING");
 
         verify(performanceCalculationApplicationService, never()).upsertFromOrder(any());
         verifyNoInteractions(eventPublisher);
     }
 
     @Test
-    void onOrderSynced_shouldSwallowCalculationFailureAndNotPublishEvent() {
+    void onOrderSynced_shouldPropagateCalculationFailureSoOutboxCanRetry() {
         OrderSyncedEvent event = orderSynced("ORD-LISTENER-FAIL");
         ColonelsettlementOrder order = order("ORD-LISTENER-FAIL");
         when(orderReadFacade.findByOrderId("ORD-LISTENER-FAIL")).thenReturn(order);
         when(performanceCalculationApplicationService.upsertFromOrder(order))
                 .thenThrow(new IllegalStateException("calculation failed"));
 
-        listener.onOrderSynced(event);
+        assertThatThrownBy(() -> listener.onOrderSynced(event))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("calculation failed");
 
         verify(performanceCalculationApplicationService).upsertFromOrder(order);
         verifyNoInteractions(eventPublisher);

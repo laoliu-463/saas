@@ -42,12 +42,14 @@ class DddPerformanceExceptionAndDuplicateContractTest {
         assertThat(listener)
                 .contains("try {")
                 .contains("if (order == null)")
-                .contains("if (record == null)")
+                .contains("if (executionService != null)")
                 .contains("eventPublisher.publishEvent")
-                .contains("catch (Exception ex)");
+                .contains("catch (RuntimeException error)")
+                .contains("executionService.markFailed(eventKey, error)")
+                .contains("throw error;");
         assertThat(listenerTest)
-                .contains("onOrderSynced_shouldNotCalculatePerformanceWhenOrderIsStillMissing")
-                .contains("onOrderSynced_shouldSwallowCalculationFailureAndNotPublishEvent");
+                .contains("onOrderSynced_shouldPropagateMissingOrderSoOutboxCanRetry")
+                .contains("onOrderSynced_shouldPropagateCalculationFailureSoOutboxCanRetry");
     }
 
     @Test

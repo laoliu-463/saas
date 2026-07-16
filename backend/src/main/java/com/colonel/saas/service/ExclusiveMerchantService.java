@@ -13,6 +13,7 @@ import org.springframework.util.StringUtils;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.YearMonth;
+import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
@@ -132,10 +133,15 @@ public class ExclusiveMerchantService {
      * @return 独家归属人信息（用户 ID + 部门 ID），无独家记录时返回 null
      */
     public AttributionService.ExclusiveOwner findActiveOwnerByMerchantId(String merchantId) {
+        return findActiveOwnerByMerchantIdAt(merchantId, LocalDate.now());
+    }
+
+    /** 按订单业务日期读取有效独家商家，禁止用当前月份改写历史业绩。 */
+    public AttributionService.ExclusiveOwner findActiveOwnerByMerchantIdAt(String merchantId, LocalDate businessDate) {
         if (!StringUtils.hasText(merchantId)) {
             return null;
         }
-        String month = YearMonth.now().format(MONTH_FORMATTER);
+        String month = (businessDate == null ? YearMonth.now() : YearMonth.from(businessDate)).format(MONTH_FORMATTER);
         ExclusiveMerchant match = exclusiveMerchantMapper.selectOne(new LambdaQueryWrapper<ExclusiveMerchant>()
                 .eq(ExclusiveMerchant::getMerchantId, merchantId)
                 .eq(ExclusiveMerchant::getEffectiveMonth, month)

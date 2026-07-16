@@ -156,6 +156,21 @@ class PerformanceAccessScopeTest {
     }
 
     @Test
+    void dualStaffShouldUseUnionOfChannelAndRecruiterOwnership() {
+        PerformanceRecord record = record(USER, OTHER);
+        assertThat(PerformanceAccessScope.canAccessRecord(
+                record,
+                context(List.of(RoleCodes.CHANNEL_STAFF, RoleCodes.BIZ_STAFF), DataScope.PERSONAL),
+                currentUserPermissionChecker)).isTrue();
+        record.setFinalChannelUserId(OTHER);
+        record.setFinalRecruiterUserId(USER);
+        assertThat(PerformanceAccessScope.canAccessRecord(
+                record,
+                context(List.of(RoleCodes.CHANNEL_STAFF, RoleCodes.BIZ_STAFF), DataScope.PERSONAL),
+                currentUserPermissionChecker)).isTrue();
+    }
+
+    @Test
     void canAccessRecord_shouldRestrictLeadersToMatchingDeptMemberPlaceholder() {
         assertThat(PerformanceAccessScope.canAccessRecord(record(USER, OTHER),
                 context(List.of(RoleCodes.CHANNEL_LEADER), DataScope.DEPT),
@@ -230,9 +245,9 @@ class PerformanceAccessScopeTest {
         ScopeResult channel = append(context(List.of(RoleCodes.CHANNEL_LEADER), DataScope.DEPT), " pr ");
         ScopeResult recruiter = append(context(List.of(RoleCodes.BIZ_LEADER), DataScope.DEPT), "pr");
 
-        assertThat(channel.where()).contains("pr.final_channel_user_id IN (SELECT id FROM sys_user WHERE dept_id = ? AND deleted = 0)");
+        assertThat(channel.where()).contains("pr.final_channel_dept_id = ?");
         assertThat(channel.args()).containsExactly(DEPT);
-        assertThat(recruiter.where()).contains("pr.final_recruiter_user_id IN (SELECT id FROM sys_user WHERE dept_id = ? AND deleted = 0)");
+        assertThat(recruiter.where()).contains("pr.final_recruiter_dept_id = ?");
         assertThat(recruiter.args()).containsExactly(DEPT);
     }
 

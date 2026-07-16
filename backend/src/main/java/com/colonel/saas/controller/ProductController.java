@@ -18,6 +18,7 @@ import com.colonel.saas.domain.product.application.ProductQuickSampleApplication
 import com.colonel.saas.domain.product.application.dto.ProductLibraryCursorPage;
 import com.colonel.saas.domain.product.application.dto.ProductLibraryPageQuery;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
+import com.colonel.saas.domain.shared.attribution.AttributionOwnerType;
 import com.colonel.saas.service.ProductService;
 import com.colonel.saas.service.ProductSampleSettingService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -662,7 +663,8 @@ public class ProductController extends BaseController {
                 safeRequest.getNeedShortLink(),
                 safeRequest.getScene(),
                 safeRequest.getTalentId(),
-                idempotencyKey
+                idempotencyKey,
+                AttributionOwnerType.parseNullable(safeRequest.getAttributionOwnerType())
         );
         return ok(new PromotionLinkResponse(
                 result.pickSource(),
@@ -1091,6 +1093,9 @@ public class ProductController extends BaseController {
         @Schema(description = "达人标识，用于特定转链场景。", example = "test_talent_001")
         private String talentId;
 
+        @Schema(description = "双角色用户必须指定本次推广链接归属维度。", allowableValues = {"CHANNEL", "RECRUITER"})
+        private String attributionOwnerType;
+
         public String getExternalUniqueId() {
             return externalUniqueId;
         }
@@ -1129,6 +1134,14 @@ public class ProductController extends BaseController {
 
         public void setTalentId(String talentId) {
             this.talentId = talentId;
+        }
+
+        public String getAttributionOwnerType() {
+            return attributionOwnerType;
+        }
+
+        public void setAttributionOwnerType(String attributionOwnerType) {
+            this.attributionOwnerType = attributionOwnerType;
         }
     }
 

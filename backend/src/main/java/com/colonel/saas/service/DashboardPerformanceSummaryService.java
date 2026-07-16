@@ -1,8 +1,9 @@
 package com.colonel.saas.service;
 
-import com.colonel.saas.domain.performance.policy.PerformanceMoneyPolicy;
-import com.colonel.saas.event.OrderSyncedEvent;
+import com.colonel.saas.entity.PerformanceRecord;
+import com.colonel.saas.event.PerformanceCalculatedEvent;
 import com.colonel.saas.event.PerformanceSummaryRefreshedEvent;
+import com.colonel.saas.mapper.PerformanceRecordMapper;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -16,20 +17,19 @@ import java.util.UUID;
 /**
  * 仪表盘业绩日报汇总服务。
  *
- * <p>职责：监听订单同步事件（{@link OrderSyncedEvent}），将有效订单的业绩指标
- * 实时聚合到日报汇总表（dashboard_performance_daily），供仪表盘直接读取。
+ * <p>职责：监听业绩计算完成事件（{@link PerformanceCalculatedEvent}），从业绩明细重建受影响日期的
+ * 日报汇总表（dashboard_performance_daily），供仪表盘直接读取。
  *
  * <p>聚合策略：
  * <ul>
- *   <li>仅处理新增插入事件（{@code newlyInserted=true}）且订单状态计入业绩的事件</li>
- *   <li>服务费净收益使用结算服务费收入扣除结算服务费支出后的结果</li>
- *   <li>使用 PostgreSQL {@code ON CONFLICT ... DO UPDATE} 实现按日期幂等累加</li>
+ *   <li>只读取 {@code performance_records} 的计算结果，不直接消费订单金额</li>
+ *   <li>每次覆盖重建受影响日期，保证归因重放、退款和重复事件不会造成累计漂移</li>
  * </ul>
  *
  * <p>依赖服务/仓储：
  * <ul>
  *   <li>{@link JdbcTemplate} —— 原始 SQL 执行</li>
- *   <li>{@link OrderCommissionPolicy} —— 订单状态判定（是否计入业绩）</li>
+ *   <li>{@link PerformanceRecordMapper} —— 读取已计算的业绩事实</li>
  * </ul>
  */
 @Service
@@ -38,64 +38,89 @@ public class DashboardPerformanceSummaryService {
     /** JDBC 模板，用于执行日报汇总的 UPSERT SQL */
     private final JdbcTemplate jdbcTemplate;
     private final ApplicationEventPublisher eventPublisher;
+    private final PerformanceRecordMapper performanceRecordMapper;
 
-    public DashboardPerformanceSummaryService(JdbcTemplate jdbcTemplate, ApplicationEventPublisher eventPublisher) {
+    public DashboardPerformanceSummaryService(
+            JdbcTemplate jdbcTemplate,
+            ApplicationEventPublisher eventPublisher,
+            PerformanceRecordMapper performanceRecordMapper) {
         this.jdbcTemplate = jdbcTemplate;
         this.eventPublisher = eventPublisher;
+        this.performanceRecordMapper = performanceRecordMapper;
     }
 
     /**
-     * 处理订单同步事件，将业绩指标累加到日报汇总表。
+     * 处理业绩计算完成事件，从业绩明细重建日报汇总表。
      *
      * <p>执行逻辑：
      * <ol>
-     *   <li>过滤：非新增插入或不计入业绩的订单状态，直接跳过</li>
-     *   <li>读取结算服务费收入与结算服务费支出，按业绩域金额策略计算净收益</li>
+     *   <li>读取业绩记录，不存在时直接跳过</li>
      *   <li>确定统计日期：取订单创建日期，无创建时间时使用当天</li>
-     *   <li>UPSERT 到 dashboard_performance_daily 表：已存在则累加，不存在则插入新行</li>
+     *   <li>按日期从 {@code performance_records} 聚合后 UPSERT 覆盖汇总行</li>
      * </ol>
      *
-     * @param event 订单同步事件
+     * @param event 业绩计算完成事件
      */
     @Transactional(rollbackFor = Exception.class)
-    public void applyOrderSynced(OrderSyncedEvent event) {
-        if (event == null
-                || !event.newlyInserted()
-                || !OrderCommissionPolicy.countsTowardPerformance(event.orderStatus())) {
+    public void applyPerformanceCalculated(PerformanceCalculatedEvent event) {
+        if (event == null || event.orderId() == null || event.orderId().isBlank()) {
             return;
         }
-        long orderAmountDelta = Math.max(event.orderAmount(), 0L);
-        long serviceFeeNet = PerformanceMoneyPolicy.serviceFeeNetCent(
-                event.effectiveServiceFee(),
-                0L,
-                event.effectiveServiceFeeExpense());
-        LocalDate statDate = event.orderCreateTime() == null
+        PerformanceRecord record = performanceRecordMapper.findByOrderId(event.orderId());
+        if (record == null) {
+            return;
+        }
+        LocalDate statDate = record.getOrderCreateTime() == null
                 ? LocalDate.now()
-                : event.orderCreateTime().toLocalDate();
+                : record.getOrderCreateTime().toLocalDate();
         jdbcTemplate.update("""
                 INSERT INTO dashboard_performance_daily (
                     stat_date, order_count, order_amount, service_fee_net, updated_at
-                ) VALUES (?, 1, ?, ?, CURRENT_TIMESTAMP)
+                )
+                SELECT ?,
+                       COUNT(*),
+                       COALESCE(SUM(COALESCE(pr.pay_amount, 0) + COALESCE(adj.delta_pay_amount, 0)), 0),
+                       COALESCE(SUM(COALESCE(pr.effective_service_profit, 0)
+                                    + COALESCE(adj.delta_effective_service_profit, 0)), 0),
+                       CURRENT_TIMESTAMP
+                FROM performance_records pr
+                LEFT JOIN (
+                    SELECT order_id,
+                           SUM(delta_pay_amount) AS delta_pay_amount,
+                           SUM(delta_effective_service_profit) AS delta_effective_service_profit
+                    FROM performance_adjustment_ledger
+                    GROUP BY order_id
+                ) adj ON adj.order_id = pr.order_id
+                WHERE pr.order_create_time::date = ?
+                  AND pr.is_valid = TRUE
                 ON CONFLICT (stat_date) DO UPDATE SET
-                    order_count = dashboard_performance_daily.order_count + 1,
-                    order_amount = dashboard_performance_daily.order_amount + EXCLUDED.order_amount,
-                    service_fee_net = dashboard_performance_daily.service_fee_net + EXCLUDED.service_fee_net,
+                    order_count = EXCLUDED.order_count,
+                    order_amount = EXCLUDED.order_amount,
+                    service_fee_net = EXCLUDED.service_fee_net,
                     updated_at = CURRENT_TIMESTAMP
                 """,
                 statDate,
-                orderAmountDelta,
-                serviceFeeNet);
+                statDate);
         eventPublisher.publishEvent(new PerformanceSummaryRefreshedEvent(
-                stableEventId(statDate, event.orderId()),
-                event.orderId(),
+                stableEventId(statDate, record.getOrderId()),
+                record.getOrderId(),
                 statDate,
                 "DAY",
                 null,
                 stableSummaryId(statDate),
-                1L,
-                orderAmountDelta,
-                serviceFeeNet,
+                Boolean.TRUE.equals(record.getValid()) ? 1L : 0L,
+                nvl(record.getPayAmount()),
+                nvl(record.getEffectiveServiceProfit()),
                 LocalDateTime.now()));
+    }
+
+    @org.springframework.context.event.EventListener
+    public void onPerformanceCalculated(PerformanceCalculatedEvent event) {
+        applyPerformanceCalculated(event);
+    }
+
+    private static long nvl(Long value) {
+        return value == null ? 0L : value;
     }
 
     private static UUID stableEventId(LocalDate statDate, String orderId) {

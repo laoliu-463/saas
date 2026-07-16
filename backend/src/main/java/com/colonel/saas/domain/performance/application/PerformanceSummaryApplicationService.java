@@ -6,8 +6,6 @@ import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
 import com.colonel.saas.dto.performance.PerformanceSummaryQuery;
 import com.colonel.saas.dto.performance.PerformanceSummaryResponse;
 import com.colonel.saas.dto.performance.PerformanceTrackSummaryDTO;
-import com.colonel.saas.service.CommissionService;
-import com.colonel.saas.service.OrderCommissionPolicy;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -38,26 +36,46 @@ import java.util.Map;
  *
  * <p>依赖：
  * <ul>
- *   <li>{@link JdbcTemplate} —— 多表 JOIN 原始 SQL</li>
+ *   <li>{@link JdbcTemplate} —— 业绩事实及调整流水聚合 SQL</li>
  *   <li>{@link PerformanceAccessScope} —— 数据权限范围 + cohort 时间列解析</li>
- *   <li>{@link CommissionService#serviceFeeNetCent} —— 服务费净额计算（静态方法）</li>
  * </ul>
  */
 @Service
 public class PerformanceSummaryApplicationService {
 
-    /** 多表连接基础 FROM 子句：订单事实表左关联业绩明细表 */
+    /**
+     * 业绩读模型以 performance_records 为唯一事实根，并合并退款/冲正调整流水。
+     * 订单表只在计算阶段提供输入快照，不能在查询阶段重新决定业绩金额或归属。
+     */
     private static final String BASE_FROM = """
-            FROM colonelsettlement_order co
-            LEFT JOIN performance_records pr ON pr.order_id = co.order_id
+            FROM performance_records pr
+            LEFT JOIN (
+                SELECT order_id,
+                       SUM(delta_pay_amount) AS delta_pay_amount,
+                       SUM(delta_settle_amount) AS delta_settle_amount,
+                       SUM(delta_estimate_service_fee) AS delta_estimate_service_fee,
+                       SUM(delta_effective_service_fee) AS delta_effective_service_fee,
+                       SUM(delta_estimate_tech_service_fee) AS delta_estimate_tech_service_fee,
+                       SUM(delta_effective_tech_service_fee) AS delta_effective_tech_service_fee,
+                       SUM(delta_estimate_service_fee_expense) AS delta_estimate_service_fee_expense,
+                       SUM(delta_effective_service_fee_expense) AS delta_effective_service_fee_expense,
+                       SUM(delta_talent_commission) AS delta_talent_commission,
+                       SUM(delta_estimate_service_profit) AS delta_estimate_service_profit,
+                       SUM(delta_effective_service_profit) AS delta_effective_service_profit,
+                       SUM(delta_estimate_recruiter_commission) AS delta_estimate_recruiter_commission,
+                       SUM(delta_effective_recruiter_commission) AS delta_effective_recruiter_commission,
+                       SUM(delta_estimate_channel_commission) AS delta_estimate_channel_commission,
+                       SUM(delta_effective_channel_commission) AS delta_effective_channel_commission,
+                       SUM(delta_estimate_gross_profit) AS delta_estimate_gross_profit,
+                       SUM(delta_effective_gross_profit) AS delta_effective_gross_profit
+                FROM performance_adjustment_ledger
+                GROUP BY order_id
+            ) adj ON adj.order_id = pr.order_id
             """;
 
     private static final String VALID_PERFORMANCE_CONDITION =
-            " AND (co.order_status IS NULL OR co.order_status NOT IN ("
-                    + OrderCommissionPolicy.STATUS_CANCELLED + ", "
-                    + OrderCommissionPolicy.STATUS_REFUNDED + "))"
-                    + " AND COALESCE(pr.is_valid, true) = true"
-                    + " AND COALESCE(pr.is_reversed, false) = false";
+            " AND pr.is_valid = TRUE"
+                    + " AND pr.is_reversed = FALSE";
 
     private final JdbcTemplate jdbcTemplate;
     private final CurrentUserPermissionChecker currentUserPermissionChecker;
@@ -113,14 +131,14 @@ public class PerformanceSummaryApplicationService {
         String sql = """
                 SELECT
                     COUNT(*) AS order_count,
-                    COALESCE(SUM(co.order_amount), 0) AS order_amount,
-                    COALESCE(SUM(co.estimate_service_fee), 0) AS service_fee_income,
-                    COALESCE(SUM(co.estimate_tech_service_fee), 0) AS tech_service_fee,
-                    COALESCE(SUM(co.estimate_service_fee_expense), 0) AS service_fee_expense,
-                    COALESCE(SUM(pr.estimate_service_profit), 0) AS service_fee_profit,
-                    COALESCE(SUM(pr.estimate_recruiter_commission), 0) AS recruiter_commission,
-                    COALESCE(SUM(pr.estimate_channel_commission), 0) AS channel_commission,
-                    COALESCE(SUM(pr.estimate_gross_profit), 0) AS gross_profit
+                    COALESCE(SUM(pr.pay_amount + COALESCE(adj.delta_pay_amount, 0)), 0) AS order_amount,
+                    COALESCE(SUM(pr.estimate_service_fee + COALESCE(adj.delta_estimate_service_fee, 0)), 0) AS service_fee_income,
+                    COALESCE(SUM(pr.estimate_tech_service_fee + COALESCE(adj.delta_estimate_tech_service_fee, 0)), 0) AS tech_service_fee,
+                    COALESCE(SUM(pr.estimate_service_fee_expense + COALESCE(adj.delta_estimate_service_fee_expense, 0)), 0) AS service_fee_expense,
+                    COALESCE(SUM(pr.estimate_service_profit + COALESCE(adj.delta_estimate_service_profit, 0)), 0) AS service_fee_profit,
+                    COALESCE(SUM(pr.estimate_recruiter_commission + COALESCE(adj.delta_estimate_recruiter_commission, 0)), 0) AS recruiter_commission,
+                    COALESCE(SUM(pr.estimate_channel_commission + COALESCE(adj.delta_estimate_channel_commission, 0)), 0) AS channel_commission,
+                    COALESCE(SUM(pr.estimate_gross_profit + COALESCE(adj.delta_estimate_gross_profit, 0)), 0) AS gross_profit
                 """ + BASE_FROM + where;
         // 第三步：执行查询并映射为 DTO
         return mapTrackSummary(jdbcTemplate.queryForMap(sql, args.toArray()), true);
@@ -139,20 +157,20 @@ public class PerformanceSummaryApplicationService {
         // 第一步：构建 SQL 参数列表和 WHERE 条件
         List<Object> args = new ArrayList<>();
         StringBuilder where = buildScopeCondition(query, context, args);
-        // 第二步：追加实收轨道过滤条件——仅统计已结算订单事实
-        where.append(" AND (co.settle_time IS NOT NULL OR co.effective_service_fee > 0)");
-        // 第三步：拼接实收轨道聚合 SQL（使用 effective_* 系列订单字段）
+        // 第二步：追加实收轨道过滤条件——仅统计已结算业绩记录
+        where.append(" AND (pr.settle_time IS NOT NULL OR pr.effective_service_fee > 0)");
+        // 第三步：拼接实收轨道聚合 SQL（使用 effective_* 系列业绩快照字段）
         String sql = """
                 SELECT
                     COUNT(*) AS order_count,
-                    COALESCE(SUM(co.settle_amount), 0) AS order_amount,
-                    COALESCE(SUM(co.effective_service_fee), 0) AS service_fee_income,
-                    COALESCE(SUM(co.effective_tech_service_fee), 0) AS tech_service_fee,
-                    COALESCE(SUM(co.effective_service_fee_expense), 0) AS service_fee_expense,
-                    COALESCE(SUM(pr.effective_service_profit), 0) AS service_fee_profit,
-                    COALESCE(SUM(pr.effective_recruiter_commission), 0) AS recruiter_commission,
-                    COALESCE(SUM(pr.effective_channel_commission), 0) AS channel_commission,
-                    COALESCE(SUM(pr.effective_gross_profit), 0) AS gross_profit
+                    COALESCE(SUM(pr.settle_amount + COALESCE(adj.delta_settle_amount, 0)), 0) AS order_amount,
+                    COALESCE(SUM(pr.effective_service_fee + COALESCE(adj.delta_effective_service_fee, 0)), 0) AS service_fee_income,
+                    COALESCE(SUM(pr.effective_tech_service_fee + COALESCE(adj.delta_effective_tech_service_fee, 0)), 0) AS tech_service_fee,
+                    COALESCE(SUM(pr.effective_service_fee_expense + COALESCE(adj.delta_effective_service_fee_expense, 0)), 0) AS service_fee_expense,
+                    COALESCE(SUM(pr.effective_service_profit + COALESCE(adj.delta_effective_service_profit, 0)), 0) AS service_fee_profit,
+                    COALESCE(SUM(pr.effective_recruiter_commission + COALESCE(adj.delta_effective_recruiter_commission, 0)), 0) AS recruiter_commission,
+                    COALESCE(SUM(pr.effective_channel_commission + COALESCE(adj.delta_effective_channel_commission, 0)), 0) AS channel_commission,
+                    COALESCE(SUM(pr.effective_gross_profit + COALESCE(adj.delta_effective_gross_profit, 0)), 0) AS gross_profit
                 """ + BASE_FROM + where;
         // 第四步：执行查询并映射为 DTO
         return mapTrackSummary(jdbcTemplate.queryForMap(sql, args.toArray()), false);
@@ -165,8 +183,8 @@ public class PerformanceSummaryApplicationService {
             PerformanceSummaryQuery query,
             PerformanceAccessContext context,
             List<Object> args) {
-        // 第一步：以订单事实未删除为基准条件
-        StringBuilder where = new StringBuilder(" WHERE co.deleted = 0 ");
+        // 第一步：以已计算业绩事实为基准条件
+        StringBuilder where = new StringBuilder(" WHERE 1 = 1 ");
         where.append(VALID_PERFORMANCE_CONDITION);
         // 第二步：追加数据权限范围条件（个人/部门/全部）
         PerformanceAccessScope.appendScopeCondition(where, args, context, "pr", currentUserPermissionChecker);
@@ -190,11 +208,11 @@ public class PerformanceSummaryApplicationService {
             args.add(query.getRecruiterId());
         }
         if (StringUtils.hasText(query.getActivityId())) {
-            where.append(" AND co.colonel_activity_id = ?");
+            where.append(" AND pr.activity_id = ?");
             args.add(query.getActivityId().trim());
         }
         if (StringUtils.hasText(query.getProductId())) {
-            where.append(" AND co.product_id = ?");
+            where.append(" AND pr.product_id = ?");
             args.add(query.getProductId().trim());
         }
         if (query.getPartnerId() != null) {
@@ -202,11 +220,11 @@ public class PerformanceSummaryApplicationService {
             args.add(query.getPartnerId());
         }
         if (query.getTalentId() != null) {
-            where.append(" AND co.talent_id = ?");
+            where.append(" AND pr.talent_id = ?");
             args.add(query.getTalentId());
         }
         if (StringUtils.hasText(query.getOrderStatus())) {
-            where.append(" AND co.order_status = ?");
+            where.append(" AND pr.order_status = ?");
             args.add(toOrderStatusCode(query.getOrderStatus()));
         }
     }
@@ -229,7 +247,7 @@ public class PerformanceSummaryApplicationService {
         // 第三步：当使用结算时间 cohort 且有时间范围时，排除未结算记录
         if ("settle".equalsIgnoreCase(query.getTimeFilterType())
                 && (query.getTimeStart() != null || query.getTimeEnd() != null)) {
-            where.append(" AND co.settle_time IS NOT NULL");
+            where.append(" AND pr.settle_time IS NOT NULL");
         }
     }
 
@@ -238,9 +256,9 @@ public class PerformanceSummaryApplicationService {
      */
     private String resolveCohortColumn(String timeFilterType) {
         if ("settle".equalsIgnoreCase(timeFilterType)) {
-            return "co.settle_time";
+            return "pr.settle_time";
         }
-        return "COALESCE(co.order_create_time, co.create_time)";
+        return "pr.order_create_time";
     }
 
     /**
@@ -251,11 +269,7 @@ public class PerformanceSummaryApplicationService {
         long serviceFeeIncome = asLong(row.get("service_fee_income"));
         long techServiceFee = asLong(row.get("tech_service_fee"));
         long serviceFeeExpense = asLong(row.get("service_fee_expense"));
-        long serviceProfit = CommissionService.serviceFeeNetCent(
-                serviceFeeIncome,
-                techServiceFee,
-                serviceFeeExpense,
-                estimateTrack);
+        long serviceProfit = asLong(row.get("service_fee_profit"));
         long recruiter = asLong(row.get("recruiter_commission"));
         long channel = asLong(row.get("channel_commission"));
         track.setOrderCount(asLong(row.get("order_count")));
@@ -266,7 +280,7 @@ public class PerformanceSummaryApplicationService {
         track.setServiceFeeProfit(serviceProfit);
         track.setRecruiterCommission(recruiter);
         track.setChannelCommission(channel);
-        track.setGrossProfit(Math.max(serviceProfit - recruiter - channel, 0L));
+        track.setGrossProfit(asLong(row.get("gross_profit")));
         return track;
     }
 

@@ -20,6 +20,7 @@ class DddPerformanceRecordGenerationEntrypointTest {
         assertThat(mainJavaFilesContaining(Pattern.compile("\\bupsertFromOrder\\s*\\(")))
                 .containsExactly(
                         "com/colonel/saas/domain/performance/application/PerformanceCalculationApplicationService.java",
+                        "com/colonel/saas/domain/performance/application/PerformanceCalculationRetryService.java",
                         "com/colonel/saas/domain/performance/application/PerformanceMonthRecalculationApplicationService.java",
                         "com/colonel/saas/listener/PerformanceRecordSyncListener.java",
                         "com/colonel/saas/service/CommissionService.java",
@@ -32,7 +33,7 @@ class DddPerformanceRecordGenerationEntrypointTest {
 
     @Test
     void rawPerformanceRecordWritesShouldStayInMapperXmlOnly() throws IOException {
-        assertThat(resourceFilesContaining(Pattern.compile(
+        assertThat(mapperFilesContaining(Pattern.compile(
                 "(?is)\\b(?:insert\\s+into|update|delete\\s+from)\\s+performance_records\\b")))
                 .containsExactly("mapper/PerformanceRecordMapper.xml");
 
@@ -101,6 +102,13 @@ class DddPerformanceRecordGenerationEntrypointTest {
 
     private static List<String> resourceFilesContaining(Pattern pattern) throws IOException {
         return filesContaining(resourceRoot(), null, pattern);
+    }
+
+    private static List<String> mapperFilesContaining(Pattern pattern) throws IOException {
+        return filesContaining(projectFile("src/main/resources/mapper"), null, pattern)
+                .stream()
+                .map(path -> "mapper/" + path)
+                .toList();
     }
 
     private static List<String> filesContaining(Path root, String suffix, Pattern pattern) throws IOException {

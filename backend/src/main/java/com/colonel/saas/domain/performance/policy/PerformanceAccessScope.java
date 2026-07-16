@@ -136,23 +136,26 @@ public final class PerformanceAccessScope {
         if (userId == null) {
             return false;
         }
-        // 渠道人员：仅查看自己作为渠道归属人的记录
+        boolean hasRoleScope = false;
+        boolean allowedByRole = false;
         if (isChannelStaffOnly(context, currentUserPermissionChecker)) {
-            return userId.equals(record.getFinalChannelUserId());
+            hasRoleScope = true;
+            allowedByRole |= userId.equals(record.getFinalChannelUserId());
         }
-        // 招商人员：仅查看自己作为招商归属人的记录
         if (isRecruiterStaffOnly(context, currentUserPermissionChecker)) {
-            return userId.equals(record.getFinalRecruiterUserId());
+            hasRoleScope = true;
+            allowedByRole |= userId.equals(record.getFinalRecruiterUserId());
         }
-        // 渠道组长：查看本部门渠道人员的记录
         if (isChannelLeader(context, currentUserPermissionChecker)) {
-            return record.getFinalChannelUserId() != null
-                    && matchesDeptMember(record.getFinalChannelUserId(), context);
+            hasRoleScope = true;
+            allowedByRole |= matchesFinalDept(record.getFinalChannelDeptId(), record.getFinalChannelUserId(), context);
         }
-        // 招商组长：查看本部门招商人员的记录
         if (isRecruiterLeader(context, currentUserPermissionChecker)) {
-            return record.getFinalRecruiterUserId() != null
-                    && matchesDeptMember(record.getFinalRecruiterUserId(), context);
+            hasRoleScope = true;
+            allowedByRole |= matchesFinalDept(record.getFinalRecruiterDeptId(), record.getFinalRecruiterUserId(), context);
+        }
+        if (hasRoleScope) {
+            return allowedByRole;
         }
         // PERSONAL 数据范围：渠道或招商归属人任一匹配即放行
         if (context.dataScope() == DataScope.PERSONAL) {
@@ -234,29 +237,28 @@ public final class PerformanceAccessScope {
         }
         UUID userId = context.userId();
         UUID deptId = context.deptId();
+        List<String> predicates = new java.util.ArrayList<>();
         if (isChannelStaffOnly(context, currentUserPermissionChecker)) {
-            where.append(" AND ").append(pr).append(".final_channel_user_id = ?");
+            predicates.add(pr + ".final_channel_user_id = ?");
             args.add(requireScopeUser(userId));
-            return true;
         }
         if (isRecruiterStaffOnly(context, currentUserPermissionChecker)) {
-            where.append(" AND ").append(pr).append(".final_recruiter_user_id = ?");
+            predicates.add(pr + ".final_recruiter_user_id = ?");
             args.add(requireScopeUser(userId));
-            return true;
         }
         if (isChannelLeader(context, currentUserPermissionChecker)) {
-            where.append(" AND ").append(pr).append(".final_channel_user_id IN (")
-                    .append(deptUserSubquery()).append(")");
+            predicates.add(pr + ".final_channel_dept_id = ?");
             args.add(requireScopeDept(deptId));
-            return true;
         }
         if (isRecruiterLeader(context, currentUserPermissionChecker)) {
-            where.append(" AND ").append(pr).append(".final_recruiter_user_id IN (")
-                    .append(deptUserSubquery()).append(")");
+            predicates.add(pr + ".final_recruiter_dept_id = ?");
             args.add(requireScopeDept(deptId));
-            return true;
         }
-        return false;
+        if (predicates.isEmpty()) {
+            return false;
+        }
+        where.append(" AND (").append(String.join(" OR ", predicates)).append(")");
+        return true;
     }
 
     private static void appendLegacyDataScopeFallback(
@@ -491,11 +493,16 @@ public final class PerformanceAccessScope {
      * @param context      访问上下文
      * @return true 表示目标用户属于当前用户的管辖范围
      */
-    private static boolean matchesDeptMember(UUID targetUserId, PerformanceAccessContext context) {
-        if (targetUserId == null || context.deptId() == null) {
+    private static boolean matchesFinalDept(
+            UUID finalDeptId, UUID legacyTargetUserId, PerformanceAccessContext context) {
+        if (context.deptId() == null) {
             return false;
         }
-        return targetUserId.equals(context.userId());
+        if (finalDeptId != null) {
+            return finalDeptId.equals(context.deptId());
+        }
+        // 历史记录尚未补齐部门快照时，只允许原先的本人兜底，不将当前组织结构倒灌为历史事实。
+        return legacyTargetUserId != null && legacyTargetUserId.equals(context.userId());
     }
 
     private static boolean hasText(String value) {

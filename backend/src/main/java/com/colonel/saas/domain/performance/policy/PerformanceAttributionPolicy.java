@@ -18,7 +18,19 @@ public final class PerformanceAttributionPolicy {
             UUID defaultChannelDeptId,
             UUID defaultRecruiterDeptId,
             ExclusiveOwner merchantExclusiveOwner,
-            ExclusiveOwner talentExclusiveOwner) {
+            ExclusiveOwner talentExclusiveOwner,
+            ManualOwner manualOwner) {
+
+        public AttributionInput(
+                UUID defaultChannelId,
+                UUID defaultRecruiterId,
+                UUID defaultChannelDeptId,
+                UUID defaultRecruiterDeptId,
+                ExclusiveOwner merchantExclusiveOwner,
+                ExclusiveOwner talentExclusiveOwner) {
+            this(defaultChannelId, defaultRecruiterId, defaultChannelDeptId, defaultRecruiterDeptId,
+                    merchantExclusiveOwner, talentExclusiveOwner, null);
+        }
     }
 
     public record AttributionResult(
@@ -33,12 +45,37 @@ public final class PerformanceAttributionPolicy {
     public record ExclusiveOwner(UUID userId, UUID deptId) {
     }
 
+    /** 已审批人工调整；任一维度为空表示该维度继续沿用系统规则。 */
+    public record ManualOwner(
+            UUID channelUserId,
+            UUID recruiterUserId,
+            UUID channelDeptId,
+            UUID recruiterDeptId) {
+    }
+
     /**
      * 计算最终业绩归属。
      *
      * <p>优先级：独家商家优先覆盖招商；独家达人同时覆盖招商与渠道；否则使用默认归因。</p>
      */
     public static AttributionResult resolve(AttributionInput input) {
+        if (input == null) {
+            return new AttributionResult(null, null, null, null, "DEFAULT", "DEFAULT");
+        }
+        if (input.manualOwner() != null
+                && (input.manualOwner().channelUserId() != null || input.manualOwner().recruiterUserId() != null)) {
+            ManualOwner manual = input.manualOwner();
+            boolean channelAdjusted = manual.channelUserId() != null;
+            boolean recruiterAdjusted = manual.recruiterUserId() != null;
+            return new AttributionResult(
+                    channelAdjusted ? manual.channelUserId() : input.defaultChannelId(),
+                    recruiterAdjusted ? manual.recruiterUserId() : input.defaultRecruiterId(),
+                    channelAdjusted ? manual.channelDeptId() : input.defaultChannelDeptId(),
+                    recruiterAdjusted ? manual.recruiterDeptId() : input.defaultRecruiterDeptId(),
+                    channelAdjusted ? "MANUAL_ADJUSTMENT" : "DEFAULT",
+                    recruiterAdjusted ? "MANUAL_ADJUSTMENT" : "DEFAULT"
+            );
+        }
         // 1. 独家商家归属
         if (input.merchantExclusiveOwner() != null) {
             return new AttributionResult(

@@ -7,6 +7,31 @@ import static org.assertj.core.api.Assertions.assertThat;
 class PerformanceAttributionPolicyTest {
 
     @Test
+    void manualAdjustmentShouldOverrideExclusiveAndDefaultAttribution() {
+        UUID defaultChannel = UUID.randomUUID();
+        UUID defaultRecruiter = UUID.randomUUID();
+        UUID merchantRecruiter = UUID.randomUUID();
+        UUID manualChannel = UUID.randomUUID();
+        UUID manualRecruiter = UUID.randomUUID();
+
+        PerformanceAttributionPolicy.AttributionResult result = PerformanceAttributionPolicy.resolve(
+                new PerformanceAttributionPolicy.AttributionInput(
+                        defaultChannel,
+                        defaultRecruiter,
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        new PerformanceAttributionPolicy.ExclusiveOwner(merchantRecruiter, UUID.randomUUID()),
+                        null,
+                        new PerformanceAttributionPolicy.ManualOwner(
+                                manualChannel, manualRecruiter, UUID.randomUUID(), UUID.randomUUID())));
+
+        assertThat(result.finalChannelId()).isEqualTo(manualChannel);
+        assertThat(result.finalRecruiterId()).isEqualTo(manualRecruiter);
+        assertThat(result.channelAttributionType()).isEqualTo("MANUAL_ADJUSTMENT");
+        assertThat(result.recruiterAttributionType()).isEqualTo("MANUAL_ADJUSTMENT");
+    }
+
+    @Test
     void resolve_defaultAttribution_noExclusive() {
         UUID channelId = UUID.randomUUID();
         UUID recruiterId = UUID.randomUUID();

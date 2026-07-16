@@ -8,10 +8,18 @@
         <result property="orderRowId" column="order_row_id"/>
         <result property="defaultChannelUserId" column="default_channel_user_id"/>
         <result property="defaultRecruiterUserId" column="default_recruiter_user_id"/>
+        <result property="defaultChannelDeptId" column="default_channel_dept_id"/>
+        <result property="defaultRecruiterDeptId" column="default_recruiter_dept_id"/>
+        <result property="defaultChannelAttribution" column="default_channel_attribution"/>
+        <result property="defaultRecruiterAttribution" column="default_recruiter_attribution"/>
         <result property="finalChannelUserId" column="final_channel_user_id"/>
         <result property="finalRecruiterUserId" column="final_recruiter_user_id"/>
+        <result property="finalChannelDeptId" column="final_channel_dept_id"/>
+        <result property="finalRecruiterDeptId" column="final_recruiter_dept_id"/>
         <result property="channelAttribution" column="channel_attribution"/>
         <result property="recruiterAttribution" column="recruiter_attribution"/>
+        <result property="attributionRuleVersion" column="attribution_rule_version"/>
+        <result property="attributionDecisionSnapshot" column="attribution_decision_snapshot" typeHandler="com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler"/>
         <result property="talentId" column="talent_id"/>
         <result property="partnerId" column="partner_id"/>
         <result property="productId" column="product_id"/>
@@ -24,6 +32,7 @@
         <result property="effectiveTechServiceFee" column="effective_tech_service_fee"/>
         <result property="estimateServiceFeeExpense" column="estimate_service_fee_expense"/>
         <result property="effectiveServiceFeeExpense" column="effective_service_fee_expense"/>
+        <result property="talentCommission" column="talent_commission"/>
         <result property="estimateServiceProfit" column="estimate_service_profit"/>
         <result property="effectiveServiceProfit" column="effective_service_profit"/>
         <result property="estimateRecruiterCommission" column="estimate_recruiter_commission"/>
@@ -71,13 +80,17 @@
         INSERT INTO performance_records (
             id, order_id, order_row_id,
             default_channel_user_id, default_recruiter_user_id,
+            default_channel_dept_id, default_recruiter_dept_id,
+            default_channel_attribution, default_recruiter_attribution,
             final_channel_user_id, final_recruiter_user_id,
+            final_channel_dept_id, final_recruiter_dept_id,
             channel_attribution, recruiter_attribution,
+            attribution_rule_version, attribution_decision_snapshot,
             talent_id, partner_id, product_id, activity_id,
             pay_amount, settle_amount,
             estimate_service_fee, effective_service_fee,
             estimate_tech_service_fee, effective_tech_service_fee,
-            estimate_service_fee_expense, effective_service_fee_expense,
+            estimate_service_fee_expense, effective_service_fee_expense, talent_commission,
             estimate_service_profit, effective_service_profit,
             estimate_recruiter_commission, effective_recruiter_commission,
             estimate_channel_commission, effective_channel_commission,
@@ -89,13 +102,17 @@
         ) VALUES (
             #{id}, #{orderId}, #{orderRowId},
             #{defaultChannelUserId}, #{defaultRecruiterUserId},
+            #{defaultChannelDeptId}, #{defaultRecruiterDeptId},
+            #{defaultChannelAttribution}, #{defaultRecruiterAttribution},
             #{finalChannelUserId}, #{finalRecruiterUserId},
+            #{finalChannelDeptId}, #{finalRecruiterDeptId},
             #{channelAttribution}, #{recruiterAttribution},
+            #{attributionRuleVersion}, CAST(#{attributionDecisionSnapshot, typeHandler=com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler} AS JSONB),
             #{talentId}, #{partnerId}, #{productId}, #{activityId},
             #{payAmount}, #{settleAmount},
             #{estimateServiceFee}, #{effectiveServiceFee},
             #{estimateTechServiceFee}, #{effectiveTechServiceFee},
-            #{estimateServiceFeeExpense}, #{effectiveServiceFeeExpense},
+            #{estimateServiceFeeExpense}, #{effectiveServiceFeeExpense}, #{talentCommission},
             #{estimateServiceProfit}, #{effectiveServiceProfit},
             #{estimateRecruiterCommission}, #{effectiveRecruiterCommission},
             #{estimateChannelCommission}, #{effectiveChannelCommission},
@@ -109,10 +126,18 @@
             order_row_id = EXCLUDED.order_row_id,
             default_channel_user_id = EXCLUDED.default_channel_user_id,
             default_recruiter_user_id = EXCLUDED.default_recruiter_user_id,
+            default_channel_dept_id = EXCLUDED.default_channel_dept_id,
+            default_recruiter_dept_id = EXCLUDED.default_recruiter_dept_id,
+            default_channel_attribution = EXCLUDED.default_channel_attribution,
+            default_recruiter_attribution = EXCLUDED.default_recruiter_attribution,
             final_channel_user_id = EXCLUDED.final_channel_user_id,
             final_recruiter_user_id = EXCLUDED.final_recruiter_user_id,
+            final_channel_dept_id = EXCLUDED.final_channel_dept_id,
+            final_recruiter_dept_id = EXCLUDED.final_recruiter_dept_id,
             channel_attribution = EXCLUDED.channel_attribution,
             recruiter_attribution = EXCLUDED.recruiter_attribution,
+            attribution_rule_version = EXCLUDED.attribution_rule_version,
+            attribution_decision_snapshot = EXCLUDED.attribution_decision_snapshot,
             talent_id = EXCLUDED.talent_id,
             partner_id = EXCLUDED.partner_id,
             product_id = EXCLUDED.product_id,
@@ -125,6 +150,7 @@
             effective_tech_service_fee = EXCLUDED.effective_tech_service_fee,
             estimate_service_fee_expense = EXCLUDED.estimate_service_fee_expense,
             effective_service_fee_expense = EXCLUDED.effective_service_fee_expense,
+            talent_commission = EXCLUDED.talent_commission,
             estimate_service_profit = EXCLUDED.estimate_service_profit,
             effective_service_profit = EXCLUDED.effective_service_profit,
             estimate_recruiter_commission = EXCLUDED.estimate_recruiter_commission,

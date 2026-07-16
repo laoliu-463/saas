@@ -51,7 +51,8 @@ public class OrderEventPayloadMapper {
                 order.getPayTime(),
                 order.getSettleTime(),
                 !newlyInserted,
-                LocalDateTime.now());
+                LocalDateTime.now(),
+                order.getVersion() == null ? 0 : order.getVersion());
     }
 
     public OrderStatusChangedEvent toOrderStatusChangedEvent(

@@ -441,6 +441,14 @@ public class ColonelsettlementOrder implements Serializable {
     @TableField("recruiter_attribution_source")
     private String recruiterAttributionSource;
 
+    /** 渠道默认归属状态；与招商维度独立保存。 */
+    @TableField("channel_attribution_status")
+    private String channelAttributionStatus;
+
+    /** 招商默认归属状态；与渠道维度独立保存。 */
+    @TableField("recruiter_attribution_status")
+    private String recruiterAttributionStatus;
+
     /**
      * 未归属原因
      * <p>非数据库持久化字段（exist = false），仅在未归属时填充，
@@ -977,6 +985,22 @@ public class ColonelsettlementOrder implements Serializable {
      */
     public void setAttributionRemark(String attributionRemark) {
         this.attributionRemark = attributionRemark;
+    }
+
+    public String getChannelAttributionStatus() {
+        return channelAttributionStatus;
+    }
+
+    public void setChannelAttributionStatus(String channelAttributionStatus) {
+        this.channelAttributionStatus = channelAttributionStatus;
+    }
+
+    public String getRecruiterAttributionStatus() {
+        return recruiterAttributionStatus;
+    }
+
+    public void setRecruiterAttributionStatus(String recruiterAttributionStatus) {
+        this.recruiterAttributionStatus = recruiterAttributionStatus;
     }
 
     /**

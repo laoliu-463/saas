@@ -4,6 +4,7 @@ import com.colonel.saas.domain.config.facade.ConfigDomainFacade;
 import com.colonel.saas.domain.product.application.dto.PromotionLinkCopyResult;
 import com.colonel.saas.domain.product.application.port.CopyPromotionSupportPort;
 import com.colonel.saas.domain.product.policy.CopyTextPolicy;
+import com.colonel.saas.domain.shared.attribution.AttributionOwnerType;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -61,6 +62,23 @@ public class CopyPromotionApplicationService {
             String scene,
             String talentId,
             String idempotencyKey) {
+        return copyPromotion(activityId, productId, userId, deptId, externalUniqueId, promotionScene,
+                needShortLink, scene, talentId, idempotencyKey, null);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public PromotionLinkCopyResult copyPromotion(
+            String activityId,
+            String productId,
+            UUID userId,
+            UUID deptId,
+            String externalUniqueId,
+            Integer promotionScene,
+            boolean needShortLink,
+            String scene,
+            String talentId,
+            String idempotencyKey,
+            AttributionOwnerType attributionOwnerType) {
         return copyPromotion(
                 activityId,
                 productId,
@@ -72,6 +90,7 @@ public class CopyPromotionApplicationService {
                 scene,
                 talentId,
                 idempotencyKey,
+                attributionOwnerType,
                 realPromotionWriteEnabled,
                 allowRealPromotionWrite);
     }
@@ -88,6 +107,26 @@ public class CopyPromotionApplicationService {
             String scene,
             String talentId,
             String idempotencyKey,
+            boolean realPromotionWriteEnabled,
+            boolean allowRealPromotionWrite) {
+        return copyPromotion(activityId, productId, userId, deptId, externalUniqueId, promotionScene,
+                needShortLink, scene, talentId, idempotencyKey, null,
+                realPromotionWriteEnabled, allowRealPromotionWrite);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public PromotionLinkCopyResult copyPromotion(
+            String activityId,
+            String productId,
+            UUID userId,
+            UUID deptId,
+            String externalUniqueId,
+            Integer promotionScene,
+            boolean needShortLink,
+            String scene,
+            String talentId,
+            String idempotencyKey,
+            AttributionOwnerType attributionOwnerType,
             boolean realPromotionWriteEnabled,
             boolean allowRealPromotionWrite) {
 
@@ -108,17 +147,13 @@ public class CopyPromotionApplicationService {
             );
         }
 
-        CopyPromotionSupportPort.GeneratedPromotionLink result = copyPromotionSupportPort.generatePromotionLinkForCopy(
-                activityId,
-                productId,
-                userId,
-                deptId,
-                externalUniqueId,
-                promotionScene,
-                needShortLink,
-                scene,
-                talentId,
-                idempotencyKey);
+        CopyPromotionSupportPort.GeneratedPromotionLink result = attributionOwnerType == null
+                ? copyPromotionSupportPort.generatePromotionLinkForCopy(
+                        activityId, productId, userId, deptId, externalUniqueId, promotionScene,
+                        needShortLink, scene, talentId, idempotencyKey)
+                : copyPromotionSupportPort.generatePromotionLinkForCopy(
+                        activityId, productId, userId, deptId, externalUniqueId, promotionScene,
+                        needShortLink, scene, talentId, idempotencyKey, attributionOwnerType);
         String promotionLink = CopyTextPolicy.firstText(result.shortLink(), result.promoteLink());
         String text = CopyTextPolicy.render(
                 configDomainFacade, ctx.snapshot(), ctx.state(), promotionLink);

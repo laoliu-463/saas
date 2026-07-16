@@ -55,6 +55,8 @@
         <result property="attributionRemark" column="attribution_remark"/>
         <result property="channelAttributionSource" column="channel_attribution_source"/>
         <result property="recruiterAttributionSource" column="recruiter_attribution_source"/>
+        <result property="channelAttributionStatus" column="channel_attribution_status"/>
+        <result property="recruiterAttributionStatus" column="recruiter_attribution_status"/>
         <result property="createTime" column="create_time"/>
         <result property="updateTime" column="update_time"/>
         <result property="version" column="version"/>
@@ -85,6 +87,7 @@
             user_id, dept_id, colonel_user_id, colonel_user_name, promotion_link_id, product_title, talent_name,
             colonel_activity_id, pay_time, order_create_time, settle_time,
             attribution_status, attribution_remark, channel_attribution_source, recruiter_attribution_source,
+            channel_attribution_status, recruiter_attribution_status,
             create_time, update_time, version, deleted, extra_data
         )
         SELECT
@@ -101,6 +104,7 @@
             #{userId}, #{deptId}, #{colonelUserId}, #{colonelUserName}, #{promotionLinkId}, #{productTitle}, #{talentName},
             #{activityId}, #{payTime}, #{orderCreateTime}, #{settleTime},
             #{attributionStatus}, #{attributionRemark}, #{channelAttributionSource}, #{recruiterAttributionSource},
+            #{channelAttributionStatus}, #{recruiterAttributionStatus},
             #{createTime}, #{updateTime},
             COALESCE(#{version}, 0), #{deleted},
             CAST(#{extraData, typeHandler=com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler} AS JSONB)
@@ -159,6 +163,8 @@
             attribution_remark = #{attributionRemark},
             channel_attribution_source = #{channelAttributionSource},
             recruiter_attribution_source = #{recruiterAttributionSource},
+            channel_attribution_status = #{channelAttributionStatus},
+            recruiter_attribution_status = #{recruiterAttributionStatus},
             update_time = #{updateTime},
             version = COALESCE(version, 0) + 1,
             deleted = #{deleted},
