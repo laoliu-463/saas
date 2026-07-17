@@ -234,7 +234,7 @@ public class DataApplicationService extends BaseController {
      *   <li>构建筛选条件 QueryWrapper，应用各维度筛选参数</li>
      *   <li>应用当前用户的数据范围（PERSONAL / DEPT / ALL）</li>
      *   <li>执行分页查询，将实体转换为 OrderVO 返回</li>
-     * </ol>
+    * </ol>
      *
      * @param page                页码，从 1 开始，最大 1000
      * @param size                每页条数，最大 200
@@ -309,7 +309,8 @@ public class DataApplicationService extends BaseController {
                 recruitType,
                 userId,
                 deptId,
-                dataScope);
+                dataScope,
+                null);
 
         // 第三步：执行分页查询，数据范围已在 wrapper 中显式追加
         IPage<ColonelsettlementOrder> orderPage = dataOrderQueryFacade.findPageWithScope(new Page<>(page, size), wrapper);
@@ -434,7 +435,7 @@ public class DataApplicationService extends BaseController {
         QueryWrapper<ColonelsettlementOrder> wrapper = buildOrderFilterWrapper(
                 true, timeField, start, end, orderId, status, talentId, effectivePartnerId,
                 productId, productName, shopName, talentName, null, null,
-                colonelActivityId, recruitType, userId, deptId, DataScope.ALL);
+                colonelActivityId, recruitType, userId, deptId, DataScope.ALL, null);
         applyOrderDataScope(wrapper, true, userId, deptId, dataScope, roleCodes);
         applyOrderDetailExtraFilters(wrapper, true, activityName, effectivePartnerId, partnerName, channelName, effectiveRecruiterName);
         applyDeptIdFilters(wrapper, true, parseUuidCsv(recruiterDeptIds), parseUuidCsv(channelDeptIds));
@@ -455,7 +456,11 @@ public class DataApplicationService extends BaseController {
                 .toList();
         Map<String, OrderPerformanceDTO> perfMap = loadPerformanceMap(
                 orderIds,
-                PerformanceAccessContext.of(userId, deptId, dataScope, List.of()));
+                PerformanceAccessContext.of(
+                        userId,
+                        deptId,
+                        resolveOrderDetailPerformanceScope(dataScope, roleCodes),
+                        roleCodes));
 
         // 批量查询活动名称
         Map<String, String> activityNameMap = loadActivityNameMap(orders);
@@ -747,7 +752,6 @@ public class DataApplicationService extends BaseController {
      * @return 订单汇总 VO，包含总计行（total）与按日明细列表（records）
      */
     @Operation(summary = "订单明细汇总", description = "按数据页筛选条件返回订单汇总与按日明细。该接口用于订单明细页顶部汇总条和默认表格。")
-    @GetMapping("/data/orders/summary")
     public ApiResult<OrderSummaryVO> getOrderSummary(
             @Parameter(description = "订单号，支持模糊匹配。") @RequestParam(required = false) String orderId,
             @Parameter(description = "订单状态，支持 ORDERED、SHIPPED、FINISHED、CANCELLED。") @RequestParam(required = false) String status,
@@ -767,20 +771,46 @@ public class DataApplicationService extends BaseController {
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
+        return getOrderSummary(
+                orderId, status, talentId, merchantId, productId, productName, shopName,
+                talentName, colonelName, channelName, colonelActivityId, recruitType,
+                startDate, endDate, timeField, userId, deptId, dataScope, null);
+    }
+
+    public ApiResult<OrderSummaryVO> getOrderSummary(
+            @Parameter(description = "订单号，支持模糊匹配。") @RequestParam(required = false) String orderId,
+            @Parameter(description = "订单状态，支持 ORDERED、SHIPPED、FINISHED、CANCELLED。") @RequestParam(required = false) String status,
+            @Parameter(description = "达人 ID（UUID），精确匹配。") @RequestParam(required = false) UUID talentId,
+            @Parameter(description = "商家 merchant_id（字符串），精确匹配。") @RequestParam(required = false) String merchantId,
+            @Parameter(description = "商品 ID，精确匹配。") @RequestParam(required = false) String productId,
+            @Parameter(description = "商品名称/标题，模糊匹配。") @RequestParam(required = false) String productName,
+            @Parameter(description = "店铺名称，模糊匹配。") @RequestParam(required = false) String shopName,
+            @Parameter(description = "达人昵称，模糊匹配。") @RequestParam(required = false) String talentName,
+            @Parameter(description = "团长/招商负责人名称，模糊匹配。") @RequestParam(required = false) String colonelName,
+            @Parameter(description = "渠道负责人名称，模糊匹配。") @RequestParam(required = false) String channelName,
+            @Parameter(description = "团长活动 ID，精确匹配。") @RequestParam(required = false) String colonelActivityId,
+            @Parameter(description = "招商类型：MERCHANT（商家型招商单） 或 PROMOTION（推广单）。") @RequestParam(required = false) String recruitType,
+            @Parameter(description = "开始日期，格式 yyyy-MM-dd。") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @Parameter(description = "结束日期，格式 yyyy-MM-dd。") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @Parameter(description = "时间字段：createTime（默认）或 settleTime。") @RequestParam(required = false) String timeField,
+            @RequestAttribute("userId") UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
+            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
+            List<String> roleCodes) {
         return ok(shortTtlCacheService.get(
                 orderSummaryCacheKey(timeField, startDate, endDate,
                         orderId, status, talentId, merchantId,
                         productId, productName, shopName,
                         talentName, colonelName, channelName,
                         colonelActivityId, recruitType,
-                        userId, deptId, dataScope),
+                        userId, deptId, dataScope, roleCodes),
                 ORDER_SUMMARY_CACHE_TTL,
                 () -> buildOrderSummary(orderId, status, talentId, merchantId,
                         productId, productName, shopName,
                         talentName, colonelName, channelName,
                         colonelActivityId, recruitType,
                         startDate, endDate, timeField,
-                        userId, deptId, dataScope)));
+                        userId, deptId, dataScope, roleCodes)));
     }
 
     private OrderSummaryVO buildOrderSummary(
@@ -789,7 +819,7 @@ public class DataApplicationService extends BaseController {
             String talentName, String colonelName, String channelName,
             String colonelActivityId, String recruitType,
             LocalDate startDate, LocalDate endDate, String timeField,
-            UUID userId, UUID deptId, DataScope dataScope) {
+            UUID userId, UUID deptId, DataScope dataScope, List<String> roleCodes) {
         // 第一步：解析时间范围
         LocalDateTime start = startDate == null
                 ? LocalDate.now().minusDays(30).atStartOfDay()
@@ -822,7 +852,8 @@ public class DataApplicationService extends BaseController {
                 recruitType,
                 userId,
                 deptId,
-                dataScope);
+                dataScope,
+                roleCodes);
         // 第四步：执行汇总聚合查询——按日分组版本（明细行）
         List<Map<String, Object>> dailyRows = queryOrderSummaryAggregates(
                 true,
@@ -844,7 +875,8 @@ public class DataApplicationService extends BaseController {
                 recruitType,
                 userId,
                 deptId,
-                dataScope);
+                dataScope,
+                roleCodes);
         // 第五步：查询提成汇总（总计），按活动桶计算团长/渠道/达人三方提成
         CommissionService.CommissionSummary totalCommission = queryOrderSummaryCommission(
                 false,
@@ -867,7 +899,8 @@ public class DataApplicationService extends BaseController {
                 recruitType,
                 userId,
                 deptId,
-                dataScope);
+                dataScope,
+                roleCodes);
         Map<String, CommissionService.CommissionSummary> dailyCommission = queryDailyOrderSummaryCommission(
                 columns,
                 timeField,
@@ -887,7 +920,8 @@ public class DataApplicationService extends BaseController {
                 recruitType,
                 userId,
                 deptId,
-                dataScope);
+                dataScope,
+                roleCodes);
 
         boolean estimateTrack = !"settle_time".equals(columns.timeColumn());
 
@@ -909,7 +943,7 @@ public class DataApplicationService extends BaseController {
             String productId, String productName, String shopName,
             String talentName, String colonelName, String channelName,
             String colonelActivityId, String recruitType,
-            UUID userId, UUID deptId, DataScope dataScope) {
+            UUID userId, UUID deptId, DataScope dataScope, Collection<String> roleCodes) {
         String timeColumn = resolveTimeColumn(timeField);
         return ORDER_SUMMARY_CACHE_PREFIX + cacheKey(
                 timeColumn,
@@ -918,7 +952,8 @@ public class DataApplicationService extends BaseController {
                 productId, productName, shopName,
                 talentName, colonelName, channelName,
                 colonelActivityId, recruitType,
-                userId, deptId, dataScope == null ? "NO_SCOPE" : dataScope);
+                userId, deptId, dataScope == null ? "NO_SCOPE" : dataScope,
+                roleCodesCacheKey(roleCodes));
     }
 
     @Operation(summary = "核心指标", description = "查询数据页首页核心指标与近 7 天趋势，支持双轨（结算/预估）并行返回。")
@@ -1172,7 +1207,8 @@ public class DataApplicationService extends BaseController {
                 recruitType,
                 userId,
                 deptId,
-                dataScope);
+                dataScope,
+                null);
 
         response.setContentType("text/csv; charset=UTF-8");
         response.setHeader("Content-Disposition", "attachment; filename=\"orders.csv\"");
@@ -1266,7 +1302,7 @@ public class DataApplicationService extends BaseController {
         QueryWrapper<ColonelsettlementOrder> wrapper = buildOrderFilterWrapper(
                 true, timeField, start, end, orderId, status, talentId, effectivePartnerId,
                 productId, productName, shopName, talentName, null, null,
-                colonelActivityId, recruitType, userId, deptId, dataScope);
+                colonelActivityId, recruitType, userId, deptId, dataScope, null);
         applyOrderDetailExtraFilters(wrapper, true, activityName, effectivePartnerId, partnerName, channelName, effectiveRecruiterName);
         applyDeptIdFilters(wrapper, true, parseUuidCsv(recruiterDeptIds), parseUuidCsv(channelDeptIds));
 
@@ -1290,7 +1326,11 @@ public class DataApplicationService extends BaseController {
                     .toList();
             Map<String, OrderPerformanceDTO> perfMap = loadPerformanceMap(
                     orderIds,
-                    PerformanceAccessContext.of(userId, deptId, dataScope, List.of()));
+                    PerformanceAccessContext.of(
+                            userId,
+                            deptId,
+                            dataScope,
+                            List.of()));
             Map<String, String> activityNameMap = loadActivityNameMap(orders);
             Map<UUID, String> userNameMap = loadUserNameMap(perfMap.values());
 
@@ -1726,7 +1766,8 @@ public class DataApplicationService extends BaseController {
             String recruitType,
             UUID userId,
             UUID deptId,
-            DataScope dataScope) {
+            DataScope dataScope,
+            List<String> roleCodes) {
         QueryWrapper<ColonelsettlementOrder> wrapper = buildOrderFilterWrapper(
                 false,
                 timeField,
@@ -1746,7 +1787,8 @@ public class DataApplicationService extends BaseController {
                 recruitType,
                 userId,
                 deptId,
-                dataScope);
+                dataScope,
+                roleCodes);
         List<String> selects = new ArrayList<>();
         String dayExpr = "DATE(" + columns.timeColumn() + ")";
         if (daily) {
@@ -1794,7 +1836,8 @@ public class DataApplicationService extends BaseController {
             String recruitType,
             UUID userId,
             UUID deptId,
-            DataScope dataScope) {
+            DataScope dataScope,
+            List<String> roleCodes) {
         List<Map<String, Object>> rows = queryOrderSummaryCommissionBuckets(
                 daily,
                 columns,
@@ -1815,7 +1858,8 @@ public class DataApplicationService extends BaseController {
                 recruitType,
                 userId,
                 deptId,
-                dataScope);
+                dataScope,
+                roleCodes);
         List<CommissionService.ActivityCommissionBucket> buckets = rows.stream()
                 .filter(row -> !daily || date == null || date.equals(asString(row, "stat_date")))
                 .map(row -> toActivityCommissionBucket(row, isEstimateTrack(timeField)))
@@ -1842,7 +1886,8 @@ public class DataApplicationService extends BaseController {
             String recruitType,
             UUID userId,
             UUID deptId,
-            DataScope dataScope) {
+            DataScope dataScope,
+            List<String> roleCodes) {
         List<Map<String, Object>> rows = queryOrderSummaryCommissionBuckets(
                 true,
                 columns,
@@ -1863,7 +1908,8 @@ public class DataApplicationService extends BaseController {
                 recruitType,
                 userId,
                 deptId,
-                dataScope);
+                dataScope,
+                roleCodes);
         Map<String, List<CommissionService.ActivityCommissionBucket>> grouped = new LinkedHashMap<>();
         for (Map<String, Object> row : rows) {
             String date = asString(row, "stat_date");
@@ -1895,7 +1941,8 @@ public class DataApplicationService extends BaseController {
             String recruitType,
             UUID userId,
             UUID deptId,
-            DataScope dataScope) {
+            DataScope dataScope,
+            List<String> roleCodes) {
         QueryWrapper<ColonelsettlementOrder> wrapper = buildOrderFilterWrapper(
                 false,
                 timeField,
@@ -1915,7 +1962,8 @@ public class DataApplicationService extends BaseController {
                 recruitType,
                 userId,
                 deptId,
-                dataScope);
+                dataScope,
+                roleCodes);
         String dayExpr = "DATE(" + columns.timeColumn() + ")";
         String recruiterExpr = "COALESCE(colonel_user_id, user_id)";
         List<String> selects = new ArrayList<>();
@@ -1959,13 +2007,14 @@ public class DataApplicationService extends BaseController {
             String recruitType,
             UUID userId,
             UUID deptId,
-            DataScope dataScope) {
+            DataScope dataScope,
+            Collection<String> roleCodes) {
         QueryWrapper<ColonelsettlementOrder> wrapper = new QueryWrapper<>();
         String timeColumn = column(aliased, resolveTimeColumn(timeField));
         wrapper.eq(column(aliased, "deleted"), 0)
                 .ge(timeColumn, start)
                 .lt(timeColumn, end);
-        applyOrderDataScope(wrapper, aliased, userId, deptId, dataScope);
+        applyOrderDataScope(wrapper, aliased, userId, deptId, dataScope, roleCodes);
         if (StringUtils.hasText(orderId)) {
             wrapper.like(column(aliased, "order_id"), orderId.trim());
         }
@@ -2120,25 +2169,16 @@ public class DataApplicationService extends BaseController {
             boolean aliased,
             UUID userId,
             UUID deptId,
-            DataScope dataScope) {
-        applyQueryDataScope(
-                wrapper,
-                userId,
-                deptId,
-                dataScope,
-                column(aliased, "user_id"),
-                column(aliased, "dept_id"));
-    }
-
-    private void applyOrderDataScope(
-            QueryWrapper<ColonelsettlementOrder> wrapper,
-            boolean aliased,
-            UUID userId,
-            UUID deptId,
             DataScope dataScope,
             Collection<String> roleCodes) {
         if (roleCodes == null || roleCodes.isEmpty()) {
-            applyOrderDataScope(wrapper, aliased, userId, deptId, dataScope);
+            applyQueryDataScope(
+                    wrapper,
+                    userId,
+                    deptId,
+                    dataScope,
+                    column(aliased, "user_id"),
+                    column(aliased, "dept_id"));
             return;
         }
         // 招商专员的订单明细是全量只读业务视图，不按个人/部门归属裁剪订单行。
@@ -2149,6 +2189,29 @@ public class DataApplicationService extends BaseController {
         String ownerColumn = column(aliased, resolveOrderOwnerColumn(roleCodes));
         String deptColumn = column(aliased, resolveOrderDeptColumn(roleCodes));
         applyQueryDataScope(wrapper, userId, deptId, dataScope, ownerColumn, deptColumn);
+    }
+
+    private String roleCodesCacheKey(Collection<String> roleCodes) {
+        if (roleCodes == null || roleCodes.isEmpty()) {
+            return "NO_ROLES";
+        }
+        List<String> normalized = roleCodes.stream()
+                .filter(StringUtils::hasText)
+                .map(role -> role.trim().toLowerCase(Locale.ROOT))
+                .distinct()
+                .sorted()
+                .toList();
+        return normalized.isEmpty() ? "NO_ROLES" : String.join(",", normalized);
+    }
+
+    /**
+     * 订单明细是招商专员的全量只读业务视图，补充的业绩字段必须沿用同一权限例外。
+     * 该调整仅作用于订单明细 BFF 的业绩补充，不改变业绩域其他接口的数据范围策略。
+     */
+    private DataScope resolveOrderDetailPerformanceScope(
+            DataScope dataScope,
+            Collection<String> roleCodes) {
+        return hasAnyRole(roleCodes, RoleCodes.BIZ_STAFF) ? DataScope.ALL : dataScope;
     }
 
     private String resolveOrderOwnerColumn(Collection<String> roleCodes) {

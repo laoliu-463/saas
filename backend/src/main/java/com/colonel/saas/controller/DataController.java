@@ -155,7 +155,6 @@ public class DataController extends DataApplicationService {
         return super.getOrderDetailPage(page, size, orderId, status, talentId, merchantId, productId, productName, shopName, talentName, colonelName, channelName, colonelActivityId, activityName, partnerId, partnerName, recruiterName, recruitType, startDate, endDate, timeField, recruiterDeptIds, channelDeptIds, userId, deptId, dataScope, roleCodes);
     }
 
-    @GetMapping("/data/orders/summary")
     @Override
     public ApiResult<OrderSummaryVO> getOrderSummary(
             @Parameter(description = "订单号，支持模糊匹配。") @RequestParam(required = false) String orderId,
@@ -177,6 +176,31 @@ public class DataController extends DataApplicationService {
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
         return super.getOrderSummary(orderId, status, talentId, merchantId, productId, productName, shopName, talentName, colonelName, channelName, colonelActivityId, recruitType, startDate, endDate, timeField, userId, deptId, dataScope);
+    }
+
+    @GetMapping("/data/orders/summary")
+    @Override
+    public ApiResult<OrderSummaryVO> getOrderSummary(
+            @Parameter(description = "订单号，支持模糊匹配。") @RequestParam(required = false) String orderId,
+            @Parameter(description = "订单状态，支持 ORDERED、SHIPPED、FINISHED、CANCELLED。") @RequestParam(required = false) String status,
+            @Parameter(description = "达人 ID（UUID），精确匹配。") @RequestParam(required = false) UUID talentId,
+            @Parameter(description = "商家 merchant_id（字符串），精确匹配。") @RequestParam(required = false) String merchantId,
+            @Parameter(description = "商品 ID，精确匹配。") @RequestParam(required = false) String productId,
+            @Parameter(description = "商品名称/标题，模糊匹配。") @RequestParam(required = false) String productName,
+            @Parameter(description = "店铺名称，模糊匹配。") @RequestParam(required = false) String shopName,
+            @Parameter(description = "达人昵称，模糊匹配。") @RequestParam(required = false) String talentName,
+            @Parameter(description = "团长/招商负责人名称，模糊匹配。") @RequestParam(required = false) String colonelName,
+            @Parameter(description = "渠道负责人名称，模糊匹配。") @RequestParam(required = false) String channelName,
+            @Parameter(description = "团长活动 ID，精确匹配。") @RequestParam(required = false) String colonelActivityId,
+            @Parameter(description = "招商类型：MERCHANT（商家型招商单） 或 PROMOTION（推广单）。") @RequestParam(required = false) String recruitType,
+            @Parameter(description = "开始日期，格式 yyyy-MM-dd。") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @Parameter(description = "结束日期，格式 yyyy-MM-dd。") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @Parameter(description = "时间字段：createTime（默认）或 settleTime。") @RequestParam(required = false) String timeField,
+            @RequestAttribute("userId") UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
+            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
+            @RequestAttribute(value = "roleCodes", required = false) List<String> roleCodes) {
+        return super.getOrderSummary(orderId, status, talentId, merchantId, productId, productName, shopName, talentName, colonelName, channelName, colonelActivityId, recruitType, startDate, endDate, timeField, userId, deptId, dataScope, roleCodes);
     }
 
     @GetMapping("/dashboard/metrics")
