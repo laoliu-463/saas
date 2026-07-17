@@ -419,7 +419,8 @@ public class DataApplicationService extends BaseController {
             @Parameter(description = "渠道部门 ID 列表") @RequestParam(required = false) String channelDeptIds,
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
-            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
+            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
+            List<String> roleCodes) {
 
         LocalDateTime start = startDate == null
                 ? LocalDate.now().minusDays(30).atStartOfDay()
@@ -433,7 +434,8 @@ public class DataApplicationService extends BaseController {
         QueryWrapper<ColonelsettlementOrder> wrapper = buildOrderFilterWrapper(
                 true, timeField, start, end, orderId, status, talentId, effectivePartnerId,
                 productId, productName, shopName, talentName, null, null,
-                colonelActivityId, recruitType, userId, deptId, dataScope);
+                colonelActivityId, recruitType, userId, deptId, DataScope.ALL);
+        applyOrderDataScope(wrapper, true, userId, deptId, dataScope, roleCodes);
         applyOrderDetailExtraFilters(wrapper, true, activityName, effectivePartnerId, partnerName, channelName, effectiveRecruiterName);
         applyDeptIdFilters(wrapper, true, parseUuidCsv(recruiterDeptIds), parseUuidCsv(channelDeptIds));
 
@@ -2126,6 +2128,61 @@ public class DataApplicationService extends BaseController {
                 dataScope,
                 column(aliased, "user_id"),
                 column(aliased, "dept_id"));
+    }
+
+    private void applyOrderDataScope(
+            QueryWrapper<ColonelsettlementOrder> wrapper,
+            boolean aliased,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            Collection<String> roleCodes) {
+        if (roleCodes == null || roleCodes.isEmpty()) {
+            applyOrderDataScope(wrapper, aliased, userId, deptId, dataScope);
+            return;
+        }
+        // 招商专员的订单明细是全量只读业务视图，不按个人/部门归属裁剪订单行。
+        // 该例外只作用于订单明细查询，其他数据域仍按各自的数据范围策略执行。
+        if (hasAnyRole(roleCodes, RoleCodes.BIZ_STAFF)) {
+            return;
+        }
+        String ownerColumn = column(aliased, resolveOrderOwnerColumn(roleCodes));
+        String deptColumn = column(aliased, resolveOrderDeptColumn(roleCodes));
+        applyQueryDataScope(wrapper, userId, deptId, dataScope, ownerColumn, deptColumn);
+    }
+
+    private String resolveOrderOwnerColumn(Collection<String> roleCodes) {
+        if (hasAnyRole(roleCodes, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF)) {
+            return "colonel_user_id";
+        }
+        if (hasAnyRole(roleCodes, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF)) {
+            return "channel_user_id";
+        }
+        return "user_id";
+    }
+
+    private String resolveOrderDeptColumn(Collection<String> roleCodes) {
+        if (hasAnyRole(roleCodes, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF)) {
+            return "dept_id";
+        }
+        if (hasAnyRole(roleCodes, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF)) {
+            return "channel_dept_id";
+        }
+        return "dept_id";
+    }
+
+    private boolean hasAnyRole(Collection<String> roleCodes, String... expectedRoles) {
+        if (roleCodes == null || roleCodes.isEmpty()) {
+            return false;
+        }
+        for (String roleCode : roleCodes) {
+            for (String expectedRole : expectedRoles) {
+                if (expectedRole.equalsIgnoreCase(roleCode)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private String column(boolean aliased, String column) {

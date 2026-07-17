@@ -1422,7 +1422,7 @@ class DataControllerTest {
         var result = dataController.getOrderDetailPage(
                 1, 20, null, null, null, null, null, null, null, null,
                 null, null, null, null, null, null, null, null, null, null, null,
-                null, null, UUID.randomUUID(), null, DataScope.ALL);
+                null, null, UUID.randomUUID(), null, DataScope.ALL, null);
 
         assertThat(result).isNotNull();
         assertThat(result.getData().getRecords()).isEmpty();
@@ -1438,7 +1438,7 @@ class DataControllerTest {
                 null, null, null, null, "旧招商字段", "渠道甲", "ACT-1",
                 "活动甲", "PARTNER-1", "合作方甲", "招商甲",
                 null, null, null, "createTime", null, null,
-                UUID.randomUUID(), null, DataScope.ALL);
+                UUID.randomUUID(), null, DataScope.ALL, null);
 
         ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
         verify(dataOrderQueryFacade).findPageWithScope(any(Page.class), wrapperCaptor.capture());
@@ -1450,6 +1450,43 @@ class DataControllerTest {
         assertThat(segment).contains("final_channel_user_id");
         assertThat(segment).contains("final_recruiter_user_id");
         assertThat(segment).doesNotContain("media");
+    }
+
+    @Test
+    void getOrderDetailPage_shouldAllowBizStaffToViewAllOrders() {
+        IPage<ColonelsettlementOrder> empty = new Page<>(1, 20);
+        when(dataOrderQueryFacade.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(empty);
+        UUID userId = UUID.randomUUID();
+
+        dataController.getOrderDetailPage(
+                1, 20, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null, null, null,
+                null, null, userId, null, DataScope.PERSONAL, List.of(RoleCodes.BIZ_STAFF));
+
+        ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
+        verify(dataOrderQueryFacade).findPageWithScope(any(Page.class), wrapperCaptor.capture());
+        String segment = wrapperCaptor.getValue().getSqlSegment();
+        assertThat(segment).doesNotContain("co.colonel_user_id");
+        assertThat(segment).doesNotContain("co.channel_user_id");
+        assertThat(segment).doesNotContain("co.user_id");
+    }
+
+    @Test
+    void getOrderDetailPage_shouldScopeChannelStaffByChannelUserId() {
+        IPage<ColonelsettlementOrder> empty = new Page<>(1, 20);
+        when(dataOrderQueryFacade.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(empty);
+        UUID userId = UUID.randomUUID();
+
+        dataController.getOrderDetailPage(
+                1, 20, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null, null, null,
+                null, null, userId, null, DataScope.PERSONAL, List.of(RoleCodes.CHANNEL_STAFF));
+
+        ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
+        verify(dataOrderQueryFacade).findPageWithScope(any(Page.class), wrapperCaptor.capture());
+        String segment = wrapperCaptor.getValue().getSqlSegment();
+        assertThat(segment).contains("co.channel_user_id");
+        assertThat(segment).doesNotContain("co.user_id");
     }
 
     @Test
@@ -1512,7 +1549,7 @@ class DataControllerTest {
         var result = dataController.getOrderDetailPage(
                 1, 20, null, null, null, null, null, null, null, null,
                 null, null, null, null, null, null, null, null, null, null, null,
-                null, null, UUID.randomUUID(), null, DataScope.ALL);
+                null, null, UUID.randomUUID(), null, DataScope.ALL, null);
 
         assertThat(result).isNotNull();
         List<OrderDetailVO> records = result.getData().getRecords();
@@ -1570,7 +1607,7 @@ class DataControllerTest {
         var result = dataController.getOrderDetailPage(
                 1, 20, null, null, null, null, null, null, null, null,
                 null, null, null, null, null, null, null, null, null, null, null,
-                null, null, UUID.randomUUID(), null, DataScope.ALL);
+                null, null, UUID.randomUUID(), null, DataScope.ALL, null);
 
         List<OrderDetailVO> records = result.getData().getRecords();
         assertThat(records).hasSize(1);
