@@ -76,6 +76,10 @@ PASS (local regression and preflight)
 - real-pre P0 preflight passed: runtime/qa/out/real-pre-preflight-20260717-140118.
 - Evidence chain: remote operation_log showed the affected account's POST /api/talents 403 was role-consistent for biz_staff; the reported successful channel_staff create path inserted talent but no talent_claim and then routed to TEAM_PUBLIC.
 - Dashboard toggle was verified to change aria-selected; no API contract change was made because metrics intentionally returns dual-track data and the affected account has zero performance rows.
+- Remote API regression through SSH tunnel: channel_staff login 200; POST /api/talents 200; talent detail contained owner claim; GET /api/talents?view=MY_TALENTS returned the created talent; createTime and settleTime metrics both returned 200 dual-track responses.
+- Remote browser regression: manual create POST 200, route changed to view=MY_TALENTS, MY_TALENTS contained the created talent; performance tabs switched selected state in both directions; channel_staff did not see the real-pre empty-data hint; 0 console errors and 0 failed requests.
+- Both remote temporary test talents were deleted by admin; cleanup returned HTTP 200 with no retained diagnostic marker.
+- The browser run used an isolated Chromium instance with web security disabled only because the SSH tunnel origin is not in the remote CORS allowlist; the direct remote API path was also verified independently.
 ~~~
 
 ## Content Maintenance Result
@@ -92,7 +96,7 @@ PASS: gitee feature/auth-system deployed at fde84e3250c6f4d76994b119b19845759692
 
 ## Retro Summary
 
-根因已由远端 API/数据库审计和本地 Playwright 证据确认；修复收敛为手动创建自动生成 owner claim、创建后回到 MY_TALENTS，并按角色收敛空数据提示。后续改进：为远端真实账号补充一次无污染的手动创建回归验收，记录 POST /api/talents、talent_claim 和 MY_TALENTS 三者关联证据。
+根因已由远端 API/数据库审计和本地 Playwright 证据确认；修复收敛为手动创建自动生成 owner claim、创建后回到 MY_TALENTS，并按角色收敛空数据提示。远端真实账号的手动创建、owner claim、MY_TALENTS、时间切换和清理均已补充验证。
 
 ## Conclusion
 
@@ -102,4 +106,4 @@ PARTIAL
 
 - Business code, local validation, container restart, health checks, and remote deployment passed.
 - Harness limits check returned TASK_GATE=FAIL / REPOSITORY_HEALTH=PARTIAL because pre-existing unowned timestamp reports and report-root debt are outside this task's OwnedFiles; they were preserved and not deleted.
-- The exact post-deploy manual create flow for a real remote channel_staff account remains a follow-up validation to avoid adding persistent diagnostic data.
+- The browser tunnel required an isolated CORS-disabled QA context; direct API validation was performed without that bypass.
