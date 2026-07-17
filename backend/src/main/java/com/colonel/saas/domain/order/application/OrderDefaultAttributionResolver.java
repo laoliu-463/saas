@@ -15,6 +15,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.UUID;
 
@@ -40,6 +41,10 @@ public class OrderDefaultAttributionResolver {
     }
 
     public OrderDefaultAttributionResult resolve(ColonelsettlementOrder order, Map<String, Object> rawPayload) {
+        return resolveWithTrace(order, rawPayload).result();
+    }
+
+    public Resolution resolveWithTrace(ColonelsettlementOrder order, Map<String, Object> rawPayload) {
         OrderAttributionInput input = OrderAttributionInput.from(order, rawPayload);
         UUID talentId = input.talentId() != null ? input.talentId() : resolveTalentId(input.talentUid());
         OrderAttributionInput enriched = new OrderAttributionInput(
@@ -55,7 +60,16 @@ public class OrderDefaultAttributionResolver {
                 enriched.pickExtra());
         RecruiterLookup recruiterLookup = loadRecruiterLookup(enriched.activityId(), enriched.productId());
 
-        return OrderDefaultAttributionPolicy.resolve(enriched, channelMapping, recruiterLookup);
+        return new Resolution(
+                OrderDefaultAttributionPolicy.resolve(enriched, channelMapping, recruiterLookup),
+                channelMapping != null,
+                channelMapping == null ? null : channelMapping.getCreateTime());
+    }
+
+    public record Resolution(
+            OrderDefaultAttributionResult result,
+            boolean nativeMappingMatched,
+            LocalDateTime mappingCreatedAt) {
     }
 
     private RecruiterLookup loadRecruiterLookup(String activityId, String productId) {

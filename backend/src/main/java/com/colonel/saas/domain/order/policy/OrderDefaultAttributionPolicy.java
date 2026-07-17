@@ -156,6 +156,13 @@ public final class OrderDefaultAttributionPolicy {
     }
 
     public static AttributionService.AttributionResult toLegacyResult(OrderDefaultAttributionResult result) {
+        return toLegacyResult(result, false, null);
+    }
+
+    public static AttributionService.AttributionResult toLegacyResult(
+            OrderDefaultAttributionResult result,
+            boolean nativeMappingMatched,
+            java.time.LocalDateTime mappingCreatedAt) {
         if (result == null) {
             return AttributionService.AttributionResult.unattributed(
                     null, null, null, null, AttributionService.REASON_SYNC_FAILED, AttributionService.NativeMappingTrace.none());
@@ -170,7 +177,12 @@ public final class OrderDefaultAttributionPolicy {
                 result.defaultRecruiterId(),
                 result.attributionStatus(),
                 result.attributionRemark(),
-                AttributionService.NativeMappingTrace.none());
+                new AttributionService.NativeMappingTrace(
+                        nativeMappingMatched,
+                        false,
+                        false,
+                        false,
+                        mappingCreatedAt));
     }
 
     private static UUID resolveDefaultRecruiter(RecruiterLookup recruiterLookup) {

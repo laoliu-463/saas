@@ -1,8 +1,14 @@
 package com.colonel.saas.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.colonel.saas.config.DddRefactorProperties;
+import com.colonel.saas.domain.order.application.OrderDefaultAttributionResolver;
 import com.colonel.saas.domain.order.application.OrderAttributionRouter;
+import com.colonel.saas.domain.order.policy.OrderAttributionInput;
+import com.colonel.saas.domain.order.policy.OrderDefaultAttributionPolicy;
+import com.colonel.saas.domain.order.policy.OrderDefaultAttributionResult;
 import com.colonel.saas.entity.ColonelsettlementOrder;
+import com.colonel.saas.entity.PickSourceMapping;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -19,6 +25,8 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.nullable;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -175,5 +183,49 @@ class OrderAttributionReplayServiceTest {
         assertThat(result.unsafeBecauseCreatedAfterOrder()).isEqualTo(1);
         assertThat(result.colonelBuyinIdMismatch()).isEqualTo(1);
         assertThat(result.updated()).isEqualTo(0);
+    }
+
+    @Test
+    void replay_shouldPreserveDddMappingTraceAndRejectMappingCreatedAfterOrder() {
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setOrderId("o-ddd-unsafe");
+        order.setProductId("product-1");
+        order.setPickSource("pick-1");
+        order.setCreateTime(LocalDateTime.of(2026, 5, 10, 1, 4, 11));
+        order.setUpdateTime(LocalDateTime.now());
+        order.setDeleted(0);
+        when(orderMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(order));
+
+        PickSourceMapping mapping = new PickSourceMapping();
+        mapping.setUserId(UUID.randomUUID());
+        mapping.setDeptId(UUID.randomUUID());
+        mapping.setActivityId("activity-1");
+        mapping.setCreateTime(LocalDateTime.of(2026, 5, 10, 6, 41, 19));
+        OrderDefaultAttributionResult dddResult = OrderDefaultAttributionPolicy.resolve(
+                new OrderAttributionInput(
+                        order.getProductId(), null, order.getPickSource(), null, null, null),
+                mapping,
+                new OrderDefaultAttributionPolicy.RecruiterLookup(null, null, false));
+
+        DddRefactorProperties properties = new DddRefactorProperties();
+        properties.setEnabled(true);
+        properties.getOrderAttribution().setEnabled(true);
+        AttributionService legacyAttributionService = mock(AttributionService.class);
+        OrderDefaultAttributionResolver defaultResolver = mock(OrderDefaultAttributionResolver.class);
+        when(defaultResolver.resolveWithTrace(any(), any())).thenReturn(
+                new OrderDefaultAttributionResolver.Resolution(
+                        dddResult, true, mapping.getCreateTime()));
+        OrderAttributionRouter realRouter = new OrderAttributionRouter(
+                properties, legacyAttributionService, defaultResolver);
+        OrderAttributionReplayService realService = new OrderAttributionReplayService(
+                orderMapper, realRouter, persistenceService);
+
+        OrderAttributionReplayService.ReplayResult result =
+                realService.replay(List.of("o-ddd-unsafe"), null, null, false);
+
+        assertThat(result.nativeKeyMatched()).isEqualTo(1);
+        assertThat(result.unsafeBecauseCreatedAfterOrder()).isEqualTo(1);
+        assertThat(result.updated()).isEqualTo(0);
+        verify(persistenceService, never()).persistOrder(any());
     }
 }
