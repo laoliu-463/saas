@@ -383,6 +383,16 @@ describe('product-library-display', () => {
     expect(resolveSupportInvestment({})).toBe(false)
   })
 
+  it('normalizeProductCard preserves招商填写的投流说明', () => {
+    const card = normalizeProductCard({
+      productId: '9005',
+      supportsAds: true,
+      auditSupplement: { adsRule: '投流比例1:0.5，保量10万曝光' }
+    })
+
+    expect(card.adsRule).toBe('投流比例1:0.5，保量10万曝光')
+  })
+
   it('buildSampleRequirementText builds text from auditSupplement', () => {
     const text = buildSampleRequirementText({
       auditSupplement: {
