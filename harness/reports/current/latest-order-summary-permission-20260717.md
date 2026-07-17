@@ -94,3 +94,4 @@ PASS
 
 - Current-week settlement fields can legitimately display `-` for orders not yet settled; a settled-time window was separately verified with non-null settlement values.
 - Remote deployment was not requested and was not performed.
+- Final `check-harness-limits.ps1 -BaselineRef HEAD` was `TASK_GATE=FAIL / REPOSITORY_HEALTH=PARTIAL` because pre-existing unowned report debt remains in the dirty worktree (`harness/reports` and `harness/reports/current` count/timestamp violations); the task-owned files had no diff-check errors and the fixed `agent-do` gate for this change was PASS.
