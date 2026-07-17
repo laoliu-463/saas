@@ -9,70 +9,85 @@
         <span class="platform-icon douyin">抖</span>
         <span>抖音</span>
       </button>
+      <button
+        type="button"
+        class="platform-tab"
+        aria-pressed="false"
+        disabled
+        title="快手订单暂未接入"
+      >
+        <span class="platform-icon kuaishou">快</span>
+        <span>快手</span>
+      </button>
     </section>
 
     <section class="order-filter-panel app-panel">
       <div class="filter-grid">
         <div class="filter-field">
           <span class="filter-label">订单ID</span>
-          <n-input v-model:value="searchParams.orderId" placeholder="请输入" clearable />
-        </div>
-        <div class="filter-field">
-          <span class="filter-label">活动ID</span>
-          <n-input v-model:value="searchParams.activityId" placeholder="请选择" clearable />
-        </div>
-        <div class="filter-field">
-          <span class="filter-label">活动名称</span>
-          <n-input v-model:value="searchParams.activityName" placeholder="请输入" clearable />
-        </div>
-        <div class="filter-field">
-          <span class="filter-label">渠道</span>
-          <n-select v-model:value="searchParams.channelName" :options="channelOptions" placeholder="请选择" clearable filterable />
-        </div>
-        <div class="filter-field">
-          <span class="filter-label">招商</span>
-          <n-select v-model:value="searchParams.recruiterName" :options="recruiterOptions" placeholder="请选择" clearable filterable />
-        </div>
-
-        <div class="filter-field">
-          <span class="filter-label">商品ID</span>
-          <n-input v-model:value="searchParams.productId" placeholder="请输入" clearable />
-        </div>
-        <div class="filter-field">
-          <span class="filter-label">商品名称</span>
-          <n-input v-model:value="searchParams.productName" placeholder="请输入" clearable />
+          <n-input v-model:value="searchParams.orderId" size="large" placeholder="请输入" clearable />
         </div>
         <div class="filter-field">
           <span class="filter-label">推广者ID</span>
-          <n-input v-model:value="searchParams.talentId" placeholder="请输入" clearable />
+          <n-input v-model:value="searchParams.talentId" size="large" placeholder="请输入" clearable />
         </div>
         <div class="filter-field">
           <span class="filter-label">推广者昵称</span>
-          <n-input v-model:value="searchParams.talentName" placeholder="请输入" clearable />
+          <n-input v-model:value="searchParams.talentName" size="large" placeholder="请输入" clearable />
+        </div>
+        <div class="filter-field">
+          <span class="filter-label">商品ID</span>
+          <n-input v-model:value="searchParams.productId" size="large" placeholder="请输入" clearable />
         </div>
 
         <div class="filter-field">
+          <span class="filter-label">商品名称</span>
+          <n-input v-model:value="searchParams.productName" size="large" placeholder="请输入" clearable />
+        </div>
+        <div class="filter-field">
+          <span class="filter-label">活动信息</span>
+          <n-input v-model:value="searchParams.activityName" size="large" placeholder="请输入" clearable />
+        </div>
+        <div class="filter-field">
+          <span class="filter-label">店铺名称</span>
+          <n-input v-model:value="searchParams.partnerName" size="large" placeholder="请输入" clearable />
+        </div>
+        <div class="filter-field">
+          <span class="filter-label">订单状态</span>
+          <n-select v-model:value="searchParams.status" :options="statusOptions" size="large" placeholder="请选择" clearable />
+        </div>
+
+        <div class="filter-field">
+          <span class="filter-label">带货类型</span>
+          <n-select v-model:value="searchParams.recruitType" :options="recruitTypeOptions" size="large" placeholder="请选择" clearable />
+        </div>
+        <div class="filter-field">
           <span class="filter-label">合作方ID</span>
-          <n-input v-model:value="searchParams.partnerId" placeholder="请输入" clearable />
+          <n-input v-model:value="searchParams.partnerId" size="large" placeholder="请输入" clearable />
         </div>
         <div class="filter-field">
-          <span class="filter-label">合作方名称</span>
-          <n-input v-model:value="searchParams.partnerName" placeholder="请输入" clearable />
+          <span class="filter-label">媒介</span>
+          <n-select v-model:value="searchParams.channelName" :options="channelOptions" size="large" placeholder="请选择" clearable filterable />
         </div>
         <div class="filter-field">
-          <span class="filter-label">合作类型</span>
-          <n-select v-model:value="searchParams.recruitType" :options="recruitTypeOptions" placeholder="请选择" clearable />
+          <span class="filter-label">招商</span>
+          <n-select v-model:value="searchParams.recruiterName" :options="recruiterOptions" size="large" placeholder="请选择" clearable filterable />
+        </div>
+
+        <div class="filter-field">
+          <span class="filter-label">二级团活动ID</span>
+          <n-input v-model:value="searchParams.activityId" size="large" placeholder="请输入" clearable />
         </div>
         <div class="filter-field">
           <span class="filter-label">团长名称</span>
-          <n-input v-model:value="searchParams.colonelName" placeholder="请选择" clearable />
+          <n-input v-model:value="searchParams.colonelName" size="large" placeholder="请输入" clearable />
         </div>
-
         <div class="filter-field">
           <span class="filter-label">招商部门</span>
           <n-select
             v-model:value="searchParams.recruiterDeptIds"
             :options="recruiterDeptOptions"
+            size="large"
             multiple
             filterable
             clearable
@@ -81,10 +96,11 @@
           />
         </div>
         <div class="filter-field">
-          <span class="filter-label">渠道部门</span>
+          <span class="filter-label">媒介部门</span>
           <n-select
             v-model:value="searchParams.channelDeptIds"
             :options="channelDeptOptions"
+            size="large"
             multiple
             filterable
             clearable
@@ -92,12 +108,14 @@
             placeholder="请选择"
           />
         </div>
-        <div class="filter-field filter-field-wide">
+
+        <div class="filter-field filter-field-time">
           <span class="filter-label">时间筛选</span>
           <div class="time-filter">
             <n-select
               v-model:value="timeField"
               :options="timeFieldOptions"
+              size="large"
               class="time-field-select"
               @update:value="handleTimeFieldChange"
             />
@@ -109,6 +127,7 @@
               >
                 <template #trigger>
                   <n-button
+                    size="large"
                     :type="timePreset === 'recent' ? 'primary' : 'default'"
                     :ghost="timePreset !== 'recent'"
                     data-testid="data-orders-recent-days-trigger"
@@ -133,6 +152,7 @@
               <n-button
                 v-for="preset in fixedTimePresetOptions"
                 :key="preset.value"
+                size="large"
                 :type="timePreset === preset.value ? 'primary' : 'default'"
                 :ghost="timePreset !== preset.value"
                 @click="applyTimePreset(preset.value)"
@@ -143,6 +163,7 @@
             <n-date-picker
               v-model:value="dateRange"
               type="daterange"
+              size="large"
               format="yyyy/MM/dd"
               clearable
               class="date-picker"
@@ -151,15 +172,12 @@
           </div>
         </div>
 
-        <div class="filter-field">
-          <span class="filter-label">订单状态</span>
-          <n-select v-model:value="searchParams.status" :options="statusOptions" placeholder="请选择" clearable />
-        </div>
       </div>
 
       <div class="filter-actions">
-        <n-button @click="resetFilters">重 置</n-button>
-        <n-button type="primary" data-testid="data-orders-search-submit" @click="fetchData">搜 索</n-button>
+        <n-button size="large" data-testid="data-orders-clear" @click="clearFilters">清 空</n-button>
+        <n-button size="large" @click="resetFilters">重 置</n-button>
+        <n-button size="large" type="primary" data-testid="data-orders-search-submit" @click="fetchData">搜 索</n-button>
       </div>
 
       <div class="data-tab-bar">
@@ -774,7 +792,7 @@ const fetchData = async () => {
   }
 }
 
-const resetFilters = () => {
+const clearFilterFields = () => {
   searchParams.orderId = ''
   searchParams.status = null
   searchParams.talentId = ''
@@ -793,6 +811,15 @@ const resetFilters = () => {
   searchParams.recruiterName = null
   searchParams.recruiterDeptIds = null
   searchParams.channelDeptIds = null
+}
+
+const clearFilters = () => {
+  clearFilterFields()
+  void fetchData()
+}
+
+const resetFilters = () => {
+  clearFilterFields()
   timeField.value = 'createTime'
   applyTimePreset('week')
 }
@@ -877,16 +904,16 @@ onMounted(async () => {
   min-height: 100%;
   display: flex;
   flex-direction: column;
-  gap: 22px;
+  gap: 18px;
   max-width: none;
 }
 
 .platform-switch {
   display: flex;
   align-items: center;
-  gap: 28px;
-  min-height: 54px;
-  padding: 0 4px;
+  gap: 30px;
+  min-height: 58px;
+  padding: 0 2px;
   border-bottom: 1px solid var(--border-color-light);
   background: var(--bg-card);
   border-radius: 8px 8px 0 0;
@@ -896,14 +923,14 @@ onMounted(async () => {
   position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  height: 54px;
-  padding: 0 4px;
+  gap: 9px;
+  height: 58px;
+  padding: 0 2px;
   border: 0;
   background: transparent;
   color: var(--text-primary);
-  font-size: 18px;
-  font-weight: 700;
+  font-size: 17px;
+  font-weight: 650;
   cursor: pointer;
 }
 
@@ -926,11 +953,11 @@ onMounted(async () => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
+  width: 23px;
+  height: 23px;
+  border-radius: 5px;
   color: #fff;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 800;
 }
 
@@ -939,36 +966,49 @@ onMounted(async () => {
   box-shadow: inset 3px 0 0 #23f4ee, inset -3px 0 0 #ff2d55;
 }
 
+.platform-icon.kuaishou {
+  background: #f06445;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.28);
+}
+
 .order-filter-panel {
   position: relative;
-  padding: 30px 28px 20px;
+  padding: 34px 2px 18px;
   border-radius: 8px;
 }
 
 .filter-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(220px, 1fr));
-  gap: 24px 40px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  column-gap: clamp(28px, 3.6vw, 74px);
+  row-gap: 24px;
   align-items: center;
 }
 
 .filter-field {
   display: grid;
-  grid-template-columns: 92px minmax(0, 1fr);
+  grid-template-columns: max-content minmax(0, 1fr);
   align-items: center;
-  gap: 12px;
+  gap: 16px;
   min-width: 0;
 }
 
-.filter-field-wide {
-  grid-column: span 2;
+.filter-field > :deep(.n-input),
+.filter-field > :deep(.n-select),
+.filter-field > :deep(.n-date-picker) {
+  min-width: 0;
+  width: 100%;
+}
+
+.filter-field-time {
+  grid-column: 3 / span 2;
 }
 
 .filter-label,
 .dimension-label {
   color: var(--text-primary);
-  font-size: 15px;
-  font-weight: 600;
+  font-size: 16px;
+  font-weight: 500;
   white-space: nowrap;
 }
 
@@ -977,10 +1017,11 @@ onMounted(async () => {
   align-items: center;
   gap: 0;
   min-width: 0;
+  width: 100%;
 }
 
 .time-field-select {
-  width: 150px;
+  width: 158px;
 }
 
 .time-presets {
@@ -995,7 +1036,7 @@ onMounted(async () => {
 }
 
 .date-picker {
-  width: 260px;
+  width: 250px;
   margin-left: 12px;
 }
 
@@ -1003,11 +1044,12 @@ onMounted(async () => {
   display: flex;
   justify-content: flex-end;
   gap: 18px;
-  margin-top: 24px;
+  margin-top: 26px;
+  padding-top: 2px;
 }
 
 .filter-actions :deep(.n-button) {
-  min-width: 94px;
+  min-width: 96px;
 }
 
 .dimension-row {
@@ -1182,9 +1224,9 @@ onMounted(async () => {
   vertical-align: top;
 }
 
-@media (max-width: 1700px) {
+@media (max-width: 1350px) {
   .filter-grid {
-    grid-template-columns: repeat(2, minmax(260px, 1fr));
+    column-gap: 28px;
   }
 
   .time-filter {
@@ -1194,6 +1236,16 @@ onMounted(async () => {
 
   .date-picker {
     margin-left: 0;
+  }
+}
+
+@media (max-width: 1180px) {
+  .filter-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .filter-field-time {
+    grid-column: span 2;
   }
 }
 
@@ -1211,7 +1263,7 @@ onMounted(async () => {
     grid-template-columns: 82px minmax(0, 1fr);
   }
 
-  .filter-field-wide {
+  .filter-field-time {
     grid-column: span 1;
   }
 
