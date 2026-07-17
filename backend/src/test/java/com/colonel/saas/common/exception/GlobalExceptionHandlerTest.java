@@ -220,4 +220,5 @@ class GlobalExceptionHandlerTest {
         assertThat(result.getCode()).isEqualTo(500);
         assertThat(result.getMsg()).isEqualTo("服务器异常");
     }
+
 }
