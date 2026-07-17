@@ -428,4 +428,55 @@ describe('OrderList 订单汇总页面', () => {
     const daySpan = Math.round((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) + 1
     expect(daySpan).toBe(30)
   })
+
+  /**
+   * 守门人测试：.filter-grid 必须能真正渲染成 4 列布局，避免 17 个筛选字段被浏览器压回 2 列。
+   * 已知缺陷：早期实现 grid-template-columns: repeat(4, minmax(220px, 1fr));
+   * 在中等视口（如 1600 / 1440）下，由于内部 n-input/n-select 的最小内容宽度被撑破，
+   * 浏览器会把 .filter-grid 收缩到 2 列，字段变成"竖着展示"。
+   * 本测试通过读取 OrderList.vue 源码确保 CSS 弹性下限（minmax(0, 1fr)）已生效；
+   * 同时校验子控件 min-width: 0 / width: 100% 的额外处理也已落地。
+   */
+  it('filter-grid 应当允许多列均分(4 列布局)，不被子项最小宽度撑破为 2 列', async () => {
+    await mountOrderList()
+
+    const fs = await import('node:fs/promises')
+    const path = await import('node:path')
+    const sourcePath = path.join(__dirname, 'OrderList.vue')
+    const source = await fs.readFile(sourcePath, 'utf-8')
+
+    const gridRuleMatch = /\.filter-grid\s*\{([^}]+)\}/.exec(source)
+    expect(gridRuleMatch, '.filter-grid CSS 规则应存在').not.toBeNull()
+    const gridRuleBody = gridRuleMatch![1]
+    expect(gridRuleBody).toMatch(/repeat\(\s*4\s*,\s*minmax\(\s*0\s*,\s*1fr\s*\)\s*\)/)
+    expect(gridRuleBody).not.toMatch(/minmax\(\s*220px/)
+
+    const childRuleMatch = /\.filter-field\s*>\s*:deep\([^)]+\)\s*\{[\s\S]*?\}/g.exec(source)
+    expect(childRuleMatch, '.filter-field > :deep(...) 子控件规则应存在').not.toBeNull()
+    const childRules = source.match(/\.filter-field\s*>\s*:deep\([^)]+\)\s*\{[^}]+\}/g) ?? []
+    expect(childRules.length).toBeGreaterThanOrEqual(1)
+    expect(childRules.join('\n')).toMatch(/min-width:\s*0/)
+    expect(childRules.join('\n')).toMatch(/width:\s*100%/)
+  })
+
+  it('按参考布局渲染平台页签、四列筛选区和清空按钮', async () => {
+    const wrapper = await mountOrderList()
+
+    const platformTabs = wrapper.findAll('.platform-tab')
+    expect(platformTabs).toHaveLength(2)
+    expect(platformTabs[0].classes()).toContain('active')
+    expect(platformTabs[1].attributes('disabled')).toBeDefined()
+
+    expect(wrapper.findAll('.filter-field')).toHaveLength(17)
+    expect(wrapper.find('.filter-field-time').classes()).toContain('filter-field-time')
+    expect(wrapper.text()).toContain('推广者ID')
+    expect(wrapper.text()).toContain('店铺名称')
+    expect(wrapper.text()).toContain('媒介部门')
+    expect(wrapper.find('[data-testid="data-orders-clear"]').exists()).toBe(true)
+
+    const vm = wrapper.vm as any
+    vm.searchParams.orderId = 'ORDER-TO-CLEAR'
+    await wrapper.get('[data-testid="data-orders-clear"]').trigger('click')
+    expect(vm.searchParams.orderId).toBe('')
+  })
 })
