@@ -2,11 +2,11 @@
 
 ## Metadata
 
-- Time: 2026-07-17 17:11:39 +08:00
+- Time: 2026-07-17 17:21:00 +08:00
 - Environment: real-pre
 - Scope: backend
 - Branch: codex/ddd-user-role-application
-- Commit: 1b99c5e1
+- Commit: e5311951 (implementation commit; evidence/state update follows)
 - Owned worktree: dirty
 - Deploy remote: false
 
@@ -17,6 +17,8 @@ backend/src/main/java/com/colonel/saas/controller/DataController.java
 backend/src/main/java/com/colonel/saas/service/data/DataApplicationService.java
 backend/src/test/java/com/colonel/saas/controller/DataControllerTest.java
 harness/reports/current/latest-content-retire.md
+harness/rules/state/snapshots/DOMAIN_STATUS.md
+harness/rules/state/snapshots/01-当前项目状态.md
 ~~~
 
 ## Owned Git Status
@@ -31,7 +33,7 @@ M backend/src/main/java/com/colonel/saas/controller/DataController.java
 ## Build Result
 
 ~~~text
-not collected
+Targeted regression: PASS (`DataControllerTest` 49/49; final run 2026-07-17 17:20:18 +08:00)
 Backend build: PASS (mvn -f backend/pom.xml -DskipTests package)
 ~~~
 
@@ -64,6 +66,8 @@ Local health verification: PASS
 
 ~~~text
 Business validation: PASS (npm run e2e:real-pre:p0:preflight)
+Browser/API validation: PASS using the local real-pre `biz_staff` test account. For 2026-07-13..2026-07-19, `GET /api/data/orders/summary` returned HTTP/code 200 with `orderCount=45246`, `serviceFeeIncome=22872.44`, `serviceFeeExpense=5.70`, `serviceFeeProfit=21002.26`, `grossProfit=14701.16`; `GET /api/data/orders/detail` returned HTTP/code 200 with `total=45246` and 20 records. The first detail records contained pay amount, estimated service fee/technical fee/expense/profit, recruiter/channel commission and gross profit fields. The browser rendered the financial columns and both estimate/settlement lines. For 2026-06-11..2026-06-12 on `settleTime`, summary/detail returned 9377 orders and a record with `settleAmount=1`, `effectiveServiceFee=0.02`, and `effectiveServiceProfit=0.02`.
+Browser evidence screenshots: `D:\Projects\SAAS\output\local-biz-staff-order-detail-financials.png`, `D:\Projects\SAAS\output\local-biz-staff-order-detail-service-fees.png`, `D:\Projects\SAAS\output\local-biz-staff-order-detail-financials-right.png`.
 ~~~
 
 ## Content Maintenance Result
@@ -80,7 +84,7 @@ remote not deployed
 
 ## Retro Summary
 
-No actionable Harness improvement was recorded; no standalone retro is required.
+Retro: root cause was role context being dropped at the order-summary and order-detail performance BFF boundaries. The fix adds role-aware summary filtering, role-sensitive cache keys, and a regression test for the BIZ_STAFF full read-only order view; no separate Harness improvement remains.
 
 ## Conclusion
 
@@ -88,4 +92,5 @@ PASS
 
 ## Residual Risk
 
-- Items marked as not collected are not proof of success.
+- Current-week settlement fields can legitimately display `-` for orders not yet settled; a settled-time window was separately verified with non-null settlement values.
+- Remote deployment was not requested and was not performed.

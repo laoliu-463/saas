@@ -88,9 +88,10 @@
 - DDD 优化下一步：F-3/G-3 补前端规则中心与管理链 E2E；补配置事件集成运行态与 dispatcher 失败回写证据。
 - 标记：P1。
 ## 订单域
+- 本轮修复（2026-07-17）：订单汇总入口开始透传角色编码并复用订单明细的招商专员全量只读权限；订单明细 BFF 补充 `performance_records` 时同步使用该权限上下文，因此服务费支出、服务费收益、招商/渠道提成、毛利及预估/结算字段可见。验证：`DataControllerTest` 49/49、backend package、real-pre 容器健康、biz_staff 浏览器/API 正向验收 PASS。报告：`harness/reports/current/latest-order-summary-permission-20260717.md`；远端未部署。
 - 最新小切片：订单列表只读组装已补齐双团长有效活动 ID回退：第一活动为空时 API `activityId` 回退第二活动，保留 `colonel_activity_id` 与 `second_colonel_activity_id` 原始事实，不改数据库事实列；`OrderQueryViewTest`、真实订单 gateway/normalizer/同步目标集通过。验证：`agent-do.ps1 -Env real-pre -Scope full` 完成 backend/frontend 构建、real-pre 容器重建、health；real-pre preflight `PASS`；P0 `QA20260712_135902` 订单同步 81 条、`fieldGaps=[]`，但 0 条归因样本，寄样无真实成交订单，整体 `PENDING`。报告：`harness/reports/evidence-20260712-141015.md`、`runtime/qa/out/real-pre-p0-20260712-135902/report.md`。O-15/G-5 仍需要真实归因/寄样样本与 E2E。
 - 最新边界变化：ORDER-READ-FACADE-CREATED-SINCE / SETTLED-SINCE 已在 `OrderReadFacade` 增加 `findOrdersCreatedSince` 与 `findOrdersSettledSince` 分页读取订单事实；`TalentClaimApplicationService` 和 `TalentService.evaluateExclusive` 不再直接依赖 `ColonelsettlementOrderMapper`，而是消费订单域门面。订单域仍只提供订单事实，不计算达人认领、业绩归属或提成。验证：targeted Maven 71 tests PASS（1 个维护型跳过）；`agent-do -Scope full` PASS。报告：`harness/reports/evidence-20260628-200945.md`；retro：`harness/reports/retro-20260628-201018.md`。
-- 最新边界变化：ORDER-SYNC-EVENT-EXPENSE-001 已让 `OrderSyncedEvent` 携带 `estimateServiceFeeExpense` / `effectiveServiceFeeExpense` 订单金额事实，`OrderEventPayloadMapper` 从订单事实映射该载荷；订单域仍只发布事实，不计算业绩。上一变化：ORDER-AMOUNT-ROUTER-EXPENSE-001 已修复 policy 开关启用时丢失服务费支出的 adapter 漂移。
+- 最新边界变化：DDD-ORDER-EVENT-DUAL-ATTRIBUTION-STATUS 已让 `OrderSyncedEvent.extraData` 同时携带 `channel_attribution_status` / `recruiter_attribution_status` 两个默认归因事实，并复制原 `extraData` 避免修改调用方引用；缺少显式状态时只按对应默认负责人事实兼容回退，不改变最终归属、提成或消费者规则。上一变化：ORDER-SYNC-EVENT-EXPENSE-001 已让事件携带服务费支出事实。
 - 最新边界变化：`OrderAttributionService` 未归因分页与订单回流摘要数据范围过滤新增默认关闭的用户域 `DataScopePolicy` 旁路；默认关闭继续走 Legacy PERSONAL/DEPT `QueryWrapper.eq` 条件，开启后才调用 `DataScopePolicy.applyTo`。本轮未改订单事实、归因状态、同步、业绩事件、Mapper SQL、接口参数或历史数据。
 - 最新报告路径：`harness/reports/evidence-20260626-140029.md`；retro：`harness/reports/retro-20260626-140058.md`。上一报告：`harness/reports/evidence-20260622-191140.md`。
 - 当前状态：订单事实、退款事实、同步日志和归因输入已具备；P0-ORDER-001 PAY_RECENT 6h 补拉与同步日志增强已完成（2026-06-03，代码 + 运行态）；ORDER-P0-DUAL-SOURCE-SYNC 已在本地 real-pre 接入 1603 事实订单源并验证入库；ORDER-P0-DUAL-SOURCE-REMOTE-VERIFY 已完成远端部署验证，远端 commit 对齐 `77b723b6`，1603 入库与管理员可见通过；订单明细表字段对齐已完成本地 real-pre 验证（2026-06-04，commit `abf3f9eb`）；ORDER-DETAIL-TAB-FIX-001 已完成前端 16 列扩展与“渠道”文案统一（2026-06-05，commit `db934d99`）；ORDER-PERFORMANCE-EVENT-AFTER-COMMIT-FIX-001 已完成本地 real-pre 修复验证（2026-06-06），订单已同步事件改为事务提交后发布。
@@ -108,6 +109,7 @@
 - DDD 优化下一步：有 `pick_source` 样本后做渠道可见性验证；之后进入 P0-SAMPLE-001 寄样流转；远端订单明细展示按部署需求单独执行。
 - 标记：P0。
 ## 业绩域
+- 本轮修复（2026-07-17）：订单明细场景的招商专员只读权限同步传入业绩访问上下文，并在该 BFF 场景使用全量只读范围；业绩域其他接口的角色范围策略不变。验证与报告同订单域本轮修复。
 - 最新小切片：Y-1/Y-2/Y-3 已补齐业绩域盘点、`performance_records` 生成入口全清单和最终归属输入追溯证据；`DddPerformanceDomainInventoryTest` 固化 controller/application/policy/facade/mapper/job/test inventory，`DddPerformanceRecordGenerationEntrypointTest` 固化事件、backfill、月度重算、兼容批量入口均委派同一 upsert funnel，`DddPerformanceAttributionTraceabilityContractTest` 固化 default/final 渠道与招商归属、attribution reason、talent/partner/product/activity 字段到 mapper 持久化。验证：Y-1/Y-2/Y-3 目标证据集 32 tests PASS；矩阵 95/58/19/6；真实订单/退款样本、real-pre backfill、dashboard API/SQL/page 对账和 E2E 仍未验证。报告：`harness/reports/latest-evidence-20260709.md`。
 - 最新小切片：Y-17 业绩权限与数据范围后端证据已从 TODO 推进到 PARTIAL；`PerformanceControllerTest` 覆盖列表 request attributes 下沉为 `PerformanceAccessContext`、staff 导出拒绝且不触发导出服务、leader 导出传递上下文并写出字节，`PerformanceAccessScopeTest` 保留导出/重算/筛选越权/fail-closed SQL 范围正反例。仍缺真实账号 API/SQL/E2E，不能标 DONE。
 - 最新边界变化：`PerformanceAccessScope` 继续承载业绩域导出、重算、筛选越权、逐条访问和 SQL 范围拼接语义，但角色编码集合匹配已委托用户域 `CurrentUserPermissionPolicy.hasAnyRole`；本轮未改业绩归属、提成、冲正、服务费双轨公式、SQL 条件语义或历史数据。
@@ -121,6 +123,7 @@
 - DDD 优化下一步：优先推进 Y-17 真实账号 API/SQL/E2E 或 Y-16 业绩计算集成闭环；如涉及 real-pre 迁移/运行态，必须先执行容器和健康检查证据。
 - 标记：P0。
 ## 分析模块
+- 本轮修复（2026-07-17）：数据平台订单汇总按角色编码构建过滤条件并区分角色缓存键，避免招商专员汇总与订单明细权限不一致。验证与报告同订单域本轮修复。
 - 最新小切片：A-8 dashboard API 与 SQL 一致性已从 TODO 推进到 PARTIAL；新增 `DddDashboardApiSqlConsistencyContractTest` 固化 `DashboardController /summary`、`DashboardService.getSummary`、`PerformanceMetricsQueryService.aggregateDashboardSummary` 到 `PerformanceAggregateApplicationService` SQL-backed 汇总的后端合同，覆盖 `order_count/order_amount_cent/service_fee_cent`、渠道/招商 leaderboard、attributed 过滤、排序和 LIMIT。验证：A-8 目标证据集 42 tests PASS；本轮未改生产业务代码、API、schema、权限、金额/提成/归因规则或真实数据。报告：`harness/reports/latest-evidence-20260709.md`。真实 API/SQL 逐字段对账、页面展示、admin/group/self 账号差异和 E2E 仍归 A-8/A-9/A-11/F-6/G-5。
 - 最新边界变化：DDD-DASHBOARD-ORDER-READ-FACADE 已将 `DashboardService` 的订单总览、已归因 / 未归因计数、未归因原因和无业绩汇总时的渠道 / 招商排行聚合从直接 `ColonelsettlementOrderMapper` 改为消费订单域 `OrderReadFacade` 只读投影；复杂诊断 SQL 和活动商品下钻暂不扩大改动面。
 - 最新验证变化：新增 `DddDataApplicationReadFacadeBoundaryTest` 与 `DddAnalyticsReadOnlyBoundaryTest`，把分析模块 facade 消费与只读边界变成后端架构测试；`DddCrossDomainMapperGuardTest` 与 DddClean 系列守卫 PASS，`cross-domain-mapper-legacy-whitelist.txt` 无剩余 Mapper 条目。上一轮 real-pre Dashboard API/SQL 对账 evidence：`runtime/qa/out/real-pre-dashboard-reconcile-20260622-205417/`。
