@@ -729,7 +729,14 @@ const metricsAreEmpty = computed(() => {
   return createOrders === 0 && settleOrders === 0 && trendTotalOrders.value === 0
 })
 
-const showEmptyDataHint = computed(() => initialized.value && !loading.value && metricsAreEmpty.value)
+const canSeeSyncHint = computed(() => authStore.isAdmin || [
+  ROLE.BIZ_LEADER,
+  ROLE.CHANNEL_LEADER
+].some((role) => authStore.roleCodes.includes(role)))
+
+const showEmptyDataHint = computed(() =>
+  initialized.value && !loading.value && metricsAreEmpty.value && canSeeSyncHint.value
+)
 
 const emptyDataHint = computed(() => {
   if (usesRealDouyinUpstream.value) {

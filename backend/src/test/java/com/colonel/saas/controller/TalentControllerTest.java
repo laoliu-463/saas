@@ -17,6 +17,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.http.MediaType;
 
 import java.util.List;
 import java.util.UUID;
@@ -26,6 +27,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -183,5 +185,27 @@ class TalentControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.total").value(1))
                 .andExpect(jsonPath("$.data.records[0].nickname").value("测试达人A"));
+    }
+
+    @Test
+    void create_shouldPassCurrentUserContextToService() throws Exception {
+        Talent talent = new Talent();
+        talent.setId(UUID.randomUUID());
+        talent.setDouyinUid("dy_controller_create");
+        talent.setNickname("控制器创建达人");
+        when(talentService.create(any(Talent.class), org.mockito.ArgumentMatchers.eq(userId),
+                org.mockito.ArgumentMatchers.eq(deptId))).thenReturn(talent);
+
+        mockMvc.perform(post("/talents")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"douyinUid\":\"dy_controller_create\",\"nickname\":\"控制器创建达人\"}")
+                        .requestAttr("userId", userId)
+                        .requestAttr("deptId", deptId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.nickname").value("控制器创建达人"));
+
+        verify(talentService).create(any(Talent.class), org.mockito.ArgumentMatchers.eq(userId),
+                org.mockito.ArgumentMatchers.eq(deptId));
     }
 }

@@ -203,8 +203,10 @@ public class TalentController extends BaseController {
                     required = true,
                     content = @Content(examples = @ExampleObject(value = "{\"nickname\":\"达人A\",\"douyinUid\":\"test_talent_001\"}"))
             )
-            @Valid @RequestBody TalentCreateRequest request) {
-        return ok(TalentVO.from(talentService.create(request.toTalent())));
+            @Valid @RequestBody TalentCreateRequest request,
+            @RequestAttribute("userId") UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId) {
+        return ok(TalentVO.from(talentService.create(request.toTalent(), userId, deptId)));
     }
 
     /**
