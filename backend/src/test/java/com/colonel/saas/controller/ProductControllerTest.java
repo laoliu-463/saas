@@ -346,7 +346,8 @@ class ProductControllerTest {
                         "https://p.link",
                         UUID.randomUUID().toString()
                 );
-        when(productService.generatePromotionLink(eq(id), eq(userId), eq(deptId), any(), any(), anyBoolean(), any(), any(), any()))
+        when(productService.generatePromotionLink(
+                eq(id), eq(userId), eq(deptId), any(), any(), anyBoolean(), any(), any(), any(), any()))
                 .thenReturn(result);
 
         ProductController.PromotionLinkRequest request = new ProductController.PromotionLinkRequest();
@@ -362,7 +363,8 @@ class ProductControllerTest {
         assertThat(response.getData().shortLink()).isEqualTo("https://s.link");
         assertThat(response.getData().promoteLink()).isEqualTo("https://p.link");
         assertThat(response.getData().uuidSeed()).isEqualTo(result.uuidSeed());
-        verify(productService).generatePromotionLink(id, userId, deptId, "ext-1", 4, true, "PRODUCT_LIBRARY", null, null);
+        verify(productService).generatePromotionLink(
+                id, userId, deptId, "ext-1", 4, true, "PRODUCT_LIBRARY", null, null, null);
     }
 
     @Test
