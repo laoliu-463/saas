@@ -680,6 +680,40 @@ CREATE TABLE IF NOT EXISTS performance_records (
     CONSTRAINT uk_performance_records_order_id UNIQUE (order_id)
 );
 
+CREATE TABLE IF NOT EXISTS performance_adjustment_ledger (
+    id UUID PRIMARY KEY,
+    event_key VARCHAR(256) NOT NULL UNIQUE,
+    order_id VARCHAR(128) NOT NULL,
+    refund_id VARCHAR(128),
+    adjustment_type VARCHAR(16) NOT NULL,
+    refund_amount BIGINT NOT NULL DEFAULT 0,
+    delta_pay_amount BIGINT NOT NULL DEFAULT 0,
+    delta_settle_amount BIGINT NOT NULL DEFAULT 0,
+    delta_estimate_service_fee BIGINT NOT NULL DEFAULT 0,
+    delta_effective_service_fee BIGINT NOT NULL DEFAULT 0,
+    delta_estimate_tech_service_fee BIGINT NOT NULL DEFAULT 0,
+    delta_effective_tech_service_fee BIGINT NOT NULL DEFAULT 0,
+    delta_estimate_service_fee_expense BIGINT NOT NULL DEFAULT 0,
+    delta_effective_service_fee_expense BIGINT NOT NULL DEFAULT 0,
+    delta_talent_commission BIGINT NOT NULL DEFAULT 0,
+    delta_estimate_service_profit BIGINT NOT NULL DEFAULT 0,
+    delta_effective_service_profit BIGINT NOT NULL DEFAULT 0,
+    delta_estimate_recruiter_commission BIGINT NOT NULL DEFAULT 0,
+    delta_effective_recruiter_commission BIGINT NOT NULL DEFAULT 0,
+    delta_estimate_channel_commission BIGINT NOT NULL DEFAULT 0,
+    delta_effective_channel_commission BIGINT NOT NULL DEFAULT 0,
+    delta_estimate_gross_profit BIGINT NOT NULL DEFAULT 0,
+    delta_effective_gross_profit BIGINT NOT NULL DEFAULT 0,
+    occurred_at TIMESTAMP NOT NULL,
+    input_snapshot JSONB,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT chk_performance_adjustment_ledger_type
+        CHECK (adjustment_type IN ('REFUND', 'REVERSAL'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_performance_adjustment_ledger_order
+    ON performance_adjustment_ledger (order_id, occurred_at);
+
 CREATE TABLE IF NOT EXISTS operation_log (
     id UUID NOT NULL,
     user_id UUID,
@@ -905,6 +939,10 @@ CREATE INDEX IF NOT EXISTS idx_domain_event_outbox_status_time
 
 CREATE INDEX IF NOT EXISTS idx_domain_event_outbox_type_time
     ON domain_event_outbox (event_type, occurred_at);
+
+CREATE INDEX IF NOT EXISTS idx_domain_event_outbox_dispatch_order
+    ON domain_event_outbox (occurred_at)
+    WHERE status IN ('PENDING', 'FAILED');
 
 CREATE TABLE IF NOT EXISTS domain_event_consume_log (
     id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),

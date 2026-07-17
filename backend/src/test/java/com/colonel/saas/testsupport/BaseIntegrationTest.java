@@ -79,6 +79,7 @@ public abstract class BaseIntegrationTest {
                     system_config,
                     system_config_change_log,
                     domain_event_outbox,
+                    performance_adjustment_ledger,
                     domain_event_consume_log,
                     product_operation_log,
                     commissions

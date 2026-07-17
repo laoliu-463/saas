@@ -1267,6 +1267,10 @@ CREATE INDEX IF NOT EXISTS idx_domain_event_outbox_status_time
 CREATE INDEX IF NOT EXISTS idx_domain_event_outbox_type_time
     ON domain_event_outbox (event_type, occurred_at);
 
+CREATE INDEX IF NOT EXISTS idx_domain_event_outbox_dispatch_order
+    ON domain_event_outbox (occurred_at)
+    WHERE status IN ('PENDING', 'FAILED');
+
 CREATE TABLE IF NOT EXISTS domain_event_consume_log (
     id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     event_id      UUID         NOT NULL,
