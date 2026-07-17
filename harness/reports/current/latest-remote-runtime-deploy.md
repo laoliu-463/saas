@@ -1,94 +1,61 @@
-﻿# Evidence Report
+# Evidence Report
 
 ## Metadata
 
-- Time: 2026-07-17 21:40:55 +08:00
+- Time: 2026-07-17 21:52:00 +08:00
 - Environment: real-pre
 - Scope: full
-- Branch: codex/fix-remote-runtime-issues
-- Commit: f7ef775d
-- Owned worktree: report pending finalization
+- Code/deploy commit: c89db16ae140e166feba3cee1188ed19edb08b6d
+- Remote branch: feature/auth-system
+- Remote worktree: clean
 - Deploy remote: true
 
-## Owned Files
+## Deployment path
 
-~~~text
-harness/reports/current/latest-remote-runtime-deploy.md
-~~~
+- GitHub `origin/feature/auth-system`、Gitee `feature/auth-system` 和远端服务器均已同步到 `c89db16a`。
+- 固定 `deploy-remote.ps1` 执行成功；此前发现并修复了 outbox 索引 guard 的 SQL 引号转义问题。
+- 未使用 mock 数据、未清理 PostgreSQL/Redis volume、未绕过提交一致性校验。
 
-## Owned Git Status
+## Build and local validation
 
-~~~text
-(clean)
-~~~
+- Backend Maven build: PASS。
+- Frontend `npm ci` + production build: PASS。
+- Local backend/frontend container rebuild: PASS。
+- Local health checks: PASS。
+- real-pre P0 preflight: PASS。
 
-## Build Result
+## Remote schema and build
 
-~~~text
-Backend build: PASS (mvn -f backend/pom.xml -DskipTests package)
-Frontend build: PASS (npm --prefix frontend ci; npm --prefix frontend run build)
-~~~
+- Activity、role-aware attribution、order attribution、performance、V2 config、product backfill schema guards: PASS。
+- `performance_calculation_execution`、`performance_adjustment_ledger`: 存在。
+- `idx_domain_event_outbox_dispatch_order`: 存在，增量迁移幂等执行通过。
+- Remote Maven build: PASS。
+- Backend JAR guard: PASS，host/container size 均为 `81187109` bytes。
 
-## Docker Status
+## Remote runtime verification
 
-~~~text
-NAME                              IMAGE                            COMMAND                  SERVICE             CREATED              STATUS                        PORTS
-saas-active-backend-real-pre-1    colonel-saas/backend:real-pre    "sh -c 'java $JAVA_O…"   backend-real-pre    2 minutes ago        Up About a minute (healthy)   127.0.0.1:8081->8080/tcp
-saas-active-frontend-real-pre-1   colonel-saas/frontend:real-pre   "/docker-entrypoint.…"   frontend-real-pre   About a minute ago   Up About a minute (healthy)   127.0.0.1:3001->80/tcp
-saas-active-postgres-real-pre-1   postgres:15-alpine               "docker-entrypoint.s…"   postgres-real-pre   2 minutes ago        Up About a minute (healthy)   5432/tcp
-saas-active-redis-real-pre-1      redis:7-alpine                   "docker-entrypoint.s…"   redis-real-pre      2 days ago           Up 2 days (healthy)           6379/tcp
-NAMES                                                      STATUS                        PORTS
-thirsty_lederberg                                          Up 21 seconds                 0.0.0.0:45543->5432/tcp, [::]:45543->5432/tcp
-saas-active-frontend-real-pre-1                            Up About a minute (healthy)   127.0.0.1:3001->80/tcp
-saas-active-backend-real-pre-1                             Up About a minute (healthy)   127.0.0.1:8081->8080/tcp
-saas-active-postgres-real-pre-1                            Up About a minute (healthy)   5432/tcp
-testcontainers-ryuk-570d0c79-ad59-481a-9e99-a26b9b981777   Up 4 minutes                  0.0.0.0:45831->8080/tcp, [::]:45831->8080/tcp
-saas-active-redis-real-pre-1                               Up 2 days (healthy)           6379/tcp
-campus_frontend                                            Up 3 days                     0.0.0.0:5173->5173/tcp, [::]:5173->5173/tcp
-campus_backend                                             Up 3 days (healthy)           0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp
-campus_postgres                                            Up 3 days (healthy)           0.0.0.0:5433->5432/tcp, [::]:5433->5432/tcp
-saas-test-backend-1                                        Up 3 days (unhealthy)         0.0.0.0:5005->5005/tcp, [::]:5005->5005/tcp, 0.0.0.0:8080->8080/tcp, [::]:8080->8080/tcp
-~~~
+- backend-real-pre、frontend-real-pre、postgres-real-pre、redis-real-pre: healthy。
+- `GET http://127.0.0.1:8081/api/system/health`: `{"status":"UP"}`。
+- frontend `/login`: HTTP 200。
+- outbox 锁定查询 `EXPLAIN`: `Limit -> LockRows -> Index Scan using idx_domain_event_outbox_dispatch_order`。
+- 部署后 backend 日志未发现新的 `input_snapshot` JSONB 类型错误。
 
-## Health Check Result
+## Current data facts
 
-~~~text
-Local health verification: PASS
-~~~
-
-## Business Validation Result
-
-~~~text
-Business validation: PASS (npm run e2e:real-pre:p0:preflight)
-~~~
-
-## Content Maintenance Result
-
-~~~text
-Content maintenance skipped by -ContentMaintenance off.
-~~~
-
-## Remote Deploy Result
-
-~~~text
-BLOCKED before remote mutation.
-Expected commit: f7ef775d1814acdb97bacdba0f0bcd1451f81caf
-Remote actual commit: 1ed7dd2abef5bcce86221da06ad9db4d21c81446
-Cause: deploy-remote.ps1 fetches gitee/feature/auth-system and enforces exact commit match; Gitee mirror is behind origin.
-Remote post-check: worktree clean; backend-real-pre, frontend-real-pre, postgres-real-pre and redis-real-pre healthy; backend health UP; frontend HTTP 200.
-Remote outbox dispatch index: not present, as expected because deployment stopped before schema migration.
-~~~
-
-## Retro Summary
-
-远端部署必须先完成 origin 到 Gitee 的镜像同步，或由维护者更新固定部署入口的镜像来源；本轮保留提交一致性门禁，没有绕过校验。
+- `performance_calculation_execution`: `FAILED=150`、`RUNNING=4`、`SUCCEEDED=154031`。
+- `performance_adjustment_ledger`: 当前 0 行；部署验证未伪造退款事件。
+- `domain_event_outbox`: `PENDING=290126`、`PUBLISHED=341170`、`FAILED=1`、`DEAD=153`。
 
 ## Conclusion
 
-PARTIAL：本地 full 构建、容器重启、健康检查和 P0 preflight 通过；远端部署在提交一致性门禁处阻断，远端服务保持原版本。
+PARTIAL：远端部署和运行时验证通过，代码级 JSONB 修复及 outbox 索引已生效；历史 150 条失败执行和约 29 万条待处理事件仍未自动回放/清空，需单独执行受控恢复并持续观察。
 
-## Residual Risk
+## Residual risk
 
-- 远端修复未生效；`input_snapshot` JSONB 修复和 outbox 索引仍待远端部署。
-- Gitee `feature/auth-system` 当前为 `1ed7dd2a`，GitHub origin 对应修复提交为 `7d785c38`，部署尝试提交为 `f7ef775d`（仅新增部署 evidence）。
-- 前端构建报告 npm audit 有 6 个依赖漏洞（2 high、2 critical）；不属于本次部署阻断根因。
+- 存量 `performance_calculation_execution.FAILED=150` 尚未重放，不能以部署成功替代业务数据恢复。
+- outbox PENDING 积压仍大，索引改善选取路径但不会自动消化存量；需观察 dispatcher 吞吐、锁耗时和 backlog 趋势。
+- 远端日志中未发现 `skills for real engineers` 固定字样；旧日志保留限制仍然存在，不能证明更早历史绝对不存在。
+
+## Retro
+
+本轮补充了部署 guard 的真实远端验证，并修复了内嵌 SQL 引号转义导致的假失败。后续应为部署脚本中的每个 SQL guard 增加 shell 级 dry-run/集成测试，避免迁移已成功但门禁误报。
