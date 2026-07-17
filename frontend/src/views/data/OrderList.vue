@@ -265,7 +265,6 @@
 
     <OrderDetailTab
       v-if="activeTab === 'detail'"
-      ref="detailTabRef"
       :filters="searchParams"
       :time-field="timeField"
       :date-range="dateRange"
@@ -276,7 +275,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, h, onMounted, reactive, ref, watch } from 'vue'
+import { computed, h, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { NText, useMessage } from 'naive-ui'
 import { exportOrders, exportOrderDetail, getOrderSummary } from '../../api/data'
@@ -322,15 +321,17 @@ const loading = ref(false)
 const canExport = computed(() => authStore.isAdmin || authStore.isLeader)
 
 const activeTab = ref<'summary' | 'detail'>('summary')
-const detailTabRef = ref<InstanceType<typeof OrderDetailTab> | null>(null)
 const detailRowCount = ref(0)
 
-const switchTab = (tab: 'summary' | 'detail') => {
+const switchTab = async (tab: 'summary' | 'detail') => {
   activeTab.value = tab
   if (tab === 'summary') {
     void fetchData()
   } else {
-    detailTabRef.value?.refresh()
+    await nextTick()
+    document
+      .querySelector<HTMLElement>('[data-testid="data-order-detail-table"]')
+      ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 }
 

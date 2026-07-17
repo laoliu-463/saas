@@ -48,7 +48,7 @@ vi.mock('./OrderDetailTab.vue', () => ({
     name: 'OrderDetailTab',
     props: ['filters', 'timeField', 'dateRange'],
     emits: ['rowCount', 'export'],
-    template: '<div data-testid="order-detail-tab-stub">明细表</div>',
+    template: '<div data-testid="order-detail-tab-stub"><div data-testid="data-order-detail-table">明细表</div></div>',
     methods: { refresh() {} }
   }
 }))
@@ -167,7 +167,7 @@ const globalStubs = {
   OrderDetailTab: {
     props: ['filters', 'timeField', 'dateRange'],
     emits: ['rowCount', 'export'],
-    template: '<div data-testid="order-detail-tab-stub">明细表</div>',
+    template: '<div data-testid="order-detail-tab-stub"><div data-testid="data-order-detail-table">明细表</div></div>',
     methods: { refresh() {} }
   }
 }
@@ -381,6 +381,25 @@ describe('OrderList 订单汇总页面', () => {
     vm.switchTab('detail')
     await flushPromises()
     expect(wrapper.find('[data-testid="order-detail-tab-stub"]').exists()).toBe(true)
+  })
+
+  it('switches to detail tab and scrolls the detail table into view', async () => {
+    const wrapper = await mountOrderList()
+    const vm = wrapper.vm as any
+    const scrollSpy = vi.fn()
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView
+    HTMLElement.prototype.scrollIntoView = scrollSpy
+    document.body.appendChild(wrapper.element)
+
+    try {
+      await vm.switchTab('detail')
+
+      expect(scrollSpy).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' })
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView
+      wrapper.unmount()
+      wrapper.element.remove()
+    }
   })
 
   it('calls exportOrderDetail when exporting from detail tab', async () => {
