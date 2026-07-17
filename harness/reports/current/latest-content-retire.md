@@ -2,10 +2,10 @@
 
 ## Metadata
 
-- Time: 2026-07-16 23:19:11 +08:00
+- Time: 2026-07-17 14:53:14 +08:00
 - Action: Plan
 - DryRun: False
-- Reason: harness: split local and remote probe credentials
+- Reason: 开放 biz_staff 招商专员完整达人 CRM 业务链路并验证手动新增达人、认领私海、快速寄样与业绩时间切换
 - Manifest: (none)
 - ArchiveRoot: harness/archive/retired-content
 - AllowSourceCode: False
@@ -18,8 +18,9 @@
 - docs/deploy/07-Jenkins自动化部署规划.md [document-debt] -> review/resolve-from-debt-register; evidence=listed in harness/rules/state/snapshots/05-*.md debt register
 - docs/归档/旧版V2.2完整方案.md [document-debt] -> review/resolve-from-debt-register; evidence=listed in harness/rules/state/snapshots/05-*.md debt register
 - docs/领域/业绩域.md [document-debt] -> review/resolve-from-debt-register; evidence=listed in harness/rules/state/snapshots/05-*.md debt register
-- hs_err_pid68956.log [root-transient-file] -> review/delete-if-no-longer-needed; evidence=top-level generated/transient filename pattern: *.log
-- hs_err_pid84964.log [root-transient-file] -> review/delete-if-no-longer-needed; evidence=top-level generated/transient filename pattern: *.log
+- out [generated-output-directory] -> review/delete-after-retention; evidence=generated output directory exists
+- playwright-report [generated-output-directory] -> review/delete-after-retention; evidence=generated output directory exists
+- test-results [generated-output-directory] -> review/delete-after-retention; evidence=generated output directory exists
 ~~~
 
 ## Planned / Applied Operations

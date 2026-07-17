@@ -156,8 +156,9 @@ const pagination = reactive(createPaginationState())
 const isChannelStaffOnly = computed(() => {
   return hasOnlyCanonicalRole(authStore.roleCodes, ROLE_CODES.CHANNEL_STAFF)
 })
-const canManageBlacklist = computed(() => authStore.isAdmin || authStore.roleCodes.includes('channel_leader'))
+const canManageBlacklist = computed(() => authStore.isAdmin || authStore.roleCodes.includes('biz_staff') || authStore.roleCodes.includes('channel_leader'))
 const canCreateTalent = computed(() => authStore.isAdmin || [
+  ROLE_CODES.BIZ_STAFF,
   ROLE_CODES.CHANNEL_LEADER,
   ROLE_CODES.CHANNEL_STAFF
 ].some((role) => authStore.roleCodes.includes(role)))

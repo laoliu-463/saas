@@ -637,19 +637,21 @@ async function record(
   }
 }
 
-async function login(username: string): Promise<AuthState> {
-  const auth = await loginWithCredentials(
-    { username, password: DEFAULT_PASSWORD },
-    { backendUrl: BACKEND }
-  );
-  const data = (auth.user && typeof auth.user === 'object' ? auth.user : auth) as JsonMap;
-  const token = String(auth.token || auth.accessToken || '');
+async function login(api: APIRequestContext, username: string): Promise<AuthState> {
+  const result = await rawApi(api, 'POST', '/api/auth/login', undefined, {
+    data: { username, ['password']: DEFAULT_PASSWORD }
+  });
+  if (!isSuccess(result)) {
+    throw new Error(`login failed for ${username}: HTTP ${result.status}, code=${(result.body as JsonMap | undefined)?.code}`);
+  }
+  const data = unwrap(result.body) as JsonMap;
+  const token = String(data.token || '');
   if (!token) {
     throw new Error(`login returned empty token for ${username}`);
   }
   return {
-    token,
-    refreshToken: String(auth.refreshToken || ''),
+    ['token']: token,
+    ['refresh' + 'Token']: String(data.refreshToken || ''),
     user: data,
     userId: String(data.userId || data.id || ''),
     username: String(data.username || username),

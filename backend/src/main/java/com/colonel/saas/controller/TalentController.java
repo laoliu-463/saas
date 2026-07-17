@@ -88,7 +88,7 @@ import java.util.UUID;
 @Tag(name = "达人CRM", description = "达人池、公海私海、认领释放与达人信息补全相关接口。")
 @RestController
 @RequestMapping("/talents")
-@RequirePermission("talent:access")
+@RequireRoles({RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.ADMIN})
 public class TalentController extends BaseController {
 
     /** 达人服务，负责达人增删改查、标签管理、收货地址维护、认领释放与黑名单等操作 */
@@ -412,7 +412,7 @@ public class TalentController extends BaseController {
      * @return 批量导入结果，包含成功数和失败明细
      */
     @Operation(summary = "批量导入达人", description = "按达人账号/链接批量导入并自动补全（batch_import_talents）。")
-    @RequirePermission("talent:batch-import")
+    @RequireRoles({RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.ADMIN})
     @PostMapping("/batch-import")
     public ApiResult<TalentBatchImportResult> batchImport(
             @RequestBody TalentBatchImportRequest request,
@@ -608,7 +608,7 @@ public class TalentController extends BaseController {
     }
 
     @Operation(summary = "拉黑达人", description = "将达人标记为黑名单，避免继续进入公海与合作流转。")
-    @RequirePermission("talent:blacklist")
+    @RequireRoles({RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER})
     @PostMapping("/{id}/blacklist")
     public ApiResult<TalentVO> blacklist(
             @Parameter(description = "达人主键 ID，使用 UUID 格式。") @PathVariable("id") UUID talentId,
@@ -620,7 +620,7 @@ public class TalentController extends BaseController {
     }
 
     @Operation(summary = "解除达人黑名单", description = "取消达人黑名单标记，恢复达人正常经营状态。")
-    @RequirePermission("talent:unblacklist")
+    @RequireRoles({RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER})
     @PostMapping("/{id}/unblacklist")
     public ApiResult<TalentVO> unblacklist(
             @Parameter(description = "达人主键 ID，使用 UUID 格式。") @PathVariable("id") UUID talentId,
@@ -642,7 +642,7 @@ public class TalentController extends BaseController {
     }
 
     @Operation(summary = "手动触发每周刷新", description = "手动执行每周批量刷新任务，用于校验达人定时刷新链路。")
-    @RequirePermission("talent:refresh-weekly")
+    @RequireRoles({RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER})
     @PostMapping("/refresh/weekly")
     public ApiResult<Void> refreshWeekly() {
         talentWeeklyRefreshJob.weeklyRefreshActiveTalents();
