@@ -106,6 +106,28 @@ class ColonelsettlementOrderMapperDualDimensionContractTest {
         assertThat(sql).doesNotContain("WHERE recruiter_attribution_status IS NULL");
     }
 
+    @Test
+    void migrateAllShouldInvokeDualDimensionAttributionMigration() throws IOException {
+        Path migrateAll = BACKEND_ROOT.resolve("src/main/resources/db/migrate-all.sql");
+        String sql = read(migrateAll);
+        assertThat(sql).contains("\\i alter-cso-dual-attribution-status-20260716.sql");
+    }
+
+    @Test
+    void remoteDeployShouldApplyAndGuardDualDimensionAttributionMigration() throws IOException {
+        Path deployRemote = BACKEND_ROOT.getParent().resolve(
+                "harness/scripts/commands/deploy-remote.ps1");
+        String script = read(deployRemote);
+
+        assertThat(script)
+                .contains("alter-cso-dual-attribution-status-20260716.sql")
+                .contains("Applying required dual attribution schema migration")
+                .contains("dual_attribution_schema_count")
+                .contains("dual_attribution_default_count")
+                .contains("dual_attribution_mismatch_count")
+                .contains("Dual attribution schema guard passed");
+    }
+
     private static Path findBackendRoot() {
         Path cwd = Path.of(System.getProperty("user.dir")).toAbsolutePath();
         for (Path p = cwd; p != null; p = p.getParent()) {

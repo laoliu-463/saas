@@ -104,6 +104,11 @@ if [ ! -f "`$activity_list_sync_migration" ]; then
   echo "Required activity list sync migration not found: `$activity_list_sync_migration"
   exit 1
 fi
+dual_attribution_migration="backend/src/main/resources/db/alter-cso-dual-attribution-status-20260716.sql"
+if [ ! -f "`$dual_attribution_migration" ]; then
+  echo "Required dual attribution schema migration not found: `$dual_attribution_migration"
+  exit 1
+fi
 config_migration="backend/src/main/resources/db/alter-v2-config-20260523.sql"
 if [ ! -f "`$config_migration" ]; then
   echo "Required V2 config migration not found: `$config_migration"
@@ -136,6 +141,25 @@ if [ "`$schema_count" != "7" ]; then
   exit 1
 fi
 echo "Activity schema guard passed."
+echo "Applying required dual attribution schema migration ..."
+docker cp "`$dual_attribution_migration" "`$pg_container:/tmp/alter-cso-dual-attribution-status-20260716.sql"
+compose exec -T postgres-real-pre sh -lc 'psql -U "`$POSTGRES_USER" -d "`$POSTGRES_DB" -v ON_ERROR_STOP=1 -f /tmp/alter-cso-dual-attribution-status-20260716.sql' </dev/null
+dual_attribution_schema_count="`$(compose exec -T postgres-real-pre sh -lc 'psql -U "`$POSTGRES_USER" -d "`$POSTGRES_DB" -tAc "SELECT count(*) FROM information_schema.columns WHERE table_schema = '\''public'\'' AND table_name = '\''colonelsettlement_order'\'' AND column_name IN ('\''channel_attribution_status'\'', '\''recruiter_attribution_status'\')"' </dev/null | tr -d '[:space:]')"
+if [ "`$dual_attribution_schema_count" != "2" ]; then
+  echo "Dual attribution schema guard failed: expected 2 status columns, got `$dual_attribution_schema_count"
+  exit 1
+fi
+dual_attribution_default_count="`$(compose exec -T postgres-real-pre sh -lc 'psql -U "`$POSTGRES_USER" -d "`$POSTGRES_DB" -tAc "SELECT count(*) FROM information_schema.columns WHERE table_schema = '\''public'\'' AND table_name = '\''colonelsettlement_order'\'' AND column_name IN ('\''channel_attribution_status'\'', '\''recruiter_attribution_status'\') AND column_default IS NOT NULL"' </dev/null | tr -d '[:space:]')"
+if [ "`$dual_attribution_default_count" != "0" ]; then
+  echo "Dual attribution schema guard failed: expected no status defaults, got `$dual_attribution_default_count"
+  exit 1
+fi
+dual_attribution_mismatch_count="`$(compose exec -T postgres-real-pre sh -lc 'psql -U "`$POSTGRES_USER" -d "`$POSTGRES_DB" -tAc "SELECT COUNT(*) FILTER (WHERE channel_user_id IS NOT NULL AND channel_attribution_status IS DISTINCT FROM '\''CHANNEL_ATTRIBUTED'\'') + COUNT(*) FILTER (WHERE colonel_user_id IS NOT NULL AND recruiter_attribution_status IS DISTINCT FROM '\''RECRUITER_ATTRIBUTED'\'') FROM colonelsettlement_order"' </dev/null | tr -d '[:space:]')"
+if [ "`$dual_attribution_mismatch_count" != "0" ]; then
+  echo "Dual attribution schema guard failed: owner/status mismatch count=`$dual_attribution_mismatch_count"
+  exit 1
+fi
+echo "Dual attribution schema guard passed."
 echo "Applying required colonel partner mapping schema migration ..."
 docker cp "`$colonel_partner_mapping_migration" "`$pg_container:/tmp/alter-pick-source-mapping-colonel-name.sql"
 compose exec -T postgres-real-pre sh -lc 'psql -U "`$POSTGRES_USER" -d "`$POSTGRES_DB" -v ON_ERROR_STOP=1 -f /tmp/alter-pick-source-mapping-colonel-name.sql' </dev/null
