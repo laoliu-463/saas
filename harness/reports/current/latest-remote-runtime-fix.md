@@ -6,8 +6,8 @@
 - Environment: real-pre
 - Scope: backend
 - Branch: codex/fix-remote-runtime-issues
-- Commit: 7d29d489
-- Owned worktree: report pending update; no other uncommitted task files
+- Code commit validated: 1fe014a9
+- Owned worktree: clean after evidence finalization
 - Deploy remote: false（用户尚未授权远端部署）
 
 ## Problem and evidence chain
