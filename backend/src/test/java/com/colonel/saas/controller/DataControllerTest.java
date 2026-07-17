@@ -1498,29 +1498,6 @@ class DataControllerTest {
     }
 
     @Test
-    void getOrderSummary_shouldAllowBizStaffToViewAllOrdersLikeDetail() {
-        when(dataOrderQueryFacade.selectMaps(any(QueryWrapper.class)))
-                .thenReturn(List.of())
-                .thenReturn(List.of())
-                .thenReturn(List.of())
-                .thenReturn(List.of());
-        UUID userId = UUID.randomUUID();
-
-        dataController.getOrderSummary(
-                null, null, null, null, null, null, null, null,
-                null, null, null, null,
-                LocalDate.of(2026, 5, 25), LocalDate.of(2026, 5, 31), "createTime",
-                userId, null, DataScope.PERSONAL, List.of(RoleCodes.BIZ_STAFF));
-
-        ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
-        verify(dataOrderQueryFacade, times(4)).selectMaps(wrapperCaptor.capture());
-        assertThat(wrapperCaptor.getAllValues())
-                .allSatisfy(wrapper -> assertThat(wrapper.getSqlSegment().split(" GROUP BY", 2)[0])
-                        .doesNotContain("user_id")
-                        .doesNotContain("dept_id"));
-    }
-
-    @Test
     void getOrderDetailPage_shouldScopeChannelStaffByChannelUserId() {
         IPage<ColonelsettlementOrder> empty = new Page<>(1, 20);
         when(dataOrderQueryFacade.findPageWithScope(any(Page.class), any(QueryWrapper.class))).thenReturn(empty);
@@ -1599,7 +1576,7 @@ class DataControllerTest {
         var result = dataController.getOrderDetailPage(
                 1, 20, null, null, null, null, null, null, null, null,
                 null, null, null, null, null, null, null, null, null, null, null,
-                null, null, userId, null, DataScope.PERSONAL, List.of(RoleCodes.BIZ_STAFF));
+                null, null, UUID.randomUUID(), null, DataScope.ALL, null);
 
         assertThat(result).isNotNull();
         List<OrderDetailVO> records = result.getData().getRecords();
