@@ -15,7 +15,14 @@
           触发周更
         </n-button>
         <n-button type="primary" secondary :loading="loading" data-testid="talent-refresh" @click="fetchData">刷新数据</n-button>
-        <n-button type="primary" data-testid="talent-create" @click="showCreate = true">新增达人</n-button>
+        <n-button
+          v-if="canCreateTalent"
+          type="primary"
+          data-testid="talent-create"
+          @click="showCreate = true"
+        >
+          新增达人
+        </n-button>
         <n-button data-testid="talent-batch-import" @click="showBatchImport = true">批量导入</n-button>
       </template>
     </PageHeader>
@@ -120,6 +127,7 @@ import {
   TALENT_VIEW_LABEL_MAP,
   getAccessibleTalentViewOptions
 } from './constants'
+import { ROLE_CODES } from '../../constants/rbac'
 
 const message = useMessage()
 const dialog = useDialog()
@@ -150,6 +158,10 @@ const isChannelStaffOnly = computed(() => {
   return roles.includes('channel_staff') && !roles.includes('channel_leader') && !authStore.isAdmin
 })
 const canManageBlacklist = computed(() => authStore.isAdmin || authStore.roleCodes.includes('channel_leader'))
+const canCreateTalent = computed(() => authStore.isAdmin || [
+  ROLE_CODES.CHANNEL_LEADER,
+  ROLE_CODES.CHANNEL_STAFF
+].some((role) => authStore.roleCodes.includes(role)))
 
 const pageTitle = computed(() => {
   if (isChannelStaffOnly.value && activeView.value === 'MY_TALENTS') {
@@ -340,8 +352,8 @@ function handlePageSizeChange(pageSize: number) {
 }
 
 function handleCreated() {
-  if (availableViewOptions.value.some((item) => item.value === 'TEAM_PUBLIC')) {
-    activeView.value = 'TEAM_PUBLIC'
+  if (availableViewOptions.value.some((item) => item.value === 'MY_TALENTS')) {
+    activeView.value = 'MY_TALENTS'
   }
   pagination.page = 1
   void fetchData()

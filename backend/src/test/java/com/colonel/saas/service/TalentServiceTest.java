@@ -180,6 +180,36 @@ class TalentServiceTest {
     }
 
     @Test
+    void createForCreator_shouldCreateActiveOwnerClaim() {
+        UUID creatorId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+        Talent request = new Talent();
+        request.setDouyinUid("dy_created_by_staff");
+        request.setDataSource("manual");
+        request.setSyncStatus("success");
+
+        when(talentMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
+        when(talentMapper.insert(any(Talent.class))).thenReturn(1);
+        when(talentMapper.selectById(any(UUID.class))).thenReturn(request);
+        when(talentClaimMapper.findActiveByTalentAndUser(any(UUID.class), eq(creatorId))).thenReturn(null);
+        when(talentClaimMapper.findLastClaim(any(UUID.class))).thenReturn(null);
+        when(valueOperations.setIfAbsent(any(String.class), any(String.class), anyLong(), eq(TimeUnit.SECONDS)))
+                .thenReturn(true);
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+
+        Talent created = talentService.create(request, creatorId, deptId);
+
+        assertThat(created.getOwnerId()).isEqualTo(creatorId);
+        ArgumentCaptor<TalentClaim> claimCaptor = ArgumentCaptor.forClass(TalentClaim.class);
+        verify(talentClaimMapper).insert(claimCaptor.capture());
+        assertThat(claimCaptor.getValue().getTalentId()).isEqualTo(created.getId());
+        assertThat(claimCaptor.getValue().getUserId()).isEqualTo(creatorId);
+        assertThat(claimCaptor.getValue().getDeptId()).isEqualTo(deptId);
+        assertThat(claimCaptor.getValue().getClaimType()).isEqualTo(1);
+        assertThat(claimCaptor.getValue().getStatus()).isEqualTo(1);
+    }
+
+    @Test
     void getPublicPool_shouldExcludeClaimedAndSortByFans() {
         UUID claimedId = UUID.randomUUID();
         TalentClaim activeClaim = new TalentClaim();

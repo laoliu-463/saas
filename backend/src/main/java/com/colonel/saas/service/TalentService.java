@@ -356,6 +356,26 @@ public class TalentService {
     }
 
     /**
+     * 创建达人并将创建人设为首个生效认领人。
+     *
+     * <p>手动创建属于明确的业务操作，创建人需要在创建成功后立即在“我的达人”中看到该记录。
+     * 批量导入仍使用无操作者上下文的旧入口，避免把导入任务错误地归属到单条请求之外。</p>
+     *
+     * @param request   达人创建请求
+     * @param creatorId 创建人用户 ID
+     * @param deptId    创建人部门 ID
+     * @return 已创建且已建立首个认领关系的达人
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public Talent create(Talent request, UUID creatorId, UUID deptId) {
+        Talent created = talentProfileApplicationService.create(request);
+        if (creatorId == null) {
+            return created;
+        }
+        return talentClaimApplicationService.claim(created.getId(), creatorId, deptId);
+    }
+
+    /**
      * 更新达人基本信息。
      * <p>
      * 仅更新请求中非空的字段（增量更新），支持更新：昵称、粉丝数、等级、状态、

@@ -154,7 +154,7 @@ describe('TalentPage empty state', () => {
     wrapper.unmount()
   })
 
-  it('switches to the team public view after creating an unclaimed talent', async () => {
+  it('switches to my talents after creating an owner-claimed talent', async () => {
     const wrapper = mount(TalentPage, { global: { stubs } })
 
     await flushPromises()
@@ -163,7 +163,16 @@ describe('TalentPage empty state', () => {
     wrapper.findComponent(TalentCreateModalStub).vm.$emit('success')
     await flushPromises()
 
-    expect(getTalentPage).toHaveBeenCalledWith(expect.objectContaining({ view: 'TEAM_PUBLIC' }))
+    expect(getTalentPage).toHaveBeenCalledWith(expect.objectContaining({ view: 'MY_TALENTS' }))
+    wrapper.unmount()
+  })
+
+  it('shows the create action for channel staff', async () => {
+    const wrapper = mount(TalentPage, { global: { stubs } })
+
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="talent-create"]').exists()).toBe(true)
     wrapper.unmount()
   })
 })
