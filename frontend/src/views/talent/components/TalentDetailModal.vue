@@ -220,9 +220,10 @@ import {
   type TalentDetailResponse
 } from '../../../api/talent'
 import { useAuthStore } from '../../../stores/auth'
-import { ROLE_CODES } from '../../../constants/rbac'
+import { ROLE_CODES, hasOnlyCanonicalRole } from '../../../constants/rbac'
 import { resolveSafeAvatarUrl } from '../../../utils/media'
 import { buildTalentSampleContext } from '../../sample/sample-context'
+import { canApplySamplesByRole } from '../../sample/sample-permissions'
 import { formatDateTime, formatFans, formatMoney, getPoolLabel, getPoolTagType } from '../constants'
 
 const props = defineProps<{ show: boolean; talentId: string }>()
@@ -250,17 +251,9 @@ const addressDraft = ref({
 })
 const detail = ref<TalentDetailResponse | null>(null)
 const isChannelStaffOnly = computed(() => {
-  const roles = authStore.roleCodes
-  return roles.includes(ROLE_CODES.CHANNEL_STAFF)
-    && !roles.includes(ROLE_CODES.CHANNEL_LEADER)
-    && !authStore.isAdmin
+  return hasOnlyCanonicalRole(authStore.roleCodes, ROLE_CODES.CHANNEL_STAFF)
 })
-const canApplySample = computed(() =>
-  authStore.isAdmin
-    || authStore.roleCodes.includes(ROLE_CODES.CHANNEL_LEADER)
-    || authStore.roleCodes.includes(ROLE_CODES.CHANNEL_STAFF)
-    || authStore.roleCodes.includes(ROLE_CODES.BIZ_STAFF)
-)
+const canApplySample = computed(() => canApplySamplesByRole(authStore.roleCodes))
 const canEditCollaboration = computed(() => canApplySample.value)
 
 const talentTags = computed(() =>

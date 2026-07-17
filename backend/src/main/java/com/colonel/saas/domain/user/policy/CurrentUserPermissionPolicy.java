@@ -24,6 +24,14 @@ import java.util.Set;
  */
 public class CurrentUserPermissionPolicy {
 
+    private static final Set<String> CANONICAL_ROLE_CODES = Set.of(
+            RoleCodes.ADMIN,
+            RoleCodes.BIZ_LEADER,
+            RoleCodes.BIZ_STAFF,
+            RoleCodes.CHANNEL_LEADER,
+            RoleCodes.CHANNEL_STAFF,
+            RoleCodes.OPS_STAFF);
+
     public record RolePermission(String roleCode, Integer dataScope, Map<String, Object> permissions) {
     }
 
@@ -66,6 +74,26 @@ public class CurrentUserPermissionPolicy {
             return false;
         }
         return normalizeRoleCodes(roleCodes).stream().anyMatch(expected::contains);
+    }
+
+    /**
+     * 判断当前账号在系统内置角色中是否只有指定角色。
+     *
+     * <p>自定义菜单角色不参与岗位互斥判断；一旦同时拥有另一个内置业务角色，
+     * 就必须按多角色权限并集处理，不能再套用“纯运营/纯招商/纯渠道”的收缩规则。</p>
+     */
+    public boolean hasOnlyCanonicalRole(Object roleCodes, String expectedRole) {
+        String expected = normalizeKey(expectedRole);
+        if (!CANONICAL_ROLE_CODES.contains(expected)) {
+            return false;
+        }
+        Set<String> normalized = new LinkedHashSet<>(normalizeRoleCodes(roleCodes));
+        if (!normalized.contains(expected)) {
+            return false;
+        }
+        return normalized.stream()
+                .filter(CANONICAL_ROLE_CODES::contains)
+                .allMatch(expected::equals);
     }
 
     public List<String> normalizeRoleCodes(Object roleCodes) {

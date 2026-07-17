@@ -77,7 +77,7 @@ class DddSampleStateMachineIntegrationClosureContractTest {
 
         assertThat(controllerTest)
                 .contains("getStatusTransitions_shouldExposeRoleStateAndErrorMatrix")
-                .contains("actionSample_shouldAllowApproveFromPendingAudit")
+                .contains("actionSample_shouldAllowBizLeaderApproveFromPendingAudit")
                 .contains("actionSample_shouldAllowShippingFromPendingShip")
                 .contains("actionSample_shouldAllowOpsSignDirectlyToPendingHomework")
                 .contains("actionSample_shouldAllowOpsMoveDeliveredToPendingHomeworkWithoutOverwritingSource")

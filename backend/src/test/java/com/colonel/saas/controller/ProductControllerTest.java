@@ -648,6 +648,25 @@ class ProductControllerTest {
         );
     }
 
+    @Test
+    void quickSample_shouldAllowBusinessAndChannelApplicantRoles() throws NoSuchMethodException {
+        Method method = ProductController.class.getMethod(
+                "quickSample",
+                UUID.class,
+                com.colonel.saas.dto.product.QuickSampleApplyRequest.class,
+                UUID.class,
+                UUID.class,
+                List.class);
+
+        RequireRoles roles = method.getAnnotation(RequireRoles.class);
+        assertThat(roles.value()).containsExactly(
+                RoleCodes.BIZ_LEADER,
+                RoleCodes.BIZ_STAFF,
+                RoleCodes.CHANNEL_LEADER,
+                RoleCodes.CHANNEL_STAFF
+        );
+    }
+
     private static Method selectedLibraryPageMethod() throws NoSuchMethodException {
         return Arrays.stream(ProductController.class.getDeclaredMethods())
                 .filter(method -> "page".equals(method.getName()))

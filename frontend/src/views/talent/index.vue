@@ -127,7 +127,7 @@ import {
   TALENT_VIEW_LABEL_MAP,
   getAccessibleTalentViewOptions
 } from './constants'
-import { ROLE_CODES } from '../../constants/rbac'
+import { ROLE_CODES, hasOnlyCanonicalRole } from '../../constants/rbac'
 
 const message = useMessage()
 const dialog = useDialog()
@@ -154,8 +154,7 @@ const {
 const pagination = reactive(createPaginationState())
 
 const isChannelStaffOnly = computed(() => {
-  const roles = authStore.roleCodes
-  return roles.includes('channel_staff') && !roles.includes('channel_leader') && !authStore.isAdmin
+  return hasOnlyCanonicalRole(authStore.roleCodes, ROLE_CODES.CHANNEL_STAFF)
 })
 const canManageBlacklist = computed(() => authStore.isAdmin || authStore.roleCodes.includes('biz_staff') || authStore.roleCodes.includes('channel_leader'))
 const canCreateTalent = computed(() => authStore.isAdmin || [

@@ -246,7 +246,7 @@ public class SampleController {
         return sampleApplicationService.importLogisticsTracking(file, allowOverwrite, userId, roleCodes);
     }
 
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_STAFF})
+    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF})
     @PostMapping("/batch-approve")
     public ApiResult<Map<String, Integer>> batchApprove(
             @Valid @RequestBody SampleBatchActionRequest request,
@@ -257,7 +257,7 @@ public class SampleController {
         return sampleApplicationService.batchApprove(request, userId, deptId, dataScope, roleCodes);
     }
 
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_STAFF})
+    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF})
     @PostMapping("/batch-reject")
     public ApiResult<Map<String, Integer>> batchReject(
             @Valid @RequestBody SampleBatchActionRequest request,

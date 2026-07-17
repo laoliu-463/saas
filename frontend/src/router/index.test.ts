@@ -203,6 +203,21 @@ describe('router guards', () => {
     expect(resolveCalls).toEqual(['/ops/shipping'])
   })
 
+  it('does not collapse a composite business account into the ops-only home route', () => {
+    authState.roleCodes = [
+      ROLE_CODES.BIZ_LEADER,
+      ROLE_CODES.BIZ_STAFF,
+      ROLE_CODES.CHANNEL_LEADER,
+      ROLE_CODES.CHANNEL_STAFF,
+      ROLE_CODES.OPS_STAFF
+    ]
+
+    const result = beforeEachHook?.(route('/', {}), route('/login'))
+
+    expect(result).toBe('/data')
+    expect(resolveCalls).toEqual(['/data'])
+  })
+
   it('sends biz staff to product management when it is the first accessible home route', () => {
     authState.roleCodes = [ROLE_CODES.BIZ_STAFF]
 

@@ -172,8 +172,7 @@ public class SampleFilterOptionsService {
     }
 
     private boolean isPlainBizStaff(Object roleCodes) {
-        return currentUserPermissionChecker.hasAnyRole(roleCodes, RoleCodes.BIZ_STAFF)
-                && !currentUserPermissionChecker.hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.BIZ_LEADER);
+        return currentUserPermissionChecker.hasOnlyCanonicalRole(roleCodes, RoleCodes.BIZ_STAFF);
     }
 
     private List<SampleFilterOptionItem> buildChannelOptions(

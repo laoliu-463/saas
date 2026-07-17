@@ -119,7 +119,7 @@ public class ProductQuickSampleService {
      * @param roleCodes  操作用户角色集合（Collection 或逗号分隔字符串）
      * @return 申请结果汇总（含每个达人的明细）
      * @throws BusinessException 商品不存在或非展示状态时
-     * @throws ForbiddenException 非渠道角色时
+     * @throws ForbiddenException 非招商、渠道或管理员角色时
      */
     @Transactional(rollbackFor = Exception.class)
     public QuickSampleApplyResponse applyQuickSample(
@@ -128,8 +128,8 @@ public class ProductQuickSampleService {
             UUID userId,
             UUID deptId,
             Object roleCodes) {
-        /* 第一步：校验调用方必须是渠道角色或管理员 */
-        ensureChannelRole(roleCodes);
+        /* 第一步：校验调用方必须是招商、渠道角色或管理员 */
+        ensureSampleApplicantRole(roleCodes);
         /* 第二步：解析商品库快照，并确保 product 主表存在 */
         QuickSampleProductContext productContext = resolveQuickSampleProductContext(relationId);
 
@@ -301,10 +301,15 @@ public class ProductQuickSampleService {
         return state;
     }
 
-    private void ensureChannelRole(Object roleCodes) {
-        if (!currentUserPermissionChecker.hasAnyRole(roleCodes, RoleCodes.CHANNEL_STAFF, RoleCodes.CHANNEL_LEADER)
-                && !currentUserPermissionChecker.hasAnyRole(roleCodes, RoleCodes.ADMIN)) {
-            throw new ForbiddenException("仅渠道角色可使用快速寄样");
+    private void ensureSampleApplicantRole(Object roleCodes) {
+        if (!currentUserPermissionChecker.hasAnyRole(
+                roleCodes,
+                RoleCodes.ADMIN,
+                RoleCodes.BIZ_LEADER,
+                RoleCodes.BIZ_STAFF,
+                RoleCodes.CHANNEL_LEADER,
+                RoleCodes.CHANNEL_STAFF)) {
+            throw new ForbiddenException("仅招商或渠道角色可使用快速寄样");
         }
     }
 

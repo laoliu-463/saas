@@ -185,10 +185,11 @@ import { NInput, useDialog, useMessage } from 'naive-ui'
 import { MODAL_WIDTH } from '../../constants/ui'
 import { actionSample, getSampleById, getSampleLogistics, getSampleStatusLogs, syncSampleLogistics } from '../../api/sample'
 import StatusTag from '../../components/StatusTag.vue'
-import { ROLE_CODES } from '../../constants/rbac'
+import { ROLE_CODES, hasOnlyCanonicalRole } from '../../constants/rbac'
 import { useAuthStore } from '../../stores/auth'
 import { handleApiFailure, notifyApiFailure } from '../../utils/requestError'
 import type { SampleItem } from '../../types'
+import { canReviewSamplesByRole } from './sample-permissions'
 
 const props = withDefaults(defineProps<{ show?: boolean; sampleId?: string }>(), {
   show: true,
@@ -223,18 +224,14 @@ const isRouteMode = computed(() => Boolean(routeSampleId.value))
 const effectiveShow = computed(() => isRouteMode.value || props.show)
 const effectiveSampleId = computed(() => routeSampleId.value || props.sampleId)
 
-const canAudit = authStore.isAdmin || authStore.roleCodes.includes(ROLE_CODES.BIZ_STAFF)
+const canAudit = canReviewSamplesByRole(authStore.roleCodes)
 const canShip = authStore.isAdmin || authStore.roleCodes.includes(ROLE_CODES.OPS_STAFF)
 const isChannelStaffOnly = computed(() => {
-  const roles = authStore.roleCodes
-  return roles.includes(ROLE_CODES.CHANNEL_STAFF)
-    && !roles.includes(ROLE_CODES.CHANNEL_LEADER)
-    && !authStore.isAdmin
+  return hasOnlyCanonicalRole(authStore.roleCodes, ROLE_CODES.CHANNEL_STAFF)
 })
 
 const isOpsStaffOnly = computed(() => {
-  const roles = authStore.roleCodes
-  return roles.includes(ROLE_CODES.OPS_STAFF) && !authStore.isAdmin
+  return hasOnlyCanonicalRole(authStore.roleCodes, ROLE_CODES.OPS_STAFF)
 })
 
 const stepOrder = ['PENDING_AUDIT', 'PENDING_SHIP', 'SHIPPED', 'PENDING_TASK', 'FINISHED']

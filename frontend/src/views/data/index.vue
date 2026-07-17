@@ -384,7 +384,7 @@ import { centToYuan, getPerformanceSummary, type PerformanceSummary } from '../.
 import { useRuntimeEnvironment } from '../../composables/useRuntimeEnvironment'
 import { resolveDualTrackMetrics } from './dashboard-metrics'
 import { useAuthStore } from '../../stores/auth'
-import { ROLE_CODES } from '../../constants/rbac'
+import { ROLE_CODES, hasOnlyCanonicalRole } from '../../constants/rbac'
 import { useDelayedFlag } from '../../utils/delayedFlag'
 import { handleApiFailure } from '../../utils/requestError'
 
@@ -421,13 +421,11 @@ const showSkeleton = computed(() => delayedLoading.value && !initialized.value)
 const ROLE = ROLE_CODES
 
 const isBizStaffOnly = computed(() => {
-  const roles = authStore.roleCodes
-  return roles.includes(ROLE.BIZ_STAFF) && !roles.includes(ROLE.ADMIN) && !roles.includes(ROLE.BIZ_LEADER)
+  return hasOnlyCanonicalRole(authStore.roleCodes, ROLE.BIZ_STAFF)
 })
 
 const isChannelStaffOnly = computed(() => {
-  const roles = authStore.roleCodes
-  return roles.includes(ROLE.CHANNEL_STAFF) && !roles.includes(ROLE.ADMIN) && !roles.includes(ROLE.CHANNEL_LEADER)
+  return hasOnlyCanonicalRole(authStore.roleCodes, ROLE.CHANNEL_STAFF)
 })
 
 const pageTitle = computed(() => {

@@ -72,7 +72,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { NIcon, useMessage } from 'naive-ui'
 import { useAuthStore } from '../../stores/auth'
-import { ROLE_CODES } from '../../constants/rbac'
+import { ROLE_CODES, hasOnlyCanonicalRole } from '../../constants/rbac'
 import { getTopMenus, isTopMenuActive, resolveTopMenuDefaultPath } from '../../router/menuTree'
 
 const authStore = useAuthStore()
@@ -85,18 +85,15 @@ const ROLE = ROLE_CODES
 /* 判断当前用户是否仅为渠道专员（非组长、非管理员），用于菜单文案本地化 */
 
 const isChannelStaffOnly = computed(() => {
-  const roles = authStore.roleCodes
-  return roles.includes(ROLE.CHANNEL_STAFF) && !roles.includes(ROLE.CHANNEL_LEADER) && !roles.includes(ROLE.ADMIN)
+  return hasOnlyCanonicalRole(authStore.roleCodes, ROLE.CHANNEL_STAFF)
 })
 
 const isBizStaffOnly = computed(() => {
-  const roles = authStore.roleCodes
-  return roles.includes(ROLE.BIZ_STAFF) && !roles.includes(ROLE.BIZ_LEADER) && !roles.includes(ROLE.ADMIN)
+  return hasOnlyCanonicalRole(authStore.roleCodes, ROLE.BIZ_STAFF)
 })
 
 const isOpsStaffOnly = computed(() => {
-  const roles = authStore.roleCodes
-  return roles.includes(ROLE.OPS_STAFF) && !roles.includes(ROLE.ADMIN)
+  return hasOnlyCanonicalRole(authStore.roleCodes, ROLE.OPS_STAFF)
 })
 
 /** Vite 构建时注入的环境标签（兜底） */
@@ -110,9 +107,9 @@ const serverEnvLabel = ref('')
 onMounted(async () => {
   try {
     const headers: Record<string, string> = {}
-    const accessToken = authStore.token || localStorage.getItem('token') || ''
-    if (accessToken) {
-      headers.Authorization = `Bearer ${accessToken}`
+    const bearerCredential = authStore.token || localStorage.getItem('token') || ''
+    if (bearerCredential) {
+      headers.Authorization = `Bearer ${bearerCredential}`
     }
     const res = await fetch('/api/system/env', { headers })
     const body = await res.json()
@@ -215,9 +212,9 @@ const handleUserMenu = async (key: string) => {
     return
   }
   if (key === 'logout') {
-    const accessToken = authStore.token || localStorage.getItem('token') || ''
-    const refreshToken = authStore.refreshToken || localStorage.getItem('refreshToken') || ''
-    await revokeServerSession(accessToken, refreshToken)
+    const accessCredential = authStore.token || localStorage.getItem('token') || ''
+    const refreshCredential = authStore.refreshToken || localStorage.getItem('refreshToken') || ''
+    await revokeServerSession(accessCredential, refreshCredential)
     authStore.logout()
     await router.replace('/login')
   }

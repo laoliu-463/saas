@@ -27,6 +27,15 @@ class CurrentUserPermissionCheckerTest {
     }
 
     @Test
+    void hasOnlyCanonicalRole_shouldDelegateCompositeRoleSemantics() {
+        Object roleCodes = List.of(RoleCodes.OPS_STAFF, RoleCodes.BIZ_STAFF);
+
+        assertThat(checker.hasOnlyCanonicalRole(roleCodes, RoleCodes.OPS_STAFF))
+                .isEqualTo(policy.hasOnlyCanonicalRole(roleCodes, RoleCodes.OPS_STAFF))
+                .isFalse();
+    }
+
+    @Test
     void resolveDataScopeCode_shouldDelegateWithoutChangingPolicyBehavior() {
         List<RolePermission> roles = List.of(role(RoleCodes.BIZ_STAFF, 1, Map.of()));
         List<String> roleCodes = List.of(RoleCodes.OPS_STAFF);

@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { ROLE_CODES, hasAccess } from '../constants/rbac'
+import { ROLE_CODES, hasAccess, hasOnlyCanonicalRole } from '../constants/rbac'
 import { useAuthStore } from '../stores/auth'
 import { nowMs, recordFrontendTiming } from '../utils/performanceTiming'
 import { createGuardWarningDeduper, resolveGuardDecision, type GuardRedirectDecision } from './guard'
@@ -83,7 +83,7 @@ const router = createRouter({
         {
           path: 'sample/apply',
           component: () => import('../views/sample/Apply.vue'),
-          meta: { title: '寄样申请', roles: [ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] }
+          meta: { title: '寄样申请', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] }
         },
         {
           path: 'sample/:id',
@@ -188,11 +188,11 @@ let routeStartedAt = 0
 const resolveHomePath = (authStore: ReturnType<typeof useAuthStore>): string => {
   const roles = authStore.roleCodes
   const candidates =
-    roles.includes(ROLE.CHANNEL_STAFF) && !roles.includes(ROLE.CHANNEL_LEADER) && !roles.includes(ROLE.ADMIN)
+    hasOnlyCanonicalRole(roles, ROLE.CHANNEL_STAFF)
       ? CHANNEL_STAFF_HOME_CANDIDATES
-      : roles.includes(ROLE.OPS_STAFF) && !roles.includes(ROLE.ADMIN)
+      : hasOnlyCanonicalRole(roles, ROLE.OPS_STAFF)
         ? OPS_STAFF_HOME_CANDIDATES
-      : roles.includes(ROLE.BIZ_STAFF) && !roles.includes(ROLE.BIZ_LEADER) && !roles.includes(ROLE.ADMIN)
+      : hasOnlyCanonicalRole(roles, ROLE.BIZ_STAFF)
         ? BIZ_STAFF_HOME_CANDIDATES
         : HOME_CANDIDATES
   const accessible = candidates.find((path) => {

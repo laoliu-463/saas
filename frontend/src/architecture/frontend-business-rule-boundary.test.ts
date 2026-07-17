@@ -89,6 +89,7 @@ describe('frontend business rule boundary scan', () => {
       'frontend/src/views/product/components/ProductActionColumn.vue',
       'frontend/src/views/product/index.vue',
       'frontend/src/views/product/product-actions.ts',
+      'frontend/src/views/product/product-permissions.ts',
       'frontend/src/views/sample/CooperationWorkbench.vue',
       'frontend/src/views/sample/SampleDetail.vue',
       'frontend/src/views/sample/sample-permissions.ts',

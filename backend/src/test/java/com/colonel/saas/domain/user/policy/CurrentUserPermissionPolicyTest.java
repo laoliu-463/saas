@@ -111,6 +111,18 @@ class CurrentUserPermissionPolicyTest {
     }
 
     @Test
+    void hasOnlyCanonicalRole_shouldIgnoreCustomRolesButRejectOtherBuiltInRoles() {
+        assertThat(policy.hasOnlyCanonicalRole(
+                List.of(RoleCodes.OPS_STAFF), RoleCodes.OPS_STAFF)).isTrue();
+        assertThat(policy.hasOnlyCanonicalRole(
+                List.of(RoleCodes.OPS_STAFF, "custom_menu_role"), RoleCodes.OPS_STAFF)).isTrue();
+        assertThat(policy.hasOnlyCanonicalRole(
+                List.of(RoleCodes.OPS_STAFF, RoleCodes.BIZ_STAFF), RoleCodes.OPS_STAFF)).isFalse();
+        assertThat(policy.hasOnlyCanonicalRole(
+                "[ BIZ_STAFF, channel_staff ]", RoleCodes.BIZ_STAFF)).isFalse();
+    }
+
+    @Test
     void source_shouldNotDependOnPersistenceEntity() throws Exception {
         String source = Files.readString(Path.of(
                 "src/main/java/com/colonel/saas/domain/user/policy/CurrentUserPermissionPolicy.java"));

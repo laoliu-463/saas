@@ -106,7 +106,7 @@ class DddSampleExceptionBranchCoverageContractTest {
                 .contains("isDeletable_shouldOnlyAllowPendingAuditOrRejected");
 
         assertThat(permissionTest)
-                .contains("applyAndDelete_shouldAllowOnlyChannelRolesOrAdmin")
+                .contains("applyAndDelete_shouldAllowApplicantRolesOrAdmin")
                 .contains("actionTransition_shouldKeepReviewAndLogisticsRoleGroups")
                 .contains("exportAndLogisticsSync_shouldKeepCurrentRoleGroups")
                 .contains("logisticsImport_shouldKeepImportAndOverwriteRoleGroups");

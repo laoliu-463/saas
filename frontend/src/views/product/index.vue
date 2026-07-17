@@ -245,7 +245,7 @@ import { NButton, useMessage } from 'naive-ui'
 import { useRoute, useRouter } from 'vue-router'
 import PageHeader from '../../components/PageHeader.vue'
 import { useAuthStore } from '../../stores/auth'
-import { hasAccess } from '../../constants/rbac'
+import { ROLE_CODES, hasAccess, hasOnlyCanonicalRole } from '../../constants/rbac'
 import {
   batchPinActivityProducts,
   batchPutActivityProductsIntoLibrary,
@@ -459,8 +459,7 @@ const isActivityContextBlocked = computed(
     && currentActivityContext.value.status !== 'ready'
     && currentActivityContext.value.status !== 'loading'
 )
-const isBizLeader = computed(() => authStore.roleCodes.includes('biz_leader') || authStore.isAdmin)
-const isBizStaffOnly = computed(() => authStore.roleCodes.includes('biz_staff') && !isBizLeader.value)
+const isBizStaffOnly = computed(() => hasOnlyCanonicalRole(authStore.roleCodes, ROLE_CODES.BIZ_STAFF))
 const showBatchSelection = computed(() => !isSharedLibraryMode.value)
 const productTableScrollX = computed(() =>
   showBatchSelection.value ? PRODUCT_TABLE_SCROLL_X_WITH_SELECTION : PRODUCT_TABLE_SCROLL_X

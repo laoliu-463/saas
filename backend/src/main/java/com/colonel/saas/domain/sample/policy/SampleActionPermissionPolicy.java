@@ -25,18 +25,22 @@ public class SampleActionPermissionPolicy {
     public void ensureCanApply(Object roleCodes) {
         if (!currentUserPermissionChecker.hasAnyRole(roleCodes,
                 RoleCodes.ADMIN,
+                RoleCodes.BIZ_LEADER,
+                RoleCodes.BIZ_STAFF,
                 RoleCodes.CHANNEL_LEADER,
                 RoleCodes.CHANNEL_STAFF)) {
-            throw new ForbiddenException("仅渠道角色可以发起寄样申请");
+            throw new ForbiddenException("仅招商或渠道角色可以发起寄样申请");
         }
     }
 
     public void ensureCanDelete(Object roleCodes) {
         if (!currentUserPermissionChecker.hasAnyRole(roleCodes,
                 RoleCodes.ADMIN,
+                RoleCodes.BIZ_LEADER,
+                RoleCodes.BIZ_STAFF,
                 RoleCodes.CHANNEL_LEADER,
                 RoleCodes.CHANNEL_STAFF)) {
-            throw new ForbiddenException("仅渠道角色可以删除寄样申请");
+            throw new ForbiddenException("仅招商或渠道角色可以删除寄样申请");
         }
     }
 
@@ -91,13 +95,11 @@ public class SampleActionPermissionPolicy {
     }
 
     public boolean isOpsStaffOnly(Object roleCodes) {
-        return currentUserPermissionChecker.hasAnyRole(roleCodes, RoleCodes.OPS_STAFF)
-                && !currentUserPermissionChecker.hasAnyRole(roleCodes, RoleCodes.ADMIN);
+        return currentUserPermissionChecker.hasOnlyCanonicalRole(roleCodes, RoleCodes.OPS_STAFF);
     }
 
     public boolean isPlainBizStaff(Object roleCodes) {
-        return currentUserPermissionChecker.hasAnyRole(roleCodes, RoleCodes.BIZ_STAFF)
-                && !currentUserPermissionChecker.hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.BIZ_LEADER);
+        return currentUserPermissionChecker.hasOnlyCanonicalRole(roleCodes, RoleCodes.BIZ_STAFF);
     }
 
     public boolean hasGlobalSampleAccess(Object roleCodes) {
@@ -110,11 +112,19 @@ public class SampleActionPermissionPolicy {
 
     public boolean requiresChannelTalentClaim(Object roleCodes) {
         return currentUserPermissionChecker.hasAnyRole(roleCodes, RoleCodes.CHANNEL_STAFF, RoleCodes.CHANNEL_LEADER)
-                && !currentUserPermissionChecker.hasAnyRole(roleCodes, RoleCodes.ADMIN);
+                && !currentUserPermissionChecker.hasAnyRole(
+                        roleCodes,
+                        RoleCodes.ADMIN,
+                        RoleCodes.BIZ_LEADER,
+                        RoleCodes.BIZ_STAFF);
     }
 
     private void ensureReviewAction(Object roleCodes) {
-        if (!currentUserPermissionChecker.hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.BIZ_STAFF)) {
+        if (!currentUserPermissionChecker.hasAnyRole(
+                roleCodes,
+                RoleCodes.ADMIN,
+                RoleCodes.BIZ_LEADER,
+                RoleCodes.BIZ_STAFF)) {
             throw new ForbiddenException("仅招商角色可以审核寄样");
         }
     }

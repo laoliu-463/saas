@@ -164,7 +164,6 @@ import ManualCopyDialog from '../../components/common/ManualCopyDialog.vue'
 import { getProducts, getProductLibraryCategories } from '../../api/product'
 import { convertActivityProductLink } from '../../api/activityProduct'
 import { useAuthStore } from '../../stores/auth'
-import { ROLE_CODES, hasAccess } from '../../constants/rbac'
 import { useDelayedFlag } from '../../utils/delayedFlag'
 
 import ProductLibraryFilterPanel from './components/ProductLibraryFilterPanel.vue'
@@ -196,6 +195,7 @@ import {
   PRODUCT_LIBRARY_ROW_HEIGHT
 } from './product-library-layout'
 import { canGenerateAttributionPromotionLink } from './product-actions'
+import { canApplyQuickSampleByRole } from './product-permissions'
 
 const PRODUCT_LIBRARY_REQUEST_BATCH_SIZE = 100
 const PRODUCT_LIBRARY_BACKEND_MAX_LIMIT = 500
@@ -253,10 +253,8 @@ const convertLinkForBriefCopy = (
   data: { scene: 'PRODUCT_LIBRARY' | 'PRODUCT_DETAIL' | 'TALENT_SHARE' | 'SAMPLE_DESK' }
 ) => convertActivityProductLink(activityId, productId, data, { suppressErrorNotice: true })
 
-/** 快速寄样仍只沿用渠道与管理员权限，不能随推广链接权限扩大。 */
-const canQuickSample = computed(() =>
-  hasAccess(authStore.roleCodes, [ROLE_CODES.CHANNEL_LEADER, ROLE_CODES.CHANNEL_STAFF]) || authStore.isAdmin
-)
+/** 招商、渠道与管理员可发起快速寄样（后端 quick-sample 同限） */
+const canQuickSample = computed(() => canApplyQuickSampleByRole(authStore.roleCodes, authStore.isAdmin))
 
 const normalizeText = (value?: string | number | null) => {
   if (value === null || value === undefined) return ''
