@@ -6,7 +6,7 @@
 - Environment: real-pre
 - Scope: frontend
 - Branch: codex/ddd-user-role-application
-- Commit: 81da058a
+- Commit: b650c477
 - Owned worktree: dirty
 - Deploy remote: false
 
@@ -29,8 +29,8 @@ M frontend/src/views/data/OrderList.test.ts
 ## Build Result
 
 ~~~text
-not collected
 Frontend build: PASS (npm --prefix frontend ci; npm --prefix frontend run build)
+Targeted regression tests: PASS (15/15, OrderList.test.ts)
 ~~~
 
 ## Docker Status
@@ -64,6 +64,19 @@ Local health verification: PASS
 Business validation: PASS (npm run e2e:real-pre:p0:preflight)
 ~~~
 
+## Manual Browser Validation Result
+
+~~~text
+Environment: local real-pre, http://127.0.0.1:3001, viewport 1280x720
+Flow: login as biz_staff -> /data/orders -> click "订单明细"
+Detail API: HTTP 200, code=200, records=20, total=44980 at capture time
+After tab switch: data tab active="订单明细"; inner scrollTop=404; first order row top=471.8px, bottom=491px
+First visible order ID: 6954534360780510851
+Console errors: none; failed requests: none
+Screenshot: output/local-order-detail-auto-scroll-1280.png
+Result: PASS — clicking the detail tab automatically scrolls the nested content container so real order rows are visible in the first viewport.
+~~~
+
 ## Content Maintenance Result
 
 ~~~text
@@ -76,6 +89,13 @@ Content maintenance: Plan. Manifest=. DryRun=False.
 remote not deployed
 ~~~
 
+## Governance Check
+
+~~~text
+TASK_GATE: PASS
+REPOSITORY_HEALTH: PARTIAL — existing historical report-count/size debt remains outside this task; no new task-owned violation was introduced.
+~~~
+
 ## Retro Summary
 
 No actionable Harness improvement was recorded; no standalone retro is required.
@@ -86,4 +106,5 @@ PASS
 
 ## Residual Risk
 
-- Items marked as not collected are not proof of success.
+- Remote real-pre was not deployed in this task.
+- The captured total is live data and may change; the validation proves the returned detail rows are rendered and visible.
