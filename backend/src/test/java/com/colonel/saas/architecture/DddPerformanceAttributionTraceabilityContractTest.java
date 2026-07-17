@@ -19,12 +19,13 @@ class DddPerformanceAttributionTraceabilityContractTest {
                 .contains(
                         "UUID channelUserId = order.getChannelUserId();",
                         "UUID recruiterUserId = order.getColonelUserId() != null ? order.getColonelUserId() : order.getUserId();",
+                        "PerformanceAttributionPolicy.AttributionResult attribution = attributionResolver.resolve(order);",
                         "record.setDefaultChannelUserId(channelUserId);",
                         "record.setDefaultRecruiterUserId(recruiterUserId);",
-                        "record.setFinalChannelUserId(channelUserId);",
-                        "record.setFinalRecruiterUserId(recruiterUserId);",
-                        "record.setChannelAttribution(channelUserId != null ? \"pick_source\" : \"unattributed\");",
-                        "record.setRecruiterAttribution(recruiterUserId != null ? \"activity_owner\" : \"unattributed\");",
+                        "record.setFinalChannelUserId(attribution.finalChannelId());",
+                        "record.setFinalRecruiterUserId(attribution.finalRecruiterId());",
+                        "record.setChannelAttribution(attribution.channelAttributionType());",
+                        "record.setRecruiterAttribution(attribution.recruiterAttributionType());",
                         "record.setTalentId(order.getTalentId());",
                         "record.setPartnerId(order.getShopId());",
                         "record.setProductId(order.getProductId());",
@@ -73,7 +74,10 @@ class DddPerformanceAttributionTraceabilityContractTest {
                         "assertThat(result.getDefaultChannelUserId()).isEqualTo(channelUserId)",
                         "assertThat(result.getDefaultRecruiterUserId()).isEqualTo(recruiterUserId)",
                         "assertThat(result.getFinalChannelUserId()).isEqualTo(channelUserId)",
-                        "assertThat(result.getFinalRecruiterUserId()).isEqualTo(recruiterUserId)");
+                        "assertThat(result.getFinalRecruiterUserId()).isEqualTo(recruiterUserId)",
+                        "upsertFromOrder_shouldUseResolvedFinalAttributionInsteadOfCopyingOrderDefaults",
+                        "assertThat(result.getFinalRecruiterUserId()).isEqualTo(exclusiveMerchantUserId)",
+                        "assertThat(result.getRecruiterAttribution()).isEqualTo(\"EXCLUSIVE_MERCHANT\")");
     }
 
     private static String readProjectFile(String relativePath) throws IOException {

@@ -69,9 +69,14 @@ class DddAuthorizationSchemaContractTest {
 
         assertThat(migrateAll).contains(AUTHORIZATION_MIGRATION_INCLUDE);
         assertThat(effectiveLines).isNotEmpty();
-        assertThat(effectiveLines.get(effectiveLines.size() - 1))
-                .as("authorization migration should be the last effective migrate-all instruction")
-                .isEqualTo(AUTHORIZATION_MIGRATION_INCLUDE);
+        assertThat(effectiveLines.stream()
+                .filter(AUTHORIZATION_MIGRATION_INCLUDE::equals)
+                .count())
+                .as("authorization migration should be included exactly once")
+                .isEqualTo(1L);
+        assertThat(effectiveLines.indexOf(AUTHORIZATION_MIGRATION_INCLUDE))
+                .as("authorization migration should run after its sys_dept schema prerequisite")
+                .isGreaterThan(effectiveLines.indexOf("\\i migrate-sys-dept-dept-type.sql"));
     }
 
     private static void assertPermissionTable(Path schemaFile, String sql, String compactSql) {

@@ -160,23 +160,15 @@ public final class OrderDefaultAttributionPolicy {
             return AttributionService.AttributionResult.unattributed(
                     null, null, null, null, AttributionService.REASON_SYNC_FAILED, AttributionService.NativeMappingTrace.none());
         }
-        if (isAttributed(result.attributionStatus())) {
-            return AttributionService.AttributionResult.attributed(
-                    result.defaultChannelUserId(),
-                    result.channelDeptId(),
-                    result.defaultChannelUserId(),
-                    result.talentId(),
-                    result.talentUid(),
-                    result.activityId(),
-                    result.defaultRecruiterId(),
-                    result.attributionRemark(),
-                    AttributionService.NativeMappingTrace.none());
-        }
-        return AttributionService.AttributionResult.unattributed(
+        return new AttributionService.AttributionResult(
+                result.defaultChannelUserId(),
+                result.channelDeptId(),
+                result.defaultChannelUserId(),
                 result.talentId(),
                 result.talentUid(),
                 result.activityId(),
                 result.defaultRecruiterId(),
+                result.attributionStatus(),
                 result.attributionRemark(),
                 AttributionService.NativeMappingTrace.none());
     }

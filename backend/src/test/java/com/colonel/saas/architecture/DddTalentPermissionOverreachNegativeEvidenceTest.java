@@ -21,13 +21,14 @@ class DddTalentPermissionOverreachNegativeEvidenceTest {
                 .contains("assertCanOperate")
                 .contains("currentUserPermissionChecker.hasAnyRole(roleCodes, RoleCodes.ADMIN)")
                 .contains("currentUserPermissionChecker.hasAnyRole(roleCodes, RoleCodes.CHANNEL_LEADER)")
-                .contains("currentUserPermissionChecker.hasAnyRole(roleCodes, RoleCodes.CHANNEL_STAFF)")
+                .contains("currentUserPermissionChecker.hasAnyRole(roleCodes, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_STAFF)")
                 .contains("talentClaimMapper.findActiveByTalentId(talent.getId())")
                 .contains("throw new ForbiddenException(\"无权操作该达人\")");
 
         assertThat(queryServiceTest)
                 .contains("assertCanOperate_shouldRejectChannelStaffWithoutOwnActiveClaim")
                 .contains("assertCanOperate_shouldAllowChannelLeaderForOwnDeptClaim")
+                .contains("assertCanOperate_shouldAllowBizStaffForOwnActiveClaim")
                 .contains("assertCanOperate_shouldNormalizeRoleCodesViaUserPolicy");
 
         assertThat(profileControllerTest)
