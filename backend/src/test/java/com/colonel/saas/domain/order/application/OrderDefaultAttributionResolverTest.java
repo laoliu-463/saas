@@ -14,6 +14,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.UUID;
 
@@ -51,12 +52,14 @@ class OrderDefaultAttributionResolverTest {
         PickSourceMapping mapping = new PickSourceMapping();
         mapping.setUserId(channelUserId);
         mapping.setDeptId(UUID.randomUUID());
+        mapping.setCreateTime(LocalDateTime.of(2026, 5, 10, 6, 41, 19));
 
         when(pickSourceMappingAdapter.findByPickSourceOrExtra("ps-1", null)).thenReturn(mapping);
         when(productDomainFacade.findProductAssigneeId("act-1", "prod-1")).thenReturn(null);
         when(productDomainFacade.findActivityDefaultRecruiterId("act-1")).thenReturn(null);
 
-        OrderDefaultAttributionResult result = resolver.resolve(order, Map.of());
+        OrderDefaultAttributionResolver.Resolution resolution = resolver.resolveWithTrace(order, Map.of());
+        OrderDefaultAttributionResult result = resolution.result();
 
         assertThat(result.defaultChannelUserId()).isEqualTo(channelUserId);
         assertThat(result.channelAttributionStatus())
@@ -64,6 +67,8 @@ class OrderDefaultAttributionResolverTest {
         assertThat(result.recruiterAttributionStatus())
                 .isEqualTo(OrderDefaultAttributionResult.RECRUITER_UNATTRIBUTED);
         assertThat(result.attributionStatus()).isEqualTo(AttributionService.STATUS_ATTRIBUTED);
+        assertThat(resolution.nativeMappingMatched()).isTrue();
+        assertThat(resolution.mappingCreatedAt()).isEqualTo(mapping.getCreateTime());
     }
 
     @Test

@@ -1,7 +1,10 @@
 package com.colonel.saas.domain.order.application;
 
 import com.colonel.saas.config.DddRefactorProperties;
+import com.colonel.saas.domain.order.policy.OrderAttributionInput;
+import com.colonel.saas.domain.order.policy.OrderDefaultAttributionPolicy;
 import com.colonel.saas.entity.ColonelsettlementOrder;
+import com.colonel.saas.entity.PickSourceMapping;
 import com.colonel.saas.service.AttributionService;
 import com.colonel.saas.domain.order.policy.OrderDefaultAttributionResult;
 import com.colonel.saas.service.AttributionService.AttributionResult;
@@ -11,6 +14,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.UUID;
 
@@ -79,20 +83,25 @@ class OrderAttributionRouterTest {
 
         ColonelsettlementOrder order = new ColonelsettlementOrder();
         UUID channelUserId = UUID.randomUUID();
-        OrderDefaultAttributionResult result = OrderDefaultAttributionResult.attributedChannel(
-                channelUserId,
-                channelUserId,
-                null,
-                null,
-                "act-1",
-                null,
-                AttributionService.REASON_ATTRIBUTED);
-        when(defaultAttributionResolver.resolve(any(), any())).thenReturn(result);
+        LocalDateTime mappingCreatedAt = LocalDateTime.of(2026, 5, 10, 6, 41, 19);
+        PickSourceMapping mapping = new PickSourceMapping();
+        mapping.setUserId(channelUserId);
+        mapping.setDeptId(channelUserId);
+        mapping.setActivityId("act-1");
+        mapping.setCreateTime(mappingCreatedAt);
+        OrderDefaultAttributionResult result = OrderDefaultAttributionPolicy.resolve(
+                new OrderAttributionInput("product-1", "act-1", "pick-1", null, null, null),
+                mapping,
+                new OrderDefaultAttributionPolicy.RecruiterLookup(null, null, false));
+        when(defaultAttributionResolver.resolveWithTrace(any(), any())).thenReturn(
+                new OrderDefaultAttributionResolver.Resolution(result, true, mappingCreatedAt));
 
         AttributionResult applied = router.resolveAndApply(order, Map.of(), "达人A");
 
-        verify(defaultAttributionResolver).resolve(order, Map.of());
+        verify(defaultAttributionResolver).resolveWithTrace(order, Map.of());
         assertThat(applied.channelUserId()).isEqualTo(channelUserId);
+        assertThat(applied.nativeTrace().nativeKeyMatched()).isTrue();
+        assertThat(applied.nativeTrace().mappingCreatedAt()).isEqualTo(mappingCreatedAt);
         assertThat(order.getChannelUserId()).isEqualTo(channelUserId);
     }
 }
