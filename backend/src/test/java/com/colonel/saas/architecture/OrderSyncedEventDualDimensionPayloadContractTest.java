@@ -56,12 +56,14 @@ class OrderSyncedEventDualDimensionPayloadContractTest {
     void toOrderSyncedEvent_shouldExposeRecruiterUnattributedWhenColonelUserIdMissing() {
         ColonelsettlementOrder order = newOrderWithDualStatuses("CHANNEL_ATTRIBUTED", null);
         order.setColonelUserId(null);
-        order.setUserId(null);
+        order.setUserId(order.getChannelUserId());
 
         OrderSyncedEvent event = mapper.toOrderSyncedEvent(order, true);
 
         assertThat(event.extraData()).containsEntry(CHANNEL_KEY, "CHANNEL_ATTRIBUTED");
         assertThat(event.extraData()).containsEntry(RECRUITER_KEY, "RECRUITER_UNATTRIBUTED");
+        assertThat(event.defaultRecruiterId()).isNull();
+        assertThat(event.recruiterAttribution()).isNull();
     }
 
     @Test

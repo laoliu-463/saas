@@ -13,6 +13,29 @@ $ast = [System.Management.Automation.Language.Parser]::ParseFile(
 $parameterNames = @($ast.ParamBlock.Parameters.Name.VariablePath.UserPath)
 
 Describe 'remote deployment safety contract' {
+    It 'renders a syntactically valid remote Bash script' {
+        $assignment = $ast.Find({
+            param($node)
+            $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+                $node.Left.Extent.Text -eq '$remoteScript'
+        }, $true)
+        $assignment | Should Not BeNullOrEmpty
+
+        $renderBlock = [scriptblock]::Create(@"
+`$RemoteDir = '/tmp/saas'
+`$ExpectedCommit = '0000000000000000000000000000000000000000'
+`$RemoteEnvFile = '/tmp/saas.env'
+`$remoteScript = $($assignment.Right.Extent.Text)
+`$remoteScript
+"@)
+        $rendered = & $renderBlock
+        $bash = Get-Command bash -ErrorAction SilentlyContinue
+        $bash | Should Not BeNullOrEmpty
+
+        $rendered | & $bash.Source -n
+        $LASTEXITCODE | Should Be 0
+    }
+
     It 'binds a deployment to an expected commit before Compose changes' {
         $parseErrors.Count | Should Be 0
         ($parameterNames -contains 'ExpectedCommit') | Should Be $true
