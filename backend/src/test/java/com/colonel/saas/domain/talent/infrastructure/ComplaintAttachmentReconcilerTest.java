@@ -23,6 +23,7 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -110,7 +111,7 @@ class ComplaintAttachmentReconcilerTest {
                 new ComplaintAttachmentStorage(tempDir), mapper);
 
         ComplaintAttachmentReconciler.ReconcileResult result =
-                reconciler.reconcile(Duration.ofHours(24), 500);
+                reconciler.reconcile(Duration.ofHours(24), 100);
 
         assertThat(result.candidateCount()).isEqualTo(100);
         assertThat(result.deletedCount()).isEqualTo(100);
@@ -149,9 +150,19 @@ class ComplaintAttachmentReconcilerTest {
         assertThat(successful).doesNotExist();
 
         Path next = create(key(12), OLD);
+        ComplaintAttachmentStorage continuedFailureStorage = new ComplaintAttachmentStorage(
+                tempDir,
+                UUID::randomUUID,
+                (source, target, atomic) -> Files.move(source, target),
+                path -> {
+                    if (path.getFileName().equals(failing.getFileName())) {
+                        throw new IOException("persistent failure");
+                    }
+                    return Files.deleteIfExists(path);
+                });
         ComplaintAttachmentReconciler.ReconcileResult nextRun = reconciler(
-                new ComplaintAttachmentStorage(tempDir), mapper)
-                .reconcile(Duration.ofHours(24), 1);
+                continuedFailureStorage, mapper)
+                .reconcile(Duration.ofHours(24), 2);
 
         assertThat(nextRun.deletedCount()).isEqualTo(1);
         assertThat(next).doesNotExist();
@@ -272,14 +283,13 @@ class ComplaintAttachmentReconcilerTest {
             throws Exception {
         String first = key(200);
         create(first, OLD);
-        create(key(201), OLD);
         Path cursor = tempDir.resolve(".reconcile-cursor");
         Files.writeString(cursor, "../../sensitive-path\n" + "x".repeat(256));
         TalentComplaintAttachmentMapper mapper = mock(TalentComplaintAttachmentMapper.class);
         when(mapper.selectExistingStorageKeys(anyList())).thenAnswer(invocation -> invocation.getArgument(0));
 
         reconciler(new ComplaintAttachmentStorage(tempDir), mapper)
-                .reconcile(Duration.ofHours(24), 1);
+                .reconcile(Duration.ofHours(24), 2);
 
         assertThat(Files.readString(cursor)).isEqualTo(first);
     }
@@ -287,24 +297,24 @@ class ComplaintAttachmentReconcilerTest {
     @Test
     void reconcile_shouldContinueDeterministicallyWhenFilesAreAddedAndRemoved() throws Exception {
         String first = key(300);
-        String removed = key(320);
         create(first, OLD);
-        Path removedPath = create(removed, OLD);
         TalentComplaintAttachmentMapper mapper = mock(TalentComplaintAttachmentMapper.class);
         when(mapper.selectExistingStorageKeys(anyList())).thenAnswer(invocation -> invocation.getArgument(0));
 
         reconciler(new ComplaintAttachmentStorage(tempDir), mapper)
-                .reconcile(Duration.ofHours(24), 1);
+                .reconcile(Duration.ofHours(24), 2);
+        Path removedPath = create(key(305), OLD);
         Files.delete(removedPath);
         String addedAfterCursor = key(310);
         create(addedAfterCursor, OLD);
-        create(key(330), OLD);
+        String secondAdded = key(330);
+        create(secondAdded, OLD);
 
         reconciler(new ComplaintAttachmentStorage(tempDir), mapper)
-                .reconcile(Duration.ofHours(24), 1);
+                .reconcile(Duration.ofHours(24), 2);
 
         assertThat(Files.readString(tempDir.resolve(".reconcile-cursor")))
-                .isEqualTo(addedAfterCursor);
+                .isEqualTo(secondAdded);
         verify(mapper, times(2)).selectExistingStorageKeys(anyList());
     }
 
@@ -324,12 +334,139 @@ class ComplaintAttachmentReconcilerTest {
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
         reconciler(new ComplaintAttachmentStorage(tempDir), mapper)
-                .reconcile(Duration.ofHours(24), 1);
+                .reconcile(Duration.ofHours(24), 2);
 
         assertThat(Files.readString(outside)).isEqualTo("outside-must-not-change");
         assertThat(Files.isSymbolicLink(cursor)).isTrue();
         Files.deleteIfExists(cursor);
         Files.deleteIfExists(outside);
+    }
+
+    @Test
+    void reconcile_shouldRejectBatchOutsideTwoToOneHundred() {
+        ComplaintAttachmentReconciler target = reconciler(
+                new ComplaintAttachmentStorage(tempDir),
+                mock(TalentComplaintAttachmentMapper.class));
+
+        assertThatThrownBy(() -> target.reconcile(Duration.ofHours(24), 1))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("2..100");
+        assertThatThrownBy(() -> target.reconcile(Duration.ofHours(24), 101))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("2..100");
+    }
+
+    @Test
+    void reconcile_shouldRotatePastPermanentTemporaryFailuresAcrossRestart() throws Exception {
+        String failingOne = temporaryKey(500);
+        String failingTwo = temporaryKey(501);
+        String reachable = temporaryKey(502);
+        Path failingOnePath = create(failingOne, OLD);
+        Path failingTwoPath = create(failingTwo, OLD);
+        Path reachablePath = create(reachable, OLD);
+        Set<String> failingNames = Set.of(
+                failingOnePath.getFileName().toString(),
+                failingTwoPath.getFileName().toString());
+        ComplaintAttachmentStorage failingStorage = new ComplaintAttachmentStorage(
+                tempDir,
+                UUID::randomUUID,
+                (source, target, atomic) -> Files.move(source, target),
+                path -> {
+                    if (failingNames.contains(path.getFileName().toString())) {
+                        throw new IOException("permanent temporary failure");
+                    }
+                    return Files.deleteIfExists(path);
+                });
+        TalentComplaintAttachmentMapper mapper = mock(TalentComplaintAttachmentMapper.class);
+
+        ComplaintAttachmentReconciler.ReconcileResult first = reconciler(
+                failingStorage, mapper).reconcile(Duration.ofHours(24), 8);
+        assertThat(first.candidateCount()).isEqualTo(2);
+        assertThat(first.failedCount()).isEqualTo(2);
+        assertThat(reachablePath).exists();
+
+        ComplaintAttachmentReconciler.ReconcileResult second = reconciler(
+                new ComplaintAttachmentStorage(tempDir), mapper)
+                .reconcile(Duration.ofHours(24), 8);
+
+        assertThat(second.deletedCount()).isEqualTo(2);
+        assertThat(reachablePath).doesNotExist();
+        assertThat(failingOnePath).doesNotExist();
+        assertThat(failingTwoPath).exists();
+    }
+
+    @Test
+    void reconcile_shouldRepairCorruptTemporaryCursorFromHead() throws Exception {
+        String temporaryKey = temporaryKey(600);
+        create(temporaryKey, OLD);
+        Path cursor = tempDir.resolve(".reconcile-tmp-cursor");
+        Files.writeString(cursor, "../../sensitive\n" + "x".repeat(256));
+
+        ComplaintAttachmentReconciler.ReconcileResult result = reconciler(
+                new ComplaintAttachmentStorage(tempDir),
+                mock(TalentComplaintAttachmentMapper.class))
+                .reconcile(Duration.ofHours(24), 2);
+
+        assertThat(result.deletedCount()).isEqualTo(1);
+        assertThat(Files.readString(cursor)).isEqualTo(temporaryKey);
+    }
+
+    @Test
+    void temporaryCursor_shouldNeverFollowSymbolicLink() throws Exception {
+        Path outside = tempDir.resolveSibling("outside-complaint-tmp-cursor.txt");
+        Files.writeString(outside, "outside-must-not-change");
+        Path cursor = tempDir.resolve(".reconcile-tmp-cursor");
+        try {
+            Files.createSymbolicLink(cursor, outside);
+        } catch (IOException | UnsupportedOperationException exception) {
+            Assumptions.assumeTrue(false, "symbolic links unavailable: " + exception.getClass());
+        }
+        create(temporaryKey(700), OLD);
+
+        reconciler(
+                new ComplaintAttachmentStorage(tempDir),
+                mock(TalentComplaintAttachmentMapper.class))
+                .reconcile(Duration.ofHours(24), 2);
+
+        assertThat(Files.readString(outside)).isEqualTo("outside-must-not-change");
+        assertThat(Files.isSymbolicLink(cursor)).isTrue();
+        Files.deleteIfExists(cursor);
+        Files.deleteIfExists(outside);
+    }
+
+    @Test
+    void reconcile_batchTwoShouldAdvanceTemporaryAndAttachmentWithoutExceedingBatch()
+            throws Exception {
+        String temporaryKey = temporaryKey(800);
+        Path temporary = create(temporaryKey, OLD);
+        String attachmentKey = key(801);
+        Path attachment = create(attachmentKey, OLD);
+        ComplaintAttachmentStorage storage = new ComplaintAttachmentStorage(
+                tempDir,
+                UUID::randomUUID,
+                (source, target, atomic) -> Files.move(source, target),
+                path -> {
+                    if (path.getFileName().toString().startsWith(".")) {
+                        throw new IOException("temporary remains locked");
+                    }
+                    return Files.deleteIfExists(path);
+                });
+        TalentComplaintAttachmentMapper mapper = mock(TalentComplaintAttachmentMapper.class);
+        when(mapper.selectExistingStorageKeys(anyList())).thenReturn(List.of());
+
+        ComplaintAttachmentReconciler.ReconcileResult result = reconciler(storage, mapper)
+                .reconcile(Duration.ofHours(24), 2);
+
+        assertThat(result.candidateCount()).isEqualTo(2);
+        assertThat(result.failedCount()).isEqualTo(1);
+        assertThat(result.deletedCount()).isEqualTo(1);
+        assertThat(temporary).exists();
+        assertThat(attachment).doesNotExist();
+        assertThat(Files.readString(tempDir.resolve(".reconcile-tmp-cursor")))
+                .isEqualTo(temporaryKey);
+        assertThat(Files.readString(tempDir.resolve(".reconcile-cursor")))
+                .isEqualTo(attachmentKey);
+        verify(mapper, times(1)).selectExistingStorageKeys(anyList());
     }
 
     private ComplaintAttachmentReconciler reconciler(
@@ -362,5 +499,10 @@ class ComplaintAttachmentReconcilerTest {
     private String key(int number) {
         String hex = String.format("%032x", number);
         return hex.substring(0, 2) + "/" + hex + ".jpg";
+    }
+
+    private String temporaryKey(int number) {
+        String hex = String.format("%032x", number);
+        return hex.substring(0, 2) + "/." + hex + "-123456.tmp";
     }
 }

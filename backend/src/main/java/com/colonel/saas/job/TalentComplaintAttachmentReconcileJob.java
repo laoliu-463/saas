@@ -33,6 +33,10 @@ public class TalentComplaintAttachmentReconcileJob {
             DistributedJobLockService lockService,
             @Value("${talent.complaint.reconcile.grace-hours:24}") int graceHours,
             @Value("${talent.complaint.reconcile.batch-size:100}") int batchSize) {
+        if (batchSize < 2 || batchSize > 100) {
+            throw new IllegalArgumentException(
+                    "complaint attachment reconcile batch size must be 2..100");
+        }
         this.reconciler = reconciler;
         this.lockService = lockService;
         this.graceHours = graceHours;

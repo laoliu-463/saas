@@ -19,6 +19,7 @@ import java.util.Set;
 @Component
 public class ComplaintAttachmentReconciler {
 
+    private static final int MIN_BATCH_SIZE = 2;
     private static final int MAX_BATCH_SIZE = 100;
 
     private final ComplaintAttachmentStorage storage;
@@ -45,9 +46,13 @@ public class ComplaintAttachmentReconciler {
         if (grace == null || grace.isZero() || grace.isNegative()) {
             throw new IllegalArgumentException("complaint attachment grace must be positive");
         }
-        int batchSize = Math.max(1, Math.min(requestedBatchSize, MAX_BATCH_SIZE));
+        if (requestedBatchSize < MIN_BATCH_SIZE || requestedBatchSize > MAX_BATCH_SIZE) {
+            throw new IllegalArgumentException(
+                    "complaint attachment reconcile batch size must be 2..100");
+        }
+        int batchSize = requestedBatchSize;
         Instant cutoff = clock.instant().minus(grace);
-        int temporaryBudget = batchSize == 1 ? 1 : Math.max(1, batchSize / 4);
+        int temporaryBudget = Math.max(1, batchSize / 4);
         List<ComplaintAttachmentStorage.TemporaryCandidate> temporaryCandidates =
                 storage.findTemporaryCandidates(cutoff, temporaryBudget);
         int deleted = 0;
@@ -72,6 +77,17 @@ public class ComplaintAttachmentReconciler {
                         "complaint_attachment_reconcile_temporary_failed candidateIndex={} errorType={}",
                         temporaryIndex,
                         exception.getClass().getSimpleName());
+            } finally {
+                if (candidate != null) {
+                    try {
+                        storage.advanceTemporaryReconcileCursor(candidate.storageKey());
+                    } catch (RuntimeException exception) {
+                        log.warn(
+                                "complaint_attachment_temporary_cursor_advance_failed candidateIndex={} errorType={}",
+                                temporaryIndex,
+                                exception.getClass().getSimpleName());
+                    }
+                }
             }
         }
 

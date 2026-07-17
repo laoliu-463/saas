@@ -12,6 +12,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.time.Duration;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -71,5 +72,17 @@ class TalentComplaintAttachmentReconcileJobTest {
                 releasedOwner.capture());
         assertThat(acquiredOwner.getValue()).startsWith("complaint-attachment-reconcile:");
         assertThat(releasedOwner.getValue()).isEqualTo(acquiredOwner.getValue());
+    }
+
+    @Test
+    void constructor_shouldFailFastForBatchOutsideTwoToOneHundred() {
+        assertThatThrownBy(() -> new TalentComplaintAttachmentReconcileJob(
+                reconciler, lockService, 24, 1))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("2..100");
+        assertThatThrownBy(() -> new TalentComplaintAttachmentReconcileJob(
+                reconciler, lockService, 24, 101))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("2..100");
     }
 }

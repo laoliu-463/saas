@@ -35,6 +35,7 @@ import java.util.Objects;
 import java.util.PriorityQueue;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.regex.Pattern;
 
@@ -48,15 +49,18 @@ public class ComplaintAttachmentStorage {
     private static final int MAX_STORAGE_KEY_ATTEMPTS = 3;
     private static final int MAX_RECONCILE_BATCH = 100;
     private static final int MAX_CURSOR_BYTES = 128;
-    private static final String CURSOR_FILENAME = ".reconcile-cursor";
+    private static final String ATTACHMENT_CURSOR_FILENAME = ".reconcile-cursor";
+    private static final String TEMPORARY_CURSOR_FILENAME = ".reconcile-tmp-cursor";
     private static final Pattern GENERATED_KEY_PATTERN =
             Pattern.compile("[0-9a-f]{2}/[0-9a-f]{32}\\.(jpg|png|webp)");
     private static final Pattern TEMPORARY_KEY_PATTERN =
             Pattern.compile("[0-9a-f]{2}/\\.[0-9a-f]{32}-[^/\\\\]+\\.tmp");
     private static final Pattern CURSOR_TEMPORARY_NAME_PATTERN =
-            Pattern.compile("\\.reconcile-cursor-[^/\\\\]+\\.tmp");
+            Pattern.compile("\\.reconcile(?:-tmp)?-cursor-[^/\\\\]+\\.tmp");
     private static final Comparator<ReconcileCandidate> CANDIDATE_ORDER =
             Comparator.comparing(ReconcileCandidate::storageKey);
+    private static final Comparator<TemporaryCandidate> TEMPORARY_CANDIDATE_ORDER =
+            Comparator.comparing(TemporaryCandidate::storageKey);
 
     private final Path storageRoot;
     private final Supplier<UUID> uuidSupplier;
@@ -232,7 +236,11 @@ public class ComplaintAttachmentStorage {
             return List.of();
         }
 
-        String cursor = readReconcileCursor(root);
+        String cursor = readCursor(
+                root,
+                ATTACHMENT_CURSOR_FILENAME,
+                this::isGeneratedStorageKey,
+                "attachment");
         PriorityQueue<ReconcileCandidate> afterCursor =
                 new PriorityQueue<>(limit, CANDIDATE_ORDER.reversed());
         PriorityQueue<ReconcileCandidate> wrapped =
@@ -254,13 +262,15 @@ public class ComplaintAttachmentStorage {
         return List.copyOf(selected);
     }
 
-    /** 扫描超过 grace 的受控上传临时文件；不查数据库且不跟随符号链接。 */
+    /**
+     * 扫描超过 grace 的受控上传临时文件；两个有界堆各自最多保留
+     * {@code budget} 项，因而轮转确定且常驻内存为 O(budget)。
+     */
     public List<TemporaryCandidate> findTemporaryCandidates(
             Instant cutoff,
             int requestedLimit) {
         Objects.requireNonNull(cutoff, "cutoff");
         int limit = Math.max(1, Math.min(requestedLimit, MAX_RECONCILE_BATCH));
-        List<TemporaryCandidate> candidates = new ArrayList<>(limit);
         Path root;
         try {
             root = safeStorageRoot();
@@ -268,17 +278,30 @@ public class ComplaintAttachmentStorage {
             logScanWarning("temporary-root", exception);
             return List.of();
         }
+        String cursor = readCursor(
+                root,
+                TEMPORARY_CURSOR_FILENAME,
+                this::isTemporaryStorageKey,
+                "temporary");
+        PriorityQueue<TemporaryCandidate> afterCursor =
+                new PriorityQueue<>(limit, TEMPORARY_CANDIDATE_ORDER.reversed());
+        PriorityQueue<TemporaryCandidate> wrapped =
+                new PriorityQueue<>(limit, TEMPORARY_CANDIDATE_ORDER.reversed());
         try (DirectoryStream<Path> prefixes = Files.newDirectoryStream(root)) {
             for (Path prefix : prefixes) {
-                if (candidates.size() >= limit) {
-                    break;
-                }
-                scanTemporaryPrefix(prefix, cutoff, limit, candidates);
+                scanTemporaryPrefix(
+                        prefix, cutoff, cursor, limit, afterCursor, wrapped);
             }
         } catch (IOException | RuntimeException exception) {
             logScanWarning("temporary-root-entries", exception);
         }
-        return List.copyOf(candidates);
+        List<TemporaryCandidate> selected = sortedTemporary(afterCursor);
+        if (selected.size() < limit) {
+            List<TemporaryCandidate> wrappedCandidates = sortedTemporary(wrapped);
+            selected.addAll(wrappedCandidates.subList(
+                    0, Math.min(limit - selected.size(), wrappedCandidates.size())));
+        }
+        return List.copyOf(selected);
     }
 
     /** 删除扫描时 mtime 未变化的孤儿候选；失败最多重试三次。 */
@@ -362,17 +385,16 @@ public class ComplaintAttachmentStorage {
     private void scanTemporaryPrefix(
             Path prefix,
             Instant cutoff,
+            String cursor,
             int limit,
-            List<TemporaryCandidate> candidates) {
+            PriorityQueue<TemporaryCandidate> afterCursor,
+            PriorityQueue<TemporaryCandidate> wrapped) {
         String prefixName = prefix.getFileName() == null ? "" : prefix.getFileName().toString();
         if (!isSafePrefix(prefixName, prefix)) {
             return;
         }
         try (DirectoryStream<Path> files = Files.newDirectoryStream(prefix)) {
             for (Path file : files) {
-                if (candidates.size() >= limit) {
-                    return;
-                }
                 String filename = file.getFileName() == null ? "" : file.getFileName().toString();
                 String storageKey = prefixName + "/" + filename;
                 if (!isTemporaryStorageKey(storageKey) || Files.isSymbolicLink(file)) {
@@ -382,8 +404,14 @@ public class ComplaintAttachmentStorage {
                     BasicFileAttributes attributes = candidateAttributesReader.read(file);
                     if (attributes.isRegularFile()
                             && !attributes.lastModifiedTime().toInstant().isAfter(cutoff)) {
-                        candidates.add(new TemporaryCandidate(
-                                storageKey, attributes.lastModifiedTime()));
+                        TemporaryCandidate candidate = new TemporaryCandidate(
+                                storageKey, attributes.lastModifiedTime());
+                        PriorityQueue<TemporaryCandidate> destination = cursor == null
+                                        || storageKey.compareTo(cursor) > 0
+                                ? afterCursor
+                                : wrapped;
+                        offerSmallest(
+                                destination, candidate, limit, TEMPORARY_CANDIDATE_ORDER);
                     }
                 } catch (IOException | RuntimeException exception) {
                     logScanWarning(storageKey, exception);
@@ -419,6 +447,13 @@ public class ComplaintAttachmentStorage {
     private List<ReconcileCandidate> sorted(PriorityQueue<ReconcileCandidate> heap) {
         List<ReconcileCandidate> values = new ArrayList<>(heap);
         values.sort(CANDIDATE_ORDER);
+        return values;
+    }
+
+    private List<TemporaryCandidate> sortedTemporary(
+            PriorityQueue<TemporaryCandidate> heap) {
+        List<TemporaryCandidate> values = new ArrayList<>(heap);
+        values.sort(TEMPORARY_CANDIDATE_ORDER);
         return values;
     }
 
@@ -545,22 +580,46 @@ public class ComplaintAttachmentStorage {
 
     /** 批次处理结束后推进持久游标；失败只输出脱敏告警，不重放已处理坏文件。 */
     public void advanceReconcileCursor(String storageKey) {
-        if (!isGeneratedStorageKey(storageKey)) {
+        advanceCursor(
+                storageKey,
+                ATTACHMENT_CURSOR_FILENAME,
+                ".reconcile-cursor-",
+                this::isGeneratedStorageKey,
+                "attachment");
+    }
+
+    /** 每个临时文件候选处理后推进独立游标，失败项不会持续饿死后续文件。 */
+    public void advanceTemporaryReconcileCursor(String storageKey) {
+        advanceCursor(
+                storageKey,
+                TEMPORARY_CURSOR_FILENAME,
+                ".reconcile-tmp-cursor-",
+                this::isTemporaryStorageKey,
+                "temporary");
+    }
+
+    private void advanceCursor(
+            String storageKey,
+            String cursorFilename,
+            String temporaryPrefix,
+            Predicate<String> keyValidator,
+            String cursorType) {
+        if (!keyValidator.test(storageKey)) {
             throw new IllegalArgumentException("invalid complaint attachment reconcile cursor");
         }
         Path cursorTemporary = null;
         try {
             Path root = safeStorageRoot();
-            Path cursor = root.resolve(CURSOR_FILENAME);
+            Path cursor = root.resolve(cursorFilename);
             if (Files.exists(cursor, LinkOption.NOFOLLOW_LINKS)) {
                 BasicFileAttributes attributes = Files.readAttributes(
                         cursor, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
                 if (!attributes.isRegularFile() || Files.isSymbolicLink(cursor)) {
-                    logCursorWarning("unsafe-existing", null);
+                    logCursorWarning(cursorType, "unsafe-existing", null);
                     return;
                 }
             }
-            cursorTemporary = Files.createTempFile(root, ".reconcile-cursor-", ".tmp");
+            cursorTemporary = Files.createTempFile(root, temporaryPrefix, ".tmp");
             Files.writeString(
                     cursorTemporary,
                     storageKey,
@@ -568,7 +627,7 @@ public class ComplaintAttachmentStorage {
                     StandardOpenOption.TRUNCATE_EXISTING,
                     StandardOpenOption.WRITE);
             if (Files.isSymbolicLink(cursor)) {
-                logCursorWarning("unsafe-race", null);
+                logCursorWarning(cursorType, "unsafe-race", null);
                 return;
             }
             try {
@@ -582,14 +641,18 @@ public class ComplaintAttachmentStorage {
             }
             cursorTemporary = null;
         } catch (IOException | RuntimeException exception) {
-            logCursorWarning("write-failed", exception);
+            logCursorWarning(cursorType, "write-failed", exception);
         } finally {
             deleteInternalTemporary(cursorTemporary);
         }
     }
 
-    private String readReconcileCursor(Path root) {
-        Path cursor = root.resolve(CURSOR_FILENAME);
+    private String readCursor(
+            Path root,
+            String cursorFilename,
+            Predicate<String> keyValidator,
+            String cursorType) {
+        Path cursor = root.resolve(cursorFilename);
         if (!Files.exists(cursor, LinkOption.NOFOLLOW_LINKS)) {
             return null;
         }
@@ -599,7 +662,7 @@ public class ComplaintAttachmentStorage {
             if (!attributes.isRegularFile()
                     || Files.isSymbolicLink(cursor)
                     || attributes.size() > MAX_CURSOR_BYTES) {
-                logCursorWarning("invalid-attributes", null);
+                logCursorWarning(cursorType, "invalid-attributes", null);
                 return null;
             }
             ByteBuffer buffer = ByteBuffer.allocate(MAX_CURSOR_BYTES + 1);
@@ -611,25 +674,29 @@ public class ComplaintAttachmentStorage {
                 }
             }
             if (buffer.position() > MAX_CURSOR_BYTES) {
-                logCursorWarning("too-large", null);
+                logCursorWarning(cursorType, "too-large", null);
                 return null;
             }
             buffer.flip();
             String value = StandardCharsets.UTF_8.decode(buffer).toString();
-            if (!isGeneratedStorageKey(value)) {
-                logCursorWarning("invalid-format", null);
+            if (!keyValidator.test(value)) {
+                logCursorWarning(cursorType, "invalid-format", null);
                 return null;
             }
             return value;
         } catch (IOException | RuntimeException exception) {
-            logCursorWarning("read-failed", exception);
+            logCursorWarning(cursorType, "read-failed", exception);
             return null;
         }
     }
 
-    private void logCursorWarning(String reason, Exception exception) {
+    private void logCursorWarning(
+            String cursorType,
+            String reason,
+            Exception exception) {
         log.warn(
-                "complaint_attachment_cursor_invalid reason={} errorType={}",
+                "complaint_attachment_cursor_invalid cursorType={} reason={} errorType={}",
+                cursorType,
                 reason,
                 exception == null ? "none" : exception.getClass().getSimpleName());
     }
