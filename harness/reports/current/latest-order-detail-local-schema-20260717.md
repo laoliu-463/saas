@@ -74,6 +74,7 @@ Local health verification: PASS
 - Browser: `http://127.0.0.1:3001/data/orders` -> click `订单明细`; no `服务器异常`, no `无数据`, and the returned order rows were visible after scrolling the table into the viewport.
 - The first screenshot `output/local-order-detail-after-schema-fix.png` was invalid as visual evidence because it only captured the filter area and tabs; it has been superseded.
 - Replacement screenshot with visible order rows: `output/local-order-detail-table-visible.png`.
+- UX finding at 1280x720: the first detail row starts around `y=855`, while the viewport ends at `y=720`; `.app-layout` uses `overflow:hidden` and the inner Naive UI content container owns scrolling. The API data is present, but switching to `订单明细` does not auto-scroll the inner content to the table, so users can perceive the page as empty until they scroll the main content area.
 
 ## Business Validation Result
 
@@ -105,9 +106,10 @@ No actionable Harness improvement was recorded; no standalone retro is required.
 
 ## Conclusion
 
-PASS
+PARTIAL
 
 ## Residual Risk
 
 - Items marked as not collected are not proof of success.
 - Remote deployment was intentionally not executed because the current request was to repair local real-pre only.
+- Remaining UI issue: add an explicit scroll-to-detail-table behavior or adjust the page layout so the first detail rows are visible after clicking `订单明细` at 1280x720.
