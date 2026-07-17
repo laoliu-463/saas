@@ -15,6 +15,12 @@ const routerMocks = vi.hoisted(() => ({
   push: vi.fn()
 }))
 
+const talentAuthState = vi.hoisted(() => ({
+  roleCodes: ['channel_staff'] as string[],
+  isAdmin: false,
+  userInfo: { id: 'user-1' }
+}))
+
 const TalentCreateModalStub = {
   name: 'TalentCreateModalStub',
   template: '<div data-testid="talent-create-modal" />'
@@ -36,11 +42,7 @@ vi.mock('../../api/talent', () => ({
 }))
 
 vi.mock('../../stores/auth', () => ({
-  useAuthStore: () => ({
-    roleCodes: ['channel_staff'],
-    isAdmin: false,
-    userInfo: { id: 'user-1' }
-  })
+  useAuthStore: () => talentAuthState
 }))
 
 vi.mock('vue-router', () => ({
@@ -78,6 +80,7 @@ const stubs = {
 describe('TalentPage empty state', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    talentAuthState.roleCodes = ['channel_staff']
     routeState.fullPath = '/talent?view=MY_TALENTS'
     routeState.query = { view: 'MY_TALENTS' }
     routerMocks.replace.mockResolvedValue(undefined)
@@ -168,6 +171,16 @@ describe('TalentPage empty state', () => {
   })
 
   it('shows the create action for channel staff', async () => {
+    const wrapper = mount(TalentPage, { global: { stubs } })
+
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="talent-create"]').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('shows the full talent action set for biz staff', async () => {
+    talentAuthState.roleCodes = ['biz_staff']
     const wrapper = mount(TalentPage, { global: { stubs } })
 
     await flushPromises()

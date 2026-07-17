@@ -27,7 +27,7 @@ describe('menuTree', () => {
   // 验证：按角色过滤后，顶部菜单只包含该角色有权访问且 showInTop 不为 false 的业务域
   it('builds top menus from accessible tree only', () => {
     const topMenus = getTopMenus([ROLE_CODES.BIZ_STAFF])
-    expect(topMenus.map((menu) => menu.key)).toEqual(['product', 'product-manage', 'sample', 'data'])
+    expect(topMenus.map((menu) => menu.key)).toEqual(['product', 'product-manage', 'talent', 'sample', 'data'])
     expect(topMenus.find((menu) => menu.key === 'sample')?.label).toBe('合作管理')
   })
 
@@ -41,6 +41,9 @@ describe('menuTree', () => {
     expect(productMenus.map((menu) => menu.key)).toEqual(['/product'])
     expect(dataMenus.map((menu) => menu.key)).toEqual(['/data', '/data/orders'])
     expect(cooperationMenus.map((menu) => menu.label)).toEqual(['合作单'])
+    expect(getLeftMenus(tree, 'talent').map((menu) => menu.label)).toEqual([
+      '团队公海', '我的达人', '本组达人', '自然出单达人', '达人黑名单'
+    ])
     // topKey 为 null 或不存在时返回空数组
     expect(getLeftMenus(tree, null)).toEqual([])
     expect(getLeftMenus(tree, 'missing')).toEqual([])

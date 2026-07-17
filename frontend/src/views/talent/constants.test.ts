@@ -24,4 +24,15 @@ describe('getAccessibleTalentViewOptions', () => {
     const views = getAccessibleTalentViewOptions([ROLE_CODES.CHANNEL_STAFF])
     expect(views.map((item) => item.value)).toEqual(['TEAM_PUBLIC', 'MY_TALENTS'])
   })
+
+  it('returns all talent views for biz staff', () => {
+    const views = getAccessibleTalentViewOptions([ROLE_CODES.BIZ_STAFF])
+    expect(views.map((item) => item.value)).toEqual([
+      'TEAM_PUBLIC',
+      'MY_TALENTS',
+      'TEAM_PRIVATE',
+      'NATURAL_ORDERS',
+      'BLACKLIST'
+    ])
+  })
 })

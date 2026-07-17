@@ -6,7 +6,7 @@
     >
       <template #actions>
         <n-button
-          v-if="authStore.roleCodes.includes('channel_leader')"
+          v-if="authStore.isAdmin || authStore.roleCodes.includes('biz_staff') || authStore.roleCodes.includes('channel_leader')"
           secondary
           :loading="weeklyRefreshing"
           data-testid="talent-weekly-refresh"
@@ -157,8 +157,9 @@ const isChannelStaffOnly = computed(() => {
   const roles = authStore.roleCodes
   return roles.includes('channel_staff') && !roles.includes('channel_leader') && !authStore.isAdmin
 })
-const canManageBlacklist = computed(() => authStore.isAdmin || authStore.roleCodes.includes('channel_leader'))
+const canManageBlacklist = computed(() => authStore.isAdmin || authStore.roleCodes.includes('biz_staff') || authStore.roleCodes.includes('channel_leader'))
 const canCreateTalent = computed(() => authStore.isAdmin || [
+  ROLE_CODES.BIZ_STAFF,
   ROLE_CODES.CHANNEL_LEADER,
   ROLE_CODES.CHANNEL_STAFF
 ].some((role) => authStore.roleCodes.includes(role)))

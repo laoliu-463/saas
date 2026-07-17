@@ -79,7 +79,7 @@ import java.util.UUID;
  *
  * <p>所属业务领域：用户域 / 达人 CRM
  * <p>API 路径前缀：{@code /talents}
- * <p>访问权限：渠道组长和渠道专员（{@link com.colonel.saas.constant.RoleCodes#CHANNEL_LEADER}、{@link com.colonel.saas.constant.RoleCodes#CHANNEL_STAFF}），部分接口覆盖为管理员或仅组长
+ * <p>访问权限：招商专员、渠道组长和渠道专员（{@link com.colonel.saas.constant.RoleCodes#BIZ_STAFF}、{@link com.colonel.saas.constant.RoleCodes#CHANNEL_LEADER}、{@link com.colonel.saas.constant.RoleCodes#CHANNEL_STAFF}），部分接口覆盖为管理员或仅组长
  *
  * @see com.colonel.saas.service.TalentService
  * @see com.colonel.saas.domain.talent.application.TalentQueryApplicationService
@@ -88,7 +88,7 @@ import java.util.UUID;
 @Tag(name = "达人CRM", description = "达人池、公海私海、认领释放与达人信息补全相关接口。")
 @RestController
 @RequestMapping("/talents")
-@RequireRoles({RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.ADMIN})
+@RequireRoles({RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.ADMIN})
 public class TalentController extends BaseController {
 
     /** 达人服务，负责达人增删改查、标签管理、收货地址维护、认领释放与黑名单等操作 */
@@ -412,7 +412,7 @@ public class TalentController extends BaseController {
      * @return 批量导入结果，包含成功数和失败明细
      */
     @Operation(summary = "批量导入达人", description = "按达人账号/链接批量导入并自动补全（batch_import_talents）。")
-    @RequireRoles({RoleCodes.CHANNEL_LEADER, RoleCodes.ADMIN})
+    @RequireRoles({RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.ADMIN})
     @PostMapping("/batch-import")
     public ApiResult<TalentBatchImportResult> batchImport(
             @RequestBody TalentBatchImportRequest request,
@@ -608,7 +608,7 @@ public class TalentController extends BaseController {
     }
 
     @Operation(summary = "拉黑达人", description = "将达人标记为黑名单，避免继续进入公海与合作流转。")
-    @RequireRoles({RoleCodes.CHANNEL_LEADER})
+    @RequireRoles({RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER})
     @PostMapping("/{id}/blacklist")
     public ApiResult<TalentVO> blacklist(
             @Parameter(description = "达人主键 ID，使用 UUID 格式。") @PathVariable("id") UUID talentId,
@@ -620,7 +620,7 @@ public class TalentController extends BaseController {
     }
 
     @Operation(summary = "解除达人黑名单", description = "取消达人黑名单标记，恢复达人正常经营状态。")
-    @RequireRoles({RoleCodes.CHANNEL_LEADER})
+    @RequireRoles({RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER})
     @PostMapping("/{id}/unblacklist")
     public ApiResult<TalentVO> unblacklist(
             @Parameter(description = "达人主键 ID，使用 UUID 格式。") @PathVariable("id") UUID talentId,
@@ -642,7 +642,7 @@ public class TalentController extends BaseController {
     }
 
     @Operation(summary = "手动触发每周刷新", description = "手动执行每周批量刷新任务，用于校验达人定时刷新链路。")
-    @RequireRoles({RoleCodes.CHANNEL_LEADER})
+    @RequireRoles({RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER})
     @PostMapping("/refresh/weekly")
     public ApiResult<Void> refreshWeekly() {
         talentWeeklyRefreshJob.weeklyRefreshActiveTalents();
@@ -690,8 +690,8 @@ public class TalentController extends BaseController {
             List<TalentClaimTransitionVO> transitions) {
 
         public static TalentStatusTransitionMatrix defaultMatrix() {
-            List<String> channelRoles = List.of(RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF);
-            List<String> channelAndAdminRoles = List.of(RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.ADMIN);
+            List<String> channelRoles = List.of(RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF);
+            List<String> channelAndAdminRoles = List.of(RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.ADMIN);
             return new TalentStatusTransitionMatrix(
                     "talent.protection_days",
                     true,
@@ -730,7 +730,7 @@ public class TalentController extends BaseController {
                                     "达人被拉黑后不可认领、不可释放，需先解除黑名单。",
                                     false,
                                     false,
-                                    List.of(RoleCodes.CHANNEL_LEADER, RoleCodes.ADMIN))
+                                    List.of(RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.ADMIN))
                     ),
                     List.of(
                             new TalentClaimTransitionVO(

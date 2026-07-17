@@ -259,6 +259,7 @@ const canApplySample = computed(() =>
   authStore.isAdmin
     || authStore.roleCodes.includes(ROLE_CODES.CHANNEL_LEADER)
     || authStore.roleCodes.includes(ROLE_CODES.CHANNEL_STAFF)
+    || authStore.roleCodes.includes(ROLE_CODES.BIZ_STAFF)
 )
 const canEditCollaboration = computed(() => canApplySample.value)
 

@@ -66,7 +66,7 @@ vi.mock('vue-router', () => ({
           '/product': [ROLE_CODES.BIZ_LEADER, ROLE_CODES.BIZ_STAFF, ROLE_CODES.CHANNEL_LEADER, ROLE_CODES.CHANNEL_STAFF],
           '/product/manage': [ROLE_CODES.BIZ_LEADER],
           '/product/manage/products': [ROLE_CODES.BIZ_LEADER, ROLE_CODES.BIZ_STAFF],
-          '/talent': [ROLE_CODES.CHANNEL_LEADER, ROLE_CODES.CHANNEL_STAFF],
+          '/talent': [ROLE_CODES.BIZ_STAFF, ROLE_CODES.CHANNEL_LEADER, ROLE_CODES.CHANNEL_STAFF],
           '/sample': [ROLE_CODES.BIZ_LEADER, ROLE_CODES.BIZ_STAFF, ROLE_CODES.CHANNEL_LEADER, ROLE_CODES.CHANNEL_STAFF],
           '/ops/shipping': [ROLE_CODES.OPS_STAFF],
           '/system/users': [ROLE_CODES.ADMIN]
@@ -210,6 +210,17 @@ describe('router guards', () => {
 
     expect(result).toBe('/product/manage/products')
     expect(resolveCalls).toEqual(['/product/manage/products'])
+  })
+
+  it('registers the talent CRM route for biz staff', () => {
+    const allRoutes = flattenRoutes(routesConfig)
+    const talentRoute = allRoutes.find((route) => route.path === 'talent') as {
+      meta?: { roles?: string[] }
+    } | undefined
+
+    expect(talentRoute?.meta?.roles).toEqual(
+      expect.arrayContaining([ROLE_CODES.BIZ_STAFF])
+    )
   })
 
   it('sends admin users through the default home candidates', () => {

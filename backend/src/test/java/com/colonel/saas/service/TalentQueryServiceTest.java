@@ -160,6 +160,29 @@ class TalentQueryServiceTest {
     }
 
     @Test
+    void assertCanOperate_shouldAllowBizStaffForOwnActiveClaim() {
+        UUID talentId = UUID.randomUUID();
+        UUID currentUserId = UUID.randomUUID();
+
+        Talent talent = new Talent();
+        talent.setId(talentId);
+        when(talentService.getById(talentId)).thenReturn(talent);
+
+        TalentClaim ownClaim = new TalentClaim();
+        ownClaim.setTalentId(talentId);
+        ownClaim.setUserId(currentUserId);
+        ownClaim.setStatus(1);
+        when(talentClaimMapper.findActiveByTalentId(talentId)).thenReturn(List.of(ownClaim));
+
+        talentQueryService.assertCanOperate(
+                talentId,
+                currentUserId,
+                null,
+                List.of(RoleCodes.BIZ_STAFF)
+        );
+    }
+
+    @Test
     void assertCanOperate_shouldNormalizeRoleCodesViaUserPolicy() {
         UUID talentId = UUID.randomUUID();
         UUID currentUserId = UUID.randomUUID();

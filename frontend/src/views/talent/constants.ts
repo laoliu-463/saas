@@ -10,12 +10,12 @@ export type TalentViewValue = (typeof TALENT_VIEW_OPTIONS)[number]['value']
 
 const CHANNEL_STAFF_TALENT_VIEWS: TalentViewValue[] = ['TEAM_PUBLIC', 'MY_TALENTS']
 
-/** 与侧边栏、页内 Tab 可见性保持一致：组长/管理员全视图，渠道专员仅公海+私海。 */
+/** 与侧边栏、页内 Tab 可见性保持一致：招商专员、渠道组长/管理员可使用完整达人视图。 */
 export function getAccessibleTalentViewOptions(
   roleCodes: readonly string[],
   isAdmin = false
 ): Array<{ label: string; value: TalentViewValue }> {
-  if (isAdmin || roleCodes.includes('channel_leader')) {
+  if (isAdmin || roleCodes.includes('biz_staff') || roleCodes.includes('channel_leader')) {
     return [...TALENT_VIEW_OPTIONS]
   }
   return TALENT_VIEW_OPTIONS.filter((item) => CHANNEL_STAFF_TALENT_VIEWS.includes(item.value))

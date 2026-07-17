@@ -208,7 +208,7 @@ const quickEntries = computed(() => {
     { label: '商品库', path: '/product', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] },
     { label: '商品管理', path: '/product/manage', roles: [ROLE.BIZ_LEADER] },
     { label: '我的商品', path: '/product/manage/products', roles: [ROLE.BIZ_STAFF] },
-    { label: '达人 CRM', path: '/talent', roles: [ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] },
+    { label: '达人 CRM', path: '/talent', roles: [ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] },
     { label: '数据看板', path: '/data', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] },
     { label: '合作单', path: '/sample', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] }
   ]

@@ -2,10 +2,10 @@
 
 ## Metadata
 
-- Time: 2026-07-15 19:27:22 +08:00
+- Time: 2026-07-17 14:53:14 +08:00
 - Action: Plan
 - DryRun: False
-- Reason: feat(frontend): add centered address modal and expand quick sample layout
+- Reason: 开放 biz_staff 招商专员完整达人 CRM 业务链路并验证手动新增达人、认领私海、快速寄样与业绩时间切换
 - Manifest: (none)
 - ArchiveRoot: harness/archive/retired-content
 - AllowSourceCode: False

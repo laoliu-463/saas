@@ -27,7 +27,7 @@ fs.mkdirSync(SHOT_DIR, { recursive: true });
 const USERS = {
   admin: { username: 'admin', password: 'admin123', expectedHome: '/dashboard', expectMenus: ['数据平台', '商品库', '达人 CRM', '寄样台', '运营中心', '系统管理'], forbidMenus: [] },
   biz_leader: { username: 'biz_leader', password: 'admin123', expectedHome: '/dashboard', expectMenus: ['数据看板', '商品库', '商品管理', '寄样审核', '订单工作台'], forbidMenus: ['系统管理', '达人 CRM'] },
-  biz_staff: { username: 'biz_staff', password: 'admin123', expectedHome: '/data', expectMenus: ['我的业绩', '商品库', '商品管理', '寄样台'], forbidMenus: ['订单工作台', '系统管理', '达人 CRM'] },
+  biz_staff: { username: 'biz_staff', password: 'admin123', expectedHome: '/data', expectMenus: ['我的业绩', '商品库', '商品管理', '达人 CRM', '我的达人', '寄样台'], forbidMenus: ['订单工作台', '系统管理'] },
   channel_leader: { username: 'channel_leader', password: 'admin123', expectedHome: '/dashboard', expectMenus: ['数据平台', '商品库', '达人 CRM', '寄样台', '运营中心', '订单工作台'], forbidMenus: ['系统管理'] },
   channel_staff: { username: 'channel_staff', password: 'admin123', expectedHome: '/data', expectMenus: ['我的业绩', '商品库', '我的达人', '寄样台'], forbidMenus: ['订单工作台', '系统管理'] },
   ops_staff: { username: 'ops_staff', password: 'admin123', expectedHome: '/ops/shipping', expectMenus: ['寄样发货台', '物流发货'], forbidMenus: ['订单工作台', '系统管理', '达人 CRM', '商品库', '寄样审核', '独家状态'] }
@@ -200,9 +200,9 @@ async function withApi() {
 
 async function fetchOrderTotals() {
   return page.evaluate(async () => {
-    const token = localStorage.getItem('token');
+    const authValue = localStorage.getItem('token');
     const resp = await fetch('/api/data/orders?page=1&size=100', {
-      headers: token ? { Authorization: `Bearer ${token}` } : {}
+      headers: authValue ? { Authorization: `Bearer ${authValue}` } : {}
     });
     const json = await resp.json().catch(() => ({}));
     const data = json.data || json;
@@ -215,9 +215,9 @@ async function fetchOrderTotals() {
 
 async function fetchDashboardMetrics() {
   return page.evaluate(async () => {
-    const token = localStorage.getItem('token');
+    const authValue = localStorage.getItem('token');
     const resp = await fetch('/api/dashboard/metrics', {
-      headers: token ? { Authorization: `Bearer ${token}` } : {}
+      headers: authValue ? { Authorization: `Bearer ${authValue}` } : {}
     });
     const json = await resp.json().catch(() => ({}));
     return json.data || json || {};
@@ -226,9 +226,9 @@ async function fetchDashboardMetrics() {
 
 async function fetchSamplePageByStatus(status) {
   return page.evaluate(async (currentStatus) => {
-    const token = localStorage.getItem('token');
+    const authValue = localStorage.getItem('token');
     const resp = await fetch(`/api/samples?page=1&size=20&status=${currentStatus}`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {}
+      headers: authValue ? { Authorization: `Bearer ${authValue}` } : {}
     });
     const json = await resp.json().catch(() => ({}));
     const data = json.data || json;

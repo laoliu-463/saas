@@ -50,7 +50,7 @@ import java.util.stream.Collectors;
  * <ul>
  *   <li>分页查询：基于数据库分页 + 内存多条件过滤的混合模式，支持认领状态、视图、分类、区间等筛选</li>
  *   <li>详情组装：聚合达人基本信息、认领关系、寄样记录、订单汇总，按数据范围脱敏</li>
- *   <li>权限校验：基于数据范围（ALL / DEPT / PERSONAL）和角色（ADMIN / CHANNEL_LEADER / CHANNEL_STAFF）控制访问</li>
+ *   <li>权限校验：基于数据范围（ALL / DEPT / PERSONAL）和角色（ADMIN / BIZ_STAFF / CHANNEL_LEADER / CHANNEL_STAFF）控制访问</li>
  *   <li>卡牌富化：为列表和详情中的达人卡牌填充认领归属、寄样数、订单数、区间标签等衍生字段</li>
  * </ul>
  *
@@ -308,14 +308,14 @@ public class TalentQueryService {
 
     /**
      * 校验当前用户是否有权操作指定达人。
-     * <p>权限判断优先级：ADMIN 直接放行 &gt; CHANNEL_LEADER 按部门归属放行 &gt; CHANNEL_STAFF 按个人归属放行。
+     * <p>权限判断优先级：ADMIN 直接放行 &gt; CHANNEL_LEADER 按部门归属放行 &gt; BIZ_STAFF / CHANNEL_STAFF 按个人归属放行。
      * 任一层级匹配成功即放行，全部不匹配则抛出 {@link ForbiddenException}。</p>
      *
      * <ol>
      *   <li>查询达人基础信息，达人不存在时直接放行（由下游业务层处理）</li>
      *   <li>ADMIN 角色直接放行</li>
      *   <li>CHANNEL_LEADER 角色：检查当前用户所在部门是否为该达人的认领部门</li>
-     *   <li>CHANNEL_STAFF 角色：检查当前用户是否为该达人的认领人</li>
+     *   <li>BIZ_STAFF / CHANNEL_STAFF 角色：检查当前用户是否为该达人的认领人</li>
      *   <li>以上均不满足，抛出 ForbiddenException</li>
      * </ol>
      *
@@ -343,8 +343,8 @@ public class TalentQueryService {
                 return;
             }
         }
-        // 渠道专员：个人认领了该达人即有权操作
-        if (currentUserPermissionChecker.hasAnyRole(roleCodes, RoleCodes.CHANNEL_STAFF)) {
+        // 招商专员 / 渠道专员：个人认领了该达人即有权操作
+        if (currentUserPermissionChecker.hasAnyRole(roleCodes, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_STAFF)) {
             boolean ownedByCurrentUser = currentUserId != null && safeActiveClaims.stream()
                     .anyMatch(claim -> currentUserId.equals(claim.getUserId()));
             if (ownedByCurrentUser) {

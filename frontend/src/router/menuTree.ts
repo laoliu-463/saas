@@ -29,6 +29,8 @@ export const TALENT_MENU_KEYS = {
   teamPublic: '/talent?view=TEAM_PUBLIC',
   /** 我的达人视图 */
   myTalents: '/talent?view=MY_TALENTS',
+  /** 本组达人视图 */
+  teamPrivate: '/talent?view=TEAM_PRIVATE',
   /** 自然出单达人视图 */
   naturalOrders: '/talent?view=NATURAL_ORDERS',
   /** 达人黑名单视图 */
@@ -112,10 +114,11 @@ export const MENU_TREE: MenuTreeNode[] = [
     topKey: 'talent',
     testId: 'nav-talent',
     showInTop: true,
-    roles: [ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF, ROLE.ADMIN],
+    roles: [ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF, ROLE.ADMIN],
     children: [
       { label: '团队公海', key: TALENT_MENU_KEYS.teamPublic, topKey: 'talent', path: TALENT_MENU_KEYS.teamPublic },
       { label: '我的达人', key: TALENT_MENU_KEYS.myTalents, topKey: 'talent', path: TALENT_MENU_KEYS.myTalents },
+      { label: '本组达人', key: TALENT_MENU_KEYS.teamPrivate, topKey: 'talent', path: TALENT_MENU_KEYS.teamPrivate },
       { label: '自然出单达人', key: TALENT_MENU_KEYS.naturalOrders, topKey: 'talent', path: TALENT_MENU_KEYS.naturalOrders },
       { label: '达人黑名单', key: TALENT_MENU_KEYS.blacklist, topKey: 'talent', path: TALENT_MENU_KEYS.blacklist }
     ]
