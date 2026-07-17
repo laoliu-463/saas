@@ -891,16 +891,10 @@ CREATE INDEX IF NOT EXISTS idx_cso_attribution_status ON colonelsettlement_order
 
 -- 双维度归属状态：与 alter-cso-dual-attribution-status-20260716.sql 保持一致。
 ALTER TABLE colonelsettlement_order
-    ADD COLUMN IF NOT EXISTS channel_attribution_status VARCHAR(32);
+    ADD COLUMN IF NOT EXISTS channel_attribution_status VARCHAR(32) DEFAULT 'CHANNEL_UNATTRIBUTED';
 
 ALTER TABLE colonelsettlement_order
-    ADD COLUMN IF NOT EXISTS recruiter_attribution_status VARCHAR(32);
-
-ALTER TABLE colonelsettlement_order
-    ALTER COLUMN channel_attribution_status DROP DEFAULT;
-
-ALTER TABLE colonelsettlement_order
-    ALTER COLUMN recruiter_attribution_status DROP DEFAULT;
+    ADD COLUMN IF NOT EXISTS recruiter_attribution_status VARCHAR(32) DEFAULT 'RECRUITER_UNATTRIBUTED';
 
 COMMENT ON COLUMN colonelsettlement_order.channel_attribution_status
     IS '渠道归属状态：CHANNEL_ATTRIBUTED / CHANNEL_UNATTRIBUTED，由 OrderDefaultAttributionPolicy.applyToOrder 写入';
@@ -908,14 +902,12 @@ COMMENT ON COLUMN colonelsettlement_order.recruiter_attribution_status
     IS '招商归属状态：RECRUITER_ATTRIBUTED / RECRUITER_UNATTRIBUTED，由 OrderDefaultAttributionPolicy.applyToOrder 写入';
 
 UPDATE colonelsettlement_order
-SET channel_attribution_status = 'CHANNEL_ATTRIBUTED'
-WHERE channel_user_id IS NOT NULL
-  AND channel_attribution_status IS DISTINCT FROM 'CHANNEL_ATTRIBUTED';
+SET channel_attribution_status = 'CHANNEL_UNATTRIBUTED'
+WHERE channel_attribution_status IS NULL;
 
 UPDATE colonelsettlement_order
-SET recruiter_attribution_status = 'RECRUITER_ATTRIBUTED'
-WHERE colonel_user_id IS NOT NULL
-  AND recruiter_attribution_status IS DISTINCT FROM 'RECRUITER_ATTRIBUTED';
+SET recruiter_attribution_status = 'RECRUITER_UNATTRIBUTED'
+WHERE recruiter_attribution_status IS NULL;
 
 CREATE INDEX IF NOT EXISTS idx_cso_channel_attribution_status
     ON colonelsettlement_order (channel_attribution_status);

@@ -1602,3 +1602,4 @@ CREATE UNIQUE INDEX IF NOT EXISTS uk_sample_private_note_owner
 \i alter-role-aware-promotion-link-attribution-20260716.sql
 \i alter-order-default-attribution-dimensions-20260716.sql
 \i alter-performance-final-attribution-20260716.sql
+\i alter-cso-dual-attribution-status-20260716.sql
