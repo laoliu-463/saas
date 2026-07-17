@@ -98,6 +98,13 @@ class ColonelsettlementOrderMapperDualDimensionContractTest {
         assertThat(sql).contains("recruiter_attribution_status");
     }
 
+    @Test
+    void migrateAllShouldInvokeDualDimensionAttributionMigration() throws IOException {
+        Path migrateAll = BACKEND_ROOT.resolve("src/main/resources/db/migrate-all.sql");
+        String sql = read(migrateAll);
+        assertThat(sql).contains("\\i alter-cso-dual-attribution-status-20260716.sql");
+    }
+
     private static Path findBackendRoot() {
         Path cwd = Path.of(System.getProperty("user.dir")).toAbsolutePath();
         for (Path p = cwd; p != null; p = p.getParent()) {
