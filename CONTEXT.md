@@ -38,6 +38,10 @@ _Avoid_: 店铺订单, 本地订单
 根据推广链接与归因映射，将联盟订单判定为已归因或未归因并给出原因的过程。
 _Avoid_: 对账, 结算
 
+**双维默认归因状态**:
+订单域分别记录渠道维度与招商维度是否已经取得默认归因输入。它是订单事实，供业绩域计算最终归属时使用；不能把任一维度的默认状态当作最终业绩归属或提成结论。
+_Avoid_: 单一归因状态, 最终归属状态, 提成状态
+
 **寄样单**:
 围绕某个达人与某个商品的一次履约申请，按审核、发货、签收、待交作业到完成流转。
 _Avoid_: 样品表单, 快递单
@@ -194,6 +198,7 @@ _Avoid_: SDK 直连, 页面直连第三方
 - A **共享商品库商品** can generate one or more **推广链接**
 - A **推广链接** can include a **渠道编码** and produces one or more **归因映射**
 - An **联盟订单** is interpreted through **归因映射** during **订单归因**
+- An **联盟订单** has separate channel and recruiter **双维默认归因状态**
 - A **寄样单** links one **达人** and one **共享商品库商品**
 - A **寄样动作权限** consumes an **授权决策** and the **寄样单** state to decide whether an action is legal
 - A **达人** can appear in **公海** or **私海**

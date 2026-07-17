@@ -25,11 +25,13 @@ class DddAnalyticsReadOnlyBoundaryTest {
     private static final Pattern BUSINESS_FACT_WRITE_SQL = Pattern.compile(
             "\\b(insert\\s+into|update\\s+[a-z_][\\w.]*\\s+set|delete\\s+from|truncate\\s+table|drop\\s+table)\\b",
             Pattern.CASE_INSENSITIVE);
+    private static final Pattern BLOCK_COMMENT = Pattern.compile("/\\*.*?\\*/", Pattern.DOTALL);
+    private static final Pattern LINE_COMMENT = Pattern.compile("(?m)//.*$");
 
     @Test
     void analyticsSources_shouldNotWriteBusinessFacts() throws IOException {
         for (String sourceFile : ANALYTICS_READ_SIDE_SOURCE_FILES) {
-            String source = Files.readString(sourcePath(sourceFile));
+            String source = readExecutableSource(sourceFile);
 
             assertThat(BUSINESS_FACT_WRITE_INVOCATION.matcher(source).find())
                     .as("%s must stay read-only and not write order/sample/performance facts", sourceFile)
@@ -43,7 +45,7 @@ class DddAnalyticsReadOnlyBoundaryTest {
     @Test
     void analyticsSources_shouldNotInvokeBusinessCommandOrRecalculationServices() throws IOException {
         for (String sourceFile : ANALYTICS_READ_SIDE_SOURCE_FILES) {
-            String source = Files.readString(sourcePath(sourceFile));
+            String source = readExecutableSource(sourceFile);
 
             assertThat(source)
                     .as("%s must consume read models/facts without running command-side business flows", sourceFile)
@@ -78,5 +80,11 @@ class DddAnalyticsReadOnlyBoundaryTest {
             return path;
         }
         return Path.of("backend").resolve(relativePath);
+    }
+
+    private static String readExecutableSource(String relativePath) throws IOException {
+        String source = Files.readString(sourcePath(relativePath));
+        String withoutBlockComments = BLOCK_COMMENT.matcher(source).replaceAll("");
+        return LINE_COMMENT.matcher(withoutBlockComments).replaceAll("");
     }
 }
