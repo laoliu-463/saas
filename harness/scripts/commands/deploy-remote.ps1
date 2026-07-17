@@ -144,12 +144,12 @@ echo "Activity schema guard passed."
 echo "Applying required dual attribution schema migration ..."
 docker cp "`$dual_attribution_migration" "`$pg_container:/tmp/alter-cso-dual-attribution-status-20260716.sql"
 compose exec -T postgres-real-pre sh -lc 'psql -U "`$POSTGRES_USER" -d "`$POSTGRES_DB" -v ON_ERROR_STOP=1 -f /tmp/alter-cso-dual-attribution-status-20260716.sql' </dev/null
-dual_attribution_schema_count="`$(compose exec -T postgres-real-pre sh -lc 'psql -U "`$POSTGRES_USER" -d "`$POSTGRES_DB" -tAc "SELECT count(*) FROM information_schema.columns WHERE table_schema = '\''public'\'' AND table_name = '\''colonelsettlement_order'\'' AND column_name IN ('\''channel_attribution_status'\'', '\''recruiter_attribution_status'\')"' </dev/null | tr -d '[:space:]')"
+dual_attribution_schema_count="`$(compose exec -T postgres-real-pre sh -lc 'psql -U "`$POSTGRES_USER" -d "`$POSTGRES_DB" -tAc "SELECT count(*) FROM information_schema.columns WHERE table_schema = '\''public'\'' AND table_name = '\''colonelsettlement_order'\'' AND column_name IN ('\''channel_attribution_status'\'', '\''recruiter_attribution_status'\'')"' </dev/null | tr -d '[:space:]')"
 if [ "`$dual_attribution_schema_count" != "2" ]; then
   echo "Dual attribution schema guard failed: expected 2 status columns, got `$dual_attribution_schema_count"
   exit 1
 fi
-dual_attribution_default_count="`$(compose exec -T postgres-real-pre sh -lc 'psql -U "`$POSTGRES_USER" -d "`$POSTGRES_DB" -tAc "SELECT count(*) FROM information_schema.columns WHERE table_schema = '\''public'\'' AND table_name = '\''colonelsettlement_order'\'' AND column_name IN ('\''channel_attribution_status'\'', '\''recruiter_attribution_status'\') AND column_default IS NOT NULL"' </dev/null | tr -d '[:space:]')"
+dual_attribution_default_count="`$(compose exec -T postgres-real-pre sh -lc 'psql -U "`$POSTGRES_USER" -d "`$POSTGRES_DB" -tAc "SELECT count(*) FROM information_schema.columns WHERE table_schema = '\''public'\'' AND table_name = '\''colonelsettlement_order'\'' AND column_name IN ('\''channel_attribution_status'\'', '\''recruiter_attribution_status'\'') AND column_default IS NOT NULL"' </dev/null | tr -d '[:space:]')"
 if [ "`$dual_attribution_default_count" != "0" ]; then
   echo "Dual attribution schema guard failed: expected no status defaults, got `$dual_attribution_default_count"
   exit 1

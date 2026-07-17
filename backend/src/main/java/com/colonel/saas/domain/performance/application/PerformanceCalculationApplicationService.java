@@ -98,7 +98,7 @@ public class PerformanceCalculationApplicationService {
 
         // 第一步（续）：归因信息 — 渠道和招商
         UUID channelUserId = order.getChannelUserId();
-        UUID recruiterUserId = order.getColonelUserId() != null ? order.getColonelUserId() : order.getUserId();
+        UUID recruiterUserId = order.getColonelUserId();
         PerformanceAttributionPolicy.AttributionResult attribution = attributionResolver.resolve(order);
         if (attribution == null) {
             throw new IllegalStateException("Performance attribution resolver returned null");
@@ -197,8 +197,7 @@ public class PerformanceCalculationApplicationService {
     private static PerformanceAttributionPolicy.AttributionResult defaultAttribution(
             ColonelsettlementOrder order) {
         UUID channelUserId = order == null ? null : order.getChannelUserId();
-        UUID recruiterUserId = order == null ? null
-                : order.getColonelUserId() != null ? order.getColonelUserId() : order.getUserId();
+        UUID recruiterUserId = order == null ? null : order.getColonelUserId();
         UUID channelDeptId = order == null ? null : order.getChannelDeptId();
         UUID recruiterDeptId = order == null ? null : order.getDeptId();
         String channelType = channelUserId == null ? "unattributed" : "pick_source";

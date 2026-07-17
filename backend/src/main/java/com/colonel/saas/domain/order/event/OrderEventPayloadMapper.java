@@ -100,13 +100,7 @@ public class OrderEventPayloadMapper {
     }
 
     private String resolveRecruiterAttribution(ColonelsettlementOrder order) {
-        if (order.getColonelUserId() != null) {
-            return "DEFAULT";
-        }
-        if (StringUtils.hasText(order.getAttributionStatus())) {
-            return order.getAttributionStatus();
-        }
-        return null;
+        return order.getColonelUserId() == null ? null : "DEFAULT";
     }
 
     private String resolveTalentUid(Map<String, Object> extraData) {
@@ -162,9 +156,6 @@ public class OrderEventPayloadMapper {
             return order.getRecruiterAttributionStatus();
         }
         UUID recruiterId = order == null ? null : order.getColonelUserId();
-        if (recruiterId == null) {
-            recruiterId = order == null ? null : order.getUserId();
-        }
         return recruiterId == null
                 ? OrderDefaultAttributionResult.RECRUITER_UNATTRIBUTED
                 : OrderDefaultAttributionResult.RECRUITER_ATTRIBUTED;

@@ -21,7 +21,9 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -71,8 +73,7 @@ class PerformanceCalculationApplicationServiceTest {
         lenient().when(attributionResolver.resolve(any())).thenAnswer(invocation -> {
             ColonelsettlementOrder order = invocation.getArgument(0);
             UUID channelUserId = order == null ? null : order.getChannelUserId();
-            UUID recruiterUserId = order == null ? null
-                    : order.getColonelUserId() != null ? order.getColonelUserId() : order.getUserId();
+            UUID recruiterUserId = order == null ? null : order.getColonelUserId();
             return new PerformanceAttributionPolicy.AttributionResult(
                     channelUserId,
                     recruiterUserId,
@@ -163,6 +164,38 @@ class PerformanceCalculationApplicationServiceTest {
         assertThat(result.getPartnerId()).isEqualTo(90000001L);
         assertThat(result.getProductId()).isEqualTo("PROD-TRACE-1");
         assertThat(result.getActivityId()).isEqualTo("ACT-TRACE-1");
+    }
+
+    @Test
+    void upsertFromOrder_shouldNotUseLegacyChannelUserAsRecruiter() {
+        UUID channelUserId = UUID.randomUUID();
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setId(UUID.randomUUID());
+        order.setOrderId("ORD-CHANNEL-ONLY");
+        order.setChannelUserId(channelUserId);
+        order.setUserId(channelUserId);
+        order.setColonelUserId(null);
+        order.setActivityId("ACT-CHANNEL-ONLY");
+        order.setProductId("PROD-CHANNEL-ONLY");
+        order.setOrderStatus(1);
+        order.setEstimateServiceFee(1000L);
+
+        when(performanceRecordMapper.findByOrderId("ORD-CHANNEL-ONLY")).thenReturn(null);
+        when(performanceRecordMapper.upsert(any())).thenReturn(1);
+
+        PerformanceRecord result = applicationService.upsertFromOrder(order);
+
+        assertThat(result.getDefaultChannelUserId()).isEqualTo(channelUserId);
+        assertThat(result.getDefaultRecruiterUserId()).isNull();
+        assertThat(result.getFinalRecruiterUserId()).isNull();
+        assertThat(result.getRecruiterAttribution()).isEqualTo("UNATTRIBUTED");
+
+        org.mockito.ArgumentCaptor<CommissionRuleService.CommissionResolutionContext> contextCaptor =
+                org.mockito.ArgumentCaptor.forClass(CommissionRuleService.CommissionResolutionContext.class);
+        verify(commissionRuleService, org.mockito.Mockito.atLeastOnce()).resolveRule(
+                eq(CommissionRuleService.TYPE_RECRUITER), contextCaptor.capture(), any());
+        assertThat(contextCaptor.getAllValues())
+                .allSatisfy(context -> assertThat(context.recruiterUserId()).isNull());
     }
 
     @Test

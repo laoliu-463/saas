@@ -1,6 +1,7 @@
 package com.colonel.saas.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.colonel.saas.domain.order.application.OrderAttributionRouter;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -17,6 +18,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -26,7 +28,7 @@ class OrderAttributionReplayServiceTest {
     @Mock
     private ColonelsettlementOrderMapper orderMapper;
     @Mock
-    private AttributionService attributionService;
+    private OrderAttributionRouter orderAttributionRouter;
     @Mock
     private OrderSyncPersistenceService persistenceService;
 
@@ -34,11 +36,11 @@ class OrderAttributionReplayServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new OrderAttributionReplayService(orderMapper, attributionService, persistenceService);
+        service = new OrderAttributionReplayService(orderMapper, orderAttributionRouter, persistenceService);
     }
 
     @Test
-    void replay_shouldNormalizeNestedColonelInfoBeforeResolvingAttribution() {
+    void replay_shouldUseOrderAttributionRouterAndPersistDualStatuses() {
         ColonelsettlementOrder order = new ColonelsettlementOrder();
         order.setId(UUID.randomUUID());
         order.setOrderId("o-1");
@@ -57,7 +59,7 @@ class OrderAttributionReplayServiceTest {
         UUID userId = UUID.randomUUID();
         UUID deptId = UUID.randomUUID();
         UUID colonelUserId = UUID.randomUUID();
-        when(attributionService.resolveAttribution(any(), any())).thenReturn(
+        AttributionService.AttributionResult attributionResult =
                 AttributionService.AttributionResult.attributed(
                         userId,
                         deptId,
@@ -66,9 +68,21 @@ class OrderAttributionReplayServiceTest {
                         null,
                         "3543332",
                         colonelUserId,
-                        AttributionService.REASON_COLONEL_ORDER_INFO
-                )
-        );
+                        AttributionService.REASON_COLONEL_ORDER_INFO);
+        when(orderAttributionRouter.resolveAndApply(any(), any(), nullable(String.class)))
+                .thenAnswer(invocation -> {
+                    ColonelsettlementOrder routedOrder = invocation.getArgument(0);
+                    routedOrder.setChannelUserId(userId);
+                    routedOrder.setChannelDeptId(deptId);
+                    routedOrder.setUserId(userId);
+                    routedOrder.setDeptId(deptId);
+                    routedOrder.setColonelUserId(colonelUserId);
+                    routedOrder.setActivityId("3543332");
+                    routedOrder.setAttributionStatus(AttributionService.STATUS_ATTRIBUTED);
+                    routedOrder.setChannelAttributionStatus("CHANNEL_ATTRIBUTED");
+                    routedOrder.setRecruiterAttributionStatus("RECRUITER_ATTRIBUTED");
+                    return attributionResult;
+                });
         when(persistenceService.getUserName(userId)).thenReturn("渠道A");
         when(persistenceService.getUserName(colonelUserId)).thenReturn("团长A");
 
@@ -82,13 +96,16 @@ class OrderAttributionReplayServiceTest {
         assertThat(result.safeToUpdate()).isEqualTo(0);
 
         ArgumentCaptor<Map<String, Object>> sourceCaptor = ArgumentCaptor.forClass(Map.class);
-        verify(attributionService).resolveAttribution(any(), sourceCaptor.capture());
+        verify(orderAttributionRouter).resolveAndApply(
+                any(), sourceCaptor.capture(), nullable(String.class));
         assertThat(sourceCaptor.getValue().get("second_colonel_buyin_id")).isEqualTo("second-buyin");
         assertThat(sourceCaptor.getValue().get("second_colonel_activity_id")).isEqualTo("3543332");
 
         ArgumentCaptor<ColonelsettlementOrder> orderCaptor = ArgumentCaptor.forClass(ColonelsettlementOrder.class);
         verify(persistenceService).persistOrder(orderCaptor.capture());
         assertThat(orderCaptor.getValue().getAttributionStatus()).isEqualTo(AttributionService.STATUS_ATTRIBUTED);
+        assertThat(orderCaptor.getValue().getChannelAttributionStatus()).isEqualTo("CHANNEL_ATTRIBUTED");
+        assertThat(orderCaptor.getValue().getRecruiterAttributionStatus()).isEqualTo("RECRUITER_ATTRIBUTED");
         assertThat(orderCaptor.getValue().getActivityId()).isEqualTo("3543332");
         assertThat(orderCaptor.getValue().getChannelUserName()).isEqualTo("渠道A");
         assertThat(orderCaptor.getValue().getColonelUserName()).isEqualTo("团长A");
@@ -101,7 +118,7 @@ class OrderAttributionReplayServiceTest {
         order.setDeleted(0);
         order.setUpdateTime(LocalDateTime.now());
         when(orderMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(order));
-        when(attributionService.resolveAttribution(any(), any())).thenReturn(
+        when(orderAttributionRouter.resolveAndApply(any(), any(), nullable(String.class))).thenReturn(
                 AttributionService.AttributionResult.unattributed(
                         null,
                         null,
@@ -116,7 +133,7 @@ class OrderAttributionReplayServiceTest {
         assertThat(result.scanned()).isEqualTo(1);
         assertThat(result.updated()).isEqualTo(0);
         assertThat(result.stillUnattributed()).isEqualTo(1);
-        verify(attributionService).resolveAttribution(any(), any());
+        verify(orderAttributionRouter).resolveAndApply(any(), any(), nullable(String.class));
     }
 
     @Test
@@ -130,7 +147,7 @@ class OrderAttributionReplayServiceTest {
         order.setDeleted(0);
         when(orderMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(order));
 
-        when(attributionService.resolveAttribution(any(), any())).thenReturn(
+        when(orderAttributionRouter.resolveAndApply(any(), any(), nullable(String.class))).thenReturn(
                 AttributionService.AttributionResult.attributed(
                         UUID.randomUUID(),
                         UUID.randomUUID(),

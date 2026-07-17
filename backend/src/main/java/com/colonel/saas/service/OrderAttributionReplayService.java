@@ -1,6 +1,7 @@
 package com.colonel.saas.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.colonel.saas.domain.order.application.OrderAttributionRouter;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import org.springframework.stereotype.Service;
@@ -26,11 +27,11 @@ import java.util.UUID;
  * </ul>
  *
  * <p><b>业务领域：</b>业绩域 — 归因回放</p>
- * <p><b>协作关系：</b>依赖 {@link AttributionService} 执行归因解析；
+ * <p><b>协作关系：</b>依赖 {@link OrderAttributionRouter} 执行与订单同步一致的归因策略；
  * 依赖 {@link OrderSyncPersistenceService} 持久化更新后的订单；
  * 依赖 {@link ColonelsettlementOrderMapper} 查询待回放订单</p>
  *
- * @see AttributionService
+ * @see OrderAttributionRouter
  * @see OrderSyncPersistenceService
  */
 @Service
@@ -45,18 +46,18 @@ public class OrderAttributionReplayService {
     /** 订单 Mapper，查询待回放的订单列表 */
     private final ColonelsettlementOrderMapper orderMapper;
 
-    /** 归因服务，执行单笔订单的归因解析 */
-    private final AttributionService attributionService;
+    /** 归因路由，保证同步与历史回放使用同一策略并写入双维状态 */
+    private final OrderAttributionRouter orderAttributionRouter;
 
     /** 订单持久化服务，用于更新归因结果并查询用户信息 */
     private final OrderSyncPersistenceService persistenceService;
 
     public OrderAttributionReplayService(
             ColonelsettlementOrderMapper orderMapper,
-            AttributionService attributionService,
+            OrderAttributionRouter orderAttributionRouter,
             OrderSyncPersistenceService persistenceService) {
         this.orderMapper = orderMapper;
-        this.attributionService = attributionService;
+        this.orderAttributionRouter = orderAttributionRouter;
         this.persistenceService = persistenceService;
     }
 
@@ -96,9 +97,10 @@ public class OrderAttributionReplayService {
         // 第二步：逐笔归一化 extraData 并执行归因解析
         for (ColonelsettlementOrder order : orders) {
             scanned++;
-            // 注意：先归一化 extraData 再调用归因服务
+            // 注意：先归一化 extraData，再走与订单同步相同的归因路由。
             Map<String, Object> normalizedSource = AttributionSourceNormalizer.normalize(order.getExtraData());
-            AttributionService.AttributionResult result = attributionService.resolveAttribution(order, normalizedSource);
+            AttributionService.AttributionResult result = orderAttributionRouter.resolveAndApply(
+                    order, normalizedSource, order.getTalentName());
             AttributionService.NativeMappingTrace nativeTrace = result.nativeTrace();
             if (nativeTrace != null && nativeTrace.nativeKeyMatched()) {
                 nativeKeyMatched++;
@@ -133,8 +135,8 @@ public class OrderAttributionReplayService {
             if (!safeForHistoricalUpdate) {
                 continue;
             }
-            // 第四步（续）：应用归因结果并持久化
-            applyAttribution(order, result);
+            // 第四步（续）：归因路由已写回默认归属与双维状态，这里只补充审计字段并持久化。
+            finalizeAttribution(order);
             persistenceService.persistOrder(order);
             updated++;
         }
@@ -190,24 +192,8 @@ public class OrderAttributionReplayService {
         return Math.min(limit, MAX_LIMIT);
     }
 
-    /**
-     * 将归因结果应用到订单实体，更新渠道、招商员、达人等归因字段。
-     *
-     * @param order  待更新的订单实体
-     * @param result 归因解析结果
-     */
-    private void applyAttribution(ColonelsettlementOrder order, AttributionService.AttributionResult result) {
-        order.setChannelUserId(result.channelUserId());
-        order.setChannelDeptId(result.deptId());
-        order.setUserId(result.userId());
-        order.setDeptId(result.deptId());
-        order.setColonelUserId(result.colonelUserId());
-        order.setTalentId(result.talentId());
-        if (StringUtils.hasText(result.activityId())) {
-            order.setActivityId(result.activityId());
-        }
-        order.setAttributionStatus(result.attributionStatus());
-        order.setAttributionRemark(result.attributionRemark());
+    /** 补充归因回放的更新时间与展示名称；归因字段由路由统一写入。 */
+    private void finalizeAttribution(ColonelsettlementOrder order) {
         order.setUpdateTime(LocalDateTime.now());
         fillUserNames(order);
     }

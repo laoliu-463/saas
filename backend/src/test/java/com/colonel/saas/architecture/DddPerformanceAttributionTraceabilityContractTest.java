@@ -18,7 +18,7 @@ class DddPerformanceAttributionTraceabilityContractTest {
         assertThat(service)
                 .contains(
                         "UUID channelUserId = order.getChannelUserId();",
-                        "UUID recruiterUserId = order.getColonelUserId() != null ? order.getColonelUserId() : order.getUserId();",
+                        "UUID recruiterUserId = order.getColonelUserId();",
                         "PerformanceAttributionPolicy.AttributionResult attribution = attributionResolver.resolve(order);",
                         "record.setDefaultChannelUserId(channelUserId);",
                         "record.setDefaultRecruiterUserId(recruiterUserId);",
@@ -75,6 +75,8 @@ class DddPerformanceAttributionTraceabilityContractTest {
                         "assertThat(result.getDefaultRecruiterUserId()).isEqualTo(recruiterUserId)",
                         "assertThat(result.getFinalChannelUserId()).isEqualTo(channelUserId)",
                         "assertThat(result.getFinalRecruiterUserId()).isEqualTo(recruiterUserId)",
+                        "upsertFromOrder_shouldNotUseLegacyChannelUserAsRecruiter",
+                        "assertThat(result.getDefaultRecruiterUserId()).isNull()",
                         "upsertFromOrder_shouldUseResolvedFinalAttributionInsteadOfCopyingOrderDefaults",
                         "assertThat(result.getFinalRecruiterUserId()).isEqualTo(exclusiveMerchantUserId)",
                         "assertThat(result.getRecruiterAttribution()).isEqualTo(\"EXCLUSIVE_MERCHANT\")");
