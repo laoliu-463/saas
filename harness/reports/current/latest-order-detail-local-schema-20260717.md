@@ -86,6 +86,12 @@ Business validation: PASS (npm run e2e:real-pre:p0:preflight)
 Content maintenance: Plan. Manifest=. DryRun=False.
 ~~~
 
+## Harness Governance
+
+- Scoped check with this task's owned files: `TASK_GATE=PASS`, `REPOSITORY_HEALTH=PARTIAL`.
+- Standalone workspace check: `TASK_GATE=FAIL` because unrelated pre-existing untracked timestamp reports and evidence files are present under `harness/reports`; they were not modified or owned by this task.
+- Historical repository debt remains: `harness/reports` has 39 direct files and one 258-line evidence file.
+
 ## Remote Deploy Result
 
 ~~~text
