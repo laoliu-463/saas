@@ -2,10 +2,10 @@
 
 ## Metadata
 
-- Time: 2026-07-17 16:10:20 +08:00
+- Time: 2026-07-17 16:21:29 +08:00
 - Action: Plan
 - DryRun: False
-- Reason: feat: align order filter layout with reference
+- Reason: fix: apply order detail attribution schema migration
 - Manifest: (none)
 - ArchiveRoot: harness/archive/retired-content
 - AllowSourceCode: False
