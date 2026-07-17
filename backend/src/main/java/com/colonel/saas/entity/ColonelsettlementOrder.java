@@ -454,6 +454,14 @@ public class ColonelsettlementOrder implements Serializable {
     @TableField("recruiter_attribution_status")
     private String recruiterAttributionStatus;
 
+    /** 渠道归属的稳定来源值，用于保留默认归因事实和排障证据。 */
+    @TableField("channel_attribution_source")
+    private String channelAttributionSource;
+
+    /** 招商归属的稳定来源值，用于保留默认归因事实和排障证据。 */
+    @TableField("recruiter_attribution_source")
+    private String recruiterAttributionSource;
+
     /**
      * 创建时间
      * <p>对应数据库列：{@code create_time}，订单记录入库时间，同时作为分区键</p>

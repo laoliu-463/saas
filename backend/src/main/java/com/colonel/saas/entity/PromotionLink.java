@@ -81,6 +81,10 @@ public class PromotionLink implements Serializable {
     @TableField("channel_user_name")
     private String channelUserName;
 
+    /** 创建推广链接时固化的归属维度：CHANNEL 或 RECRUITER。 */
+    @TableField("attribution_owner_type")
+    private String attributionOwnerType;
+
     /**
      * 原始商品链接
      * <p>对应数据库列：{@code original_product_url}，转链前的原始商品 URL</p>
