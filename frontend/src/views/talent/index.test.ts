@@ -178,14 +178,4 @@ describe('TalentPage empty state', () => {
     expect(wrapper.find('[data-testid="talent-create"]').exists()).toBe(true)
     wrapper.unmount()
   })
-
-  it('shows the full talent action set for biz staff', async () => {
-    talentAuthState.roleCodes = ['biz_staff']
-    const wrapper = mount(TalentPage, { global: { stubs } })
-
-    await flushPromises()
-
-    expect(wrapper.find('[data-testid="talent-create"]').exists()).toBe(true)
-    wrapper.unmount()
-  })
 })

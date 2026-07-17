@@ -210,12 +210,4 @@ class TalentControllerTest {
         verify(talentService).create(any(Talent.class), org.mockito.ArgumentMatchers.eq(userId),
                 org.mockito.ArgumentMatchers.eq(deptId));
     }
-
-    @Test
-    void talentCrm_shouldAllowBizStaffAtControllerBoundary() {
-        RequirePermission roles = TalentController.class.getAnnotation(RequirePermission.class);
-
-        assertThat(roles).isNotNull();
-        assertThat(roles.value()).isEqualTo("talent:access");
-    }
 }
