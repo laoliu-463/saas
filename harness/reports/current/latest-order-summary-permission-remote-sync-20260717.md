@@ -78,6 +78,16 @@ Content maintenance: Plan. Manifest=. DryRun=False.
 
 ~~~text
 Remote deploy: PASS
+Remote branch: feature/auth-system
+Remote commit: 1ed7dd2a
+Remote health: PASS (backend /api/system/health={"status":"UP"}; frontend /healthz=ok)
+
+Remote authenticated business validation: PASS (biz_staff/admin123, read-only)
+- Login: HTTP 200; roleCodes=[biz_staff]; dataScope=1
+- GET /api/data/orders/summary?startDate=2020-01-01&endDate=2030-01-01&timeField=createTime: HTTP/code 200, orderCount=538475, serviceFeeIncome=229223.37, serviceFeeExpense=302.97, serviceFeeProfit=208744.89, grossProfit=166992.35
+- Same summary query with timeField=settleTime: HTTP/code 200, orderCount=301064, serviceFeeIncome=107873.81, serviceFeeExpense=47.33, serviceFeeProfit=107826.48, grossProfit=86258.56
+- GET /api/data/orders/detail?page=1&size=20 on createTime: HTTP/code 200, total=538501, returned=20
+- GET /api/data/orders/detail?page=1&size=200 on settleTime: HTTP/code 200, total=301064, returned=200; non-null effectiveServiceFee=194, effectiveServiceFeeExpense=200, effectiveServiceProfit=119, effectiveRecruiterCommission=118, effectiveChannelCommission=118, effectiveGrossProfit=119
 ~~~
 
 ## Retro Summary
@@ -90,4 +100,5 @@ PASS
 
 ## Residual Risk
 
-- Items marked as not collected are not proof of success.
+- Frontend npm audit still reports 6 dependency vulnerabilities (1 low, 1 moderate, 2 high, 2 critical); unrelated to this deployment and not auto-fixed.
+- The remote business probe is read-only and uses the existing QA account; no test order or user data was written.
