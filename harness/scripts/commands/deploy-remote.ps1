@@ -215,7 +215,7 @@ echo "Performance final attribution schema guard passed."
 echo "Applying required outbox dispatch migration ..."
 docker cp "`$outbox_dispatch_migration" "`$pg_container:/tmp/alter-domain-event-outbox-dispatch-20260717.sql"
 compose exec -T postgres-real-pre sh -lc 'psql -U "`$POSTGRES_USER" -d "`$POSTGRES_DB" -v ON_ERROR_STOP=1 -f /tmp/alter-domain-event-outbox-dispatch-20260717.sql' </dev/null
-outbox_dispatch_index_count="`$(compose exec -T postgres-real-pre sh -lc 'psql -U "`$POSTGRES_USER" -d "`$POSTGRES_DB" -tAc "SELECT count(*) FROM pg_indexes WHERE schemaname = '''public''' AND tablename = '''domain_event_outbox''' AND indexname = '''idx_domain_event_outbox_dispatch_order'''"' </dev/null | tr -d '[:space:]')"
+outbox_dispatch_index_count="`$(compose exec -T postgres-real-pre sh -lc 'psql -U "`$POSTGRES_USER" -d "`$POSTGRES_DB" -tAc "SELECT count(*) FROM pg_indexes WHERE schemaname = '\''public'\'' AND tablename = '\''domain_event_outbox'\'' AND indexname = '\''idx_domain_event_outbox_dispatch_order'\''"' </dev/null | tr -d '[:space:]')"
 if [ "`$outbox_dispatch_index_count" != "1" ]; then
   echo "Outbox dispatch schema guard failed: dispatch index is missing"
   exit 1
