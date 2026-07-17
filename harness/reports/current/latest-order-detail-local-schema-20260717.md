@@ -71,8 +71,9 @@ Local health verification: PASS
 
 - Account: local `biz_staff`.
 - API: `GET /api/data/orders/detail?page=1&size=20&timeField=createTime&startDate=2026-07-13&endDate=2026-07-19` returned HTTP 200, `code=200`, `records=20`, `total=44337`.
-- Browser: `http://127.0.0.1:3001/data/orders` -> click `订单明细`; no `服务器异常`, no `无数据`, and the returned order number was visible in the table.
-- Screenshot: `output/local-order-detail-after-schema-fix.png`.
+- Browser: `http://127.0.0.1:3001/data/orders` -> click `订单明细`; no `服务器异常`, no `无数据`, and the returned order rows were visible after scrolling the table into the viewport.
+- The first screenshot `output/local-order-detail-after-schema-fix.png` was invalid as visual evidence because it only captured the filter area and tabs; it has been superseded.
+- Replacement screenshot with visible order rows: `output/local-order-detail-table-visible.png`.
 
 ## Business Validation Result
 
