@@ -160,7 +160,7 @@ class SysUserGroupMembershipApplicationTest {
         SysUser user = user(userId, effectiveDeptId);
         when(orgStructureService.resolveAssignment(null, groupId))
                 .thenReturn(new OrgStructureService.ResolvedAssignment(effectiveDeptId, null, groupId));
-        when(sysUserMapper.selectById(userId)).thenReturn(user);
+        when(sysUserMapper.findActiveById(userId)).thenReturn(java.util.Optional.of(user));
 
         application.assignUsersToGroup(groupId, List.of(userId), UUID.randomUUID());
 
@@ -179,7 +179,7 @@ class SysUserGroupMembershipApplicationTest {
         RuntimeException failure = new RuntimeException("version failed");
         when(orgStructureService.resolveAssignment(null, groupId))
                 .thenReturn(new OrgStructureService.ResolvedAssignment(effectiveDeptId, null, groupId));
-        when(sysUserMapper.selectById(userId)).thenReturn(user);
+        when(sysUserMapper.findActiveById(userId)).thenReturn(java.util.Optional.of(user));
         when(orgStructureService.splitAssignment(oldDeptId))
                 .thenReturn(new OrgStructureService.SplitAssignment(oldDeptId, null, "old", null, "department"));
         when(orgStructureService.splitAssignment(effectiveDeptId))
@@ -224,7 +224,7 @@ class SysUserGroupMembershipApplicationTest {
         UUID currentUserId = UUID.randomUUID();
         SysUser user = user(userId, groupId);
         RuntimeException failure = new RuntimeException("version failed");
-        when(sysUserMapper.selectById(userId)).thenReturn(user);
+        when(sysUserMapper.findActiveById(userId)).thenReturn(java.util.Optional.of(user));
         when(orgStructureService.splitAssignment(groupId))
                 .thenReturn(new OrgStructureService.SplitAssignment(parentDeptId, groupId, "parent", "group", "biz"));
         when(orgStructureService.splitAssignment(null))
