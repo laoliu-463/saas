@@ -49,6 +49,10 @@ public class CurrentUserPermissionChecker {
         return currentUserPermissionPolicy.hasAnyRole(roleCodes, expectedRoles);
     }
 
+    public boolean hasOnlyCanonicalRole(Object roleCodes, String expectedRole) {
+        return currentUserPermissionPolicy.hasOnlyCanonicalRole(roleCodes, expectedRole);
+    }
+
     public List<String> normalizeRoleCodes(Object roleCodes) {
         return currentUserPermissionPolicy.normalizeRoleCodes(roleCodes);
     }

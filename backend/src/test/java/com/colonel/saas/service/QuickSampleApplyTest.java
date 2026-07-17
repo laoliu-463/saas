@@ -155,13 +155,30 @@ class QuickSampleApplyTest {
     // ==================== 角色校验 ====================
 
     @Test
-    void applyQuickSample_shouldRejectNonChannelRole() {
+    void applyQuickSample_shouldRejectNonApplicantRole() {
         QuickSampleApplyRequest request = new QuickSampleApplyRequest();
         request.setTalentIds(List.of("talent_001"));
 
         assertThatThrownBy(() -> service.applyQuickSample(
-                UUID.randomUUID(), request, UUID.randomUUID(), UUID.randomUUID(), List.of(RoleCodes.BIZ_STAFF)))
+                UUID.randomUUID(), request, UUID.randomUUID(), UUID.randomUUID(), List.of(RoleCodes.OPS_STAFF)))
                 .isInstanceOf(ForbiddenException.class);
+    }
+
+    @Test
+    void applyQuickSample_shouldAllowBizStaff() {
+        UUID relationId = UUID.randomUUID();
+        setupValidProductContext(relationId);
+        when(productSampleApplicationPort.applyQuickSample(any()))
+                .thenReturn(buildSuccessResult("talent_001", UUID.randomUUID()));
+
+        QuickSampleApplyRequest request = new QuickSampleApplyRequest();
+        request.setTalentIds(List.of("talent_001"));
+
+        var response = service.applyQuickSample(
+                relationId, request, UUID.randomUUID(), UUID.randomUUID(), List.of(RoleCodes.BIZ_STAFF));
+
+        assertThat(response.isSuccess()).isTrue();
+        verify(productSampleApplicationPort).applyQuickSample(any());
     }
 
     // ==================== 商品校验 ====================

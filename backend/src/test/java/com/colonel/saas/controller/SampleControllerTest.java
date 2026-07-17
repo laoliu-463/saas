@@ -570,7 +570,7 @@ class SampleControllerTest {
 
         assertThatThrownBy(() -> sampleController.createSample(request, UUID.randomUUID(), List.of(RoleCodes.OPS_STAFF)))
                 .isInstanceOf(ForbiddenException.class)
-                .hasMessageContaining("仅渠道角色可以发起寄样申请");
+                .hasMessageContaining("仅招商或渠道角色可以发起寄样申请");
     }
 
     @Test
@@ -858,30 +858,6 @@ class SampleControllerTest {
     }
 
     @Test
-    void actionSample_shouldRejectBizLeaderAuditAction() {
-        UUID sampleId = UUID.randomUUID();
-        UUID userId = UUID.randomUUID();
-
-        SampleRequest sample = new SampleRequest();
-        sample.setId(sampleId);
-        sample.setChannelUserId(userId);
-        sample.setStatus(1);
-
-        SampleActionRequest request = new SampleActionRequest();
-        request.setAction("PENDING_SHIP");
-
-        assertThatThrownBy(() -> sampleController.actionSample(
-                sampleId,
-                request,
-                userId,
-                null,
-                DataScope.ALL,
-                List.of(RoleCodes.BIZ_LEADER)))
-                .isInstanceOf(ForbiddenException.class)
-                .hasMessageContaining("招商角色");
-    }
-
-    @Test
     void getSamplePage_shouldRejectOpsStaffPendingAuditStatus() {
         assertThatThrownBy(() -> getSamplePageBasic(
                 1,
@@ -1089,9 +1065,9 @@ class SampleControllerTest {
                 .getAnnotation(RequireRoles.class);
 
         assertThat(batchApprove).isNotNull();
-        assertThat(batchApprove.value()).containsExactly(RoleCodes.ADMIN, RoleCodes.BIZ_STAFF);
+        assertThat(batchApprove.value()).containsExactly(RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF);
         assertThat(batchReject).isNotNull();
-        assertThat(batchReject.value()).containsExactly(RoleCodes.ADMIN, RoleCodes.BIZ_STAFF);
+        assertThat(batchReject.value()).containsExactly(RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF);
         assertThat(batchShip).isNotNull();
         assertThat(batchShip.value()).containsExactly(RoleCodes.ADMIN, RoleCodes.OPS_STAFF);
         assertThat(refreshLogistics).isNotNull();
@@ -1121,7 +1097,7 @@ class SampleControllerTest {
         assertThat(approve.getFromStatuses()).containsExactly("PENDING_AUDIT");
         assertThat(approve.getToStatus()).isEqualTo("PENDING_SHIP");
         assertThat(approve.getInternalToStatus()).isEqualTo("PENDING_SHIP");
-        assertThat(approve.getRoleCodes()).containsExactly(RoleCodes.ADMIN, RoleCodes.BIZ_STAFF);
+        assertThat(approve.getRoleCodes()).containsExactly(RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF);
         assertThat(approve.getBatchEndpoint()).isEqualTo("POST /samples/batch-approve");
         assertThat(approve.getInvalidStateMessage()).contains("expected PENDING_AUDIT");
 
@@ -1130,7 +1106,7 @@ class SampleControllerTest {
         assertThat(reject.getToStatus()).isEqualTo("REJECTED");
         assertThat(reject.getRequiredFields()).containsExactly("reason");
         assertThat(reject.getMissingFieldMessage()).isEqualTo("reason is required when reject sample request");
-        assertThat(reject.getRoleCodes()).containsExactly(RoleCodes.ADMIN, RoleCodes.BIZ_STAFF);
+        assertThat(reject.getRoleCodes()).containsExactly(RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF);
 
         SampleStatusTransitionVO shipping = transitions.get("SHIPPING");
         assertThat(shipping.getAliases()).contains("SHIPPED");
@@ -1896,7 +1872,7 @@ class SampleControllerTest {
     }
 
     @Test
-    void actionSample_shouldAllowApproveFromPendingAudit() {
+    void actionSample_shouldAllowBizLeaderApproveFromPendingAudit() {
         UUID sampleId = UUID.randomUUID();
         UUID productId = UUID.randomUUID();
         UUID talentId = UUID.randomUUID();
@@ -1928,7 +1904,7 @@ class SampleControllerTest {
                 userId,
                 null,
                 DataScope.ALL,
-                List.of(RoleCodes.BIZ_STAFF));
+                List.of(RoleCodes.BIZ_LEADER));
 
         assertThat(response.getData().getStatus()).isEqualTo("PENDING_SHIP");
         verify(sampleRequestMapper).updateById(sample);

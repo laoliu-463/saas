@@ -377,7 +377,7 @@ public class ProductController extends BaseController {
      * @return 快速寄样申请结果，包含各达人对应的寄样单 ID
      */
     @Operation(summary = "快速寄样", description = "商品库弹窗式快速寄样，支持私海达人多选逐个创建寄样申请。")
-    @RequireRoles({RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF})
+    @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF})
     @PostMapping({"/{relationId}/quick-sample", "/{relationId}/quick-sample-apply"})
     public ApiResult<QuickSampleApplyResponse> quickSample(
             @Parameter(description = "商品关联主键（product_snapshot.id）。") @PathVariable UUID relationId,

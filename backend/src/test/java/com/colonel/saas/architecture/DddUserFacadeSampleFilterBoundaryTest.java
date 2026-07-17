@@ -33,6 +33,6 @@ class DddUserFacadeSampleFilterBoundaryTest {
                 .doesNotContain("import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;")
                 .doesNotContain("currentUserPermissionPolicy.hasAnyRole")
                 .contains("CurrentUserPermissionChecker")
-                .contains("currentUserPermissionChecker.hasAnyRole");
+                .contains("currentUserPermissionChecker.hasOnlyCanonicalRole");
     }
 }

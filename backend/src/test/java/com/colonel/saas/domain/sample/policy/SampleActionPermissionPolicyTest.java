@@ -24,23 +24,29 @@ class SampleActionPermissionPolicyTest {
     }
 
     @Test
-    void applyAndDelete_shouldAllowOnlyChannelRolesOrAdmin() {
+    void applyAndDelete_shouldAllowApplicantRolesOrAdmin() {
         assertThatCode(() -> policy.ensureCanApply(List.of(RoleCodes.ADMIN))).doesNotThrowAnyException();
+        assertThatCode(() -> policy.ensureCanApply(List.of(RoleCodes.BIZ_LEADER))).doesNotThrowAnyException();
+        assertThatCode(() -> policy.ensureCanApply(List.of(RoleCodes.BIZ_STAFF))).doesNotThrowAnyException();
         assertThatCode(() -> policy.ensureCanApply(List.of(RoleCodes.CHANNEL_LEADER))).doesNotThrowAnyException();
         assertThatCode(() -> policy.ensureCanApply(List.of(RoleCodes.CHANNEL_STAFF))).doesNotThrowAnyException();
-        assertThatThrownBy(() -> policy.ensureCanApply(List.of(RoleCodes.BIZ_STAFF)))
+        assertThatThrownBy(() -> policy.ensureCanApply(List.of(RoleCodes.OPS_STAFF)))
                 .isInstanceOf(ForbiddenException.class)
-                .hasMessageContaining("仅渠道角色可以发起寄样申请");
+                .hasMessageContaining("仅招商或渠道角色可以发起寄样申请");
 
+        assertThatCode(() -> policy.ensureCanDelete(List.of(RoleCodes.BIZ_LEADER))).doesNotThrowAnyException();
+        assertThatCode(() -> policy.ensureCanDelete(List.of(RoleCodes.BIZ_STAFF))).doesNotThrowAnyException();
         assertThatCode(() -> policy.ensureCanDelete(List.of(RoleCodes.CHANNEL_STAFF))).doesNotThrowAnyException();
         assertThatThrownBy(() -> policy.ensureCanDelete(List.of(RoleCodes.OPS_STAFF)))
                 .isInstanceOf(ForbiddenException.class)
-                .hasMessageContaining("仅渠道角色可以删除寄样申请");
+                .hasMessageContaining("仅招商或渠道角色可以删除寄样申请");
     }
 
     @Test
     void actionTransition_shouldKeepReviewAndLogisticsRoleGroups() {
         assertThatCode(() -> policy.ensureCanPerformAction("PENDING_SHIP", List.of(RoleCodes.BIZ_STAFF)))
+                .doesNotThrowAnyException();
+        assertThatCode(() -> policy.ensureCanPerformAction("PENDING_SHIP", List.of(RoleCodes.BIZ_LEADER)))
                 .doesNotThrowAnyException();
         assertThatCode(() -> policy.ensureCanPerformAction("REJECTED", List.of(RoleCodes.ADMIN)))
                 .doesNotThrowAnyException();
@@ -104,10 +110,15 @@ class SampleActionPermissionPolicyTest {
 
         assertThat(policy.isOpsStaffOnly(List.of(RoleCodes.OPS_STAFF))).isTrue();
         assertThat(policy.isOpsStaffOnly(List.of(RoleCodes.OPS_STAFF, RoleCodes.ADMIN))).isFalse();
+        assertThat(policy.isOpsStaffOnly(List.of(RoleCodes.OPS_STAFF, RoleCodes.BIZ_STAFF))).isFalse();
+
+        assertThat(policy.isPlainBizStaff(List.of(RoleCodes.BIZ_STAFF))).isTrue();
+        assertThat(policy.isPlainBizStaff(List.of(RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_STAFF))).isFalse();
 
         assertThat(policy.requiresChannelTalentClaim(List.of(RoleCodes.CHANNEL_STAFF))).isTrue();
         assertThat(policy.requiresChannelTalentClaim(List.of(RoleCodes.CHANNEL_LEADER))).isTrue();
         assertThat(policy.requiresChannelTalentClaim(List.of(RoleCodes.CHANNEL_STAFF, RoleCodes.ADMIN))).isFalse();
         assertThat(policy.requiresChannelTalentClaim(List.of(RoleCodes.BIZ_STAFF))).isFalse();
+        assertThat(policy.requiresChannelTalentClaim(List.of(RoleCodes.CHANNEL_STAFF, RoleCodes.BIZ_STAFF))).isFalse();
     }
 }

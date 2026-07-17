@@ -133,7 +133,7 @@ public class SampleApplicationPortImpl implements SampleApplicationPort {
         CrawlerTalentInfo talentInfo = resolveSampleTalentInfo(talentExternalId);
         /* 查找已有达人记录，不存在则自动创建 */
         Talent talent = toTalentEntity(findOrCreateTalent(talentInfo));
-        /* 校验达人是否在指定渠道人员私海中（管理员跳过） */
+        /* 渠道申请需校验私海；招商与管理员按其业务权限直接申请 */
         ensureChannelTalentClaim(cmd.channelUserId(), talent.getId(), cmd.roleCodes());
         /* 去重校验（管理员和主管跳过） */
         checkSevenDaysLimit(cmd.channelUserId(), talent.getId(), cmd.relationId(), cmd.roleCodes());
@@ -285,8 +285,18 @@ public class SampleApplicationPortImpl implements SampleApplicationPort {
     }
 
     private void ensureChannelTalentClaim(UUID userId, UUID talentId, Object roleCodes) {
-        if (currentUserPermissionChecker.hasAnyRole(roleCodes, RoleCodes.ADMIN)) {
+        if (currentUserPermissionChecker.hasAnyRole(
+                roleCodes,
+                RoleCodes.ADMIN,
+                RoleCodes.BIZ_LEADER,
+                RoleCodes.BIZ_STAFF)) {
             return;
+        }
+        if (!currentUserPermissionChecker.hasAnyRole(
+                roleCodes,
+                RoleCodes.CHANNEL_LEADER,
+                RoleCodes.CHANNEL_STAFF)) {
+            throw new ForbiddenException("仅招商或渠道角色可发起寄样申请");
         }
         if (userId == null || talentId == null) {
             throw new ValidateException("达人信息不完整");

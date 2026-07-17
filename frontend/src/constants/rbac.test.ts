@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from 'vitest'
 
-import { ROLE_CODES, hasAccess, isAdminRole } from './rbac'
+import { ROLE_CODES, hasAccess, hasOnlyCanonicalRole, isAdminRole } from './rbac'
 
 describe('rbac helpers', () => {
   // 验证：无角色要求的路由默认允许所有角色访问
@@ -29,5 +29,14 @@ describe('rbac helpers', () => {
     expect(hasAccess([ROLE_CODES.BIZ_STAFF], [ROLE_CODES.BIZ_STAFF])).toBe(true)
     // 角色不匹配时拒绝
     expect(hasAccess([ROLE_CODES.CHANNEL_STAFF], [ROLE_CODES.BIZ_STAFF])).toBe(false)
+  })
+
+  it('distinguishes a single business role from a composite business account', () => {
+    expect(hasOnlyCanonicalRole([ROLE_CODES.OPS_STAFF], ROLE_CODES.OPS_STAFF)).toBe(true)
+    expect(hasOnlyCanonicalRole([ROLE_CODES.OPS_STAFF, 'custom_menu_role'], ROLE_CODES.OPS_STAFF)).toBe(true)
+    expect(hasOnlyCanonicalRole(
+      [ROLE_CODES.OPS_STAFF, ROLE_CODES.BIZ_STAFF],
+      ROLE_CODES.OPS_STAFF
+    )).toBe(false)
   })
 })

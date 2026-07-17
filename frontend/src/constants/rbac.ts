@@ -29,6 +29,8 @@ export const ROLE_CODES = {
   OPS_STAFF: 'ops_staff'       // 运维专员
 } as const;
 
+const CANONICAL_ROLE_CODES = new Set<string>(Object.values(ROLE_CODES));
+
 /**
  * 角色代码 → 中文标签映射（供 UI 展示用）。
  * 自定义角色不在此映射中时，具体展示 fallback 由各页面处理。
@@ -64,4 +66,15 @@ export const hasAccess = (roles: string[] = [], requiredRoles?: string[]): boole
   if (isAdminRole(roles)) return true;
   // 非管理员需要匹配 requiredRoles 中的至少一个角色
   return requiredRoles.some((role) => roles.includes(role));
+};
+
+/**
+ * 判断账号在内置岗位角色中是否只有指定角色。
+ * 自定义菜单角色不参与岗位互斥；出现另一个内置角色时按权限并集处理。
+ */
+export const hasOnlyCanonicalRole = (roles: string[] = [], expectedRole: string): boolean => {
+  if (!CANONICAL_ROLE_CODES.has(expectedRole) || !roles.includes(expectedRole)) return false;
+  return roles
+    .filter((role) => CANONICAL_ROLE_CODES.has(role))
+    .every((role) => role === expectedRole);
 };

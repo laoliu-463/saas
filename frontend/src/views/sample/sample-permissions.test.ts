@@ -2,13 +2,27 @@ import { describe, expect, it } from 'vitest'
 
 import { ROLE_CODES } from '../../constants/rbac'
 import {
+  canApplySamplesByRole,
   canExportSamplesByRole,
+  canReviewSamplesByRole,
   filterSampleTabsForOps,
   OPS_HIDDEN_SAMPLE_STATUSES,
   OPS_SHIPPING_TABS
 } from './sample-permissions'
 
 describe('sample permissions', () => {
+  it('allows business and channel roles to apply while reserving review for business roles', () => {
+    expect(canApplySamplesByRole([ROLE_CODES.BIZ_LEADER])).toBe(true)
+    expect(canApplySamplesByRole([ROLE_CODES.BIZ_STAFF])).toBe(true)
+    expect(canApplySamplesByRole([ROLE_CODES.CHANNEL_LEADER])).toBe(true)
+    expect(canApplySamplesByRole([ROLE_CODES.CHANNEL_STAFF])).toBe(true)
+    expect(canApplySamplesByRole([ROLE_CODES.OPS_STAFF])).toBe(false)
+
+    expect(canReviewSamplesByRole([ROLE_CODES.BIZ_LEADER])).toBe(true)
+    expect(canReviewSamplesByRole([ROLE_CODES.BIZ_STAFF])).toBe(true)
+    expect(canReviewSamplesByRole([ROLE_CODES.CHANNEL_STAFF])).toBe(false)
+  })
+
   it('allows admins, biz roles, ops staff, and channel leaders to export samples', () => {
     expect(canExportSamplesByRole([ROLE_CODES.ADMIN])).toBe(true)
     expect(canExportSamplesByRole([ROLE_CODES.BIZ_LEADER])).toBe(true)

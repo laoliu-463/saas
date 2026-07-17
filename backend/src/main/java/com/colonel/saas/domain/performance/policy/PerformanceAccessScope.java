@@ -136,23 +136,26 @@ public final class PerformanceAccessScope {
         if (userId == null) {
             return false;
         }
-        // 渠道人员：仅查看自己作为渠道归属人的记录
-        if (isChannelStaffOnly(context, currentUserPermissionChecker)) {
-            return userId.equals(record.getFinalChannelUserId());
-        }
-        // 招商人员：仅查看自己作为招商归属人的记录
-        if (isRecruiterStaffOnly(context, currentUserPermissionChecker)) {
-            return userId.equals(record.getFinalRecruiterUserId());
-        }
-        // 渠道组长：查看本部门渠道人员的记录
+        boolean roleScoped = false;
+        boolean allowed = false;
         if (isChannelLeader(context, currentUserPermissionChecker)) {
-            return record.getFinalChannelUserId() != null
+            roleScoped = true;
+            allowed = record.getFinalChannelUserId() != null
                     && matchesDeptMember(record.getFinalChannelUserId(), context);
+        } else if (hasChannelStaffRole(context, currentUserPermissionChecker)) {
+            roleScoped = true;
+            allowed = userId.equals(record.getFinalChannelUserId());
         }
-        // 招商组长：查看本部门招商人员的记录
         if (isRecruiterLeader(context, currentUserPermissionChecker)) {
-            return record.getFinalRecruiterUserId() != null
-                    && matchesDeptMember(record.getFinalRecruiterUserId(), context);
+            roleScoped = true;
+            allowed = allowed || (record.getFinalRecruiterUserId() != null
+                    && matchesDeptMember(record.getFinalRecruiterUserId(), context));
+        } else if (hasRecruiterStaffRole(context, currentUserPermissionChecker)) {
+            roleScoped = true;
+            allowed = allowed || userId.equals(record.getFinalRecruiterUserId());
+        }
+        if (roleScoped) {
+            return allowed;
         }
         // PERSONAL 数据范围：渠道或招商归属人任一匹配即放行
         if (context.dataScope() == DataScope.PERSONAL) {
@@ -232,28 +235,23 @@ public final class PerformanceAccessScope {
         if (isAdminLike(context, currentUserPermissionChecker)) {
             return true;
         }
-        UUID userId = context.userId();
-        UUID deptId = context.deptId();
-        if (isChannelStaffOnly(context, currentUserPermissionChecker)) {
-            where.append(" AND ").append(pr).append(".final_channel_user_id = ?");
-            args.add(requireScopeUser(userId));
-            return true;
-        }
-        if (isRecruiterStaffOnly(context, currentUserPermissionChecker)) {
-            where.append(" AND ").append(pr).append(".final_recruiter_user_id = ?");
-            args.add(requireScopeUser(userId));
-            return true;
-        }
+        List<String> clauses = new java.util.ArrayList<>();
         if (isChannelLeader(context, currentUserPermissionChecker)) {
-            where.append(" AND ").append(pr).append(".final_channel_user_id IN (")
-                    .append(deptUserSubquery()).append(")");
-            args.add(requireScopeDept(deptId));
-            return true;
+            clauses.add(pr + ".final_channel_user_id IN (" + deptUserSubquery() + ")");
+            args.add(requireScopeDept(context.deptId()));
+        } else if (hasChannelStaffRole(context, currentUserPermissionChecker)) {
+            clauses.add(pr + ".final_channel_user_id = ?");
+            args.add(requireScopeUser(context.userId()));
         }
         if (isRecruiterLeader(context, currentUserPermissionChecker)) {
-            where.append(" AND ").append(pr).append(".final_recruiter_user_id IN (")
-                    .append(deptUserSubquery()).append(")");
-            args.add(requireScopeDept(deptId));
+            clauses.add(pr + ".final_recruiter_user_id IN (" + deptUserSubquery() + ")");
+            args.add(requireScopeDept(context.deptId()));
+        } else if (hasRecruiterStaffRole(context, currentUserPermissionChecker)) {
+            clauses.add(pr + ".final_recruiter_user_id = ?");
+            args.add(requireScopeUser(context.userId()));
+        }
+        if (!clauses.isEmpty()) {
+            where.append(" AND (").append(String.join(" OR ", clauses)).append(")");
             return true;
         }
         return false;
@@ -380,8 +378,13 @@ public final class PerformanceAccessScope {
             PerformanceAccessContext context,
             CurrentUserPermissionChecker currentUserPermissionChecker) {
         List<String> roles = context.roleCodes();
-        return checkerHasAnyRole(currentUserPermissionChecker, roles, RoleCodes.CHANNEL_STAFF)
-                && !checkerHasAnyRole(currentUserPermissionChecker, roles, RoleCodes.ADMIN, RoleCodes.CHANNEL_LEADER, RoleCodes.OPS_STAFF);
+        return currentUserPermissionChecker.hasOnlyCanonicalRole(roles, RoleCodes.CHANNEL_STAFF);
+    }
+
+    private static boolean hasChannelStaffRole(
+            PerformanceAccessContext context,
+            CurrentUserPermissionChecker currentUserPermissionChecker) {
+        return checkerHasAnyRole(currentUserPermissionChecker, context.roleCodes(), RoleCodes.CHANNEL_STAFF);
     }
 
     /**
@@ -394,8 +397,13 @@ public final class PerformanceAccessScope {
             PerformanceAccessContext context,
             CurrentUserPermissionChecker currentUserPermissionChecker) {
         List<String> roles = context.roleCodes();
-        return checkerHasAnyRole(currentUserPermissionChecker, roles, RoleCodes.BIZ_STAFF)
-                && !checkerHasAnyRole(currentUserPermissionChecker, roles, RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.OPS_STAFF);
+        return currentUserPermissionChecker.hasOnlyCanonicalRole(roles, RoleCodes.BIZ_STAFF);
+    }
+
+    private static boolean hasRecruiterStaffRole(
+            PerformanceAccessContext context,
+            CurrentUserPermissionChecker currentUserPermissionChecker) {
+        return checkerHasAnyRole(currentUserPermissionChecker, context.roleCodes(), RoleCodes.BIZ_STAFF);
     }
 
     /**
@@ -433,7 +441,7 @@ public final class PerformanceAccessScope {
     private static boolean isChannelScoped(
             PerformanceAccessContext context,
             CurrentUserPermissionChecker currentUserPermissionChecker) {
-        return isChannelStaffOnly(context, currentUserPermissionChecker)
+        return hasChannelStaffRole(context, currentUserPermissionChecker)
                 || isChannelLeader(context, currentUserPermissionChecker);
     }
 
@@ -446,7 +454,7 @@ public final class PerformanceAccessScope {
     private static boolean isRecruiterScoped(
             PerformanceAccessContext context,
             CurrentUserPermissionChecker currentUserPermissionChecker) {
-        return isRecruiterStaffOnly(context, currentUserPermissionChecker)
+        return hasRecruiterStaffRole(context, currentUserPermissionChecker)
                 || isRecruiterLeader(context, currentUserPermissionChecker);
     }
 
@@ -461,7 +469,9 @@ public final class PerformanceAccessScope {
             UUID channelId,
             PerformanceAccessContext context,
             CurrentUserPermissionChecker currentUserPermissionChecker) {
-        if (isChannelStaffOnly(context, currentUserPermissionChecker) && !channelId.equals(context.userId())) {
+        if (hasChannelStaffRole(context, currentUserPermissionChecker)
+                && !isChannelLeader(context, currentUserPermissionChecker)
+                && !channelId.equals(context.userId())) {
             throw BusinessException.forbidden("无权按该渠道筛选业绩");
         }
     }
@@ -477,7 +487,9 @@ public final class PerformanceAccessScope {
             UUID recruiterId,
             PerformanceAccessContext context,
             CurrentUserPermissionChecker currentUserPermissionChecker) {
-        if (isRecruiterStaffOnly(context, currentUserPermissionChecker) && !recruiterId.equals(context.userId())) {
+        if (hasRecruiterStaffRole(context, currentUserPermissionChecker)
+                && !isRecruiterLeader(context, currentUserPermissionChecker)
+                && !recruiterId.equals(context.userId())) {
             throw BusinessException.forbidden("无权按该招商筛选业绩");
         }
     }

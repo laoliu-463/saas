@@ -38,7 +38,8 @@ class DomainPolicyConfigTest {
         SampleActionPermissionPolicy samplePolicy = config.sampleActionPermissionPolicy(checker);
 
         samplePolicy.ensureCanApply(List.of(RoleCodes.CHANNEL_STAFF));
-        assertThatThrownBy(() -> samplePolicy.ensureCanApply(List.of(RoleCodes.BIZ_STAFF)))
+        samplePolicy.ensureCanApply(List.of(RoleCodes.BIZ_STAFF));
+        assertThatThrownBy(() -> samplePolicy.ensureCanApply(List.of(RoleCodes.OPS_STAFF)))
                 .isInstanceOf(ForbiddenException.class);
     }
 }

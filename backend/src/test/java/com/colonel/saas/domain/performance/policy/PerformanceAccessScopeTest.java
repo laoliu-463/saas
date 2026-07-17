@@ -74,6 +74,11 @@ class PerformanceAccessScopeTest {
                 currentUserPermissionChecker))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("无权按该招商筛选业绩");
+        assertThatThrownBy(() -> PerformanceAccessScope.assertFilterAllowed(OTHER, null,
+                context(List.of(RoleCodes.CHANNEL_STAFF, RoleCodes.BIZ_STAFF), DataScope.PERSONAL),
+                currentUserPermissionChecker))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("无权按该渠道筛选业绩");
     }
 
     @Test
@@ -172,6 +177,20 @@ class PerformanceAccessScopeTest {
     }
 
     @Test
+    void canAccessRecord_shouldUnionCompositeBusinessDimensions() {
+        PerformanceAccessContext compositeLeaders = context(
+                List.of(RoleCodes.CHANNEL_LEADER, RoleCodes.BIZ_LEADER),
+                DataScope.DEPT);
+
+        assertThat(PerformanceAccessScope.canAccessRecord(
+                record(USER, OTHER), compositeLeaders, currentUserPermissionChecker)).isTrue();
+        assertThat(PerformanceAccessScope.canAccessRecord(
+                record(OTHER, USER), compositeLeaders, currentUserPermissionChecker)).isTrue();
+        assertThat(PerformanceAccessScope.canAccessRecord(
+                record(OTHER, OTHER), compositeLeaders, currentUserPermissionChecker)).isFalse();
+    }
+
+    @Test
     void canAccessRecord_shouldApplyPersonalFallbackAndAllowDeptFallback() {
         assertThat(PerformanceAccessScope.canAccessRecord(
                 record(OTHER, USER),
@@ -234,6 +253,25 @@ class PerformanceAccessScopeTest {
         assertThat(channel.args()).containsExactly(DEPT);
         assertThat(recruiter.where()).contains("pr.final_recruiter_user_id IN (SELECT id FROM sys_user WHERE dept_id = ? AND deleted = 0)");
         assertThat(recruiter.args()).containsExactly(DEPT);
+    }
+
+    @Test
+    void appendScopeCondition_shouldUnionCompositeRoleDimensions() {
+        ScopeResult leaders = append(
+                context(List.of(RoleCodes.CHANNEL_LEADER, RoleCodes.BIZ_LEADER), DataScope.DEPT),
+                "pr");
+        ScopeResult staff = append(
+                context(List.of(RoleCodes.CHANNEL_STAFF, RoleCodes.BIZ_STAFF), DataScope.PERSONAL),
+                "pr");
+
+        assertThat(leaders.where())
+                .contains("pr.final_channel_user_id IN")
+                .contains("OR pr.final_recruiter_user_id IN");
+        assertThat(leaders.args()).containsExactly(DEPT, DEPT);
+        assertThat(staff.where())
+                .contains("pr.final_channel_user_id = ?")
+                .contains("OR pr.final_recruiter_user_id = ?");
+        assertThat(staff.args()).containsExactly(USER, USER);
     }
 
     @Test

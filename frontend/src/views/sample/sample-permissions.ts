@@ -6,6 +6,20 @@
  */
 import { ROLE_CODES } from '../../constants/rbac';
 
+const SAMPLE_APPLY_ROLES = new Set<string>([
+  ROLE_CODES.ADMIN,
+  ROLE_CODES.BIZ_LEADER,
+  ROLE_CODES.BIZ_STAFF,
+  ROLE_CODES.CHANNEL_LEADER,
+  ROLE_CODES.CHANNEL_STAFF
+]);
+
+const SAMPLE_REVIEW_ROLES = new Set<string>([
+  ROLE_CODES.ADMIN,
+  ROLE_CODES.BIZ_LEADER,
+  ROLE_CODES.BIZ_STAFF
+]);
+
 /** 允许导出寄样数据的角色集合：管理员、业务组长、业务专员、运营专员、渠道组长 */
 const SAMPLE_EXPORT_ROLES = new Set<string>([
   ROLE_CODES.ADMIN,
@@ -29,6 +43,12 @@ export const OPS_SHIPPING_TABS: SampleTabOption[] = [
   { label: '已完成', value: 'FINISHED' },
   { label: '已关闭', value: 'CLOSED' }
 ];
+
+export const canApplySamplesByRole = (roles: string[] = []) =>
+  roles.some((role) => SAMPLE_APPLY_ROLES.has(role));
+
+export const canReviewSamplesByRole = (roles: string[] = []) =>
+  roles.some((role) => SAMPLE_REVIEW_ROLES.has(role));
 
 /**
  * 按运营角色过滤寄样列表的 Tab 选项

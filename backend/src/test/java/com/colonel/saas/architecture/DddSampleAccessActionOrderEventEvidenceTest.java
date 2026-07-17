@@ -54,7 +54,7 @@ class DddSampleAccessActionOrderEventEvidenceTest {
                 .contains("@PostMapping(\"/batch-approve\")")
                 .contains("@PostMapping(\"/batch-reject\")")
                 .contains("@PostMapping(\"/batch-ship\")")
-                .contains("@RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_STAFF})")
+                .contains("@RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF})")
                 .contains("@RequireRoles({RoleCodes.ADMIN, RoleCodes.OPS_STAFF})");
 
         assertThat(sampleService)
@@ -71,7 +71,7 @@ class DddSampleAccessActionOrderEventEvidenceTest {
         assertThat(controllerTest)
                 .contains("sensitiveSampleBatchAndExportEndpoints_shouldDeclareNarrowMethodRoles")
                 .contains("actionSample_shouldRejectChannelStaffAuditAction")
-                .contains("actionSample_shouldRejectBizLeaderAuditAction")
+                .contains("actionSample_shouldAllowBizLeaderApproveFromPendingAudit")
                 .contains("actionSample_shouldRejectOpsCompleteAction")
                 .contains("batchApprove_shouldCountSuccessAndFailures")
                 .contains("batchReject_shouldRequireRemark")

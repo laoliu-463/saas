@@ -115,7 +115,7 @@ import { computed, onMounted, ref } from 'vue'
 import PageHeader from '../../components/PageHeader.vue'
 import { getSummary } from '../../api/dashboard'
 import { useAuthStore } from '../../stores/auth'
-import { ROLE_CODES, hasAccess } from '../../constants/rbac'
+import { ROLE_CODES, hasAccess, hasOnlyCanonicalRole } from '../../constants/rbac'
 import { useDelayedFlag } from '../../utils/delayedFlag'
 
 /** 指标卡片数据项 */
@@ -162,8 +162,7 @@ const ROLE = ROLE_CODES
  * 用于降级为"我的业绩概览"个人视角
  */
 const isBizStaffOnly = computed(() => {
-  const roles = authStore.roleCodes
-  return roles.includes(ROLE.BIZ_STAFF) && !roles.includes(ROLE.ADMIN) && !roles.includes(ROLE.BIZ_LEADER)
+  return hasOnlyCanonicalRole(authStore.roleCodes, ROLE.BIZ_STAFF)
 })
 
 /**
@@ -171,8 +170,7 @@ const isBizStaffOnly = computed(() => {
  * 用于降级为"我的业绩概览"个人视角
  */
 const isChannelStaffOnly = computed(() => {
-  const roles = authStore.roleCodes
-  return roles.includes(ROLE.CHANNEL_STAFF) && !roles.includes(ROLE.ADMIN) && !roles.includes(ROLE.CHANNEL_LEADER)
+  return hasOnlyCanonicalRole(authStore.roleCodes, ROLE.CHANNEL_STAFF)
 })
 
 /** 是否为仅个人视角（业务员或渠道员） */

@@ -167,13 +167,18 @@ import {
 } from '../../api/sample'
 import PageHeader from '../../components/PageHeader.vue'
 import type { SampleItem } from '../../types'
-import { ROLE_CODES } from '../../constants/rbac'
+import { ROLE_CODES, hasOnlyCanonicalRole } from '../../constants/rbac'
 import { useAuthStore } from '../../stores/auth'
 import { createPaginationState, normalizePageSize } from '../../utils/pagination'
 import { useDelayedFlag } from '../../utils/delayedFlag'
 import { parseBatchShipRows, type BatchShipItem, type BatchShipRow } from '../../utils/shippingBatch'
 import { notifyApiFailure, notifyClientPermission } from '../../utils/requestError'
-import { canExportSamplesByRole, OPS_SHIPPING_TABS } from './sample-permissions'
+import {
+  canApplySamplesByRole,
+  canExportSamplesByRole,
+  canReviewSamplesByRole,
+  OPS_SHIPPING_TABS
+} from './sample-permissions'
 import {
   buildCooperationSampleFilterParams,
   type CooperationWorkbenchFilters
@@ -204,16 +209,13 @@ const ALL_TABS = [
 ]
 
 const isOpsStaffOnly = computed(() => {
-  const roles = authStore.roleCodes
-  return roles.includes(ROLE.OPS_STAFF) && !authStore.isAdmin
+  return hasOnlyCanonicalRole(authStore.roleCodes, ROLE.OPS_STAFF)
 })
 const isBizStaffOnly = computed(() => {
-  const roles = authStore.roleCodes
-  return roles.includes(ROLE.BIZ_STAFF) && !roles.includes(ROLE.BIZ_LEADER) && !authStore.isAdmin
+  return hasOnlyCanonicalRole(authStore.roleCodes, ROLE.BIZ_STAFF)
 })
 const isChannelStaffOnly = computed(() => {
-  const roles = authStore.roleCodes
-  return roles.includes(ROLE.CHANNEL_STAFF) && !roles.includes(ROLE.CHANNEL_LEADER) && !authStore.isAdmin
+  return hasOnlyCanonicalRole(authStore.roleCodes, ROLE.CHANNEL_STAFF)
 })
 
 const tabList = computed(() => (props.shippingOnly || isOpsStaffOnly.value ? OPS_SHIPPING_TABS : ALL_TABS))
@@ -273,11 +275,10 @@ const pageDesc = computed(() => {
 })
 
 const canApplySample = computed(() => {
-  const roles = authStore.roleCodes
-  return roles.includes(ROLE.CHANNEL_LEADER) || roles.includes(ROLE.CHANNEL_STAFF)
+  return canApplySamplesByRole(authStore.roleCodes)
 })
 const canExportSamples = computed(() => canExportSamplesByRole(authStore.roleCodes))
-const canBatchAudit = computed(() => authStore.isAdmin || authStore.roleCodes.includes(ROLE.BIZ_STAFF))
+const canBatchAudit = computed(() => canReviewSamplesByRole(authStore.roleCodes))
 const canShipSamples = computed(() => authStore.isAdmin || authStore.roleCodes.includes(ROLE.OPS_STAFF))
 const showBatchAuditActions = computed(() => canBatchAudit.value && activeTab.value === 'PENDING_AUDIT' && !props.shippingOnly)
 const showShippingActions = computed(() => canShipSamples.value && activeTab.value === 'PENDING_SHIP')

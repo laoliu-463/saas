@@ -62,7 +62,7 @@
 import { computed, h, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { NIcon } from 'naive-ui'
-import { ROLE_CODES } from '../../constants/rbac'
+import { ROLE_CODES, hasOnlyCanonicalRole } from '../../constants/rbac'
 import {
   buildAccessibleMenuTree,
   getLeftMenus,
@@ -87,20 +87,17 @@ const ROLE = ROLE_CODES
 
 
 const isChannelStaffOnly = computed(() => {
-  const roles = authStore.roleCodes
-  return roles.includes(ROLE.CHANNEL_STAFF) && !roles.includes(ROLE.CHANNEL_LEADER) && !roles.includes(ROLE.ADMIN)
+  return hasOnlyCanonicalRole(authStore.roleCodes, ROLE.CHANNEL_STAFF)
 })
 
 /* 判断当前用户是否仅为业务专员（非组长、非管理员） */
 const isBizStaffOnly = computed(() => {
-  const roles = authStore.roleCodes
-  return roles.includes(ROLE.BIZ_STAFF) && !roles.includes(ROLE.BIZ_LEADER) && !roles.includes(ROLE.ADMIN)
+  return hasOnlyCanonicalRole(authStore.roleCodes, ROLE.BIZ_STAFF)
 })
 
 /* 判断当前用户是否仅为运营专员（非管理员） */
 const isOpsStaffOnly = computed(() => {
-  const roles = authStore.roleCodes
-  return roles.includes(ROLE.OPS_STAFF) && !roles.includes(ROLE.ADMIN)
+  return hasOnlyCanonicalRole(authStore.roleCodes, ROLE.OPS_STAFF)
 })
 
 /**

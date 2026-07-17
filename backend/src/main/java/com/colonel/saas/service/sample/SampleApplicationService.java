@@ -1375,7 +1375,7 @@ public class SampleApplicationService extends BaseController {
      * @see SampleStatus#PENDING_SHIP 待发货状态
      */
     @Operation(summary = "批量审批通过", description = "批量将 PENDING_AUDIT 的寄样申请审批为待发货。仅招商角色可操作。")
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_STAFF})
+    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF})
     @PostMapping("/batch-approve")
     public ApiResult<Map<String, Integer>> batchApprove(
             @Valid @RequestBody SampleBatchActionRequest request,
@@ -1439,7 +1439,7 @@ public class SampleApplicationService extends BaseController {
      * @see SampleStatus#REJECTED 已驳回状态
      */
     @Operation(summary = "批量驳回", description = "批量将 PENDING_AUDIT 的寄样申请驳回。仅招商角色可操作，驳回原因必填。")
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_STAFF})
+    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF})
     @PostMapping("/batch-reject")
     public ApiResult<Map<String, Integer>> batchReject(
             @Valid @RequestBody SampleBatchActionRequest request,
@@ -2007,7 +2007,8 @@ public class SampleApplicationService extends BaseController {
     /**
      * 校验当前用户是否拥有发起寄样申请的权限。
      * <p>
-     * 仅渠道角色（CHANNEL_LEADER、CHANNEL_STAFF）和管理员（ADMIN）可发起寄样申请。
+     * 招商角色（BIZ_LEADER、BIZ_STAFF）、渠道角色（CHANNEL_LEADER、CHANNEL_STAFF）
+     * 和管理员（ADMIN）可发起寄样申请。
      * 其他角色触发此方法将直接抛出 {@link ForbiddenException}。
      *
      * @param roleCodes 当前用户的角色编码集合
@@ -2020,7 +2021,8 @@ public class SampleApplicationService extends BaseController {
     /**
      * 校验当前用户是否拥有删除寄样申请的权限。
      * <p>
-     * 仅渠道角色（CHANNEL_LEADER、CHANNEL_STAFF）和管理员（ADMIN）可删除寄样申请。
+     * 招商角色（BIZ_LEADER、BIZ_STAFF）、渠道角色（CHANNEL_LEADER、CHANNEL_STAFF）
+     * 和管理员（ADMIN）可删除待审核或已拒绝的寄样申请。
      * 其他角色触发此方法将直接抛出 {@link ForbiddenException}。
      *
      * @param roleCodes 当前用户的角色编码集合
@@ -2109,7 +2111,7 @@ public class SampleApplicationService extends BaseController {
                         List.of("PENDING_AUDIT"),
                         "PENDING_SHIP",
                         "PENDING_SHIP",
-                        List.of(RoleCodes.ADMIN, RoleCodes.BIZ_STAFF),
+                        List.of(RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF),
                         "USER",
                         true,
                         List.of(),
@@ -2126,7 +2128,7 @@ public class SampleApplicationService extends BaseController {
                         List.of("PENDING_AUDIT"),
                         "REJECTED",
                         "REJECTED",
-                        List.of(RoleCodes.ADMIN, RoleCodes.BIZ_STAFF),
+                        List.of(RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF),
                         "USER",
                         true,
                         List.of("reason"),
