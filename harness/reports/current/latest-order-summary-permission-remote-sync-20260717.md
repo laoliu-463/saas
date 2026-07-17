@@ -2,12 +2,12 @@
 
 ## Metadata
 
-- Time: 2026-07-17 17:47:20 +08:00
+- Time: 2026-07-17 17:49:59 +08:00
 - Environment: real-pre
 - Scope: full
 - Branch: codex/ddd-user-role-application
-- Commit: 53e2d308
-- Owned worktree: dirty
+- Commit: 7e16b274
+- Owned worktree: clean
 - Deploy remote: true
 
 ## Owned Files
@@ -26,7 +26,7 @@ harness/reports/current/latest-content-retire.md
 ## Owned Git Status
 
 ~~~text
-M harness/reports/current/latest-content-retire.md
+(clean)
 ~~~
 
 ## Build Result
@@ -40,20 +40,20 @@ Frontend build: PASS (npm --prefix frontend ci; npm --prefix frontend run build)
 ## Docker Status
 
 ~~~text
-NAME                              IMAGE                            COMMAND                  SERVICE             CREATED          STATUS                    PORTS
-saas-active-backend-real-pre-1    colonel-saas/backend:real-pre    "sh -c 'java $JAVA_O…"   backend-real-pre    39 seconds ago   Up 35 seconds (healthy)   127.0.0.1:8081->8080/tcp
-saas-active-frontend-real-pre-1   colonel-saas/frontend:real-pre   "/docker-entrypoint.…"   frontend-real-pre   37 seconds ago   Up 13 seconds (healthy)   127.0.0.1:3001->80/tcp
-saas-active-postgres-real-pre-1   postgres:15-alpine               "docker-entrypoint.s…"   postgres-real-pre   4 hours ago      Up 4 hours (healthy)      5432/tcp
-saas-active-redis-real-pre-1      redis:7-alpine                   "docker-entrypoint.s…"   redis-real-pre      2 days ago       Up 2 days (healthy)       6379/tcp
-NAMES                             STATUS                    PORTS
-saas-active-frontend-real-pre-1   Up 13 seconds (healthy)   127.0.0.1:3001->80/tcp
-saas-active-backend-real-pre-1    Up 35 seconds (healthy)   127.0.0.1:8081->8080/tcp
-saas-active-postgres-real-pre-1   Up 4 hours (healthy)      5432/tcp
-saas-active-redis-real-pre-1      Up 2 days (healthy)       6379/tcp
-campus_frontend                   Up 3 days                 0.0.0.0:5173->5173/tcp, [::]:5173->5173/tcp
-campus_backend                    Up 3 days (healthy)       0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp
-campus_postgres                   Up 3 days (healthy)       0.0.0.0:5433->5432/tcp, [::]:5433->5432/tcp
-saas-test-backend-1               Up 3 days (unhealthy)     0.0.0.0:5005->5005/tcp, [::]:5005->5005/tcp, 0.0.0.0:8080->8080/tcp, [::]:8080->8080/tcp
+NAME                              IMAGE                            COMMAND                  SERVICE             CREATED         STATUS                   PORTS
+saas-active-backend-real-pre-1    colonel-saas/backend:real-pre    "sh -c 'java $JAVA_O…"   backend-real-pre    3 minutes ago   Up 3 minutes (healthy)   127.0.0.1:8081->8080/tcp
+saas-active-frontend-real-pre-1   colonel-saas/frontend:real-pre   "/docker-entrypoint.…"   frontend-real-pre   3 minutes ago   Up 2 minutes (healthy)   127.0.0.1:3001->80/tcp
+saas-active-postgres-real-pre-1   postgres:15-alpine               "docker-entrypoint.s…"   postgres-real-pre   4 hours ago     Up 4 hours (healthy)     5432/tcp
+saas-active-redis-real-pre-1      redis:7-alpine                   "docker-entrypoint.s…"   redis-real-pre      2 days ago      Up 2 days (healthy)      6379/tcp
+NAMES                             STATUS                   PORTS
+saas-active-frontend-real-pre-1   Up 2 minutes (healthy)   127.0.0.1:3001->80/tcp
+saas-active-backend-real-pre-1    Up 3 minutes (healthy)   127.0.0.1:8081->8080/tcp
+saas-active-postgres-real-pre-1   Up 4 hours (healthy)     5432/tcp
+saas-active-redis-real-pre-1      Up 2 days (healthy)      6379/tcp
+campus_frontend                   Up 3 days                0.0.0.0:5173->5173/tcp, [::]:5173->5173/tcp
+campus_backend                    Up 3 days (healthy)      0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp
+campus_postgres                   Up 3 days (healthy)      0.0.0.0:5433->5432/tcp, [::]:5433->5432/tcp
+saas-test-backend-1               Up 3 days (unhealthy)    0.0.0.0:5005->5005/tcp, [::]:5005->5005/tcp, 0.0.0.0:8080->8080/tcp, [::]:8080->8080/tcp
 ~~~
 
 ## Health Check Result
@@ -77,7 +77,7 @@ Content maintenance: Plan. Manifest=. DryRun=False.
 ## Remote Deploy Result
 
 ~~~text
-remote not deployed
+Remote deploy: PASS
 ~~~
 
 ## Retro Summary
@@ -86,7 +86,7 @@ No actionable Harness improvement was recorded; no standalone retro is required.
 
 ## Conclusion
 
-PARTIAL
+PASS
 
 ## Residual Risk
 
