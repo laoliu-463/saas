@@ -1,180 +1,119 @@
-﻿# Evidence Report
+# 复合业务角色权限与远端部署证据
 
-## Metadata
+## 元数据
 
-- Time: 2026-07-17 21:41:56 +08:00
-- Environment: real-pre
-- Scope: full
-- Branch: codex/ddd-user-role-application
-- Commit: 3b3a55c9
-- Owned worktree: dirty
-- Deploy remote: false
+- 时间：2026-07-17 22:03 +08:00
+- 环境：本地 real-pre、远端 real-pre
+- 集成分支：`feature/auth-system`
+- 远端提交：`0bff5f6df2709d77164bd5698a1cacb728c1a7d4`
+- 代码提交：`2f648d5f`；集成测试修正：`0bff5f6d`
+- 部署对象：`saas:/opt/saas/app`
+- 目标用户：`1c34b680-30b2-41ec-bdc7-2dde1f37e786`（用户名“玄同”，姓名“壮云”）
 
-## Owned Files
+## 变更结论
 
-~~~text
-backend/src/main/java/com/colonel/saas/controller/ProductController.java
-backend/src/main/java/com/colonel/saas/controller/SampleController.java
-backend/src/main/java/com/colonel/saas/domain/performance/policy/PerformanceAccessScope.java
-backend/src/main/java/com/colonel/saas/domain/sample/application/SampleApplicationPortImpl.java
-backend/src/main/java/com/colonel/saas/domain/sample/policy/SampleActionPermissionPolicy.java
-backend/src/main/java/com/colonel/saas/domain/user/policy/CurrentUserPermissionChecker.java
-backend/src/main/java/com/colonel/saas/domain/user/policy/CurrentUserPermissionPolicy.java
-backend/src/main/java/com/colonel/saas/service/ProductQuickSampleService.java
-backend/src/main/java/com/colonel/saas/service/sample/SampleApplicationService.java
-backend/src/main/java/com/colonel/saas/service/SampleFilterOptionsService.java
-backend/src/test/java/com/colonel/saas/architecture/DddSampleAccessActionOrderEventEvidenceTest.java
-backend/src/test/java/com/colonel/saas/architecture/DddSampleExceptionBranchCoverageContractTest.java
-backend/src/test/java/com/colonel/saas/architecture/DddSamplePermissionOverreachNegativeContractTest.java
-backend/src/test/java/com/colonel/saas/architecture/DddSampleStateMachineIntegrationClosureContractTest.java
-backend/src/test/java/com/colonel/saas/architecture/DddUserFacadeSampleFilterBoundaryTest.java
-backend/src/test/java/com/colonel/saas/config/DomainPolicyConfigTest.java
-backend/src/test/java/com/colonel/saas/controller/ProductControllerTest.java
-backend/src/test/java/com/colonel/saas/controller/SampleControllerTest.java
-backend/src/test/java/com/colonel/saas/domain/performance/policy/PerformanceAccessScopeTest.java
-backend/src/test/java/com/colonel/saas/domain/sample/application/SampleApplicationPortPermissionTest.java
-backend/src/test/java/com/colonel/saas/domain/sample/policy/SampleActionPermissionPolicyTest.java
-backend/src/test/java/com/colonel/saas/domain/user/policy/CurrentUserPermissionCheckerTest.java
-backend/src/test/java/com/colonel/saas/domain/user/policy/CurrentUserPermissionPolicyTest.java
-backend/src/test/java/com/colonel/saas/service/QuickSampleApplyTest.java
-docs/07-权限与数据范围.md
-docs/09-03-MCP用户权限与数据范围接口梳理.md
-docs/09-04-MCP配置规则接口梳理.md
-docs/领域/寄样域.md
-frontend/src/architecture/frontend-business-rule-boundary.test.ts
-frontend/src/constants/rbac.test.ts
-frontend/src/constants/rbac.ts
-frontend/src/router/index.test.ts
-frontend/src/router/index.ts
-frontend/src/views/dashboard/index.vue
-frontend/src/views/data/index.vue
-frontend/src/views/layout/Header.vue
-frontend/src/views/layout/Sider.vue
-frontend/src/views/product/index.vue
-frontend/src/views/product/ProductLibrary.vue
-frontend/src/views/product/product-permissions.test.ts
-frontend/src/views/product/product-permissions.ts
-frontend/src/views/sample/CooperationWorkbench.vue
-frontend/src/views/sample/SampleDetail.vue
-frontend/src/views/sample/sample-permissions.test.ts
-frontend/src/views/sample/sample-permissions.ts
-frontend/src/views/talent/components/TalentDetailModal.vue
-frontend/src/views/talent/index.vue
-~~~
+- 非管理员账号通过多角色组合完成业务流程，不再要求授予 `admin`。
+- 目标组合为 `biz_leader`、`biz_staff`、`channel_leader`、`channel_staff`、`ops_staff`。
+- 操作权限按角色并集生效；`ops_staff` 使数据范围解析为 `ALL`。
+- 复合账号不再误套“纯招商/纯渠道/纯运营”的收缩规则。
+- 寄样申请、快速寄样、招商审核、达人及订单/业绩读取的前后端门禁已对齐。
 
-## Owned Git Status
+## 本地构建与测试
 
 ~~~text
-M backend/src/main/java/com/colonel/saas/controller/ProductController.java
- M backend/src/main/java/com/colonel/saas/controller/SampleController.java
- M backend/src/main/java/com/colonel/saas/domain/performance/policy/PerformanceAccessScope.java
- M backend/src/main/java/com/colonel/saas/domain/sample/application/SampleApplicationPortImpl.java
- M backend/src/main/java/com/colonel/saas/domain/sample/policy/SampleActionPermissionPolicy.java
- M backend/src/main/java/com/colonel/saas/domain/user/policy/CurrentUserPermissionChecker.java
- M backend/src/main/java/com/colonel/saas/domain/user/policy/CurrentUserPermissionPolicy.java
- M backend/src/main/java/com/colonel/saas/service/ProductQuickSampleService.java
- M backend/src/main/java/com/colonel/saas/service/SampleFilterOptionsService.java
- M backend/src/main/java/com/colonel/saas/service/sample/SampleApplicationService.java
- M backend/src/test/java/com/colonel/saas/architecture/DddSampleAccessActionOrderEventEvidenceTest.java
- M backend/src/test/java/com/colonel/saas/architecture/DddSampleExceptionBranchCoverageContractTest.java
- M backend/src/test/java/com/colonel/saas/architecture/DddSamplePermissionOverreachNegativeContractTest.java
- M backend/src/test/java/com/colonel/saas/architecture/DddSampleStateMachineIntegrationClosureContractTest.java
- M backend/src/test/java/com/colonel/saas/architecture/DddUserFacadeSampleFilterBoundaryTest.java
- M backend/src/test/java/com/colonel/saas/config/DomainPolicyConfigTest.java
- M backend/src/test/java/com/colonel/saas/controller/ProductControllerTest.java
- M backend/src/test/java/com/colonel/saas/controller/SampleControllerTest.java
- M backend/src/test/java/com/colonel/saas/domain/performance/policy/PerformanceAccessScopeTest.java
- M backend/src/test/java/com/colonel/saas/domain/sample/policy/SampleActionPermissionPolicyTest.java
- M backend/src/test/java/com/colonel/saas/domain/user/policy/CurrentUserPermissionCheckerTest.java
- M backend/src/test/java/com/colonel/saas/domain/user/policy/CurrentUserPermissionPolicyTest.java
- M backend/src/test/java/com/colonel/saas/service/QuickSampleApplyTest.java
- M docs/07-权限与数据范围.md
- M docs/09-03-MCP用户权限与数据范围接口梳理.md
- M docs/09-04-MCP配置规则接口梳理.md
- M docs/领域/寄样域.md
- M frontend/src/architecture/frontend-business-rule-boundary.test.ts
- M frontend/src/constants/rbac.test.ts
- M frontend/src/constants/rbac.ts
- M frontend/src/router/index.test.ts
- M frontend/src/router/index.ts
- M frontend/src/views/dashboard/index.vue
- M frontend/src/views/data/index.vue
- M frontend/src/views/layout/Header.vue
- M frontend/src/views/layout/Sider.vue
- M frontend/src/views/product/ProductLibrary.vue
- M frontend/src/views/product/index.vue
- M frontend/src/views/sample/CooperationWorkbench.vue
- M frontend/src/views/sample/SampleDetail.vue
- M frontend/src/views/sample/sample-permissions.test.ts
- M frontend/src/views/sample/sample-permissions.ts
- M frontend/src/views/talent/components/TalentDetailModal.vue
- M frontend/src/views/talent/index.vue
-?? backend/src/test/java/com/colonel/saas/domain/sample/application/SampleApplicationPortPermissionTest.java
-?? frontend/src/views/product/product-permissions.test.ts
-?? frontend/src/views/product/product-permissions.ts
+Backend package: PASS
+  mvn -q -f backend/pom.xml -DskipTests package
+
+Backend targeted permissions/sample tests: PASS
+  166 tests, 0 failures, 0 errors
+
+Frontend focused permissions tests: PASS
+  6 files, 35 tests
+
+Frontend full tests: PASS
+  96 files, 742 tests
+
+Frontend typecheck/build: PASS
+  npm --prefix frontend run build
 ~~~
 
-## Build Result
+补充事实：此前源分支全量后端测试运行超过 10 分钟后超时；当时报告中存在 2 个与本次权限修改无关的旧反射断言失败，因此本报告不把“后端全量测试”标记为 PASS。
+
+## 本地 Harness
 
 ~~~text
-not collected
-Backend build: PASS (mvn -f backend/pom.xml -DskipTests package)
-Frontend build: PASS (npm --prefix frontend ci; npm --prefix frontend run build)
+agent-do real-pre full: PASS
+Backend build: PASS
+Frontend build: PASS
+Local Docker restart: PASS
+Backend /api/system/health: 200 / UP
+Frontend /healthz: 200
+e2e:real-pre:p0:preflight: PASS
+Task gate: PASS
+Repository health: PARTIAL（历史报告数量/行数债务，不是本次新增）
 ~~~
 
-## Docker Status
+## 推送与远端部署
 
 ~~~text
-NAME                              IMAGE                            COMMAND                  SERVICE             CREATED          STATUS                    PORTS
-saas-active-backend-real-pre-1    colonel-saas/backend:real-pre    "sh -c 'java $JAVA_O…"   backend-real-pre    54 seconds ago   Up 38 seconds (healthy)   127.0.0.1:8081->8080/tcp
-saas-active-frontend-real-pre-1   colonel-saas/frontend:real-pre   "/docker-entrypoint.…"   frontend-real-pre   51 seconds ago   Up 21 seconds (healthy)   127.0.0.1:3001->80/tcp
-saas-active-postgres-real-pre-1   postgres:15-alpine               "docker-entrypoint.s…"   postgres-real-pre   57 seconds ago   Up 49 seconds (healthy)   5432/tcp
-saas-active-redis-real-pre-1      redis:7-alpine                   "docker-entrypoint.s…"   redis-real-pre      2 days ago       Up 2 days (healthy)       6379/tcp
-NAMES                                                      STATUS                    PORTS
-laughing_banzai                                            Up 11 seconds             0.0.0.0:45137->5432/tcp, [::]:45137->5432/tcp
-saas-active-frontend-real-pre-1                            Up 22 seconds (healthy)   127.0.0.1:3001->80/tcp
-saas-active-backend-real-pre-1                             Up 38 seconds (healthy)   127.0.0.1:8081->8080/tcp
-saas-active-postgres-real-pre-1                            Up 50 seconds (healthy)   5432/tcp
-testcontainers-ryuk-570d0c79-ad59-481a-9e99-a26b9b981777   Up 5 minutes              0.0.0.0:45831->8080/tcp, [::]:45831->8080/tcp
-saas-active-redis-real-pre-1                               Up 2 days (healthy)       6379/tcp
-campus_frontend                                            Up 3 days                 0.0.0.0:5173->5173/tcp, [::]:5173->5173/tcp
-campus_backend                                             Up 3 days (healthy)       0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp
-campus_postgres                                            Up 3 days (healthy)       0.0.0.0:5433->5432/tcp, [::]:5433->5432/tcp
-saas-test-backend-1                                        Up 3 days (unhealthy)     0.0.0.0:5005->5005/tcp, [::]:5005->5005/tcp, 0.0.0.0:8080->8080/tcp, [::]:8080->8080/tcp
+GitHub origin/feature/auth-system: 0bff5f6d
+Gitee gitee/feature/auth-system: 0bff5f6d
+Fixed deploy script: PASS
+Remote git fast-forward: c89db16a -> 0bff5f6d
+Remote backend Maven build: PASS
+Remote frontend pnpm build: PASS
+Remote backend image rebuild/recreate: PASS
+Remote frontend image rebuild/recreate: PASS
+Remote HEAD: 0bff5f6df2709d77164bd5698a1cacb728c1a7d4
+Remote worktree: CLEAN
 ~~~
 
-## Health Check Result
+## 远端健康检查
 
 ~~~text
-Local health verification: PASS
+backend-real-pre: healthy
+frontend-real-pre: healthy
+postgres-real-pre: healthy
+redis-real-pre: healthy
+GET http://127.0.0.1:8081/api/system/health -> {"status":"UP"}
+GET http://127.0.0.1:3001/healthz -> ok
 ~~~
 
-## Business Validation Result
+## 目标账号权限变更与核验
+
+管理员 API 登录使用远端环境文件中的 `ADMIN_PASSWORD` 返回 401，证明该环境值与当前管理员密码不一致；未猜测或重置管理员密码。随后使用单事务直接更新角色事实，并同步执行授权版本升级和缓存失效。
 
 ~~~text
-Business validation: PASS (npm run e2e:real-pre:p0:preflight)
+Transaction precheck: target user active; five target roles enabled
+Existing active assignments soft-deleted: 2
+Desired assignments upserted: 5
+Authorization version: 7 -> 8
+Old authorization snapshot deleted: PASS
+Short-TTL user permission/data-scope cache eviction published: PASS
+
+DB_VERIFY=
+玄同|壮云|1|8|biz_leader,biz_staff,channel_leader,channel_staff,ops_staff|false
 ~~~
 
-## Content Maintenance Result
+核验结果：目标账号恰好拥有 5 个业务角色，未包含 `admin`。旧 JWT 因授权版本变化将失效，用户必须重新登录获取新角色和 `ALL` 数据范围。
 
-~~~text
-Content maintenance skipped by -ContentMaintenance off.
-~~~
+## 业务验证状态
 
-## Remote Deploy Result
+- 代码级权限矩阵、控制器、应用服务、业绩范围、寄样动作及前端路由/按钮测试：PASS。
+- 远端部署、数据库角色事实、授权版本、缓存和健康检查：PASS。
+- 壮云账号真实密码未提供，已确认其密码不是仓库 QA 默认值；未进行密码猜测。因此该账号重新登录后的浏览器全流程 E2E：PENDING。
+- 未在 real-pre 创建寄样、订单等业务脏数据。
 
-~~~text
-remote not deployed
-~~~
+## Retro
 
-## Retro Summary
+本次反复出现“加一个权限、另一个权限消失”的根因是纯角色分支和页面局部角色判断。现已统一为：内置业务角色操作权限取并集，数据范围取最大范围，只有纯岗位账号才应用岗位收缩规则。后续应补能力码下发，减少前端角色矩阵重复。
 
-多角色回归源于各页面与领域分别判断纯角色；已收口内置岗位唯一性判断、复合角色业绩范围 OR 合并，并补权限矩阵与复合角色测试。能力码下发仍列为 V2 治理项。
+## 结论
 
-## Conclusion
+`PARTIAL`：代码、构建、自动化测试、远端部署和目标账号角色事实均已通过；仅缺少壮云本人重新登录后的浏览器业务流程验收，不将其伪报为 PASS。
 
-PASS
+## 剩余风险
 
-## Residual Risk
-
-- Items marked as not collected are not proof of success.
+- 用户需要退出旧会话并重新登录；旧 token 不会自动获得新角色。
+- 本次角色写入因管理员凭据漂移未走管理 API，已用事务、授权版本递增及缓存失效补齐运行语义，但管理 API 操作日志未生成。
+- 前端依赖审计仍有 6 个既有漏洞告警（2 high、2 critical），不属于本次权限修改。
