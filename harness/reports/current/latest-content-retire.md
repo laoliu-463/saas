@@ -2,10 +2,10 @@
 
 ## Metadata
 
-- Time: 2026-07-17 15:30:20 +08:00
+- Time: 2026-07-17 16:10:20 +08:00
 - Action: Plan
 - DryRun: False
-- Reason: fix: allow biz staff to view all order detail records
+- Reason: feat: align order filter layout with reference
 - Manifest: (none)
 - ArchiveRoot: harness/archive/retired-content
 - AllowSourceCode: False
