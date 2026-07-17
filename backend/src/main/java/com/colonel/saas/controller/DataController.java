@@ -150,8 +150,9 @@ public class DataController extends DataApplicationService {
             @Parameter(description = "渠道部门 ID 列表（CSV）。") @RequestParam(required = false) String channelDeptIds,
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
-            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
-        return super.getOrderDetailPage(page, size, orderId, status, talentId, merchantId, productId, productName, shopName, talentName, colonelName, channelName, colonelActivityId, activityName, partnerId, partnerName, recruiterName, recruitType, startDate, endDate, timeField, recruiterDeptIds, channelDeptIds, userId, deptId, dataScope);
+            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
+            @RequestAttribute(value = "roleCodes", required = false) List<String> roleCodes) {
+        return super.getOrderDetailPage(page, size, orderId, status, talentId, merchantId, productId, productName, shopName, talentName, colonelName, channelName, colonelActivityId, activityName, partnerId, partnerName, recruiterName, recruitType, startDate, endDate, timeField, recruiterDeptIds, channelDeptIds, userId, deptId, dataScope, roleCodes);
     }
 
     @GetMapping("/data/orders/summary")
