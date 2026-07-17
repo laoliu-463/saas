@@ -6,7 +6,7 @@
 - Environment: real-pre
 - Scope: backend
 - Branch: codex/ddd-user-role-application
-- Commit: 4c0ccdbf
+- Commit: c49561c0
 - Owned worktree: dirty
 - Deploy remote: false
 
@@ -22,10 +22,7 @@ harness/reports/current/latest-content-retire.md
 ## Owned Git Status
 
 ~~~text
-M backend/src/main/resources/db/init-db.sql
- M backend/src/main/resources/db/migrate-all.sql
- M backend/src/test/java/com/colonel/saas/architecture/ColonelsettlementOrderMapperDualDimensionContractTest.java
- M harness/reports/current/latest-content-retire.md
+Committed by the fixed agent-do entrypoint; the workspace still contains pre-existing unrelated dirty files.
 ~~~
 
 ## Build Result
@@ -33,6 +30,7 @@ M backend/src/main/resources/db/init-db.sql
 ~~~text
 not collected
 Backend build: PASS (mvn -f backend/pom.xml -DskipTests package)
+Targeted contract test: PASS (ColonelsettlementOrderMapperDualDimensionContractTest, 6 tests, 0 failures)
 ~~~
 
 ## Docker Status
@@ -59,6 +57,22 @@ saas-test-backend-1               Up 3 days (unhealthy)     0.0.0.0:5005->5005/t
 ~~~text
 Local health verification: PASS
 ~~~
+
+## Root Cause and Schema Repair
+
+- Initial local request: `GET /api/data/orders/detail` returned HTTP 200 with business `code=500` and `msg=服务器异常`.
+- Backend log evidence: PostgreSQL reported `column co.channel_attribution_status does not exist` from `DataApplicationService.getOrderDetailPage`.
+- Root cause: commit `c9c5e6b6` added the Mapper and standalone migration, but did not connect the migration to `migrate-all.sql` or the fresh-database initialization schema.
+- Fix: added the dual-dimension attribution columns/indexes to `init-db.sql`, added `\i alter-cso-dual-attribution-status-20260716.sql` to `migrate-all.sql`, and added a migration contract assertion.
+- Local migration: applied only `alter-cso-dual-attribution-status-20260716.sql` through the controlled per-file migration steps; no volume deletion and no full historical `migrate-all.sql` replay.
+- Database verification: both `colonelsettlement_order.channel_attribution_status` and `recruiter_attribution_status` exist; `schema_migration_log` contains `alter-cso-dual-attribution-status-20260716.sql`.
+
+## Business Validation Evidence
+
+- Account: local `biz_staff`.
+- API: `GET /api/data/orders/detail?page=1&size=20&timeField=createTime&startDate=2026-07-13&endDate=2026-07-19` returned HTTP 200, `code=200`, `records=20`, `total=44337`.
+- Browser: `http://127.0.0.1:3001/data/orders` -> click `订单明细`; no `服务器异常`, no `无数据`, and the returned order number was visible in the table.
+- Screenshot: `output/local-order-detail-after-schema-fix.png`.
 
 ## Business Validation Result
 
@@ -89,3 +103,4 @@ PASS
 ## Residual Risk
 
 - Items marked as not collected are not proof of success.
+- Remote deployment was intentionally not executed because the current request was to repair local real-pre only.
