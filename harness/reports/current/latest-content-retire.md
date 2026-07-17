@@ -2,10 +2,10 @@
 
 ## Metadata
 
-- Time: 2026-07-17 16:43:49 +08:00
+- Time: 2026-07-17 17:11:34 +08:00
 - Action: Plan
 - DryRun: False
-- Reason: fix: scroll order detail table into view
+- Reason: fix: align order summary and detail permissions for service fee and settlement fields
 - Manifest: (none)
 - ArchiveRoot: harness/archive/retired-content
 - AllowSourceCode: False

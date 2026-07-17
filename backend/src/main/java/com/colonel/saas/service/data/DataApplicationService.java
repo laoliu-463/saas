@@ -319,7 +319,7 @@ public class DataApplicationService extends BaseController {
                 userId,
                 deptId,
                 dataScope,
-                roleCodes);
+                null);
 
         // 第三步：执行分页查询，数据范围已在 wrapper 中显式追加
         IPage<ColonelsettlementOrder> orderPage = dataOrderQueryFacade.findPageWithScope(new Page<>(page, size), wrapper);
@@ -472,7 +472,7 @@ public class DataApplicationService extends BaseController {
         QueryWrapper<ColonelsettlementOrder> wrapper = buildOrderFilterWrapper(
                 true, timeField, start, end, orderId, status, talentId, effectivePartnerId,
                 productId, productName, shopName, talentName, null, null,
-                colonelActivityId, recruitType, userId, deptId, DataScope.ALL);
+                colonelActivityId, recruitType, userId, deptId, DataScope.ALL, null);
         applyOrderDataScope(wrapper, true, userId, deptId, dataScope, roleCodes);
         applyOrderDetailExtraFilters(wrapper, true, activityName, effectivePartnerId, partnerName, channelName, effectiveRecruiterName);
         applyDeptIdFilters(wrapper, true, parseUuidCsv(recruiterDeptIds), parseUuidCsv(channelDeptIds));
@@ -496,7 +496,7 @@ public class DataApplicationService extends BaseController {
                 PerformanceAccessContext.of(
                         userId,
                         deptId,
-                        orderDataScopePolicy.resolveOrderDetailPerformanceScope(dataScope, roleCodes),
+                        resolveOrderDetailPerformanceScope(dataScope, roleCodes),
                         roleCodes));
 
         // 批量查询活动名称
@@ -850,11 +850,6 @@ public class DataApplicationService extends BaseController {
                         userId, deptId, dataScope, roleCodes)));
     }
 
-    /** 保留订单汇总缓存键的旧反射入口，实际拼接由缓存键策略负责。 */
-    private String orderSummaryCacheKey(String timeField, LocalDate startDate, LocalDate endDate, String orderId, String status, UUID talentId, String merchantId, String productId, String productName, String shopName, String talentName, String colonelName, String channelName, String colonelActivityId, String recruitType, UUID userId, UUID deptId, DataScope dataScope, Collection<String> roleCodes) {
-        return orderDataCacheKeyPolicy.orderSummaryKey(ORDER_SUMMARY_CACHE_PREFIX, resolveTimeColumn(timeField), startDate, endDate, orderId, status, talentId, merchantId, productId, productName, shopName, talentName, colonelName, channelName, colonelActivityId, recruitType, userId, deptId, dataScope, roleCodes);
-    }
-
     private OrderSummaryVO buildOrderSummary(
             String orderId, String status, UUID talentId, String merchantId,
             String productId, String productName, String shopName,
@@ -976,6 +971,26 @@ public class DataApplicationService extends BaseController {
                 })
                 .toList());
         return vo;
+    }
+
+    private String orderSummaryCacheKey(
+            String timeField,
+            LocalDate startDate, LocalDate endDate,
+            String orderId, String status, UUID talentId, String merchantId,
+            String productId, String productName, String shopName,
+            String talentName, String colonelName, String channelName,
+            String colonelActivityId, String recruitType,
+            UUID userId, UUID deptId, DataScope dataScope, Collection<String> roleCodes) {
+        String timeColumn = resolveTimeColumn(timeField);
+        return ORDER_SUMMARY_CACHE_PREFIX + cacheKey(
+                timeColumn,
+                startDate, endDate,
+                orderId, status, talentId, merchantId,
+                productId, productName, shopName,
+                talentName, colonelName, channelName,
+                colonelActivityId, recruitType,
+                userId, deptId, dataScope == null ? "NO_SCOPE" : dataScope,
+                roleCodesCacheKey(roleCodes));
     }
 
     @Operation(summary = "核心指标", description = "查询数据页首页核心指标与近 7 天趋势，支持双轨（结算/预估）并行返回。")
@@ -2224,27 +2239,13 @@ public class DataApplicationService extends BaseController {
             DataScope dataScope,
             Collection<String> roleCodes) {
         if (roleCodes == null || roleCodes.isEmpty()) {
-            applyQueryDataScope(wrapper, userId, deptId, dataScope,
-                    column(aliased, "user_id"), column(aliased, "dept_id"));
-            return;
-        }
-        OrderDataScopePolicy.Scope scope = orderDataScopePolicy.resolve(roleCodes);
-        if (scope.fullReadOnly()) {
-            return;
-        }
-        applyQueryDataScope(wrapper, userId, deptId, dataScope,
-                column(aliased, scope.ownerColumn()), column(aliased, scope.deptColumn()));
-    }
-
-    private void applyOrderDataScope(
-            QueryWrapper<ColonelsettlementOrder> wrapper,
-            boolean aliased,
-            UUID userId,
-            UUID deptId,
-            DataScope dataScope,
-            Collection<String> roleCodes) {
-        if (roleCodes == null || roleCodes.isEmpty()) {
-            applyOrderDataScope(wrapper, aliased, userId, deptId, dataScope);
+            applyQueryDataScope(
+                    wrapper,
+                    userId,
+                    deptId,
+                    dataScope,
+                    column(aliased, "user_id"),
+                    column(aliased, "dept_id"));
             return;
         }
         // 招商专员的订单明细是全量只读业务视图，不按个人/部门归属裁剪订单行。
@@ -2255,6 +2256,29 @@ public class DataApplicationService extends BaseController {
         String ownerColumn = column(aliased, resolveOrderOwnerColumn(roleCodes));
         String deptColumn = column(aliased, resolveOrderDeptColumn(roleCodes));
         applyQueryDataScope(wrapper, userId, deptId, dataScope, ownerColumn, deptColumn);
+    }
+
+    private String roleCodesCacheKey(Collection<String> roleCodes) {
+        if (roleCodes == null || roleCodes.isEmpty()) {
+            return "NO_ROLES";
+        }
+        List<String> normalized = roleCodes.stream()
+                .filter(StringUtils::hasText)
+                .map(role -> role.trim().toLowerCase(Locale.ROOT))
+                .distinct()
+                .sorted()
+                .toList();
+        return normalized.isEmpty() ? "NO_ROLES" : String.join(",", normalized);
+    }
+
+    /**
+     * 订单明细是招商专员的全量只读业务视图，补充的业绩字段必须沿用同一权限例外。
+     * 该调整仅作用于订单明细 BFF 的业绩补充，不改变业绩域其他接口的数据范围策略。
+     */
+    private DataScope resolveOrderDetailPerformanceScope(
+            DataScope dataScope,
+            Collection<String> roleCodes) {
+        return hasAnyRole(roleCodes, RoleCodes.BIZ_STAFF) ? DataScope.ALL : dataScope;
     }
 
     private String resolveOrderOwnerColumn(Collection<String> roleCodes) {
