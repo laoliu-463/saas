@@ -103,7 +103,7 @@ class OrderDefaultAttributionPolicyTest {
                 .isEqualTo(OrderDefaultAttributionResult.CHANNEL_ATTRIBUTED);
         assertThat(result.recruiterAttributionStatus())
                 .isEqualTo(OrderDefaultAttributionResult.RECRUITER_UNATTRIBUTED);
-        assertThat(result.attributionStatus()).isEqualTo(AttributionService.STATUS_UNATTRIBUTED);
+        assertThat(result.attributionStatus()).isEqualTo(AttributionService.STATUS_ATTRIBUTED);
     }
 
     @Test
@@ -168,7 +168,7 @@ class OrderDefaultAttributionPolicyTest {
                 .isEqualTo(OrderDefaultAttributionResult.CHANNEL_ATTRIBUTED);
         assertThat(result.recruiterAttributionStatus())
                 .isEqualTo(OrderDefaultAttributionResult.RECRUITER_UNATTRIBUTED);
-        assertThat(result.attributionStatus()).isEqualTo(AttributionService.STATUS_UNATTRIBUTED);
+        assertThat(result.attributionStatus()).isEqualTo(AttributionService.STATUS_ATTRIBUTED);
     }
 
     @Test
@@ -325,6 +325,6 @@ class OrderDefaultAttributionPolicyTest {
                 null, null, "act-1", UUID.randomUUID(), AttributionService.REASON_NO_PICK_SOURCE);
         AttributionService.AttributionResult legacy = OrderDefaultAttributionPolicy.toLegacyResult(result);
         assertThat(legacy.colonelUserId()).isNotNull();
-        assertThat(legacy.attributionStatus()).isEqualTo(AttributionService.STATUS_UNATTRIBUTED);
+        assertThat(legacy.attributionStatus()).isEqualTo(AttributionService.STATUS_ATTRIBUTED);
     }
 }

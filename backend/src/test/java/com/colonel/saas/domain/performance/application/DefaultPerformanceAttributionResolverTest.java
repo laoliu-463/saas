@@ -104,6 +104,22 @@ class DefaultPerformanceAttributionResolverTest {
         assertThat(result.finalRecruiterId()).isEqualTo(order.getColonelUserId());
     }
 
+    @Test
+    void resolve_shouldNotUseLegacyChannelUserIdAsRecruiterFallback() {
+        resolver = new DefaultPerformanceAttributionResolver(
+                merchantRepository,
+                talentRepository,
+                false);
+        UUID channelUserId = UUID.randomUUID();
+        ColonelsettlementOrder order = order(channelUserId, null, UUID.randomUUID());
+        order.setUserId(channelUserId);
+
+        PerformanceAttributionPolicy.AttributionResult result = resolver.resolve(order);
+
+        assertThat(result.finalChannelId()).isEqualTo(channelUserId);
+        assertThat(result.finalRecruiterId()).isNull();
+    }
+
     private ColonelsettlementOrder order(UUID channelId, UUID recruiterId, UUID channelDeptId) {
         ColonelsettlementOrder order = new ColonelsettlementOrder();
         order.setChannelUserId(channelId);
