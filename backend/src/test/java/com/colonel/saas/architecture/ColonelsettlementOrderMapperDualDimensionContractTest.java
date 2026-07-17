@@ -87,6 +87,8 @@ class ColonelsettlementOrderMapperDualDimensionContractTest {
             String schema = read(integrationSchema);
             assertThat(schema).contains("channel_attribution_status");
             assertThat(schema).contains("recruiter_attribution_status");
+            assertThat(schema).doesNotContain("channel_attribution_status VARCHAR(32) DEFAULT");
+            assertThat(schema).doesNotContain("recruiter_attribution_status VARCHAR(32) DEFAULT");
         }
 
         Path migration = findDualDimensionMigration();
@@ -96,6 +98,12 @@ class ColonelsettlementOrderMapperDualDimensionContractTest {
         String sql = read(migration);
         assertThat(sql).contains("channel_attribution_status");
         assertThat(sql).contains("recruiter_attribution_status");
+        assertThat(sql).contains("ALTER COLUMN channel_attribution_status DROP DEFAULT");
+        assertThat(sql).contains("ALTER COLUMN recruiter_attribution_status DROP DEFAULT");
+        assertThat(sql).contains("channel_user_id IS NOT NULL");
+        assertThat(sql).contains("colonel_user_id IS NOT NULL");
+        assertThat(sql).doesNotContain("WHERE channel_attribution_status IS NULL");
+        assertThat(sql).doesNotContain("WHERE recruiter_attribution_status IS NULL");
     }
 
     @Test

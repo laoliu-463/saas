@@ -63,7 +63,7 @@ class OrderDefaultAttributionResolverTest {
                 .isEqualTo(OrderDefaultAttributionResult.CHANNEL_ATTRIBUTED);
         assertThat(result.recruiterAttributionStatus())
                 .isEqualTo(OrderDefaultAttributionResult.RECRUITER_UNATTRIBUTED);
-        assertThat(result.attributionStatus()).isEqualTo(AttributionService.STATUS_UNATTRIBUTED);
+        assertThat(result.attributionStatus()).isEqualTo(AttributionService.STATUS_ATTRIBUTED);
     }
 
     @Test

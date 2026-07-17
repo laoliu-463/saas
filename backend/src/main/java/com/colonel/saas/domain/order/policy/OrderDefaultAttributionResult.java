@@ -78,7 +78,7 @@ public record OrderDefaultAttributionResult(
     }
 
     private static String aggregateStatus(boolean channel, boolean recruiter) {
-        if (channel && recruiter) {
+        if (channel || recruiter) {
             return STATUS_ATTRIBUTED;
         }
         return STATUS_UNATTRIBUTED;

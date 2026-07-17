@@ -84,7 +84,7 @@ public class DefaultPerformanceAttributionResolver implements PerformanceAttribu
     }
 
     private UUID recruiterUserId(ColonelsettlementOrder order) {
-        return order.getColonelUserId() != null ? order.getColonelUserId() : order.getUserId();
+        return order.getColonelUserId();
     }
 
     private String resolveTalentUid(Map<String, Object> extraData) {
