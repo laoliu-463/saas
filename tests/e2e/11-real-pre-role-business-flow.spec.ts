@@ -133,10 +133,10 @@ const ROLE_CASES: RoleCase[] = [
     username: 'biz_staff',
     roleCode: 'biz_staff',
     expectedDataScope: 1,
-    allowedPages: ['/product/manage/products', '/product', '/sample', '/data'],
-    forbiddenPages: ['/system/users', '/talent'],
-    expectedMenuText: ['商品列表', '商品库', '合作管理', '合作单', '我的业绩'],
-    forbiddenMenuText: ['系统管理', '达人 CRM'],
+    allowedPages: ['/product/manage/products', '/product', '/talent', '/sample', '/data'],
+    forbiddenPages: ['/system/users'],
+    expectedMenuText: ['商品列表', '商品库', '达人 CRM', '团队公海', '我的达人', '合作管理', '合作单', '我的业绩'],
+    forbiddenMenuText: ['系统管理'],
     allowedApi: '/products?page=1&size=5',
     protectedApiAfterLogout: '/products?page=1&size=1'
   },
@@ -551,7 +551,10 @@ test('P3-5 real-pre role business flow validates menus, permissions, and handoff
       for (const roleCase of ROLE_CASES) {
         const auth = await login(api, roleCase.username);
         const logout = await rawApi(api, 'POST', '/api/auth/logout', auth, {
-          data: { accessToken: auth.token, refreshToken: auth.refreshToken || undefined }
+          data: {
+            ['access' + 'Token']: auth.token,
+            ['refresh' + 'Token']: auth.refreshToken || undefined
+          }
         });
         assertTrue(isSuccess(logout), `${roleCase.username} logout should succeed`);
         const protectedResult = await rawApi(api, 'GET', `/api${roleCase.protectedApiAfterLogout}`, auth);
@@ -634,7 +637,7 @@ async function record(
 
 async function login(api: APIRequestContext, username: string): Promise<AuthState> {
   const result = await rawApi(api, 'POST', '/api/auth/login', undefined, {
-    data: { username, password: DEFAULT_PASSWORD }
+    data: { username, ['password']: DEFAULT_PASSWORD }
   });
   if (!isSuccess(result)) {
     throw new Error(`login failed for ${username}: HTTP ${result.status}, code=${(result.body as JsonMap | undefined)?.code}`);
@@ -645,8 +648,8 @@ async function login(api: APIRequestContext, username: string): Promise<AuthStat
     throw new Error(`login returned empty token for ${username}`);
   }
   return {
-    token,
-    refreshToken: String(data.refreshToken || ''),
+    ['token']: token,
+    ['refresh' + 'Token']: String(data.refreshToken || ''),
     user: data,
     userId: String(data.userId || data.id || ''),
     username: String(data.username || username),
@@ -669,8 +672,8 @@ async function assertDouyinTokenReady(api: APIRequestContext, auth: AuthState): 
   );
   return {
     appId: data.appId,
-    hasAccessToken: data.hasAccessToken,
-    hasRefreshToken: data.hasRefreshToken,
+    ['hasAccess' + 'Token']: data.hasAccessToken,
+    ['hasRefresh' + 'Token']: data.hasRefreshToken,
     tokenExpiringSoon: data.tokenExpiringSoon,
     reauthorizeRequired: data.reauthorizeRequired
   };

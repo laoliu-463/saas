@@ -1,8 +1,10 @@
 package com.colonel.saas.controller;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.colonel.saas.annotation.RequireRoles;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.GlobalExceptionHandler;
+import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.dto.talent.TalentPageQuery;
 import com.colonel.saas.entity.Talent;
 import com.colonel.saas.domain.talent.application.TalentQueryApplicationService;
@@ -207,5 +209,13 @@ class TalentControllerTest {
 
         verify(talentService).create(any(Talent.class), org.mockito.ArgumentMatchers.eq(userId),
                 org.mockito.ArgumentMatchers.eq(deptId));
+    }
+
+    @Test
+    void talentCrm_shouldAllowBizStaffAtControllerBoundary() {
+        RequireRoles roles = TalentController.class.getAnnotation(RequireRoles.class);
+
+        assertThat(roles).isNotNull();
+        assertThat(List.of(roles.value())).contains(RoleCodes.BIZ_STAFF);
     }
 }
