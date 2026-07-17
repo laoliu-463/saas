@@ -280,8 +280,8 @@ class PerformanceAccessScopeTest {
                 "pr");
 
         assertThat(leaders.where())
-                .contains("pr.final_channel_user_id IN")
-                .contains("OR pr.final_recruiter_user_id IN");
+                .contains("pr.final_channel_dept_id = ?")
+                .contains("OR pr.final_recruiter_dept_id = ?");
         assertThat(leaders.args()).containsExactly(DEPT, DEPT);
         assertThat(staff.where())
                 .contains("pr.final_channel_user_id = ?")
