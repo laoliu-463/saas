@@ -91,6 +91,7 @@ Remote biz_staff read-only business verification: PASS
 - `GET /api/data/orders/detail?page=1&size=5&startDate=2020-01-01&endDate=2030-01-01`: HTTP 200, total=537310, returned=5
 - Returned detail fields include order, activity, product, talent, payment, estimated fees, create/pay time and settle status fields.
 - No test data was written.
+- Remote backend log: both order-detail requests returned status 200 with no ERROR/Exception; one request was logged as slow at 1712ms.
 ~~~
 
 ## Retro Summary
