@@ -2,11 +2,11 @@
 
 ## Metadata
 
-- Time: 2026-07-18 13:05:49 +08:00
+- Time: 2026-07-18 13:07:57 +08:00
 - Environment: real-pre
 - Scope: backend
 - Branch: codex/ddd-user-role-application
-- Commit: 37ef0931
+- Commit: 94b7dfbe
 - Owned worktree: dirty
 - Deploy remote: false
 
@@ -32,7 +32,6 @@ harness/reports/current/latest-channel-performance-scope-fix.md
 ~~~text
 M backend/src/main/java/com/colonel/saas/service/DashboardService.java
  M backend/src/main/java/com/colonel/saas/service/data/DataApplicationService.java
- M harness/reports/current/latest-channel-performance-scope-fix.md
 ~~~
 
 ## Build Result
@@ -45,14 +44,14 @@ Backend package: PASS; frontend standalone build: PASS; permission regression su
 
 ~~~text
 NAME                              IMAGE                                                            COMMAND                  SERVICE             CREATED          STATUS                    PORTS
-saas-active-backend-real-pre-1    colonel-saas/backend:real-pre                                    "sh -c 'java $JAVA_O…"   backend-real-pre    9 minutes ago    Up 9 minutes (healthy)    127.0.0.1:8081->8080/tcp
+saas-active-backend-real-pre-1    colonel-saas/backend:real-pre                                    "sh -c 'java $JAVA_O…"   backend-real-pre    11 minutes ago   Up 11 minutes (healthy)   127.0.0.1:8081->8080/tcp
 saas-active-frontend-real-pre-1   colonel-saas/frontend:0fb9e3c834df5ddf6614d23c1bd6782479ac42f3   "/docker-entrypoint.…"   frontend-real-pre   2 hours ago      Up 2 hours (healthy)      127.0.0.1:3001->80/tcp
-saas-active-postgres-real-pre-1   postgres:15-alpine                                               "docker-entrypoint.s…"   postgres-real-pre   22 minutes ago   Up 22 minutes (healthy)   5432/tcp
-saas-active-redis-real-pre-1      redis:7-alpine                                                   "docker-entrypoint.s…"   redis-real-pre      22 minutes ago   Up 22 minutes (healthy)   6379/tcp
+saas-active-postgres-real-pre-1   postgres:15-alpine                                               "docker-entrypoint.s…"   postgres-real-pre   24 minutes ago   Up 24 minutes (healthy)   5432/tcp
+saas-active-redis-real-pre-1      redis:7-alpine                                                   "docker-entrypoint.s…"   redis-real-pre      24 minutes ago   Up 24 minutes (healthy)   6379/tcp
 NAMES                             STATUS                       PORTS
-saas-active-backend-real-pre-1    Up 9 minutes (healthy)       127.0.0.1:8081->8080/tcp
-saas-active-postgres-real-pre-1   Up 22 minutes (healthy)      5432/tcp
-saas-active-redis-real-pre-1      Up 22 minutes (healthy)      6379/tcp
+saas-active-backend-real-pre-1    Up 11 minutes (healthy)      127.0.0.1:8081->8080/tcp
+saas-active-postgres-real-pre-1   Up 24 minutes (healthy)      5432/tcp
+saas-active-redis-real-pre-1      Up 24 minutes (healthy)      6379/tcp
 saas-active-frontend-real-pre-1   Up 2 hours (healthy)         127.0.0.1:3001->80/tcp
 campus_frontend                   Up 3 days                    0.0.0.0:5173->5173/tcp, [::]:5173->5173/tcp
 campus_backend                    Up 3 days (healthy)          0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp
@@ -71,7 +70,7 @@ PASS: backend /api/system/health and /api/actuator/health/readiness return UP/HT
 ## Business Validation Result
 
 ~~~text
-BLOCKED_AUTH: real-pre preflight passed frontend, backend health, admin login, REAL-PRE env guard, database schema, reusable mapping, and cleanup plan; full business E2E was not run because Douyin token readiness reports hasAccessToken=false and hasRefreshToken=false.
+BLOCKED_AUTH: preflight run runtime/qa/out/real-pre-preflight-20260718-130721 passed frontend, backend health, admin login using local config, REAL-PRE env guard, database schema, reusable mapping, and cleanup plan; full business E2E was not run because Douyin token readiness reports hasAccessToken=false and hasRefreshToken=false.
 ~~~
 
 ## Content Maintenance Result
@@ -88,7 +87,7 @@ remote not deployed
 
 ## Retro Summary
 
-Actionable improvements: keep local real-pre DB and QA admin credentials synchronized with copied env files; provide a valid Douyin token before running full business E2E; coordinate the concurrent DashboardService refactor with its reflection-based tests before claiming the full permission regression green.
+Actionable improvements: keep local real-pre DB and QA admin credentials synchronized with copied env files (now synchronized); provide a valid Douyin token before running full business E2E; coordinate the concurrent DashboardService refactor with its reflection-based tests before claiming the full permission regression green.
 
 ## Conclusion
 
