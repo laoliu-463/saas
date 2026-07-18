@@ -2,9 +2,9 @@
 
 ## 1. 结论与事实基线
 
-- 生成时间：2026-07-18 13:16 +08:00；执行环境：本地真实 `real-pre`；远端未部署。
+- 生成时间：2026-07-18 15:16 +08:00；执行环境：本地真实 `real-pre` + GitHub Actions；远端未部署。
 - 执行前完整 SHA：`76a5e2e8ffc8217517d3c2969c9ec11978474344`。
-- 执行后可复核代码 SHA：`c27738d4c1f01b921eddc7e9b48a8d463222fa00`；分支：`codex/ddd-user-role-application`。
+- 执行后可复核代码 SHA：`835668d3c70ff73557977e0c89218bd8a692bdb1`；分支：`codex/ddd-user-role-application`。
 - 远端：GitHub `origin` 为主源，Gitee `gitee` 为镜像；当前相对 `origin/codex/ddd-user-role-application` 为 `ahead 0 / behind 0`，本次代码提交已推送。
 - 总结：`PARTIAL`。P0 缺列、Schema/Flyway/readiness、订单调度 OOM 根因、CI/CD 代码门禁和本地核心验证已落地；真实寄样、多角色、可归因订单、Jenkins 实跑和远端部署仍缺凭证/样本/授权，不能宣称今晚全部完成。
 - 固定报告入口：`harness/reports/current/latest-stability-closeout.md`；DDD 入口：`harness/reports/current/latest-ddd-progress-audit.md`。
@@ -148,3 +148,19 @@ b729fd2dc89059408c4b6d5bcf7db51341c8769c fix(qa): detect actual real-pre databas
 - 复核后运行镜像：backend `sha256:4dc7d4e53e0246d542ebd8307f7cd1326a4d648d21d66f545ceaaeca282d41a5`、frontend `sha256:cca4a88249e0b435a9d9fbc89f8304f54ee0c8c96598c98d301ec8427a19e00e`、PostgreSQL 15.17、Redis 7；backend/frontend 仍使用 `real-pre` 浮动标签，不能作为不可变 CD 发布证据。
 - 新增 Harness 变更单独提交：`528fba25 fix(harness): decode byte responses in health probe`；真实 token 重新授权需要 release owner 提供凭证/业务授权，继续保持 BLOCKED，不启用 test/mock 模式。
 - 本轮收口提交链：`c27738d4c1f01b921eddc7e9b48a8d463222fa00`（Policy）、`d964ca5fba5d8e1ea5d420203c9144d2ac747572`（报告）、`528fba25dba82c58bcb161fb922fe27822bf8b09`（Harness）、`64512c8c95f50bd46261ce1acaaa743ed15b8396`（归档）。
+
+## CI 最终修复与复核（2026-07-18T15:16:00+08:00）
+
+- 用户指出当日存在成功 CI 后，复核确认 run `29630560286`（`db380446e00ecde5c3ed00579c51330369b5fa07`）成功；其后 `c4b5b560` 新增隔离 PostgreSQL/Redis 启动，才使潜伏的新库初始化错误确定性暴露。
+- 第一根因：`migrate-all.sql` 在 `performance_records` 建表前执行 `ALTER TABLE`；第二根因：Compose 只挂载入口 SQL，`psql \i` 无法找到被包含文件。
+- 修复：先建表再幂等补列；完整 DB 目录只读挂载到 `/opt/saas-db-source`，由 `00-set-env.sh` 复制到可写 `/tmp/saas-db`，兼容受控 patch executor；`migrate-all.sql` 在 include 前 `\cd /tmp/saas-db`。
+- 全测继续暴露并修复三项既有门禁债务：Dashboard 契约仍断言已迁移 Legacy 方法、Service 多 1 空行、OrderDataScopePolicy 为判空依赖 Spring；均未改变 API、金额、归因、状态机或权限语义。
+- 提交：`823dc419305e9647006e272aa9da824d3665df16`（新库初始化/诊断）、`2fc6e9b010c16977b20934e1f64d59037822d4b5`（Dashboard 架构门禁）、`835668d3c70ff73557977e0c89218bd8a692bdb1`（Policy 零 Spring 依赖），均已推送。
+- 本地证据：Java 17 compile PASS；迁移/Schema/Mapper/Dashboard 目标测试 21/21 PASS；Policy 门禁 1/1 PASS；PostgreSQL 15 tmpfs 新库初始化与同库重复迁移均以 `ON_ERROR_STOP=1` exit 0；Compose config 与 `sh -n 00-set-env.sh` PASS。
+- GitHub 最终证据：[CI run 29635258067](https://github.com/laoliu-463/saas/actions/runs/29635258067)，`835668d3c70ff73557977e0c89218bd8a692bdb1`，07:09-07:15 UTC，3/3 jobs success。
+- Backend：compile、迁移/Schema 契约、隔离 PostgreSQL/Redis 启动、全量 unit/architecture/integration tests、依赖清理全部 PASS；依赖诊断因无失败按设计 skipped。
+- Frontend：pnpm install、test、typecheck、build 全部 PASS；Repository/CD：clean checkout、whitespace、Compose、迁移/备份/Schema 脚本、Harness、完整 SHA 镜像门禁全部 PASS。
+- 安全：临时数据库无真实卷并已按精确名称删除；未清库、未删卷、未强推、未执行远端部署；并行用户 dirty 文件未暂存或覆盖。
+- 回滚：按逆序 `git revert 835668d3`、`git revert 2fc6e9b0`、`git revert 823dc419` 后重跑同一 CI；迁移均向前兼容且不删数据，无需逆向删列。
+- 当前结论仍为 `PARTIAL`：CI 修复范围为 `PASS`；Jenkins/CD 远端应用性、real-pre 部署和真实多角色样本仍按原报告保持 `PENDING/BLOCKED`。
+- Retro：保留“全新 PostgreSQL + 隔离依赖”门禁，并在启动失败时输出有限容器日志，后续可持续阻止 SQL 顺序、include 缺失和无根因 unhealthy。
