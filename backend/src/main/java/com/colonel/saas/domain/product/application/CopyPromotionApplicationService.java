@@ -1,5 +1,7 @@
 package com.colonel.saas.domain.product.application;
 
+import com.colonel.saas.common.exception.BusinessException;
+import com.colonel.saas.common.result.ResultCode;
 import com.colonel.saas.domain.config.facade.ConfigDomainFacade;
 import com.colonel.saas.domain.product.application.dto.PromotionLinkCopyResult;
 import com.colonel.saas.domain.product.application.port.CopyPromotionSupportPort;
@@ -24,6 +26,9 @@ import java.util.UUID;
 public class CopyPromotionApplicationService {
 
     public static final String FALLBACK_REASON_REAL_PROMOTION_WRITE_DISABLED = "REAL_PROMOTION_WRITE_DISABLED";
+    public static final String FALLBACK_REASON_PROMOTION_LINK_GENERATION_FAILED = "PROMOTION_LINK_GENERATION_FAILED";
+    public static final String FALLBACK_REASON_PROMOTION_LINK_EMPTY = "PROMOTION_LINK_EMPTY";
+    private static final String SAMPLE_COOPERATION_SCENE = "SAMPLE_COOPERATION";
 
     private final CopyPromotionSupportPort copyPromotionSupportPort;
     private final ConfigDomainFacade configDomainFacade;
@@ -93,6 +98,90 @@ public class CopyPromotionApplicationService {
                 attributionOwnerType,
                 realPromotionWriteEnabled,
                 allowRealPromotionWrite);
+    }
+
+    /**
+     * 寄样合作台推广复制入口，保留既有转链参数口径并使用抖音分享格式。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public PromotionLinkCopyResult copyPromotionForSample(
+            String activityId,
+            String productId,
+            UUID userId,
+            UUID deptId,
+            String talentId,
+            String idempotencyKey) {
+        return copyPromotionForSample(
+                activityId,
+                productId,
+                userId,
+                deptId,
+                talentId,
+                idempotencyKey,
+                realPromotionWriteEnabled,
+                allowRealPromotionWrite);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public PromotionLinkCopyResult copyPromotionForSample(
+            String activityId,
+            String productId,
+            UUID userId,
+            UUID deptId,
+            String talentId,
+            String idempotencyKey,
+            boolean realPromotionWriteEnabled,
+            boolean allowRealPromotionWrite) {
+        CopyPromotionSupportPort.Context ctx = copyPromotionSupportPort.prepareCopyPromotionContext(
+                activityId, productId, "复制寄样推广文案");
+        if (!isRealPromotionWriteAllowed(realPromotionWriteEnabled, allowRealPromotionWrite)) {
+            return sampleFallback(
+                    ctx,
+                    FALLBACK_REASON_REAL_PROMOTION_WRITE_DISABLED,
+                    realPromotionWriteEnabled,
+                    allowRealPromotionWrite);
+        }
+
+        try {
+            CopyPromotionSupportPort.GeneratedPromotionLink result =
+                    copyPromotionSupportPort.generatePromotionLinkForCopy(
+                            activityId,
+                            productId,
+                            userId,
+                            deptId,
+                            null,
+                            4,
+                            true,
+                            SAMPLE_COOPERATION_SCENE,
+                            talentId,
+                            idempotencyKey);
+            String promotionLink = CopyTextPolicy.safePromotionLink(
+                    result.shortLink(), result.promoteLink());
+            if (promotionLink == null) {
+                return sampleFallback(
+                        ctx,
+                        FALLBACK_REASON_PROMOTION_LINK_EMPTY,
+                        realPromotionWriteEnabled,
+                        allowRealPromotionWrite);
+            }
+            return new PromotionLinkCopyResult(
+                    CopyTextPolicy.renderDouyinShare(ctx.snapshot(), ctx.state(), promotionLink),
+                    true,
+                    promotionLink,
+                    result.pickSource(),
+                    null,
+                    realPromotionWriteEnabled,
+                    allowRealPromotionWrite);
+        } catch (BusinessException ex) {
+            if (ex.getCode() != ResultCode.EXTERNAL_SERVICE.getCode()) {
+                throw ex;
+            }
+            return sampleFallback(
+                    ctx,
+                    FALLBACK_REASON_PROMOTION_LINK_GENERATION_FAILED,
+                    realPromotionWriteEnabled,
+                    allowRealPromotionWrite);
+        }
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -170,5 +259,20 @@ public class CopyPromotionApplicationService {
 
     private static boolean isRealPromotionWriteAllowed(boolean enabled, boolean allowed) {
         return enabled && allowed;
+    }
+
+    private static PromotionLinkCopyResult sampleFallback(
+            CopyPromotionSupportPort.Context ctx,
+            String reason,
+            boolean realPromotionWriteEnabled,
+            boolean allowRealPromotionWrite) {
+        return new PromotionLinkCopyResult(
+                CopyTextPolicy.renderDouyinShare(ctx.snapshot(), ctx.state(), null),
+                false,
+                null,
+                null,
+                reason,
+                realPromotionWriteEnabled,
+                allowRealPromotionWrite);
     }
 }

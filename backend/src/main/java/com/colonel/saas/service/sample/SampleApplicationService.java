@@ -39,6 +39,7 @@ import com.colonel.saas.domain.product.facade.ProductDomainFacade;
 import com.colonel.saas.domain.product.facade.dto.ProductReadDTO;
 import com.colonel.saas.domain.product.facade.dto.ProductSnapshotReadDTO;
 import com.colonel.saas.domain.sample.policy.SampleActionPermissionPolicy;
+import com.colonel.saas.domain.sample.policy.SampleRemarkPolicy;
 import com.colonel.saas.domain.talent.facade.TalentDomainFacade;
 import com.colonel.saas.domain.talent.facade.dto.TalentReadDTO;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
@@ -106,6 +107,14 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
+ * 寄样管理控制器 (god service - dead controller, 不再 DDD 切片).
+ *
+ * <p><strong>当前状态 (2026-07-14):</strong></p>
+ * <ul>
+ *   <li>3603 行 @RestController, 已标 LEGACY 已弃用 (commit 5b542069)</li>
+ *   <li>实际是 god controller (extends BaseController), 不是 service</li>
+ *   <li>DDD 路径已完整 (Controller 已切 DDD), 本类应删除而非切片</li>
+ * </ul>
  * 寄样管理控制器（LEGACY 已弃用，DDD-SAMPLE 评估中）。
  *
  * <p><b>DDD 切片状态（DDD-SAMPLE Slice 1 收尾）：</b>
@@ -199,6 +208,9 @@ public class SampleApplicationService extends BaseController {
 
     /** 申请来源常量：内部快速寄样（由系统内部流程触发） */
     private static final String APPLY_SOURCE_INTERNAL_QUICK_SAMPLE = "INTERNAL_QUICK_SAMPLE";
+
+    /** 合作备注的兼容读取与双写规则。 */
+    private static final SampleRemarkPolicy SAMPLE_REMARK_POLICY = new SampleRemarkPolicy();
 
     /** 寄样申请单数据访问层，负责寄样申请单的 CRUD 操作及分页查询 */
     private final SampleRequestMapper sampleRequestMapper;
@@ -377,6 +389,16 @@ public class SampleApplicationService extends BaseController {
         sample.setTalentCreditScore(request.getTalentCreditScore() != null ? request.getTalentCreditScore() : talentInfo.getCreditScore());
         sample.setTalentMainCategory(StringUtils.hasText(request.getTalentMainCategory()) ? request.getTalentMainCategory() : talentInfo.getMainCategory());
         sample.setProductId(product.getId());
+        ProductSnapshotReadDTO creationSnapshot = productDomainFacade.findSnapshotById(request.getProductId());
+        if (creationSnapshot == null && !product.getId().equals(request.getProductId())) {
+            creationSnapshot = productDomainFacade.findSnapshotById(product.getId());
+        }
+        sample.setActivityProductId(creationSnapshot != null && StringUtils.hasText(creationSnapshot.productId())
+                ? creationSnapshot.productId()
+                : trimToNull(product.getProductId()));
+        sample.setActivityId(creationSnapshot != null && StringUtils.hasText(creationSnapshot.activityId())
+                ? creationSnapshot.activityId()
+                : (product.getActivityId() == null ? null : String.valueOf(product.getActivityId())));
         sample.setUserId(userId);
         sample.setDeptId(currentDeptId);
         sample.setChannelUserId(userId);
@@ -387,8 +409,8 @@ public class SampleApplicationService extends BaseController {
         sample.setRecipientPhone(trimToNull(request.getRecipientPhone()));
         sample.setRecipientAddress(trimToNull(request.getRecipientAddress()));
         sample.setStatus(SampleStatus.PENDING_AUDIT.getCode());
-        sample.setRemark(request.getRemark());
         sample.setExtraData(buildSampleExtraData(request, eligibility));
+        SAMPLE_REMARK_POLICY.apply(sample, request.getRemark());
         sampleRequestMapper.insert(sample);
         /* 回写收货地址到认领记录，供下次寄样自动带入 */
         writeBackClaimAddress(userId, talent.getId(), sample);
@@ -2932,6 +2954,7 @@ public class SampleApplicationService extends BaseController {
         UUID colonelUserId = resolveColonelUserId(resolvedProduct);
         SampleVO vo = new SampleVO();
         vo.setId(sample.getId());
+        vo.setVersion(sample.getVersion());
         vo.setRequestNo(sample.getRequestNo());
         vo.setTalentId(sample.getTalentId());
         vo.setTalentUid(sample.getTalentUid());
@@ -2940,10 +2963,12 @@ public class SampleApplicationService extends BaseController {
         vo.setTalentMainCategory(sample.getTalentMainCategory());
         vo.setTalentName(StringUtils.hasText(talentName) ? talentName : sample.getTalentNickname());
         vo.setProductId(sample.getProductId());
+        vo.setActivityId(resolveActivityId(sample, snapshot));
         vo.setProductExternalId(resolveProductExternalId(resolvedProduct, snapshot));
         vo.setProductName(StringUtils.hasText(productName)
                 ? productName
                 : (resolvedProduct == null ? null : resolvedProduct.getName()));
+        vo.setProductSpecification(readExtraText(sample.getExtraData(), "specification"));
         vo.setProductCover(resolveProductCover(resolvedProduct, snapshot));
         vo.setProductPriceText(resolveProductPriceText(resolvedProduct, snapshot));
         vo.setShopId(snapshot == null || snapshot.getShopId() == null ? null : String.valueOf(snapshot.getShopId()));
@@ -2969,8 +2994,9 @@ public class SampleApplicationService extends BaseController {
         vo.setSignedAt(sample.getSignedAt());
         vo.setRejectReason(sample.getRejectReason());
         vo.setCloseReason(sample.getCloseReason());
-        vo.setRemark(sample.getRemark());
-        vo.setApplyReason(readExtraText(sample.getExtraData(), "applyReason"));
+        String displayRemark = SAMPLE_REMARK_POLICY.resolve(sample.getExtraData(), sample.getRemark());
+        vo.setRemark(displayRemark);
+        vo.setApplyReason(displayRemark);
         vo.setApplySource(readExtraText(sample.getExtraData(), "applySource"));
         vo.setApplySourceLabel(resolveApplySourceLabel(vo.getApplySource()));
         vo.setCooperationType(readExtraText(sample.getExtraData(), "cooperationType"));
@@ -3165,6 +3191,22 @@ public class SampleApplicationService extends BaseController {
         }
         Object value = extraData.get(key);
         return value == null ? null : String.valueOf(value);
+    }
+
+    private String resolveActivityId(SampleRequest sample, ProductSnapshot snapshot) {
+        String[] candidates = {
+                sample.getActivityId(),
+                snapshot == null ? null : snapshot.getActivityId(),
+                readExtraText(sample.getExtraData(), "activityId"),
+                readExtraText(sample.getExtraData(), "activity_id")
+        };
+        for (String candidate : candidates) {
+            String normalized = trimToNull(candidate);
+            if (normalized != null) {
+                return normalized;
+            }
+        }
+        return null;
     }
 
     /**

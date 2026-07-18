@@ -36,6 +36,14 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
+ * 达人查询服务 (god service - 边缘服务, 不再 DDD 切片).
+ *
+ * <p><strong>当前状态 (2026-07-14):</strong></p>
+ * <ul>
+ *   <li>1435 行 / 4 public method, method 体大 (单 method 可达数百行)</li>
+ *   <li>Batch3 DDD 化已部分完成 (TalentQueryApplicationService + DomainFacade 已就位)</li>
+ *   <li>不切理由: 4 method 体大, 切片需逐 method 拆, 工作量大</li>
+ * </ul>
  * 达人域 — 达人查询服务。
  * <p>负责达人列表分页查询、详情展示和操作权限校验，是达人域面向上层的核心只读入口。</p>
  *

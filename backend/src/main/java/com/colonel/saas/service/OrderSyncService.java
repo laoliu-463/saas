@@ -42,6 +42,15 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
+ * 订单同步服务 (god service - Application 实现层, 不再 DDD 切片).
+ *
+ * <p><strong>当前状态 (2026-07-14):</strong></p>
+ * <ul>
+ *   <li>1470 行 / 12 public method / 6 个同步模式</li>
+ *   <li>已标 "Application 实现层" (commit e930d81e)</li>
+ *   <li>已 owner-safe 修复 (commit 387b3e10 P9.5 阶段 2)</li>
+ *   <li>不切理由: Application 直接调度 + 状态机, 切委派壳破坏 Application 调度逻辑</li>
+ * </ul>
  * 订单同步服务：从抖音结算网关拉取最新订单并持久化。
  *
  * <p>支持按时间窗口自动同步、手动触发、按订单号精确同步三种模式；

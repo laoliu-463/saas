@@ -1,6 +1,8 @@
 package com.colonel.saas.domain.talent.facade;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.colonel.saas.common.exception.BusinessException;
+import com.colonel.saas.domain.talent.facade.dto.TalentClaimAddressDTO;
 import com.colonel.saas.domain.talent.facade.dto.TalentReadDTO;
 import com.colonel.saas.entity.Talent;
 import com.colonel.saas.entity.TalentClaim;
@@ -12,12 +14,17 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -27,7 +34,6 @@ class LegacyTalentDomainFacadeTest {
     private TalentMapper talentMapper;
     @Mock
     private TalentClaimMapper talentClaimMapper;
-
     private TalentDomainFacade facade;
 
     @BeforeEach
@@ -162,5 +168,135 @@ class LegacyTalentDomainFacadeTest {
         when(talentClaimMapper.findActiveByTalentId(talentId)).thenReturn(List.of(activeClaim));
 
         assertThat(facade.hasActiveClaimOwnerConflict(talentId, ownerId)).isFalse();
+    }
+
+    @Test
+    void findActiveClaimAddress_shouldUseCooperationOwnerUserId() {
+        UUID talentId = UUID.randomUUID();
+        UUID ownerUserId = UUID.randomUUID();
+        TalentClaim claim = new TalentClaim();
+        claim.setTalentId(talentId);
+        claim.setUserId(ownerUserId);
+        claim.setRecipientName("收件人");
+        claim.setRecipientPhone("13800000000");
+        claim.setRecipientAddress("测试地址");
+        when(talentClaimMapper.findActiveByTalentAndUser(talentId, ownerUserId)).thenReturn(claim);
+
+        TalentClaimAddressDTO address = facade.findActiveClaimAddress(talentId, ownerUserId);
+
+        assertThat(address).isEqualTo(new TalentClaimAddressDTO(
+                talentId, ownerUserId, "收件人", "13800000000", "测试地址"));
+        verify(talentClaimMapper).findActiveByTalentAndUser(talentId, ownerUserId);
+    }
+
+    @Test
+    void updateActiveClaimAddress_zeroUpdatedRowsShouldThrowConflict() {
+        UUID talentId = UUID.randomUUID();
+        UUID ownerUserId = UUID.randomUUID();
+        TalentClaim claim = new TalentClaim();
+        claim.setTalentId(talentId);
+        claim.setUserId(ownerUserId);
+        when(talentClaimMapper.findActiveByTalentAndUser(talentId, ownerUserId)).thenReturn(claim);
+        when(talentClaimMapper.updateById(claim)).thenReturn(0);
+
+        assertThatThrownBy(() -> facade.updateActiveClaimAddress(
+                talentId, ownerUserId, "新收件人", "13900000000", "新地址"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("认领地址");
+    }
+
+    @Test
+    void findTalentById_shouldParseSupportedWindowSalesAliases() {
+        Map<String, Number> supportedValues = Map.of(
+                "windowSales30d", 11L,
+                "window_sales_30d", 12,
+                "showcaseSales30d", 13.0d);
+
+        supportedValues.forEach((field, value) -> {
+            UUID talentId = UUID.randomUUID();
+            Talent talent = new Talent();
+            talent.setId(talentId);
+            talent.setRawPayload(Map.of(field, value));
+            when(talentMapper.selectById(talentId)).thenReturn(talent);
+
+            assertThat(facade.findTalentById(talentId).windowSales30d())
+                    .isEqualTo(value.longValue());
+        });
+    }
+
+    @Test
+    void findTalentById_shouldNotUseAmountFieldsOrNumericStringsAsWindowSales() {
+        UUID talentId = UUID.randomUUID();
+        Talent talent = new Talent();
+        talent.setId(talentId);
+        talent.setRawPayload(Map.of(
+                "sales30d", 9900L,
+                "sales_30d", 8800L,
+                "windowSales30d", "77"));
+        when(talentMapper.selectById(talentId)).thenReturn(talent);
+
+        assertThat(facade.findTalentById(talentId).windowSales30d()).isNull();
+    }
+
+    @Test
+    void findTalentById_supportedWindowSalesShouldPrecedeAliasesAndAmountFields() {
+        UUID talentId = UUID.randomUUID();
+        Talent talent = new Talent();
+        talent.setId(talentId);
+        talent.setRawPayload(Map.of(
+                "windowSales30d", 41L,
+                "window_sales_30d", 42L,
+                "showcaseSales30d", 43L,
+                "sales30d", 9900L,
+                "sales_30d", 8800L));
+        when(talentMapper.selectById(talentId)).thenReturn(talent);
+
+        assertThat(facade.findTalentById(talentId).windowSales30d()).isEqualTo(41L);
+    }
+
+    @Test
+    void findTalentById_shouldRejectInexactNonFiniteNegativeOrOutOfRangeWindowSales() {
+        List<Number> invalidValues = List.of(
+                13.5d,
+                13.5f,
+                new BigDecimal("13.5"),
+                BigInteger.valueOf(Long.MAX_VALUE).add(BigInteger.ONE),
+                new BigDecimal("9223372036854775808"),
+                (double) Long.MAX_VALUE,
+                Double.NaN,
+                Double.POSITIVE_INFINITY,
+                Double.NEGATIVE_INFINITY,
+                Float.NaN,
+                Float.POSITIVE_INFINITY,
+                -1L,
+                new BigInteger("-1"),
+                new BigDecimal("-0.1"));
+
+        invalidValues.forEach(value -> assertWindowSales(value, null));
+    }
+
+    @Test
+    void findTalentById_shouldAcceptExactNonNegativeWindowSalesWithinLongRange() {
+        assertWindowSales(13.0d, 13L);
+        assertWindowSales(13.0f, 13L);
+        assertWindowSales(BigInteger.valueOf(13L), 13L);
+        assertWindowSales(new BigDecimal("13.000"), 13L);
+        assertWindowSales(BigInteger.valueOf(Long.MAX_VALUE), Long.MAX_VALUE);
+        assertWindowSales(new BigDecimal(Long.toString(Long.MAX_VALUE)), Long.MAX_VALUE);
+    }
+
+    private void assertWindowSales(Number rawValue, Long expected) {
+        UUID talentId = UUID.randomUUID();
+        Talent talent = new Talent();
+        talent.setId(talentId);
+        talent.setRawPayload(Map.of(
+                "windowSales30d", rawValue,
+                "sales30d", 9900L,
+                "sales_30d", 8800L));
+        when(talentMapper.selectById(talentId)).thenReturn(talent);
+
+        assertThat(facade.findTalentById(talentId).windowSales30d())
+                .as("window sales raw value %s", rawValue)
+                .isEqualTo(expected);
     }
 }

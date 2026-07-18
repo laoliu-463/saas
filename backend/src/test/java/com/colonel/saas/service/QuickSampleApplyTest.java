@@ -4,21 +4,30 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.colonel.saas.common.exception.ForbiddenException;
 import com.colonel.saas.constant.ProductDisplayStatus;
 import com.colonel.saas.constant.RoleCodes;
+import com.colonel.saas.domain.config.facade.ConfigDomainFacade;
 import com.colonel.saas.domain.product.port.ProductSampleApplicationPort;
 import com.colonel.saas.domain.product.port.QuickSampleApplyCommand;
 import com.colonel.saas.domain.product.port.QuickSampleApplyPortResult;
+import com.colonel.saas.domain.sample.api.ApplySampleFromProductCommand;
+import com.colonel.saas.domain.sample.application.SampleApplicationPortImpl;
+import com.colonel.saas.domain.sample.event.SampleDomainEventPublisher;
+import com.colonel.saas.domain.talent.facade.TalentDomainFacade;
+import com.colonel.saas.domain.talent.facade.dto.TalentReadDTO;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.dto.product.QuickSampleApplyRequest;
 import com.colonel.saas.gateway.douyin.DouyinQuickSampleGateway;
 import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.domain.product.facade.ProductDomainFacade;
+import com.colonel.saas.entity.CrawlerTalentInfo;
 import com.colonel.saas.entity.Product;
 import com.colonel.saas.entity.ProductOperationState;
 import com.colonel.saas.entity.ProductSnapshot;
+import com.colonel.saas.entity.SampleRequest;
 import com.colonel.saas.mapper.ProductMapper;
 import com.colonel.saas.mapper.ProductOperationStateMapper;
 import com.colonel.saas.mapper.ProductSnapshotMapper;
+import com.colonel.saas.mapper.SampleRequestMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -27,6 +36,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -281,12 +291,108 @@ class QuickSampleApplyTest {
         verify(productSampleApplicationPort).applyQuickSample(captor.capture());
         QuickSampleApplyCommand cmd = captor.getValue();
         assertThat(cmd.relationId()).isEqualTo(relationId);
+        assertThat(cmd.productId()).isEqualTo("9001");
+        assertThat(cmd.activityId()).isEqualTo("10001");
         assertThat(cmd.talentIds()).containsExactly("douyin_talent_001");
         assertThat(cmd.quantity()).isEqualTo(2);
         assertThat(cmd.spec()).isEqualTo("红色/L");
         assertThat(cmd.receiverAddress()).isEqualTo("上海");
         assertThat(cmd.requestSource()).isEqualTo("quick_product_library");
         assertThat(cmd.userId()).isEqualTo(userId);
+    }
+
+    @Test
+    void sampleApplicationPort_shouldPersistActivityIdentifiersFromQuickSampleCommand() {
+        CrawlerTalentInfoService crawlerTalentInfoService =
+                org.mockito.Mockito.mock(CrawlerTalentInfoService.class);
+        TalentDomainFacade talentDomainFacade = org.mockito.Mockito.mock(TalentDomainFacade.class);
+        SampleRequestMapper sampleRequestMapper = org.mockito.Mockito.mock(SampleRequestMapper.class);
+        ConfigDomainFacade configDomainFacade = org.mockito.Mockito.mock(ConfigDomainFacade.class);
+        SampleEligibilityService sampleEligibilityService =
+                org.mockito.Mockito.mock(SampleEligibilityService.class);
+        SampleStatusLogService sampleStatusLogService =
+                org.mockito.Mockito.mock(SampleStatusLogService.class);
+        SampleDomainEventPublisher sampleDomainEventPublisher =
+                org.mockito.Mockito.mock(SampleDomainEventPublisher.class);
+        SampleApplicationPortImpl samplePort = new SampleApplicationPortImpl(
+                crawlerTalentInfoService,
+                talentDomainFacade,
+                sampleRequestMapper,
+                configDomainFacade,
+                sampleEligibilityService,
+                sampleStatusLogService,
+                douyinQuickSampleGateway,
+                sampleDomainEventPublisher,
+                new CurrentUserPermissionChecker(new CurrentUserPermissionPolicy()));
+
+        UUID relationId = UUID.randomUUID();
+        UUID channelId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID channelUserId = UUID.randomUUID();
+        UUID talentId = UUID.randomUUID();
+        CrawlerTalentInfo talentInfo = new CrawlerTalentInfo();
+        talentInfo.setTalentId("douyin_talent_001");
+        talentInfo.setNickname("测试达人");
+        talentInfo.setFansCount(10_000L);
+        when(crawlerTalentInfoService.findByTalentId("douyin_talent_001")).thenReturn(talentInfo);
+        when(talentDomainFacade.findOrCreateSampleTalent(
+                "douyin_talent_001", "测试达人", 10_000L))
+                .thenReturn(new TalentReadDTO(
+                        talentId,
+                        "douyin_talent_001",
+                        "douyin-no-001",
+                        "测试达人",
+                        10_000L,
+                        1,
+                        null,
+                        null,
+                        null,
+                        null));
+        when(talentDomainFacade.hasActiveClaim(talentId, channelUserId)).thenReturn(true);
+        when(configDomainFacade.isSampleLimitEnabled()).thenReturn(false);
+        when(sampleEligibilityService.evaluate(any(), any())).thenReturn(
+                new SampleEligibilityService.EligibilityResult(
+                        true,
+                        List.of(),
+                        new SampleEligibilityService.SampleDefaultStandard(0L, "LV0", Map.of()),
+                        new SampleEligibilityService.TalentSnapshot(0L, "LV1")));
+        when(sampleRequestMapper.insert(any(SampleRequest.class))).thenReturn(1);
+
+        var result = samplePort.applyFromProduct(new ApplySampleFromProductCommand(
+                relationId,
+                " 9001 ",
+                channelId,
+                List.of("douyin_talent_001"),
+                "红色/L",
+                2,
+                " 申请原因 ",
+                null,
+                null,
+                null,
+                "product_quick_sample",
+                userId,
+                channelUserId,
+                List.of(RoleCodes.CHANNEL_STAFF),
+                "测试商品",
+                19900L,
+                " 10001 ",
+                null,
+                false,
+                false,
+                null));
+
+        ArgumentCaptor<SampleRequest> captor = ArgumentCaptor.forClass(SampleRequest.class);
+        verify(sampleRequestMapper).insert(captor.capture());
+        SampleRequest saved = captor.getValue();
+        assertThat(result.isSuccess()).isTrue();
+        assertThat(saved.getProductId()).isEqualTo(relationId);
+        assertThat(saved.getActivityProductId()).isEqualTo("9001");
+        assertThat(saved.getActivityId()).isEqualTo("10001");
+        assertThat(saved.getRemark()).isEqualTo("申请原因");
+        assertThat(saved.getExtraData())
+                .containsEntry("applyReason", "申请原因")
+                .containsEntry("specification", "红色/L")
+                .containsEntry("applyChannel", "QUICK_PRODUCT_LIBRARY");
     }
 
     // ==================== 多达人快速寄样 ====================

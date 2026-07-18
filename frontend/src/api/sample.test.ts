@@ -5,11 +5,17 @@ import {
   batchApproveSamples,
   batchRejectSamples,
   batchShipSamples,
+  getSampleEditContext,
+  getSampleOrderCopy,
+  getSamplePrivateNote,
+  getSamplePromotionCopy,
   downloadLogisticsImportTemplate,
   getSampleLogistics,
   getSampleFilterOptions,
   getSampleStatusTransitions,
   importSampleLogistics,
+  saveSamplePrivateNote,
+  updateSampleCooperationDetails,
   syncAllSampleLogistics,
   syncSampleLogistics
 } from './sample'
@@ -17,7 +23,8 @@ import {
 vi.mock('../utils/request', () => ({
   default: {
     get: vi.fn(),
-    post: vi.fn()
+    post: vi.fn(),
+    put: vi.fn()
   }
 }))
 
@@ -81,5 +88,33 @@ describe('sample API', () => {
     expect(url).toBe('/samples/logistics/import?allowOverwrite=false')
     expect(body).toBeInstanceOf(FormData)
     expect(config).toEqual({ headers: { 'Content-Type': 'multipart/form-data' } })
+  })
+
+  it('calls cooperation edit, copy and private note endpoints', () => {
+    getSampleEditContext('sample-1')
+    updateSampleCooperationDetails('sample-1', {
+      version: 3,
+      remark: '请尽快寄出',
+      recipientName: '薄荷',
+      recipientPhone: '15093177715',
+      recipientAddress: '河南省郑州市巩义市回郭镇东庙村'
+    })
+    getSamplePromotionCopy('sample-1')
+    getSampleOrderCopy('sample-1')
+    getSamplePrivateNote('sample-1')
+    saveSamplePrivateNote('sample-1', { content: '仅自己可见' })
+
+    expect(request.get).toHaveBeenCalledWith('/samples/sample-1/edit-context')
+    expect(request.put).toHaveBeenCalledWith('/samples/sample-1/cooperation-details', {
+      version: 3,
+      remark: '请尽快寄出',
+      recipientName: '薄荷',
+      recipientPhone: '15093177715',
+      recipientAddress: '河南省郑州市巩义市回郭镇东庙村'
+    })
+    expect(request.post).toHaveBeenCalledWith('/samples/sample-1/promotion-copy')
+    expect(request.get).toHaveBeenCalledWith('/samples/sample-1/order-copy')
+    expect(request.get).toHaveBeenCalledWith('/samples/sample-1/private-note')
+    expect(request.put).toHaveBeenCalledWith('/samples/sample-1/private-note', { content: '仅自己可见' })
   })
 })

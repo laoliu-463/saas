@@ -144,6 +144,13 @@
     </section>
 
     <SampleDetail v-model:show="showDetail" :sample-id="currentSampleId" @refresh="fetchData" />
+    <SampleEditModal
+      v-model:show="showEdit"
+      :sample-id="currentActionSampleId"
+      @saved="fetchData"
+    />
+    <PrivateNoteModal v-model:show="showPrivateNote" :sample-id="currentActionSampleId" />
+    <ManualCopyModal v-model:show="showManualCopy" :content="manualCopyContent" />
     <SampleLogisticsImportModal v-model:show="showLogisticsImport" @success="handleLogisticsImportSuccess" />
     <SampleBatchRejectModal
       v-model:show="showBatchReject"
@@ -156,23 +163,27 @@
 
 <script setup lang="ts">
 import { computed, h, onMounted, onUnmounted, reactive, ref } from 'vue'
-import { NAvatar, NButton, NTag, useMessage } from 'naive-ui'
+import { NAvatar, NButton, NInput, NTag, useDialog, useMessage } from 'naive-ui'
 import {
+  actionSample,
   batchApproveSamples,
   batchRejectSamples,
   batchShipSamples,
   exportSamples,
   getSampleFilterOptions,
-  getSamplePage
+  getSampleOrderCopy,
+  getSamplePage,
+  getSamplePromotionCopy
 } from '../../api/sample'
 import PageHeader from '../../components/PageHeader.vue'
-import type { SampleItem } from '../../types'
+import type { CooperationActionKey, SampleCopyText, SampleItem } from '../../types'
 import { ROLE_CODES, hasOnlyCanonicalRole } from '../../constants/rbac'
 import { useAuthStore } from '../../stores/auth'
 import { createPaginationState, normalizePageSize } from '../../utils/pagination'
 import { useDelayedFlag } from '../../utils/delayedFlag'
 import { parseBatchShipRows, type BatchShipItem, type BatchShipRow } from '../../utils/shippingBatch'
 import { notifyApiFailure, notifyClientPermission } from '../../utils/requestError'
+import { tryCopyText } from '../../utils/clipboard'
 import {
   canApplySamplesByRole,
   canExportSamplesByRole,
@@ -184,13 +195,18 @@ import {
   type CooperationWorkbenchFilters
 } from './cooperation-workbench-filters'
 import { loadSampleChannelOptions, loadSampleRecruiterOptions, mapFilterOptionItems } from './sample-user-filter-options'
+import CooperationActionColumn from './CooperationActionColumn.vue'
+import ManualCopyModal from './ManualCopyModal.vue'
+import PrivateNoteModal from './PrivateNoteModal.vue'
 import SampleBatchRejectModal from './SampleBatchRejectModal.vue'
 import SampleDetail from './SampleDetail.vue'
+import SampleEditModal from './SampleEditModal.vue'
 import SampleLogisticsImportModal from './SampleLogisticsImportModal.vue'
 
 const props = defineProps<{ shippingOnly?: boolean }>()
 
 const message = useMessage()
+const dialog = useDialog()
 const authStore = useAuthStore()
 const loading = ref(false)
 const tableLoading = useDelayedFlag(loading, 200)
@@ -252,9 +268,14 @@ const channelOptionsLoading = ref(false)
 const recruiterOptionsLoading = ref(false)
 
 const showDetail = ref(false)
+const showEdit = ref(false)
+const showPrivateNote = ref(false)
+const showManualCopy = ref(false)
 const showLogisticsImport = ref(false)
 const showBatchReject = ref(false)
 const currentSampleId = ref('')
+const currentActionSampleId = ref('')
+const manualCopyContent = ref('')
 const batchSubmitting = ref(false)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const batchItems = ref<BatchShipItem[]>([])
@@ -398,6 +419,85 @@ const handleCheckedRowKeys = (keys: Array<string | number>) => {
 const openDetail = (row: SampleItem) => {
   currentSampleId.value = row.id
   showDetail.value = true
+}
+
+const runStatusAction = async (row: SampleItem, payload: { action: 'APPROVED' | 'REJECTED'; reason?: string }) => {
+  try {
+    await actionSample(row.id, payload)
+    message.success(payload.action === 'APPROVED' ? '合作单已通过' : '合作单已拒绝')
+    await fetchData()
+  } catch (error) {
+    notifyApiFailure(error, message, {
+      permissionFallback: '当前角色无权审核合作单',
+      fallbackMessage: '操作失败'
+    })
+    throw error
+  }
+}
+
+const confirmApprove = (row: SampleItem) => {
+  dialog.warning({
+    title: '通过合作单',
+    content: '确认通过该合作单吗？',
+    positiveText: '确认通过',
+    negativeText: '取消',
+    onPositiveClick: () => runStatusAction(row, { action: 'APPROVED' })
+  })
+}
+
+const confirmReject = (row: SampleItem) => {
+  let reason = ''
+  dialog.warning({
+    title: '拒绝合作单',
+    content: () => h(NInput, {
+      type: 'textarea',
+      placeholder: '请输入拒绝原因',
+      maxlength: 200,
+      showCount: true,
+      onUpdateValue: (value: string) => { reason = value }
+    }),
+    positiveText: '确认拒绝',
+    negativeText: '取消',
+    positiveButtonProps: { type: 'error' },
+    onPositiveClick: () => {
+      if (!reason.trim()) {
+        message.warning('请输入拒绝原因')
+        return false
+      }
+      return runStatusAction(row, { action: 'REJECTED', reason: reason.trim() })
+    }
+  })
+}
+
+const copySampleText = async (row: SampleItem, action: 'COPY_LINK' | 'COPY_ORDER') => {
+  try {
+    const response: any = action === 'COPY_LINK'
+      ? await getSamplePromotionCopy(row.id)
+      : await getSampleOrderCopy(row.id)
+    const result = (response?.data || response) as SampleCopyText
+    if (!result?.text) {
+      message.warning('服务端未返回可复制内容')
+      return
+    }
+    if (await tryCopyText(result.text)) {
+      message.success(action === 'COPY_LINK' ? '推广信息已复制' : '订单信息已复制')
+      return
+    }
+    manualCopyContent.value = result.text
+    showManualCopy.value = true
+  } catch (error) {
+    notifyApiFailure(error, message, { fallbackMessage: '生成复制内容失败' })
+  }
+}
+
+const handleCooperationAction = (action: CooperationActionKey, row: SampleItem) => {
+  if (action === 'APPROVE') return confirmApprove(row)
+  if (action === 'REJECT') return confirmReject(row)
+  if (action === 'PROGRESS') return openDetail(row)
+  if (action === 'COPY_LINK' || action === 'COPY_ORDER') return copySampleText(row, action)
+  currentActionSampleId.value = row.id
+  if (action === 'EDIT') showEdit.value = true
+  if (action === 'NOTE') showPrivateNote.value = true
 }
 const handlePageChange = (page: number) => {
   pagination.page = page
@@ -645,10 +745,16 @@ const columns = computed(() => [
   {
     title: '操作',
     key: 'actions',
-    width: 120,
+    width: props.shippingOnly ? 120 : 148,
     fixed: 'right' as const,
     render(row: SampleItem) {
-      return h(NButton, { size: 'small', type: 'info', onClick: () => openDetail(row) }, { default: () => props.shippingOnly ? '查看处理' : '查看进度' })
+      if (props.shippingOnly) {
+        return h(NButton, { size: 'small', type: 'info', onClick: () => openDetail(row) }, { default: () => '查看处理' })
+      }
+      return h(CooperationActionColumn, {
+        availability: row.actionAvailability,
+        onSelect: (action: CooperationActionKey) => handleCooperationAction(action, row)
+      })
     }
   }
 ])

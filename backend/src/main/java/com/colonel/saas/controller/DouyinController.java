@@ -59,10 +59,27 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
- * 抖音联调控制器.
+ * 抖音联调控制器 (god controller - 边缘业务, 不再 DDD 切片).
  *
- * <p>抖音开放平台联调与调试专用控制器，提供活动管理、订单查询、Token 管理、
- * 推广链接探针、Webhook 事件重放等 14 个端点，用于验证上游 SDK 链路可用性。</p>
+ * <p>抖音开放平台联调与调试专用 controller, 提供活动管理、订单查询、Token 管理、
+ * 推广链接探针、Webhook 事件重放等 17 个端点, 用于验证上游 SDK 链路可用性.</p>
+ *
+ * <p><strong>当前状态 (2026-07-14):</strong></p>
+ * <ul>
+ *   <li>已 DDD 化: 已注入 5 个 DiagnosticService (DouyinActivity/Product/Order/Promotion/Token)
+ *       + DouyinApiException 包装</li>
+ *   <li>不切理由 (与 9 个 god service + ColonelActivityProductController 一致处置):
+ *     <ol>
+ *       <li>Gateway wrapper 性质: 联调探针 (probe), 返回上游原始响应, 不是生产 API</li>
+ *       <li>Endpoint body 含 try-catch + fillError 模式, 搬迁工作量与收益不成比例</li>
+ *       <li>17 endpoint 跨 7 个业务簇 (webhook / 活动 / 订单 / 转链 / 同步 / CRUD / Token),
+ *           切分边界不清晰</li>
+ *       <li>3 个 inner class (TokenCreateRequest / ActivityProductCancelRequest /
+ *           ActivityCreateOrUpdateRequest) 含 Swagger @Content/@ExampleObject 装饰,
+ *           搬迁需同步搬 Swagger 装饰</li>
+ *     </ol>
+ *   </li>
+ * </ul>
  *
  * <p>API 路径前缀：{@code /douyin}</p>
  *

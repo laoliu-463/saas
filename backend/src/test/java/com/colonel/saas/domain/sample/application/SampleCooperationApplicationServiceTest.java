@@ -1,0 +1,1073 @@
+package com.colonel.saas.domain.sample.application;
+
+import com.colonel.saas.common.enums.DataScope;
+import com.colonel.saas.common.enums.SampleStatus;
+import com.colonel.saas.common.exception.BusinessException;
+import com.colonel.saas.common.exception.ForbiddenException;
+import com.colonel.saas.common.result.PageResult;
+import com.colonel.saas.config.DddRefactorProperties;
+import com.colonel.saas.constant.RoleCodes;
+import com.colonel.saas.domain.product.facade.ProductPromotionFacade;
+import com.colonel.saas.domain.product.facade.dto.ProductPromotionCopyDTO;
+import com.colonel.saas.domain.sample.application.port.SampleDetailQueryPort;
+import com.colonel.saas.domain.sample.facade.SampleDomainFacade;
+import com.colonel.saas.domain.sample.policy.SampleCooperationActionPolicy;
+import com.colonel.saas.domain.sample.policy.SampleOrderCopyPolicy;
+import com.colonel.saas.domain.sample.policy.SampleRemarkPolicy;
+import com.colonel.saas.domain.talent.facade.TalentDomainFacade;
+import com.colonel.saas.domain.talent.facade.dto.TalentClaimAddressDTO;
+import com.colonel.saas.domain.talent.facade.dto.TalentReadDTO;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
+import com.colonel.saas.dto.sample.SampleCooperationUpdateRequest;
+import com.colonel.saas.dto.sample.SamplePrivateNoteRequest;
+import com.colonel.saas.entity.SamplePrivateNote;
+import com.colonel.saas.entity.SampleRequest;
+import com.colonel.saas.mapper.SamplePrivateNoteMapper;
+import com.colonel.saas.mapper.SampleRequestMapper;
+import com.colonel.saas.vo.sample.SampleEditContextVO;
+import com.colonel.saas.vo.sample.SampleCopyTextVO;
+import com.colonel.saas.vo.sample.SamplePrivateNoteVO;
+import com.colonel.saas.vo.sample.SampleVO;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InOrder;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.aop.framework.ProxyFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.AnnotationTransactionAttributeSource;
+import org.springframework.transaction.interceptor.TransactionInterceptor;
+import org.springframework.transaction.support.AbstractPlatformTransactionManager;
+import org.springframework.transaction.support.DefaultTransactionStatus;
+
+import java.lang.reflect.Method;
+import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+
+@ExtendWith(MockitoExtension.class)
+class SampleCooperationApplicationServiceTest {
+
+    @Mock
+    private SampleQueryApplicationService sampleQueryApplicationService;
+    @Mock
+    private SampleRequestMapper sampleRequestMapper;
+    @Mock
+    private SamplePrivateNoteMapper samplePrivateNoteMapper;
+    @Mock
+    private TalentDomainFacade talentDomainFacade;
+    @Mock
+    private ProductPromotionFacade productPromotionFacade;
+
+    private SampleCooperationApplicationService service;
+
+    @BeforeEach
+    void setUp() {
+        CurrentUserPermissionChecker checker =
+                new CurrentUserPermissionChecker(new CurrentUserPermissionPolicy());
+        service = new SampleCooperationApplicationService(
+                sampleQueryApplicationService,
+                sampleRequestMapper,
+                samplePrivateNoteMapper,
+                talentDomainFacade,
+                new SampleCooperationActionPolicy(checker),
+                new SampleRemarkPolicy());
+    }
+
+    @Test
+    void copyPromotion_shouldCheckVisibilityAndForwardRealSampleFactsAndCallerContext() {
+        UUID sampleId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+        Object roles = List.of(RoleCodes.CHANNEL_STAFF);
+        SampleVO visible = new SampleVO();
+        visible.setId(sampleId);
+        visible.setActivityId("ACT-1");
+        visible.setProductExternalId("3820194249627009436");
+        visible.setTalentId(UUID.randomUUID());
+        visible.setTalentUid("douyin-talent-1");
+        when(sampleQueryApplicationService.getSampleById(
+                sampleId, userId, deptId, DataScope.DEPT, roles))
+                .thenReturn(visible);
+        when(productPromotionFacade.copyForSample(
+                "ACT-1", "3820194249627009436", userId, deptId,
+                "douyin-talent-1", "request-idem-1"))
+                .thenReturn(new ProductPromotionCopyDTO(
+                        "分享正文", true, "https://short.example/p1", null));
+        SampleCooperationApplicationService promotionService = serviceWithPromotionFacade();
+
+        SampleCopyTextVO result = promotionService.copyPromotion(
+                sampleId, userId, deptId, DataScope.DEPT, roles, "request-idem-1");
+
+        assertThat(result).isEqualTo(new SampleCopyTextVO(
+                "分享正文", true, "https://short.example/p1", null));
+        InOrder order = inOrder(sampleQueryApplicationService, productPromotionFacade);
+        order.verify(sampleQueryApplicationService).getSampleById(
+                sampleId, userId, deptId, DataScope.DEPT, roles);
+        order.verify(productPromotionFacade).copyForSample(
+                "ACT-1", "3820194249627009436", userId, deptId,
+                "douyin-talent-1", "request-idem-1");
+    }
+
+    @Test
+    void copyPromotion_shouldGenerateDifferentRequestKeysWhenHeaderIsMissing() {
+        UUID sampleId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        SampleVO visible = new SampleVO();
+        visible.setId(sampleId);
+        visible.setActivityId("ACT-1");
+        visible.setProductExternalId("P-1");
+        visible.setTalentUid("talent-1");
+        when(sampleQueryApplicationService.getSampleById(
+                sampleId, userId, null, DataScope.PERSONAL, List.of(RoleCodes.CHANNEL_STAFF)))
+                .thenReturn(visible);
+        when(productPromotionFacade.copyForSample(
+                any(), any(), any(), any(), any(), any()))
+                .thenReturn(new ProductPromotionCopyDTO("正文", false, null, "DISABLED"));
+        SampleCooperationApplicationService promotionService = serviceWithPromotionFacade();
+
+        promotionService.copyPromotion(
+                sampleId, userId, null, DataScope.PERSONAL,
+                List.of(RoleCodes.CHANNEL_STAFF), null);
+        promotionService.copyPromotion(
+                sampleId, userId, null, DataScope.PERSONAL,
+                List.of(RoleCodes.CHANNEL_STAFF), "  ");
+
+        org.mockito.ArgumentCaptor<String> keyCaptor =
+                org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(productPromotionFacade, times(2)).copyForSample(
+                eq("ACT-1"), eq("P-1"), eq(userId), eq(null), eq("talent-1"), keyCaptor.capture());
+        assertThat(keyCaptor.getAllValues())
+                .allMatch(key -> key != null && !key.isBlank())
+                .doesNotHaveDuplicates();
+    }
+
+    @Test
+    void copyPromotion_shouldPreserveVisibilityFailureBeforeCallingProductFacade() {
+        UUID sampleId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        when(sampleQueryApplicationService.getSampleById(
+                sampleId, userId, null, DataScope.PERSONAL, List.of(RoleCodes.CHANNEL_STAFF)))
+                .thenThrow(BusinessException.forbidden("无权查看该寄样单"));
+        SampleCooperationApplicationService promotionService = serviceWithPromotionFacade();
+
+        assertThatThrownBy(() -> promotionService.copyPromotion(
+                sampleId, userId, null, DataScope.PERSONAL,
+                List.of(RoleCodes.CHANNEL_STAFF), "request-idem-1"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("无权查看");
+
+        verify(productPromotionFacade, never()).copyForSample(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void copyPromotion_shouldFailFastWhenLegacyConstructorHasNoProductFacade() {
+        UUID sampleId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        SampleVO visible = new SampleVO();
+        visible.setId(sampleId);
+        visible.setActivityId("ACT-1");
+        visible.setProductExternalId("P-1");
+        visible.setTalentUid("talent-1");
+        when(sampleQueryApplicationService.getSampleById(
+                sampleId, userId, null, DataScope.PERSONAL, List.of(RoleCodes.CHANNEL_STAFF)))
+                .thenReturn(visible);
+
+        assertThatThrownBy(() -> service.copyPromotion(
+                sampleId, userId, null, DataScope.PERSONAL,
+                List.of(RoleCodes.CHANNEL_STAFF), "request-idem-1"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("推广复制能力不可用");
+    }
+
+    @Test
+    void copyOrder_shouldUseVisibleProductFactsTalentWindowSalesAndOwnerClaimAddress() {
+        UUID sampleId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        UUID viewerId = UUID.randomUUID();
+        UUID talentId = UUID.randomUUID();
+        SampleRequest sample = sample(sampleId, ownerId, talentId, SampleStatus.PENDING_AUDIT, 3);
+        sample.setExpectedSampleNum(2);
+        sample.setExtraData(new LinkedHashMap<>(Map.of(
+                "applyReason", "  主播试用  ",
+                "specification", "  50ml  ")));
+        SampleVO visible = visibleSample(sample);
+        visible.setQuantity(1);
+        visible.setProductExternalId("3820194249627009436");
+        visible.setProductName("轻奢防晒霜");
+        visible.setShopName("轻奢美妆旗舰店");
+        visible.setEligibilityCheck(Map.of("sales30d", 990000L, "sales_30d", 880000L));
+        Object roles = List.of(RoleCodes.CHANNEL_STAFF);
+
+        when(sampleQueryApplicationService.getVisibleSampleById(
+                sampleId, viewerId, null, DataScope.PERSONAL, roles))
+                .thenReturn(visible);
+        when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
+        when(talentDomainFacade.findTalentById(talentId)).thenReturn(new TalentReadDTO(
+                talentId, "uid-1", "dy001", "达人甲", 68000L, 1,
+                null, null, null, null, 321L));
+        when(talentDomainFacade.findActiveClaimAddress(talentId, ownerId)).thenReturn(
+                new TalentClaimAddressDTO(
+                        talentId, ownerId, "张三", "13800000000", "杭州市西湖区测试路 1 号"));
+
+        SampleCopyTextVO result = service.copyOrder(
+                sampleId, viewerId, null, DataScope.PERSONAL, roles);
+
+        assertThat(result).isEqualTo(new SampleCopyTextVO(String.join("\n",
+                "商品名称：轻奢防晒霜",
+                "商品ID：3820194249627009436",
+                "店铺：轻奢美妆旗舰店",
+                "申请数量：2",
+                "商品规格：50ml",
+                "申样备注：主播试用",
+                "达人昵称：达人甲",
+                "抖音号：dy001",
+                "粉丝数：6.8W",
+                "近30天橱窗销量：321",
+                "收货人：张三",
+                "收货电话：13800000000",
+                "收货地址：杭州市西湖区测试路 1 号")));
+        assertThat(result.text()).doesNotContain("990000", "880000");
+
+        InOrder order = inOrder(sampleQueryApplicationService, sampleRequestMapper, talentDomainFacade);
+        order.verify(sampleQueryApplicationService).getVisibleSampleById(
+                sampleId, viewerId, null, DataScope.PERSONAL, roles);
+        order.verify(sampleRequestMapper).selectById(sampleId);
+        order.verify(talentDomainFacade).findTalentById(talentId);
+        order.verify(talentDomainFacade).findActiveClaimAddress(talentId, ownerId);
+        verify(talentDomainFacade, never()).findActiveClaimAddress(talentId, viewerId);
+        verify(sampleRequestMapper, never()).insert(any(SampleRequest.class));
+        verify(sampleRequestMapper, never()).updateById(any(SampleRequest.class));
+        verify(productPromotionFacade, never()).copyForSample(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void copyOrder_shouldRenderPlaceholderWhenVisibleCompatibilityQuantityIsOneButRawQuantityIsNull() {
+        UUID sampleId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        UUID viewerId = UUID.randomUUID();
+        UUID talentId = UUID.randomUUID();
+        SampleRequest sample = sample(sampleId, ownerId, talentId, SampleStatus.PENDING_AUDIT, 1);
+        sample.setExpectedSampleNum(null);
+        SampleVO visible = visibleSample(sample);
+        visible.setQuantity(1);
+        Object roles = List.of(RoleCodes.CHANNEL_STAFF);
+
+        when(sampleQueryApplicationService.getVisibleSampleById(
+                sampleId, viewerId, null, DataScope.PERSONAL, roles))
+                .thenReturn(visible);
+        when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
+
+        SampleCopyTextVO result = service.copyOrder(
+                sampleId, viewerId, null, DataScope.PERSONAL, roles);
+
+        assertThat(result.text())
+                .contains("申请数量：---")
+                .doesNotContain("申请数量：1");
+        InOrder order = inOrder(sampleQueryApplicationService, sampleRequestMapper);
+        order.verify(sampleQueryApplicationService).getVisibleSampleById(
+                sampleId, viewerId, null, DataScope.PERSONAL, roles);
+        order.verify(sampleRequestMapper).selectById(sampleId);
+        verify(sampleRequestMapper, never()).insert(any(SampleRequest.class));
+        verify(sampleRequestMapper, never()).updateById(any(SampleRequest.class));
+    }
+
+    @Test
+    void copyOrder_realDddQueryShouldAuthorizeThroughScopedDetailBeforeRawReadWithoutExistenceProbe() {
+        UUID sampleId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        UUID viewerId = UUID.randomUUID();
+        UUID talentId = UUID.randomUUID();
+        Object roles = List.of(RoleCodes.CHANNEL_STAFF);
+        SampleRequest sample = sample(sampleId, ownerId, talentId, SampleStatus.PENDING_AUDIT, 1);
+        SampleVO visible = visibleSample(sample);
+        SampleDetailQueryPort detailQueryPort = mock(SampleDetailQueryPort.class);
+        SampleDomainFacade sampleDomainFacade = mock(SampleDomainFacade.class);
+        SampleCooperationApplicationService realChainService =
+                serviceWithRealDddQuery(detailQueryPort, sampleDomainFacade);
+        when(detailQueryPort.getSampleById(
+                sampleId, viewerId, null, DataScope.PERSONAL, roles))
+                .thenReturn(visible);
+        when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
+
+        SampleCopyTextVO result = realChainService.copyOrder(
+                sampleId, viewerId, null, DataScope.PERSONAL, roles);
+
+        assertThat(result.text()).contains("申请数量：1");
+        InOrder order = inOrder(detailQueryPort, sampleRequestMapper);
+        order.verify(detailQueryPort).getSampleById(
+                sampleId, viewerId, null, DataScope.PERSONAL, roles);
+        order.verify(sampleRequestMapper).selectById(sampleId);
+        verify(sampleDomainFacade, never()).existsById(any());
+    }
+
+    @Test
+    void copyOrder_realDddQueryShouldMaskForbiddenAndMissingWithoutRawRead() {
+        UUID forbiddenId = UUID.randomUUID();
+        UUID missingId = UUID.randomUUID();
+        UUID viewerId = UUID.randomUUID();
+        Object roles = List.of(RoleCodes.CHANNEL_STAFF);
+        SampleDetailQueryPort detailQueryPort = mock(SampleDetailQueryPort.class);
+        SampleDomainFacade sampleDomainFacade = mock(SampleDomainFacade.class);
+        SampleCooperationApplicationService realChainService =
+                serviceWithRealDddQuery(detailQueryPort, sampleDomainFacade);
+        when(detailQueryPort.getSampleById(
+                forbiddenId, viewerId, null, DataScope.PERSONAL, roles))
+                .thenThrow(new ForbiddenException("无权访问该寄样单"));
+        when(detailQueryPort.getSampleById(
+                missingId, viewerId, null, DataScope.PERSONAL, roles))
+                .thenThrow(BusinessException.notFound("Sample request not found"));
+
+        Throwable forbidden = org.assertj.core.api.Assertions.catchThrowable(() ->
+                realChainService.copyOrder(
+                        forbiddenId, viewerId, null, DataScope.PERSONAL, roles));
+        Throwable missing = org.assertj.core.api.Assertions.catchThrowable(() ->
+                realChainService.copyOrder(
+                        missingId, viewerId, null, DataScope.PERSONAL, roles));
+
+        assertThat(forbidden)
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Sample request not found");
+        assertThat(((BusinessException) forbidden).getCode()).isEqualTo(404);
+        assertThat(missing)
+                .isInstanceOf(BusinessException.class)
+                .hasMessage(forbidden.getMessage());
+        assertThat(((BusinessException) missing).getCode()).isEqualTo(404);
+        verify(detailQueryPort).getSampleById(
+                forbiddenId, viewerId, null, DataScope.PERSONAL, roles);
+        verify(detailQueryPort).getSampleById(
+                missingId, viewerId, null, DataScope.PERSONAL, roles);
+        verify(sampleDomainFacade, never()).existsById(any());
+        verify(sampleRequestMapper, never()).selectById(forbiddenId);
+        verify(sampleRequestMapper, never()).selectById(missingId);
+    }
+
+    @Test
+    void copyOrder_shouldPreserveVisibilityFailureWithoutReadingOrWritingSampleFacts() {
+        UUID sampleId = UUID.randomUUID();
+        UUID viewerId = UUID.randomUUID();
+        Object roles = List.of(RoleCodes.CHANNEL_STAFF);
+        when(sampleQueryApplicationService.getVisibleSampleById(
+                sampleId, viewerId, null, DataScope.PERSONAL, roles))
+                .thenThrow(BusinessException.forbidden("无权查看该寄样单"));
+
+        assertThatThrownBy(() -> service.copyOrder(
+                sampleId, viewerId, null, DataScope.PERSONAL, roles))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", 404)
+                .hasMessage("Sample request not found");
+
+        verify(sampleRequestMapper, never()).selectById(any());
+        verify(sampleRequestMapper, never()).insert(any(SampleRequest.class));
+        verify(sampleRequestMapper, never()).updateById(any(SampleRequest.class));
+        verifyNoInteractions(talentDomainFacade, productPromotionFacade);
+    }
+
+    @Test
+    void copyOrder_shouldPreserveUnrelatedVisibilityBusinessFailure() {
+        UUID sampleId = UUID.randomUUID();
+        UUID viewerId = UUID.randomUUID();
+        Object roles = List.of(RoleCodes.CHANNEL_STAFF);
+        BusinessException conflict = BusinessException.conflict("详情读模型暂不可用");
+        when(sampleQueryApplicationService.getVisibleSampleById(
+                sampleId, viewerId, null, DataScope.PERSONAL, roles))
+                .thenThrow(conflict);
+
+        Throwable thrown = org.assertj.core.api.Assertions.catchThrowable(() -> service.copyOrder(
+                sampleId, viewerId, null, DataScope.PERSONAL, roles));
+
+        assertThat(thrown).isSameAs(conflict);
+        assertThat(((BusinessException) thrown).getCode()).isEqualTo(409);
+        verify(sampleRequestMapper, never()).selectById(any());
+    }
+
+    @Test
+    void sampleCooperationService_shouldUseOneAutowiredFullConstructorAndNoCrossDomainMapper() throws Exception {
+        var legacy = SampleCooperationApplicationService.class.getConstructor(
+                SampleQueryApplicationService.class,
+                SampleRequestMapper.class,
+                SamplePrivateNoteMapper.class,
+                TalentDomainFacade.class,
+                SampleCooperationActionPolicy.class,
+                SampleRemarkPolicy.class);
+        var spring = SampleCooperationApplicationService.class.getConstructor(
+                SampleQueryApplicationService.class,
+                SampleRequestMapper.class,
+                SamplePrivateNoteMapper.class,
+                TalentDomainFacade.class,
+                SampleCooperationActionPolicy.class,
+                SampleRemarkPolicy.class,
+                ProductPromotionFacade.class,
+                SampleOrderCopyPolicy.class);
+
+        assertThat(SampleCooperationApplicationService.class.getConstructors()).hasSize(2);
+        assertThat(legacy.getAnnotation(Autowired.class)).isNull();
+        assertThat(spring.getAnnotation(Autowired.class)).isNotNull();
+        assertThat(java.util.Arrays.stream(SampleCooperationApplicationService.class.getDeclaredFields())
+                .map(field -> field.getType().getName()))
+                .noneMatch(type -> type.contains("ProductMapper") || type.contains("Douyin"));
+    }
+
+    @Test
+    void getEditContext_shouldUseSampleOwnerAddressAndNeverFallbackToSampleAddress() {
+        UUID sampleId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        UUID viewerId = UUID.randomUUID();
+        UUID talentId = UUID.randomUUID();
+        SampleRequest sample = sample(sampleId, ownerId, talentId, SampleStatus.PENDING_AUDIT, 3);
+        sample.setRecipientName("历史收件人");
+        sample.setRecipientPhone("13800000000");
+        sample.setRecipientAddress("历史样本地址");
+        sample.setExtraData(new LinkedHashMap<>(Map.of(
+                "applyReason", "  当前申请原因  ",
+                "specification", "红色 / M")));
+        SampleVO visible = visibleSample(sample);
+        visible.setProductExternalId("P-100");
+        visible.setProductName("测试商品");
+        visible.setShopName("测试店铺");
+        visible.setActivityId("HISTORICAL-ACTIVITY-001");
+
+        when(sampleQueryApplicationService.getSampleById(
+                sampleId, viewerId, null, DataScope.PERSONAL, List.of(RoleCodes.CHANNEL_STAFF)))
+                .thenReturn(visible);
+        when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
+        when(talentDomainFacade.findTalentById(talentId)).thenReturn(new TalentReadDTO(
+                talentId, "uid-1", "douyin-1", "达人甲", 1000L, 1,
+                null, null, null, null, 88L));
+        when(talentDomainFacade.findActiveClaimAddress(talentId, ownerId)).thenReturn(null);
+
+        SampleEditContextVO context = service.getEditContext(
+                sampleId, viewerId, null, DataScope.PERSONAL, List.of(RoleCodes.CHANNEL_STAFF));
+
+        assertThat(context.addressAvailable()).isFalse();
+        assertThat(context.recipientName()).isNull();
+        assertThat(context.recipientPhone()).isNull();
+        assertThat(context.recipientAddress()).isNull();
+        assertThat(context.remark()).isEqualTo("当前申请原因");
+        assertThat(context.productSpecification()).isEqualTo("红色 / M");
+        assertThat(context.talentDouyinNo()).isEqualTo("douyin-1");
+        assertThat(context.talentWindowSales30d()).isEqualTo(88L);
+        assertThat(context.sampleThreshold()).isNull();
+        assertThat(context.activityId()).isEqualTo("HISTORICAL-ACTIVITY-001");
+        assertThat(context.activityName()).isNull();
+        assertThat(context.version()).isEqualTo(3);
+        InOrder visibilityOrder = inOrder(
+                sampleQueryApplicationService, sampleRequestMapper, talentDomainFacade);
+        visibilityOrder.verify(sampleQueryApplicationService).getSampleById(
+                sampleId, viewerId, null, DataScope.PERSONAL, List.of(RoleCodes.CHANNEL_STAFF));
+        visibilityOrder.verify(sampleRequestMapper).selectById(sampleId);
+        visibilityOrder.verify(talentDomainFacade).findTalentById(talentId);
+        visibilityOrder.verify(talentDomainFacade).findActiveClaimAddress(talentId, ownerId);
+        verify(sampleRequestMapper, never()).updateById(any(SampleRequest.class));
+        verify(talentDomainFacade, never()).findActiveClaimAddress(talentId, viewerId);
+    }
+
+    @Test
+    void getEditContext_shouldOnlyMarkCompleteTrimmedOwnerAddressAvailable() {
+        UUID sampleId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        UUID talentId = UUID.randomUUID();
+        SampleRequest sample = sample(sampleId, ownerId, talentId, SampleStatus.PENDING_AUDIT, 1);
+        sample.setRecipientName("不得回退的样本收件人");
+        sample.setRecipientPhone("13100000000");
+        sample.setRecipientAddress("不得回退的样本地址");
+        SampleVO visible = visibleSample(sample);
+
+        when(sampleQueryApplicationService.getSampleById(
+                sampleId, ownerId, null, DataScope.PERSONAL, List.of(RoleCodes.CHANNEL_STAFF)))
+                .thenReturn(visible);
+        when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
+        when(talentDomainFacade.findActiveClaimAddress(talentId, ownerId)).thenReturn(
+                new TalentClaimAddressDTO(talentId, ownerId, null, "13800000000", "完整地址"),
+                new TalentClaimAddressDTO(talentId, ownerId, "   ", "13800000000", "完整地址"),
+                new TalentClaimAddressDTO(talentId, ownerId, "半地址", "13800000000", null),
+                new TalentClaimAddressDTO(talentId, ownerId, "  完整收件人  ", "  13800000000  ", "  完整地址  "));
+
+        SampleEditContextVO missingName = service.getEditContext(
+                sampleId, ownerId, null, DataScope.PERSONAL, List.of(RoleCodes.CHANNEL_STAFF));
+        SampleEditContextVO blankName = service.getEditContext(
+                sampleId, ownerId, null, DataScope.PERSONAL, List.of(RoleCodes.CHANNEL_STAFF));
+        SampleEditContextVO partialAddress = service.getEditContext(
+                sampleId, ownerId, null, DataScope.PERSONAL, List.of(RoleCodes.CHANNEL_STAFF));
+        SampleEditContextVO completeAddress = service.getEditContext(
+                sampleId, ownerId, null, DataScope.PERSONAL, List.of(RoleCodes.CHANNEL_STAFF));
+
+        assertThat(missingName.addressAvailable()).isFalse();
+        assertThat(blankName.addressAvailable()).isFalse();
+        assertThat(partialAddress.addressAvailable()).isFalse();
+        assertThat(completeAddress.addressAvailable()).isTrue();
+        assertThat(completeAddress.recipientName()).isEqualTo("完整收件人");
+        assertThat(completeAddress.recipientPhone()).isEqualTo("13800000000");
+        assertThat(completeAddress.recipientAddress()).isEqualTo("完整地址");
+        assertThat(missingName.recipientName()).isNotEqualTo("不得回退的样本收件人");
+        assertThat(partialAddress.recipientAddress()).isNotEqualTo("不得回退的样本地址");
+    }
+
+    @Test
+    void updateCooperationDetails_shouldUpdateSampleBeforeOwnerClaimAddressAndPreserveExtraData() {
+        UUID sampleId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        UUID talentId = UUID.randomUUID();
+        SampleRequest sample = sample(sampleId, ownerId, talentId, SampleStatus.SHIPPING, 4);
+        sample.setExtraData(new LinkedHashMap<>(Map.of("preserved", "yes", "applyReason", "旧原因")));
+        when(sampleQueryApplicationService.getSampleById(
+                sampleId, ownerId, null, DataScope.PERSONAL, List.of(RoleCodes.CHANNEL_STAFF)))
+                .thenReturn(visibleSample(sample));
+        when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
+        when(sampleRequestMapper.updateById(any(SampleRequest.class))).thenReturn(1);
+        when(talentDomainFacade.findActiveClaimAddress(talentId, ownerId)).thenReturn(
+                new TalentClaimAddressDTO(talentId, ownerId, "新收件人", "13900000000", "新地址"));
+
+        service.updateCooperationDetails(
+                sampleId,
+                new SampleCooperationUpdateRequest(4, "  新原因  ", "新收件人", "13900000000", "新地址"),
+                ownerId,
+                null,
+                DataScope.PERSONAL,
+                List.of(RoleCodes.CHANNEL_STAFF));
+
+        assertThat(sample.getVersion()).isEqualTo(4);
+        assertThat(sample.getRemark()).isEqualTo("新原因");
+        assertThat(sample.getExtraData()).containsEntry("applyReason", "新原因").containsEntry("preserved", "yes");
+        assertThat(sample.getRecipientName()).isEqualTo("新收件人");
+        InOrder order = inOrder(sampleRequestMapper, talentDomainFacade);
+        order.verify(sampleRequestMapper).updateById(sample);
+        order.verify(talentDomainFacade).updateActiveClaimAddress(
+                talentId, ownerId, "新收件人", "13900000000", "新地址");
+    }
+
+    @Test
+    void updateCooperationDetails_shouldReturnConflictBeforeAddressUpdateWhenVersionIsStale() {
+        UUID sampleId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        SampleRequest sample = sample(sampleId, ownerId, UUID.randomUUID(), SampleStatus.PENDING_SHIP, 8);
+        when(sampleQueryApplicationService.getSampleById(
+                sampleId, ownerId, null, DataScope.PERSONAL, List.of(RoleCodes.CHANNEL_STAFF)))
+                .thenReturn(visibleSample(sample));
+        when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
+        when(sampleRequestMapper.updateById(any(SampleRequest.class))).thenReturn(0);
+
+        assertThatThrownBy(() -> service.updateCooperationDetails(
+                sampleId,
+                new SampleCooperationUpdateRequest(7, "原因", "收件人", "13700000000", "地址"),
+                ownerId,
+                null,
+                DataScope.PERSONAL,
+                List.of(RoleCodes.CHANNEL_STAFF)))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(409));
+
+        verify(talentDomainFacade, never()).updateActiveClaimAddress(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void updateCooperationDetails_shouldRejectSystemOwnedTerminalStatus() {
+        UUID sampleId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        SampleRequest sample = sample(sampleId, ownerId, UUID.randomUUID(), SampleStatus.COMPLETED, 1);
+        when(sampleQueryApplicationService.getSampleById(
+                sampleId, ownerId, null, DataScope.ALL, List.of(RoleCodes.ADMIN)))
+                .thenReturn(visibleSample(sample));
+        when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
+
+        assertThatThrownBy(() -> service.updateCooperationDetails(
+                sampleId,
+                new SampleCooperationUpdateRequest(1, "原因", null, null, null),
+                ownerId,
+                null,
+                DataScope.ALL,
+                List.of(RoleCodes.ADMIN)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("当前状态不允许编辑");
+
+        verify(sampleRequestMapper, never()).updateById(any());
+    }
+
+    @Test
+    void updateCooperationDetails_shouldRejectVisibleNonOwnerWithoutAdminRole() {
+        UUID sampleId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        UUID viewerId = UUID.randomUUID();
+        SampleRequest sample = sample(sampleId, ownerId, UUID.randomUUID(), SampleStatus.PENDING_AUDIT, 1);
+        when(sampleQueryApplicationService.getSampleById(
+                sampleId, viewerId, null, DataScope.DEPT, List.of(RoleCodes.BIZ_STAFF)))
+                .thenReturn(visibleSample(sample));
+        when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
+
+        assertThatThrownBy(() -> service.updateCooperationDetails(
+                sampleId,
+                new SampleCooperationUpdateRequest(1, "原因", null, null, null),
+                viewerId,
+                null,
+                DataScope.DEPT,
+                List.of(RoleCodes.BIZ_STAFF)))
+                .isInstanceOf(com.colonel.saas.common.exception.ForbiddenException.class)
+                .hasMessageContaining("仅申请人或管理员");
+
+        verify(sampleRequestMapper, never()).updateById(any());
+    }
+
+    @Test
+    void updateCooperationDetails_shouldRejectPartialAddressBeforePersistence() {
+        UUID sampleId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        SampleRequest sample = sample(sampleId, ownerId, UUID.randomUUID(), SampleStatus.PENDING_AUDIT, 1);
+        when(sampleQueryApplicationService.getSampleById(
+                sampleId, ownerId, null, DataScope.PERSONAL, List.of(RoleCodes.CHANNEL_STAFF)))
+                .thenReturn(visibleSample(sample));
+        when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
+
+        assertThatThrownBy(() -> service.updateCooperationDetails(
+                sampleId,
+                new SampleCooperationUpdateRequest(1, "原因", "收件人", null, "地址"),
+                ownerId,
+                null,
+                DataScope.PERSONAL,
+                List.of(RoleCodes.CHANNEL_STAFF)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("必须同时填写");
+
+        verify(sampleRequestMapper, never()).updateById(any());
+        verify(talentDomainFacade, never()).updateActiveClaimAddress(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void updateCooperationDetails_shouldRollbackSpringTransactionWhenOwnerAddressUpdateFails() throws Exception {
+        UUID sampleId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        UUID talentId = UUID.randomUUID();
+        SampleRequest sample = sample(sampleId, ownerId, talentId, SampleStatus.PENDING_AUDIT, 2);
+        when(sampleQueryApplicationService.getSampleById(
+                sampleId, ownerId, null, DataScope.PERSONAL, List.of(RoleCodes.CHANNEL_STAFF)))
+                .thenReturn(visibleSample(sample));
+        when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
+        when(sampleRequestMapper.updateById(any())).thenReturn(1);
+        org.mockito.Mockito.doThrow(new IllegalStateException("claim update failed"))
+                .when(talentDomainFacade)
+                .updateActiveClaimAddress(talentId, ownerId, "收件人", "13600000000", "地址");
+
+        RecordingTransactionManager transactionManager = new RecordingTransactionManager();
+        TransactionInterceptor transactionInterceptor = new TransactionInterceptor(
+                transactionManager,
+                new AnnotationTransactionAttributeSource());
+        ProxyFactory proxyFactory = new ProxyFactory(service);
+        proxyFactory.addAdvice(transactionInterceptor);
+        SampleCooperationApplicationService transactionalService =
+                (SampleCooperationApplicationService) proxyFactory.getProxy();
+
+        assertThatThrownBy(() -> transactionalService.updateCooperationDetails(
+                sampleId,
+                new SampleCooperationUpdateRequest(2, "原因", "收件人", "13600000000", "地址"),
+                ownerId,
+                null,
+                DataScope.PERSONAL,
+                List.of(RoleCodes.CHANNEL_STAFF)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("claim update failed");
+
+        Method method = SampleCooperationApplicationService.class.getMethod(
+                "updateCooperationDetails",
+                UUID.class,
+                SampleCooperationUpdateRequest.class,
+                UUID.class,
+                UUID.class,
+                DataScope.class,
+                Object.class);
+        Transactional transactional = method.getAnnotation(Transactional.class);
+        assertThat(transactional).isNotNull();
+        assertThat(transactional.rollbackFor()).contains(Exception.class);
+        assertThat(transactionManager.beginCount).isEqualTo(1);
+        assertThat(transactionManager.rollbackCount).isEqualTo(1);
+        assertThat(transactionManager.commitCount).isZero();
+        verify(sampleRequestMapper).updateById(sample);
+        verify(talentDomainFacade).updateActiveClaimAddress(
+                talentId, ownerId, "收件人", "13600000000", "地址");
+    }
+
+    @Test
+    void privateNote_shouldAlwaysUseCurrentUserEvenForAdminAndBlankShouldSoftDelete() {
+        UUID sampleId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        UUID adminId = UUID.randomUUID();
+        SampleRequest sample = sample(sampleId, ownerId, UUID.randomUUID(), SampleStatus.PENDING_AUDIT, 1);
+        when(sampleQueryApplicationService.getSampleById(
+                sampleId, adminId, null, DataScope.ALL, List.of(RoleCodes.ADMIN)))
+                .thenReturn(visibleSample(sample));
+        SamplePrivateNote note = new SamplePrivateNote();
+        note.setId(UUID.randomUUID());
+        note.setSampleRequestId(sampleId);
+        note.setUserId(adminId);
+        note.setContent("仅管理员本人可见");
+        note.setVersion(5);
+        SamplePrivateNoteMapper atomicMapper = mock(SamplePrivateNoteMapper.class, invocation ->
+                invocation.getMethod().getReturnType() == int.class
+                        ? 1
+                        : org.mockito.Answers.RETURNS_DEFAULTS.answer(invocation));
+        when(atomicMapper.selectBySampleRequestAndUser(sampleId, adminId)).thenReturn(note);
+        SampleCooperationApplicationService atomicService = serviceWithPrivateNoteMapper(atomicMapper);
+
+        SamplePrivateNoteVO read = atomicService.getPrivateNote(
+                sampleId, adminId, null, DataScope.ALL, List.of(RoleCodes.ADMIN));
+        assertThat(read.content()).isEqualTo("仅管理员本人可见");
+        assertThat(read.version()).isEqualTo(5);
+
+        SamplePrivateNoteVO deleted = atomicService.updatePrivateNote(
+                sampleId,
+                new SamplePrivateNoteRequest("   "),
+                adminId,
+                null,
+                DataScope.ALL,
+                List.of(RoleCodes.ADMIN));
+        assertThat(deleted.content()).isNull();
+        assertThat(deleted.version()).isEqualTo(6);
+        assertThat(note.getDeleted()).isZero();
+        List<String> writeMethods = org.mockito.Mockito.mockingDetails(atomicMapper).getInvocations().stream()
+                .map(invocation -> invocation.getMethod().getName())
+                .toList();
+        assertThat(writeMethods).contains("softDeleteActive").doesNotContain("updateById");
+        verify(atomicMapper, times(2)).selectBySampleRequestAndUser(sampleId, adminId);
+        verify(atomicMapper, never()).selectBySampleRequestAndUser(sampleId, ownerId);
+    }
+
+    @Test
+    void updatePrivateNote_shouldTrimAndUpdateOnlyCurrentUsersActiveNote() {
+        UUID sampleId = UUID.randomUUID();
+        UUID currentUserId = UUID.randomUUID();
+        SampleVO visible = new SampleVO();
+        visible.setId(sampleId);
+        when(sampleQueryApplicationService.getSampleById(
+                sampleId, currentUserId, null, DataScope.PERSONAL, List.of(RoleCodes.CHANNEL_STAFF)))
+                .thenReturn(visible);
+        SamplePrivateNote note = new SamplePrivateNote();
+        note.setId(UUID.randomUUID());
+        note.setSampleRequestId(sampleId);
+        note.setUserId(currentUserId);
+        note.setContent("旧备注");
+        note.setVersion(2);
+        SamplePrivateNoteMapper atomicMapper = mock(SamplePrivateNoteMapper.class, invocation ->
+                invocation.getMethod().getReturnType() == int.class
+                        ? 1
+                        : org.mockito.Answers.RETURNS_DEFAULTS.answer(invocation));
+        note.setContent("新备注");
+        note.setVersion(3);
+        when(atomicMapper.selectBySampleRequestAndUser(sampleId, currentUserId)).thenReturn(note);
+        SampleCooperationApplicationService atomicService = serviceWithPrivateNoteMapper(atomicMapper);
+
+        SamplePrivateNoteVO updated = atomicService.updatePrivateNote(
+                sampleId,
+                new SamplePrivateNoteRequest("  新备注  "),
+                currentUserId,
+                null,
+                DataScope.PERSONAL,
+                List.of(RoleCodes.CHANNEL_STAFF));
+
+        assertThat(updated.content()).isEqualTo("新备注");
+        assertThat(note.getContent()).isEqualTo("新备注");
+        assertThat(note.getDeleted()).isZero();
+        List<String> writeMethods = org.mockito.Mockito.mockingDetails(atomicMapper).getInvocations().stream()
+                .map(invocation -> invocation.getMethod().getName())
+                .toList();
+        assertThat(writeMethods).contains("upsertActive").doesNotContain("insert", "updateById");
+    }
+
+    @Test
+    void updatePrivateNote_shouldUpsertTrimmedNoteForCurrentUser() {
+        UUID sampleId = UUID.randomUUID();
+        UUID currentUserId = UUID.randomUUID();
+        SampleVO visible = new SampleVO();
+        visible.setId(sampleId);
+        when(sampleQueryApplicationService.getSampleById(
+                sampleId, currentUserId, null, DataScope.PERSONAL, List.of(RoleCodes.CHANNEL_STAFF)))
+                .thenReturn(visible);
+        SamplePrivateNote persisted = new SamplePrivateNote();
+        persisted.setId(UUID.randomUUID());
+        persisted.setSampleRequestId(sampleId);
+        persisted.setUserId(currentUserId);
+        persisted.setContent("首次备注");
+        persisted.setVersion(0);
+        when(samplePrivateNoteMapper.upsertActive(any(SamplePrivateNote.class))).thenReturn(1);
+        when(samplePrivateNoteMapper.selectBySampleRequestAndUser(sampleId, currentUserId))
+                .thenReturn(persisted);
+
+        SamplePrivateNoteVO created = service.updatePrivateNote(
+                sampleId,
+                new SamplePrivateNoteRequest("  首次备注  "),
+                currentUserId,
+                null,
+                DataScope.PERSONAL,
+                List.of(RoleCodes.CHANNEL_STAFF));
+
+        org.mockito.ArgumentCaptor<SamplePrivateNote> captor =
+                org.mockito.ArgumentCaptor.forClass(SamplePrivateNote.class);
+        verify(samplePrivateNoteMapper).upsertActive(captor.capture());
+        assertThat(captor.getValue().getSampleRequestId()).isEqualTo(sampleId);
+        assertThat(captor.getValue().getUserId()).isEqualTo(currentUserId);
+        assertThat(captor.getValue().getContent()).isEqualTo("首次备注");
+        assertThat(captor.getValue().getCreateBy()).isEqualTo(currentUserId);
+        assertThat(captor.getValue().getUpdateBy()).isEqualTo(currentUserId);
+        assertThat(created.content()).isEqualTo("首次备注");
+        verify(samplePrivateNoteMapper, never()).insert(any(SamplePrivateNote.class));
+        verify(samplePrivateNoteMapper, never()).updateById(any(SamplePrivateNote.class));
+    }
+
+    @Test
+    void updatePrivateNote_shouldNotExposeContentInFailureAndServiceHasNoLoggingDependency() {
+        UUID sampleId = UUID.randomUUID();
+        UUID currentUserId = UUID.randomUUID();
+        String sensitiveContent = "仅当前用户可见-敏感正文";
+        SampleVO visible = new SampleVO();
+        visible.setId(sampleId);
+        when(sampleQueryApplicationService.getSampleById(
+                sampleId, currentUserId, null, DataScope.PERSONAL, List.of(RoleCodes.CHANNEL_STAFF)))
+                .thenReturn(visible);
+        assertThatThrownBy(() -> service.updatePrivateNote(
+                sampleId,
+                new SamplePrivateNoteRequest(sensitiveContent),
+                currentUserId,
+                null,
+                DataScope.PERSONAL,
+                List.of(RoleCodes.CHANNEL_STAFF)))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(error.getMessage()).doesNotContain(sensitiveContent));
+        verify(samplePrivateNoteMapper).upsertActive(any(SamplePrivateNote.class));
+
+        List<String> dependencyTypes = java.util.Arrays.stream(
+                        SampleCooperationApplicationService.class.getDeclaredFields())
+                .map(field -> field.getType().getName())
+                .toList();
+        assertThat(dependencyTypes).noneMatch(type ->
+                type.contains("OperationLog") || type.contains("Logger"));
+    }
+
+    @Test
+    void updatePrivateNote_shouldMapAtomicSoftDeleteMissToConflict() {
+        UUID sampleId = UUID.randomUUID();
+        UUID currentUserId = UUID.randomUUID();
+        SampleVO visible = new SampleVO();
+        visible.setId(sampleId);
+        when(sampleQueryApplicationService.getSampleById(
+                sampleId, currentUserId, null, DataScope.PERSONAL, List.of(RoleCodes.CHANNEL_STAFF)))
+                .thenReturn(visible);
+        SamplePrivateNote note = new SamplePrivateNote();
+        note.setId(UUID.randomUUID());
+        note.setSampleRequestId(sampleId);
+        note.setUserId(currentUserId);
+        note.setVersion(4);
+        when(samplePrivateNoteMapper.selectBySampleRequestAndUser(sampleId, currentUserId)).thenReturn(note);
+
+        assertThatThrownBy(() -> service.updatePrivateNote(
+                sampleId,
+                new SamplePrivateNoteRequest(" "),
+                currentUserId,
+                null,
+                DataScope.PERSONAL,
+                List.of(RoleCodes.CHANNEL_STAFF)))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(409));
+
+        assertThat(org.mockito.Mockito.mockingDetails(samplePrivateNoteMapper).getInvocations().stream()
+                .map(invocation -> invocation.getMethod().getName()))
+                .contains("softDeleteActive");
+    }
+
+    @Test
+    void unifiedSampleApplicationService_shouldKeepLegacyAndSpringConstructorsUnambiguous() throws Exception {
+        Class<com.colonel.saas.domain.sample.application.SampleApplicationService> serviceType =
+                com.colonel.saas.domain.sample.application.SampleApplicationService.class;
+        var legacy = serviceType.getConstructor(
+                SampleQueryApplicationService.class,
+                SampleCommandApplicationService.class);
+        var spring = serviceType.getConstructor(
+                SampleQueryApplicationService.class,
+                SampleCommandApplicationService.class,
+                SampleCooperationActionPolicy.class,
+                SampleCooperationApplicationService.class);
+
+        assertThat(serviceType.getConstructors()).hasSize(2);
+        assertThat(legacy.getAnnotation(Autowired.class)).isNull();
+        assertThat(spring.getAnnotation(Autowired.class)).isNotNull();
+    }
+
+    @Test
+    void unifiedSampleApplicationService_shouldEnrichListAndDetailWithActions() {
+        SampleQueryApplicationService queryService = mock(SampleQueryApplicationService.class);
+        SampleCommandApplicationService commandService = mock(SampleCommandApplicationService.class);
+        SampleCooperationApplicationService cooperationService =
+                mock(SampleCooperationApplicationService.class);
+        CurrentUserPermissionChecker checker =
+                new CurrentUserPermissionChecker(new CurrentUserPermissionPolicy());
+        com.colonel.saas.domain.sample.application.SampleApplicationService unifiedService =
+                new com.colonel.saas.domain.sample.application.SampleApplicationService(
+                        queryService,
+                        commandService,
+                        new SampleCooperationActionPolicy(checker),
+                        cooperationService);
+        UUID currentUserId = UUID.randomUUID();
+        UUID talentId = UUID.randomUUID();
+        Object roles = List.of(RoleCodes.CHANNEL_STAFF);
+        SampleVO listRow = sampleView(UUID.randomUUID(), currentUserId, talentId, "PENDING_AUDIT");
+        SampleVO detail = sampleView(UUID.randomUUID(), currentUserId, talentId, "SHIPPED");
+        PageResult<SampleVO> page = new PageResult<>();
+        page.setRecords(List.of(listRow));
+        when(queryService.getSamplePage(
+                1L, 20L, null, null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null,
+                currentUserId, null, DataScope.PERSONAL, roles))
+                .thenReturn(page);
+        when(queryService.getSampleById(
+                detail.getId(), currentUserId, null, DataScope.PERSONAL, roles))
+                .thenReturn(detail);
+
+        PageResult<SampleVO> listed = unifiedService.getSamplePage(
+                1L, 20L, null, null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null,
+                currentUserId, null, DataScope.PERSONAL, roles);
+        SampleVO loadedDetail = unifiedService.getSampleById(
+                detail.getId(), currentUserId, null, DataScope.PERSONAL, roles);
+
+        assertActionEnvelope(listed.getRecords().get(0));
+        assertActionEnvelope(loadedDetail);
+    }
+
+    private static void assertActionEnvelope(SampleVO sample) {
+        assertThat(new java.util.ArrayList<>(sample.getActionAvailability().keySet())).containsExactly(
+                "APPROVE", "REJECT", "EDIT", "PROGRESS",
+                "COPY_LINK", "COPY_ORDER", "NOTE");
+    }
+
+    private SampleCooperationApplicationService serviceWithPrivateNoteMapper(
+            SamplePrivateNoteMapper privateNoteMapper) {
+        CurrentUserPermissionChecker checker =
+                new CurrentUserPermissionChecker(new CurrentUserPermissionPolicy());
+        return new SampleCooperationApplicationService(
+                sampleQueryApplicationService,
+                sampleRequestMapper,
+                privateNoteMapper,
+                talentDomainFacade,
+                new SampleCooperationActionPolicy(checker),
+                new SampleRemarkPolicy());
+    }
+
+    private SampleCooperationApplicationService serviceWithPromotionFacade() {
+        CurrentUserPermissionChecker checker =
+                new CurrentUserPermissionChecker(new CurrentUserPermissionPolicy());
+        return new SampleCooperationApplicationService(
+                sampleQueryApplicationService,
+                sampleRequestMapper,
+                samplePrivateNoteMapper,
+                talentDomainFacade,
+                new SampleCooperationActionPolicy(checker),
+                new SampleRemarkPolicy(),
+                productPromotionFacade,
+                new SampleOrderCopyPolicy());
+    }
+
+    private SampleCooperationApplicationService serviceWithRealDddQuery(
+            SampleDetailQueryPort detailQueryPort,
+            SampleDomainFacade sampleDomainFacade) {
+        DddRefactorProperties properties = new DddRefactorProperties();
+        properties.setEnabled(true);
+        properties.getSampleApplication().setEnabled(true);
+        SampleQueryApplicationService realQueryService = new SampleQueryApplicationService(
+                null,
+                detailQueryPort,
+                sampleDomainFacade,
+                properties);
+        CurrentUserPermissionChecker checker =
+                new CurrentUserPermissionChecker(new CurrentUserPermissionPolicy());
+        return new SampleCooperationApplicationService(
+                realQueryService,
+                sampleRequestMapper,
+                samplePrivateNoteMapper,
+                talentDomainFacade,
+                new SampleCooperationActionPolicy(checker),
+                new SampleRemarkPolicy(),
+                productPromotionFacade,
+                new SampleOrderCopyPolicy());
+    }
+
+    private static SampleVO sampleView(
+            UUID sampleId, UUID ownerId, UUID talentId, String status) {
+        SampleVO sample = new SampleVO();
+        sample.setId(sampleId);
+        sample.setApplicantUserId(ownerId);
+        sample.setTalentId(talentId);
+        sample.setStatus(status);
+        return sample;
+    }
+
+    private static SampleRequest sample(
+            UUID sampleId,
+            UUID ownerId,
+            UUID talentId,
+            SampleStatus status,
+            int version) {
+        SampleRequest sample = new SampleRequest();
+        sample.setId(sampleId);
+        sample.setUserId(ownerId);
+        sample.setTalentId(talentId);
+        sample.setProductId(UUID.randomUUID());
+        sample.setExpectedSampleNum(1);
+        sample.setStatus(status.getCode());
+        sample.setVersion(version);
+        return sample;
+    }
+
+    private static SampleVO visibleSample(SampleRequest sample) {
+        SampleVO visible = new SampleVO();
+        visible.setId(sample.getId());
+        visible.setApplicantUserId(sample.getUserId());
+        visible.setTalentId(sample.getTalentId());
+        visible.setProductId(sample.getProductId());
+        visible.setQuantity(sample.getExpectedSampleNum());
+        visible.setVersion(sample.getVersion());
+        visible.setStatus(sample.getStatus() == SampleStatus.SHIPPING.getCode()
+                ? "SHIPPED"
+                : SampleStatus.fromCode(sample.getStatus()).getApiStatus());
+        return visible;
+    }
+
+    private static final class RecordingTransactionManager extends AbstractPlatformTransactionManager {
+        private int beginCount;
+        private int commitCount;
+        private int rollbackCount;
+
+        @Override
+        protected Object doGetTransaction() {
+            return new Object();
+        }
+
+        @Override
+        protected void doBegin(Object transaction, TransactionDefinition definition) {
+            beginCount++;
+        }
+
+        @Override
+        protected void doCommit(DefaultTransactionStatus status) {
+            commitCount++;
+        }
+
+        @Override
+        protected void doRollback(DefaultTransactionStatus status) {
+            rollbackCount++;
+        }
+    }
+}

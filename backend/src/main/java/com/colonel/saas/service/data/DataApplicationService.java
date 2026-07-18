@@ -82,6 +82,13 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
+ * 数据平台控制器 (god service - 边缘服务, 不再 DDD 切片).
+ *
+ * <p><strong>当前状态 (2026-07-14):</strong></p>
+ * <ul>
+ *   <li>2455 行, 跨域聚合服务 (跨 colonel / order / product / talent 域)</li>
+ *   <li>不切理由: 跨域聚合 + 单一职责已明确, 不再 DDD 切片</li>
+ * </ul>
  * 数据平台控制器。
  * <p>
  * 负责提供数据页面专用的查询、统计、导出与运营监控接口，服务于前端数据看板与分析模块。

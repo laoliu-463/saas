@@ -138,6 +138,30 @@ public class SampleQueryApplicationService {
         if (isRoutingEnabled()) {
             assertSampleExistsViaFacade(id);
         }
+        return querySampleDetail(id, userId, deptId, dataScope, roleCodes);
+    }
+
+    /**
+     * 直接通过带数据范围的详情端口判定可见性，不执行无 scope 的存在性探针。
+     *
+     * <p>用于需要防止资源枚举的内部用例；现有公共详情路由仍使用
+     * {@link #getSampleById(UUID, UUID, UUID, DataScope, Object)} 的兼容行为。</p>
+     */
+    public SampleVO getVisibleSampleById(
+            UUID id,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            Object roleCodes) {
+        return querySampleDetail(id, userId, deptId, dataScope, roleCodes);
+    }
+
+    private SampleVO querySampleDetail(
+            UUID id,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            Object roleCodes) {
         if (sampleDetailQueryPort != null) {
             return sampleDetailQueryPort.getSampleById(id, userId, deptId, dataScope, roleCodes);
         }

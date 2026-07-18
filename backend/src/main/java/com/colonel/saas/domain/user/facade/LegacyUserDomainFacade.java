@@ -39,7 +39,6 @@ public class LegacyUserDomainFacade implements UserDomainFacade {
     private final UserBasicLookup userBasicLookup;
     private final CurrentUserPermissionChecker currentUserPermissionChecker;
     private final UserRoleCodeLookup userRoleCodeLookup;
-
     public LegacyUserDomainFacade(
             UserDomainService userDomainService,
             UserMasterDataService userMasterDataService,
