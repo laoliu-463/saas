@@ -181,6 +181,30 @@ Describe 'check-harness-limits baseline-aware governance' {
         $result.Output | Should Match 'TEXT_LINE_COUNT_EXCEEDED'
     }
 
+    It 'exempts only the root Harness package lock from the text line budget' {
+        $repo = New-GovernanceTestRepo -Name 'root-package-lock'
+        Save-Baseline -Repo $repo
+        Add-TextFile -Repo $repo -RelativePath 'harness\package-lock.json' -Lines 201
+
+        $result = Invoke-GovernanceCheck -Repo $repo -OwnedFiles @('harness/package-lock.json')
+
+        $result.ExitCode | Should Be 0
+        $result.Output | Should Match 'TASK_GATE=PASS'
+        $result.Output | Should Match 'REPOSITORY_HEALTH=PASS'
+        $result.Output | Should Not Match 'TEXT_LINE_COUNT_EXCEEDED'
+    }
+
+    It 'does not exempt another package lock from the text line budget' {
+        $repo = New-GovernanceTestRepo -Name 'nested-package-lock'
+        Save-Baseline -Repo $repo
+        Add-TextFile -Repo $repo -RelativePath 'harness\contracts\package-lock.json' -Lines 201
+
+        $result = Invoke-GovernanceCheck -Repo $repo -OwnedFiles @('harness/contracts/package-lock.json')
+
+        $result.ExitCode | Should Be 1
+        $result.Output | Should Match 'TEXT_LINE_COUNT_EXCEEDED'
+    }
+
     It 'blocks a new root timestamp report even when total count does not grow' {
         $repo = New-GovernanceTestRepo -Name 'timestamp-report'
         Add-LegacyRootReports -Repo $repo -Count 20
@@ -281,6 +305,44 @@ Describe 'check-harness-limits baseline-aware governance' {
 
         $result.ExitCode | Should Be 1
         $result.Output | Should Match 'ROOT_DIRECTORY_NOT_ALLOWED'
+    }
+
+    It 'ignores generated Harness node_modules without allowing another root directory' {
+        $repo = New-GovernanceTestRepo -Name 'ignored-node-modules'
+        Set-Content -LiteralPath (Join-Path $repo '.gitignore') -Value 'node_modules/' -Encoding UTF8
+        Save-Baseline -Repo $repo
+        for ($i = 1; $i -le 51; $i++) {
+            Add-TextFile -Repo $repo -RelativePath ("harness\node_modules\dependency\file-{0:D2}.json" -f $i)
+        }
+        Add-TextFile -Repo $repo -RelativePath 'harness\node_modules\large.json' -Lines 201
+
+        $result = Invoke-GovernanceCheck -Repo $repo
+
+        $result.ExitCode | Should Be 0
+        $result.Output | Should Match 'TASK_GATE=PASS'
+        $result.Output | Should Match 'REPOSITORY_HEALTH=PASS'
+        $result.Output | Should Not Match 'node_modules'
+    }
+
+    It 'blocks a force-added tracked Harness node_modules file regardless of owned files' {
+        $repo = New-GovernanceTestRepo -Name 'tracked-node-modules'
+        Set-Content -LiteralPath (Join-Path $repo '.gitignore') -Value 'node_modules/' -Encoding UTF8
+        Save-Baseline -Repo $repo
+        Add-TextFile -Repo $repo -RelativePath 'harness\node_modules\dependency\index.json'
+        Push-Location $repo
+        try {
+            git add -f -- 'harness/node_modules/dependency/index.json'
+        }
+        finally {
+            Pop-Location
+        }
+
+        $result = Invoke-GovernanceCheck -Repo $repo -OwnedFiles @('harness/README.md')
+
+        $result.ExitCode | Should Be 1
+        $result.Output | Should Match 'TASK_GATE=FAIL'
+        $result.Output | Should Match 'TRACKED_GENERATED_DEPENDENCY'
+        $result.Output | Should Match 'harness/node_modules/dependency/index.json'
     }
 
     It 'expands an untracked directory when owned files are derived' {

@@ -57,6 +57,34 @@ function Test-IsGovernanceTextFile {
     return ($script:TextExtensions -contains $extension) -and -not ($script:ScriptExtensions -contains $extension)
 }
 
+function Test-IsTextLineBudgetExempt {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    return (ConvertTo-GovernancePath -Path $Path) -eq 'harness/package-lock.json'
+}
+
+function Test-IsGeneratedDependencyPath {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    $normalized = ConvertTo-GovernancePath -Path $Path
+    return $normalized.StartsWith('harness/node_modules/', [System.StringComparison]::OrdinalIgnoreCase)
+}
+
+function Get-TrackedGeneratedDependencyPaths {
+    param([Parameter(Mandatory = $true)][string]$RepoRoot)
+
+    $trackedPaths = @(& git -C $RepoRoot -c core.quotepath=false ls-files 2>$null)
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Cannot inspect the Git index for tracked Harness dependencies.'
+    }
+    return @(
+        $trackedPaths |
+            ForEach-Object { ConvertTo-GovernancePath -Path $_ } |
+            Where-Object { Test-IsGeneratedDependencyPath -Path $_ } |
+            Sort-Object -Unique
+    )
+}
+
 function New-DirectoryMetricsFromPaths {
     param([Parameter(Mandatory = $true)][AllowEmptyCollection()][string[]]$Paths)
 
@@ -136,8 +164,9 @@ function Get-HarnessFileSnapshot {
     $lineCounts = @{}
     foreach ($file in $files) {
         $relative = Get-RepoRelativeGovernancePath -RepoRoot $RepoRoot -FullPath $file.FullName
+        if (Test-IsGeneratedDependencyPath -Path $relative) { continue }
         $paths += $relative
-        if (Test-IsGovernanceTextFile -Path $relative) {
+        if ((Test-IsGovernanceTextFile -Path $relative) -and -not (Test-IsTextLineBudgetExempt -Path $relative)) {
             $lineCounts[$relative] = (Get-Content -LiteralPath $file.FullName | Measure-Object -Line).Lines
         }
     }
@@ -238,6 +267,13 @@ function Compare-HarnessFileGovernance {
     $warnings = @()
     $historicalDebt = @()
 
+    foreach ($path in @(Get-TrackedGeneratedDependencyPaths -RepoRoot $RepoRoot)) {
+        $violations += New-GovernanceFinding `
+            -Code 'TRACKED_GENERATED_DEPENDENCY' `
+            -Path $path `
+            -Message 'Generated Harness node_modules files must not be staged or tracked.'
+    }
+
     foreach ($rootDir in $taskSnapshot.RootDirectories) {
         if ($script:AllowedRootDirs -notcontains $rootDir) {
             if ($BaselineSnapshot.RootDirectories -notcontains $rootDir) {
@@ -298,7 +334,7 @@ function Compare-HarnessFileGovernance {
             }
         }
 
-        if (Test-IsGovernanceTextFile -Path $path) {
+        if ((Test-IsGovernanceTextFile -Path $path) -and -not (Test-IsTextLineBudgetExempt -Path $path)) {
             $lines = (Get-Content -LiteralPath $fullPath | Measure-Object -Line).Lines
             if ($lines -gt 200) {
                 if (-not (Test-IsUnchangedLegacyArchiveBlob -RepoRoot $RepoRoot -Path $path -BaselineSnapshot $BaselineSnapshot)) {

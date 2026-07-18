@@ -176,7 +176,7 @@ harness/reports/current/latest-<report-key>.md
 所有 Agent 修改 `harness/` 时必须遵守 ADR-013 的分层、基线感知门禁：
 
 1. **结构限制**：依据 ADR-014 对 ADR-013 的扩展，`harness/` 当前白名单为 13 个一级目录：`rules/`、`tasks/`、`probes/`、`reports/`、`scripts/`、`manifests/`、`archive/`、`templates/`、`engineering/`、`src/`、`contracts/`、`state/`、`tests/`。新增目录仅在有真实职责和内容时创建；`state/` 按需创建且只存稳定基线，运行时产物禁止进入。
-2. **活跃知识预算**：直接文件和子目录 40 预警、50 硬上限；非脚本文本 160 行预警、200 行硬上限。脚本由测试、语法检查和职责边界约束。
+2. **活跃知识预算**：直接文件和子目录 40 预警、50 硬上限；非脚本文本 160 行预警、200 行硬上限，仅标准生成的 `harness/package-lock.json` 按精确路径豁免行数预算。脚本由测试、语法检查和职责边界约束；Git 忽略的 `harness/node_modules/` 不参与结构统计且禁止提交。
 3. **报告预算**：`reports/` 根目标不超过 20 个直接文件；当前摘要写入 `reports/current/latest-<topic>.md`，原始输出写入 `runtime/qa/out/<run-id>/`。
 4. **基线语义**：本地以 `HEAD` 为基线。历史超限保持或减少不阻断当前任务，新增或恶化必须失败；报告同时区分 `TASK_GATE` 和 `REPOSITORY_HEALTH`。
 5. **归档职责**：归档或删除必须有 manifest；archive 分桶继续遵守 50/50。历史不可变证据原样迁移可豁免行数追溯，新摘要仍不得超过 200 行。

@@ -43,7 +43,8 @@
 - 远端部署增加 checkout SHA 与 `IMAGE_TAG` 一致性、镜像 OCI revision、数据库备份和恢复前置校验。
 ### v0.9.0 — 2026-07-18
 - 依据 ADR-014 将 Harness 一级目录白名单由 9 个扩展为 13 个，新增 `src/`、`contracts/`、`state/`、`tests/`；未知目录继续阻断。
-- 保留 40/50/200、报告生命周期和基线感知语义；`state/` 按需创建且禁止接收运行时产物，本批次不创建空目录。
+- 保留 40/50/200、报告生命周期和基线感知语义；仅标准 `harness/package-lock.json` 精确豁免行数预算，Git 忽略的 `harness/node_modules/` 不计入结构健康，其他 JSON/lockfile 和未知目录仍阻断。
+- `state/` 按需创建且禁止接收运行时产物，本批次不创建空目录。
 
 ### v0.8.0 — 2026-07-13
 - 实施 ADR-013：活跃目录 40/50、非脚本文本 160/200、reports 根目标 20，并区分 `TASK_GATE` 与 `REPOSITORY_HEALTH`。
