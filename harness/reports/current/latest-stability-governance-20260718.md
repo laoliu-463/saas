@@ -4,7 +4,7 @@
 
 - 生成时间：2026-07-18 11:12:46 +08:00（Asia/Shanghai）；环境：本地 `real-pre`，未部署远端。
 - 执行前基线：`76a5e2e8ffc8217517d3c2969c9ec11978474344`。
-- 本报告对应的代码审计提交：`72c9d6557d7ea048526a9c680e521f1880732c71`；分支 `codex/ddd-user-role-application` 已推送，`origin...HEAD = 0/0`。
+- 本报告对应的代码审计提交：`72c9d6557d7ea048526a9c680e521f1880732c71`；最终运行镜像绑定的代码 SHA：`0fb9e3c834df5ddf6614d23c1bd6782479ac42f3`；分支 `codex/ddd-user-role-application` 已推送，`origin...HEAD = 0/0`。
 - 总结：`PARTIAL`。P0 Schema、Flyway、readiness、CI/CD 代码门禁和本地容器验证完成；真实寄样、多角色全量回归、可归因订单样本、Jenkins 实跑和远端部署没有足够证据，不能写 `PASS`。
 
 ## 2. 提交与修改文件
@@ -32,7 +32,7 @@
 - DB：`postgres:15-alpine`，运行版本 15.17；Redis `7-alpine`；数据库 `saas_real_pre`。
 - Flyway：9.22.3；历史为 `20260717 pre-flyway-schema`、`20260718.001 role aware attribution schema`、`20260718.002 activity status sync schema`，均 `success=t`。
 - Schema：核心 7 项字段全部存在；`colonelsettlement_order` 子分区 12 个，分区字段预检无缺失。命令：`scripts/run-real-pre-db-migrations.sh`、`scripts/check-real-pre-schema.sh`，2026-07-18 10:xx~11:xx。
-- 当前镜像（本地 `saas-active`）：backend `sha256:3c64ccf425f58a3d21ebac52a2d1c648428af4d0eccc19075af3bfdeb2c5a72c`，frontend `sha256:bea3ef6a0e76f770d299f1d35250e9818504723266fc5976e6cb64bb412a2dcf`；tag 和 OCI `org.opencontainers.image.revision` 均为完整 `72c9d6557d7ea048526a9c680e521f1880732c71`。
+- 当前镜像（本地 `saas-active`）：backend `sha256:7feb8f2f5c756ab49448ceafecb2e850f0a0fb046ff2aaa2ec550c9743a48e92`，frontend `sha256:7efab6740f2310e5f02a8b9d7f087a9721a02346e2f0c6c0045a4500371b8945`；tag 和 OCI `org.opencontainers.image.revision` 均为完整 `0fb9e3c834df5ddf6614d23c1bd6782479ac42f3`。
 - 容器：PostgreSQL、Redis、backend、frontend 均 healthy。liveness/readiness 均 HTTP 200 `UP`，frontend `/healthz` 为 `ok`；readiness 响应带 `X-Request-Id`。
 
 ## 5. 验证结果
