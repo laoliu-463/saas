@@ -68,6 +68,31 @@ class RealPreMigrationContractTest {
     }
 
     @Test
+    void roleAwareAttributionMigration_shouldBeMountedAndAppliedByDeployGuard() throws IOException {
+        Path migration = DB_DIR.resolve("alter-role-aware-promotion-link-attribution-20260716.sql");
+        String migrationSql = readLower(migration);
+        String migrateAll = readLower(DB_DIR.resolve("migrate-all.sql"));
+        String compose = Files.readString(COMPOSE_FILE);
+        String deployScript = readLower(REPO_ROOT.resolve("harness/scripts/commands/deploy-remote.ps1"));
+
+        assertThat(migrationSql)
+            .contains("add column if not exists channel_attribution_source varchar(64)")
+            .contains("add column if not exists recruiter_attribution_source varchar(64)")
+            .contains("add column if not exists channel_attribution_status varchar(32)")
+            .contains("add column if not exists recruiter_attribution_status varchar(32)")
+            .contains("add column if not exists attribution_owner_type varchar(32)")
+            .contains("chk_promotion_link_attribution_owner_type")
+            .contains("chk_pick_source_mapping_attribution_owner_type");
+        assertThat(migrateAll).contains("\\i alter-role-aware-promotion-link-attribution-20260716.sql");
+        assertThat(compose).contains("21-alter-role-aware-promotion-link-attribution-20260716.sql");
+        assertThat(deployScript)
+            .contains("alter-role-aware-promotion-link-attribution-20260716.sql")
+            .contains("role-aware attribution schema guard")
+            .contains("expected 6 columns");
+        assertThat(REPO_ROOT.resolve("harness/scripts/probes/activity-query-schema.ps1")).exists();
+    }
+
+    @Test
     void environmentEntrypoints_shouldOnlyExposeTestAndRealPre() {
         assertThat(REPO_ROOT.resolve("docker-compose.test.yml")).exists();
         assertThat(REPO_ROOT.resolve("docker-compose.real-pre.yml")).exists();

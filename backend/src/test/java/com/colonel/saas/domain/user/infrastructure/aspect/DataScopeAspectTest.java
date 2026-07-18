@@ -7,6 +7,7 @@ import com.colonel.saas.domain.user.api.DataScope;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.dto.user.UserDataScopeResponse;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
+import com.colonel.saas.mapper.SampleRequestMapper;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -105,6 +106,20 @@ class DataScopeAspectTest {
         Method method = ColonelsettlementOrderMapper.class.getMethod("findPageWithScope", Page.class, QueryWrapper.class);
 
         assertThat(method.getAnnotation(DataScope.class)).isNull();
+    }
+
+    @Test
+    void sampleRequestMapperShouldScopeBothOverloads() throws Exception {
+        Method defaultMethod = SampleRequestMapper.class.getMethod("findPageWithScope", Page.class, QueryWrapper.class);
+        Method recruiterMethod = SampleRequestMapper.class.getMethod(
+                "findPageWithScope", Page.class, QueryWrapper.class, UUID.class);
+
+        assertThat(defaultMethod.getAnnotation(DataScope.class))
+                .extracting(DataScope::userField)
+                .isEqualTo("sr.channel_user_id");
+        assertThat(recruiterMethod.getAnnotation(DataScope.class))
+                .extracting(DataScope::userField)
+                .isEqualTo("sr.channel_user_id");
     }
 
     private ProceedingJoinPoint mockJoinPoint(QueryWrapper<Object> wrapper) throws Throwable {

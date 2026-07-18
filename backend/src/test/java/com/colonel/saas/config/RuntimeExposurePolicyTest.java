@@ -52,6 +52,9 @@ class RuntimeExposurePolicyTest {
 
         assertThat(RuntimeExposurePolicy.shouldBypassAuthentication(realPre, "/api/system/health")).isTrue();
         assertThat(RuntimeExposurePolicy.shouldBypassAuthentication(realPre, "/system/health")).isTrue();
+        assertThat(RuntimeExposurePolicy.shouldBypassAuthentication(realPre, "/api/actuator/health/liveness")).isTrue();
+        assertThat(RuntimeExposurePolicy.shouldBypassAuthentication(realPre, "/api/actuator/health/readiness")).isTrue();
+        assertThat(RuntimeExposurePolicy.shouldBypassAuthentication(realPre, "/api/actuator/health")).isFalse();
         assertThat(RuntimeExposurePolicy.shouldBypassAuthentication(realPre, "/douyin/oauth/callback")).isTrue();
         assertThat(RuntimeExposurePolicy.shouldBypassAuthentication(realPre, "/api/douyin/oauth/callback")).isTrue();
     }

@@ -235,6 +235,7 @@ CREATE TABLE IF NOT EXISTS colonel_activity (
     status VARCHAR(20),
     activity_status_code INTEGER,
     activity_status_text VARCHAR(64),
+    activity_status_synced_at TIMESTAMP,
     recruiter_user_id UUID,
     recruiter_dept_id UUID,
     assigned_at TIMESTAMP,
@@ -276,6 +277,45 @@ CREATE TABLE IF NOT EXISTS product (
     update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     create_by UUID,
     update_by UUID
+);
+
+CREATE TABLE IF NOT EXISTS colonel_activity_product (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    activity_id VARCHAR(50) NOT NULL,
+    activity_name VARCHAR(500),
+    product_id VARCHAR(50) NOT NULL,
+    title VARCHAR(500),
+    price BIGINT,
+    cos_ratio NUMERIC(5,2),
+    cos_fee BIGINT,
+    service_ratio NUMERIC(5,2),
+    status SMALLINT NOT NULL DEFAULT 1,
+    shop_id BIGINT,
+    shop_name VARCHAR(200),
+    activity_start_time TIMESTAMP,
+    activity_end_time TIMESTAMP,
+    promotion_start_time TIMESTAMP,
+    promotion_end_time TIMESTAMP,
+    months_of_protection INT,
+    cover VARCHAR(1000),
+    detail_url VARCHAR(1000),
+    first_cid BIGINT,
+    second_cid BIGINT,
+    third_cid BIGINT,
+    deleted SMALLINT NOT NULL DEFAULT 0,
+    create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    create_by UUID,
+    update_by UUID,
+    extra_data JSONB,
+    assignee_id UUID,
+    sample_requirement JSONB,
+    promotion_info JSONB,
+    audit_status SMALLINT NOT NULL DEFAULT 0,
+    audit_time TIMESTAMP,
+    audit_remark TEXT,
+    min_refer_amount BIGINT,
+    CONSTRAINT uk_activity_product UNIQUE (activity_id, product_id)
 );
 
 CREATE TABLE IF NOT EXISTS product_snapshot (

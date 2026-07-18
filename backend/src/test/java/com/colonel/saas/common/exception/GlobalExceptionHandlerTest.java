@@ -12,6 +12,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DuplicateKeyException;
+import org.springframework.dao.DataAccessResourceFailureException;
+import org.slf4j.MDC;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -34,6 +36,11 @@ class GlobalExceptionHandlerTest {
 
     private final GlobalExceptionHandler handler = new GlobalExceptionHandler();
     private final Logger handlerLogger = (Logger) LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
+    @AfterEach
+    void clearRequestContext() {
+        MDC.clear();
+    }
     private Level originalLevel;
 
     @BeforeEach
@@ -219,6 +226,19 @@ class GlobalExceptionHandlerTest {
 
         assertThat(result.getCode()).isEqualTo(500);
         assertThat(result.getMsg()).isEqualTo("服务器异常");
+    }
+
+    @Test
+    void handleDatabase_shouldReturnStableErrorCodeAndRequestId() {
+        MDC.put("requestId", "req-db-contract-001");
+
+        ApiResult<Void> result = handler.handleDatabase(
+                new DataAccessResourceFailureException("query failed", new RuntimeException("missing column")));
+
+        assertThat(result.getCode()).isEqualTo(500);
+        assertThat(result.getErrorCode()).isEqualTo("DATABASE_ERROR");
+        assertThat(result.getRequestId()).isEqualTo("req-db-contract-001");
+        assertThat(result.getMsg()).doesNotContain("missing column");
     }
 
 }

@@ -29,14 +29,22 @@ class RoleAwareAttributionSchemaContractTest {
         String init = read(root.resolve("src/main/resources/db/init-db.sql"));
         String testSchema = read(root.resolve("src/test/resources/db/mapper-integration-schema.sql"));
         String migrateAll = read(root.resolve("src/main/resources/db/migrate-all.sql"));
+        String legacyMigration = read(root.resolve(
+                "src/main/resources/db/alter-role-aware-promotion-link-attribution-20260716.sql"));
         String migration = read(root.resolve(
                 "src/main/resources/db/migrate/V20260718_001__role_aware_attribution_schema.sql"));
+        String activityMigration = read(root.resolve(
+                "src/main/resources/db/migrate/V20260718_002__activity_status_sync_schema.sql"));
 
         ORDER_COLUMNS.forEach(column -> {
             assertThat(init).as("init-db.sql must declare " + column).contains(column);
             assertThat(testSchema).as("test schema must declare " + column).contains(column);
             assertThat(migration).as("formal migration must declare " + column).contains(column);
         });
+        assertThat(init).contains("activity_status_synced_at");
+        assertThat(testSchema).contains("activity_status_synced_at");
+        assertThat(activityMigration).contains("ADD COLUMN IF NOT EXISTS activity_status_synced_at TIMESTAMP");
+        assertThat(init).contains("CREATE TABLE IF NOT EXISTS promotion_link");
         assertThat(orderEntity).contains("channelAttributionSource", "recruiterAttributionSource");
         assertThat(mapper).contains(
                 "channel_attribution_source", "recruiter_attribution_source",
@@ -47,8 +55,10 @@ class RoleAwareAttributionSchemaContractTest {
         assertThat(testSchema).contains(
                 "chk_pick_source_mapping_attribution_owner_type",
                 "chk_promotion_link_attribution_owner_type");
-        assertThat(migrateAll).contains(
-                "\\i migrate/V20260718_001__role_aware_attribution_schema.sql");
+        assertThat(migrateAll).contains("\\i alter-role-aware-promotion-link-attribution-20260716.sql");
+        ORDER_COLUMNS.forEach(column ->
+                assertThat(legacyMigration).as("legacy aggregate migration must declare " + column).contains(column));
+        assertThat(migrateAll).doesNotContain("\\i migrate/");
         assertThat(migration).contains(
                 "ADD COLUMN IF NOT EXISTS",
                 "to_regclass('public.promotion_link')",

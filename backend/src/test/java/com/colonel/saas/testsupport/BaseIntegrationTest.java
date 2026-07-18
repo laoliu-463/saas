@@ -60,6 +60,7 @@ public abstract class BaseIntegrationTest {
                     performance_records,
                     colonel_partner,
                     colonel_activity,
+                    colonel_activity_product,
                     product,
                     product_snapshot,
                     talent,
