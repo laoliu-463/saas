@@ -32,12 +32,7 @@ if [ -n "`$(git status --porcelain)" ]; then
   exit 1
 fi
 git fetch gitee +feature/auth-system:refs/remotes/gitee/feature/auth-system
-if git show-ref --verify --quiet refs/heads/feature/auth-system; then
-  git switch feature/auth-system
-else
-  git switch --track -c feature/auth-system gitee/feature/auth-system
-fi
-git merge --ff-only gitee/feature/auth-system
+git switch -C feature/auth-system gitee/feature/auth-system
 actual_commit="`$(git rev-parse HEAD)"
 if [ "`$actual_commit" != '$ExpectedCommit' ]; then
   echo "Remote commit mismatch: expected=$ExpectedCommit actual=`$actual_commit"
