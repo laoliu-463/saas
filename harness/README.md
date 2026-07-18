@@ -13,6 +13,12 @@
 - `archive/`：历史归档，保留核心结果索引。
 - `templates/`：任务模板、报告模板、审计模板。
 - `engineering/`：Matt Pocock engineering skills 的项目配置。
+- `src/`：Node / TypeScript Harness 核心源码。
+- `contracts/`：JSON Schema 与机器可读策略。
+- `state/`：稳定发布、架构或验证基线，按需创建；禁止放入运行时产物。
+- `tests/`：Harness 自身测试。
+
+上述 13 个目录构成一级目录白名单。新增目录只在有真实职责和内容时创建，本任务不创建空目录；原始运行产物继续写入 `runtime/qa/out/<run-id>/`。
 
 ## 新增文件守则
 1. **活跃预算**：直接文件/子目录 40 预警、50 硬上限；非脚本文本 160 行预警、200 行硬上限。

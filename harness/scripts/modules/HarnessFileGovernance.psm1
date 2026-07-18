@@ -1,6 +1,9 @@
 $ErrorActionPreference = 'Stop'
 
-$script:AllowedRootDirs = @('rules', 'tasks', 'probes', 'reports', 'scripts', 'manifests', 'archive', 'templates', 'engineering')
+$script:AllowedRootDirs = @(
+    'rules', 'tasks', 'probes', 'reports', 'scripts', 'manifests', 'archive', 'templates', 'engineering',
+    'src', 'contracts', 'state', 'tests'
+)
 $script:TextExtensions = @('.md', '.txt', '.json', '.yaml', '.yml', '.csv')
 $script:ScriptExtensions = @('.ps1', '.psm1', '.psd1', '.sh', '.py', '.js', '.ts', '.tsx', '.jsx', '.java', '.kt')
 
