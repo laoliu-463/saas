@@ -18,7 +18,7 @@ Write-HarnessStage "Remote deploy"
 $remoteScript = @"
 set -e
 cd '$RemoteDir'
-git pull --ff-only
+echo "Using the pre-aligned remote checkout; refusing implicit mirror pulls ..."
 if [ -n "`$(git status --porcelain)" ]; then
   echo "Remote worktree is dirty; refusing to deploy."
   git status --short
