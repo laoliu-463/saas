@@ -49,6 +49,10 @@ knife4j:
     language: zh_cn
 
 app:
+  # Spring's task.scheduling flag does not suppress every @Scheduled bean in this application.
+  # The application-level aspect is the authoritative global pause used by tests and deployments.
+  scheduling:
+    enabled: false
   short-ttl-cache:
     redis-invalidation-enabled: false
   domain-event:
