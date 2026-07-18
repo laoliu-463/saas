@@ -1,11 +1,15 @@
 # Harness Changelog（索引）
 
 > 任务 ID：HARNESS-REDUNDANCY-CLEANUP-20260713
-> 更新时间：2026-07-13
+> 更新时间：2026-07-18
 > 详细历史（含每版修改文件、行为变化、证据）：`archive/20260610/harness-changelog-full.md`
 > 治理政策：`file-retention-policy.md`（changelog 索引 ≤200 行）
 
 ## 最近版本摘要
+
+### v0.9.0 — 2026-07-18
+- 依据 ADR-014 将 Harness 一级目录白名单由 9 个扩展为 13 个，新增 `src/`、`contracts/`、`state/`、`tests/`；未知目录继续阻断。
+- 保留 40/50/200、报告生命周期和基线感知语义；`state/` 按需创建且禁止接收运行时产物，本批次不创建空目录。
 
 ### v0.8.0 — 2026-07-13
 - 实施 ADR-013：活跃目录 40/50、非脚本文本 160/200、reports 根目标 20，并区分 `TASK_GATE` 与 `REPOSITORY_HEALTH`。

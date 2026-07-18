@@ -2,7 +2,10 @@ $ErrorActionPreference = 'Stop'
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
 $checker = Join-Path $repoRoot 'harness\scripts\check-harness-limits.ps1'
-$allowedRootDirs = @('rules', 'tasks', 'probes', 'reports', 'scripts', 'manifests', 'archive', 'templates', 'engineering')
+$allowedRootDirs = @(
+    'rules', 'tasks', 'probes', 'reports', 'scripts', 'manifests', 'archive', 'templates', 'engineering',
+    'src', 'contracts', 'state', 'tests'
+)
 
 function New-GovernanceTestRepo {
     param([string]$Name)
@@ -217,12 +220,56 @@ Describe 'check-harness-limits baseline-aware governance' {
         $result.Output | Should Not Match 'TEXT_LINE_COUNT_EXCEEDED'
     }
 
-    It 'blocks a new non-whitelisted root directory' {
-        $repo = New-GovernanceTestRepo -Name 'root-whitelist'
+    It 'allows the src root directory' {
+        $repo = New-GovernanceTestRepo -Name 'root-src'
         Save-Baseline -Repo $repo
-        Add-TextFile -Repo $repo -RelativePath 'harness\rogue\file.md'
+        Add-TextFile -Repo $repo -RelativePath 'harness\src\entry.ts'
 
-        $result = Invoke-GovernanceCheck -Repo $repo -OwnedFiles @('harness/rogue/file.md')
+        $result = Invoke-GovernanceCheck -Repo $repo -OwnedFiles @('harness/src/entry.ts')
+
+        $result.ExitCode | Should Be 0
+        $result.Output | Should Not Match 'ROOT_DIRECTORY_NOT_ALLOWED'
+    }
+
+    It 'allows the contracts root directory' {
+        $repo = New-GovernanceTestRepo -Name 'root-contracts'
+        Save-Baseline -Repo $repo
+        Add-TextFile -Repo $repo -RelativePath 'harness\contracts\result.schema.json'
+
+        $result = Invoke-GovernanceCheck -Repo $repo -OwnedFiles @('harness/contracts/result.schema.json')
+
+        $result.ExitCode | Should Be 0
+        $result.Output | Should Not Match 'ROOT_DIRECTORY_NOT_ALLOWED'
+    }
+
+    It 'allows the state root directory' {
+        $repo = New-GovernanceTestRepo -Name 'root-state'
+        Save-Baseline -Repo $repo
+        Add-TextFile -Repo $repo -RelativePath 'harness\state\release-baseline.json'
+
+        $result = Invoke-GovernanceCheck -Repo $repo -OwnedFiles @('harness/state/release-baseline.json')
+
+        $result.ExitCode | Should Be 0
+        $result.Output | Should Not Match 'ROOT_DIRECTORY_NOT_ALLOWED'
+    }
+
+    It 'allows the tests root directory' {
+        $repo = New-GovernanceTestRepo -Name 'root-tests'
+        Save-Baseline -Repo $repo
+        Add-TextFile -Repo $repo -RelativePath 'harness\tests\governance.test.ts'
+
+        $result = Invoke-GovernanceCheck -Repo $repo -OwnedFiles @('harness/tests/governance.test.ts')
+
+        $result.ExitCode | Should Be 0
+        $result.Output | Should Not Match 'ROOT_DIRECTORY_NOT_ALLOWED'
+    }
+
+    It 'blocks an unknown fourteenth root directory' {
+        $repo = New-GovernanceTestRepo -Name 'root-fourteenth'
+        Save-Baseline -Repo $repo
+        Add-TextFile -Repo $repo -RelativePath 'harness\unknown-root\file.md'
+
+        $result = Invoke-GovernanceCheck -Repo $repo -OwnedFiles @('harness/unknown-root/file.md')
 
         $result.ExitCode | Should Be 1
         $result.Output | Should Match 'ROOT_DIRECTORY_NOT_ALLOWED'
