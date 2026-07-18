@@ -2,12 +2,12 @@
 
 ## Metadata
 
-- Time: 2026-07-18 15:52:17 +08:00
+- Time: 2026-07-18 15:54:57 +08:00
 - Environment: real-pre
 - Scope: full
 - Branch: codex/ddd-user-role-application
-- Commit: 03a50e52
-- Owned worktree: dirty
+- Commit: 19a16cfb
+- Owned worktree: clean
 - Deploy remote: true
 
 ## Owned Files
@@ -30,18 +30,7 @@ scripts/run-real-pre-db-migrations.sh
 ## Owned Git Status
 
 ~~~text
-M backend/src/main/java/com/colonel/saas/dto/sample/SampleActionRequest.java
- M backend/src/main/java/com/colonel/saas/dto/sample/SampleBatchShipItem.java
- M backend/src/main/java/com/colonel/saas/service/sample/SampleApplicationService.java
- M backend/src/test/java/com/colonel/saas/controller/SampleControllerTest.java
- M docker-compose.real-pre.yml
- M frontend/src/api/sample.ts
- M frontend/src/utils/shippingBatch.ts
- M frontend/src/views/sample/SampleDetail.vue
- M harness/scripts/commands/_lib.ps1
- M harness/scripts/commands/deploy-remote.ps1
- M scripts/run-real-pre-db-migrations.sh
-?? frontend/src/utils/shippingBatch.test.ts
+(clean)
 ~~~
 
 ## Build Result
@@ -55,24 +44,24 @@ Frontend build: PASS (npm --prefix frontend ci; npm --prefix frontend run build)
 ## Docker Status
 
 ~~~text
-NAME                              IMAGE                            COMMAND                  SERVICE             CREATED              STATUS                        PORTS
-saas-active-backend-real-pre-1    colonel-saas/backend:real-pre    "sh -c 'java $JAVA_O…"   backend-real-pre    About a minute ago   Up About a minute (healthy)   127.0.0.1:8081->8080/tcp
-saas-active-frontend-real-pre-1   colonel-saas/frontend:real-pre   "/docker-entrypoint.…"   frontend-real-pre   About a minute ago   Up 58 seconds (healthy)       127.0.0.1:3001->80/tcp
-saas-active-postgres-real-pre-1   postgres:15-alpine               "docker-entrypoint.s…"   postgres-real-pre   10 minutes ago       Up 10 minutes (healthy)       5432/tcp
-saas-active-redis-real-pre-1      redis:7-alpine                   "docker-entrypoint.s…"   redis-real-pre      25 minutes ago       Up 25 minutes (healthy)       6379/tcp
-NAMES                                                      STATUS                        PORTS
-fervent_albattani                                          Up 3 seconds                  0.0.0.0:45013->5432/tcp, [::]:45013->5432/tcp
-saas-active-frontend-real-pre-1                            Up 59 seconds (healthy)       127.0.0.1:3001->80/tcp
-saas-active-backend-real-pre-1                             Up About a minute (healthy)   127.0.0.1:8081->8080/tcp
-testcontainers-ryuk-843cdec2-d0ae-4a4c-8b02-eff9f460f7fd   Up 2 minutes                  0.0.0.0:45573->8080/tcp, [::]:45573->8080/tcp
-saas-active-postgres-real-pre-1                            Up 10 minutes (healthy)       5432/tcp
-saas-active-redis-real-pre-1                               Up 25 minutes (healthy)       6379/tcp
-campus_frontend                                            Up 4 days                     0.0.0.0:5173->5173/tcp, [::]:5173->5173/tcp
-campus_backend                                             Up 4 days (healthy)           0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp
-campus_postgres                                            Up 4 days (healthy)           0.0.0.0:5433->5432/tcp, [::]:5433->5432/tcp
-saas-test-backend-1                                        Up 4 days (unhealthy)         0.0.0.0:5005->5005/tcp, [::]:5005->5005/tcp, 0.0.0.0:8080->8080/tcp, [::]:8080->8080/tcp
-saas-test-postgres-1                                       Up 4 hours (healthy)          0.0.0.0:5432->5432/tcp, [::]:5432->5432/tcp
-saas-test-redis-1                                          Up 4 hours (healthy)          6379/tcp
+NAME                              IMAGE                            COMMAND                  SERVICE             CREATED          STATUS                    PORTS
+saas-active-backend-real-pre-1    colonel-saas/backend:real-pre    "sh -c 'java $JAVA_O…"   backend-real-pre    4 minutes ago    Up 4 minutes (healthy)    127.0.0.1:8081->8080/tcp
+saas-active-frontend-real-pre-1   colonel-saas/frontend:real-pre   "/docker-entrypoint.…"   frontend-real-pre   4 minutes ago    Up 3 minutes (healthy)    127.0.0.1:3001->80/tcp
+saas-active-postgres-real-pre-1   postgres:15-alpine               "docker-entrypoint.s…"   postgres-real-pre   13 minutes ago   Up 13 minutes (healthy)   5432/tcp
+saas-active-redis-real-pre-1      redis:7-alpine                   "docker-entrypoint.s…"   redis-real-pre      28 minutes ago   Up 28 minutes (healthy)   6379/tcp
+NAMES                                                      STATUS                    PORTS
+fervent_albattani                                          Up 2 minutes              0.0.0.0:45013->5432/tcp, [::]:45013->5432/tcp
+saas-active-frontend-real-pre-1                            Up 3 minutes (healthy)    127.0.0.1:3001->80/tcp
+saas-active-backend-real-pre-1                             Up 4 minutes (healthy)    127.0.0.1:8081->8080/tcp
+testcontainers-ryuk-843cdec2-d0ae-4a4c-8b02-eff9f460f7fd   Up 4 minutes              0.0.0.0:45573->8080/tcp, [::]:45573->8080/tcp
+saas-active-postgres-real-pre-1                            Up 13 minutes (healthy)   5432/tcp
+saas-active-redis-real-pre-1                               Up 28 minutes (healthy)   6379/tcp
+campus_frontend                                            Up 4 days                 0.0.0.0:5173->5173/tcp, [::]:5173->5173/tcp
+campus_backend                                             Up 4 days (healthy)       0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp
+campus_postgres                                            Up 4 days (healthy)       0.0.0.0:5433->5432/tcp, [::]:5433->5432/tcp
+saas-test-backend-1                                        Up 4 days (unhealthy)     0.0.0.0:5005->5005/tcp, [::]:5005->5005/tcp, 0.0.0.0:8080->8080/tcp, [::]:8080->8080/tcp
+saas-test-postgres-1                                       Up 4 hours (healthy)      0.0.0.0:5432->5432/tcp, [::]:5432->5432/tcp
+saas-test-redis-1                                          Up 4 hours (healthy)      6379/tcp
 ~~~
 
 ## Health Check Result
@@ -101,11 +90,11 @@ remote not deployed
 
 ## Retro Summary
 
-本次修复补齐单条与批量发货的快递公司编码边界；同时修正 real-pre 部署门禁使用受保护 readiness 地址导致容器无法健康的配置不一致；后续保持前后端字段契约和物流入口回归测试同步.
+agent-do failed: Remote deploy failed with exit code 1.
 
 ## Conclusion
 
-PARTIAL
+FAIL
 
 ## Residual Risk
 
