@@ -287,6 +287,14 @@ describe('ProductLibrary infinite scroll', () => {
     expect(wrapper.text()).toContain('已全部加载')
   })
 
+  it('does not derive promotion-copy permission from frontend roles', () => {
+    const source = readFileSync(resolve(process.cwd(), 'src/views/product/ProductLibrary.vue'), 'utf8')
+
+    expect(source).not.toContain('canCopyPromotionLink')
+    expect(source).not.toContain('can-copy-brief')
+    expect(source).not.toContain('推广链接由渠道角色生成')
+  })
+
   it('keeps appending product pages when the scroll trigger enters the viewport', async () => {
     vi.mocked(getProducts)
       .mockResolvedValueOnce({

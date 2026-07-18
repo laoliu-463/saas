@@ -126,6 +126,16 @@ describe('ProductSelectionCard hover drawer', () => {
     expect(card.classes()).toContain('hover-mode')
   })
 
+  it('复制简介按钮默认可发起请求，由后端负责权限校验', async () => {
+    const wrapper = mountCard()
+    const button = wrapper.find('[data-testid="product-copy-brief"]')
+
+    expect((button.element as HTMLButtonElement).disabled).toBe(false)
+    await button.trigger('click')
+
+    expect(wrapper.emitted('copyBrief')?.[0]).toEqual([baseCard.raw])
+  })
+
   it('hover-mode 下点击 body 触发 detail 事件（桌面端点击 = 进详情，不切抽屉）', async () => {
     const wrapper = mountCard()
     const body = wrapper.find('.selection-card__body')

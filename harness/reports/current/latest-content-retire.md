@@ -2,10 +2,10 @@
 
 ## Metadata
 
-- Time: 2026-07-17 17:47:14 +08:00
+- Time: 2026-07-18 18:59:35 +08:00
 - Action: Plan
 - DryRun: False
-- Reason: deploy: today permissions and frontend display updates
+- Reason: fix: restore backend-authorized promotion copy for admin
 - Manifest: (none)
 - ArchiveRoot: harness/archive/retired-content
 - AllowSourceCode: False

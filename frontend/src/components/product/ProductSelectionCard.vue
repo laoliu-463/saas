@@ -12,7 +12,6 @@
 
   Props:
     - card: 商品卡片视图数据（ProductCardView 类型），必填
-    - canCopyBrief: 是否允许"复制简介"按钮，默认 false
     - canQuickSample: 是否显示"快速寄样"按钮，默认 true
     - copyBriefLoading: 复制简介按钮的 loading 状态，默认 false
 
@@ -83,7 +82,7 @@
           <button
             type="button"
             class="selection-card__btn selection-card__btn--ghost"
-            :disabled="!canCopyBrief || copyBriefLoading"
+            :disabled="copyBriefLoading"
             data-testid="product-copy-brief"
             @click.stop="$emit('copyBrief', card.raw)"
           >
@@ -251,15 +250,12 @@ const props = withDefaults(
   defineProps<{
     /** 商品卡片视图数据，必填 */
     card: ProductCardView
-    /** 是否允许"复制简介"按钮，默认 false */
-    canCopyBrief?: boolean
     /** 是否显示"快速寄样"按钮，默认 true */
     canQuickSample?: boolean
     /** 复制简介按钮的 loading 状态，默认 false */
     copyBriefLoading?: boolean
   }>(),
   {
-    canCopyBrief: false,
     canQuickSample: true,
     copyBriefLoading: false
   }

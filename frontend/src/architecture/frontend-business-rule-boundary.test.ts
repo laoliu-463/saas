@@ -85,7 +85,6 @@ describe('frontend business rule boundary scan', () => {
       'frontend/src/views/layout/Sider.vue',
       'frontend/src/views/product/ActivityList.vue',
       'frontend/src/views/product/ProductDetail.vue',
-      'frontend/src/views/product/ProductLibrary.vue',
       'frontend/src/views/product/components/ProductActionColumn.vue',
       'frontend/src/views/product/index.vue',
       'frontend/src/views/product/product-actions.ts',

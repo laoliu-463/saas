@@ -82,7 +82,6 @@
             v-for="item in visibleProducts"
             :key="productCardKey(item)"
             :card="item.card"
-            :can-copy-brief="canCopyPromotionLink"
             :can-quick-sample="canQuickSample"
             :copy-brief-loading="promotionLoadingIds.has(item.card.productId)"
             @detail="openDetail"
@@ -95,7 +94,6 @@
             v-for="item in visibleProducts"
             :key="productCardKey(item)"
             :card="item.card"
-            :can-copy-brief="canCopyPromotionLink"
             :can-quick-sample="canQuickSample"
             :copy-brief-loading="promotionLoadingIds.has(item.card.productId)"
             @detail="openDetail"
@@ -162,7 +160,6 @@ import ManualCopyDialog from '../../components/common/ManualCopyDialog.vue'
 import { getProducts, getProductLibraryCategories } from '../../api/product'
 import { convertActivityProductLink } from '../../api/activityProduct'
 import { useAuthStore } from '../../stores/auth'
-import { ROLE_CODES, hasAccess } from '../../constants/rbac'
 import { useDelayedFlag } from '../../utils/delayedFlag'
 
 import ProductLibraryFilterPanel from './components/ProductLibraryFilterPanel.vue'
@@ -240,10 +237,6 @@ let loadMoreObserver: IntersectionObserver | null = null
 let loadMoreObserverRoot: Element | null = null
 let productGridViewportRaf: number | null = null
 let productScrollTarget: Window | HTMLElement | null = null
-
-const canCopyPromotionLink = computed(() =>
-  hasAccess(authStore.roleCodes, [ROLE_CODES.CHANNEL_LEADER, ROLE_CODES.CHANNEL_STAFF])
-)
 
 const convertLinkForBriefCopy = (
   activityId: string | number,
@@ -710,10 +703,6 @@ const handleDetailAction = (_payload: { action: string; row: any }) => {
 }
 
 const copyPromotionLink = async (item: any) => {
-  if (!canCopyPromotionLink.value) {
-    message.warning('当前角色仅可查看商品库，推广链接由渠道角色生成')
-    return
-  }
   const productId = String(item?.productId || '')
   const activityId = String(item?.sourceActivityId || item?.activityId || '')
   if (!productId || !activityId) {
