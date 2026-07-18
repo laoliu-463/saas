@@ -33,6 +33,7 @@
     "test:frontend": "npm --prefix frontend run test",
     "test:frontend:coverage": "npm --prefix frontend run test:coverage",
     "harness:typecheck": "npm --prefix harness run typecheck",
+    "harness:inspect": "npm --prefix harness run inspect --",
     "harness:test": "npm --prefix harness test",
     "api:cli:export-assets": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/export-api-cli-skill-assets.ps1",
     "apifox:verify": "bash scripts/verify-openapi-apifox.sh",
