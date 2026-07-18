@@ -28,7 +28,7 @@ import {
   type HarnessScope,
   type RunContext,
 } from "./run-context.js";
-import type { GitSnapshot } from "./git.js";
+import type { EvidenceGitSnapshot, GitSnapshot } from "./git.js";
 
 export interface EvidencePaths {
   readonly rawJson: string;
@@ -51,7 +51,7 @@ export interface EvidenceReport {
   readonly finishedAt: string;
   readonly finishedAtShanghai: string;
   readonly durationMs: number;
-  readonly git: GitSnapshot;
+  readonly git: EvidenceGitSnapshot;
   readonly result: RunResult;
   readonly evidencePaths: EvidencePaths;
 }
@@ -322,19 +322,21 @@ function sanitizeResult(
 
 function sanitizeGit(
   repoRoot: string,
-  git: GitSnapshot,
+  git: EvidenceGitSnapshot,
   secrets: readonly string[],
   fileOps: EvidenceFileOps,
-): GitSnapshot {
+): EvidenceGitSnapshot {
+  if (git.identity.kind === "UNAVAILABLE") return git;
+  const collected = git as GitSnapshot;
   const changedFiles = sortedUnique(
-    git.changedFiles.map((file) => sanitizePath(repoRoot, file, secrets, fileOps)),
+    collected.changedFiles.map((file) => sanitizePath(repoRoot, file, secrets, fileOps)),
   );
-  const identity = git.identity.kind === "COMMIT"
-    ? { ...git.identity }
-    : { ...git.identity, changedFiles };
+  const identity = collected.identity.kind === "COMMIT"
+    ? { ...collected.identity }
+    : { ...collected.identity, changedFiles };
   return {
-    ...git,
-    branch: redactEvidenceText(git.branch, secrets),
+    ...collected,
+    branch: redactEvidenceText(collected.branch, secrets),
     changedFiles,
     identity,
   };
@@ -359,7 +361,11 @@ export function validateEvidenceReport(value: unknown): ValidationResult {
   )) {
     errors.push("证据路径与 runId 或 ReportKey 不一致。");
   }
-  if (report.git.identity.kind === "COMMIT") {
+  if (report.git.identity.kind === "UNAVAILABLE") {
+    if (report.result.status === "PASS") {
+      errors.push("Git 身份未采集时运行结论不得为 PASS。");
+    }
+  } else if (report.git.identity.kind === "COMMIT") {
     if (report.git.identity.commitSha !== report.git.headSha) {
       errors.push("COMMIT 身份的 commitSha 必须与 HEAD 一致。");
     }
@@ -478,8 +484,8 @@ export function renderEvidenceMarkdown(report: EvidenceReport): string {
     `- 运行 ID：${renderMarkdownCodeSpan(report.runId)}`,
     `- 环境：${renderMarkdownCodeSpan(report.environment)}`,
     `- 范围：${renderMarkdownCodeSpan(report.scope)}`,
-    `- 分支：${renderMarkdownCodeSpan(report.git.branch)}`,
-    `- HEAD：${renderMarkdownCodeSpan(report.git.headSha)}`,
+    `- 分支：${renderMarkdownCodeSpan(report.git.branch ?? "未采集")}`,
+    `- HEAD：${renderMarkdownCodeSpan(report.git.headSha ?? "未采集")}`,
     `- 证据身份：${renderMarkdownCodeSpan(report.git.identity.kind)}`,
     `- 开始时间：${report.startedAtShanghai}（${renderMarkdownCodeSpan(report.startedAt)}）`,
     `- 完成时间：${report.finishedAtShanghai}（${renderMarkdownCodeSpan(report.finishedAt)}）`,
@@ -675,7 +681,7 @@ function prepareTargets(
   repoRoot: string,
   fileOps: EvidenceFileOps,
 ): TransactionTarget[] {
-  const json = `${JSON.stringify(report, null, 2)}\n`;
+  const json = `${JSON.stringify(report)}\n`;
   const markdown = renderEvidenceMarkdown(report);
   const targets = [
     { path: report.evidencePaths.rawJson, content: json },

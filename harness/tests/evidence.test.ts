@@ -214,6 +214,46 @@ describe("结构化证据", () => {
     ).toBe(false);
   });
 
+  it("Git 未采集身份只能形成非 PASS 证据", () => {
+    const root = makeRoot();
+    const context = createRunContext({
+      repoRoot: root,
+      environment: "test",
+      scope: "backend",
+      reportKey: "no-git-evidence",
+      runId: "run-no-git-001",
+      startedAt: new Date("2026-07-18T04:05:06.000Z"),
+    });
+    const partial = createRunResult([createCheckResult({
+      checkId: "evidence.git-identity",
+      title: "检查 Git 证据身份",
+      status: "WARN",
+      blocking: true,
+      summary: "Node 不调用 Git，本次身份未采集。",
+      nextActions: ["通过 agent-do 注入快照。"],
+      artifacts: [],
+    })]);
+    const report = createEvidenceReport(context, partial, {
+      finishedAt: new Date("2026-07-18T04:05:08.000Z"),
+    });
+
+    expect(report.git.identity.kind).toBe("UNAVAILABLE");
+    expect(report.result.status).toBe("PARTIAL");
+    expect(validateEvidenceReport(report)).toEqual({ valid: true });
+    expect(validateEvidenceReport({
+      ...report,
+      result: createRunResult([createCheckResult({
+        checkId: "evidence.invalid-pass",
+        title: "拒绝伪造通过",
+        status: "PASS",
+        blocking: true,
+        summary: "未采集身份却伪造通过。",
+        nextActions: [],
+        artifacts: [],
+      })]),
+    }).valid).toBe(false);
+  });
+
   it("evidence Schema 直接引用 RunResult 而不重复状态定义", () => {
     const evidenceSchema = JSON.parse(
       readFileSync(
@@ -261,6 +301,7 @@ describe("结构化证据", () => {
     const parsed = JSON.parse(stableJson) as typeof report;
 
     expect(rawJson).toBe(stableJson);
+    expect(stableJson.trimEnd().split(/\r?\n/u)).toHaveLength(1);
     expect(parsed.runId).toBe(report.runId);
     expect(parsed.git.headSha).toBe(report.git.headSha);
     expect(parsed.environment).toBe(report.environment);
