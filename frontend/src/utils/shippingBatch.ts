@@ -1,7 +1,7 @@
 export interface BatchShipItem {
   requestNo: string;
   trackingNo: string;
-  shipperCode?: string;
+  shipperCode: string;
 }
 
 export interface BatchShipParseResult {
@@ -33,11 +33,15 @@ export function parseBatchShipRows(rows: BatchShipRow[]): BatchShipParseResult {
       errors.push(`第 ${i + 1} 行：物流单号为空，已跳过`);
       continue;
     }
+    if (!shipperCode) {
+      errors.push(`第 ${i + 1} 行：物流公司编码为空，已跳过`);
+      continue;
+    }
 
     items.push({
       requestNo,
       trackingNo,
-      ...(shipperCode ? { shipperCode } : {})
+      shipperCode
     });
   }
 

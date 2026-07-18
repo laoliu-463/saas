@@ -250,9 +250,20 @@ docker run --rm \
   -w /workspace \
   maven:3.9.10-eclipse-temurin-17 \
   mvn -f backend/pom.xml -DskipTests clean package
-echo "Remote backend jar after Maven build:"
-ls -l backend/target/colonel-saas.jar
-compose up -d --build backend-real-pre frontend-real-pre
+IMAGE_TAG="`$image_tag" docker compose --env-file '$RemoteEnvFile' --project-name saas-active \
+  -f docker-compose.real-pre.yml build backend-real-pre frontend-real-pre
+test "`$(docker image inspect "colonel-saas/backend:`$image_tag" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')" = "`$image_tag"
+test "`$(docker image inspect "colonel-saas/frontend:`$image_tag" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')" = "`$image_tag"
+echo "Running Flyway migrations with backend schedulers paused ..."
+REAL_PRE_COMPOSE_ENV='$RemoteEnvFile' REAL_PRE_COMPOSE_FILE=docker-compose.real-pre.yml \
+  REAL_PRE_COMPOSE_PROJECT=saas-active IMAGE_TAG="`$image_tag" REQUIRE_PINNED_IMAGE=true \
+  BACKEND_HEALTH_URL=http://127.0.0.1:8081/api/system/health \
+  sh scripts/run-real-pre-db-migrations.sh
+REAL_PRE_COMPOSE_ENV='$RemoteEnvFile' REAL_PRE_COMPOSE_FILE=docker-compose.real-pre.yml \
+REAL_PRE_COMPOSE_PROJECT=saas-active sh scripts/check-real-pre-schema.sh
+echo "Deploying the already-built immutable images ..."
+IMAGE_TAG="`$image_tag" docker compose --env-file '$RemoteEnvFile' --project-name saas-active \
+  -f docker-compose.real-pre.yml up -d --no-build backend-real-pre frontend-real-pre
 compose ps
 backend_container="`$(compose ps -q backend-real-pre)"
 if [ -z "`$backend_container" ]; then

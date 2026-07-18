@@ -41,9 +41,9 @@ public class SampleBatchShipItem {
      * 快递公司编码。
      * <p>
      * 例如 "SF"（顺丰）、"YTO"（圆通）、"ZTO"（中通）等。
-     * 用于匹配物流查询接口的承运商参数，若不填则由系统自动识别。
+     * 用于匹配物流查询接口的承运商参数，发货时必填。
      * </p>
      */
-    @Schema(description = "快递公司编码。", example = "SF")
+    @Schema(description = "快递公司编码。发货时必填。", example = "SF")
     private String shipperCode;
 }
