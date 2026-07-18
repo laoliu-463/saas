@@ -3,6 +3,10 @@ security:
     secret: test-jwt-secret-for-unit-testing-only-32+chars
 
 spring:
+  flyway:
+    # General unit/context tests do not own an external PostgreSQL instance.
+    # Migration contracts use dedicated Testcontainers and configure Flyway explicitly.
+    enabled: false
   main:
     banner-mode: off
     log-startup-info: false
