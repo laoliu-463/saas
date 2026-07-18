@@ -17,8 +17,8 @@ vi.mock('naive-ui', async (importOriginal) => ({
 
 const response = <T,>(data: T) => ({ data } as AxiosResponse<T>)
 
-const mountModal = (show = true) => mount(PrivateNoteModal, {
-  props: { show, sampleId: 'sample-1' },
+const mountModal = (show = true, sampleId = 'sample-1') => mount(PrivateNoteModal, {
+  props: { show, sampleId },
   global: {
     stubs: {
       NModal: { props: ['show'], template: '<div><slot/><slot name="footer"/></div>' },
@@ -29,10 +29,22 @@ const mountModal = (show = true) => mount(PrivateNoteModal, {
       },
       NAlert: { template: '<div><slot/></div>' },
       NSpace: { template: '<div><slot/></div>' },
-      NButton: { emits: ['click'], template: '<button v-bind="$attrs" @click="$emit(\'click\')"><slot/></button>' }
+      NButton: {
+        props: ['disabled'],
+        emits: ['click'],
+        template: '<button :disabled="disabled" v-bind="$attrs" @click="$emit(\'click\')"><slot/></button>'
+      }
     }
   }
 })
+
+const deferred = <T,>() => {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise
+  })
+  return { promise, resolve }
+}
 
 describe('PrivateNoteModal', () => {
   beforeEach(() => {
@@ -56,5 +68,55 @@ describe('PrivateNoteModal', () => {
     await wrapper.setProps({ show: true })
     await flushPromises()
     expect(getSamplePrivateNote).toHaveBeenCalledTimes(2)
+  })
+
+  it('ignores a stale private note after switching samples', async () => {
+    const first = deferred<AxiosResponse<{ content: string; version: number }>>()
+    const second = deferred<AxiosResponse<{ content: string; version: number }>>()
+    vi.mocked(getSamplePrivateNote)
+      .mockReturnValueOnce(first.promise as any)
+      .mockReturnValueOnce(second.promise as any)
+
+    const wrapper = mountModal()
+    await wrapper.setProps({ show: false })
+    await wrapper.setProps({ sampleId: 'sample-2', show: true })
+    second.resolve(response({ content: 'B的备注', version: 2 }))
+    await flushPromises()
+    expect((wrapper.get('[data-testid="private-note-content"]').element as HTMLTextAreaElement).value).toBe('B的备注')
+
+    first.resolve(response({ content: 'A的备注', version: 1 }))
+    await flushPromises()
+    expect((wrapper.get('[data-testid="private-note-content"]').element as HTMLTextAreaElement).value).toBe('B的备注')
+
+    await wrapper.get('[data-testid="private-note-content"]').setValue('只保存B')
+    await wrapper.get('[data-testid="private-note-save"]').trigger('click')
+    await flushPromises()
+    expect(saveSamplePrivateNote).toHaveBeenCalledWith('sample-2', { content: '只保存B' })
+  })
+
+  it('does not save an empty note while the existing note is still loading', async () => {
+    const pending = deferred<AxiosResponse<{ content: string; version: number }>>()
+    vi.mocked(getSamplePrivateNote).mockReturnValueOnce(pending.promise as any)
+    const wrapper = mountModal()
+
+    expect(wrapper.get('[data-testid="private-note-save"]').attributes('disabled')).toBeDefined()
+    await wrapper.get('[data-testid="private-note-save"]').trigger('click')
+    expect(saveSamplePrivateNote).not.toHaveBeenCalled()
+
+    pending.resolve(response({ content: '不能被误删', version: 1 }))
+    await flushPromises()
+    expect(wrapper.get('[data-testid="private-note-save"]').attributes('disabled')).toBeUndefined()
+    expect((wrapper.get('[data-testid="private-note-content"]').element as HTMLTextAreaElement).value).toBe('不能被误删')
+  })
+
+  it('keeps saving disabled when loading the existing note fails', async () => {
+    vi.mocked(getSamplePrivateNote).mockRejectedValueOnce(new Error('load failed'))
+    const wrapper = mountModal()
+    await flushPromises()
+
+    expect(messageApi.error).toHaveBeenCalled()
+    expect(wrapper.get('[data-testid="private-note-save"]').attributes('disabled')).toBeDefined()
+    await wrapper.get('[data-testid="private-note-save"]').trigger('click')
+    expect(saveSamplePrivateNote).not.toHaveBeenCalled()
   })
 })

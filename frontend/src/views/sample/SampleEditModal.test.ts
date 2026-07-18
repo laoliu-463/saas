@@ -40,8 +40,8 @@ vi.mock('naive-ui', async (importOriginal) => ({
 
 const response = <T,>(data: T) => ({ data } as AxiosResponse<T>)
 
-const mountModal = () => mount(SampleEditModal, {
-  props: { show: true, sampleId: 'sample-1' },
+const mountModal = (show = true, sampleId = 'sample-1') => mount(SampleEditModal, {
+  props: { show, sampleId },
   global: {
     stubs: {
       NModal: { props: ['show'], template: '<div><slot/><slot name="footer"/></div>' },
@@ -61,6 +61,16 @@ const mountModal = () => mount(SampleEditModal, {
     }
   }
 })
+
+const deferred = <T,>() => {
+  let resolve!: (value: T) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  return { promise, resolve, reject }
+}
 
 describe('SampleEditModal', () => {
   beforeEach(() => {
@@ -96,5 +106,40 @@ describe('SampleEditModal', () => {
     await flushPromises()
 
     expect(messageApi.error).toHaveBeenCalledWith('数据已更新，请刷新后重试')
+  })
+
+  it('ignores a stale load after switching to another sample', async () => {
+    const first = deferred<AxiosResponse<typeof context>>()
+    const secondContext = {
+      ...context,
+      sampleId: 'sample-2',
+      talentNickname: '新的达人',
+      remark: 'B备注',
+      version: 8
+    }
+    const second = deferred<AxiosResponse<typeof secondContext>>()
+    vi.mocked(getSampleEditContext)
+      .mockReturnValueOnce(first.promise as any)
+      .mockReturnValueOnce(second.promise as any)
+
+    const wrapper = mountModal()
+    await wrapper.setProps({ show: false })
+    await wrapper.setProps({ sampleId: 'sample-2', show: true })
+    second.resolve(response(secondContext))
+    await flushPromises()
+    expect(wrapper.text()).toContain('新的达人')
+
+    first.resolve(response(context))
+    await flushPromises()
+    expect(wrapper.text()).toContain('新的达人')
+    expect(wrapper.text()).not.toContain('是小鱼吖')
+
+    await wrapper.get('[data-testid="sample-edit-remark"]').setValue('只保存B')
+    await wrapper.get('[data-testid="sample-edit-save"]').trigger('click')
+    await flushPromises()
+    expect(updateSampleCooperationDetails).toHaveBeenCalledWith('sample-2', expect.objectContaining({
+      version: 8,
+      remark: '只保存B'
+    }))
   })
 })

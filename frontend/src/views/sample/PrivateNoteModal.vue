@@ -11,6 +11,7 @@
       v-model:value="content"
       type="textarea"
       :rows="5"
+      :disabled="loading"
       maxlength="200"
       show-count
       placeholder="请输入备注"
@@ -19,7 +20,13 @@
     <template #footer>
       <n-space justify="end">
         <n-button :disabled="saving" @click="visible = false">取消</n-button>
-        <n-button type="primary" :loading="saving" data-testid="private-note-save" @click="save">保存</n-button>
+        <n-button
+          type="primary"
+          :loading="saving"
+          :disabled="!loadedSuccessfully || loading || saving"
+          data-testid="private-note-save"
+          @click="save"
+        >保存</n-button>
       </n-space>
     </template>
   </n-modal>
@@ -36,41 +43,72 @@ const props = defineProps<{ sampleId: string }>()
 const visible = defineModel<boolean>('show', { default: false })
 const message = useMessage()
 const content = ref('')
+const loading = ref(false)
+const loadedSuccessfully = ref(false)
 const saving = ref(false)
+let sessionGeneration = 0
+
+const reset = () => {
+  sessionGeneration += 1
+  content.value = ''
+  loading.value = false
+  loadedSuccessfully.value = false
+  saving.value = false
+}
+
+const isCurrentSession = (generation: number, sampleId: string) => (
+  generation === sessionGeneration && visible.value && props.sampleId === sampleId
+)
 
 const load = async () => {
   if (!props.sampleId) return
+  const sampleId = props.sampleId
+  const generation = ++sessionGeneration
+  content.value = ''
+  loading.value = true
+  loadedSuccessfully.value = false
   try {
-    const response: any = await getSamplePrivateNote(props.sampleId)
+    const response: any = await getSamplePrivateNote(sampleId)
+    if (!isCurrentSession(generation, sampleId)) return
     const result = (response?.data || response) as SamplePrivateNote
     content.value = result?.content || ''
+    loadedSuccessfully.value = true
   } catch (error) {
+    if (!isCurrentSession(generation, sampleId)) return
     notifyApiFailure(error, message, { fallbackMessage: '加载备注失败' })
+  } finally {
+    if (isCurrentSession(generation, sampleId)) loading.value = false
   }
 }
 
 const save = async () => {
+  if (!loadedSuccessfully.value || loading.value || saving.value) return
   if (content.value.length > 200) {
     message.error('备注不能超过200字')
     return
   }
+  const sampleId = props.sampleId
+  const generation = sessionGeneration
+  const noteContent = content.value
   saving.value = true
   try {
-    await saveSamplePrivateNote(props.sampleId, { content: content.value })
+    await saveSamplePrivateNote(sampleId, { content: noteContent })
+    if (!isCurrentSession(generation, sampleId)) return
     message.success('备注已保存')
     visible.value = false
   } catch (error) {
+    if (!isCurrentSession(generation, sampleId)) return
     notifyApiFailure(error, message, { fallbackMessage: '保存备注失败' })
   } finally {
-    saving.value = false
+    if (isCurrentSession(generation, sampleId)) saving.value = false
   }
 }
 
 watch(
   () => [visible.value, props.sampleId] as const,
   ([show]) => {
-    content.value = ''
     if (show) load()
+    else reset()
   },
   { immediate: true }
 )

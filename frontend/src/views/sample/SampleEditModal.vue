@@ -79,6 +79,7 @@ const loading = ref(false)
 const saving = ref(false)
 const context = ref<SampleEditContext | null>(null)
 const form = reactive({ remark: '', recipientName: '', recipientPhone: '', recipientAddress: '' })
+let sessionGeneration = 0
 
 const unwrap = <T,>(response: any): T => (response?.data || response) as T
 const display = (value: unknown) => value === null || value === undefined || value === '' ? '---' : String(value)
@@ -87,16 +88,31 @@ const formatThreshold = (value?: Record<string, unknown> | null) => {
   return Object.entries(value).map(([key, item]) => `${key}：${display(item)}`).join('；')
 }
 
-const reset = () => {
+const clearForm = () => {
   context.value = null
   Object.assign(form, { remark: '', recipientName: '', recipientPhone: '', recipientAddress: '' })
 }
 
+const reset = () => {
+  sessionGeneration += 1
+  loading.value = false
+  saving.value = false
+  clearForm()
+}
+
+const isCurrentSession = (generation: number, sampleId: string) => (
+  generation === sessionGeneration && visible.value && props.sampleId === sampleId
+)
+
 const load = async () => {
   if (!props.sampleId) return
+  const sampleId = props.sampleId
+  const generation = ++sessionGeneration
+  clearForm()
   loading.value = true
   try {
-    const result = unwrap<SampleEditContext>(await getSampleEditContext(props.sampleId))
+    const result = unwrap<SampleEditContext>(await getSampleEditContext(sampleId))
+    if (!isCurrentSession(generation, sampleId)) return
     context.value = result
     Object.assign(form, {
       remark: result.remark || '',
@@ -105,9 +121,10 @@ const load = async () => {
       recipientAddress: result.recipientAddress || ''
     })
   } catch (error) {
+    if (!isCurrentSession(generation, sampleId)) return
     notifyApiFailure(error, message, { fallbackMessage: '加载订单信息失败' })
   } finally {
-    loading.value = false
+    if (isCurrentSession(generation, sampleId)) loading.value = false
   }
 }
 
@@ -119,26 +136,32 @@ const save = async () => {
     message.error('收货人、收货电话和收货地址必须同时填写')
     return
   }
+  const generation = sessionGeneration
+  const sampleId = props.sampleId
+  const version = context.value.version
+  const payload = {
+    version,
+    remark: form.remark,
+    recipientName: addressFields[0],
+    recipientPhone: addressFields[1],
+    recipientAddress: addressFields[2]
+  }
   saving.value = true
   try {
-    await updateSampleCooperationDetails(props.sampleId, {
-      version: context.value.version,
-      remark: form.remark,
-      recipientName: addressFields[0],
-      recipientPhone: addressFields[1],
-      recipientAddress: addressFields[2]
-    })
+    await updateSampleCooperationDetails(sampleId, payload)
+    if (!isCurrentSession(generation, sampleId)) return
     message.success('订单修改成功')
     emit('saved')
     visible.value = false
   } catch (error: any) {
+    if (!isCurrentSession(generation, sampleId)) return
     if (error?.response?.status === 409 || error?.code === 409 || error?.response?.data?.code === 409) {
       message.error('数据已更新，请刷新后重试')
     } else {
       notifyApiFailure(error, message, { fallbackMessage: '订单修改失败' })
     }
   } finally {
-    saving.value = false
+    if (isCurrentSession(generation, sampleId)) saving.value = false
   }
 }
 
