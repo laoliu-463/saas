@@ -14,6 +14,13 @@
 - [V1 必做] Token 获取失败时必须记录请求时间、环境、错误码和响应摘要。
 - [V1 简化] V1 不要求完整多租户 Token 池，但必须能支撑当前联调账号。
 
+## Token 持久化与刷新不变量
+
+- [V1 必做] 授权码换 Token 成功后，必须把 `access_token`、`refresh_token` 和 `expires_in` 对应的过期时间写入 Redis；后续业务只从同一 `appId/client-key` 命名空间读取。
+- [V1 必做] refresh 成功后，新的 `access_token` 必须写入 Redis；上游未返回轮换后的 `refresh_token` 时，保留本次请求使用的旧值，不能因字段缺失丢弃新 access token。
+- [V1 必做] 自动刷新任务只在 Redis 中同时存在可用 `refresh_token` 且 access token 临近过期时执行；刷新成功后下一次刷新必须使用 Redis 中最新的 refresh token。
+- [V1 必做] `DOUYIN_APP_ID` / `DOUYIN_CLIENT_KEY` 不得保留 `MUST_CHANGE_*` 占位值，也必须与 Redis 中 token key 的授权主体一致；real-pre preflight 发现占位配置时必须标记 `BLOCKED`。
+
 ## API / 配置
 
 | 项 | 证据 | 范围 |
@@ -39,4 +46,3 @@
 
 - [历史归档] `docs/归档/旧版V2.2完整方案/09-真实SDK联调准备清单.md`
 - [历史归档] `docs/archive/records/20-2026-05-08-新授权码三方全流程联调报告.md`
-

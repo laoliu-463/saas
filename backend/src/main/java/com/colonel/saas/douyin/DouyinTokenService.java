@@ -122,7 +122,9 @@ public class DouyinTokenService {
                 throw BusinessException.param("missing refresh_token, cannot refresh token");
             }
             DouyinTokenGateway.TokenPayload payload = douyinTokenGateway.refreshToken(finalAppId, refreshToken);
-            cacheTokenPayload(finalAppId, payload);
+            // 上游并非每次都返回轮换后的 refresh_token；缺失时必须保留当前可用的刷新凭据，
+            // 否则新 access_token 尚未写入 Redis 就会因 payload 校验失败而丢失，下一次任务只能报 token 阻塞。
+            cacheTokenPayload(finalAppId, payload, refreshToken);
 
             log.info("Douyin token refreshed successfully for appId={}", finalAppId);
         } catch (BusinessException e) {

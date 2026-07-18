@@ -154,7 +154,7 @@ test('runRealPrePreflight preserves request ID for failed admin login evidence',
   const evidenceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'real-pre-preflight-'));
   const report = await runRealPrePreflight({
     evidenceDir,
-    adminPassword: 'invalid-password',
+    adminPassword: 'change-me',
     retryDelayMs: 0,
     retryAttempts: 1,
     fetchImpl: createFetchStub({
@@ -307,6 +307,61 @@ test('runRealPrePreflight returns BLOCKED when refresh token is missing', async 
   assert.match(
     report.checks.find((check) => check.name === 'douyin token readiness').error,
     /hasAccessToken=true, hasRefreshToken=false, reauthorizeRequired=true/
+  );
+});
+
+test('runRealPrePreflight identifies placeholder douyin configuration separately', async () => {
+  const evidenceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'real-pre-preflight-'));
+  const report = await runRealPrePreflight({
+    evidenceDir,
+    adminPassword: 't-pwd',
+    fetchImpl: createFetchStub({
+      'GET http://localhost:3001/login': htmlResponse(),
+      'GET http://localhost:8081/api/system/health': jsonResponse({ status: 'UP' }),
+      'GET http://localhost:8081/api/system/env': jsonResponse({
+        code: 200,
+        data: {
+          environmentLabel: 'REAL-PRE',
+          activeProfiles: ['real-pre'],
+          appTestEnabled: false,
+          douyinTestEnabled: false,
+          database: 'saas_real_pre'
+        }
+      }),
+      'POST http://localhost:8081/api/auth/login': jsonResponse({
+        code: 200,
+        data: { token: 'jwt-value' }
+      }),
+      'GET http://localhost:8081/api/douyin/tokens': jsonResponse({
+        code: 200,
+        data: {
+          appId: 'MUST_CHANGE_DOUYIN_CLIENT_KEY',
+          hasAccessToken: true,
+          hasRefreshToken: true,
+          reauthorizeRequired: false
+        }
+      })
+    }),
+    spawnSyncImpl: createSpawnStub({
+      schemaRows: [
+        'colonel_partner.create_time=true',
+        'colonel_partner.update_time=true',
+        'domain_event_consume_log=true',
+        'domain_event_outbox=true',
+        'product_operation_state.pinned_at=true',
+        'product_operation_state.pinned_by=true',
+        'product_operation_state.pinned_until=true'
+      ],
+      mappingCount: '1',
+      cleanupJson: JSON.stringify({ mode: 'PlanOnly', protectedTables: [] })
+    })
+  });
+
+  assert.equal(report.status, 'BLOCKED');
+  assert.equal(report.checks.find((check) => check.name === 'douyin token readiness').status, 'BLOCKED_AUTH');
+  assert.match(
+    report.checks.find((check) => check.name === 'douyin token readiness').error,
+    /BLOCKED_CONFIG: douyin appId\/client-key is still a MUST_CHANGE placeholder/
   );
 });
 

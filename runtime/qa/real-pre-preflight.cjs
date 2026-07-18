@@ -229,18 +229,22 @@ async function checkDouyinToken(backendUrl, fetchImpl, token, timeoutMs) {
     headers: { Authorization: `Bearer ${token}` }
   });
   const data = unwrapApiBody(response.body) || {};
+  const appId = typeof data.appId === 'string' ? data.appId.trim() : '';
+  const placeholderConfig = appId.startsWith('MUST_CHANGE_');
   const accessReady = data.hasAccessToken === true;
   const refreshReady = data.hasRefreshToken === true;
   const reauthorizeRequired = data.reauthorizeRequired === true;
-  if (!response.ok || !accessReady || !refreshReady || reauthorizeRequired) {
+  if (!response.ok || placeholderConfig || !accessReady || !refreshReady || reauthorizeRequired) {
+    const reason = placeholderConfig
+      ? 'BLOCKED_CONFIG: douyin appId/client-key is still a MUST_CHANGE placeholder'
+      : `BLOCKED_AUTH: token status hasAccessToken=${accessReady}, ` +
+        `hasRefreshToken=${refreshReady}, reauthorizeRequired=${reauthorizeRequired}`;
     throw new Error(
-      `BLOCKED_AUTH: token status hasAccessToken=${accessReady}, ` +
-      `hasRefreshToken=${refreshReady}, reauthorizeRequired=${reauthorizeRequired}; ` +
-      formatResponseContext(response)
+      `${reason}; ${formatResponseContext(response)}`
     );
   }
   return {
-    appId: data.appId,
+    appId: appId || data.appId,
     ['hasAccessToken']: accessReady,
     ['hasRefreshToken']: refreshReady,
     tokenExpiringSoon: data.tokenExpiringSoon === true,

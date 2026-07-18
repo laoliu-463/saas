@@ -209,3 +209,10 @@
 - 当前风险：需要把所有任务落地到 Git Intake / Exit Gate；P-FIX-002 同步配置残留 (application-real-pre.yml) 仍需独立任务收口。
 - DDD 优化下一步：所有未来任务必须按 git-change-control.md 执行 12 条 Git 强约束。
 - 标记：P0。
+
+## 第三方授权 / Token
+- 本轮修复（2026-07-18）：刷新接口在上游未返回轮换 `refresh_token` 时保留现有刷新凭据，并继续将新的访问令牌、刷新令牌和过期时间写入同一 Redis 命名空间；本地 real-pre 的授权主体配置已从 `MUST_CHANGE_*` 占位值恢复为已有授权配置，Redis 只读键元数据与 Token preflight 均通过。未记录任何凭证或令牌值。
+- 报告：`harness/reports/current/latest-douyin-token-local-bootstrap.md`；验证：`DouyinTokenServiceTest` 31 tests PASS、`real-pre-preflight` PASS、后端/前端构建 PASS、real-pre 容器健康 PASS。
+- 当前风险：本地环境文件未纳入 Git，远端未部署；周期刷新由定时任务和 Redis 状态驱动，仍需在有效上游授权持续有效的前提下观察后续刷新周期。
+- DDD 优化下一步：TOKEN-LOCAL-REFRESH-OBSERVE，补充刷新周期日志与只读状态观测，保持 OAuth/Gateway 适配、Redis 凭据存储和业务域规则边界不变。
+- 标记：P0。

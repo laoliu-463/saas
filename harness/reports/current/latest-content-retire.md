@@ -2,10 +2,10 @@
 
 ## Metadata
 
-- Time: 2026-07-18 18:59:35 +08:00
+- Time: 2026-07-18 19:22:10 +08:00
 - Action: Plan
 - DryRun: False
-- Reason: fix: restore backend-authorized promotion copy for admin
+- Reason: fix: persist douyin refresh token locally
 - Manifest: (none)
 - ArchiveRoot: harness/archive/retired-content
 - AllowSourceCode: False

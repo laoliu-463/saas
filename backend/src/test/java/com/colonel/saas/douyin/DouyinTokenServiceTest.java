@@ -146,6 +146,37 @@ class DouyinTokenServiceTest {
     }
 
     @Test
+    void refreshToken_shouldPersistReturnedAccessAndRefreshTokens() {
+        when(valueOperations.setIfAbsent(eq("douyin:token:lock:app123"), eq("1"), any(Duration.class)))
+                .thenReturn(true);
+        when(valueOperations.get("douyin:refresh:app123")).thenReturn("refresh-token-old");
+        when(douyinTokenGateway.refreshToken("app123", "refresh-token-old")).thenReturn(
+                new DouyinTokenGateway.TokenPayload("access-token-new", "refresh-token-new", 7200L, null, null, 0L)
+        );
+
+        tokenService.refreshToken("app123");
+
+        verify(valueOperations).set("douyin:token:app123", "access-token-new", Duration.ofSeconds(7200));
+        verify(valueOperations).set("douyin:refresh:app123", "refresh-token-new", Duration.ofDays(14));
+        verify(valueOperations).set(eq("douyin:token:expire_at:app123"), any(String.class), eq(Duration.ofSeconds(7200)));
+    }
+
+    @Test
+    void refreshToken_shouldKeepExistingRefreshTokenWhenUpstreamOmitsRotatedToken() {
+        when(valueOperations.setIfAbsent(eq("douyin:token:lock:app123"), eq("1"), any(Duration.class)))
+                .thenReturn(true);
+        when(valueOperations.get("douyin:refresh:app123")).thenReturn("refresh-token-current");
+        when(douyinTokenGateway.refreshToken("app123", "refresh-token-current")).thenReturn(
+                new DouyinTokenGateway.TokenPayload("access-token-new", null, 7200L, null, null, 0L)
+        );
+
+        tokenService.refreshToken("app123");
+
+        verify(valueOperations).set("douyin:token:app123", "access-token-new", Duration.ofSeconds(7200));
+        verify(valueOperations).set("douyin:refresh:app123", "refresh-token-current", Duration.ofDays(14));
+    }
+
+    @Test
     void refreshToken_shouldPropagate31012WithoutMarkingReauthorize() {
         when(valueOperations.setIfAbsent(eq("douyin:token:lock:app123"), eq("1"), any(Duration.class)))
                 .thenReturn(true);

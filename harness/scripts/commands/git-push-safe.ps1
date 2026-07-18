@@ -38,13 +38,21 @@ function Assert-NoSensitiveFile {
 
 function Assert-NoPlainSecrets {
     param([string[]]$Files)
-    $pattern = '(password|secret|token|client_secret|jwt_secret)\s*[:=]\s*[''\"]?[A-Za-z0-9_\-/.+=]{12,}'
+    # Require a quoted literal for general source/JSON assignments. Keep a separate
+    # anchored pattern for unquoted config values; this avoids treating expressions
+    # such as `refreshToken = getRefreshToken(...)` or Redis key names as secrets.
+    $quotedPattern = '[''\"]?(password|secret|token|client_secret|jwt_secret)[''\"]?\s*[:=]\s*[''\"][A-Za-z0-9_\-/.+=]{12,}'
+    $unquotedConfigPattern = '^\s*[A-Za-z0-9_.-]*(password|secret|token|client_secret|jwt_secret)[A-Za-z0-9_.-]*\s*[:=]\s*[A-Za-z0-9_\-/.+=]{12,}\s*(?:#.*)?$'
     foreach ($file in $Files) {
         $path = Join-Path $RepoRoot $file
         if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { continue }
         $name = Split-Path -Leaf $file
         if ($name -like '*.md' -or $name -like '*.prompt.md' -or $name -like '*.skill.md') { continue }
-        foreach ($hit in @(Select-String -LiteralPath $path -Pattern $pattern -ErrorAction SilentlyContinue)) {
+        $hits = @(
+            Select-String -LiteralPath $path -Pattern $quotedPattern -ErrorAction SilentlyContinue
+            Select-String -LiteralPath $path -Pattern $unquotedConfigPattern -ErrorAction SilentlyContinue
+        )
+        foreach ($hit in $hits) {
             $line = $hit.Line
             if ($line -match 'REDACTED|placeholder|example|change-me|__FILL_ME_' -or $line.Contains('$' + '{')) { continue }
             throw "Potential plaintext secret in $file line $($hit.LineNumber)."
