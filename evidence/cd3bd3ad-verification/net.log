@@ -1,0 +1,10 @@
+200 POST http://127.0.0.1:3001/api/auth/login
+200 GET http://127.0.0.1:3001/api/dashboard/metrics?timeField=createTime&scope=personal&_t=1784270020774
+200 GET http://127.0.0.1:3001/api/performance/summary?timeFilterType=pay&timeStart=2026-07-17T00:00:00&timeEnd=2026-07-18T00:00:00&_t=1784270020774
+200 GET http://127.0.0.1:3001/api/talents?page=1&size=20&view=MY_TALENTS&_t=1784270022859
+200 POST http://127.0.0.1:3001/api/talents
+200 GET http://127.0.0.1:3001/api/talents?page=1&size=20&view=MY_TALENTS&_t=1784270030108
+200 GET http://127.0.0.1:3001/api/dashboard/metrics?timeField=createTime&scope=personal&_t=1784270033605
+200 GET http://127.0.0.1:3001/api/performance/summary?timeFilterType=pay&timeStart=2026-07-17T00:00:00&timeEnd=2026-07-18T00:00:00&_t=1784270033605
+200 POST http://127.0.0.1:3001/api/auth/login
+200 GET http://127.0.0.1:3001/api/talents?page=1&size=20&view=MY_TALENTS&_t=1784270043715

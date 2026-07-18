@@ -1,0 +1,27 @@
+# service-path|Mapper simple name; additions are forbidden
+src/main/java/com/colonel/saas/service/OrderService.java|ColonelsettlementOrderMapper
+src/main/java/com/colonel/saas/service/PickSourceMappingService.java|PickSourceMappingMapper
+src/main/java/com/colonel/saas/service/ProductActivityBackfillService.java|ColonelsettlementActivityMapper
+src/main/java/com/colonel/saas/service/ProductActivityBackfillService.java|ProductActivitySyncStateMapper
+src/main/java/com/colonel/saas/service/ProductActivityBackfillService.java|ProductSnapshotMapper
+src/main/java/com/colonel/saas/service/ProductActivityBackfillService.java|ProductSyncJobLogMapper
+src/main/java/com/colonel/saas/service/ProductActivityManualSyncService.java|ColonelsettlementActivityMapper
+src/main/java/com/colonel/saas/service/ProductActivityManualSyncService.java|ProductSyncJobLogMapper
+src/main/java/com/colonel/saas/service/ProductDisplayRuleService.java|ColonelsettlementActivityMapper
+src/main/java/com/colonel/saas/service/ProductDisplayRuleService.java|ProductOperationStateMapper
+src/main/java/com/colonel/saas/service/ProductDisplayRuleService.java|ProductSnapshotMapper
+src/main/java/com/colonel/saas/service/ProductService.java|ColonelsettlementActivityMapper
+src/main/java/com/colonel/saas/service/ProductService.java|MerchantMapper
+src/main/java/com/colonel/saas/service/ProductService.java|ProductOperationLogMapper
+src/main/java/com/colonel/saas/service/ProductService.java|ProductOperationStateMapper
+src/main/java/com/colonel/saas/service/ProductService.java|ProductSnapshotMapper
+src/main/java/com/colonel/saas/service/sample/SampleApplicationService.java|SampleRequestMapper
+src/main/java/com/colonel/saas/service/sample/SampleApplicationService.java|SampleStatusLogMapper
+src/main/java/com/colonel/saas/service/TalentQueryService.java|TalentClaimMapper
+src/main/java/com/colonel/saas/testsupport/TestDataService.java|ColonelsettlementOrderMapper
+src/main/java/com/colonel/saas/testsupport/TestDataService.java|PickSourceMappingMapper
+src/main/java/com/colonel/saas/testsupport/TestDataService.java|ProductMapper
+src/main/java/com/colonel/saas/testsupport/TestDataService.java|ProductOperationStateMapper
+src/main/java/com/colonel/saas/testsupport/TestDataService.java|ProductSnapshotMapper
+src/main/java/com/colonel/saas/testsupport/TestDataService.java|SampleRequestMapper
+src/main/java/com/colonel/saas/testsupport/TestDataService.java|TalentMapper
