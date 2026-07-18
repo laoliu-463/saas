@@ -106,7 +106,8 @@ b729fd2dc89059408c4b6d5bcf7db51341c8769c fix(qa): detect actual real-pre databas
 
 - 应用回滚候选（本机已存在）：backend/frontend 完整 tag `72c9d6557d7ea048526a9c680e521f1880732c71`；切换 `IMAGE_TAG` 后仅 `up -d --no-build` 对应服务并等待 readiness/smoke。禁止浮动 `latest`、`down -v`、删卷或服务器手改源码。
 - DB 变更是向前兼容加列，应用回滚不删列；只有经 DBA 审批且确认恢复点后才可用上述 dump 执行 `pg_restore`。
-- 阻塞：受控 `.env.real-pre`/六角色凭证、真实寄样样本、可归因订单、Jenkins 执行器/远端授权窗口；并发出现的 10 个未归属源码文件需其 owner 收口。
+- 阻塞：受控 `.env.real-pre`/六角色凭证、真实寄样样本、可归因订单、Jenkins 执行器/远端授权窗口；并发出现的未归属源码文件需其 owner 收口。
+- 依赖风险：`npm ci` 报告现有依赖树 6 个审计告警（1 low、1 moderate、2 high、2 critical）；本轮未执行会改变版本的 `npm audit fix`，需单独评估影响并走锁文件变更验证。
 - 明早第一优先级：恢复受控 `.env.real-pre`（不从 example 猜值），确认六角色凭证和同一批寄样/可归因订单样本，串行重跑 B/C/角色矩阵；之后由 release owner 决策远端分叉合并与部署窗口。
 
 ## Retro
