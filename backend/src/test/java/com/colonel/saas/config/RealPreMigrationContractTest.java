@@ -73,12 +73,20 @@ class RealPreMigrationContractTest {
         String migrationSql = readLower(migration);
         String migrateAll = readLower(DB_DIR.resolve("migrate-all.sql"));
         String compose = Files.readString(COMPOSE_FILE);
-        // After 72c9d655 refactor, the schema guard for role-aware
-        // attribution lives in scripts/check-real-pre-schema.sh (invoked
-        // from deploy-remote.ps1), not inline in deploy-remote.ps1.
+        // After 72c9d655 (chore(cd): enforce Flyway and immutable real-pre
+        // evidence) the deploy flow is:
+        //   new volume  -> migrate-all.sql applies alter-role-aware
+        //   existing vol -> Flyway V20260718_001 (already on disk) is the
+        //                   sole source of truth, the inline apply was
+        //                   removed from deploy-remote.ps1 to avoid
+        //                   double-application.
+        // The persistent schema guard for the four attribution columns
+        // lives in scripts/check-real-pre-schema.sh, invoked by
+        // deploy-remote.ps1 after the backend boots.
+        Path flywayV001 = REPO_ROOT.resolve(
+                "backend/src/main/resources/db/migrate/V20260718_001__role_aware_attribution_schema.sql");
         String checkSchema = Files.readString(
                 REPO_ROOT.resolve("scripts/check-real-pre-schema.sh"));
-        String deployScript = readLower(REPO_ROOT.resolve("harness/scripts/commands/deploy-remote.ps1"));
 
         assertThat(migrationSql)
             .contains("add column if not exists channel_attribution_source varchar(64)")
@@ -88,13 +96,21 @@ class RealPreMigrationContractTest {
             .contains("add column if not exists attribution_owner_type varchar(32)")
             .contains("chk_promotion_link_attribution_owner_type")
             .contains("chk_pick_source_mapping_attribution_owner_type");
+        // migrate-all.sql still references the legacy migration for fresh
+        // volumes that predate the Flyway baseline.
         assertThat(migrateAll).contains("\\i alter-role-aware-promotion-link-attribution-20260716.sql");
         assertThat(compose).contains("21-alter-role-aware-promotion-link-attribution-20260716.sql");
-        assertThat(deployScript)
-            .contains("alter-role-aware-promotion-link-attribution-20260716.sql")
-            .contains("role-aware attribution schema guard");
-        // The actual 4 attribution columns must appear in the schema
-        // check script so the guard is real, not just a comment.
+        // Flyway V20260718_001 must exist as the canonical migration and
+        // its SQL body must contain the same four attribution columns
+        // the legacy migration declares, so a future grep over V*.sql
+        // still surfaces the role-aware attribution contract.
+        assertThat(flywayV001).exists();
+        assertThat(readLower(flywayV001))
+            .contains("channel_attribution_source")
+            .contains("channel_attribution_status")
+            .contains("recruiter_attribution_source")
+            .contains("recruiter_attribution_status");
+        // The runtime schema guard must reference the same columns.
         assertThat(checkSchema)
             .contains("channel_attribution_source")
             .contains("channel_attribution_status")
