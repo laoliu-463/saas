@@ -91,10 +91,10 @@ test('resolveQaAdminCredential has no insecure hardcoded fallback', () => {
 });
 
 test('applyQaAdminCredentialToE2eEnv only sets the admin E2E password', () => {
-  const env = {};
+  const env = { E2E_ADMIN_PASSWORD: 'stale', E2E_DEFAULT_PASSWORD: 'default' };
   applyQaAdminCredentialToE2eEnv(env, 'x');
   assert.equal(env.E2E_ADMIN_PASSWORD, 'x');
-  assert.equal(env.E2E_DEFAULT_PASSWORD, undefined);
+  assert.equal(env.E2E_DEFAULT_PASSWORD, 'default');
 });
 
 test('normalizeSystemEnv accepts REAL-PRE only on real-pre profile when test switches are off', () => {

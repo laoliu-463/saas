@@ -349,7 +349,14 @@ async function request(fetchImpl, url, options = {}) {
   try {
     return await fetchImpl(url, {
       method: options.method || 'GET',
-      headers: options.headers,
+      // Spring real-pre health/API responses must not be negotiated as gzip by
+      // Node/undici here: the local reverse-proxy path closes that response
+      // before a body is delivered. Keep this probe deterministic and let
+      // callers override other request headers when needed.
+      headers: {
+        'Accept-Encoding': 'identity',
+        ...(options.headers || {})
+      },
       body: options.body,
       signal: controller.signal
     });

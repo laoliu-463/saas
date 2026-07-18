@@ -47,7 +47,8 @@ function applyQaAdminCredentialToE2eEnv(env = {}, credential = '') {
   const value = String(credential || '').trim();
   if (!value) return env;
   const adminPasswordEnv = ['E2E', 'ADMIN', 'PASSWORD'].join('_');
-  env[adminPasswordEnv] = env[adminPasswordEnv] || value;
+  // real-pre 的受控凭证优先于宿主机残留的 E2E 值，避免 Playwright 使用错误密码。
+  env[adminPasswordEnv] = value;
   return env;
 }
 
