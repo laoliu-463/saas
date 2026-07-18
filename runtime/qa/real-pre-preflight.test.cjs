@@ -150,6 +150,41 @@ test('runRealPrePreflight retries admin login while backend settles', async () =
   assert.equal(loginAttempts, 2);
 });
 
+test('runRealPrePreflight preserves request ID for failed admin login evidence', async () => {
+  const evidenceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'real-pre-preflight-'));
+  const report = await runRealPrePreflight({
+    evidenceDir,
+    adminPassword: 'invalid-password',
+    retryDelayMs: 0,
+    retryAttempts: 1,
+    fetchImpl: createFetchStub({
+      'GET http://localhost:3001/login': htmlResponse(),
+      'GET http://localhost:8081/api/system/health': jsonResponse({ status: 'UP' }),
+      'POST http://localhost:8081/api/auth/login': jsonResponse(
+        { code: 401, message: 'unauthorized' },
+        { ok: false, status: 401, requestId: 'req-login-401' }
+      )
+    }),
+    spawnSyncImpl: createSpawnStub({
+      schemaRows: [
+        'colonel_partner.create_time=true',
+        'colonel_partner.update_time=true',
+        'domain_event_consume_log=true',
+        'domain_event_outbox=true',
+        'product_operation_state.pinned_at=true',
+        'product_operation_state.pinned_by=true',
+        'product_operation_state.pinned_until=true'
+      ],
+      mappingCount: '1',
+      cleanupJson: JSON.stringify({ mode: 'PlanOnly', protectedTables: [] })
+    })
+  });
+
+  const loginCheck = report.checks.find((check) => check.name === 'admin login');
+  assert.equal(loginCheck.status, 'FAIL');
+  assert.match(loginCheck.error, /HTTP 401, requestId=req-login-401/);
+});
+
 test('runRealPrePreflight retries postgres checks while container settles', async () => {
   const evidenceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'real-pre-preflight-'));
   let dockerExecCalls = 0;
@@ -313,10 +348,14 @@ function htmlResponse() {
   };
 }
 
-function jsonResponse(body) {
+function jsonResponse(body, options = {}) {
+  const requestId = options.requestId || '';
   return {
-    ok: true,
-    status: 200,
+    ok: options.ok ?? true,
+    status: options.status ?? 200,
+    headers: {
+      get: (name) => String(name).toLowerCase() === 'x-request-id' ? requestId : null
+    },
     text: async () => JSON.stringify(body),
     json: async () => body
   };

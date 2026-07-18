@@ -154,7 +154,7 @@ async function checkFrontend(frontendUrl, fetchImpl, timeoutMs) {
 async function checkBackendHealth(backendUrl, fetchImpl, timeoutMs) {
   const response = await requestJson(fetchImpl, `${backendUrl}/api/system/health`, { timeoutMs });
   if (!response.ok || response.body?.status !== 'UP') {
-    throw new Error(`/api/system/health is not UP: HTTP ${response.status}`);
+    throw new Error(`/api/system/health is not UP: ${formatResponseContext(response)}`);
   }
   return { url: `${backendUrl}/api/system/health`, status: response.body.status };
 }
@@ -169,7 +169,10 @@ async function checkRealPreEnv(backendUrl, fetchImpl, token, timeoutMs) {
   });
   const env = normalizeSystemEnv(response.body);
   if (!response.ok || !isRealPreRuntime(env)) {
-    throw new Error(`expected REAL-PRE + saas_real_pre + test switches off, got ${JSON.stringify(env)}`);
+    throw new Error(
+      `expected REAL-PRE + saas_real_pre + test switches off, ` +
+      `got ${JSON.stringify(env)}; ${formatResponseContext(response)}`
+    );
   }
   return env;
 }
@@ -211,7 +214,7 @@ async function login(backendUrl, fetchImpl, username, password, timeoutMs, retry
     const data = unwrapApiBody(response.body) || {};
     const token = data.token || data.accessToken;
     if (!response.ok || !token) {
-      throw new Error(`admin login failed: HTTP ${response.status}`);
+      throw new Error(`admin login failed: ${formatResponseContext(response)}`);
     }
     return { username, token };
   });
@@ -232,7 +235,8 @@ async function checkDouyinToken(backendUrl, fetchImpl, token, timeoutMs) {
   if (!response.ok || !accessReady || !refreshReady || reauthorizeRequired) {
     throw new Error(
       `BLOCKED_AUTH: token status hasAccessToken=${accessReady}, ` +
-      `hasRefreshToken=${refreshReady}, reauthorizeRequired=${reauthorizeRequired}`
+      `hasRefreshToken=${refreshReady}, reauthorizeRequired=${reauthorizeRequired}; ` +
+      formatResponseContext(response)
     );
   }
   return {
@@ -357,7 +361,14 @@ async function requestJson(fetchImpl, url, options = {}) {
   const body = await response.json().catch(async () => ({
     rawText: await response.text().catch(() => '')
   }));
-  return { ok: response.ok, status: response.status, body };
+  const requestId = typeof response.headers?.get === 'function'
+    ? String(response.headers.get('x-request-id') || '').trim()
+    : '';
+  return { ok: response.ok, status: response.status, body, requestId };
+}
+
+function formatResponseContext(response) {
+  return `HTTP ${response.status}, requestId=${response.requestId || 'unavailable'}`;
 }
 
 async function request(fetchImpl, url, options = {}) {
