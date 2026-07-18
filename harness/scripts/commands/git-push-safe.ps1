@@ -116,8 +116,16 @@ try {
 
     $branch = (& git branch --show-current).Trim()
     if ([string]::IsNullOrWhiteSpace($branch)) { throw 'Cannot determine current branch for push.' }
-    & git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>$null | Out-Null
-    if ($LASTEXITCODE -eq 0) { & git push } else { & git push --set-upstream origin $branch }
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        & git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>$null | Out-Null
+        $hasUpstream = ($LASTEXITCODE -eq 0)
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+    if ($hasUpstream) { & git push } else { & git push --set-upstream origin $branch }
     if ($LASTEXITCODE -ne 0) { throw 'git push failed. Check upstream and credentials.' }
     Write-Host "Git push completed: $((& git rev-parse --short HEAD).Trim())" -ForegroundColor Green
 }
