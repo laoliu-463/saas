@@ -36,10 +36,13 @@
     "test:frontend": "npm --prefix frontend run test",
     "test:frontend:coverage": "npm --prefix frontend run test:coverage",
     "harness:typecheck": "npm --prefix harness run typecheck",
+<<<<<<< HEAD
     "harness:node:inspect": "npm --prefix harness run inspect --",
     "harness:node:verify": "npm --prefix harness run verify --",
     "harness:inspect": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\harness.ps1 inspect",
     "harness:verify": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\harness.ps1 verify",
+=======
+>>>>>>> 09198c0e (feat(harness): define typed result contracts)
     "harness:test": "npm --prefix harness test",
     "api:cli:export-assets": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/export-api-cli-skill-assets.ps1",
     "apifox:verify": "bash scripts/verify-openapi-apifox.sh",
