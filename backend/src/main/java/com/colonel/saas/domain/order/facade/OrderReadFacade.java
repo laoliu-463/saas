@@ -86,7 +86,7 @@ public interface OrderReadFacade {
     }
 
     enum OrderVisibilityType {
-        ALL, USER, DEPT, NONE
+        ALL, USER, DEPT, CHANNEL_USER, CHANNEL_DEPT, NONE
     }
 
     record OrderVisibility(OrderVisibilityType type, UUID userId, UUID deptId) {
@@ -100,6 +100,14 @@ public interface OrderReadFacade {
 
         public static OrderVisibility dept(UUID deptId) {
             return new OrderVisibility(OrderVisibilityType.DEPT, null, deptId);
+        }
+
+        public static OrderVisibility channelUser(UUID userId) {
+            return new OrderVisibility(OrderVisibilityType.CHANNEL_USER, userId, null);
+        }
+
+        public static OrderVisibility channelDept(UUID deptId) {
+            return new OrderVisibility(OrderVisibilityType.CHANNEL_DEPT, null, deptId);
         }
 
         public static OrderVisibility none() {

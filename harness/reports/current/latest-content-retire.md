@@ -2,10 +2,10 @@
 
 ## Metadata
 
-- Time: 2026-07-17 17:11:34 +08:00
+- Time: 2026-07-18 14:50:38 +08:00
 - Action: Plan
 - DryRun: False
-- Reason: fix: align order summary and detail permissions for service fee and settlement fields
+- Reason: docs(harness): record local cors configuration fix
 - Manifest: (none)
 - ArchiveRoot: harness/archive/retired-content
 - AllowSourceCode: False
@@ -18,9 +18,8 @@
 - docs/deploy/07-Jenkins自动化部署规划.md [document-debt] -> review/resolve-from-debt-register; evidence=listed in harness/rules/state/snapshots/05-*.md debt register
 - docs/归档/旧版V2.2完整方案.md [document-debt] -> review/resolve-from-debt-register; evidence=listed in harness/rules/state/snapshots/05-*.md debt register
 - docs/领域/业绩域.md [document-debt] -> review/resolve-from-debt-register; evidence=listed in harness/rules/state/snapshots/05-*.md debt register
-- out [generated-output-directory] -> review/delete-after-retention; evidence=generated output directory exists
-- playwright-report [generated-output-directory] -> review/delete-after-retention; evidence=generated output directory exists
-- test-results [generated-output-directory] -> review/delete-after-retention; evidence=generated output directory exists
+- hs_err_pid68956.log [root-transient-file] -> review/delete-if-no-longer-needed; evidence=top-level generated/transient filename pattern: *.log
+- hs_err_pid84964.log [root-transient-file] -> review/delete-if-no-longer-needed; evidence=top-level generated/transient filename pattern: *.log
 ~~~
 
 ## Planned / Applied Operations

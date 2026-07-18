@@ -2121,6 +2121,7 @@ class SampleControllerTest {
         SampleActionRequest request = new SampleActionRequest();
         request.setAction("SHIPPED");
         request.setTrackingNo("YT123456");
+        request.setShipperCode("YT");
 
         when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
         when(productDomainFacade.findProductById(productId)).thenReturn(toProductRead(product));
@@ -2141,6 +2142,38 @@ class SampleControllerTest {
         verify(sampleRequestMapper).updateById(sample);
         verify(sampleStatusLogService).log(sampleId, 2, 3, userId, null);
         verify(sampleLogisticsSubscriptionService).subscribeAfterShipment(sample);
+    }
+
+    @Test
+    void actionSample_shouldRejectShippingWithoutShipperCode() {
+        UUID sampleId = UUID.randomUUID();
+        UUID productId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+
+        SampleRequest sample = new SampleRequest();
+        sample.setId(sampleId);
+        sample.setStatus(2);
+        sample.setProductId(productId);
+        sample.setRequestNo("SM20260718000001");
+
+        SampleActionRequest request = new SampleActionRequest();
+        request.setAction("SHIPPED");
+        request.setTrackingNo("YT123456");
+
+        when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
+
+        assertThatThrownBy(() -> sampleController.actionSample(
+                sampleId,
+                request,
+                userId,
+                null,
+                DataScope.ALL,
+                List.of(RoleCodes.OPS_STAFF)))
+                .hasMessageContaining("shipperCode is required when shipping");
+
+        assertThat(sample.getStatus()).isEqualTo(2);
+        verify(sampleRequestMapper, never()).updateById(any());
+        verify(sampleLogisticsSubscriptionService, never()).subscribeAfterShipment(any());
     }
 
     @Test

@@ -4,7 +4,11 @@ import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.domain.user.policy.DataScopeResolver;
 import com.colonel.saas.domain.user.policy.DataScopePolicy;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.service.PerformanceMetricsQueryService;
+import com.colonel.saas.constant.RoleCodes;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -50,7 +54,10 @@ class PerformanceAggregateApplicationServiceTest {
         dataScopePolicy = spy(new DataScopePolicy());
         dddRefactorProperties = new DddRefactorProperties();
         applicationService = new PerformanceAggregateApplicationService(
-                jdbcTemplate, new DataScopeResolver(dataScopePolicy), dddRefactorProperties);
+                jdbcTemplate,
+                new DataScopeResolver(dataScopePolicy),
+                dddRefactorProperties,
+                new CurrentUserPermissionChecker(new CurrentUserPermissionPolicy()));
     }
 
     @Test
@@ -146,10 +153,9 @@ class PerformanceAggregateApplicationServiceTest {
         verify(jdbcTemplate).queryForMap(sqlCaptor.capture(), argsCaptor.capture());
 
         assertThat(sqlCaptor.getValue())
-                .contains("pr.final_channel_user_id = ? OR pr.final_recruiter_user_id = ?")
-                .doesNotContain("pr.final_channel_dept_id = ?");
+                .contains("pr.final_channel_user_id = ?")
+                .doesNotContain("co.dept_id = ?");
         assertThat(argsCaptor.getValue()[0]).isEqualTo(userId);
-        assertThat(argsCaptor.getValue()[1]).isEqualTo(userId);
         verify(dataScopePolicy, never()).decide(any(), any(), any());
     }
 
@@ -184,15 +190,75 @@ class PerformanceAggregateApplicationServiceTest {
         verify(jdbcTemplate).queryForMap(sqlCaptor.capture(), argsCaptor.capture());
 
         assertThat(sqlCaptor.getValue())
-                .contains("pr.final_channel_user_id = ? OR pr.final_recruiter_user_id = ?")
-                .doesNotContain("pr.final_channel_dept_id = ?");
+                .contains("pr.final_channel_user_id = ?")
+                .doesNotContain("co.dept_id = ?");
         assertThat(argsCaptor.getValue()[0]).isEqualTo(userId);
-        assertThat(argsCaptor.getValue()[1]).isEqualTo(userId);
         verify(dataScopePolicy).decide(userId, deptId, DataScope.PERSONAL);
     }
 
     @Test
-    void aggregateRange_shouldReadTalentCommissionFromPerformanceSnapshot() {
+    void aggregateRange_shouldScopeChannelStaffByFinalChannelUser() {
+        when(jdbcTemplate.queryForMap(any(String.class), any(Object[].class)))
+                .thenReturn(Map.of(
+                        "order_count", 1L,
+                        "order_amount_cent", 1000L,
+                        "service_fee_income_cent", 100L,
+                        "tech_service_fee_cent", 10L,
+                        "service_fee_expense_cent", 0L,
+                        "talent_commission_cent", 0L,
+                        "service_profit_cent", 90L,
+                        "recruiter_commission_cent", 9L,
+                        "channel_commission_cent", 18L,
+                        "gross_profit_cent", 63L));
+
+        UUID userId = UUID.randomUUID();
+        LocalDate today = LocalDate.now();
+        applicationService.aggregateRange(
+                today.atStartOfDay(),
+                today.plusDays(1).atStartOfDay(),
+                "settleTime",
+                userId,
+                null,
+                DataScope.PERSONAL,
+                List.of(RoleCodes.CHANNEL_STAFF));
+
+        ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
+        verify(jdbcTemplate).queryForMap(sqlCaptor.capture(), any(Object[].class));
+        assertThat(sqlCaptor.getValue())
+                .contains("pr.final_channel_user_id = ?")
+                .doesNotContain("co.user_id = ?");
+    }
+
+    @Test
+    void aggregateDashboardSummary_shouldScopeChannelStaffByFinalChannelUser() {
+        when(jdbcTemplate.queryForMap(any(String.class), any(Object[].class)))
+                .thenReturn(Map.of());
+        when(jdbcTemplate.queryForList(any(String.class), any(Object[].class)))
+                .thenReturn(List.of());
+
+        UUID userId = UUID.randomUUID();
+        applicationService.aggregateDashboardSummary(
+                LocalDate.now().minusDays(1).atStartOfDay(),
+                LocalDate.now().atTime(23, 59, 59),
+                userId,
+                null,
+                DataScope.PERSONAL,
+                List.of(RoleCodes.CHANNEL_STAFF));
+
+        ArgumentCaptor<String> totalsSqlCaptor = ArgumentCaptor.forClass(String.class);
+        verify(jdbcTemplate).queryForMap(totalsSqlCaptor.capture(), any(Object[].class));
+        assertThat(totalsSqlCaptor.getValue())
+                .contains("pr.final_channel_user_id = ?")
+                .doesNotContain("co.user_id = ?");
+
+        ArgumentCaptor<String> leaderboardSqlCaptor = ArgumentCaptor.forClass(String.class);
+        verify(jdbcTemplate, times(2)).queryForList(leaderboardSqlCaptor.capture(), any(Object[].class));
+        assertThat(leaderboardSqlCaptor.getAllValues())
+                .allSatisfy(sql -> assertThat(sql).contains("pr.final_channel_user_id = ?"));
+    }
+
+    @Test
+    void aggregateRange_shouldReadTalentCommissionFromOrderSettlementField() {
         when(jdbcTemplate.queryForMap(any(String.class), any(Object[].class)))
                 .thenReturn(Map.of(
                         "order_count", 1L,
@@ -335,4 +401,5 @@ class PerformanceAggregateApplicationServiceTest {
                 .contains("ORDER BY order_count DESC, order_amount_cent DESC")
                 .contains("LIMIT 10");
     }
+
 }

@@ -55,10 +55,10 @@ public class SampleActionRequest {
     /**
      * 快递公司编码。
      * <p>
-     * 执行发货动作时选填，例如 "SF"（顺丰）、"YTO"（圆通）等。
+     * 执行发货动作时必填，例如 "SF"（顺丰）、"YTO"（圆通）等。
      * 用于精确匹配物流查询接口的承运商参数。
      * </p>
      */
-    @Schema(description = "快递公司编码。发货时选填，用于物流追踪。", example = "SF")
+    @Schema(description = "快递公司编码。发货时必填，用于物流追踪。", example = "SF")
     private String shipperCode;
 }

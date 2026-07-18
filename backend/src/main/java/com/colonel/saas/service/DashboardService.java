@@ -3,6 +3,7 @@ package com.colonel.saas.service;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.domain.order.facade.OrderReadFacade;
+import com.colonel.saas.domain.order.policy.DashboardOrderAccessPolicy;
 import com.colonel.saas.domain.user.policy.DataScopeResolver;
 import lombok.Data;
 import org.slf4j.Logger;
@@ -99,6 +100,8 @@ public class DashboardService {
     private final DataScopeResolver dataScopeResolver;
     /** DDD 重构灰度开关，默认关闭时保持 Legacy 查询路径 */
     private final DddRefactorProperties dddRefactorProperties;
+    /** 订单域访问策略，统一解释角色可见性与渠道角色 SQL 条件 */
+    private final DashboardOrderAccessPolicy orderAccessPolicy;
 
     /** 影子对账服务（可选），开关开启时在后台执行新路径对比并输出 diff 日志 */
     @Autowired(required = false)
@@ -122,6 +125,7 @@ public class DashboardService {
         this.performanceMetricsQueryService = performanceMetricsQueryService;
         this.dataScopeResolver = dataScopeResolver;
         this.dddRefactorProperties = dddRefactorProperties;
+        this.orderAccessPolicy = new DashboardOrderAccessPolicy(dataScopeResolver, dddRefactorProperties);
     }
 
     /**
@@ -148,8 +152,19 @@ public class DashboardService {
      * @return 仪表盘汇总对象
      */
     public Summary getSummary(LocalDateTime startTime, LocalDateTime endTime, UUID userId, UUID deptId, DataScope dataScope) {
+        return getSummary(startTime, endTime, userId, deptId, dataScope, null);
+    }
+
+    public Summary getSummary(
+            LocalDateTime startTime,
+            LocalDateTime endTime,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            List<String> roleCodes) {
         boolean usePerformanceRecords = performanceMetricsQueryService.hasPerformanceRecords();
-        OrderReadFacade.OrderVisibility orderVisibility = buildOrderVisibility(userId, deptId, dataScope);
+        OrderReadFacade.OrderVisibility orderVisibility = orderAccessPolicy.resolveOrderVisibility(
+                userId, deptId, dataScope, roleCodes);
         OrderReadFacade.DashboardAttributionSummary attributionSummary =
                 orderReadFacade.getDashboardAttributionSummary(startTime, endTime, orderVisibility);
         Long attributedCount = attributionSummary.attributedOrderCount();
@@ -163,7 +178,10 @@ public class DashboardService {
         long settledOrderCount = 0L;
         PerformanceMetricsQueryService.DashboardPerformanceSummary performanceSummary = null;
         if (usePerformanceRecords) {
-            performanceSummary = performanceMetricsQueryService.aggregateDashboardSummary(startTime, endTime, userId, deptId, dataScope);
+            performanceSummary = roleCodes == null || roleCodes.isEmpty()
+                    ? performanceMetricsQueryService.aggregateDashboardSummary(startTime, endTime, userId, deptId, dataScope)
+                    : performanceMetricsQueryService.aggregateDashboardSummary(
+                            startTime, endTime, userId, deptId, dataScope, roleCodes);
             orderCount = performanceSummary.orderCount();
             orderAmount = performanceSummary.orderAmountCent();
             serviceFee = performanceSummary.serviceFeeCent();
@@ -184,13 +202,14 @@ public class DashboardService {
                 .map(this::toReasonCountItem)
                 .toList();
 
-        List<DiagnosticItem> diagnostics = loadDiagnostics(startTime, endTime, userId, deptId, dataScope);
+        List<DiagnosticItem> diagnostics = loadDiagnostics(startTime, endTime, userId, deptId, dataScope, roleCodes);
         List<ActivityProductItem> activityProductBreakdown = loadActivityProductBreakdown(
                 startTime,
                 endTime,
                 userId,
                 deptId,
                 dataScope,
+                roleCodes,
                 1,
                 DEFAULT_BREAKDOWN_LIMIT
         ).records();
@@ -234,6 +253,11 @@ public class DashboardService {
         return summary;
     }
 
+    private OrderReadFacade.OrderVisibility buildOrderVisibility(
+            UUID userId, UUID deptId, DataScope dataScope) {
+        return orderAccessPolicy.resolveOrderVisibility(userId, deptId, dataScope, null);
+    }
+
     /**
      * 分页查询活动-商品维度下钻数据。
      * 返回每个活动-商品组合的订单数、金额、未归因订单数、映射数、推广链接数等详情。
@@ -255,7 +279,7 @@ public class DashboardService {
             DataScope dataScope,
             long page,
             long size) {
-        return loadActivityProductBreakdown(startTime, endTime, userId, deptId, dataScope, page, size);
+        return loadActivityProductBreakdown(startTime, endTime, userId, deptId, dataScope, null, page, size);
     }
 
     /**
@@ -285,8 +309,9 @@ public class DashboardService {
             LocalDateTime endTime,
             UUID userId,
             UUID deptId,
-            DataScope dataScope) {
-        SqlContext context = buildFilteredOrdersContext(startTime, endTime, userId, deptId, dataScope);
+            DataScope dataScope,
+            List<String> roleCodes) {
+        SqlContext context = buildFilteredOrdersContext(startTime, endTime, userId, deptId, dataScope, roleCodes);
         String sql = diagnosticSql(context.whereClause());
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, context.args().toArray());
         return rows.stream()
@@ -316,9 +341,10 @@ public class DashboardService {
             UUID userId,
             UUID deptId,
             DataScope dataScope,
+            List<String> roleCodes,
             long page,
             long size) {
-        SqlContext context = buildFilteredOrdersContext(startTime, endTime, userId, deptId, dataScope);
+        SqlContext context = buildFilteredOrdersContext(startTime, endTime, userId, deptId, dataScope, roleCodes);
         long safePage = Math.max(page, 1L);
         long safeSize = Math.max(size, 1L);
         long offset = (safePage - 1) * safeSize;
@@ -357,6 +383,16 @@ public class DashboardService {
             UUID userId,
             UUID deptId,
             DataScope dataScope) {
+        return buildFilteredOrdersContext(startTime, endTime, userId, deptId, dataScope, null);
+    }
+
+    private SqlContext buildFilteredOrdersContext(
+            LocalDateTime startTime,
+            LocalDateTime endTime,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            List<String> roleCodes) {
         List<String> clauses = new ArrayList<>();
         List<Object> args = new ArrayList<>();
         clauses.add("co.deleted = 0");
@@ -368,7 +404,9 @@ public class DashboardService {
             clauses.add("co.settle_time <= ?");
             args.add(endTime);
         }
-        appendScopeClause(clauses, args, userId, deptId, dataScope);
+        if (!orderAccessPolicy.appendChannelRoleScope(clauses, args, userId, deptId, roleCodes)) {
+            appendScopeClause(clauses, args, userId, deptId, dataScope);
+        }
         return new SqlContext(String.join(" AND ", clauses), args);
     }
 
@@ -840,43 +878,6 @@ public class DashboardService {
             case DIAGNOSIS_AMBIGUOUS_MAPPING -> "ambiguous 多用户冲突";
             default -> category;
         };
-    }
-
-    private OrderReadFacade.OrderVisibility buildOrderVisibility(UUID userId, UUID deptId, DataScope dataScope) {
-        if (dataScope == null) {
-            return OrderReadFacade.OrderVisibility.all();
-        }
-        if (!dddRefactorProperties.getDataScopePolicy().isEnabled()) {
-            return buildOrderVisibilityLegacy(userId, deptId, dataScope);
-        }
-        DataScopeResolver.ResolvedDataScope resolved =
-                dataScopeResolver.resolve(userId, deptId, dataScope);
-        if (resolved.filtersUser()) {
-            return OrderReadFacade.OrderVisibility.user(userId);
-        }
-        if (resolved.filtersDept()) {
-            return OrderReadFacade.OrderVisibility.dept(deptId);
-        }
-        return dataScopeResolver.requiresFilter(dataScope)
-                ? OrderReadFacade.OrderVisibility.none()
-                : OrderReadFacade.OrderVisibility.all();
-    }
-
-    private OrderReadFacade.OrderVisibility buildOrderVisibilityLegacy(UUID userId, UUID deptId, DataScope dataScope) {
-        if (dataScope == DataScope.PERSONAL && userId != null) {
-            return OrderReadFacade.OrderVisibility.user(userId);
-        }
-        if (dataScope == DataScope.DEPT && deptId != null) {
-            return OrderReadFacade.OrderVisibility.dept(deptId);
-        }
-        if (requiresRestrictedContext(dataScope)) {
-            return OrderReadFacade.OrderVisibility.none();
-        }
-        return OrderReadFacade.OrderVisibility.all();
-    }
-
-    private boolean requiresRestrictedContext(DataScope dataScope) {
-        return dataScope == DataScope.PERSONAL || dataScope == DataScope.DEPT;
     }
 
     /**

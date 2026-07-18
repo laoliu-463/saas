@@ -213,6 +213,7 @@ const logisticsError = ref('')
 const detailLoadError = ref('')
 const actionError = ref('')
 const shippingDraft = ref('')
+const shippingShipperCodeDraft = ref('')
 const shippingError = ref('')
 
 const routeSampleId = computed(() => {
@@ -430,12 +431,13 @@ function askReason() {
   })
 }
 
-function askTrackingNo() {
-  return new Promise<string>((resolve) => {
+function askShippingInfo() {
+  return new Promise<{ trackingNo: string; shipperCode: string } | null>((resolve) => {
     shippingDraft.value = ''
+    shippingShipperCodeDraft.value = ''
     shippingError.value = ''
     dialog.warning({
-      title: '填写物流单号',
+      title: '填写物流信息',
       content: () =>
         h('div', [
           h('div', { style: 'margin-bottom: 8px;' }, '物流单号：'),
@@ -450,6 +452,18 @@ function askTrackingNo() {
               }
             }
           }),
+          h('div', { style: 'margin: 12px 0 8px;' }, '快递公司编码：'),
+          h(NInput, {
+            placeholder: 'SF / YTO / ZTO',
+            status: shippingError.value ? 'error' : undefined,
+            value: shippingShipperCodeDraft.value,
+            onUpdateValue: (nextValue) => {
+              shippingShipperCodeDraft.value = nextValue
+              if (shippingError.value && nextValue.trim()) {
+                shippingError.value = ''
+              }
+            }
+          }),
           shippingError.value
             ? h('div', { style: 'margin-top: 6px; color: var(--color-danger); font-size: var(--text-xs);' }, shippingError.value)
             : null
@@ -457,15 +471,20 @@ function askTrackingNo() {
       positiveText: '确认发货',
       negativeText: '取消',
       onPositiveClick: () => {
-        const value = shippingDraft.value.trim()
-        if (!value) {
+        const trackingNo = shippingDraft.value.trim()
+        const shipperCode = shippingShipperCodeDraft.value.trim()
+        if (!trackingNo) {
           shippingError.value = '请先填写物流单号'
           return false
         }
-        resolve(value)
+        if (!shipperCode) {
+          shippingError.value = '请先填写快递公司编码'
+          return false
+        }
+        resolve({ trackingNo, shipperCode })
         return true
       },
-      onNegativeClick: () => resolve('')
+      onNegativeClick: () => resolve(null)
     })
   })
 }
@@ -479,9 +498,9 @@ async function handleAction(action: string) {
   }
 
   if (action === 'SHIPPED') {
-    const trackingNo = await askTrackingNo()
-    if (!trackingNo) return
-    await doActionSample({ action, trackingNo })
+    const shippingInfo = await askShippingInfo()
+    if (!shippingInfo) return
+    await doActionSample({ action, ...shippingInfo })
     return
   }
 

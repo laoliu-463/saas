@@ -200,10 +200,10 @@ export const batchRejectSamples = (data: { requestNos: string[]; remark: string 
  * @param data.items - 发货项列表
  * @param data.items[].requestNo - 寄样单编号
  * @param data.items[].trackingNo - 快递单号
- * @param data.items[].shipperCode - 快递公司编码（可选）
+ * @param data.items[].shipperCode - 快递公司编码（必填）
  * @returns 批量发货结果
  */
-export const batchShipSamples = (data: { items: { requestNo: string; trackingNo: string; shipperCode?: string }[] }) =>
+export const batchShipSamples = (data: { items: { requestNo: string; trackingNo: string; shipperCode: string }[] }) =>
   request.post('/samples/batch-ship', data);
 
 /**

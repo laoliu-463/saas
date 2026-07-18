@@ -5,6 +5,8 @@ import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.domain.performance.application.PerformanceAggregateApplicationService;
 import com.colonel.saas.domain.user.policy.DataScopeResolver;
 import com.colonel.saas.domain.user.policy.DataScopePolicy;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -46,7 +48,10 @@ class PerformanceMetricsQueryServiceTest {
         // 全部下沉至 application 层；测试使用同一份 mock jdbcTemplate/dataScopePolicy，
         // 保证 service → application 委派调用链上 SQL 装配 / DataScopePolicy 行为可被验证。
         aggregateApplicationService = new PerformanceAggregateApplicationService(
-                jdbcTemplate, new DataScopeResolver(dataScopePolicy), dddRefactorProperties);
+                jdbcTemplate,
+                new DataScopeResolver(dataScopePolicy),
+                dddRefactorProperties,
+                new CurrentUserPermissionChecker(new CurrentUserPermissionPolicy()));
         service = new PerformanceMetricsQueryService(
                 jdbcTemplate, aggregateApplicationService);
     }
@@ -59,7 +64,7 @@ class PerformanceMetricsQueryServiceTest {
 
     @Test
     void aggregateRange_shouldUseEstimateColumnsForCreateTrack() {
-        when(jdbcTemplate.queryForMap(contains("co.estimate_service_fee"), any(Object[].class)))
+        when(jdbcTemplate.queryForMap(contains("pr.estimate_service_fee"), any(Object[].class)))
                 .thenReturn(Map.of(
                         "order_count", 2L,
                         "order_amount_cent", 5000L,
@@ -111,12 +116,11 @@ class PerformanceMetricsQueryServiceTest {
         verify(jdbcTemplate).queryForMap(sqlCaptor.capture(), any(Object[].class));
         String sql = sqlCaptor.getValue();
 
-        assertThat(sql).contains("FROM colonelsettlement_order co");
-        assertThat(sql).contains("LEFT JOIN performance_records pr ON pr.order_id = co.order_id");
-        assertThat(sql).contains("co.deleted = 0");
-        assertThat(sql).doesNotContain("pr.is_valid = TRUE");
-        assertThat(sql).contains("co.create_time >= ?");
-        assertThat(sql).contains("co.create_time < ?");
+        assertThat(sql).contains("FROM performance_records pr");
+        assertThat(sql).contains("LEFT JOIN colonelsettlement_order co ON co.order_id = pr.order_id AND co.deleted = 0");
+        assertThat(sql).contains("pr.is_valid = TRUE");
+        assertThat(sql).contains("pr.order_create_time >= ?");
+        assertThat(sql).contains("pr.order_create_time < ?");
         assertThat(sql).doesNotContain("co.pay_time");
     }
 
@@ -141,10 +145,10 @@ class PerformanceMetricsQueryServiceTest {
         verify(jdbcTemplate).queryForList(sqlCaptor.capture(), any(Object[].class));
         String sql = sqlCaptor.getValue();
 
-        assertThat(sql).contains("FROM colonelsettlement_order co");
-        assertThat(sql).contains("LEFT JOIN performance_records pr ON pr.order_id = co.order_id");
-        assertThat(sql).contains("COALESCE(SUM(co.order_amount), 0) AS order_amount_cent");
-        assertThat(sql).doesNotContain("pr.is_valid = TRUE");
+        assertThat(sql).contains("FROM performance_records pr");
+        assertThat(sql).contains("LEFT JOIN colonelsettlement_order co ON co.order_id = pr.order_id AND co.deleted = 0");
+        assertThat(sql).contains("COALESCE(SUM(pr.pay_amount + COALESCE(adj.delta_pay_amount, 0)), 0) AS order_amount_cent");
+        assertThat(sql).contains("pr.is_valid = TRUE");
     }
 
     @Test
@@ -177,7 +181,7 @@ class PerformanceMetricsQueryServiceTest {
         verify(jdbcTemplate).queryForMap(sqlCaptor.capture(), argsCaptor.capture());
 
         assertThat(sqlCaptor.getValue())
-                .contains("co.user_id = ?")
+                .contains("pr.final_channel_user_id = ?")
                 .doesNotContain("co.dept_id = ?");
         assertThat(argsCaptor.getValue()[0]).isEqualTo(userId);
         verify(dataScopePolicy, never()).decide(any(), any(), any());
@@ -214,7 +218,7 @@ class PerformanceMetricsQueryServiceTest {
         verify(jdbcTemplate).queryForMap(sqlCaptor.capture(), argsCaptor.capture());
 
         assertThat(sqlCaptor.getValue())
-                .contains("co.user_id = ?")
+                .contains("pr.final_channel_user_id = ?")
                 .doesNotContain("co.dept_id = ?");
         assertThat(argsCaptor.getValue()[0]).isEqualTo(userId);
         verify(dataScopePolicy).decide(userId, deptId, DataScope.PERSONAL);
@@ -244,7 +248,7 @@ class PerformanceMetricsQueryServiceTest {
                 DataScope.ALL);
 
         verify(jdbcTemplate).queryForMap(
-                contains("settle_second_colonel_commission"),
+                contains("pr.talent_commission"),
                 any(Object[].class));
     }
 
