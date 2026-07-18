@@ -27,7 +27,7 @@ Describe 'remote deployment safety contract' {
 
     It 'switches a clean remote worktree to the controlled feature branch before commit validation' {
         $content | Should Match 'Remote worktree is not clean'
-        $content | Should Match 'git fetch gitee feature/auth-system'
+        $content | Should Match 'git fetch gitee \+feature/auth-system'
         $content | Should Match 'git switch feature/auth-system'
         $content | Should Match 'git merge --ff-only gitee/feature/auth-system'
 
@@ -35,6 +35,10 @@ Describe 'remote deployment safety contract' {
         $commitGuard = $content.IndexOf('Remote commit mismatch')
         $branchSwitch | Should BeGreaterThan -1
         $commitGuard | Should BeGreaterThan $branchSwitch
+    }
+
+    It 'force-refreshes only the remote tracking ref when the mirror history is rewritten' {
+        $content | Should Match 'git fetch gitee \+feature/auth-system:refs/remotes/gitee/feature/auth-system'
     }
 
     It 'derives the pinned image tag from the validated remote commit before migrations' {

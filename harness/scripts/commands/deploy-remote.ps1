@@ -31,7 +31,7 @@ if [ -n "`$(git status --porcelain)" ]; then
   echo "Remote worktree is not clean; refusing to switch deploy branch"
   exit 1
 fi
-git fetch gitee feature/auth-system:refs/remotes/gitee/feature/auth-system
+git fetch gitee +feature/auth-system:refs/remotes/gitee/feature/auth-system
 if git show-ref --verify --quiet refs/heads/feature/auth-system; then
   git switch feature/auth-system
 else
