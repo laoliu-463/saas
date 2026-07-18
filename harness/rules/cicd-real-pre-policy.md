@@ -10,17 +10,17 @@
 ## 2. Jenkins Job
 
 - Job 名称：`saas-real-pre-cd`。
-- 源码来源：`https://gitee.com/cao-jianing463/saas.git`。
-- 默认分支：`feature/ddd/DDD-VERIFY-001`。
+- 主源码来源：`https://github.com/laoliu-463/saas.git`；Gitee 仅作只读镜像。
+- 默认分支：`codex/ddd-user-role-application`。
 - 运行环境：服务器本机 Jenkins，仅面向 real-pre。
-- 镜像标签：使用 Git short commit，例如 `e248b611`。
+- 镜像标签：必须使用 40 位完整 Git commit SHA，并写入 OCI revision label。
 
 ## 3. Required Parameters
 
 | 参数 | 要求 |
 | --- | --- |
 | `DEPLOY_BRANCH` | 必须指向受控 real-pre CD 分支 |
-| `DEPLOY_REAL_PRE` | 必须为 `true` |
+| `DEPLOY_REAL_PRE` | 默认 `false`；发布人明确批准后必须为 `true` |
 | `CONFIRM_REAL_PROMOTION_WRITE` | real-pre 推广写入双开关开启时必须为 `true` |
 
 ## 4. Preflight Guard
@@ -28,7 +28,7 @@
 Jenkins 部署前必须校验：
 
 - `DEPLOY_ENV=real-pre`。
-- `RUN_DB_MIGRATIONS=false`。
+- `RUN_DB_MIGRATIONS=true`，且只能执行经过测试的增量兼容迁移。
 - Compose 文件只能是 `docker-compose.real-pre.yml`。
 - Compose project 固定为 `saas-active`。
 - 服务器环境文件固定为 `/opt/saas/env/.env.real-pre`。
@@ -51,14 +51,17 @@ Jenkins real-pre CD 必须按以下顺序执行：
 5. Frontend Build：执行依赖安装、`test`、`typecheck`、`build`。
 6. Docker Build：构建 `backend-real-pre` 与 `frontend-real-pre` 镜像。
 7. Compose Config：输出并校验 `docker compose config`。
-8. Deploy real-pre：只更新 backend / frontend，不重建 DB / Redis。
-9. Health Check：验证后端 `/api/system/health` 与前端 `/healthz`。
-10. Evidence Report：归档 Jenkins CD 证据。
+8. 数据库备份并以 `pg_restore --list` 验证恢复目录。
+9. 执行兼容迁移并运行只读 Schema 预检。
+10. 以关闭调度的方式部署 backend，验证 `/api/actuator/health/readiness`。
+11. 部署 frontend，执行核心业务 smoke 和多角色 E2E。
+12. 恢复调度并再次验证 readiness。
+13. Evidence Report：归档 SHA、镜像 ID、迁移版本和回滚镜像。
 
 ## 6. Deploy Boundary
 
 - 只允许 `backend-real-pre` 与 `frontend-real-pre` 自动重建和重启。
-- 不允许自动执行数据库迁移。
+- 只允许自动执行已入库、已通过 Testcontainers 的增量兼容迁移；禁止临时 SQL 和破坏性 DDL。
 - 不允许 `docker compose down -v`。
 - 不允许删除 PostgreSQL / Redis volume。
 - 不允许切换到 test/mock 配置证明 real-pre 通过。
@@ -69,7 +72,7 @@ Jenkins real-pre CD 必须按以下顺序执行：
 
 部署前必须记录当前 backend / frontend 镜像。
 
-Health Check 失败时：
+迁移、readiness、smoke 或 E2E 失败时：
 
 1. 尝试切回部署前 backend / frontend 镜像标签。
 2. 重新执行健康检查。
@@ -88,21 +91,23 @@ Health Check 失败时：
 - `docker compose config` 结果。
 - 后端 / 前端健康检查结果。
 - `Production touched: NO`。
-- `Database migration/write by pipeline: NO`。
+- 数据库备份文件及 `pg_restore --list` 验证结果。
+- Flyway/兼容迁移版本和 Schema 预检结果。
+- 部署前回滚镜像、部署后镜像 ID、40 位 SHA 和 OCI revision label。
 - `Secret leaked: NO`。
 
 证据文件固定写入：
 
-- Jenkins artifact：`harness/reports/latest-evidence-jenkins-cd.md`。
+- Jenkins artifact：`harness/reports/current/latest-jenkins-cd.md`。
 - 服务器归档：`/opt/saas/runtime/qa/out/jenkins-<build>/latest-evidence-jenkins-cd.md`。
 
 ## 9. Verified Baseline
 
-最近已验证的 Jenkins CD 基线：
+历史 Jenkins CD 基线（仅供追溯，不代表本策略当前已在远端验证）：
 
 - Job：`saas-real-pre-cd #9`。
 - Commit：`e248b611698e56e1e1e924fc65e79bee0fcb8fac`。
-- Image tag：`e248b611`。
+- Image tag：`e248b611`（历史短标签，当前策略已禁止）。
 - Result：`SUCCESS`。
 - 后端测试：`2511` run，`0` failures，`0` errors，`3` skipped。
 - 后端健康：`{"status":"UP"}`。

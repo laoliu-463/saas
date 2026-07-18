@@ -10,8 +10,8 @@ else
   REAL_PRE_COMPOSE_ENV=".env.real-pre"
 fi
 REAL_PRE_COMPOSE_PROJECT="${REAL_PRE_COMPOSE_PROJECT:-${COMPOSE_PROJECT_NAME:-saas-active}}"
-DB_MIGRATION_FILE="${DB_MIGRATION_FILE:-/docker-entrypoint-initdb.d/99-migrate-all.sql}"
 POSTGRES_SERVICE="${POSTGRES_SERVICE:-postgres-real-pre}"
+MIGRATION_FILES="${MIGRATION_FILES:-backend/src/main/resources/db/migrate/V20260718_001__role_aware_attribution_schema.sql backend/src/main/resources/db/migrate/V20260718_002__activity_status_sync_schema.sql}"
 
 compose() {
   docker compose \
@@ -39,41 +39,45 @@ if [ "$ready" != "true" ]; then
   exit 1
 fi
 
-echo "Running managed aggregate migration: $DB_MIGRATION_FILE"
-compose exec -T \
-  -e DB_MIGRATION_FILE="$DB_MIGRATION_FILE" \
-  "$POSTGRES_SERVICE" sh -s <<'CONTAINER_SH'
-set -eu
-: "${POSTGRES_USER:?POSTGRES_USER is required}"
-: "${POSTGRES_DB:?POSTGRES_DB is required}"
-: "${ADMIN_PASSWORD:?ADMIN_PASSWORD is required for migration scripts}"
-: "${DB_MIGRATION_FILE:?DB_MIGRATION_FILE is required}"
-
-if [ ! -f "$DB_MIGRATION_FILE" ]; then
-  echo "Migration file not found: $DB_MIGRATION_FILE"
-  exit 2
-fi
-
-checksum="$(sha256sum "$DB_MIGRATION_FILE" | awk "{print \$1}")"
-version="$(basename "$DB_MIGRATION_FILE")"
-safe_version="$(printf "%s" "$version" | sed "s/'/''/g")"
-
-psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -c "
+echo "Preparing managed migration ledger ..."
+compose exec -T "$POSTGRES_SERVICE" sh -lc 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -c "
 CREATE TABLE IF NOT EXISTS schema_migration_log (
   version VARCHAR(200) PRIMARY KEY,
   checksum VARCHAR(64) NOT NULL,
   applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-);"
+);"'
 
-psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -f "$DB_MIGRATION_FILE"
+for migration_file in $MIGRATION_FILES; do
+  if [ ! -f "$migration_file" ]; then
+    echo "Migration file not found: $migration_file" >&2
+    exit 2
+  fi
 
-psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 <<SQL
+  version="$(basename "$migration_file")"
+  checksum="$(sha256sum "$migration_file" | awk '{print $1}')"
+  recorded_checksum="$(compose exec -T "$POSTGRES_SERVICE" sh -lc \
+    'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -At -v ON_ERROR_STOP=1 -v version="$1" -c "SELECT checksum FROM schema_migration_log WHERE version = :'"'"'version'"'"';"' sh "$version")"
+
+  if [ -n "$recorded_checksum" ] && [ "$recorded_checksum" != "$checksum" ]; then
+    echo "ERROR: migration checksum mismatch for $version" >&2
+    exit 3
+  fi
+
+  if [ "$recorded_checksum" = "$checksum" ]; then
+    echo "Migration already recorded with matching checksum: $version"
+    continue
+  fi
+
+  echo "Applying additive migration: $version"
+  compose exec -T "$POSTGRES_SERVICE" sh -lc \
+    'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1' < "$migration_file"
+  compose exec -T "$POSTGRES_SERVICE" sh -lc \
+    'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -v version="$1" -v checksum="$2" <<SQL
 INSERT INTO schema_migration_log(version, checksum, applied_at)
-VALUES ('$safe_version', '$checksum', CURRENT_TIMESTAMP)
-ON CONFLICT (version) DO UPDATE
-SET checksum = EXCLUDED.checksum,
-    applied_at = CURRENT_TIMESTAMP;
+VALUES (:'"'"'version'"'"', :'"'"'checksum'"'"', CURRENT_TIMESTAMP)
+ON CONFLICT (version) DO NOTHING;
 SQL
-CONTAINER_SH
+    ' sh "$version" "$checksum"
+done
 
 echo "Database migration completed."

@@ -45,7 +45,7 @@ cd "${REPO_ROOT}"
 PROJECT_NAME="${COMPOSE_PROJECT_NAME:-$(get_env COMPOSE_PROJECT_NAME saas-active)}"
 BACKEND_PORT="$(get_env BACKEND_HOST_PORT 8081)"
 FRONTEND_PORT="$(get_env FRONTEND_HOST_PORT 3001)"
-BACKEND_URL="http://127.0.0.1:${BACKEND_PORT}/api/system/health"
+BACKEND_URL="http://127.0.0.1:${BACKEND_PORT}/api/actuator/health/readiness"
 FRONTEND_URL="http://127.0.0.1:${FRONTEND_PORT}/healthz"
 
 echo "Waiting for backend: ${BACKEND_URL}"

@@ -38,6 +38,7 @@ services:
       - ./backend/src/main/resources/db/create-order-sync-dedup-claim.sql:/docker-entrypoint-initdb.d/18-create-order-sync-dedup-claim.sql:ro
       - ./backend/src/main/resources/db/alter-talent-profile-sync.sql:/docker-entrypoint-initdb.d/19-alter-talent-profile-sync.sql:ro
       - ./backend/src/main/resources/db/alter-db-performance-contract-20260521.sql:/docker-entrypoint-initdb.d/20-alter-db-performance-contract-20260521.sql:ro
+      - ./backend/src/main/resources/db/alter-role-aware-promotion-link-attribution-20260716.sql:/docker-entrypoint-initdb.d/21-alter-role-aware-promotion-link-attribution-20260716.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
       interval: 10s
@@ -72,6 +73,8 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      args:
+        GIT_COMMIT: ${IMAGE_TAG:-unknown}
     env_file: *real_pre_env_file
     environment:
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-real-pre}
@@ -125,6 +128,7 @@ services:
       TALENT_PROFILE_HTTP_AUTHORIZATION: ${TALENT_PROFILE_HTTP_AUTHORIZATION:-}
       APP_TEST_ENABLED: ${APP_TEST_ENABLED:-false}
       APP_TEST_SEED_ON_STARTUP: ${APP_TEST_SEED_ON_STARTUP:-false}
+      APP_SCHEDULING_ENABLED: ${APP_SCHEDULING_ENABLED:-true}
       LOGISTICS_PROVIDER: ${LOGISTICS_PROVIDER:-kuaidi100}
       LOGISTICS_KD100_ENABLED: ${LOGISTICS_KD100_ENABLED:-false}
       LOGISTICS_KD100_SUBSCRIBE_ENABLED: ${LOGISTICS_KD100_SUBSCRIBE_ENABLED:-false}
@@ -153,7 +157,7 @@ services:
       redis-real-pre:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/api/system/health | grep -q '\"status\":\"UP\"'"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/api/actuator/health/readiness | grep -q '\"status\":\"UP\"'"]
       interval: 30s
       timeout: 10s
       retries: 8
@@ -176,6 +180,7 @@ services:
       dockerfile: Dockerfile
       args:
         VITE_ENV_LABEL: ${VITE_ENV_LABEL:-REAL-PRE}
+        GIT_COMMIT: ${IMAGE_TAG:-unknown}
     environment:
       DOMAIN: ${FRONTEND_DOMAIN:-_}
       BACKEND_UPSTREAM: ${BACKEND_UPSTREAM:-backend-real-pre:8080}

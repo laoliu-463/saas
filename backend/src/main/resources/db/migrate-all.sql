@@ -121,6 +121,7 @@ CREATE TABLE IF NOT EXISTS promotion_link (
     talent_name       VARCHAR(200),
     channel_user_id   UUID,
     channel_user_name VARCHAR(100),
+    attribution_owner_type VARCHAR(32),
     original_product_url TEXT,
     promotion_url     TEXT,
     short_url         TEXT,
@@ -134,7 +135,10 @@ CREATE TABLE IF NOT EXISTS promotion_link (
     operator_name     VARCHAR(100),
     created_at        TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at        TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    deleted           SMALLINT NOT NULL DEFAULT 0
+    deleted           SMALLINT NOT NULL DEFAULT 0,
+    CONSTRAINT chk_promotion_link_attribution_owner_type
+        CHECK (attribution_owner_type IS NULL
+            OR attribution_owner_type IN ('CHANNEL', 'RECRUITER'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_pl_product_id ON promotion_link(product_id);
@@ -1574,3 +1578,4 @@ CREATE INDEX IF NOT EXISTS idx_order_sync_dedup_claim_row_id
 \i migrate-sys-dept-dept-type.sql
 \i alter-authorization-foundation-20260713.sql
 \i alter-cso-dual-attribution-status-20260716.sql
+\i alter-role-aware-promotion-link-attribution-20260716.sql

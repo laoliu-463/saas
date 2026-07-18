@@ -83,14 +83,17 @@ fi
 timestamp="$(date +%Y%m%d-%H%M%S)"
 backup_file="${BACKUP_DIR}/${DB_NAME}-${timestamp}.dump"
 tmp_file="${backup_file}.tmp"
+list_file="${backup_file}.list"
+list_tmp="${list_file}.tmp"
 
-if [ -e "${backup_file}" ] || [ -e "${tmp_file}" ]; then
+if [ -e "${backup_file}" ] || [ -e "${tmp_file}" ] || [ -e "${list_file}" ] || [ -e "${list_tmp}" ]; then
   echo "ERROR: backup file already exists: ${backup_file}" >&2
   exit 1
 fi
 
 cleanup() {
   rm -f "${tmp_file}"
+  rm -f "${list_tmp}"
 }
 trap cleanup EXIT
 
@@ -99,7 +102,21 @@ docker compose --env-file "${ENV_FILE}" --project-name "${PROJECT_NAME}" -f "${C
   exec -T -e PGPASSWORD="${DB_PASSWORD}" "${POSTGRES_SERVICE}" \
   pg_dump -U "${DB_USER}" -d "${DB_NAME}" -F c > "${tmp_file}"
 
+if [ ! -s "${tmp_file}" ]; then
+  echo "ERROR: PostgreSQL backup is empty." >&2
+  exit 1
+fi
+
+echo "Validating backup catalog with pg_restore --list ..."
+docker compose --env-file "${ENV_FILE}" --project-name "${PROJECT_NAME}" -f "${COMPOSE_FILE}" \
+  exec -T "${POSTGRES_SERVICE}" pg_restore --list < "${tmp_file}" > "${list_tmp}"
+if [ ! -s "${list_tmp}" ]; then
+  echo "ERROR: pg_restore returned an empty catalog." >&2
+  exit 1
+fi
+
 mv "${tmp_file}" "${backup_file}"
+mv "${list_tmp}" "${list_file}"
 trap - EXIT
 
-echo "PASS: database backup created at ${backup_file}"
+echo "PASS: database backup created and recovery catalog validated: ${backup_file}"

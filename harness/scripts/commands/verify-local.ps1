@@ -39,7 +39,10 @@ if ($Scope -eq "backend" -or $Scope -eq "full") {
         Write-Host "DRY-RUN backend check skipped."
     }
     else {
-        $maxRetries = 12
+        # real-pre startup performs schema validation and read-only bootstrap work.
+        # Keep this window longer than the compose start_period so a healthy but
+        # deliberately-not-ready process is not reported as a deployment failure.
+        $maxRetries = 24
         $retryInterval = 10
         $backendUp = $false
         for ($attempt = 1; $attempt -le $maxRetries; $attempt++) {

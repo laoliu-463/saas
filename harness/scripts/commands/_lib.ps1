@@ -180,7 +180,7 @@ function Get-HarnessEnvConfig {
             FrontendService = "frontend-real-pre"
             BackendPort = "8081"
             FrontendPort = "3001"
-            BackendHealthPath = "/api/system/health"
+            BackendHealthPath = "/api/actuator/health/readiness"
             FrontendHealthCandidates = @("/healthz", "/login", "/")
         }
     }
@@ -195,7 +195,7 @@ function Get-HarnessEnvConfig {
         FrontendService = "frontend"
         BackendPort = "8080"
         FrontendPort = "3000"
-        BackendHealthPath = "/api/system/health"
+        BackendHealthPath = "/api/actuator/health/readiness"
         FrontendHealthCandidates = @("/healthz", "/favicon.svg", "/")
     }
 }
