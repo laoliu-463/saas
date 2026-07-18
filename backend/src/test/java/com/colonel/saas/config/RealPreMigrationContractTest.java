@@ -73,6 +73,11 @@ class RealPreMigrationContractTest {
         String migrationSql = readLower(migration);
         String migrateAll = readLower(DB_DIR.resolve("migrate-all.sql"));
         String compose = Files.readString(COMPOSE_FILE);
+        // After 72c9d655 refactor, the schema guard for role-aware
+        // attribution lives in scripts/check-real-pre-schema.sh (invoked
+        // from deploy-remote.ps1), not inline in deploy-remote.ps1.
+        String checkSchema = Files.readString(
+                REPO_ROOT.resolve("scripts/check-real-pre-schema.sh"));
         String deployScript = readLower(REPO_ROOT.resolve("harness/scripts/commands/deploy-remote.ps1"));
 
         assertThat(migrationSql)
@@ -87,8 +92,14 @@ class RealPreMigrationContractTest {
         assertThat(compose).contains("21-alter-role-aware-promotion-link-attribution-20260716.sql");
         assertThat(deployScript)
             .contains("alter-role-aware-promotion-link-attribution-20260716.sql")
-            .contains("role-aware attribution schema guard")
-            .contains("expected 6 columns");
+            .contains("role-aware attribution schema guard");
+        // The actual 4 attribution columns must appear in the schema
+        // check script so the guard is real, not just a comment.
+        assertThat(checkSchema)
+            .contains("channel_attribution_source")
+            .contains("channel_attribution_status")
+            .contains("recruiter_attribution_source")
+            .contains("recruiter_attribution_status");
         assertThat(REPO_ROOT.resolve("harness/scripts/probes/activity-query-schema.ps1")).exists();
     }
 
