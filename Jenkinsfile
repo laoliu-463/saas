@@ -280,7 +280,7 @@ pipeline {
                 set -eu
                 . runtime/qa/out/jenkins/cd-env.sh
                 IMAGE_TAG="$IMAGE_TAG" COMPOSE_PROJECT_NAME="$PROJECT_NAME" \
-                  docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" config > runtime/qa/out/jenkins/docker-compose.config.yml
+                  docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" config --quiet
                 echo "docker compose config passed for image tag $IMAGE_TAG"
                 '''
             }
@@ -299,7 +299,7 @@ pipeline {
                   bash scripts/backup-db.sh | tee runtime/qa/out/jenkins/database-backup.txt
 
                 ENV_FILE="$ENV_FILE" COMPOSE_FILE="$COMPOSE_FILE" \
-                  COMPOSE_PROJECT_NAME="$PROJECT_NAME" \
+                  COMPOSE_PROJECT_NAME="$PROJECT_NAME" IMAGE_TAG="$IMAGE_TAG" REQUIRE_PINNED_IMAGE=true \
                   sh scripts/run-real-pre-db-migrations.sh | tee runtime/qa/out/jenkins/database-migration.txt
 
                 REAL_PRE_COMPOSE_ENV="$ENV_FILE" REAL_PRE_COMPOSE_FILE="$COMPOSE_FILE" \
@@ -433,16 +433,26 @@ pipeline {
                 mkdir -p harness/reports/current
                 report="harness/reports/current/latest-jenkins-cd.md"
                 remote_report="/opt/saas/runtime/qa/out/jenkins-${BUILD_NUMBER:-manual}/latest-evidence-jenkins-cd.md"
-                backend_health="$(curl -fsS "$REAL_PRE_BACKEND/api/actuator/health/readiness" || true)"
-                frontend_health="$(curl -fsS "$REAL_PRE_FRONTEND/healthz" || true)"
-                migration_versions="$(docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" exec -T postgres-real-pre sh -lc 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -At -c "SELECT version FROM flyway_schema_history WHERE success ORDER BY installed_rank;"' || true)"
-                backend_image_id="$(docker image inspect "colonel-saas/backend:$IMAGE_TAG" --format '{{.Id}}' || true)"
-                frontend_image_id="$(docker image inspect "colonel-saas/frontend:$IMAGE_TAG" --format '{{.Id}}' || true)"
+                evidence_result="PASS"
+                backend_health=""
+                frontend_health=""
+                migration_versions=""
+                backend_image_id=""
+                frontend_image_id=""
+                if ! backend_health="$(curl -fsS "$REAL_PRE_BACKEND/api/actuator/health/readiness")"; then evidence_result="FAIL"; fi
+                if ! frontend_health="$(curl -fsS "$REAL_PRE_FRONTEND/healthz")"; then evidence_result="FAIL"; fi
+                if ! migration_versions="$(docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" exec -T postgres-real-pre sh -lc 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -At -v ON_ERROR_STOP=1 -c "SELECT version FROM flyway_schema_history WHERE success ORDER BY installed_rank;"')"; then evidence_result="FAIL"; fi
+                if ! backend_image_id="$(docker image inspect "colonel-saas/backend:$IMAGE_TAG" --format '{{.Id}}')"; then evidence_result="FAIL"; fi
+                if ! frontend_image_id="$(docker image inspect "colonel-saas/frontend:$IMAGE_TAG" --format '{{.Id}}')"; then evidence_result="FAIL"; fi
+                printf '%s\n' "$migration_versions" | grep -q '20260718.001' || evidence_result="FAIL"
+                printf '%s\n' "$migration_versions" | grep -q '20260718.002' || evidence_result="FAIL"
+                printf '%s\n' "$backend_health" | grep -q '"status":"UP"' || evidence_result="FAIL"
+                test -n "$frontend_health" || evidence_result="FAIL"
 
                 {
                   echo "# Jenkins CD Evidence"
                   echo
-                  echo "- Result: PASS"
+                  echo "- Result: $evidence_result"
                   echo "- Environment: real-pre"
                   echo "- Source: $CD_GIT_URL"
                   echo "- Branch: $BUILD_BRANCH"
@@ -480,6 +490,7 @@ pipeline {
 
                 cp "$report" "$remote_report"
                 cat "$report"
+                test "$evidence_result" = PASS
                 '''
             }
         }

@@ -7,6 +7,11 @@
 
 ## 最近版本摘要
 
+### v0.8.1 — 2026-07-18
+- real-pre CD 迁移路径统一到 Spring Boot/Flyway：移除独立 `schema_migration_log` 执行器，调度暂停后由应用启动迁移并只读核验 `flyway_schema_history`。
+- CD 预检不再落盘渲染后的 Compose 环境值；证据结果由 readiness、镜像 ID、OCI revision 和迁移版本共同决定，取证失败不得写 `PASS`。
+- 远端部署增加 checkout SHA 与 `IMAGE_TAG` 一致性、镜像 OCI revision、数据库备份和恢复前置校验。
+
 ### v0.8.0 — 2026-07-13
 - 实施 ADR-013：活跃目录 40/50、非脚本文本 160/200、reports 根目标 20，并区分 `TASK_GATE` 与 `REPOSITORY_HEALTH`。
 - Evidence 与 content-retire 改为 `reports/current/latest-<key>.md` 稳定路径；retro 默认内联，仅可执行改进单独落盘。

@@ -1,6 +1,10 @@
 #!/usr/bin/env sh
 set -eu
 
+# Flyway is the sole migration ledger. This script deliberately does not execute
+# SQL files or maintain a second schema_migration_log table. It starts the
+# already-built backend with schedulers paused so Spring/Flyway can apply and
+# validate the versioned migrations, then verifies the history table read-only.
 REAL_PRE_COMPOSE_FILE="${REAL_PRE_COMPOSE_FILE:-${COMPOSE_FILE:-docker-compose.real-pre.yml}}"
 if [ -n "${REAL_PRE_COMPOSE_ENV:-${COMPOSE_ENV:-}}" ]; then
   REAL_PRE_COMPOSE_ENV="${REAL_PRE_COMPOSE_ENV:-${COMPOSE_ENV}}"
@@ -11,7 +15,14 @@ else
 fi
 REAL_PRE_COMPOSE_PROJECT="${REAL_PRE_COMPOSE_PROJECT:-${COMPOSE_PROJECT_NAME:-saas-active}}"
 POSTGRES_SERVICE="${POSTGRES_SERVICE:-postgres-real-pre}"
-MIGRATION_FILES="${MIGRATION_FILES:-backend/src/main/resources/db/migrate/V20260718_001__role_aware_attribution_schema.sql backend/src/main/resources/db/migrate/V20260718_002__activity_status_sync_schema.sql}"
+BACKEND_SERVICE="${BACKEND_SERVICE:-backend-real-pre}"
+IMAGE_TAG="${IMAGE_TAG:-real-pre}"
+BACKEND_HEALTH_URL="${BACKEND_HEALTH_URL:-http://127.0.0.1:8081/api/actuator/health/readiness}"
+
+if [ "${REQUIRE_PINNED_IMAGE:-false}" = "true" ] && ! printf '%s' "$IMAGE_TAG" | grep -Eq '^[0-9a-fA-F]{40}$'; then
+  echo "IMAGE_TAG must be a full commit SHA when pinned-image enforcement is enabled." >&2
+  exit 2
+fi
 
 compose() {
   docker compose \
@@ -20,7 +31,7 @@ compose() {
     -f "$REAL_PRE_COMPOSE_FILE" "$@"
 }
 
-echo "Starting ${POSTGRES_SERVICE} before database migration ..."
+echo "Starting ${POSTGRES_SERVICE} before Flyway migration ..."
 compose up -d "$POSTGRES_SERVICE"
 
 echo "Waiting for ${POSTGRES_SERVICE} readiness ..."
@@ -34,50 +45,36 @@ for i in $(seq 1 60); do
 done
 
 if [ "$ready" != "true" ]; then
-  echo "${POSTGRES_SERVICE} did not become ready before migration"
-  compose logs --tail=200 "$POSTGRES_SERVICE"
+  echo "${POSTGRES_SERVICE} did not become ready before Flyway migration" >&2
+  compose logs --tail=200 "$POSTGRES_SERVICE" >&2 || true
   exit 1
 fi
 
-echo "Preparing managed migration ledger ..."
-compose exec -T "$POSTGRES_SERVICE" sh -lc 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -c "
-CREATE TABLE IF NOT EXISTS schema_migration_log (
-  version VARCHAR(200) PRIMARY KEY,
-  checksum VARCHAR(64) NOT NULL,
-  applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-);"'
+echo "Starting ${BACKEND_SERVICE} with schedulers paused; Spring/Flyway owns migration ..."
+APP_SCHEDULING_ENABLED=false IMAGE_TAG="$IMAGE_TAG" COMPOSE_PROJECT_NAME="$REAL_PRE_COMPOSE_PROJECT" \
+  docker compose --env-file "$REAL_PRE_COMPOSE_ENV" --project-name "$REAL_PRE_COMPOSE_PROJECT" \
+  -f "$REAL_PRE_COMPOSE_FILE" up -d --no-build --no-deps "$BACKEND_SERVICE"
 
-for migration_file in $MIGRATION_FILES; do
-  if [ ! -f "$migration_file" ]; then
-    echo "Migration file not found: $migration_file" >&2
-    exit 2
+echo "Waiting for backend readiness after Flyway ..."
+backend_ready=false
+for i in $(seq 1 90); do
+  if curl -fsS "$BACKEND_HEALTH_URL" 2>/dev/null | grep -q '"status":"UP"'; then
+    backend_ready=true
+    break
   fi
-
-  version="$(basename "$migration_file")"
-  checksum="$(sha256sum "$migration_file" | awk '{print $1}')"
-  recorded_checksum="$(compose exec -T "$POSTGRES_SERVICE" sh -lc \
-    'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -At -v ON_ERROR_STOP=1 -v version="$1" -c "SELECT checksum FROM schema_migration_log WHERE version = :'"'"'version'"'"';"' sh "$version")"
-
-  if [ -n "$recorded_checksum" ] && [ "$recorded_checksum" != "$checksum" ]; then
-    echo "ERROR: migration checksum mismatch for $version" >&2
-    exit 3
-  fi
-
-  if [ "$recorded_checksum" = "$checksum" ]; then
-    echo "Migration already recorded with matching checksum: $version"
-    continue
-  fi
-
-  echo "Applying additive migration: $version"
-  compose exec -T "$POSTGRES_SERVICE" sh -lc \
-    'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1' < "$migration_file"
-  compose exec -T "$POSTGRES_SERVICE" sh -lc \
-    'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -v version="$1" -v checksum="$2" <<SQL
-INSERT INTO schema_migration_log(version, checksum, applied_at)
-VALUES (:'"'"'version'"'"', :'"'"'checksum'"'"', CURRENT_TIMESTAMP)
-ON CONFLICT (version) DO NOTHING;
-SQL
-    ' sh "$version" "$checksum"
+  sleep 2
 done
 
-echo "Database migration completed."
+if [ "$backend_ready" != "true" ]; then
+  echo "Backend did not become ready after Flyway migration" >&2
+  compose logs --tail=300 "$BACKEND_SERVICE" >&2 || true
+  exit 1
+fi
+
+echo "Checking Flyway history ..."
+history="$(compose exec -T "$POSTGRES_SERVICE" sh -lc \
+  'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -At -v ON_ERROR_STOP=1 -c "SELECT version || '\''|'\'' || description FROM flyway_schema_history WHERE success ORDER BY installed_rank;"')"
+printf '%s\n' "$history"
+printf '%s\n' "$history" | grep -q '^20260718\.001|role aware attribution schema$'
+printf '%s\n' "$history" | grep -q '^20260718\.002|activity status sync schema$'
+echo "Flyway migration completed and required versions are recorded."

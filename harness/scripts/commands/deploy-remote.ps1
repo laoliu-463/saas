@@ -24,124 +24,30 @@ if [ -n "`$(git status --porcelain)" ]; then
   git status --short
   exit 1
 fi
+remote_commit="`$(git rev-parse HEAD)"
 image_tag="`$(grep -E '^[[:space:]]*IMAGE_TAG=' '$RemoteEnvFile' | tail -1 | cut -d= -f2- | tr -d '[:space:]\"')"
 if ! printf '%s' "`$image_tag" | grep -Eq '^[0-9a-fA-F]{40}$'; then
   echo "IMAGE_TAG must be a full 40-character commit SHA; refusing floating-tag deployment."
   exit 1
 fi
+if [ "`$remote_commit" != "`$image_tag" ]; then
+  echo "Remote checkout SHA (`$remote_commit) does not match IMAGE_TAG (`$image_tag)."
+  exit 1
+fi
 echo "Checking product sync env vars ..."
-if grep -q PRODUCT_ACTIVITY_SYNC_ENABLED '$RemoteEnvFile' 2>/dev/null; then
-  grep PRODUCT_ACTIVITY_SYNC '$RemoteEnvFile'
-else
-  echo "WARNING: PRODUCT_ACTIVITY_SYNC_ENABLED not found in $RemoteEnvFile"
-  echo "Compose and real-pre profile default to enabled, but remote env must set PRODUCT_ACTIVITY_SYNC_* explicitly."
+if ! grep -q PRODUCT_ACTIVITY_SYNC_ENABLED '$RemoteEnvFile' 2>/dev/null; then
+  echo "ERROR: PRODUCT_ACTIVITY_SYNC_ENABLED is not explicitly configured in $RemoteEnvFile"
+  exit 1
 fi
 compose() {
-  docker compose --env-file '$RemoteEnvFile' -f docker-compose.real-pre.yml "`$@"
+  docker compose --env-file '$RemoteEnvFile' --project-name saas-active -f docker-compose.real-pre.yml "`$@"
 }
-echo "Checking product sync compose config ..."
-compose config | grep PRODUCT_ACTIVITY || {
-  echo "PRODUCT_ACTIVITY sync env not found in docker compose config"
-  exit 1
-}
-echo "Preparing postgres-real-pre before schema guard ..."
-compose up -d postgres-real-pre
-ready=false
-for i in `$(seq 1 60); do
-  if compose exec -T postgres-real-pre sh -lc 'pg_isready -U "`$POSTGRES_USER" -d "`$POSTGRES_DB"' </dev/null >/dev/null 2>&1; then
-    ready=true
-    break
-  fi
-  sleep 2
-done
-if [ "`$ready" != "true" ]; then
-  echo "postgres-real-pre did not become ready before schema guard"
-  compose logs --tail=200 postgres-real-pre
-  exit 1
-fi
-activity_migration="backend/src/main/resources/db/migrate/V20260529_001__alter-colonel-activity-add-recruiter-fields.sql"
-if [ ! -f "`$activity_migration" ]; then
-  echo "Required activity schema migration not found: `$activity_migration"
-  exit 1
-fi
-activity_list_sync_migration="backend/src/main/resources/db/alter-colonel-activity-list-sync.sql"
-if [ ! -f "`$activity_list_sync_migration" ]; then
-  echo "Required activity list sync migration not found: `$activity_list_sync_migration"
-  exit 1
-fi
-config_migration="backend/src/main/resources/db/alter-v2-config-20260523.sql"
-if [ ! -f "`$config_migration" ]; then
-  echo "Required V2 config migration not found: `$config_migration"
-  exit 1
-fi
-backfill_migration="backend/src/main/resources/db/migrate/V20260615_001__product_activity_backfill_state.sql"
-if [ ! -f "`$backfill_migration" ]; then
-  echo "Required product backfill schema migration not found: `$backfill_migration"
-  exit 1
-fi
-colonel_partner_mapping_migration="backend/src/main/resources/db/alter-pick-source-mapping-colonel-name.sql"
-if [ ! -f "`$colonel_partner_mapping_migration" ]; then
-  echo "Required colonel partner mapping schema migration not found: `$colonel_partner_mapping_migration"
-  exit 1
-fi
-role_aware_attribution_migration="backend/src/main/resources/db/alter-role-aware-promotion-link-attribution-20260716.sql"
-if [ ! -f "`$role_aware_attribution_migration" ]; then
-  echo "Required role-aware attribution migration not found: `$role_aware_attribution_migration"
-  exit 1
-fi
-pg_container="`$(compose ps -q postgres-real-pre)"
-if [ -z "`$pg_container" ]; then
-  echo "postgres-real-pre container id not found"
-  exit 1
-fi
-echo "Applying required activity schema migration ..."
-docker cp "`$activity_migration" "`$pg_container:/tmp/V20260529_001__alter-colonel-activity-add-recruiter-fields.sql"
-compose exec -T postgres-real-pre sh -lc 'psql -U "`$POSTGRES_USER" -d "`$POSTGRES_DB" -v ON_ERROR_STOP=1 -f /tmp/V20260529_001__alter-colonel-activity-add-recruiter-fields.sql' </dev/null
-echo "Applying required activity list sync schema migration ..."
-docker cp "`$activity_list_sync_migration" "`$pg_container:/tmp/alter-colonel-activity-list-sync.sql"
-compose exec -T postgres-real-pre sh -lc 'psql -U "`$POSTGRES_USER" -d "`$POSTGRES_DB" -v ON_ERROR_STOP=1 -f /tmp/alter-colonel-activity-list-sync.sql' </dev/null
-schema_count="`$(compose exec -T postgres-real-pre sh -lc 'psql -U "`$POSTGRES_USER" -d "`$POSTGRES_DB" -tAc "SELECT count(*) FROM information_schema.columns WHERE table_schema = '\''public'\'' AND table_name = '\''colonel_activity'\'' AND column_name IN ('\''recruiter_user_id'\'', '\''recruiter_dept_id'\'', '\''assigned_at'\'', '\''assigned_by'\'', '\''activity_status_code'\'', '\''activity_status_text'\'', '\''activity_status_synced_at'\'')"' </dev/null | tr -d '[:space:]')"
-if [ "`$schema_count" != "7" ]; then
-  echo "colonel_activity schema guard failed: expected 7 required columns, got `$schema_count"
-  exit 1
-fi
-echo "Activity schema guard passed."
-echo "Applying required colonel partner mapping schema migration ..."
-docker cp "`$colonel_partner_mapping_migration" "`$pg_container:/tmp/alter-pick-source-mapping-colonel-name.sql"
-compose exec -T postgres-real-pre sh -lc 'psql -U "`$POSTGRES_USER" -d "`$POSTGRES_DB" -v ON_ERROR_STOP=1 -f /tmp/alter-pick-source-mapping-colonel-name.sql' </dev/null
-colonel_name_schema_count="`$(compose exec -T postgres-real-pre sh -lc 'psql -U "`$POSTGRES_USER" -d "`$POSTGRES_DB" -tAc "SELECT count(*) FROM information_schema.columns WHERE table_schema = '\''public'\'' AND table_name = '\''pick_source_mapping'\'' AND column_name = '\''colonel_name'\''"' </dev/null | tr -d '[:space:]')"
-if [ "`$colonel_name_schema_count" != "1" ]; then
-  echo "Colonel partner mapping schema guard failed: pick_source_mapping.colonel_name is missing"
-  exit 1
-fi
-echo "Colonel partner mapping schema guard passed."
-echo "Applying required role-aware attribution migration ..."
-docker cp "`$role_aware_attribution_migration" "`$pg_container:/tmp/alter-role-aware-promotion-link-attribution-20260716.sql"
-compose exec -T postgres-real-pre sh -lc 'psql -U "`$POSTGRES_USER" -d "`$POSTGRES_DB" -v ON_ERROR_STOP=1 -f /tmp/alter-role-aware-promotion-link-attribution-20260716.sql' </dev/null
-role_aware_attribution_schema_count="`$(compose exec -T postgres-real-pre sh -lc 'psql -U "`$POSTGRES_USER" -d "`$POSTGRES_DB" -tAc "SELECT count(*) FROM information_schema.columns WHERE table_schema = '\''public'\'' AND ((table_name = '\''promotion_link'\'' AND column_name = '\''attribution_owner_type'\'') OR (table_name = '\''pick_source_mapping'\'' AND column_name = '\''attribution_owner_type'\'') OR (table_name = '\''colonelsettlement_order'\'' AND column_name IN ('\''channel_attribution_source'\'', '\''recruiter_attribution_source'\'', '\''channel_attribution_status'\'', '\''recruiter_attribution_status'\'')))"' </dev/null | tr -d '[:space:]')"
-if [ "`$role_aware_attribution_schema_count" != "6" ]; then
-  echo "Role-aware attribution schema guard failed: expected 6 columns, got `$role_aware_attribution_schema_count"
-  exit 1
-fi
-echo "Role-aware attribution schema guard passed."
-echo "Applying required V2 config schema migration ..."
-docker cp "`$config_migration" "`$pg_container:/tmp/alter-v2-config-20260523.sql"
-compose exec -T postgres-real-pre sh -lc 'psql -U "`$POSTGRES_USER" -d "`$POSTGRES_DB" -v ON_ERROR_STOP=1 -f /tmp/alter-v2-config-20260523.sql' </dev/null
-config_version_count="`$(compose exec -T postgres-real-pre sh -lc 'psql -U "`$POSTGRES_USER" -d "`$POSTGRES_DB" -tAc "SELECT count(*) FROM information_schema.columns WHERE table_schema = '"'"'public'"'"' AND table_name = '"'"'commissions'"'"' AND column_name = '"'"'version'"'"'"' </dev/null | tr -d '[:space:]')"
-if [ "`$config_version_count" != "1" ]; then
-  echo "V2 config schema guard failed: commissions.version is missing"
-  exit 1
-fi
-echo "V2 config schema guard passed."
-echo "Applying required product backfill schema migration ..."
-docker cp "`$backfill_migration" "`$pg_container:/tmp/V20260615_001__product_activity_backfill_state.sql"
-compose exec -T postgres-real-pre sh -lc 'psql -U "`$POSTGRES_USER" -d "`$POSTGRES_DB" -v ON_ERROR_STOP=1 -f /tmp/V20260615_001__product_activity_backfill_state.sql' </dev/null
-backfill_table_count="`$(compose exec -T postgres-real-pre sh -lc 'psql -U "`$POSTGRES_USER" -d "`$POSTGRES_DB" -tAc "SELECT count(*) FROM information_schema.tables WHERE table_schema = '"'"'public'"'"' AND table_name IN ('"'"'product_sync_job_log'"'"','"'"'product_activity_sync_state'"'"')"' </dev/null | tr -d '[:space:]')"
-if [ "`$backfill_table_count" != "2" ]; then
-  echo "product backfill schema guard failed: expected 2 tables, got `$backfill_table_count"
-  exit 1
-fi
-echo "Product backfill schema guard passed."
+echo "Checking compose syntax without rendering environment values ..."
+compose config --quiet
+echo "Creating and validating the pre-migration PostgreSQL backup ..."
+ENV_FILE='$RemoteEnvFile' COMPOSE_FILE=docker-compose.real-pre.yml COMPOSE_PROJECT_NAME=saas-active \
+  BACKUP_DIR="/opt/saas/backups/remote-`$(date +%Y%m%d-%H%M%S)" bash scripts/backup-db.sh
+echo "Building immutable images for `$image_tag ..."
 mkdir -p "`$HOME/.m2"
 docker run --rm \
   -v "`$PWD:/workspace" \
@@ -149,9 +55,20 @@ docker run --rm \
   -w /workspace \
   maven:3.9.10-eclipse-temurin-17 \
   mvn -f backend/pom.xml -DskipTests clean package
-echo "Remote backend jar after Maven build:"
-ls -l backend/target/colonel-saas.jar
-compose up -d --build backend-real-pre frontend-real-pre
+IMAGE_TAG="`$image_tag" docker compose --env-file '$RemoteEnvFile' --project-name saas-active \
+  -f docker-compose.real-pre.yml build backend-real-pre frontend-real-pre
+test "`$(docker image inspect "colonel-saas/backend:`$image_tag" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')" = "`$image_tag"
+test "`$(docker image inspect "colonel-saas/frontend:`$image_tag" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')" = "`$image_tag"
+echo "Running Flyway migrations with backend schedulers paused ..."
+REAL_PRE_COMPOSE_ENV='$RemoteEnvFile' REAL_PRE_COMPOSE_FILE=docker-compose.real-pre.yml \
+  REAL_PRE_COMPOSE_PROJECT=saas-active IMAGE_TAG="`$image_tag" REQUIRE_PINNED_IMAGE=true \
+  BACKEND_HEALTH_URL=http://127.0.0.1:8081/api/actuator/health/readiness \
+  sh scripts/run-real-pre-db-migrations.sh
+REAL_PRE_COMPOSE_ENV='$RemoteEnvFile' REAL_PRE_COMPOSE_FILE=docker-compose.real-pre.yml \
+  REAL_PRE_COMPOSE_PROJECT=saas-active sh scripts/check-real-pre-schema.sh
+echo "Deploying the already-built immutable images ..."
+IMAGE_TAG="`$image_tag" docker compose --env-file '$RemoteEnvFile' --project-name saas-active \
+  -f docker-compose.real-pre.yml up -d --no-build backend-real-pre frontend-real-pre
 compose ps
 backend_container="`$(compose ps -q backend-real-pre)"
 if [ -z "`$backend_container" ]; then
