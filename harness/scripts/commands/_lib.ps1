@@ -233,7 +233,17 @@ function Invoke-HarnessHttp {
 
     try {
         $response = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec $TimeoutSec
-        $content = if ($null -eq $response.Content) { "" } else { [string]$response.Content }
+        if ($null -eq $response.Content) {
+            $content = ""
+        }
+        elseif ($response.Content -is [byte[]]) {
+            # Windows PowerShell can expose text responses as byte[]; casting
+            # directly to string produces "123 34 ..." and breaks JSON probes.
+            $content = [Text.Encoding]::UTF8.GetString($response.Content)
+        }
+        else {
+            $content = [string]$response.Content
+        }
         return [pscustomobject]@{
             Ok = ($response.StatusCode -ge 200 -and $response.StatusCode -lt 400)
             StatusCode = $response.StatusCode
