@@ -18,11 +18,22 @@ function Get-RepoRelativeGovernancePath {
 
     # Get-Item expands Windows 8.3 path segments consistently. Resolve-Path may
     # keep a short repo root while Get-ChildItem returns long child paths.
-    $root = (Get-Item -LiteralPath $RepoRoot).FullName.TrimEnd('\')
-    $resolved = (Get-Item -LiteralPath $FullPath).FullName
+    # On Linux pwsh the directory separator is '/' but the canonical $root
+    # already ends with '\' from Get-Item, so we must normalise both sides
+    # before the prefix check, otherwise every nested path fails with
+    # "Path is outside repository".
+    $root = (Get-Item -LiteralPath $RepoRoot).FullName.TrimEnd('\').TrimEnd('/')
+    $resolved = ''
+    try {
+        $resolved = (Get-Item -LiteralPath $FullPath).FullName
+    }
+    catch {
+        $resolved = $FullPath
+    }
+    $resolved = $resolved.Replace('/', '\').TrimEnd('\')
     $prefix = $root + '\'
     if (-not $resolved.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)) {
-        throw "Path is outside repository: $resolved"
+        throw "Path is outside repository: $resolved (root=$root)"
     }
     return ConvertTo-GovernancePath -Path $resolved.Substring($prefix.Length)
 }
