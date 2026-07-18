@@ -2,12 +2,12 @@
 
 ## Metadata
 
-- Time: 2026-07-18 12:32:34 +08:00
+- Time: 2026-07-18 12:50:29 +08:00
 - Environment: real-pre
-- Scope: full
+- Scope: backend
 - Branch: codex/ddd-user-role-application
-- Commit: 53ab3f99
-- Owned worktree: dirty
+- Commit: 167d1a0d
+- Owned worktree: clean
 - Deploy remote: false
 
 ## Owned Files
@@ -29,48 +29,50 @@ backend/src/test/java/com/colonel/saas/service/PerformanceMetricsQueryServiceTes
 ## Owned Git Status
 
 ~~~text
-M backend/src/main/java/com/colonel/saas/controller/DashboardController.java
- M backend/src/main/java/com/colonel/saas/controller/DataController.java
- M backend/src/main/java/com/colonel/saas/domain/order/facade/LegacyOrderReadFacade.java
- M backend/src/main/java/com/colonel/saas/domain/order/facade/OrderReadFacade.java
- M backend/src/main/java/com/colonel/saas/domain/performance/application/PerformanceAggregateApplicationService.java
- M backend/src/main/java/com/colonel/saas/service/DashboardService.java
- M backend/src/main/java/com/colonel/saas/service/PerformanceMetricsQueryService.java
- M backend/src/main/java/com/colonel/saas/service/data/DataApplicationService.java
- M backend/src/test/java/com/colonel/saas/controller/DataControllerTest.java
- M backend/src/test/java/com/colonel/saas/domain/performance/application/PerformanceAggregateApplicationServiceTest.java
- M backend/src/test/java/com/colonel/saas/service/PerformanceMetricsQueryServiceTest.java
+(clean)
 ~~~
 
 ## Build Result
 
 ~~~text
-Backend package: PASS (mvn -q -DskipTests package); Frontend build: PASS (npm run build); Targeted permission regression: PASS (DataControllerTest, PerformanceAggregateApplicationServiceTest, PerformanceMetricsQueryServiceTest, DashboardControllerTest, DashboardServiceTest with -DforkCount=0).
+Backend build: PASS (mvn -f backend/pom.xml -DskipTests package); Frontend standalone build: PASS (npm run build); Targeted permission tests: PASS.
 ~~~
 
 ## Docker Status
 
 ~~~text
-not collected
-not collected
+NAME                              IMAGE                                                            COMMAND                  SERVICE             CREATED         STATUS                   PORTS
+saas-active-frontend-real-pre-1   colonel-saas/frontend:0fb9e3c834df5ddf6614d23c1bd6782479ac42f3   "/docker-entrypoint.…"   frontend-real-pre   2 hours ago     Up 2 hours (healthy)     127.0.0.1:3001->80/tcp
+saas-active-postgres-real-pre-1   postgres:15-alpine                                               "docker-entrypoint.s…"   postgres-real-pre   6 minutes ago   Up 6 minutes (healthy)   5432/tcp
+saas-active-redis-real-pre-1      redis:7-alpine                                                   "docker-entrypoint.s…"   redis-real-pre      6 minutes ago   Up 6 minutes (healthy)   6379/tcp
+NAMES                             STATUS                    PORTS
+saas-active-postgres-real-pre-1   Up 6 minutes (healthy)    5432/tcp
+saas-active-redis-real-pre-1      Up 6 minutes (healthy)    6379/tcp
+saas-active-frontend-real-pre-1   Up 2 hours (healthy)      127.0.0.1:3001->80/tcp
+campus_frontend                   Up 3 days                 0.0.0.0:5173->5173/tcp, [::]:5173->5173/tcp
+campus_backend                    Up 3 days (healthy)       0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp
+campus_postgres                   Up 3 days (healthy)       0.0.0.0:5433->5432/tcp, [::]:5433->5432/tcp
+saas-test-backend-1               Up 3 days (unhealthy)     0.0.0.0:5005->5005/tcp, [::]:5005->5005/tcp, 0.0.0.0:8080->8080/tcp, [::]:8080->8080/tcp
+saas-test-postgres-1              Up 46 minutes (healthy)   0.0.0.0:5432->5432/tcp, [::]:5432->5432/tcp
+saas-test-redis-1                 Up 46 minutes (healthy)   6379/tcp
 ~~~
 
 ## Health Check Result
 
 ~~~text
-BLOCKED: agent-do safety check stopped before restart/HTTP health because D:\Projects\SAAS\.env.real-pre is missing; existing container status was observed healthy but this run did not re-verify it.
+BLOCKED: copied worktree env does not match the existing PostgreSQL volume; backend startup failed with password authentication failed for user saas. Backend container was stopped to prevent a restart loop. PostgreSQL, Redis, and frontend containers remain healthy.
 ~~~
 
 ## Business Validation Result
 
 ~~~text
-BLOCKED: real-pre business validation was not executed because the required .env.real-pre safety gate failed.
+BLOCKED: real-pre business validation was not executed because backend could not authenticate to PostgreSQL.
 ~~~
 
 ## Content Maintenance Result
 
 ~~~text
-Not run: agent-do stopped at safety check.
+Not run: runtime gate blocked by database credential mismatch.
 ~~~
 
 ## Remote Deploy Result
@@ -81,7 +83,7 @@ remote not deployed
 
 ## Retro Summary
 
-Actionable improvement: restore the local real-pre env file through the team secret-management workflow, then rerun agent-do with the same ReportKey and OwnedFiles to complete restart, health, business validation, and evidence.
+Actionable improvement: recover the original real-pre env credential or explicitly authorize resetting the local PostgreSQL saas role password, then rerun backend agent-do and business validation.
 
 ## Conclusion
 
