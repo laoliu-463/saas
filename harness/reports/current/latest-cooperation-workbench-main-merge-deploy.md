@@ -2,13 +2,13 @@
 
 ## Metadata
 
-- Time: 2026-07-18 16:37:22 +08:00
+- Time: 2026-07-18 16:48:30 +08:00
 - Environment: real-pre
 - Scope: full
 - Branch: codex/merge-cooperation-workbench-actions
-- Commit: 741c969d
+- Commit: 672baed6
 - Owned worktree: clean
-- Deploy remote: false
+- Deploy remote: true
 
 ## Owned Files
 
@@ -25,7 +25,7 @@ harness/reports/current/latest-cooperation-workbench-main-merge-deploy.md
 ## Build Result
 
 ~~~text
-Post-merge targeted backend test: PASS (183 tests) before latest upstream sync; final re-run blocked by host native-memory allocation during javac, not a compilation diagnostic. Frontend targeted tests: PASS (23 tests) and production build: PASS before latest upstream sync.
+PASS: remote Maven clean package -DskipTests; remote Compose frontend production build. Local merge regression: 183 targeted backend tests PASS; 23 targeted frontend tests PASS and frontend production build PASS before latest upstream sync. Final local backend re-run is PENDING because the host JVM failed native-memory allocation during javac.
 ~~~
 
 ## Docker Status
@@ -38,30 +38,30 @@ not collected
 ## Health Check Result
 
 ~~~text
-Not rerun for the final merged commit because the host JVM could not complete the final local build; prior local real-pre health is not used as final-merge proof.
+PASS: remote backend health status UP; remote frontend health status ok; backend, frontend, PostgreSQL and Redis all healthy.
 ~~~
 
 ## Business Validation Result
 
 ~~~text
-PARTIAL: source action flows covered by targeted tests; complete real-pre external verification is BLOCKED_AUTH because Douyin token readiness is absent.
+PARTIAL: cooperation action flows have targeted test coverage. Real-pre external P0 remains BLOCKED_AUTH because Douyin token readiness is absent; no full external business-flow PASS is claimed.
 ~~~
 
 ## Content Maintenance Result
 
 ~~~text
-No content maintenance required.
+No content maintenance. Aggregate migration script reached a legacy relative include failure after the required private-note DDL; required sample_private_note table and uk_sample_private_note_owner index were independently verified.
 ~~~
 
 ## Remote Deploy Result
 
 ~~~text
-BLOCKED: expected main commit 741c969d is on origin/feature/auth-system; Gitee and server remain at a9266601. deploy-remote.ps1 would pull the old Gitee commit, so it was not executed.
+PASS: remote source and backend/frontend images deployed at 672baed6850c34ca060f737102ff286f6ddabbaf; remote health probes passed.
 ~~~
 
 ## Retro Summary
 
-Action: require the deployment mirror to reach the intended origin commit before invoking the fixed remote deploy script; verification: compare origin, Gitee, and server HEAD hashes.
+Action: make the aggregate migration runner resolve legacy relative SQL includes before execution; verification: a clean run returns zero missing-file errors. Deployment guard: continue comparing source HEAD, container image tags, and required schema objects.
 
 ## Conclusion
 
