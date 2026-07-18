@@ -68,8 +68,13 @@ jobs:
       - name: Validate real-pre Compose configuration
         shell: bash
         run: |
+          # docker-compose.real-pre.yml hardcodes env_file: .env.real-pre inside
+          # the YAML anchor; docker compose config refuses to render without it.
+          # Stage the example in /tmp so the gate runs against the committed
+          # example values without writing a real .env.real-pre into the repo.
+          cp -f .env.real-pre.example /tmp/.env.real-pre
           full_sha=0000000000000000000000000000000000000000
-          IMAGE_TAG="$full_sha" docker compose --env-file .env.real-pre.example -f docker-compose.real-pre.yml config > /tmp/compose.yml
+          IMAGE_TAG="$full_sha" docker compose --env-file /tmp/.env.real-pre -f docker-compose.real-pre.yml config > /tmp/compose.yml
           grep -q "colonel-saas/backend:$full_sha" /tmp/compose.yml
           grep -q "colonel-saas/frontend:$full_sha" /tmp/compose.yml
 

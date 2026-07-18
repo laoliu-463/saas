@@ -219,6 +219,9 @@ class DataApplicationServiceOrderSummaryCacheTest {
             String colonelActivityId, String recruitType,
             UUID userId, UUID deptId, DataScope dataScope) {
         try {
+            // Method now carries 19 params (roleCodes appended by
+            // e5311951 fix: align order summary and detail permissions).
+            // Tests pass null for roleCodes; the cache key encodes "ALL".
             java.lang.reflect.Method m = DataApplicationService.class
                     .getDeclaredMethod("orderSummaryCacheKey",
                             String.class, java.time.LocalDate.class, java.time.LocalDate.class,
@@ -226,7 +229,8 @@ class DataApplicationServiceOrderSummaryCacheTest {
                             String.class, String.class, String.class,
                             String.class, String.class, String.class,
                             String.class, String.class,
-                            UUID.class, UUID.class, DataScope.class);
+                            UUID.class, UUID.class, DataScope.class,
+                            java.util.Collection.class);
             m.setAccessible(true);
             return (String) m.invoke(service,
                     timeField, startDate, endDate,
@@ -234,7 +238,8 @@ class DataApplicationServiceOrderSummaryCacheTest {
                     productId, productName, shopName,
                     talentName, colonelName, channelName,
                     colonelActivityId, recruitType,
-                    userId, deptId, dataScope);
+                    userId, deptId, dataScope,
+                    java.util.List.of());
         } catch (ReflectiveOperationException e) {
             throw new AssertionError("reflection failed", e);
         }

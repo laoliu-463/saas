@@ -17,8 +17,10 @@ class DddPerformanceRecordGenerationEntrypointTest {
 
     @Test
     void performanceRecordsShouldBeWrittenOnlyThroughCalculationApplicationUpsert() throws IOException {
+        // Files.walk ordering is OS-dependent; use order-agnostic assertion so
+        // the contract holds on both Windows (developer) and Linux (CI runner).
         assertThat(mainJavaFilesContaining(Pattern.compile("\\bupsertFromOrder\\s*\\(")))
-                .containsExactly(
+                .containsExactlyInAnyOrder(
                         "com/colonel/saas/domain/performance/application/PerformanceCalculationApplicationService.java",
                         "com/colonel/saas/domain/performance/application/PerformanceMonthRecalculationApplicationService.java",
                         "com/colonel/saas/listener/PerformanceRecordSyncListener.java",
