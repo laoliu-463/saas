@@ -2,10 +2,10 @@
 
 ## Metadata
 
-- Time: 2026-07-18 14:13:20 +08:00
+- Time: 2026-07-18 14:26:03 +08:00
 - Action: Plan
 - DryRun: False
-- Reason: docs(harness): record merged order policy local validation
+- Reason: test(performance): align scope assertions with final attribution
 - Manifest: (none)
 - ArchiveRoot: harness/archive/retired-content
 - AllowSourceCode: False
