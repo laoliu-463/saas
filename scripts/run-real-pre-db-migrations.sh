@@ -17,7 +17,7 @@ REAL_PRE_COMPOSE_PROJECT="${REAL_PRE_COMPOSE_PROJECT:-${COMPOSE_PROJECT_NAME:-sa
 POSTGRES_SERVICE="${POSTGRES_SERVICE:-postgres-real-pre}"
 BACKEND_SERVICE="${BACKEND_SERVICE:-backend-real-pre}"
 IMAGE_TAG="${IMAGE_TAG:-real-pre}"
-BACKEND_HEALTH_URL="${BACKEND_HEALTH_URL:-http://127.0.0.1:8081/api/actuator/health/readiness}"
+BACKEND_HEALTH_URL="${BACKEND_HEALTH_URL:-http://127.0.0.1:8081/api/system/health}"
 
 if [ "${REQUIRE_PINNED_IMAGE:-false}" = "true" ] && ! printf '%s' "$IMAGE_TAG" | grep -Eq '^[0-9a-fA-F]{40}$'; then
   echo "IMAGE_TAG must be a full commit SHA when pinned-image enforcement is enabled." >&2

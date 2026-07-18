@@ -180,7 +180,7 @@ function Get-HarnessEnvConfig {
             FrontendService = "frontend-real-pre"
             BackendPort = "8081"
             FrontendPort = "3001"
-            BackendHealthPath = "/api/actuator/health/readiness"
+            BackendHealthPath = "/api/system/health"
             FrontendHealthCandidates = @("/healthz", "/login", "/")
         }
     }

@@ -1,10 +1,6 @@
-# 固定项目名称为 saas-active，禁止通过 -p 参数覆盖。
-# 所有 volume 和 network 名称以此为前缀，保证凭证与初始化状态一致。
 name: saas-active
-
 x-real-pre-env-file: &real_pre_env_file
   - .env.real-pre
-
 services:
   postgres-real-pre:
     image: postgres:15-alpine
@@ -40,15 +36,10 @@ services:
       - ./backend/src/main/resources/db/alter-talent-profile-sync.sql:/docker-entrypoint-initdb.d/19-alter-talent-profile-sync.sql:ro
       - ./backend/src/main/resources/db/alter-db-performance-contract-20260521.sql:/docker-entrypoint-initdb.d/20-alter-db-performance-contract-20260521.sql:ro
       - ./backend/src/main/resources/db/alter-role-aware-promotion-link-attribution-20260716.sql:/docker-entrypoint-initdb.d/21-alter-role-aware-promotion-link-attribution-20260716.sql:ro
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
+    healthcheck: {test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"], interval: 10s, timeout: 5s, retries: 10}
     restart: always
     networks:
       - real-pre-net
-
   redis-real-pre:
     image: redis:7-alpine
     env_file: *real_pre_env_file
@@ -60,15 +51,10 @@ services:
       fi'
     volumes:
       - redis_real_pre_data:/data
-    healthcheck:
-      test: ["CMD-SHELL", "if [ -n \"$$REDIS_PASSWORD\" ]; then redis-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG; else redis-cli ping | grep -q PONG; fi"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
+    healthcheck: {test: ["CMD-SHELL", "if [ -n \"$$REDIS_PASSWORD\" ]; then redis-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG; else redis-cli ping | grep -q PONG; fi"], interval: 10s, timeout: 5s, retries: 10}
     restart: always
     networks:
       - real-pre-net
-
   backend-real-pre:
     image: colonel-saas/backend:${IMAGE_TAG:-real-pre}
     build:
@@ -89,9 +75,7 @@ services:
       REDIS_PORT: 6379
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       REDIS_DATABASE: ${REDIS_DATABASE:-0}
-      # JWT_SECRET and CORS_ALLOWED_ORIGIN_PATTERNS are loaded from env_file (real-pre env).
-      # Do NOT add them to the `environment` block — host-side ${} resolution with a
-      # missing/empty default .env silently overrides the env_file value.
+      # JWT_SECRET and CORS_ALLOWED_ORIGIN_PATTERNS must stay in env_file; host-side ${} defaults can override them.
       DOUYIN_BASE_URL: ${DOUYIN_BASE_URL:-https://openapi-fxg.jinritemai.com}
       DOUYIN_APP_ID: ${DOUYIN_APP_ID:-}
       DOUYIN_CLIENT_KEY: ${DOUYIN_CLIENT_KEY:-}
@@ -148,17 +132,12 @@ services:
       LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_WEB_CLIENT_RESTTEMPLATE: "INFO"
       LOGGING_LEVEL_COM_DOUDIAN_OPEN_CORE: "WARN"
       JAVA_OPTS: "-Dspring.devtools.restart.enabled=false -XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -Djava.security.egd=file:/dev/./urandom"
-    # SECURE-REMOTE-DEPLOY-001: 显式绑定 127.0.0.1, 避免 host 0.0.0.0 公网直连,
-    # 公网入口由 Nginx 反代承担 (Gate 7)。${BACKEND_HOST_PORT:-8081} 仍允许覆盖方便调试。
+    # SECURE-REMOTE-DEPLOY-001: bind localhost; Nginx is the public entry (Gate 7).
     ports:
       - "127.0.0.1:${BACKEND_HOST_PORT:-8081}:8080"
-    depends_on:
-      postgres-real-pre:
-        condition: service_healthy
-      redis-real-pre:
-        condition: service_healthy
+    depends_on: {postgres-real-pre: {condition: service_healthy}, redis-real-pre: {condition: service_healthy}}
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/api/actuator/health/readiness | grep -q '\"status\":\"UP\"'"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/api/system/health | grep -q '\"status\":\"UP\"'"]
       interval: 30s
       timeout: 10s
       retries: 8
@@ -173,7 +152,6 @@ services:
     restart: always
     networks:
       - real-pre-net
-
   frontend-real-pre:
     image: colonel-saas/frontend:${IMAGE_TAG:-real-pre}
     build:
@@ -186,8 +164,7 @@ services:
       DOMAIN: ${FRONTEND_DOMAIN:-_}
       BACKEND_UPSTREAM: ${BACKEND_UPSTREAM:-backend-real-pre:8080}
       VITE_ENV_LABEL: ${VITE_ENV_LABEL:-REAL-PRE}
-    # SECURE-REMOTE-DEPLOY-001: 显式绑定 127.0.0.1, 避免 host 0.0.0.0 公网直连,
-    # 公网入口由 Nginx 反代承担 (Gate 7)。${FRONTEND_HOST_PORT:-3001} 仍允许覆盖方便调试。
+    # SECURE-REMOTE-DEPLOY-001: bind localhost; Nginx is the public entry (Gate 7).
     ports:
       - "127.0.0.1:${FRONTEND_HOST_PORT:-3001}:80"
     depends_on:
@@ -209,13 +186,11 @@ services:
     restart: always
     networks:
       - real-pre-net
-
 volumes:
   postgres_real_pre_data:
     name: saas-active_postgres_real_pre_data
   redis_real_pre_data:
     name: saas-active_redis_real_pre_data
-
 networks:
   real-pre-net:
     name: saas-active_real_pre_net

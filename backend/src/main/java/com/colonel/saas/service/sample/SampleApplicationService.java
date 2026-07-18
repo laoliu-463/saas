@@ -1023,7 +1023,7 @@ public class SampleApplicationService extends BaseController {
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
                     description = "寄样状态流转请求体。",
                     required = true,
-                    content = @Content(examples = @ExampleObject(value = "{\"action\":\"SHIPPING\",\"trackingNo\":\"SF1234567890\",\"reason\":\"顺丰发出\"}"))
+                    content = @Content(examples = @ExampleObject(value = "{\"action\":\"SHIPPING\",\"trackingNo\":\"SF1234567890\",\"shipperCode\":\"SF\",\"reason\":\"顺丰发出\"}"))
             )
             @Valid @RequestBody SampleActionRequest request,
             @RequestAttribute("userId") UUID userId,
@@ -1054,6 +1054,9 @@ public class SampleApplicationService extends BaseController {
             SampleStateMachine.ensureTransition(current, SampleStatus.PENDING_SHIP);
             if (!StringUtils.hasText(request.getTrackingNo())) {
                 throw BusinessException.param("trackingNo is required when shipping");
+            }
+            if (!StringUtils.hasText(request.getShipperCode())) {
+                throw BusinessException.param("shipperCode is required when shipping");
             }
             sample.setStatus(SampleStatus.SHIPPING.getCode());
             sample.setTrackingNo(request.getTrackingNo());
@@ -1526,6 +1529,12 @@ public class SampleApplicationService extends BaseController {
                 SampleRequest sample = requireSampleByRequestNo(item.getRequestNo(), userId, deptId, dataScope, roleCodes);
                 SampleStatus current = SampleStatus.fromCode(sample.getStatus());
                 SampleStateMachine.ensureTransition(current, SampleStatus.PENDING_SHIP);
+                if (!StringUtils.hasText(item.getTrackingNo())) {
+                    throw BusinessException.param("trackingNo is required when shipping");
+                }
+                if (!StringUtils.hasText(item.getShipperCode())) {
+                    throw BusinessException.param("shipperCode is required when shipping");
+                }
                 int fromStatus = sample.getStatus();
                 sample.setStatus(SampleStatus.SHIPPING.getCode());
                 sample.setTrackingNo(item.getTrackingNo());

@@ -62,7 +62,7 @@ test "`$(docker image inspect "colonel-saas/frontend:`$image_tag" --format '{{in
 echo "Running Flyway migrations with backend schedulers paused ..."
 REAL_PRE_COMPOSE_ENV='$RemoteEnvFile' REAL_PRE_COMPOSE_FILE=docker-compose.real-pre.yml \
   REAL_PRE_COMPOSE_PROJECT=saas-active IMAGE_TAG="`$image_tag" REQUIRE_PINNED_IMAGE=true \
-  BACKEND_HEALTH_URL=http://127.0.0.1:8081/api/actuator/health/readiness \
+  BACKEND_HEALTH_URL=http://127.0.0.1:8081/api/system/health \
   sh scripts/run-real-pre-db-migrations.sh
 REAL_PRE_COMPOSE_ENV='$RemoteEnvFile' REAL_PRE_COMPOSE_FILE=docker-compose.real-pre.yml \
   REAL_PRE_COMPOSE_PROJECT=saas-active sh scripts/check-real-pre-schema.sh
