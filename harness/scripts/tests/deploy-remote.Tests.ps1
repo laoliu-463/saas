@@ -81,4 +81,18 @@ Describe 'remote deployment safety contract' {
 
         $missing.Count | Should Be 0
     }
+
+    It 'ships every local helper script invoked by the remote deployment' {
+        $requiredScripts = @(
+            'scripts/backup-db.sh',
+            'scripts/run-real-pre-db-migrations.sh',
+            'scripts/check-real-pre-schema.sh'
+        )
+        $missing = @(
+            $requiredScripts |
+                Where-Object { -not (Test-Path -LiteralPath (Join-Path $repoRoot $_)) }
+        )
+
+        $missing.Count | Should Be 0
+    }
 }
