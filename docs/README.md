@@ -63,7 +63,7 @@
 - [V1 必做] [对接/](对接/)：抖音 / 抖店接口、Token、转链、订单、物流、达人信息。
 - [V1 必做] [验收/](验收/)：P0、E2E、real-pre、回归脚本、证据索引。
 - [V1 必做] [release/](release/)：real-pre 上线前总审查报告和证据目录索引；最近审查见 [release/real-pre上线总审查报告-20260528-171543.md](release/real-pre上线总审查报告-20260528-171543.md)。
-- [V1 必做] [方案/](方案/)：专项计划和执行提示，当前 DDD / Harness 收口见 [方案/PLAN-004-DDD边界与Harness工程收口.md](方案/PLAN-004-DDD边界与Harness工程收口.md)。
+- [V1 必做] [方案/](方案/)：专项计划和执行提示；DDD / Harness 收口见 [方案/PLAN-004-DDD边界与Harness工程收口.md](方案/PLAN-004-DDD边界与Harness工程收口.md)，跨平台验证核心设计见 [方案/PLAN-006-Harness跨平台验证核心重构设计.md](方案/PLAN-006-Harness跨平台验证核心重构设计.md)。
 - [V1 必做] [决策/](决策/)：ADR 和冲突处理。
 - [历史归档] [归档/](归档/)：旧 V2.2 主干、旧七域文档、历史记录、审计与 runbook。
 
@@ -71,6 +71,7 @@
 
 - [V1 必做] [../harness/README.md](../harness/README.md)：AI Agent 固定执行入口、脚本、skills、runbooks、任务和 evidence reports。
 - [V2 必做] [决策/ADR-013-Harness分层文件门禁.md](决策/ADR-013-Harness分层文件门禁.md)：Harness 文件预算、基线感知门禁和报告生命周期的已批准设计。
+- [V2 必做] [决策/ADR-014-Harness跨平台核心目录与渐进迁移.md](决策/ADR-014-Harness跨平台核心目录与渐进迁移.md)：扩展 Harness 目录边界并批准 Node 核心的绞杀式迁移。
 - [V1 必做] [../harness/rules/state/snapshots/01-当前项目状态.md](../harness/rules/state/snapshots/01-当前项目状态.md)：当前技术栈、V2 闭环、real-pre 状态和旧文档冲突处理。
 - [V1 必做] [../harness/rules/governance/task-routing.md](../harness/rules/governance/task-routing.md)：任务分流到领域、验证和执行 Scope。
 - [V1 必做] [../harness/rules/governance/forbidden-scope.md](../harness/rules/governance/forbidden-scope.md)：real-pre、Git 密钥和模块边界禁止项。
