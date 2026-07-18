@@ -29,8 +29,7 @@ class DddSamplePermissionOverreachNegativeContractTest {
 
         assertThat(controller)
                 .contains("@RequireRoles({RoleCodes.ADMIN, RoleCodes.OPS_STAFF})")
-                .contains("@RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF})")
-                .contains("@RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.OPS_STAFF})")
+                .contains("@RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.OPS_STAFF})")
                 .contains("@PostMapping(\"/batch-approve\")")
                 .contains("@PostMapping(\"/batch-reject\")")
                 .contains("@PostMapping(\"/batch-ship\")")

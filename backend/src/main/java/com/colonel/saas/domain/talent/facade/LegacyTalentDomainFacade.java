@@ -1,6 +1,8 @@
 package com.colonel.saas.domain.talent.facade;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.colonel.saas.common.exception.OptimisticLockSupport;
+import com.colonel.saas.domain.talent.facade.dto.TalentClaimAddressDTO;
 import com.colonel.saas.domain.talent.facade.dto.TalentReadDTO;
 import com.colonel.saas.entity.Talent;
 import com.colonel.saas.entity.TalentClaim;
@@ -9,6 +11,8 @@ import com.colonel.saas.mapper.TalentMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -30,6 +34,45 @@ public class LegacyTalentDomainFacade implements TalentDomainFacade {
     public LegacyTalentDomainFacade(TalentMapper talentMapper, TalentClaimMapper talentClaimMapper) {
         this.talentMapper = talentMapper;
         this.talentClaimMapper = talentClaimMapper;
+    }
+
+    @Override
+    public TalentClaimAddressDTO findActiveClaimAddress(UUID talentId, UUID ownerUserId) {
+        if (talentId == null || ownerUserId == null) {
+            return null;
+        }
+        TalentClaim claim = talentClaimMapper.findActiveByTalentAndUser(talentId, ownerUserId);
+        if (claim == null) {
+            return null;
+        }
+        return new TalentClaimAddressDTO(
+                claim.getTalentId(),
+                claim.getUserId(),
+                claim.getRecipientName(),
+                claim.getRecipientPhone(),
+                claim.getRecipientAddress());
+    }
+
+    @Override
+    public void updateActiveClaimAddress(
+            UUID talentId,
+            UUID ownerUserId,
+            String recipientName,
+            String recipientPhone,
+            String recipientAddress) {
+        TalentClaim claim = talentId == null || ownerUserId == null
+                ? null
+                : talentClaimMapper.findActiveByTalentAndUser(talentId, ownerUserId);
+        if (claim == null) {
+            OptimisticLockSupport.requireUpdated(0, "达人认领地址已失效，请刷新后重试");
+            return;
+        }
+        claim.setRecipientName(recipientName);
+        claim.setRecipientPhone(recipientPhone);
+        claim.setRecipientAddress(recipientAddress);
+        OptimisticLockSupport.requireUpdated(
+                talentClaimMapper.updateById(claim),
+                "达人认领地址已被修改或认领已失效，请刷新后重试");
     }
 
     @Override
@@ -192,6 +235,55 @@ public class LegacyTalentDomainFacade implements TalentDomainFacade {
                 talent.getAvatarUrl(),
                 talent.getMainCategory(),
                 talent.getCategories(),
-                talent.getIpLocation());
+                talent.getIpLocation(),
+                resolveWindowSales30d(talent.getRawPayload()));
+    }
+
+    private static Long resolveWindowSales30d(Map<String, Object> rawPayload) {
+        if (rawPayload == null || rawPayload.isEmpty()) {
+            return null;
+        }
+        for (String field : List.of("windowSales30d", "window_sales_30d", "showcaseSales30d")) {
+            if (!rawPayload.containsKey(field)) {
+                continue;
+            }
+            Object value = rawPayload.get(field);
+            return value instanceof Number number ? toExactNonNegativeLong(number) : null;
+        }
+        return null;
+    }
+
+    private static Long toExactNonNegativeLong(Number number) {
+        BigInteger integer;
+        try {
+            if (number instanceof BigInteger bigInteger) {
+                integer = bigInteger;
+            } else if (number instanceof BigDecimal bigDecimal) {
+                integer = bigDecimal.toBigIntegerExact();
+            } else if (number instanceof Byte
+                    || number instanceof Short
+                    || number instanceof Integer
+                    || number instanceof Long) {
+                integer = BigInteger.valueOf(number.longValue());
+            } else if (number instanceof Double doubleValue) {
+                if (!Double.isFinite(doubleValue)) {
+                    return null;
+                }
+                integer = BigDecimal.valueOf(doubleValue).toBigIntegerExact();
+            } else if (number instanceof Float floatValue) {
+                if (!Float.isFinite(floatValue)) {
+                    return null;
+                }
+                integer = new BigDecimal(Float.toString(floatValue)).toBigIntegerExact();
+            } else {
+                return null;
+            }
+        } catch (ArithmeticException exception) {
+            return null;
+        }
+        if (integer.signum() < 0 || integer.compareTo(BigInteger.valueOf(Long.MAX_VALUE)) > 0) {
+            return null;
+        }
+        return integer.longValue();
     }
 }

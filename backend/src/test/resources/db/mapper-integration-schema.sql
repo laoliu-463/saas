@@ -488,6 +488,8 @@ CREATE TABLE IF NOT EXISTS sample_request (
     talent_credit_score DECIMAL(3,2),
     talent_main_category VARCHAR(64),
     product_id UUID NOT NULL,
+    activity_product_id VARCHAR(50),
+    activity_id VARCHAR(50),
     user_id UUID NOT NULL,
     dept_id UUID,
     channel_user_id UUID,

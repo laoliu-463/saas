@@ -835,27 +835,43 @@ class SampleControllerTest {
     }
 
     @Test
-    void actionSample_shouldRejectChannelStaffAuditAction() {
+    void actionSample_shouldAllowChannelStaffAuditAction() {
         UUID sampleId = UUID.randomUUID();
+        UUID productId = UUID.randomUUID();
+        UUID talentId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
 
         SampleRequest sample = new SampleRequest();
         sample.setId(sampleId);
-        sample.setChannelUserId(userId);
         sample.setStatus(1);
+        sample.setProductId(productId);
+        sample.setTalentId(talentId);
+        sample.setTalentNickname("test talent");
+        sample.setRequestNo("SM20260718000001");
+        sample.setExpectedSampleNum(1);
+
+        Product product = new Product();
+        product.setId(productId);
+        product.setName("test product");
 
         SampleActionRequest request = new SampleActionRequest();
-        request.setAction("PENDING_SHIP");
+        request.setAction("APPROVED");
 
-        assertThatThrownBy(() -> sampleController.actionSample(
+        when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
+        when(productDomainFacade.findProductById(productId)).thenReturn(toProductRead(product));
+        when(productDomainFacade.findOrMaterializeSampleProduct(productId)).thenReturn(toProductRead(product));
+
+        var response = sampleController.actionSample(
                 sampleId,
                 request,
                 userId,
                 null,
                 DataScope.ALL,
-                List.of(RoleCodes.CHANNEL_STAFF)))
-                .isInstanceOf(ForbiddenException.class)
-                .hasMessageContaining("招商角色");
+                List.of(RoleCodes.CHANNEL_STAFF));
+
+        assertThat(response.getData().getStatus()).isEqualTo("PENDING_SHIP");
+        verify(sampleRequestMapper).updateById(sample);
+        verify(sampleStatusLogService).log(sampleId, 1, 2, userId, null);
     }
 
     @Test
@@ -893,31 +909,27 @@ class SampleControllerTest {
     }
 
     @Test
-    void exportSamples_shouldRejectChannelStaff() {
-        assertThatThrownBy(() -> exportSamplesBasic(
-                null,
-                null,
-                UUID.randomUUID(),
-                null,
-                DataScope.ALL,
-                List.of(RoleCodes.CHANNEL_STAFF),
-                new MockHttpServletResponse()))
-                .isInstanceOf(ForbiddenException.class)
-                .hasMessageContaining("仅管理员、招商或运营");
-    }
+    void exportSamples_shouldAllowChannelRoles() throws Exception {
+        Page<SampleRequest> emptyPage = new Page<>(1, 500, 0);
+        emptyPage.setRecords(List.of());
+        when(sampleRequestMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class)))
+                .thenReturn(emptyPage);
 
-    @Test
-    void exportSamples_shouldRejectChannelLeader() {
-        assertThatThrownBy(() -> exportSamplesBasic(
-                null,
-                null,
-                UUID.randomUUID(),
-                null,
-                DataScope.ALL,
-                List.of(RoleCodes.CHANNEL_LEADER),
-                new MockHttpServletResponse()))
-                .isInstanceOf(ForbiddenException.class)
-                .hasMessageContaining("仅管理员、招商或运营");
+        for (String role : List.of(RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF)) {
+            MockHttpServletResponse response = new MockHttpServletResponse();
+            exportSamplesBasic(
+                    null,
+                    null,
+                    UUID.randomUUID(),
+                    null,
+                    DataScope.ALL,
+                    List.of(role),
+                    response);
+
+            assertThat(response.getContentType()).isEqualTo("text/csv; charset=UTF-8");
+            assertThat(response.getContentAsString(java.nio.charset.StandardCharsets.UTF_8))
+                    .startsWith("\ufeff寄样单号");
+        }
     }
 
     @Test
@@ -999,7 +1011,7 @@ class SampleControllerTest {
     }
 
     @Test
-    void sensitiveSampleBatchAndExportEndpoints_shouldDeclareNarrowMethodRoles() throws Exception {
+    void sensitiveSampleBatchAndExportEndpoints_shouldDeclareAllInternalRoles() throws Exception {
         RequireRoles batchApprove = SampleController.class
                 .getDeclaredMethod(
                         "batchApprove",
@@ -1066,15 +1078,18 @@ class SampleControllerTest {
                 .getAnnotation(RequireRoles.class);
 
         assertThat(batchApprove).isNotNull();
-        assertThat(batchApprove.value()).containsExactly(RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF);
+        assertThat(batchApprove.value()).containsExactly(RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF,
+                RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.OPS_STAFF);
         assertThat(batchReject).isNotNull();
-        assertThat(batchReject.value()).containsExactly(RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF);
+        assertThat(batchReject.value()).containsExactly(RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF,
+                RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.OPS_STAFF);
         assertThat(batchShip).isNotNull();
         assertThat(batchShip.value()).containsExactly(RoleCodes.ADMIN, RoleCodes.OPS_STAFF);
         assertThat(refreshLogistics).isNotNull();
         assertThat(refreshLogistics.value()).containsExactly(RoleCodes.ADMIN, RoleCodes.OPS_STAFF);
         assertThat(exportSamples).isNotNull();
-        assertThat(exportSamples.value()).containsExactly(RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.OPS_STAFF);
+        assertThat(exportSamples.value()).containsExactly(RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF,
+                RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.OPS_STAFF);
     }
 
     @Test

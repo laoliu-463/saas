@@ -81,12 +81,8 @@ public class SampleActionPermissionPolicy {
     }
 
     public void ensureCanExport(Object roleCodes) {
-        if (!currentUserPermissionChecker.hasAnyRole(roleCodes,
-                RoleCodes.ADMIN,
-                RoleCodes.BIZ_LEADER,
-                RoleCodes.BIZ_STAFF,
-                RoleCodes.OPS_STAFF)) {
-            throw new ForbiddenException("仅管理员、招商或运营可导出寄样数据");
+        if (!hasAnyInternalRole(roleCodes)) {
+            throw new ForbiddenException("仅内部账号可导出寄样数据");
         }
     }
 
@@ -120,13 +116,20 @@ public class SampleActionPermissionPolicy {
     }
 
     private void ensureReviewAction(Object roleCodes) {
-        if (!currentUserPermissionChecker.hasAnyRole(
+        if (!hasAnyInternalRole(roleCodes)) {
+            throw new ForbiddenException("仅内部账号可审核寄样");
+        }
+    }
+
+    private boolean hasAnyInternalRole(Object roleCodes) {
+        return currentUserPermissionChecker.hasAnyRole(
                 roleCodes,
                 RoleCodes.ADMIN,
                 RoleCodes.BIZ_LEADER,
-                RoleCodes.BIZ_STAFF)) {
-            throw new ForbiddenException("仅招商角色可以审核寄样");
-        }
+                RoleCodes.BIZ_STAFF,
+                RoleCodes.CHANNEL_LEADER,
+                RoleCodes.CHANNEL_STAFF,
+                RoleCodes.OPS_STAFF);
     }
 
     private void ensureLogisticsAction(Object roleCodes) {

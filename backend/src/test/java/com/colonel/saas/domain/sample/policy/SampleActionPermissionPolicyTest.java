@@ -50,9 +50,10 @@ class SampleActionPermissionPolicyTest {
                 .doesNotThrowAnyException();
         assertThatCode(() -> policy.ensureCanPerformAction("REJECTED", List.of(RoleCodes.ADMIN)))
                 .doesNotThrowAnyException();
-        assertThatThrownBy(() -> policy.ensureCanPerformAction("REJECTED", List.of(RoleCodes.OPS_STAFF)))
-                .isInstanceOf(ForbiddenException.class)
-                .hasMessageContaining("仅招商角色可以审核寄样");
+        assertThatCode(() -> policy.ensureCanPerformAction("REJECTED", List.of(RoleCodes.OPS_STAFF)))
+                .doesNotThrowAnyException();
+        assertThatCode(() -> policy.ensureCanPerformAction("PENDING_SHIP", List.of(RoleCodes.CHANNEL_STAFF)))
+                .doesNotThrowAnyException();
 
         assertThatCode(() -> policy.ensureCanPerformAction("SHIPPING", List.of(RoleCodes.OPS_STAFF)))
                 .doesNotThrowAnyException();
@@ -78,10 +79,10 @@ class SampleActionPermissionPolicyTest {
                 .hasMessageContaining("仅运营或管理员可触发物流同步");
 
         assertThatCode(() -> policy.ensureCanExport(List.of(RoleCodes.BIZ_LEADER))).doesNotThrowAnyException();
+        assertThatCode(() -> policy.ensureCanExport(List.of(RoleCodes.CHANNEL_LEADER))).doesNotThrowAnyException();
         assertThatCode(() -> policy.ensureCanExport(List.of(RoleCodes.OPS_STAFF))).doesNotThrowAnyException();
-        assertThatThrownBy(() -> policy.ensureCanExport(List.of(RoleCodes.CHANNEL_STAFF)))
-                .isInstanceOf(ForbiddenException.class)
-                .hasMessageContaining("仅管理员、招商或运营可导出寄样数据");
+        assertThatCode(() -> policy.ensureCanExport(List.of(RoleCodes.BIZ_STAFF))).doesNotThrowAnyException();
+        assertThatCode(() -> policy.ensureCanExport(List.of(RoleCodes.CHANNEL_STAFF))).doesNotThrowAnyException();
     }
 
     @Test

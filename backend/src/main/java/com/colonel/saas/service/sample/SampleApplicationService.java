@@ -170,7 +170,7 @@ import java.util.stream.Collectors;
  *
  * <h3>角色权限说明</h3>
  * <ul>
- *   <li>招商组长（{@code BIZ_LEADER}）/ 招商专员（{@code BIZ_STAFF}）：创建寄样、审核操作</li>
+ *   <li>全部内部角色：可审核其数据范围内可见的寄样单</li>
  *   <li>渠道组长（{@code CHANNEL_LEADER}）/ 渠道专员（{@code CHANNEL_STAFF}）：创建寄样（需先认领达人）</li>
  *   <li>运营专员（{@code OPS_STAFF}）：物流录入、签收确认、物流同步（仅可查看待发货及后续状态）</li>
  *   <li>管理员（{@code ADMIN}）：所有操作权限</li>
@@ -1420,8 +1420,8 @@ public class SampleApplicationService extends BaseController {
      * @see SampleStatus#PENDING_AUDIT 待审核状态
      * @see SampleStatus#PENDING_SHIP 待发货状态
      */
-    @Operation(summary = "批量审批通过", description = "批量将 PENDING_AUDIT 的寄样申请审批为待发货。仅招商角色可操作。")
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF})
+    @Operation(summary = "批量审批通过", description = "批量将 PENDING_AUDIT 的寄样申请审批为待发货。内部角色均可操作。")
+    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.OPS_STAFF})
     @PostMapping("/batch-approve")
     public ApiResult<Map<String, Integer>> batchApprove(
             @Valid @RequestBody SampleBatchActionRequest request,
@@ -1484,8 +1484,8 @@ public class SampleApplicationService extends BaseController {
      * @see SampleBatchActionRequest 批量操作请求体
      * @see SampleStatus#REJECTED 已驳回状态
      */
-    @Operation(summary = "批量驳回", description = "批量将 PENDING_AUDIT 的寄样申请驳回。仅招商角色可操作，驳回原因必填。")
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF})
+    @Operation(summary = "批量驳回", description = "批量将 PENDING_AUDIT 的寄样申请驳回。内部角色均可操作，驳回原因必填。")
+    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.OPS_STAFF})
     @PostMapping("/batch-reject")
     public ApiResult<Map<String, Integer>> batchReject(
             @Valid @RequestBody SampleBatchActionRequest request,
@@ -1642,7 +1642,7 @@ public class SampleApplicationService extends BaseController {
      * @throws BusinessException 状态参数不合法时抛出
      */
     @Operation(summary = "寄样导出 CSV", description = "导出寄样申请列表为 CSV 文件，支持状态筛选和关键字搜索。")
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.OPS_STAFF})
+    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.OPS_STAFF})
     @GetMapping("/exports")
     public void exportSamples(
             @Parameter(description = "寄样状态。") @RequestParam(required = false) String status,
@@ -1801,7 +1801,7 @@ public class SampleApplicationService extends BaseController {
      * <p>将状态筛选、关键词、渠道/招商负责人参数透传至全参数版本，其余高级筛选参数（商品、店铺、物流、
      * 时间范围等）固定传 {@code null}，即导出时不做高级筛选限制。
      *
-     * <p>需要以下角色之一方可调用：管理员 / 招商主管 / 招商专员 / 运营。
+     * <p>所有内部角色均可导出其数据范围内可见的寄样数据。
      *
      * @param status           寄样状态筛选（可选）
      * @param keyword          关键词搜索（可选）
@@ -1815,7 +1815,7 @@ public class SampleApplicationService extends BaseController {
      * @throws IOException CSV 写入响应输出流失败时抛出
      * @see #exportSamples(String, String, List, UUID, UUID, UUID, DataScope, Object, HttpServletResponse)
      */
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.OPS_STAFF})
+    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.OPS_STAFF})
     public void exportSamples(
             String status,
             String keyword,
@@ -2114,7 +2114,7 @@ public class SampleApplicationService extends BaseController {
      * <p>
      * 根据操作类型分组校验角色权限：
      * <ul>
-     *     <li>审核操作（APPROVED/REJECTED）：仅招商角色（ADMIN、BIZ_STAFF）可执行</li>
+     *     <li>审核操作（APPROVED/REJECTED）：所有内部角色均可执行</li>
      *     <li>物流操作（SHIPPING/DELIVERED/PENDING_HOMEWORK）：仅运营角色（ADMIN、OPS_STAFF）可执行</li>
      *     <li>完成/关闭操作（COMPLETED/CLOSED）：仅允许系统自动推进，手动操作直接抛出异常</li>
      *     <li>其他未知操作：不校验，直接放行</li>
@@ -2361,7 +2361,7 @@ public class SampleApplicationService extends BaseController {
      *     <li>BIZ_STAFF（招商专员）—— 导出本人经手的寄样数据</li>
      *     <li>OPS_STAFF（运营专员）—— 导出运营相关寄样物流数据</li>
      * </ul>
-     * 渠道角色（CHANNEL_LEADER、CHANNEL_STAFF）无导出权限，避免渠道侧导出跨域寄样数据。
+     * 各角色仍受当前用户数据范围约束，不会因导出权限放开而扩大可见数据。
      *
      * @param roleCodes 当前用户的角色编码集合
      * @throws ForbiddenException 角色不在允许列表时抛出

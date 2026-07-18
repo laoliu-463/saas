@@ -11,7 +11,7 @@ import {
 } from './sample-permissions'
 
 describe('sample permissions', () => {
-  it('allows business and channel roles to apply while reserving review for business roles', () => {
+  it('allows every internal role to review visible samples', () => {
     expect(canApplySamplesByRole([ROLE_CODES.BIZ_LEADER])).toBe(true)
     expect(canApplySamplesByRole([ROLE_CODES.BIZ_STAFF])).toBe(true)
     expect(canApplySamplesByRole([ROLE_CODES.CHANNEL_LEADER])).toBe(true)
@@ -20,19 +20,18 @@ describe('sample permissions', () => {
 
     expect(canReviewSamplesByRole([ROLE_CODES.BIZ_LEADER])).toBe(true)
     expect(canReviewSamplesByRole([ROLE_CODES.BIZ_STAFF])).toBe(true)
-    expect(canReviewSamplesByRole([ROLE_CODES.CHANNEL_STAFF])).toBe(false)
+    expect(canReviewSamplesByRole([ROLE_CODES.CHANNEL_LEADER])).toBe(true)
+    expect(canReviewSamplesByRole([ROLE_CODES.CHANNEL_STAFF])).toBe(true)
+    expect(canReviewSamplesByRole([ROLE_CODES.OPS_STAFF])).toBe(true)
   })
 
-  it('allows admins, biz roles, ops staff, and channel leaders to export samples', () => {
+  it('allows every internal role to export visible samples', () => {
     expect(canExportSamplesByRole([ROLE_CODES.ADMIN])).toBe(true)
     expect(canExportSamplesByRole([ROLE_CODES.BIZ_LEADER])).toBe(true)
     expect(canExportSamplesByRole([ROLE_CODES.BIZ_STAFF])).toBe(true)
     expect(canExportSamplesByRole([ROLE_CODES.OPS_STAFF])).toBe(true)
     expect(canExportSamplesByRole([ROLE_CODES.CHANNEL_LEADER])).toBe(true)
-  })
-
-  it('keeps channel staff from exporting samples', () => {
-    expect(canExportSamplesByRole([ROLE_CODES.CHANNEL_STAFF])).toBe(false)
+    expect(canExportSamplesByRole([ROLE_CODES.CHANNEL_STAFF])).toBe(true)
   })
 
   it('hides audit-stage tabs from ops shipping views', () => {

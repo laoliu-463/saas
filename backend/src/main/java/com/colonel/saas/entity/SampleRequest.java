@@ -61,6 +61,14 @@ public class SampleRequest extends VersionedEntity {
     @TableField("product_id")
     private UUID productId;
 
+    /** 申请时关联的活动商品外部 ID，保留活动商品事实。 */
+    @TableField("activity_product_id")
+    private String activityProductId;
+
+    /** 申请时关联的活动 ID。 */
+    @TableField("activity_id")
+    private String activityId;
+
     /** 创建该寄样申请的运营用户 ID */
     @TableField("user_id")
     private UUID userId;

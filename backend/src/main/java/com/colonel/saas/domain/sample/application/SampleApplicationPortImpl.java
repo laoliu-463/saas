@@ -10,6 +10,7 @@ import com.colonel.saas.domain.sample.api.ApplySampleFromProductCommand;
 import com.colonel.saas.domain.sample.api.ApplySampleFromProductResult;
 import com.colonel.saas.domain.sample.api.SampleApplicationPort;
 import com.colonel.saas.domain.sample.event.SampleDomainEventPublisher;
+import com.colonel.saas.domain.sample.policy.SampleRemarkPolicy;
 import com.colonel.saas.domain.talent.facade.TalentDomainFacade;
 import com.colonel.saas.domain.talent.facade.dto.TalentReadDTO;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
@@ -64,6 +65,7 @@ public class SampleApplicationPortImpl implements SampleApplicationPort {
     private static final int SAMPLE_STATUS_REJECTED = 7;
     /** 申请编号日期格式 */
     private static final DateTimeFormatter REQUEST_NO_DATE = DateTimeFormatter.ofPattern("yyyyMMdd");
+    private static final SampleRemarkPolicy SAMPLE_REMARK_POLICY = new SampleRemarkPolicy();
 
     private final CrawlerTalentInfoService crawlerTalentInfoService;
     private final TalentDomainFacade talentDomainFacade;
@@ -185,6 +187,8 @@ public class SampleApplicationPortImpl implements SampleApplicationPort {
         sample.setTalentCreditScore(talentInfo.getCreditScore());
         sample.setTalentMainCategory(talentInfo.getMainCategory());
         sample.setProductId(cmd.relationId());
+        sample.setActivityProductId(trimToNull(cmd.productId()));
+        sample.setActivityId(trimToNull(cmd.activityId()));
         sample.setUserId(cmd.userId());
         sample.setDeptId(cmd.channelId());
         sample.setChannelUserId(cmd.channelUserId());
@@ -195,7 +199,7 @@ public class SampleApplicationPortImpl implements SampleApplicationPort {
         sample.setRecipientPhone(trimToNull(cmd.receiverPhone()));
         sample.setRecipientAddress(trimToNull(cmd.receiverAddress()));
         sample.setStatus(SAMPLE_STATUS_PENDING_AUDIT);
-        sample.setRemark(buildRemark(cmd));
+        SAMPLE_REMARK_POLICY.apply(sample, cmd.remark());
 
         if (item.isExternalApplied() && externalResult != null) {
             sample.setApplySource(APPLY_SOURCE_DOUYIN_QUICK);
@@ -337,6 +341,7 @@ public class SampleApplicationPortImpl implements SampleApplicationPort {
         extra.put("eligibilityCheck", eligibilityCheck);
         extra.put("applySource", externalApplied ? APPLY_SOURCE_DOUYIN_QUICK : APPLY_SOURCE_LOCAL_FALLBACK);
         extra.put("specification", trimToNull(cmd.spec()));
+        extra.put("applyReason", SAMPLE_REMARK_POLICY.normalizeForWrite(cmd.remark()));
         extra.put("externalApply", externalApplied);
         extra.put("applyChannel", "QUICK_PRODUCT_LIBRARY");
         extra.put("gatewayStatus", externalApplied ? "REAL_CONNECTED" : GATEWAY_STATUS_UNSUPPORTED);

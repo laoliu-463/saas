@@ -132,6 +132,21 @@ public class SampleQueryApplicationService {
         return sampleQueryService.getSampleById(id, userId, deptId, dataScope, roleCodes);
     }
 
+    /**
+     * 仅通过带数据范围的详情端口判断可见性，供合作单内部操作复用，避免资源枚举。
+     */
+    public SampleVO getVisibleSampleById(
+            UUID id,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            Object roleCodes) {
+        if (sampleDetailQueryPort != null) {
+            return sampleDetailQueryPort.getSampleById(id, userId, deptId, dataScope, roleCodes);
+        }
+        return sampleQueryService.getSampleById(id, userId, deptId, dataScope, roleCodes);
+    }
+
     public void exportSamples(
             String status, String keyword, List<UUID> channelUserIds, UUID recruiterUserId,
             String productKeyword, String shopKeyword, String trackingNo, String requestNo, String talentKeyword,

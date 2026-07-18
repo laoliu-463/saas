@@ -20,6 +20,12 @@
  * 状态流转矩阵定义了各状态间的合法转换路径和操作角色。
  */
 import request from '../utils/request';
+import type {
+  SampleCooperationUpdateRequest,
+  SampleCopyText,
+  SampleEditContext,
+  SamplePrivateNote
+} from '../types';
 
 /**
  * 分页查询寄样单列表
@@ -69,6 +75,24 @@ export const checkSampleEligibility = (data: any) => request.post('/samples/elig
  * @returns 状态变更结果
  */
 export const actionSample = (id: string, data: any) => request.put(`/samples/${id}/status`, data);
+
+export const getSampleEditContext = (id: string) =>
+  request.get<SampleEditContext>(`/samples/${id}/edit-context`);
+
+export const updateSampleCooperationDetails = (id: string, data: SampleCooperationUpdateRequest) =>
+  request.put<SampleEditContext>(`/samples/${id}/cooperation-details`, data);
+
+export const getSamplePromotionCopy = (id: string) =>
+  request.post<SampleCopyText>(`/samples/${id}/promotion-copy`);
+
+export const getSampleOrderCopy = (id: string) =>
+  request.get<SampleCopyText>(`/samples/${id}/order-copy`);
+
+export const getSamplePrivateNote = (id: string) =>
+  request.get<SamplePrivateNote>(`/samples/${id}/private-note`);
+
+export const saveSamplePrivateNote = (id: string, data: { content: string }) =>
+  request.put<SamplePrivateNote>(`/samples/${id}/private-note`, data);
 
 /**
  * 删除寄样单

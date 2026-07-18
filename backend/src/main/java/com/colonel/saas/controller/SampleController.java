@@ -12,12 +12,17 @@ import com.colonel.saas.dto.sample.LogisticsImportResult;
 import com.colonel.saas.dto.sample.SampleActionRequest;
 import com.colonel.saas.dto.sample.SampleBatchActionRequest;
 import com.colonel.saas.dto.sample.SampleBatchShipRequest;
+import com.colonel.saas.dto.sample.SampleCooperationUpdateRequest;
 import com.colonel.saas.dto.sample.SampleLogisticsRepairRequest;
+import com.colonel.saas.dto.sample.SamplePrivateNoteRequest;
 import com.colonel.saas.vo.SampleTalentVO;
 import com.colonel.saas.vo.sample.SampleBoardCard;
+import com.colonel.saas.vo.sample.SampleCopyTextVO;
 import com.colonel.saas.vo.sample.SampleEligibilityCheckVO;
+import com.colonel.saas.vo.sample.SampleEditContextVO;
 import com.colonel.saas.vo.sample.SampleLogisticsVO;
 import com.colonel.saas.vo.sample.SampleProductVO;
+import com.colonel.saas.vo.sample.SamplePrivateNoteVO;
 import com.colonel.saas.vo.sample.SampleStatusTransitionVO;
 import com.colonel.saas.vo.sample.SampleVO;
 import com.colonel.saas.vo.sample.StatusLogVO;
@@ -38,6 +43,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestPart;
@@ -156,6 +162,75 @@ public class SampleController {
         return ApiResult.ok(sampleApplicationService.getSampleById(id, userId, deptId, dataScope, roleCodes));
     }
 
+    @GetMapping("/{id:[0-9a-fA-F\\-]{36}}/edit-context")
+    public ApiResult<SampleEditContextVO> getEditContext(
+            @PathVariable UUID id,
+            @RequestAttribute("userId") UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
+            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
+            @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
+        return ApiResult.ok(sampleApplicationService.getEditContext(
+                id, userId, deptId, dataScope, roleCodes));
+    }
+
+    @PutMapping("/{id:[0-9a-fA-F\\-]{36}}/cooperation-details")
+    public ApiResult<SampleEditContextVO> updateCooperationDetails(
+            @PathVariable UUID id,
+            @Valid @RequestBody SampleCooperationUpdateRequest request,
+            @RequestAttribute("userId") UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
+            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
+            @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
+        return ApiResult.ok(sampleApplicationService.updateCooperationDetails(
+                id, request, userId, deptId, dataScope, roleCodes));
+    }
+
+    @GetMapping("/{id:[0-9a-fA-F\\-]{36}}/private-note")
+    public ApiResult<SamplePrivateNoteVO> getPrivateNote(
+            @PathVariable UUID id,
+            @RequestAttribute("userId") UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
+            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
+            @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
+        return ApiResult.ok(sampleApplicationService.getPrivateNote(
+                id, userId, deptId, dataScope, roleCodes));
+    }
+
+    @PutMapping("/{id:[0-9a-fA-F\\-]{36}}/private-note")
+    public ApiResult<SamplePrivateNoteVO> updatePrivateNote(
+            @PathVariable UUID id,
+            @Valid @RequestBody SamplePrivateNoteRequest request,
+            @RequestAttribute("userId") UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
+            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
+            @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
+        return ApiResult.ok(sampleApplicationService.updatePrivateNote(
+                id, request, userId, deptId, dataScope, roleCodes));
+    }
+
+    @PostMapping("/{id:[0-9a-fA-F\\-]{36}}/promotion-copy")
+    public ApiResult<SampleCopyTextVO> copyPromotion(
+            @PathVariable UUID id,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+            @RequestAttribute("userId") UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
+            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
+            @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
+        return ApiResult.ok(sampleApplicationService.copyPromotion(
+                id, userId, deptId, dataScope, roleCodes, idempotencyKey));
+    }
+
+    @GetMapping("/{id:[0-9a-fA-F\\-]{36}}/order-copy")
+    public ApiResult<SampleCopyTextVO> copyOrder(
+            @PathVariable UUID id,
+            @RequestAttribute("userId") UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
+            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
+            @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
+        return ApiResult.ok(sampleApplicationService.copyOrder(
+                id, userId, deptId, dataScope, roleCodes));
+    }
+
     @GetMapping("/{id:[0-9a-fA-F\\-]{36}}/status-logs")
     public ApiResult<List<StatusLogVO>> getStatusLogs(
             @Parameter(description = "寄样申请 ID，使用 UUID 格式。") @PathVariable UUID id,
@@ -259,7 +334,7 @@ public class SampleController {
         return sampleApplicationService.importLogisticsTracking(file, allowOverwrite, userId, roleCodes);
     }
 
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF})
+    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.OPS_STAFF})
     @PostMapping("/batch-approve")
     public ApiResult<Map<String, Integer>> batchApprove(
             @Valid @RequestBody SampleBatchActionRequest request,
@@ -270,7 +345,7 @@ public class SampleController {
         return sampleApplicationService.batchApprove(request, userId, deptId, dataScope, roleCodes);
     }
 
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF})
+    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.OPS_STAFF})
     @PostMapping("/batch-reject")
     public ApiResult<Map<String, Integer>> batchReject(
             @Valid @RequestBody SampleBatchActionRequest request,
@@ -292,7 +367,7 @@ public class SampleController {
         return sampleApplicationService.batchShip(request, userId, deptId, dataScope, roleCodes);
     }
 
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.OPS_STAFF})
+    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.OPS_STAFF})
     @GetMapping("/exports")
     public void exportSamples(
             @Parameter(description = "寄样状态。") @RequestParam(required = false) String status,
