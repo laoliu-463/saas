@@ -3,7 +3,7 @@
 ## 基线与方法
 
 - 分支：`codex/ddd-user-role-application`
-- 审计源代码 HEAD：`0e47054d0ebcdb3fcd889aa2f94edcc68827ede6`
+- 审计源代码 HEAD：`72c9d6557d7ea048526a9c680e521f1880732c71`
 - 依据：Controller/Job/Event → Application → Domain Policy/Model → Port → Adapter/Repository 的实际引用；架构测试与 real-pre 运行证据。
 - 目录/类数量只作为索引，不作为完成判定；旧链仍被最终调用时标记“过渡包装”。
 - 六态：`SHELL`（只有壳）、`SHADOW`（旁路未入主链）、`ROUTED`（部分流量进入）、`PRIMARY`（新链为主且可回退）、`VERIFIED`（real-pre 对账通过）、`RETIRED`（Legacy 删除）。
