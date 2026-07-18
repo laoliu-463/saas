@@ -1,88 +1,78 @@
-﻿# Evidence Report
+# Evidence Report
 
 ## Metadata
 
-- Time: 2026-07-18 14:50:57 +08:00
+- Time: 2026-07-18 14:52:06 +08:00
 - Environment: real-pre
 - Scope: full
 - Branch: feature/auth-system
-- Commit: cda4d4ff
-- Owned worktree: dirty
+- Commit: 05d4e17b
+- Owned worktree: clean
 - Deploy remote: false
 
 ## Owned Files
 
 ~~~text
-harness/reports/current/latest-content-retire.md
 harness/reports/current/latest-local-cors-fix.md
 ~~~
 
 ## Owned Git Status
 
 ~~~text
-M harness/reports/current/latest-content-retire.md
+(clean)
 ~~~
 
 ## Build Result
 
 ~~~text
-not collected
-Backend build: PASS (mvn -f backend/pom.xml -DskipTests package)
-Frontend build: PASS (npm --prefix frontend ci; npm --prefix frontend run build)
+Backend build: PASS; Frontend build: PASS; Local container restart: PASS.
 ~~~
 
 ## Docker Status
 
 ~~~text
-NAME                              IMAGE                            COMMAND                  SERVICE             CREATED              STATUS                        PORTS
-saas-active-backend-real-pre-1    colonel-saas/backend:real-pre    "sh -c 'java $JAVA_O…"   backend-real-pre    About a minute ago   Up About a minute (healthy)   127.0.0.1:8081->8080/tcp
-saas-active-frontend-real-pre-1   colonel-saas/frontend:real-pre   "/docker-entrypoint.…"   frontend-real-pre   About a minute ago   Up 20 seconds (healthy)       127.0.0.1:3001->80/tcp
-saas-active-postgres-real-pre-1   postgres:15-alpine               "docker-entrypoint.s…"   postgres-real-pre   38 minutes ago       Up 38 minutes (healthy)       5432/tcp
-saas-active-redis-real-pre-1      redis:7-alpine                   "docker-entrypoint.s…"   redis-real-pre      About a minute ago   Up About a minute (healthy)   6379/tcp
-NAMES                             STATUS                        PORTS
-saas-active-frontend-real-pre-1   Up 21 seconds (healthy)       127.0.0.1:3001->80/tcp
-saas-active-backend-real-pre-1    Up About a minute (healthy)   127.0.0.1:8081->8080/tcp
-saas-active-redis-real-pre-1      Up About a minute (healthy)   6379/tcp
-saas-active-postgres-real-pre-1   Up 38 minutes (healthy)       5432/tcp
-campus_frontend                   Up 3 days                     0.0.0.0:5173->5173/tcp, [::]:5173->5173/tcp
-campus_backend                    Up 3 days (healthy)           0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp
-campus_postgres                   Up 3 days (healthy)           0.0.0.0:5433->5432/tcp, [::]:5433->5432/tcp
-saas-test-backend-1               Up 3 days (unhealthy)         0.0.0.0:5005->5005/tcp, [::]:5005->5005/tcp, 0.0.0.0:8080->8080/tcp, [::]:8080->8080/tcp
-saas-test-postgres-1              Up 3 hours (healthy)          0.0.0.0:5432->5432/tcp, [::]:5432->5432/tcp
-saas-test-redis-1                 Up 3 hours (healthy)          6379/tcp
+NAME                              IMAGE                                                                     COMMAND                  SERVICE             CREATED         STATUS                        PORTS
+saas-active-frontend-real-pre-1   sha256:48f5c3129058835313b90596672359f594c0b272db7ca9bd1c10917a92b87e48   "/docker-entrypoint.…"   frontend-real-pre   2 minutes ago   Up About a minute (healthy)   127.0.0.1:3001->80/tcp
+NAMES                  STATUS                  PORTS
+campus_frontend        Up 3 days               0.0.0.0:5173->5173/tcp, [::]:5173->5173/tcp
+campus_backend         Up 3 days (healthy)     0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp
+campus_postgres        Up 3 days (healthy)     0.0.0.0:5433->5432/tcp, [::]:5433->5432/tcp
+saas-test-backend-1    Up 3 days (unhealthy)   0.0.0.0:5005->5005/tcp, [::]:5005->5005/tcp, 0.0.0.0:8080->8080/tcp, [::]:8080->8080/tcp
+saas-test-postgres-1   Up 3 hours (healthy)    0.0.0.0:5432->5432/tcp, [::]:5432->5432/tcp
+saas-test-redis-1      Up 3 hours (healthy)    6379/tcp
 ~~~
 
 ## Health Check Result
 
 ~~~text
-Local health verification: PASS
+Local backend/frontend/Postgres/Redis health: PASS.
 ~~~
 
 ## Business Validation Result
 
 ~~~text
-Business validation skipped by -SkipBusinessValidation; not a full PASS.
+CORS validation PASS: OPTIONS 3/3 returned HTTP 200 with matching Access-Control-Allow-Origin; login POST from http://127.0.0.1:3001 returned HTTP 200 with matching CORS header.
 ~~~
 
 ## Content Maintenance Result
 
 ~~~text
-Content maintenance: Plan. Manifest=. DryRun=False.
+Content maintenance: plan; retirement report collected.
 ~~~
 
 ## Remote Deploy Result
 
 ~~~text
-remote not deployed
+Remote not deployed; this is a local-only CORS configuration fix.
 ~~~
 
 ## Retro Summary
 
-No actionable Harness improvement was recorded; no standalone retro is required.
+Root cause was the local real-pre CORS placeholder https://real-pre.YOUR_DOMAIN while the local frontend runs on localhost/127.0.0.1 ports. Updated only local .env.real-pre to allow localhost and 127.0.0.1 port patterns. No password, role, token, or remote production configuration was changed.
 
 ## Conclusion
 
-PARTIAL
+PASS
 
 ## Residual Risk
 
