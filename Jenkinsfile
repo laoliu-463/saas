@@ -8,21 +8,21 @@ pipeline {
     }
 
     parameters {
-        string(name: 'DEPLOY_BRANCH', defaultValue: 'feature/ddd/DDD-VERIFY-001', description: 'Single real-pre CD branch.')
-        booleanParam(name: 'DEPLOY_REAL_PRE', defaultValue: true, description: 'Deploy only the real-pre environment.')
+        string(name: 'DEPLOY_BRANCH', defaultValue: 'codex/ddd-user-role-application', description: 'Controlled real-pre CD branch.')
+        booleanParam(name: 'DEPLOY_REAL_PRE', defaultValue: false, description: 'Explicit approval required to deploy real-pre.')
         booleanParam(name: 'CONFIRM_REAL_PROMOTION_WRITE', defaultValue: false, description: 'Required only when real-pre promotion-write switches are enabled.')
     }
 
     environment {
         JOB_PURPOSE = 'real-pre-cd'
         DEPLOY_ENV = 'real-pre'
-        CD_GIT_URL = 'https://gitee.com/cao-jianing463/saas.git'
+        CD_GIT_URL = 'https://github.com/laoliu-463/saas.git'
         ENV_FILE = '/opt/saas/env/.env.real-pre'
         COMPOSE_FILE = 'docker-compose.real-pre.yml'
         PROJECT_NAME = 'saas-active'
         REAL_PRE_BACKEND = 'http://127.0.0.1:8081'
         REAL_PRE_FRONTEND = 'http://127.0.0.1:3001'
-        RUN_DB_MIGRATIONS = 'false'
+        RUN_DB_MIGRATIONS = 'true'
         IMAGE_TAG = ''
         FULL_COMMIT = ''
         BUILD_BRANCH = ''
@@ -35,7 +35,7 @@ pipeline {
                 git branch: params.DEPLOY_BRANCH, url: env.CD_GIT_URL
                 script {
                     env.FULL_COMMIT = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
-                    env.IMAGE_TAG = sh(script: 'git rev-parse --short=8 HEAD', returnStdout: true).trim()
+                    env.IMAGE_TAG = env.FULL_COMMIT
                     env.BUILD_BRANCH = params.DEPLOY_BRANCH
                 }
                 sh '''#!/usr/bin/env bash
@@ -45,8 +45,8 @@ pipeline {
                   /var/lib/jenkins/.cache/saas-real-pre-cd/npm \
                   /var/lib/jenkins/.cache/saas-real-pre-cd/pnpm-store
                 full_commit="$(git rev-parse HEAD)"
-                image_tag="$(git rev-parse --short=8 HEAD)"
-                build_branch="${DEPLOY_BRANCH:-feature/ddd/DDD-VERIFY-001}"
+                image_tag="$full_commit"
+                build_branch="${DEPLOY_BRANCH:-codex/ddd-user-role-application}"
                 {
                   printf 'FULL_COMMIT=%s\n' "$full_commit"
                   printf 'IMAGE_TAG=%s\n' "$image_tag"
@@ -77,8 +77,8 @@ pipeline {
                   echo "ERROR: DEPLOY_REAL_PRE must be true for this real-pre CD job."
                   exit 1
                 fi
-                if [ "$RUN_DB_MIGRATIONS" != "false" ]; then
-                  echo "ERROR: database migrations are disabled for this CD closure."
+                if [ "$RUN_DB_MIGRATIONS" != "true" ]; then
+                  echo "ERROR: compatible database migrations are mandatory for this CD closure."
                   exit 1
                 fi
                 if [ "$COMPOSE_FILE" != "docker-compose.real-pre.yml" ]; then
@@ -88,6 +88,11 @@ pipeline {
 
                 test -f "$ENV_FILE"
                 test -f "$COMPOSE_FILE"
+                test -z "$(git status --porcelain)"
+                if ! printf '%s' "$IMAGE_TAG" | grep -Eq '^[0-9a-f]{40}$'; then
+                  echo "ERROR: IMAGE_TAG must be the full 40-character commit SHA."
+                  exit 1
+                fi
                 ln -sfn "$ENV_FILE" .env.real-pre
                 chmod +x scripts/*.sh || true
 
@@ -263,6 +268,8 @@ pipeline {
                   docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" build backend-real-pre frontend-real-pre
                 docker image inspect "colonel-saas/backend:$IMAGE_TAG" >/dev/null
                 docker image inspect "colonel-saas/frontend:$IMAGE_TAG" >/dev/null
+                test "$(docker image inspect "colonel-saas/backend:$IMAGE_TAG" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')" = "$FULL_COMMIT"
+                test "$(docker image inspect "colonel-saas/frontend:$IMAGE_TAG" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')" = "$FULL_COMMIT"
                 '''
             }
         }
@@ -279,7 +286,30 @@ pipeline {
             }
         }
 
-        stage('Deploy real-pre') {
+        stage('Database Backup, Migration and Schema Precheck') {
+            steps {
+                sh '''#!/usr/bin/env bash
+                set -eu
+                . runtime/qa/out/jenkins/cd-env.sh
+                backup_dir="/opt/saas/backups/jenkins-${BUILD_NUMBER:-manual}"
+                mkdir -p "$backup_dir"
+
+                ENV_FILE="$ENV_FILE" COMPOSE_FILE="$COMPOSE_FILE" \
+                  COMPOSE_PROJECT_NAME="$PROJECT_NAME" BACKUP_DIR="$backup_dir" \
+                  bash scripts/backup-db.sh | tee runtime/qa/out/jenkins/database-backup.txt
+
+                ENV_FILE="$ENV_FILE" COMPOSE_FILE="$COMPOSE_FILE" \
+                  COMPOSE_PROJECT_NAME="$PROJECT_NAME" \
+                  sh scripts/run-real-pre-db-migrations.sh | tee runtime/qa/out/jenkins/database-migration.txt
+
+                REAL_PRE_COMPOSE_ENV="$ENV_FILE" REAL_PRE_COMPOSE_FILE="$COMPOSE_FILE" \
+                  REAL_PRE_COMPOSE_PROJECT="$PROJECT_NAME" \
+                  sh scripts/check-real-pre-schema.sh | tee runtime/qa/out/jenkins/schema-precheck.txt
+                '''
+            }
+        }
+
+        stage('Deploy Backend (Schedulers Paused)') {
             steps {
                 sh '''#!/usr/bin/env bash
                 set -eu
@@ -291,13 +321,74 @@ pipeline {
                 docker inspect saas-active-backend-real-pre-1 --format '{{.Config.Image}}' > runtime/qa/out/jenkins/pre-backend-image.txt 2>/dev/null || true
                 docker inspect saas-active-frontend-real-pre-1 --format '{{.Config.Image}}' > runtime/qa/out/jenkins/pre-frontend-image.txt 2>/dev/null || true
 
-                echo "Deploying backend/frontend real-pre with image tag: $IMAGE_TAG"
-                IMAGE_TAG="$IMAGE_TAG" COMPOSE_PROJECT_NAME="$PROJECT_NAME" \
+                echo "Deploying backend real-pre with schedulers paused, image tag: $IMAGE_TAG"
+                APP_SCHEDULING_ENABLED=false IMAGE_TAG="$IMAGE_TAG" COMPOSE_PROJECT_NAME="$PROJECT_NAME" \
                   docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d --no-build --no-deps backend-real-pre
-                IMAGE_TAG="$IMAGE_TAG" COMPOSE_PROJECT_NAME="$PROJECT_NAME" \
-                  docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d --no-build --no-deps frontend-real-pre
+                touch runtime/qa/out/jenkins/schedulers-paused
 
                 docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" ps > runtime/qa/out/jenkins/post-deploy-compose-ps.txt || true
+                '''
+            }
+        }
+
+        stage('Backend Readiness') {
+            steps {
+                sh '''#!/usr/bin/env bash
+                set -eu
+                ready=false
+                for _ in $(seq 1 120); do
+                  if curl -fsS "$REAL_PRE_BACKEND/api/actuator/health/readiness" | grep -q '"status":"UP"'; then
+                    ready=true
+                    break
+                  fi
+                  sleep 2
+                done
+                if [ "$ready" != "true" ]; then
+                  docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" logs --tail=300 backend-real-pre >&2 || true
+                  exit 1
+                fi
+                curl -fsS "$REAL_PRE_BACKEND/api/actuator/health/readiness" > runtime/qa/out/jenkins/backend-readiness.json
+                '''
+            }
+        }
+
+        stage('Deploy Frontend') {
+            steps {
+                sh '''#!/usr/bin/env bash
+                set -eu
+                . runtime/qa/out/jenkins/cd-env.sh
+                IMAGE_TAG="$IMAGE_TAG" COMPOSE_PROJECT_NAME="$PROJECT_NAME" \
+                  docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d --no-build --no-deps frontend-real-pre
+                '''
+            }
+        }
+
+        stage('Core Smoke and Multi-role E2E') {
+            steps {
+                sh '''#!/usr/bin/env bash
+                set -eu
+                npx --yes pnpm@9 install --frozen-lockfile
+                npm run e2e:real-pre:p0
+                npm run e2e:real-pre:roles
+                '''
+            }
+        }
+
+        stage('Restore Schedulers') {
+            steps {
+                sh '''#!/usr/bin/env bash
+                set -eu
+                . runtime/qa/out/jenkins/cd-env.sh
+                APP_SCHEDULING_ENABLED=true IMAGE_TAG="$IMAGE_TAG" COMPOSE_PROJECT_NAME="$PROJECT_NAME" \
+                  docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d --no-build --no-deps backend-real-pre
+                for _ in $(seq 1 120); do
+                  if curl -fsS "$REAL_PRE_BACKEND/api/actuator/health/readiness" | grep -q '"status":"UP"'; then
+                    rm -f runtime/qa/out/jenkins/schedulers-paused
+                    exit 0
+                  fi
+                  sleep 2
+                done
+                exit 1
                 '''
             }
         }
@@ -339,10 +430,14 @@ pipeline {
                 sh '''#!/usr/bin/env bash
                 set -eu
                 . runtime/qa/out/jenkins/cd-env.sh
-                report="harness/reports/latest-evidence-jenkins-cd.md"
+                mkdir -p harness/reports/current
+                report="harness/reports/current/latest-jenkins-cd.md"
                 remote_report="/opt/saas/runtime/qa/out/jenkins-${BUILD_NUMBER:-manual}/latest-evidence-jenkins-cd.md"
-                backend_health="$(curl -fsS "$REAL_PRE_BACKEND/api/system/health" || true)"
+                backend_health="$(curl -fsS "$REAL_PRE_BACKEND/api/actuator/health/readiness" || true)"
                 frontend_health="$(curl -fsS "$REAL_PRE_FRONTEND/healthz" || true)"
+                migration_versions="$(docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" exec -T postgres-real-pre sh -lc 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -At -c "SELECT version FROM flyway_schema_history WHERE success ORDER BY installed_rank;"' || true)"
+                backend_image_id="$(docker image inspect "colonel-saas/backend:$IMAGE_TAG" --format '{{.Id}}' || true)"
+                frontend_image_id="$(docker image inspect "colonel-saas/frontend:$IMAGE_TAG" --format '{{.Id}}' || true)"
 
                 {
                   echo "# Jenkins CD Evidence"
@@ -358,12 +453,22 @@ pipeline {
                   echo "- Build URL: ${BUILD_URL:-unknown}"
                   echo "- Time: $(date -Iseconds)"
                   echo "- Production touched: NO"
-                  echo "- Database migration/write by pipeline: NO"
+                  echo "- Database migration/write by pipeline: YES (additive versioned migrations only)"
+                  echo "- Backup/restore validation: $(tail -n 1 runtime/qa/out/jenkins/database-backup.txt 2>/dev/null || echo missing)"
+                  echo "- Previous backend image: $(cat runtime/qa/out/jenkins/pre-backend-image.txt 2>/dev/null || echo unknown)"
+                  echo "- Previous frontend image: $(cat runtime/qa/out/jenkins/pre-frontend-image.txt 2>/dev/null || echo unknown)"
                   echo "- Secret leaked: NO"
                   echo
                   echo "## Container Images"
                   echo '```'
                   docker ps --format "table {{.Names}}\\t{{.Image}}\\t{{.Status}}" | grep 'saas-active-' || true
+                  echo '```'
+                  echo "- Backend image ID: $backend_image_id"
+                  echo "- Frontend image ID: $frontend_image_id"
+                  echo
+                  echo "## Database Migration Versions"
+                  echo '```'
+                  printf '%s\n' "$migration_versions"
                   echo '```'
                   echo
                   echo "## Health"
@@ -388,11 +493,20 @@ pipeline {
             sh '''#!/usr/bin/env bash
             set +e
             if [ -f runtime/qa/out/jenkins/cd-env.sh ]; then . runtime/qa/out/jenkins/cd-env.sh; fi
-            mkdir -p runtime/qa/out/jenkins harness/reports "/opt/saas/runtime/qa/out/jenkins-${BUILD_NUMBER:-manual}"
+            mkdir -p runtime/qa/out/jenkins harness/reports/current "/opt/saas/runtime/qa/out/jenkins-${BUILD_NUMBER:-manual}"
+            if [ -f runtime/qa/out/jenkins/schedulers-paused ]; then
+              echo "Restoring schedulers after interrupted deployment flow."
+              if APP_SCHEDULING_ENABLED=true IMAGE_TAG="$IMAGE_TAG" COMPOSE_PROJECT_NAME="$PROJECT_NAME" \
+                docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d --no-build --no-deps backend-real-pre; then
+                rm -f runtime/qa/out/jenkins/schedulers-paused
+              else
+                echo "ERROR: failed to restore schedulers; manual intervention required." >&2
+              fi
+            fi
             docker ps --format "table {{.Names}}\\t{{.Image}}\\t{{.Status}}" > runtime/qa/out/jenkins/docker-ps-final.txt 2>&1
             docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" ps > runtime/qa/out/jenkins/docker-compose-ps-final.txt 2>&1
 
-            if [ ! -f harness/reports/latest-evidence-jenkins-cd.md ]; then
+            if [ ! -f harness/reports/current/latest-jenkins-cd.md ]; then
               {
                 echo "# Jenkins CD Evidence"
                 echo
@@ -407,19 +521,19 @@ pipeline {
                 echo "- Build URL: ${BUILD_URL:-unknown}"
                 echo "- Time: $(date -Iseconds)"
                 echo "- Production touched: NO"
-                echo "- Database migration/write by pipeline: NO"
+                echo "- Database migration/write by pipeline: UNKNOWN; inspect archived migration evidence"
                 echo "- Secret leaked: NO"
                 echo
                 echo "## Final Container Status"
                 echo '```'
                 cat runtime/qa/out/jenkins/docker-ps-final.txt
                 echo '```'
-              } > harness/reports/latest-evidence-jenkins-cd.md
+              } > harness/reports/current/latest-jenkins-cd.md
             fi
 
-            cp harness/reports/latest-evidence-jenkins-cd.md "/opt/saas/runtime/qa/out/jenkins-${BUILD_NUMBER:-manual}/latest-evidence-jenkins-cd.md" 2>/dev/null || true
+            cp harness/reports/current/latest-jenkins-cd.md "/opt/saas/runtime/qa/out/jenkins-${BUILD_NUMBER:-manual}/latest-evidence-jenkins-cd.md" 2>/dev/null || true
             '''
-            archiveArtifacts artifacts: 'harness/reports/latest-evidence-jenkins-cd.md,runtime/qa/out/jenkins/**,backend/target/surefire-reports/**,frontend/coverage/**', allowEmptyArchive: true
+            archiveArtifacts artifacts: 'harness/reports/current/latest-jenkins-cd.md,runtime/qa/out/jenkins/**,runtime/qa/out/real-pre-*/**,backend/target/surefire-reports/**,frontend/coverage/**', allowEmptyArchive: true
         }
 
         success {

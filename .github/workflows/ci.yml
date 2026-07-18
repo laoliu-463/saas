@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   backend:
-    name: Backend tests
+    name: Backend compile and tests
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -38,8 +38,58 @@ jobs:
           java-version: "17"
           cache: maven
 
-      - name: Run Maven tests
+      - name: Compile backend
+        run: mvn -B -DskipTests compile
+
+      - name: Run migration and Schema contract tests
+        run: >-
+          mvn -B
+          "-Dtest=RoleAwareAttributionSchemaContractTest,RoleAwareAttributionFlywayIntegrationTest,CoreEntityDatabaseSchemaContractTest,ColonelsettlementOrderMapperSchemaIntegrationTest,ColonelsettlementOrderMapperDualDimensionContractTest,RealPreMigrationContractTest"
+          test
+
+      - name: Run backend unit, architecture and integration tests
         run: mvn -B test
+
+  governance:
+    name: Repository and deployment gates
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Reject dirty checkout
+        shell: bash
+        run: |
+          test -z "$(git status --porcelain)"
+
+      - name: Check diff whitespace
+        run: git diff --check
+
+      - name: Validate real-pre Compose configuration
+        shell: bash
+        run: |
+          full_sha=0000000000000000000000000000000000000000
+          IMAGE_TAG="$full_sha" docker compose --env-file .env.real-pre.example -f docker-compose.real-pre.yml config > /tmp/compose.yml
+          grep -q "colonel-saas/backend:$full_sha" /tmp/compose.yml
+          grep -q "colonel-saas/frontend:$full_sha" /tmp/compose.yml
+
+      - name: Validate migration, backup and Schema precheck scripts
+        shell: bash
+        run: |
+          bash -n scripts/backup-db.sh
+          sh -n scripts/run-real-pre-db-migrations.sh
+          sh -n scripts/check-real-pre-schema.sh
+
+      - name: Check Harness limits
+        shell: pwsh
+        run: ./harness/scripts/check-harness-limits.ps1 -BaselineRef HEAD -NoReport
+
+      - name: Check deploy script rejects floating image tags
+        shell: pwsh
+        run: |
+          $script = Get-Content -Raw harness/scripts/commands/deploy-remote.ps1
+          if ($script -notmatch 'IMAGE_TAG') { throw 'deploy script must validate IMAGE_TAG' }
+          if ($script -notmatch '40') { throw 'deploy script must require a full commit SHA image tag' }
 
   frontend:
     name: Frontend tests and build

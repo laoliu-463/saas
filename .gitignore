@@ -103,3 +103,10 @@ scratch/
 AllActivitiesSyncAndInspect*.java
 *SyncAndInspect*.java
 backend/src/test/java/com/colonel/saas/service/AllActivitiesSync*
+
+# Local agent/browser scratch output. Preserve existing evidence and reports.
+/.playwright-cli/
+/.superpowers/
+/.tmp/
+/output/
+/app-now.jar
