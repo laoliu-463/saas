@@ -3,7 +3,10 @@ package com.colonel.saas.service;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.domain.order.facade.OrderReadFacade;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.domain.user.policy.DataScopeResolver;
+import com.colonel.saas.constant.RoleCodes;
 import lombok.Data;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -91,6 +94,8 @@ public class DashboardService {
     private final DataScopeResolver dataScopeResolver;
     /** DDD 重构灰度开关，默认关闭时保持 Legacy 查询路径 */
     private final DddRefactorProperties dddRefactorProperties;
+    /** 统一解析渠道角色，确保看板订单事实与业绩域使用同一权限语义 */
+    private final CurrentUserPermissionChecker currentUserPermissionChecker;
 
     /** 影子对账服务（可选），开关开启时在后台执行新路径对比并输出 diff 日志 */
     @Autowired(required = false)
@@ -109,11 +114,29 @@ public class DashboardService {
             PerformanceMetricsQueryService performanceMetricsQueryService,
             DataScopeResolver dataScopeResolver,
             DddRefactorProperties dddRefactorProperties) {
+        this(
+                orderReadFacade,
+                jdbcTemplate,
+                performanceMetricsQueryService,
+                dataScopeResolver,
+                dddRefactorProperties,
+                new CurrentUserPermissionChecker(new CurrentUserPermissionPolicy()));
+    }
+
+    @Autowired
+    public DashboardService(
+            OrderReadFacade orderReadFacade,
+            JdbcTemplate jdbcTemplate,
+            PerformanceMetricsQueryService performanceMetricsQueryService,
+            DataScopeResolver dataScopeResolver,
+            DddRefactorProperties dddRefactorProperties,
+            CurrentUserPermissionChecker currentUserPermissionChecker) {
         this.orderReadFacade = orderReadFacade;
         this.jdbcTemplate = jdbcTemplate;
         this.performanceMetricsQueryService = performanceMetricsQueryService;
         this.dataScopeResolver = dataScopeResolver;
         this.dddRefactorProperties = dddRefactorProperties;
+        this.currentUserPermissionChecker = currentUserPermissionChecker;
     }
 
     /**
@@ -140,8 +163,18 @@ public class DashboardService {
      * @return 仪表盘汇总对象
      */
     public Summary getSummary(LocalDateTime startTime, LocalDateTime endTime, UUID userId, UUID deptId, DataScope dataScope) {
+        return getSummary(startTime, endTime, userId, deptId, dataScope, null);
+    }
+
+    public Summary getSummary(
+            LocalDateTime startTime,
+            LocalDateTime endTime,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            List<String> roleCodes) {
         boolean usePerformanceRecords = performanceMetricsQueryService.hasPerformanceRecords();
-        OrderReadFacade.OrderVisibility orderVisibility = buildOrderVisibility(userId, deptId, dataScope);
+        OrderReadFacade.OrderVisibility orderVisibility = buildOrderVisibility(userId, deptId, dataScope, roleCodes);
         OrderReadFacade.DashboardAttributionSummary attributionSummary =
                 orderReadFacade.getDashboardAttributionSummary(startTime, endTime, orderVisibility);
         Long attributedCount = attributionSummary.attributedOrderCount();
@@ -155,7 +188,11 @@ public class DashboardService {
         long settledOrderCount = 0L;
         PerformanceMetricsQueryService.DashboardPerformanceSummary performanceSummary = null;
         if (usePerformanceRecords) {
-            performanceSummary = performanceMetricsQueryService.aggregateDashboardSummary(startTime, endTime, userId, deptId, dataScope);
+            performanceSummary = roleCodes == null || roleCodes.isEmpty()
+                    ? performanceMetricsQueryService.aggregateDashboardSummary(
+                            startTime, endTime, userId, deptId, dataScope)
+                    : performanceMetricsQueryService.aggregateDashboardSummary(
+                            startTime, endTime, userId, deptId, dataScope, roleCodes);
             orderCount = performanceSummary.orderCount();
             orderAmount = performanceSummary.orderAmountCent();
             serviceFee = performanceSummary.serviceFeeCent();
@@ -176,13 +213,14 @@ public class DashboardService {
                 .map(this::toReasonCountItem)
                 .toList();
 
-        List<DiagnosticItem> diagnostics = loadDiagnostics(startTime, endTime, userId, deptId, dataScope);
+        List<DiagnosticItem> diagnostics = loadDiagnostics(startTime, endTime, userId, deptId, dataScope, roleCodes);
         List<ActivityProductItem> activityProductBreakdown = loadActivityProductBreakdown(
                 startTime,
                 endTime,
                 userId,
                 deptId,
                 dataScope,
+                roleCodes,
                 1,
                 DEFAULT_BREAKDOWN_LIMIT
         ).records();
@@ -247,7 +285,7 @@ public class DashboardService {
             DataScope dataScope,
             long page,
             long size) {
-        return loadActivityProductBreakdown(startTime, endTime, userId, deptId, dataScope, page, size);
+        return loadActivityProductBreakdown(startTime, endTime, userId, deptId, dataScope, null, page, size);
     }
 
     /**
@@ -277,8 +315,9 @@ public class DashboardService {
             LocalDateTime endTime,
             UUID userId,
             UUID deptId,
-            DataScope dataScope) {
-        SqlContext context = buildFilteredOrdersContext(startTime, endTime, userId, deptId, dataScope);
+            DataScope dataScope,
+            List<String> roleCodes) {
+        SqlContext context = buildFilteredOrdersContext(startTime, endTime, userId, deptId, dataScope, roleCodes);
         String sql = diagnosticSql(context.whereClause());
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, context.args().toArray());
         return rows.stream()
@@ -308,9 +347,10 @@ public class DashboardService {
             UUID userId,
             UUID deptId,
             DataScope dataScope,
+            List<String> roleCodes,
             long page,
             long size) {
-        SqlContext context = buildFilteredOrdersContext(startTime, endTime, userId, deptId, dataScope);
+        SqlContext context = buildFilteredOrdersContext(startTime, endTime, userId, deptId, dataScope, roleCodes);
         long safePage = Math.max(page, 1L);
         long safeSize = Math.max(size, 1L);
         long offset = (safePage - 1) * safeSize;
@@ -349,6 +389,16 @@ public class DashboardService {
             UUID userId,
             UUID deptId,
             DataScope dataScope) {
+        return buildFilteredOrdersContext(startTime, endTime, userId, deptId, dataScope, null);
+    }
+
+    private SqlContext buildFilteredOrdersContext(
+            LocalDateTime startTime,
+            LocalDateTime endTime,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            List<String> roleCodes) {
         List<String> clauses = new ArrayList<>();
         List<Object> args = new ArrayList<>();
         clauses.add("co.deleted = 0");
@@ -360,7 +410,19 @@ public class DashboardService {
             clauses.add("co.settle_time <= ?");
             args.add(endTime);
         }
-        appendScopeClause(clauses, args, userId, deptId, dataScope);
+        if (currentUserPermissionChecker.hasAnyRole(roleCodes, RoleCodes.CHANNEL_STAFF)) {
+            clauses.add("co.channel_user_id = ?");
+            args.add(userId);
+        } else if (currentUserPermissionChecker.hasAnyRole(roleCodes, RoleCodes.CHANNEL_LEADER)) {
+            if (deptId == null) {
+                clauses.add("1 = 0");
+            } else {
+                clauses.add("co.channel_user_id IN (SELECT id FROM sys_user WHERE dept_id = ?)");
+                args.add(deptId);
+            }
+        } else {
+            appendScopeClause(clauses, args, userId, deptId, dataScope);
+        }
         return new SqlContext(String.join(" AND ", clauses), args);
     }
 
@@ -835,6 +897,23 @@ public class DashboardService {
     }
 
     private OrderReadFacade.OrderVisibility buildOrderVisibility(UUID userId, UUID deptId, DataScope dataScope) {
+        return buildOrderVisibility(userId, deptId, dataScope, null);
+    }
+
+    private OrderReadFacade.OrderVisibility buildOrderVisibility(
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            List<String> roleCodes) {
+        if (currentUserPermissionChecker.hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.OPS_STAFF)) {
+            return OrderReadFacade.OrderVisibility.all();
+        }
+        if (currentUserPermissionChecker.hasAnyRole(roleCodes, RoleCodes.CHANNEL_STAFF)) {
+            return OrderReadFacade.OrderVisibility.channelUser(userId);
+        }
+        if (currentUserPermissionChecker.hasAnyRole(roleCodes, RoleCodes.CHANNEL_LEADER)) {
+            return OrderReadFacade.OrderVisibility.channelDept(deptId);
+        }
         if (dataScope == null) {
             return OrderReadFacade.OrderVisibility.all();
         }

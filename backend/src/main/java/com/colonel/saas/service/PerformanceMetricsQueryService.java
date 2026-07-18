@@ -85,6 +85,18 @@ public class PerformanceMetricsQueryService {
                 startInclusive, endExclusive, timeField, userId, deptId, dataScope);
     }
 
+    public PerformanceAggregate aggregateRange(
+            LocalDateTime startInclusive,
+            LocalDateTime endExclusive,
+            String timeField,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            List<String> roleCodes) {
+        return aggregateApplicationService.aggregateRange(
+                startInclusive, endExclusive, timeField, userId, deptId, dataScope, roleCodes);
+    }
+
     /**
      * 委派到 {@link PerformanceAggregateApplicationService#aggregateRange}（DDD-PERFORMANCE Slice 2）。
      */
@@ -112,6 +124,18 @@ public class PerformanceMetricsQueryService {
             DataScope dataScope) {
         return aggregateApplicationService.trendByDay(
                 startInclusive, endExclusive, timeField, userId, deptId, dataScope);
+    }
+
+    public List<TrendPoint> trendByDay(
+            LocalDateTime startInclusive,
+            LocalDateTime endExclusive,
+            String timeField,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            List<String> roleCodes) {
+        return aggregateApplicationService.trendByDay(
+                startInclusive, endExclusive, timeField, userId, deptId, dataScope, roleCodes);
     }
 
     /**
@@ -143,6 +167,17 @@ public class PerformanceMetricsQueryService {
             DataScope dataScope) {
         return aggregateApplicationService.aggregateDashboardSummary(
                 startInclusive, endInclusive, userId, deptId, dataScope);
+    }
+
+    public DashboardPerformanceSummary aggregateDashboardSummary(
+            LocalDateTime startInclusive,
+            LocalDateTime endInclusive,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            List<String> roleCodes) {
+        return aggregateApplicationService.aggregateDashboardSummary(
+                startInclusive, endInclusive, userId, deptId, dataScope, roleCodes);
     }
 
     public String resolveAmountTrackLabel(String timeField) {

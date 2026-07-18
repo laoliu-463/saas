@@ -485,6 +485,22 @@ public class LegacyOrderReadFacade implements OrderReadFacade {
                 }
                 wrapper.eq("dept_id", safeVisibility.deptId());
             }
+            case CHANNEL_USER -> {
+                if (safeVisibility.userId() == null) {
+                    wrapper.apply("1 = 0");
+                    return;
+                }
+                wrapper.eq("channel_user_id", safeVisibility.userId());
+            }
+            case CHANNEL_DEPT -> {
+                if (safeVisibility.deptId() == null) {
+                    wrapper.apply("1 = 0");
+                    return;
+                }
+                wrapper.apply(
+                        "channel_user_id IN (SELECT id FROM sys_user WHERE dept_id = {0})",
+                        safeVisibility.deptId());
+            }
             case NONE -> wrapper.apply("1 = 0");
         }
     }

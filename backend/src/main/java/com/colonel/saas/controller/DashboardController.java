@@ -23,6 +23,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -87,10 +88,25 @@ public class DashboardController extends BaseController {
             @Parameter(description = "结束时间，格式 yyyy-MM-dd HH:mm:ss。") @RequestParam(name = "endTime", required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime endTime,
             @RequestAttribute(name = "userId", required = false) UUID userId,
             @RequestAttribute(name = "deptId", required = false) UUID deptId,
-            @RequestAttribute(name = "dataScope", required = false) DataScope dataScope) {
+            @RequestAttribute(name = "dataScope", required = false) DataScope dataScope,
+            @RequestAttribute(name = "roleCodes", required = false) List<String> roleCodes) {
         // 组合缓存键：前缀 + 各参数拼接
-        String cacheKey = SUMMARY_CACHE_PREFIX + cacheKey(startTime, endTime, userId, deptId, dataScope);
+        String cacheKey = SUMMARY_CACHE_PREFIX + cacheKey(startTime, endTime, userId, deptId, dataScope, roleCodes);
         // 优先从 Redis 缓存获取，缓存未命中时回调查询
+        return ok(shortTtlCacheService.get(
+                cacheKey,
+                SUMMARY_CACHE_TTL,
+                () -> dashboardService.getSummary(startTime, endTime, userId, deptId, dataScope, roleCodes)
+        ));
+    }
+
+    public ApiResult<DashboardService.Summary> getSummary(
+            LocalDateTime startTime,
+            LocalDateTime endTime,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope) {
+        String cacheKey = SUMMARY_CACHE_PREFIX + cacheKey(startTime, endTime, userId, deptId, dataScope);
         return ok(shortTtlCacheService.get(
                 cacheKey,
                 SUMMARY_CACHE_TTL,

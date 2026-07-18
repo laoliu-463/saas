@@ -118,8 +118,9 @@ public class DataController extends DataApplicationService {
             @Parameter(description = "时间字段：createTime（默认）或 settleTime。") @RequestParam(required = false) String timeField,
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
-            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
-        return super.getOrderPage(page, size, orderId, status, talentId, merchantId, productId, productName, shopName, talentName, colonelName, channelName, colonelActivityId, recruitType, startDate, endDate, timeField, userId, deptId, dataScope);
+            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
+            @RequestAttribute(value = "roleCodes", required = false) List<String> roleCodes) {
+        return super.getOrderPage(page, size, orderId, status, talentId, merchantId, productId, productName, shopName, talentName, colonelName, channelName, colonelActivityId, recruitType, startDate, endDate, timeField, userId, deptId, dataScope, roleCodes);
     }
 
     @GetMapping("/data/orders/detail")
@@ -208,8 +209,9 @@ public class DataController extends DataApplicationService {
     public ApiResult<DualTrackMetricsVO> getMetrics(
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
-            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
-        return super.getMetrics(userId, deptId, dataScope);
+            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
+            @RequestAttribute(value = "roleCodes", required = false) List<String> roleCodes) {
+        return super.getMetrics(userId, deptId, dataScope, roleCodes);
     }
 
     @GetMapping("/orders/exports")
