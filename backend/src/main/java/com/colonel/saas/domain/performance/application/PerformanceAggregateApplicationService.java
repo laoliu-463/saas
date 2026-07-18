@@ -2,6 +2,9 @@ package com.colonel.saas.domain.performance.application;
 
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.config.DddRefactorProperties;
+import com.colonel.saas.domain.performance.policy.PerformanceAccessContext;
+import com.colonel.saas.domain.performance.policy.PerformanceAccessScope;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
 import com.colonel.saas.domain.user.policy.DataScopeResolver;
 import com.colonel.saas.service.PerformanceMetricsQueryService;
 import org.springframework.stereotype.Service;
@@ -48,14 +51,17 @@ public class PerformanceAggregateApplicationService {
     private final JdbcTemplate jdbcTemplate;
     private final DataScopeResolver dataScopeResolver;
     private final DddRefactorProperties dddRefactorProperties;
+    private final CurrentUserPermissionChecker currentUserPermissionChecker;
 
     public PerformanceAggregateApplicationService(
             JdbcTemplate jdbcTemplate,
             DataScopeResolver dataScopeResolver,
-            DddRefactorProperties dddRefactorProperties) {
+            DddRefactorProperties dddRefactorProperties,
+            CurrentUserPermissionChecker currentUserPermissionChecker) {
         this.jdbcTemplate = jdbcTemplate;
         this.dataScopeResolver = dataScopeResolver;
         this.dddRefactorProperties = dddRefactorProperties;
+        this.currentUserPermissionChecker = currentUserPermissionChecker;
     }
 
     /**
@@ -72,7 +78,19 @@ public class PerformanceAggregateApplicationService {
             UUID deptId,
             DataScope dataScope) {
         return aggregateRange(startInclusive, endExclusive, timeField,
-                null, null, null, userId, deptId, dataScope);
+                null, null, null, userId, deptId, dataScope, null);
+    }
+
+    public PerformanceMetricsQueryService.PerformanceAggregate aggregateRange(
+            LocalDateTime startInclusive,
+            LocalDateTime endExclusive,
+            String timeField,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            List<String> roleCodes) {
+        return aggregateRange(startInclusive, endExclusive, timeField,
+                null, null, null, userId, deptId, dataScope, roleCodes);
     }
 
     public PerformanceMetricsQueryService.PerformanceAggregate aggregateRange(
@@ -85,11 +103,26 @@ public class PerformanceAggregateApplicationService {
             UUID userId,
             UUID deptId,
             DataScope dataScope) {
+        return aggregateRange(startInclusive, endExclusive, timeField,
+                businessLine, channelId, recruiterId, userId, deptId, dataScope, null);
+    }
+
+    public PerformanceMetricsQueryService.PerformanceAggregate aggregateRange(
+            LocalDateTime startInclusive,
+            LocalDateTime endExclusive,
+            String timeField,
+            String businessLine,
+            UUID channelId,
+            UUID recruiterId,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            List<String> roleCodes) {
         boolean estimateTrack = isEstimateTrack(timeField);
         String timeColumn = resolveTimeColumn(timeField);
         List<Object> args = new ArrayList<>();
         StringBuilder where = orderFactsPerformanceJoin();
-        appendScope(where, args, userId, deptId, dataScope);
+        appendScope(where, args, userId, deptId, dataScope, roleCodes);
         appendBusinessLineFilter(where, args, businessLine, channelId, recruiterId);
         appendRangeFilter(where, args, timeColumn, startInclusive, endExclusive);
 
@@ -160,6 +193,28 @@ public class PerformanceAggregateApplicationService {
             UUID userId,
             UUID deptId,
             DataScope dataScope) {
+        if (dataScope == null) {
+            return;
+        }
+        appendScope(where, args, userId, deptId, dataScope, null);
+    }
+
+    private void appendScope(
+            StringBuilder where,
+            List<Object> args,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            List<String> roleCodes) {
+        if (roleCodes != null && !roleCodes.isEmpty()) {
+            PerformanceAccessScope.appendScopeCondition(
+                    where,
+                    args,
+                    PerformanceAccessContext.of(userId, deptId, dataScope, roleCodes),
+                    "pr",
+                    currentUserPermissionChecker);
+            return;
+        }
         if (dataScope == null) {
             return;
         }
@@ -303,7 +358,19 @@ public class PerformanceAggregateApplicationService {
             UUID deptId,
             DataScope dataScope) {
         return trendByDay(startInclusive, endExclusive, timeField,
-                null, null, null, userId, deptId, dataScope);
+                null, null, null, userId, deptId, dataScope, null);
+    }
+
+    public List<PerformanceMetricsQueryService.TrendPoint> trendByDay(
+            LocalDateTime startInclusive,
+            LocalDateTime endExclusive,
+            String timeField,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            List<String> roleCodes) {
+        return trendByDay(startInclusive, endExclusive, timeField,
+                null, null, null, userId, deptId, dataScope, roleCodes);
     }
 
     public List<PerformanceMetricsQueryService.TrendPoint> trendByDay(
@@ -316,11 +383,26 @@ public class PerformanceAggregateApplicationService {
             UUID userId,
             UUID deptId,
             DataScope dataScope) {
+        return trendByDay(startInclusive, endExclusive, timeField,
+                businessLine, channelId, recruiterId, userId, deptId, dataScope, null);
+    }
+
+    public List<PerformanceMetricsQueryService.TrendPoint> trendByDay(
+            LocalDateTime startInclusive,
+            LocalDateTime endExclusive,
+            String timeField,
+            String businessLine,
+            UUID channelId,
+            UUID recruiterId,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            List<String> roleCodes) {
         boolean estimateTrack = isEstimateTrack(timeField);
         String timeColumn = resolveTimeColumn(timeField);
         List<Object> args = new ArrayList<>();
         StringBuilder where = orderFactsPerformanceJoin();
-        appendScope(where, args, userId, deptId, dataScope);
+        appendScope(where, args, userId, deptId, dataScope, roleCodes);
         appendBusinessLineFilter(where, args, businessLine, channelId, recruiterId);
         appendRangeFilter(where, args, timeColumn, startInclusive, endExclusive);
 
@@ -362,9 +444,19 @@ public class PerformanceAggregateApplicationService {
             UUID userId,
             UUID deptId,
             DataScope dataScope) {
+        return aggregateDashboardSummary(startInclusive, endInclusive, userId, deptId, dataScope, null);
+    }
+
+    public PerformanceMetricsQueryService.DashboardPerformanceSummary aggregateDashboardSummary(
+            LocalDateTime startInclusive,
+            LocalDateTime endInclusive,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            List<String> roleCodes) {
         List<Object> args = new ArrayList<>();
         StringBuilder where = orderFactsPerformanceJoin();
-        appendScope(where, args, userId, deptId, dataScope);
+        appendScope(where, args, userId, deptId, dataScope, roleCodes);
         appendSettleTimeRangeInclusive(where, args, startInclusive, endInclusive);
 
         String totalsSql = """

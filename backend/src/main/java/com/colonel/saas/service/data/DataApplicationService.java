@@ -280,7 +280,8 @@ public class DataApplicationService extends BaseController {
             @Parameter(description = "时间字段：createTime（默认）或 settleTime。") @RequestParam(required = false) String timeField,
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
-            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
+            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
+            @RequestAttribute(value = "roleCodes", required = false) List<String> roleCodes) {
         // 第一步：解析时间范围，未传入则默认近 30 天
         LocalDateTime start = startDate == null
                 ? LocalDate.now().minusDays(30).atStartOfDay()
@@ -310,7 +311,7 @@ public class DataApplicationService extends BaseController {
                 userId,
                 deptId,
                 dataScope,
-                null);
+                roleCodes);
 
         // 第三步：执行分页查询，数据范围已在 wrapper 中显式追加
         IPage<ColonelsettlementOrder> orderPage = dataOrderQueryFacade.findPageWithScope(new Page<>(page, size), wrapper);
@@ -319,6 +320,34 @@ public class DataApplicationService extends BaseController {
         Page<OrderVO> voPage = new Page<>(orderPage.getCurrent(), orderPage.getSize(), orderPage.getTotal());
         voPage.setRecords(orderPage.getRecords().stream().map(this::toOrderVO).toList());
         return okPage(voPage);
+    }
+
+    public ApiResult<PageResult<OrderVO>> getOrderPage(
+            long page,
+            long size,
+            String orderId,
+            String status,
+            UUID talentId,
+            String merchantId,
+            String productId,
+            String productName,
+            String shopName,
+            String talentName,
+            String colonelName,
+            String channelName,
+            String colonelActivityId,
+            String recruitType,
+            LocalDate startDate,
+            LocalDate endDate,
+            String timeField,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope) {
+        return getOrderPage(
+                page, size, orderId, status, talentId, merchantId, productId,
+                productName, shopName, talentName, colonelName, channelName,
+                colonelActivityId, recruitType, startDate, endDate, timeField,
+                userId, deptId, dataScope, null);
     }
 
     /**
@@ -961,14 +990,15 @@ public class DataApplicationService extends BaseController {
     public ApiResult<DualTrackMetricsVO> getMetrics(
             @RequestAttribute("userId") UUID userId,
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
-            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
-        String cacheKeySettle = METRICS_CACHE_PREFIX + metricsCacheKey("settleTime", userId, deptId, dataScope);
-        String cacheKeyEstimate = METRICS_CACHE_PREFIX + metricsCacheKey("createTime", userId, deptId, dataScope);
+            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
+            @RequestAttribute(value = "roleCodes", required = false) List<String> roleCodes) {
+        String cacheKeySettle = METRICS_CACHE_PREFIX + metricsCacheKey("settleTime", userId, deptId, dataScope, roleCodes);
+        String cacheKeyEstimate = METRICS_CACHE_PREFIX + metricsCacheKey("createTime", userId, deptId, dataScope, roleCodes);
 
         MetricsVO settleMetrics = shortTtlCacheService.get(cacheKeySettle, METRICS_CACHE_TTL,
-                () -> buildMetrics("settleTime", userId, deptId, dataScope));
+                () -> buildMetrics("settleTime", userId, deptId, dataScope, roleCodes));
         MetricsVO estimateMetrics = shortTtlCacheService.get(cacheKeyEstimate, METRICS_CACHE_TTL,
-                () -> buildMetrics("createTime", userId, deptId, dataScope));
+                () -> buildMetrics("createTime", userId, deptId, dataScope, roleCodes));
 
         DualTrackMetricsVO result = new DualTrackMetricsVO();
         result.setSettle(settleMetrics);
@@ -976,7 +1006,19 @@ public class DataApplicationService extends BaseController {
         return ok(result);
     }
 
-    private MetricsVO buildMetrics(String timeField, UUID userId, UUID deptId, DataScope dataScope) {
+    public ApiResult<DualTrackMetricsVO> getMetrics(
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope) {
+        return getMetrics(userId, deptId, dataScope, null);
+    }
+
+    private MetricsVO buildMetrics(
+            String timeField,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            Collection<String> roleCodes) {
         LocalDate today = LocalDate.now();
         LocalDateTime todayStart = today.atStartOfDay();
         LocalDateTime tomorrowStart = today.plusDays(1).atStartOfDay();
@@ -984,7 +1026,7 @@ public class DataApplicationService extends BaseController {
         OrderTrackColumns columns = resolveOrderTrackColumns(timeField);
         String timeColumn = columns.timeColumn();
 
-        QueryWrapper<ColonelsettlementOrder> pendingWrapper = buildScopedQuery(userId, deptId, dataScope)
+        QueryWrapper<ColonelsettlementOrder> pendingWrapper = buildScopedQuery(userId, deptId, dataScope, roleCodes)
                 .select("COUNT(1) AS order_count")
                 .eq("order_status", toOrderStatusCode("ORDERED"))
                 .ge(timeColumn, rollingStart)
@@ -1002,19 +1044,35 @@ public class DataApplicationService extends BaseController {
                 tomorrowStart,
                 userId,
                 deptId,
-                dataScope);
+                dataScope,
+                roleCodes);
         applyRefundMetrics(metrics, refundAggregate);
 
         if (performanceMetricsQueryService.hasPerformanceRecords()) {
             PerformanceMetricsQueryService.PerformanceAggregate aggregate =
-                    performanceMetricsQueryService.aggregateRange(todayStart, tomorrowStart, timeField, userId, deptId, dataScope);
-            List<PerformanceMetricsQueryService.TrendPoint> trendPoints = performanceMetricsQueryService.trendByDay(
-                    today.minusDays(6).atStartOfDay(),
-                    tomorrowStart,
-                    timeField,
-                    userId,
-                    deptId,
-                    dataScope);
+                    roleCodes == null || roleCodes.isEmpty()
+                            ? performanceMetricsQueryService.aggregateRange(
+                                    todayStart, tomorrowStart, timeField, userId, deptId, dataScope)
+                            : performanceMetricsQueryService.aggregateRange(
+                                    todayStart, tomorrowStart, timeField, userId, deptId, dataScope,
+                                    List.copyOf(roleCodes));
+            List<PerformanceMetricsQueryService.TrendPoint> trendPoints =
+                    roleCodes == null || roleCodes.isEmpty()
+                            ? performanceMetricsQueryService.trendByDay(
+                                    today.minusDays(6).atStartOfDay(),
+                                    tomorrowStart,
+                                    timeField,
+                                    userId,
+                                    deptId,
+                                    dataScope)
+                            : performanceMetricsQueryService.trendByDay(
+                                    today.minusDays(6).atStartOfDay(),
+                                    tomorrowStart,
+                                    timeField,
+                                    userId,
+                                    deptId,
+                                    dataScope,
+                                    List.copyOf(roleCodes));
 
             metrics.setMetricsSource("performance_records");
             metrics.setTodayOrderCount(aggregate.orderCount());
@@ -1047,7 +1105,7 @@ public class DataApplicationService extends BaseController {
         }
 
         metrics.setMetricsSource("orders");
-        QueryWrapper<ColonelsettlementOrder> todayAggregateWrapper = buildScopedQuery(userId, deptId, dataScope)
+        QueryWrapper<ColonelsettlementOrder> todayAggregateWrapper = buildScopedQuery(userId, deptId, dataScope, roleCodes)
                 .select(
                         "COUNT(*) AS order_count",
                         "COALESCE(SUM(" + columns.amountColumn() + "), 0) AS order_amount_cent"
@@ -1058,7 +1116,7 @@ public class DataApplicationService extends BaseController {
         Long todayOrders = asLong(todayAggregate, "order_count");
         Long todayGmvCent = asLong(todayAggregate, "order_amount_cent");
 
-        QueryWrapper<ColonelsettlementOrder> commissionWrapper = buildScopedQuery(userId, deptId, dataScope)
+        QueryWrapper<ColonelsettlementOrder> commissionWrapper = buildScopedQuery(userId, deptId, dataScope, roleCodes)
                 .select(
                         "COALESCE(colonel_activity_id, '') AS activity_id",
                         "COALESCE(SUM(" + columns.serviceFeeColumn() + "), 0) AS service_fee_income",
@@ -1088,7 +1146,7 @@ public class DataApplicationService extends BaseController {
         );
 
         LocalDateTime weekStart = today.minusDays(6).atStartOfDay();
-        QueryWrapper<ColonelsettlementOrder> trendWrapper = buildScopedQuery(userId, deptId, dataScope)
+        QueryWrapper<ColonelsettlementOrder> trendWrapper = buildScopedQuery(userId, deptId, dataScope, roleCodes)
                 .select(
                         String.format("DATE(%s) AS settle_date", timeColumn),
                         "COUNT(*) AS order_count",
@@ -1136,7 +1194,18 @@ public class DataApplicationService extends BaseController {
             UUID userId,
             UUID deptId,
             DataScope dataScope) {
-        QueryWrapper<ColonelsettlementOrder> wrapper = buildScopedQuery(userId, deptId, dataScope)
+        return queryRefundMetrics(columns, start, end, userId, deptId, dataScope, null);
+    }
+
+    private RefundMetricsAggregate queryRefundMetrics(
+            OrderTrackColumns columns,
+            LocalDateTime start,
+            LocalDateTime end,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            Collection<String> roleCodes) {
+        QueryWrapper<ColonelsettlementOrder> wrapper = buildScopedQuery(userId, deptId, dataScope, roleCodes)
                 .select(
                         "COUNT(CASE WHEN " + REFUND_ORDER_PREDICATE + " THEN 1 END) AS refund_order_count",
                         "COALESCE(SUM(CASE WHEN " + REFUND_ORDER_PREDICATE + " THEN " + columns.amountColumn() + " ELSE 0 END), 0) AS refund_order_amount_cent",
@@ -1525,17 +1594,26 @@ public class DataApplicationService extends BaseController {
     }
 
     private String metricsCacheKey(String timeField, UUID userId, UUID deptId, DataScope dataScope) {
+        return metricsCacheKey(timeField, userId, deptId, dataScope, null);
+    }
+
+    private String metricsCacheKey(
+            String timeField,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            Collection<String> roleCodes) {
         String timeColumn = resolveTimeColumn(timeField);
         if (dataScope == DataScope.PERSONAL) {
-            return cacheKey(timeColumn, DataScope.PERSONAL, userId);
+            return cacheKey(timeColumn, DataScope.PERSONAL, userId, roleCodesCacheKey(roleCodes));
         }
         if (dataScope == DataScope.DEPT) {
-            return cacheKey(timeColumn, DataScope.DEPT, deptId);
+            return cacheKey(timeColumn, DataScope.DEPT, deptId, roleCodesCacheKey(roleCodes));
         }
         if (dataScope == DataScope.ALL) {
-            return cacheKey(timeColumn, DataScope.ALL);
+            return cacheKey(timeColumn, DataScope.ALL, roleCodesCacheKey(roleCodes));
         }
-        return cacheKey(timeColumn, "NO_SCOPE");
+        return cacheKey(timeColumn, "NO_SCOPE", roleCodesCacheKey(roleCodes));
     }
 
     private String resolveTimeColumn(String timeField) {
@@ -1732,9 +1810,27 @@ public class DataApplicationService extends BaseController {
             UUID userId,
             UUID deptId,
             DataScope dataScope) {
+        return buildScopedQuery(userId, deptId, dataScope, null);
+    }
+
+    private QueryWrapper<ColonelsettlementOrder> buildScopedQuery(
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            Collection<String> roleCodes) {
         QueryWrapper<ColonelsettlementOrder> wrapper = new QueryWrapper<>();
         wrapper.eq("deleted", 0);
-        applyScopedQueryDataScope(wrapper, userId, deptId, dataScope);
+        if (roleCodes == null || roleCodes.isEmpty()) {
+            applyScopedQueryDataScope(wrapper, userId, deptId, dataScope);
+        } else {
+            applyOrderDataScope(
+                    wrapper,
+                    false,
+                    userId,
+                    deptId,
+                    dataScope == null ? DataScope.PERSONAL : dataScope,
+                    roleCodes);
+        }
         return wrapper;
     }
 

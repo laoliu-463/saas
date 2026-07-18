@@ -393,6 +393,32 @@ class DataControllerTest {
     }
 
     @Test
+    void getMetrics_withChannelStaffRole_addsChannelOwnerFilter() {
+        UUID userId = UUID.randomUUID();
+        when(dataOrderQueryFacade.selectMaps(any(QueryWrapper.class)))
+                .thenReturn(List.of(Map.of("order_count", 0L, "order_amount_cent", 0L)))
+                .thenReturn(List.of())
+                .thenReturn(List.of());
+        when(commissionService.calculateByActivityBuckets(any())).thenReturn(
+                new CommissionService.CommissionSummary(0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L,
+                        java.math.BigDecimal.valueOf(0.5), java.math.BigDecimal.valueOf(0.25)));
+
+        var response = dataController.getMetrics(
+                userId,
+                null,
+                DataScope.PERSONAL,
+                List.of(RoleCodes.CHANNEL_STAFF));
+
+        assertThat(response.getCode()).isEqualTo(200);
+        ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> wrapperCaptor = queryWrapperCaptor();
+        verify(dataOrderQueryFacade, times(10)).selectMaps(wrapperCaptor.capture());
+        assertThat(wrapperCaptor.getAllValues())
+                .allSatisfy(wrapper -> assertThat(wrapper.getSqlSegment())
+                        .contains("channel_user_id")
+                        .doesNotContain("co.user_id"));
+    }
+
+    @Test
     void getMetrics_withDataScopeDept_addsDeptFilter() {
         UUID userId = UUID.randomUUID();
         UUID deptId = UUID.randomUUID();
