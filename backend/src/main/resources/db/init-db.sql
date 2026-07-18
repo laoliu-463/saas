@@ -236,6 +236,7 @@ CREATE TABLE IF NOT EXISTS colonel_activity (
     status             VARCHAR(20),
     activity_status_code INTEGER,
     activity_status_text VARCHAR(64),
+    activity_status_synced_at TIMESTAMP,
     recruiter_user_id  UUID,
     recruiter_dept_id  UUID,
     assigned_at        TIMESTAMP,
@@ -336,6 +337,38 @@ CREATE INDEX IF NOT EXISTS idx_ap_deleted       ON colonel_activity_product(dele
 CREATE INDEX IF NOT EXISTS idx_ap_assignee_id   ON colonel_activity_product(assignee_id);
 CREATE INDEX IF NOT EXISTS idx_ap_audit_status  ON colonel_activity_product(audit_status);
 CREATE UNIQUE INDEX IF NOT EXISTS uk_ap_activity_product ON colonel_activity_product(activity_id, product_id);
+
+-- 推广链接归因事实。必须包含在新库基线中，不能只依赖历史 ALTER 脚本。
+CREATE TABLE IF NOT EXISTS promotion_link (
+    id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    product_id        VARCHAR(50) NOT NULL,
+    activity_id       VARCHAR(50),
+    talent_id         VARCHAR(50),
+    talent_name       VARCHAR(200),
+    channel_user_id   UUID,
+    channel_user_name VARCHAR(100),
+    attribution_owner_type VARCHAR(32),
+    original_product_url TEXT,
+    promotion_url     TEXT,
+    short_url         TEXT,
+    doukouling        VARCHAR(200),
+    pick_source       VARCHAR(128),
+    pick_extra        VARCHAR(128),
+    link_status       VARCHAR(20) DEFAULT 'ACTIVE',
+    expire_time       TIMESTAMP,
+    raw_response      JSONB,
+    operator_id       UUID,
+    operator_name     VARCHAR(100),
+    created_at        TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at        TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted           SMALLINT NOT NULL DEFAULT 0,
+    CONSTRAINT chk_promotion_link_attribution_owner_type
+        CHECK (attribution_owner_type IS NULL
+            OR attribution_owner_type IN ('CHANNEL', 'RECRUITER'))
+);
+CREATE INDEX IF NOT EXISTS idx_pl_product_id ON promotion_link(product_id);
+CREATE INDEX IF NOT EXISTS idx_pl_pick_source ON promotion_link(pick_source);
+CREATE INDEX IF NOT EXISTS idx_pl_channel_user ON promotion_link(channel_user_id);
 
 -- =============================================
 -- 4. 达人管理

@@ -14,6 +14,16 @@ spring:
       validation-timeout: ${DB_HIKARI_VALIDATION_TIMEOUT_MS:5000}
       idle-timeout: ${DB_HIKARI_IDLE_TIMEOUT_MS:600000}
       max-lifetime: ${DB_HIKARI_MAX_LIFETIME_MS:1800000}
+  flyway:
+    enabled: ${SPRING_FLYWAY_ENABLED:true}
+    locations: classpath:db/migrate
+    baseline-on-migrate: true
+    baseline-version: ${SPRING_FLYWAY_BASELINE_VERSION:20260717}
+    baseline-description: pre-flyway-schema
+    validate-on-migrate: true
+    out-of-order: false
+    clean-disabled: true
+    fail-on-missing-locations: true
   data:
     redis:
       lettuce:
@@ -51,6 +61,11 @@ management:
     health:
       probes:
         enabled: true
+      group:
+        liveness:
+          include: livenessState
+        readiness:
+          include: readinessState,schema,db,redis
       show-details: never
     info:
       enabled: true
@@ -59,6 +74,12 @@ logging:
   level:
     com.colonel.saas: debug
     com.baomidou.mybatisplus: info
+
+schema:
+  validation:
+    # 保持进程可观测：Schema 不兼容时 readiness=DOWN 且同步任务被拦截，
+    # liveness 仍保持独立；需要硬失败的环境可显式开启该开关。
+    startup-fail-fast: ${SCHEMA_VALIDATION_STARTUP_FAIL_FAST:false}
 
 server:
   servlet:
@@ -132,6 +153,8 @@ colonel:
       page-parallelism: ${COLONEL_ACTIVITY_LIST_SYNC_PAGE_PARALLELISM:4}
 
 app:
+  scheduling:
+    enabled: ${APP_SCHEDULING_ENABLED:true}
   performance:
     slow-query-threshold-ms: ${APP_SLOW_QUERY_THRESHOLD_MS:500}
   order-query:
