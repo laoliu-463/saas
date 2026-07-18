@@ -2,11 +2,11 @@
 
 ## Metadata
 
-- Time: 2026-07-18 14:27:34 +08:00
+- Time: 2026-07-18 14:29:35 +08:00
 - Environment: real-pre
 - Scope: full
 - Branch: feature/auth-system
-- Commit: 235e2354
+- Commit: f2857dcd
 - Owned worktree: clean
 - Deploy remote: true
 
@@ -14,6 +14,8 @@
 
 ~~~text
 backend/src/test/java/com/colonel/saas/domain/performance/application/PerformanceAggregateApplicationServiceTest.java
+backend/src/test/java/com/colonel/saas/domain/performance/policy/PerformanceAccessScopeTest.java
+backend/src/test/java/com/colonel/saas/domain/user/policy/CurrentUserPermissionPolicyTest.java
 backend/src/test/java/com/colonel/saas/service/PerformanceMetricsQueryServiceTest.java
 harness/reports/current/latest-order-policy-remote-deploy.md
 ~~~
@@ -27,28 +29,30 @@ harness/reports/current/latest-order-policy-remote-deploy.md
 ## Build Result
 
 ~~~text
-Backend build: PASS; Frontend build: PASS; Targeted permission/performance tests: PASS (68/68); Local container restart: PASS.
+Backend build: PASS; Frontend build: PASS; Targeted permission/performance tests: PASS (95/95); Local container restart: PASS.
 ~~~
 
 ## Docker Status
 
 ~~~text
-NAME                              IMAGE                            COMMAND                  SERVICE             CREATED          STATUS                        PORTS
-saas-active-backend-real-pre-1    colonel-saas/backend:real-pre    "sh -c 'java $JAVA_O…"   backend-real-pre    2 minutes ago    Up 2 minutes (healthy)        127.0.0.1:8081->8080/tcp
-saas-active-frontend-real-pre-1   colonel-saas/frontend:real-pre   "/docker-entrypoint.…"   frontend-real-pre   2 minutes ago    Up About a minute (healthy)   127.0.0.1:3001->80/tcp
-saas-active-postgres-real-pre-1   postgres:15-alpine               "docker-entrypoint.s…"   postgres-real-pre   15 minutes ago   Up 14 minutes (healthy)       5432/tcp
-saas-active-redis-real-pre-1      redis:7-alpine                   "docker-entrypoint.s…"   redis-real-pre      15 minutes ago   Up 14 minutes (healthy)       6379/tcp
-NAMES                             STATUS                        PORTS
-saas-active-frontend-real-pre-1   Up About a minute (healthy)   127.0.0.1:3001->80/tcp
-saas-active-backend-real-pre-1    Up 2 minutes (healthy)        127.0.0.1:8081->8080/tcp
-saas-active-postgres-real-pre-1   Up 14 minutes (healthy)       5432/tcp
-saas-active-redis-real-pre-1      Up 14 minutes (healthy)       6379/tcp
-campus_frontend                   Up 3 days                     0.0.0.0:5173->5173/tcp, [::]:5173->5173/tcp
-campus_backend                    Up 3 days (healthy)           0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp
-campus_postgres                   Up 3 days (healthy)           0.0.0.0:5433->5432/tcp, [::]:5433->5432/tcp
-saas-test-backend-1               Up 3 days (unhealthy)         0.0.0.0:5005->5005/tcp, [::]:5005->5005/tcp, 0.0.0.0:8080->8080/tcp, [::]:8080->8080/tcp
-saas-test-postgres-1              Up 2 hours (healthy)          0.0.0.0:5432->5432/tcp, [::]:5432->5432/tcp
-saas-test-redis-1                 Up 2 hours (healthy)          6379/tcp
+NAME                              IMAGE                            COMMAND                  SERVICE             CREATED          STATUS                    PORTS
+saas-active-backend-real-pre-1    colonel-saas/backend:real-pre    "sh -c 'java $JAVA_O…"   backend-real-pre    4 minutes ago    Up 4 minutes (healthy)    127.0.0.1:8081->8080/tcp
+saas-active-frontend-real-pre-1   colonel-saas/frontend:real-pre   "/docker-entrypoint.…"   frontend-real-pre   4 minutes ago    Up 3 minutes (healthy)    127.0.0.1:3001->80/tcp
+saas-active-postgres-real-pre-1   postgres:15-alpine               "docker-entrypoint.s…"   postgres-real-pre   17 minutes ago   Up 16 minutes (healthy)   5432/tcp
+saas-active-redis-real-pre-1      redis:7-alpine                   "docker-entrypoint.s…"   redis-real-pre      17 minutes ago   Up 16 minutes (healthy)   6379/tcp
+NAMES                                                      STATUS                    PORTS
+cranky_kalam                                               Up 12 seconds             0.0.0.0:44663->5432/tcp, [::]:44663->5432/tcp
+testcontainers-ryuk-f61b9d56-b4ec-4db8-947b-2a766c8f37d8   Up About a minute         0.0.0.0:45047->8080/tcp, [::]:45047->8080/tcp
+saas-active-frontend-real-pre-1                            Up 3 minutes (healthy)    127.0.0.1:3001->80/tcp
+saas-active-backend-real-pre-1                             Up 4 minutes (healthy)    127.0.0.1:8081->8080/tcp
+saas-active-postgres-real-pre-1                            Up 16 minutes (healthy)   5432/tcp
+saas-active-redis-real-pre-1                               Up 16 minutes (healthy)   6379/tcp
+campus_frontend                                            Up 3 days                 0.0.0.0:5173->5173/tcp, [::]:5173->5173/tcp
+campus_backend                                             Up 3 days (healthy)       0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp
+campus_postgres                                            Up 3 days (healthy)       0.0.0.0:5433->5432/tcp, [::]:5433->5432/tcp
+saas-test-backend-1                                        Up 3 days (unhealthy)     0.0.0.0:5005->5005/tcp, [::]:5005->5005/tcp, 0.0.0.0:8080->8080/tcp, [::]:8080->8080/tcp
+saas-test-postgres-1                                       Up 2 hours (healthy)      0.0.0.0:5432->5432/tcp, [::]:5432->5432/tcp
+saas-test-redis-1                                          Up 2 hours (healthy)      6379/tcp
 ~~~
 
 ## Health Check Result
@@ -60,7 +64,7 @@ Local backend/frontend/Postgres/Redis health: PASS. Remote backend /api/system/h
 ## Business Validation Result
 
 ~~~text
-Targeted unit tests PASS (DataControllerTest 50/50, PerformanceAggregateApplicationServiceTest 10/10, PerformanceMetricsQueryServiceTest 8/8). Authenticated business validation remains skipped by -SkipBusinessValidation; channel/recruiter/manager/admin account boundary regression is still pending.
+Targeted unit tests PASS: DataControllerTest 50/50, PerformanceAggregateApplicationServiceTest 10/10, PerformanceMetricsQueryServiceTest 8/8, PerformanceAccessScopeTest 20/20, CurrentUserPermissionPolicyTest 7/7. Authenticated business validation remains skipped by -SkipBusinessValidation; real channel/recruiter/manager/admin account boundary regression is still pending.
 ~~~
 
 ## Content Maintenance Result
@@ -72,12 +76,12 @@ Content maintenance: plan; retirement report collected.
 ## Remote Deploy Result
 
 ~~~text
-Remote deploy: PASS for runtime fix commit d99f7c0976b39f92033d97223b9ab29e2ab7fcd6. Remote fast-forward, schema guards, immutable images, restart, and health checks passed. Later commit 235e2354 contains tests/report only and was not rolled out because it has no runtime code change. Warning: ProductActivitySyncJob config log not found.
+Remote deploy: PASS for runtime fix commit d99f7c0976b39f92033d97223b9ab29e2ab7fcd6. Remote fast-forward, schema guards, immutable images, restart, and health checks passed. Later commits contain tests/report only and were not rolled out because they have no runtime code change. Warning: ProductActivitySyncJob config log not found.
 ~~~
 
 ## Retro Summary
 
-Root cause evidence: remote credentials and Redis token cache were present; the local preflight used a different appId/clientKey pair and therefore could not resolve the local token cache. No remote key was missing. Production permission fix is deployed at d99f7c0. Test assertions were aligned to final attribution fields and 68 targeted tests now pass. Harness check reports TASK_GATE=FAIL only because an unrelated pre-existing untracked timestamp report exists under harness/reports; it was preserved and not staged. Remaining actionable work is authenticated role-boundary regression and investigation of the missing ProductActivitySyncJob config log.
+Root cause evidence: remote credentials and Redis token cache were present; the local preflight used a different appId/clientKey pair and therefore could not resolve the local token cache. No remote key was missing. Production permission fix is deployed at d99f7c0. Role-aware scope tests now cover channel staff, channel leader, recruiter staff, recruiter leader, admin/ops behavior and all pass. Harness check remains TASK_GATE=FAIL only because an unrelated pre-existing untracked timestamp report exists under harness/reports; it was preserved and not staged. Remaining actionable work is authenticated role-boundary regression and investigation of the missing ProductActivitySyncJob config log.
 
 ## Conclusion
 
