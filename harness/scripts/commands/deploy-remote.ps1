@@ -300,7 +300,8 @@ if ($DryRun) {
 }
 
 $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($remoteScript))
-$command = "echo $encoded | base64 -d | bash"
+$remoteTemp = "/tmp/saas-remote-deploy-$([Guid]::NewGuid().ToString('N')).sh"
+$command = "echo $encoded | base64 -d > '$remoteTemp' && bash '$remoteTemp'; rc=`$?; rm -f '$remoteTemp'; exit `$rc"
 ssh $RemoteHost $command
 if ($LASTEXITCODE -ne 0) {
     throw "Remote deploy failed with exit code $LASTEXITCODE."
