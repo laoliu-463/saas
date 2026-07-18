@@ -147,3 +147,4 @@ b729fd2dc89059408c4b6d5bcf7db51341c8769c fix(qa): detect actual real-pre databas
 - real-pre preflight：`PARTIAL/BLOCKED_AUTH`，证据 `runtime/qa/out/real-pre-preflight-20260718-133126/report.md`；frontend/backend/admin login/env/schema/reusable mapping PASS，抖音 token readiness 缺 access/refresh token，requestId=`7eb0d291-ef10-4079-8352-1203e37d9f00`，未启动真实写入业务流。
 - 复核后运行镜像：backend `sha256:4dc7d4e53e0246d542ebd8307f7cd1326a4d648d21d66f545ceaaeca282d41a5`、frontend `sha256:cca4a88249e0b435a9d9fbc89f8304f54ee0c8c96598c98d301ec8427a19e00e`、PostgreSQL 15.17、Redis 7；backend/frontend 仍使用 `real-pre` 浮动标签，不能作为不可变 CD 发布证据。
 - 新增 Harness 变更单独提交：`528fba25 fix(harness): decode byte responses in health probe`；真实 token 重新授权需要 release owner 提供凭证/业务授权，继续保持 BLOCKED，不启用 test/mock 模式。
+- 本轮收口提交链：`c27738d4c1f01b921eddc7e9b48a8d463222fa00`（Policy）、`d964ca5fba5d8e1ea5d420203c9144d2ac747572`（报告）、`528fba25dba82c58bcb161fb922fe27822bf8b09`（Harness）、`64512c8c95f50bd46261ce1acaaa743ed15b8396`（归档）。
