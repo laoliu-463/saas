@@ -113,3 +113,14 @@ b729fd2dc89059408c4b6d5bcf7db51341c8769c fix(qa): detect actual real-pre databas
 ## Retro
 
 本轮两类事故都来自“运行事实未绑定版本”：旧 volume 绕过 init SQL、多个同步模式缺少全局互斥。已用 Flyway ledger + readiness/schema guard + 调度互斥 + 完整 SHA/OCI evidence 收口。可执行改进是把受控 env 文件生命周期和 Jenkins 实跑纳入 release owner 检查；验证标准是 clean checkout 中 Compose/CI PASS、同一真实样本多角色对账和远端部署证据完整。
+
+## CI/CD 复核增量（2026-07-18T12:52:48+08:00）
+
+- 当前复核 HEAD：`c4b5b560`；前置并行提交后的 `d269914e` 已不是当前基线。
+- 本轮变更已单独提交并推送：`c4b5b560 ci: provision backend test dependencies and stabilize frontend gate`；文件仅为 `.github/workflows/ci.yml`、`frontend/src/router/index.test.ts`。
+- CI workflow 经 PyYAML 解析，jobs 为 `backend/governance/frontend`；Compose 配置与三个 shell 脚本语法检查通过。后端 job 现启动隔离 PostgreSQL/Redis，使用 `127.0.0.1` 显式注入连接参数，并在 `always()` 清理容器。
+- 前端：`npx --yes pnpm@9 test` 为 `97/97` 文件、`741/741` 测试 PASS；`typecheck` PASS；`build` PASS（3703 modules）。路由懒加载测试预算从 60s 调整为 120s，实测全量通过。
+- 后端：compile/package PASS；显式连接本机 `saas-test` 后全量为 `3291 tests / 2 failures / 0 errors / 3 skipped`，网络层 `UnknownHostException` 已消失。失败固定为 `DddDashboardApiSqlConsistencyContractTest` 旧调用契约与 `LargeServiceDebtRedlineTest`（`DashboardService` 1218 行 > 1139 基线），属于当前业务切片门禁阻断，不能标 PASS。
+- Harness：`TASK_GATE=PASS`、`REPOSITORY_HEALTH=PARTIAL`；历史债务为 reports 直属 39、current 65、258 行报告，未伪造为健康。
+- 本轮未执行 GitHub/Jenkins 实跑、real-pre 迁移、远端部署或多角色 E2E。当前本地 real-pre 后端在复核期间因 PostgreSQL `saas` 认证失败退出（Exit 137），PostgreSQL/Redis healthy、前端 healthy；未改密码、未清库、未删卷，运行时结论为 `BLOCKED`，需 release owner 使用受控 env/凭证恢复后再验收。
+- CI/CD 结论：`PARTIAL/BLOCKED`，可合并的门禁修复已推送；整体发布不可放行，直到两个架构测试失败和 real-pre 凭证/运行时阻塞清除。
