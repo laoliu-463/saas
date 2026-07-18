@@ -251,7 +251,7 @@ docker run --rm \
   maven:3.9.10-eclipse-temurin-17 \
   mvn -f backend/pom.xml -DskipTests clean package
 IMAGE_TAG="`$image_tag" docker compose --env-file '$RemoteEnvFile' --project-name saas-active \
-  -f docker-compose.real-pre.yml build backend-real-pre frontend-real-pre
+  -f docker-compose.real-pre.yml build --build-arg GIT_COMMIT="`$image_tag" backend-real-pre frontend-real-pre
 test "`$(docker image inspect "colonel-saas/backend:`$image_tag" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')" = "`$image_tag"
 test "`$(docker image inspect "colonel-saas/frontend:`$image_tag" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')" = "`$image_tag"
 echo "Running Flyway migrations with backend schedulers paused ..."
