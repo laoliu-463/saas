@@ -1,0 +1,73 @@
+{
+  "schemaVersion": "1.0.0",
+  "toolchain": {
+    "nodeMajor": 20,
+    "javaMajor": 17
+  },
+  "environments": {
+    "test": {
+      "composeFile": "docker-compose.test.yml",
+      "envFile": ".env.test",
+      "envExampleFile": ".env.test.example",
+      "projectName": "saas-test",
+      "backendService": "backend",
+      "frontendService": "frontend",
+      "backendPort": 8080,
+      "frontendPort": 3000,
+      "backendHealthPath": "/api/system/health",
+      "frontendHealthPaths": ["/healthz", "/favicon.svg", "/"],
+      "requiredConfigKeys": ["SPRING_PROFILES_ACTIVE", "DB_NAME", "DB_USER"],
+      "hardSwitches": {
+        "APP_TEST_ENABLED": "true",
+        "DOUYIN_TEST_ENABLED": "true"
+      },
+      "secretKeys": [
+        { "key": "DB_PASSWORD", "required": true },
+        { "key": "REDIS_PASSWORD", "required": true },
+        { "key": "JWT_SECRET", "required": true },
+        { "key": "DOUYIN_CLIENT_SECRET", "required": false },
+        { "key": "LOGISTICS_KD100_KEY", "required": false },
+        { "key": "TALENT_PROFILE_HTTP_TOKEN", "required": false },
+        { "key": "TALENT_PROFILE_HTTP_AUTHORIZATION", "required": false }
+      ]
+    },
+    "real-pre": {
+      "composeFile": "docker-compose.real-pre.yml",
+      "envFile": ".env.real-pre",
+      "envExampleFile": ".env.real-pre.example",
+      "projectName": "saas-active",
+      "backendService": "backend-real-pre",
+      "frontendService": "frontend-real-pre",
+      "backendPort": 8081,
+      "frontendPort": 3001,
+      "backendHealthPath": "/api/system/health",
+      "frontendHealthPaths": ["/healthz", "/login", "/"],
+      "requiredConfigKeys": [
+        "COMPOSE_PROJECT_NAME",
+        "SPRING_PROFILES_ACTIVE",
+        "DB_NAME",
+        "DB_USER",
+        "ADMIN_PASSWORD",
+        "DOUYIN_APP_ID",
+        "DOUYIN_CLIENT_KEY",
+        "DOUYIN_OAUTH_REDIRECT_URI",
+        "DOUYIN_OAUTH_FRONTEND_SUCCESS_URL",
+        "DOUYIN_OAUTH_FRONTEND_FAILURE_URL"
+      ],
+      "hardSwitches": {
+        "APP_TEST_ENABLED": "false",
+        "DOUYIN_TEST_ENABLED": "false",
+        "DOUYIN_REAL_UPSTREAM_MODE": "live"
+      },
+      "secretKeys": [
+        { "key": "DB_PASSWORD", "required": true },
+        { "key": "REDIS_PASSWORD", "required": true },
+        { "key": "JWT_SECRET", "required": true },
+        { "key": "DOUYIN_CLIENT_SECRET", "required": true },
+        { "key": "LOGISTICS_KD100_KEY", "required": true },
+        { "key": "TALENT_PROFILE_HTTP_TOKEN", "required": false },
+        { "key": "TALENT_PROFILE_HTTP_AUTHORIZATION", "required": false }
+      ]
+    }
+  }
+}

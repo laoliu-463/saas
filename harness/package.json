@@ -7,6 +7,7 @@
     "node": ">=20.19.0 <21"
   },
   "scripts": {
+    "inspect": "jiti src/cli/inspect.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:result": "vitest run tests/result.test.ts"
@@ -16,6 +17,7 @@
   },
   "devDependencies": {
     "@types/node": "20.19.43",
+    "jiti": "2.6.1",
     "typescript": "7.0.2",
     "vitest": "4.1.10"
   }
