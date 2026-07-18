@@ -1,7 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { resolve, posix, win32 } from "node:path";
 
-import { collectGitSnapshot, type GitSnapshot } from "./git.js";
+import type {
+  EvidenceGitSnapshot,
+  GitSnapshot,
+  UnavailableGitSnapshot,
+} from "./git.js";
 
 export type HarnessEnvironment = "test" | "real-pre";
 export type HarnessScope = "backend" | "frontend" | "full";
@@ -27,7 +31,7 @@ export interface RunContext {
   readonly rawDir: string;
   readonly stableJsonPath: string;
   readonly stableMarkdownPath: string;
-  readonly git: GitSnapshot;
+  readonly git: EvidenceGitSnapshot;
 }
 
 const REPORT_KEY_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
@@ -116,6 +120,19 @@ function defaultRunId(startedAt: Date): string {
   return `run-${timestamp}-${randomUUID()}`;
 }
 
+export function unavailableGitSnapshot(): UnavailableGitSnapshot {
+  return Object.freeze({
+    headSha: null,
+    branch: null,
+    clean: null,
+    changedFiles: Object.freeze([]) as readonly [],
+    identity: Object.freeze({
+      kind: "UNAVAILABLE",
+      reason: "NODE_GIT_BOUNDARY",
+    }),
+  });
+}
+
 export function createRunContext(input: RunContextInput): RunContext {
   validateReportKey(input.reportKey);
   if (!(["test", "real-pre"] as const).includes(input.environment)) {
@@ -141,6 +158,6 @@ export function createRunContext(input: RunContextInput): RunContext {
     rawDir,
     stableJsonPath: `harness/reports/current/latest-${input.reportKey}.json`,
     stableMarkdownPath: `harness/reports/current/latest-${input.reportKey}.md`,
-    git: input.gitSnapshot ?? collectGitSnapshot(repoRoot),
+    git: input.gitSnapshot ?? unavailableGitSnapshot(),
   };
 }

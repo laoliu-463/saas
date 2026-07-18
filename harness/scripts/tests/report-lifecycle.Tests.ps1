@@ -252,7 +252,9 @@ Describe 'stable Harness report lifecycle' {
         $reportPath = Join-Path $repo 'harness\reports\current\latest-trim-runtime-output.md'
 
         $exitCode | Should Be 0
-        ($output -join "`n") | Should Match ([regex]::Escape($reportPath))
+        # Pester 4 may expose TestDrive as an 8.3 path while the child process emits
+        # the canonical long path. The filename plus the file read below is representation-neutral.
+        ($output -join "`n") | Should Match ([regex]::Escape((Split-Path -Leaf $reportPath)))
         $content = Get-Content -Raw -LiteralPath $reportPath
         @($content -split "`r?`n" | Where-Object { $_ -match '[ \t]+$' }).Count | Should Be 0
     }

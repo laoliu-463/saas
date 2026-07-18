@@ -35,6 +35,19 @@ export interface GitSnapshot {
   readonly identity: EvidenceIdentity;
 }
 
+export interface UnavailableGitSnapshot {
+  readonly headSha: null;
+  readonly branch: null;
+  readonly clean: null;
+  readonly changedFiles: readonly [];
+  readonly identity: {
+    readonly kind: "UNAVAILABLE";
+    readonly reason: "NODE_GIT_BOUNDARY";
+  };
+}
+
+export type EvidenceGitSnapshot = GitSnapshot | UnavailableGitSnapshot;
+
 export interface GitFileOps {
   readonly lstat: (path: string) => BigIntStats;
   readonly open: (path: string, flags: number) => number;

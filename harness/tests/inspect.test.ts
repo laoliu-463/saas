@@ -14,7 +14,6 @@ import {
   buildInspectCommandPlan,
   findDangerousCommandReferences,
   isCanonicalSafetyCheckPath,
-  isSensitiveChangedFile,
   runInspect,
   type InspectProcessRunner,
 } from "../src/checks/inspect.js";
@@ -85,8 +84,6 @@ function fakeRunner(
   captured: ProcessOptions[] = [],
 ): InspectProcessRunner {
   const outputs: Readonly<Record<string, ProcessResult>> = {
-    "git --version": processResult("git version 2.50.0"),
-    "git --no-optional-locks status --porcelain=v1 -z --untracked-files=all --ignored=no": processResult(""),
     "node --version": processResult("v20.19.4"),
     "npm --version": processResult("10.8.2"),
     "java -version": processResult("openjdk version \"17.0.12\""),
@@ -111,14 +108,12 @@ afterEach(() => {
 });
 
 describe("inspect 只读边界", () => {
-  it("命令计划只有固定版本探测和 Git 只读状态，不含写操作与远端命令", () => {
+  it("命令计划只有固定本地工具探测，完全不调用 Git 或远端命令", () => {
     const plan = buildInspectCommandPlan();
     const displays = plan.map(({ command, args }) => [command, ...args].join(" "));
     const joined = displays.join("\n").toLowerCase();
 
     expect(displays).toEqual([
-      "git --version",
-      "git --no-optional-locks status --porcelain=v1 -z --untracked-files=all --ignored=no",
       "node --version",
       "npm --version",
       "java -version",
@@ -127,9 +122,7 @@ describe("inspect 只读边界", () => {
       "docker compose version",
     ]);
     for (const forbidden of [
-      "git add",
-      "git commit",
-      "git push",
+      "git",
       "docker up",
       "docker down",
       "docker build",
@@ -319,57 +312,20 @@ describe("环境、工具链和安全检查", () => {
       .toBe("BLOCKED");
   });
 
-  it("敏感变更覆盖 env、证书、credentials 与 secrets，example 除外", () => {
-    for (const path of [
-      ".env",
-      ".env.real-pre",
-      "config/private.pem",
-      "config/private.key",
-      "config/cert.p12",
-      "config/store.jks",
-      "config/credentials-prod.json",
-      "config/secrets.local.yml",
-    ]) {
-      expect(isSensitiveChangedFile(path), path).toBe(true);
-    }
-    expect(isSensitiveChangedFile(".env.real-pre.example")).toBe(false);
-    expect(isSensitiveChangedFile("docs/credentials-guide.md")).toBe(false);
-  });
-
-  it("Git 状态中的敏感变更会阻断 inspect", async () => {
+  it("敏感变更检查明确委托给 agent-do，Node inspect 不执行 Git", async () => {
     const root = temporaryRepository();
     writeFileSync(join(root, ".env.real-pre"), validRealPreEnv(), "utf8");
+    const captured: ProcessOptions[] = [];
 
     const result = await runInspect({
       environment: "real-pre",
       repoRoot: root,
-      processRunner: fakeRunner({
-        "git --no-optional-locks status --porcelain=v1 -z --untracked-files=all --ignored=no":
-          processResult("?? credentials-prod.json\0 M docs/readme.md\0"),
-      }),
+      processRunner: fakeRunner({}, captured),
     });
 
-    expect(result.status).toBe("FAIL");
-    expect(result.checks.find(({ checkId }) => checkId === "git.sensitive-files")?.summary)
-      .toContain("credentials-prod.json");
-  });
-
-  it("Git 工作区重命名会同时检查目标与 NUL 分隔的原始敏感路径", async () => {
-    const root = temporaryRepository();
-    writeFileSync(join(root, ".env.real-pre"), validRealPreEnv(), "utf8");
-
-    const result = await runInspect({
-      environment: "real-pre",
-      repoRoot: root,
-      processRunner: fakeRunner({
-        "git --no-optional-locks status --porcelain=v1 -z --untracked-files=all --ignored=no":
-          processResult(" R docs/public-config.txt\0.env.real-pre\0"),
-      }),
-    });
-
-    expect(result.status).toBe("FAIL");
-    expect(result.checks.find(({ checkId }) => checkId === "git.sensitive-files")?.summary)
-      .toContain(".env.real-pre");
+    expect(captured.some(({ command }) => command.toLowerCase() === "git")).toBe(false);
+    expect(result.checks.find(({ checkId }) => checkId === "source-control.boundary"))
+      .toMatchObject({ status: "PASS", blocking: true });
   });
 });
 

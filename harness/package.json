@@ -8,6 +8,7 @@
   },
   "scripts": {
     "inspect": "jiti src/cli/inspect.ts",
+    "verify": "jiti src/cli/verify.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:result": "vitest run tests/result.test.ts"

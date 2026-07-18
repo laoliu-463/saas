@@ -4,7 +4,7 @@ import {
   readdirSync,
   statSync,
 } from "node:fs";
-import { basename, extname, join, relative, resolve } from "node:path";
+import { extname, join, relative, resolve } from "node:path";
 
 import {
   getEnvironmentContract,
@@ -69,11 +69,6 @@ function check(
 
 export function buildInspectCommandPlan(): readonly InspectCommand[] {
   return [
-    { command: "git", args: ["--version"] },
-    {
-      command: "git",
-      args: ["--no-optional-locks", "status", "--porcelain=v1", "-z", "--untracked-files=all", "--ignored=no"],
-    },
     { command: "node", args: ["--version"] },
     { command: "npm", args: ["--version"] },
     { command: "java", args: ["-version"] },
@@ -144,33 +139,6 @@ export function isCanonicalSafetyCheckPath(
   return platform === "win32"
     ? actual.toLowerCase() === expected.toLowerCase()
     : actual === expected;
-}
-
-export function isSensitiveChangedFile(path: string): boolean {
-  const name = basename(path.replaceAll("\\", "/")).toLowerCase();
-  if (name.startsWith(".env") && !name.endsWith(".example")) return true;
-  if ([".pem", ".key", ".p12", ".jks"].includes(extname(name))) return true;
-  if (/^(?:credentials|secrets)(?:[._-]|$)/u.test(name) && extname(name) !== ".md") {
-    return true;
-  }
-  return false;
-}
-
-function parseChangedPaths(porcelain: string): readonly string[] {
-  const records = porcelain.split("\0").filter((record) => record.length > 0);
-  const paths: string[] = [];
-  for (let index = 0; index < records.length; index += 1) {
-    const record = records[index];
-    if (record === undefined || record.length < 4 || record[2] !== " ") continue;
-    paths.push(record.slice(3));
-    const renamedOrCopied = record[0] === "R" || record[0] === "C" ||
-      record[1] === "R" || record[1] === "C";
-    if (renamedOrCopied && records[index + 1] !== undefined) {
-      paths.push(records[index + 1] ?? "");
-      index += 1;
-    }
-  }
-  return [...new Set(paths.filter((path) => path.length > 0))];
 }
 
 function repositoryStructureCheck(repoRoot: string, composeFile: string, envExampleFile: string): CheckResult {
@@ -439,27 +407,18 @@ export async function runInspect(options: RunInspectOptions): Promise<RunResult>
   }
 
   const processResults = await executeCommandPlan(options.repoRoot, runner);
-  const [gitVersion, gitStatus, nodeVersion, npmVersion, javaVersion, mavenVersion, dockerVersion, composeVersion] = processResults;
-  if (!gitVersion || !gitStatus || !nodeVersion || !npmVersion || !javaVersion ||
+  const [nodeVersion, npmVersion, javaVersion, mavenVersion, dockerVersion, composeVersion] = processResults;
+  if (!nodeVersion || !npmVersion || !javaVersion ||
     !mavenVersion || !dockerVersion || !composeVersion) {
     throw new Error("只读命令计划结果数量不完整。");
   }
-  checks.push(toolCheck("git", "检查 Git", gitVersion));
-  const sensitivePaths = gitStatus.success
-    ? parseChangedPaths(gitStatus.stdout).filter(isSensitiveChangedFile)
-    : [];
-  checks.push(!gitStatus.success
-    ? check("git.sensitive-files", "检查敏感变更", "BLOCKED", true, "Git 工作区状态不可读取。", [gitStatus.safeRetry ?? "修复 Git 仓库后重试。"])
-    : sensitivePaths.length === 0
-      ? check("git.sensitive-files", "检查敏感变更", "PASS", true, "Git 工作区未发现敏感文件变更。")
-      : check(
-        "git.sensitive-files",
-        "检查敏感变更",
-        "FAIL",
-        true,
-        `Git 工作区包含敏感文件：${sensitivePaths.join("、")}。`,
-        ["从 Git 变更中移除敏感文件并确认凭据未泄漏；不要输出文件内容。"],
-      ));
+  checks.push(check(
+    "source-control.boundary",
+    "检查版本控制边界",
+    "PASS",
+    true,
+    "Node inspect 未调用 Git；敏感变更与候选提交由 agent-do 的 PowerShell 门禁负责。",
+  ));
   checks.push(
     toolCheck("node", "检查 Node.js", nodeVersion, contracts.toolchain.nodeMajor, "node"),
     toolCheck("npm", "检查 npm", npmVersion),
