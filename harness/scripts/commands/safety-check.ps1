@@ -41,6 +41,16 @@ if ($TargetEnv -eq "real-pre") {
     if ($upstream -ne "live") {
         throw "real-pre must keep DOUYIN_REAL_UPSTREAM_MODE=live. actual=$upstream"
     }
+
+    foreach ($key in @("DOUYIN_APP_ID", "DOUYIN_CLIENT_KEY", "DOUYIN_CLIENT_SECRET")) {
+        $value = if ($envMap.ContainsKey($key)) { [string]$envMap[$key] } else { "" }
+        if ([string]::IsNullOrWhiteSpace($value)) {
+            throw "real-pre requires $key; value is missing."
+        }
+        if ($value -match '(?i)MUST_CHANGE|PLACEHOLDER|CHANGE_ME|REDACTED|TODO') {
+            throw "real-pre requires a real $key; placeholder value detected."
+        }
+    }
 }
 
 $secretKeys = @(

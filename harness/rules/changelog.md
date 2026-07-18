@@ -10,6 +10,7 @@
 ### v0.8.2 — 2026-07-18
 - 修正 `git-push-safe.ps1` 明文密钥扫描：仅将带引号的字面量或配置文件行识别为候选值，避免把 Java 函数调用、变量赋值和 Redis key 名误报为密钥。
 - 范围：Harness Git 安全门禁；保留真实配置字面量扫描，需用 `git-push-safe.ps1 -DryRun` 回归。
+- real-pre safety-check 新增 DOUYIN_APP_ID / DOUYIN_CLIENT_KEY / DOUYIN_CLIENT_SECRET 占位值门禁，避免 Redis 仍有旧 Token 时掩盖上游签名配置缺失。
 
 ### v0.8.1 — 2026-07-18
 - real-pre CD 迁移路径统一到 Spring Boot/Flyway：移除独立 `schema_migration_log` 执行器，调度暂停后由应用启动迁移并只读核验 `flyway_schema_history`。
