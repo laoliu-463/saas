@@ -2,10 +2,10 @@
 
 ## Metadata
 
-- Time: 2026-07-18 14:26:03 +08:00
+- Time: 2026-07-18 14:50:38 +08:00
 - Action: Plan
 - DryRun: False
-- Reason: test(performance): align scope assertions with final attribution
+- Reason: docs(harness): record local cors configuration fix
 - Manifest: (none)
 - ArchiveRoot: harness/archive/retired-content
 - AllowSourceCode: False
