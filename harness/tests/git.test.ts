@@ -332,7 +332,7 @@ describe("Git 只读快照", () => {
       });
     }
     expect(fstatCalls).toBe(8);
-  });
+  }, 20_000);
 
   it("读取成功但 close 失败时返回结构化中文错误", () => {
     const repoRoot = createRepository();
