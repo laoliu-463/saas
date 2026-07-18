@@ -1,88 +1,59 @@
-﻿# Evidence Report
+# Harness 跨平台验证核心设计 Evidence
 
-## Metadata
+## 元数据
 
-- Time: 2026-07-18 09:26:21 +08:00
-- Environment: real-pre
-- Scope: docs
-- Branch: codex/harness-node-verify-phase1
-- Commit: 4faee3f8
-- Owned worktree: dirty
-- Deploy remote: false
+- 生成时间：2026-07-18 09:30:09 +08:00
+- 环境：real-pre
+- Scope：docs
+- 分支：codex/harness-node-verify-phase1
+- 已验证源码 Commit：05f922db5bbe81389fe956f42cd346c8bae298e3
+- 证据身份：COMMIT
+- 远端部署：未执行
+- 关联设计：`docs/方案/PLAN-006-Harness跨平台验证核心重构设计.md`
+- 关联决策：`docs/决策/ADR-014-Harness跨平台核心目录与渐进迁移.md`
 
-## Owned Files
+## 结论
 
-~~~text
-docs/README.md
-docs/方案/PLAN-006-Harness跨平台验证核心重构设计.md
-docs/决策/ADR-014-Harness跨平台核心目录与渐进迁移.md
-~~~
+PARTIAL（部分完成）。设计文档、ADR、自审、现有 Harness 测试和任务门禁通过；业务构建、容器重启、健康检查和业务验证按 docs Scope 未执行。固定入口的 Git 收尾暴露两个既有缺陷，已使用受控回退完成设计提交，不得将本报告解释为业务代码或运行环境验收通过。
 
-## Owned Git Status
+## 关键结果
 
-~~~text
-M docs/README.md
-?? docs/决策/ADR-014-Harness跨平台核心目录与渐进迁移.md
-?? docs/方案/PLAN-006-Harness跨平台验证核心重构设计.md
-~~~
+| 检查 | 结果 | 证据 |
+| --- | --- | --- |
+| 设计逐段确认 | PASS | 架构、流程、中文交互、证据、兼容和验收均获用户确认 |
+| 文档行数 | PASS | PLAN 169 行、ADR 74 行、README 94 行，均低于 200 行硬上限 |
+| 占位符与歧义自审 | PASS | 无未决 TODO；Node 基线明确为 20，Java 基线为 17 |
+| Pester 基线 | PASS | 25 tests，0 failed，0 skipped |
+| real-pre docs 安全检查 | PASS | 安全开关与敏感文件存在性检查通过；未输出密钥值 |
+| Harness 任务门禁 | PASS | TASK_GATE=PASS |
+| 仓库整体健康度 | PARTIAL | reports 根 23 个文件、reports/current 54 个文件，为既有数量债务 |
+| Git 隔离 | PASS | 使用独立 worktree 和 `codex/harness-node-verify-phase1` 分支；原工作区其他脏文件未暂存 |
+| 设计提交与推送 | PASS | `05f922db` 已推送到 `origin/codex/harness-node-verify-phase1` |
 
-## Build Result
+## 未执行项
 
-~~~text
-Scope=docs: build skipped.
-~~~
+- 后端构建与测试：未执行，原因是 Scope=docs。
+- 前端类型检查、测试与构建：未执行，原因是 Scope=docs。
+- Docker 重建与重启：未执行，原因是 Scope=docs。
+- HTTP 健康检查：未执行，原因是 Scope=docs。
+- 业务 E2E：未执行，原因是本轮只固化设计。
+- 远端部署：未执行，用户未授权且不属于第一阶段设计交付。
 
-## Docker Status
+## 固定入口异常与回退
 
-~~~text
-NAME                                           IMAGE                                                                     COMMAND                  SERVICE             CREATED        STATUS                  PORTS
-a19fc2195055_saas-active-postgres-real-pre-1   postgres:15-alpine                                                        "docker-entrypoint.s…"   postgres-real-pre   9 hours ago    Up 9 hours (healthy)    5432/tcp
-saas-active-backend-real-pre-1                 colonel-saas/backend:real-pre                                             "sh -c 'java $JAVA_O…"   backend-real-pre    9 hours ago    Up 9 hours (healthy)    127.0.0.1:8081->8080/tcp
-saas-active-frontend-real-pre-1                sha256:a0c02fe0b2486870f06d22454e31740a67427a88a20d2cb28471a95946a3aca4   "/docker-entrypoint.…"   frontend-real-pre   10 hours ago   Up 10 hours (healthy)   127.0.0.1:3001->80/tcp
-saas-active-redis-real-pre-1                   redis:7-alpine                                                            "docker-entrypoint.s…"   redis-real-pre      2 days ago     Up 2 days (healthy)     6379/tcp
-NAMES                                          STATUS                  PORTS
-saas-active-backend-real-pre-1                 Up 9 hours (healthy)    127.0.0.1:8081->8080/tcp
-a19fc2195055_saas-active-postgres-real-pre-1   Up 9 hours (healthy)    5432/tcp
-saas-active-frontend-real-pre-1                Up 10 hours (healthy)   127.0.0.1:3001->80/tcp
-saas-active-redis-real-pre-1                   Up 2 days (healthy)     6379/tcp
-campus_frontend                                Up 3 days               0.0.0.0:5173->5173/tcp, [::]:5173->5173/tcp
-campus_backend                                 Up 3 days (healthy)     0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp
-campus_postgres                                Up 3 days (healthy)     0.0.0.0:5433->5432/tcp, [::]:5433->5432/tcp
-saas-test-backend-1                            Up 3 days (unhealthy)   0.0.0.0:5005->5005/tcp, [::]:5005->5005/tcp, 0.0.0.0:8080->8080/tcp, [::]:8080->8080/tcp
-~~~
+1. 新分支没有 upstream 时，`git-push-safe.ps1` 的 upstream 探测在 `ErrorActionPreference=Stop` 下被 Git stderr 提前中断，未进入预期的 `push --set-upstream` 分支。
+2. docs Scope 的 `collect-evidence.ps1` 仍采集 `docker ps`；表格尾随空格使 `git diff --cached --check` 失败，并把无关运行时状态写入文档 evidence。
+3. 回退操作仅对隔离分支执行：手动设置 origin upstream，并改为生成不含 Docker 表格的稳定中文摘要。未修改现有 Harness 脚本。
 
-## Health Check Result
+## Retro
 
-~~~text
-Scope=docs: compose restart and HTTP health checks skipped by scoped local harness path.
-~~~
+- 责任人：后续 Harness Node 核心实施任务。
+- 改进动作一：为无 upstream 新分支补兼容测试，并修正 Git 探测的错误流。
+- 改进动作二：docs Scope 默认跳过 Docker 运行时采集，对所有外部命令日志统一清理行尾空白。
+- 验证方式：Pester 覆盖新分支首次推送；报告生命周期测试覆盖 docs Scope 无 Docker 输出和 `git diff --check` 通过。
 
-## Business Validation Result
+## 剩余风险
 
-~~~text
-Scope=docs: business validation not applicable; safety check executed.
-~~~
-
-## Content Maintenance Result
-
-~~~text
-Content maintenance skipped by -ContentMaintenance off.
-~~~
-
-## Remote Deploy Result
-
-~~~text
-remote not deployed
-~~~
-
-## Retro Summary
-
-No actionable Harness improvement was recorded; no standalone retro is required.
-
-## Conclusion
-
-PARTIAL
-
-## Residual Risk
-
-- Items marked as not collected are not proof of success.
+- 当前仅批准设计，Node Harness 尚未实现。
+- 仓库整体报告数量债务尚未清零，不能写成仓库健康度 PASS。
+- evidence 报告提交会产生独立报告 Commit；`已验证源码 Commit` 指向设计内容提交，不声称报告文件自引用当前 Commit。
