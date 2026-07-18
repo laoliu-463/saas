@@ -43,6 +43,7 @@ if [ "`$actual_commit" != '$ExpectedCommit' ]; then
   echo "Remote commit mismatch: expected=$ExpectedCommit actual=`$actual_commit"
   exit 1
 fi
+image_tag="`$actual_commit"
 if [ ! -f '$RemoteEnvFile' ]; then
   echo "Canonical remote env file not found: $RemoteEnvFile"
   exit 1

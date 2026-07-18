@@ -37,6 +37,15 @@ Describe 'remote deployment safety contract' {
         $commitGuard | Should BeGreaterThan $branchSwitch
     }
 
+    It 'derives the pinned image tag from the validated remote commit before migrations' {
+        $commitGuard = $content.IndexOf('Remote commit mismatch')
+        $imageTagAssignment = $content.IndexOf('image_tag="`$actual_commit"')
+        $pinnedMigration = $content.IndexOf('REQUIRE_PINNED_IMAGE=true')
+
+        $imageTagAssignment | Should BeGreaterThan $commitGuard
+        $pinnedMigration | Should BeGreaterThan $imageTagAssignment
+    }
+
     It 'repairs and verifies the repository real-pre env symlink before Compose' {
         $content | Should Match 'ln -sfn'
         $content | Should Match 'readlink -f'
