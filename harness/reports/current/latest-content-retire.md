@@ -2,10 +2,10 @@
 
 ## Metadata
 
-- Time: 2026-07-18 19:22:10 +08:00
+- Time: 2026-07-18 20:11:22 +08:00
 - Action: Plan
 - DryRun: False
-- Reason: fix: persist douyin refresh token locally
+- Reason: verify: validate douyin token credentials and refresh flow
 - Manifest: (none)
 - ArchiveRoot: harness/archive/retired-content
 - AllowSourceCode: False
