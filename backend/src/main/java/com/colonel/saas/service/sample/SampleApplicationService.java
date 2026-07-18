@@ -270,7 +270,6 @@ public class SampleApplicationService extends BaseController {
      *   <li>物流相关服务：物流同步、物流导入、物流订阅</li>
      *   <li>领域基础设施：领域事件发布器、写操作事务服务</li>
      * </ol>
-     *
      * @param sampleRequestMapper                寄样申请单数据访问层
      * @param productDomainFacade                商品域门面
      * @param userDomainFacade                   用户域门面
@@ -331,7 +330,6 @@ public class SampleApplicationService extends BaseController {
 
     /**
      * 创建寄样申请，初始化寄样状态为"待审核"（{@code PENDING_AUDIT}）。
-     *
      * <p>处理流程：
      * <ol>
      *   <li>校验当前用户是否具有创建寄样申请的操作权限</li>
@@ -366,6 +364,7 @@ public class SampleApplicationService extends BaseController {
         return sampleWriteTransactionService.execute(() -> {
         ensureSampleApplyPermission(roleCodes);
         Product product = requireProduct(request.getProductId());
+        ProductSnapshot selectedSnapshot = toSnapshot(productDomainFacade.findSnapshotById(request.getProductId()));
         if (!productDomainFacade.isSelectedToLibraryForSample(product.getId())) {
             throw BusinessException.stateInvalid("该商品尚未加入商品库，请先审核并加入商品库后再进行寄样操作");
         }
@@ -374,7 +373,6 @@ public class SampleApplicationService extends BaseController {
         ensureChannelTalentClaim(userId, talent.getId(), roleCodes);
         checkSevenDaysLimit(userId, talent.getId(), product.getId(), roleCodes);
         SampleEligibilityService.EligibilityResult eligibility = ensureEligibilityReasonIfNeeded(request, talent, talentInfo);
-
         SampleRequest sample = new SampleRequest();
         UUID currentDeptId = resolveUserDeptId(userId);
         sample.setId(UUID.randomUUID());
@@ -386,6 +384,10 @@ public class SampleApplicationService extends BaseController {
         sample.setTalentCreditScore(request.getTalentCreditScore() != null ? request.getTalentCreditScore() : talentInfo.getCreditScore());
         sample.setTalentMainCategory(StringUtils.hasText(request.getTalentMainCategory()) ? request.getTalentMainCategory() : talentInfo.getMainCategory());
         sample.setProductId(product.getId());
+        if (selectedSnapshot != null) {
+            sample.setActivityId(trimToNull(selectedSnapshot.getActivityId()));
+            sample.setActivityProductId(trimToNull(selectedSnapshot.getProductId()));
+        }
         sample.setUserId(userId);
         sample.setDeptId(currentDeptId);
         sample.setChannelUserId(userId);
@@ -408,11 +410,9 @@ public class SampleApplicationService extends BaseController {
                 resolveUserDisplayName(userId),
                 resolveColonelUserId(product),
                 product.getActivityId() == null ? null : String.valueOf(product.getActivityId()));
-
         return ok(toVO(sample, product, product.getName(), sample.getTalentNickname()));
         });
     }
-
     /**
      * 寄样资格预检，在创建寄样申请前检查达人是否满足默认寄样标准。
      *
@@ -424,7 +424,6 @@ public class SampleApplicationService extends BaseController {
      *   <li>调用资格校验服务评估达人是否满足寄样条件（30 天销售额、等级等）</li>
      *   <li>返回资格校验结果，前端根据结果决定是否需要填写申请原因</li>
      * </ol>
-     *
      * @param request     寄样申请请求体（用于提取达人 ID 等信息）
      * @param roleCodes   当前用户角色编码列表（从请求上下文自动注入，可选）
      * @return 资格校验结果视图对象（是否满足条件、不满足的原因说明等）
@@ -2986,9 +2985,9 @@ public class SampleApplicationService extends BaseController {
         if (resolvedProduct == null && sample.getProductId() != null) {
             resolvedProduct = toProduct(productDomainFacade.findProductById(sample.getProductId()));
         }
-        ProductSnapshot snapshot = resolvedProduct == null || resolvedProduct.getId() == null
+        ProductSnapshot snapshot = sample.getProductId() == null
                 ? null
-                : toSnapshot(productDomainFacade.findSnapshotById(resolvedProduct.getId()));
+                : toSnapshot(productDomainFacade.findSnapshotById(sample.getProductId()));
         UUID colonelUserId = resolveColonelUserId(resolvedProduct);
         SampleVO vo = new SampleVO();
         vo.setId(sample.getId());
@@ -3000,6 +2999,7 @@ public class SampleApplicationService extends BaseController {
         vo.setTalentMainCategory(sample.getTalentMainCategory());
         vo.setTalentName(StringUtils.hasText(talentName) ? talentName : sample.getTalentNickname());
         vo.setProductId(sample.getProductId());
+        vo.setActivityId(StringUtils.hasText(sample.getActivityId()) ? sample.getActivityId() : snapshot == null ? null : snapshot.getActivityId());
         vo.setProductExternalId(resolveProductExternalId(resolvedProduct, snapshot));
         vo.setProductName(StringUtils.hasText(productName)
                 ? productName

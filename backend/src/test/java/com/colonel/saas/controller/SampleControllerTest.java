@@ -457,6 +457,7 @@ class SampleControllerTest {
 
         ProductSnapshot snapshot = new ProductSnapshot();
         snapshot.setId(snapshotId);
+        snapshot.setActivityId("3916506");
         snapshot.setProductId("10901827");
 
         Product product = new Product();
@@ -479,6 +480,7 @@ class SampleControllerTest {
 
         when(productDomainFacade.findProductById(snapshotId)).thenReturn(null);
         when(productDomainFacade.findOrMaterializeSampleProduct(snapshotId)).thenReturn(toProductRead(product));
+        when(productDomainFacade.findSnapshotById(snapshotId)).thenReturn(toSnapshotRead(snapshot));
         when(crawlerTalentInfoService.findByTalentId("talent_snapshot_001")).thenReturn(crawlerTalentInfo);
         when(talentDomainFacade.findOrCreateSampleTalent(any(), any(), any())).thenReturn(toTalentRead(talent));
         when(talentDomainFacade.hasActiveClaim(talentUuid, userId)).thenReturn(true);
@@ -489,6 +491,8 @@ class SampleControllerTest {
         ArgumentCaptor<SampleRequest> captor = ArgumentCaptor.forClass(SampleRequest.class);
         verify(sampleRequestMapper).insert(captor.capture());
         assertThat(captor.getValue().getProductId()).isEqualTo(canonicalProductId);
+        assertThat(captor.getValue().getActivityId()).isEqualTo("3916506");
+        assertThat(captor.getValue().getActivityProductId()).isEqualTo("10901827");
     }
 
     @Test
@@ -3214,6 +3218,7 @@ class SampleControllerTest {
 
         ProductSnapshot snapshot = new ProductSnapshot();
         snapshot.setId(productId);
+        snapshot.setActivityId("3916506");
         snapshot.setProductId("DETAIL-SNAPSHOT-001");
         snapshot.setCover("https://example.test/detail-snapshot-cover.png");
         snapshot.setPriceText("¥199.0");
@@ -3275,6 +3280,7 @@ class SampleControllerTest {
         assertThat(vo.getTalentCreditScore()).isEqualTo("4.92");
         assertThat(vo.getTalentMainCategory()).isEqualTo("服饰");
         assertThat(vo.getProductId()).isEqualTo(productId);
+        assertThat(vo.getActivityId()).isEqualTo("3916506");
         assertThat(vo.getProductExternalId()).isEqualTo("DETAIL-PRODUCT-001");
         assertThat(vo.getProductName()).isEqualTo("详情测试商品");
         assertThat(vo.getProductCover()).isEqualTo("https://example.test/detail-cover.png");
@@ -3309,6 +3315,39 @@ class SampleControllerTest {
         assertThat(vo.getHomeworkTypeLabel()).isEqualTo("VIDEO");
         assertThat(vo.getEligibilityCheck()).containsEntry("passed", true);
         assertThat(vo.getRequirementSnapshot()).containsEntry("actualLevel", "LV2");
+    }
+
+    @Test
+    void getSampleById_shouldRecoverPromotionFactsFromSnapshotWhenProductIsMissing() {
+        UUID sampleId = UUID.randomUUID();
+        UUID snapshotId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+
+        ProductSnapshot snapshot = new ProductSnapshot();
+        snapshot.setId(snapshotId);
+        snapshot.setActivityId("3916506");
+        snapshot.setProductId("3828773814163079204");
+
+        SampleRequest sample = new SampleRequest();
+        sample.setId(sampleId);
+        sample.setProductId(snapshotId);
+        sample.setUserId(ownerId);
+        sample.setChannelUserId(ownerId);
+        sample.setDeptId(deptId);
+        sample.setTalentId(UUID.randomUUID());
+        sample.setTalentUid("xiang98668");
+        sample.setStatus(1);
+
+        when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
+        when(productDomainFacade.findProductById(snapshotId)).thenReturn(null);
+        when(productDomainFacade.findSnapshotById(snapshotId)).thenReturn(toSnapshotRead(snapshot));
+        when(userDomainFacade.loadUserDisplayLabelsByIds(any())).thenReturn(Map.of(ownerId, "owner"));
+
+        var response = sampleController.getSampleById(sampleId, ownerId, deptId, DataScope.PERSONAL, null);
+
+        assertThat(response.getData().getActivityId()).isEqualTo("3916506");
+        assertThat(response.getData().getProductExternalId()).isEqualTo("3828773814163079204");
     }
 
     @Test
