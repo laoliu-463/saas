@@ -2,7 +2,6 @@ package com.colonel.saas.domain.order.policy;
 
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.constant.RoleCodes;
-import org.springframework.util.StringUtils;
 
 import java.util.Collection;
 import java.util.List;
@@ -41,7 +40,7 @@ public final class OrderDataScopePolicy {
             return "NO_ROLES";
         }
         List<String> normalized = roleCodes.stream()
-                .filter(StringUtils::hasText)
+                .filter(role -> role != null && !role.isBlank())
                 .map(role -> role.trim().toLowerCase(Locale.ROOT))
                 .distinct()
                 .sorted()
