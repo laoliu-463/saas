@@ -3,10 +3,8 @@ package com.colonel.saas.service;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.domain.order.facade.OrderReadFacade;
-import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
-import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
+import com.colonel.saas.domain.order.policy.DashboardOrderAccessPolicy;
 import com.colonel.saas.domain.user.policy.DataScopeResolver;
-import com.colonel.saas.constant.RoleCodes;
 import lombok.Data;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -94,8 +92,8 @@ public class DashboardService {
     private final DataScopeResolver dataScopeResolver;
     /** DDD 重构灰度开关，默认关闭时保持 Legacy 查询路径 */
     private final DddRefactorProperties dddRefactorProperties;
-    /** 统一解析渠道角色，确保看板订单事实与业绩域使用同一权限语义 */
-    private final CurrentUserPermissionChecker currentUserPermissionChecker;
+    /** 订单域访问策略，统一解释角色可见性与渠道角色 SQL 条件 */
+    private final DashboardOrderAccessPolicy orderAccessPolicy;
 
     /** 影子对账服务（可选），开关开启时在后台执行新路径对比并输出 diff 日志 */
     @Autowired(required = false)
@@ -114,29 +112,12 @@ public class DashboardService {
             PerformanceMetricsQueryService performanceMetricsQueryService,
             DataScopeResolver dataScopeResolver,
             DddRefactorProperties dddRefactorProperties) {
-        this(
-                orderReadFacade,
-                jdbcTemplate,
-                performanceMetricsQueryService,
-                dataScopeResolver,
-                dddRefactorProperties,
-                new CurrentUserPermissionChecker(new CurrentUserPermissionPolicy()));
-    }
-
-    @Autowired
-    public DashboardService(
-            OrderReadFacade orderReadFacade,
-            JdbcTemplate jdbcTemplate,
-            PerformanceMetricsQueryService performanceMetricsQueryService,
-            DataScopeResolver dataScopeResolver,
-            DddRefactorProperties dddRefactorProperties,
-            CurrentUserPermissionChecker currentUserPermissionChecker) {
         this.orderReadFacade = orderReadFacade;
         this.jdbcTemplate = jdbcTemplate;
         this.performanceMetricsQueryService = performanceMetricsQueryService;
         this.dataScopeResolver = dataScopeResolver;
         this.dddRefactorProperties = dddRefactorProperties;
-        this.currentUserPermissionChecker = currentUserPermissionChecker;
+        this.orderAccessPolicy = new DashboardOrderAccessPolicy(dataScopeResolver, dddRefactorProperties);
     }
 
     /**
@@ -174,7 +155,8 @@ public class DashboardService {
             DataScope dataScope,
             List<String> roleCodes) {
         boolean usePerformanceRecords = performanceMetricsQueryService.hasPerformanceRecords();
-        OrderReadFacade.OrderVisibility orderVisibility = buildOrderVisibility(userId, deptId, dataScope, roleCodes);
+        OrderReadFacade.OrderVisibility orderVisibility = orderAccessPolicy.resolveOrderVisibility(
+                userId, deptId, dataScope, roleCodes);
         OrderReadFacade.DashboardAttributionSummary attributionSummary =
                 orderReadFacade.getDashboardAttributionSummary(startTime, endTime, orderVisibility);
         Long attributedCount = attributionSummary.attributedOrderCount();
@@ -189,8 +171,7 @@ public class DashboardService {
         PerformanceMetricsQueryService.DashboardPerformanceSummary performanceSummary = null;
         if (usePerformanceRecords) {
             performanceSummary = roleCodes == null || roleCodes.isEmpty()
-                    ? performanceMetricsQueryService.aggregateDashboardSummary(
-                            startTime, endTime, userId, deptId, dataScope)
+                    ? performanceMetricsQueryService.aggregateDashboardSummary(startTime, endTime, userId, deptId, dataScope)
                     : performanceMetricsQueryService.aggregateDashboardSummary(
                             startTime, endTime, userId, deptId, dataScope, roleCodes);
             orderCount = performanceSummary.orderCount();
@@ -262,6 +243,11 @@ public class DashboardService {
         }
 
         return summary;
+    }
+
+    private OrderReadFacade.OrderVisibility buildOrderVisibility(
+            UUID userId, UUID deptId, DataScope dataScope) {
+        return orderAccessPolicy.resolveOrderVisibility(userId, deptId, dataScope, null);
     }
 
     /**
@@ -410,17 +396,7 @@ public class DashboardService {
             clauses.add("co.settle_time <= ?");
             args.add(endTime);
         }
-        if (currentUserPermissionChecker.hasAnyRole(roleCodes, RoleCodes.CHANNEL_STAFF)) {
-            clauses.add("co.channel_user_id = ?");
-            args.add(userId);
-        } else if (currentUserPermissionChecker.hasAnyRole(roleCodes, RoleCodes.CHANNEL_LEADER)) {
-            if (deptId == null) {
-                clauses.add("1 = 0");
-            } else {
-                clauses.add("co.channel_user_id IN (SELECT id FROM sys_user WHERE dept_id = ?)");
-                args.add(deptId);
-            }
-        } else {
+        if (!orderAccessPolicy.appendChannelRoleScope(clauses, args, userId, deptId, roleCodes)) {
             appendScopeClause(clauses, args, userId, deptId, dataScope);
         }
         return new SqlContext(String.join(" AND ", clauses), args);
@@ -894,60 +870,6 @@ public class DashboardService {
             case DIAGNOSIS_AMBIGUOUS_MAPPING -> "ambiguous 多用户冲突";
             default -> category;
         };
-    }
-
-    private OrderReadFacade.OrderVisibility buildOrderVisibility(UUID userId, UUID deptId, DataScope dataScope) {
-        return buildOrderVisibility(userId, deptId, dataScope, null);
-    }
-
-    private OrderReadFacade.OrderVisibility buildOrderVisibility(
-            UUID userId,
-            UUID deptId,
-            DataScope dataScope,
-            List<String> roleCodes) {
-        if (currentUserPermissionChecker.hasAnyRole(roleCodes, RoleCodes.ADMIN, RoleCodes.OPS_STAFF)) {
-            return OrderReadFacade.OrderVisibility.all();
-        }
-        if (currentUserPermissionChecker.hasAnyRole(roleCodes, RoleCodes.CHANNEL_STAFF)) {
-            return OrderReadFacade.OrderVisibility.channelUser(userId);
-        }
-        if (currentUserPermissionChecker.hasAnyRole(roleCodes, RoleCodes.CHANNEL_LEADER)) {
-            return OrderReadFacade.OrderVisibility.channelDept(deptId);
-        }
-        if (dataScope == null) {
-            return OrderReadFacade.OrderVisibility.all();
-        }
-        if (!dddRefactorProperties.getDataScopePolicy().isEnabled()) {
-            return buildOrderVisibilityLegacy(userId, deptId, dataScope);
-        }
-        DataScopeResolver.ResolvedDataScope resolved =
-                dataScopeResolver.resolve(userId, deptId, dataScope);
-        if (resolved.filtersUser()) {
-            return OrderReadFacade.OrderVisibility.user(userId);
-        }
-        if (resolved.filtersDept()) {
-            return OrderReadFacade.OrderVisibility.dept(deptId);
-        }
-        return dataScopeResolver.requiresFilter(dataScope)
-                ? OrderReadFacade.OrderVisibility.none()
-                : OrderReadFacade.OrderVisibility.all();
-    }
-
-    private OrderReadFacade.OrderVisibility buildOrderVisibilityLegacy(UUID userId, UUID deptId, DataScope dataScope) {
-        if (dataScope == DataScope.PERSONAL && userId != null) {
-            return OrderReadFacade.OrderVisibility.user(userId);
-        }
-        if (dataScope == DataScope.DEPT && deptId != null) {
-            return OrderReadFacade.OrderVisibility.dept(deptId);
-        }
-        if (requiresRestrictedContext(dataScope)) {
-            return OrderReadFacade.OrderVisibility.none();
-        }
-        return OrderReadFacade.OrderVisibility.all();
-    }
-
-    private boolean requiresRestrictedContext(DataScope dataScope) {
-        return dataScope == DataScope.PERSONAL || dataScope == DataScope.DEPT;
     }
 
     /**
