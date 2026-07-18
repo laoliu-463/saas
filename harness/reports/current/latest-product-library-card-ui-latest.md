@@ -6,8 +6,8 @@
 - Environment: real-pre
 - Scope: frontend-only remote release after full deploy gate failure
 - Branch: codex/product-library-card-ui-latest
-- Evidence base commit: 468166ffdf4efd08b1077486673cbb1c2b79c843
-- Deployed frontend image revision: 7d71a8c343f9c28b1c8a0671f792ba1b0190a039
+- Evidence base commit: 26e260bc104fd82a092120752dea675fb5b13938
+- Final deployed frontend image revision: 498e1719bfd96f276820c931f98c3cd51a50e3e9
 - Frontend source revision: 2a0e51c57a1b61b5b91897f1bed5edbcd4a98121
 - Deploy remote: true
 
@@ -64,16 +64,18 @@ Default real-pre preflight: BLOCKED_AUTH
 Fixed full deploy attempt 1: FAIL, SSH process returned -1 during remote Maven testCompile.
 Fixed full deploy attempt 2: FAIL, exit 3 because 99-migrate-all.sql referenced missing alter-cso-dual-attribution-status-20260716.sql.
 Immutable frontend image build: PASS.
-Image revision label: 7d71a8c343f9c28b1c8a0671f792ba1b0190a039.
-Scoped frontend-real-pre switch: PASS.
-Backend restored to pre-task image: colonel-saas/backend:672baed6850c34ca060f737102ff286f6ddabbaf.
-Frontend running image: colonel-saas/frontend:7d71a8c343f9c28b1c8a0671f792ba1b0190a039.
+Initial scoped frontend-real-pre switch: PASS at revision 7d71a8c343f9c28b1c8a0671f792ba1b0190a039.
+Backend was restored to its pre-task image immediately after that scoped switch.
+Concurrent permission/deployment work subsequently completed the repaired full deploy at revision 498e1719bfd96f276820c931f98c3cd51a50e3e9.
+Final backend running image: colonel-saas/backend:498e1719bfd96f276820c931f98c3cd51a50e3e9.
+Final frontend running image: colonel-saas/frontend:498e1719bfd96f276820c931f98c3cd51a50e3e9.
+Final frontend revision label: 498e1719bfd96f276820c931f98c3cd51a50e3e9.
 Remote backend health: HTTP 200, {"status":"UP"}.
 Remote frontend health: HTTP 200, ok.
 Postgres was not recreated by the scoped frontend switch.
 ~~~
 
-The missing migration and schema-guard helper were restored concurrently in later branch commits `43a2ec3f` and `498e1719`. A new full backend deployment was intentionally not run because this task is restricted to frontend changes.
+The missing migration and schema-guard helper were restored concurrently in later branch commits `43a2ec3f` and `498e1719`. Those fixes were deployed by the concurrent permission/deployment task. There are no frontend application-file changes between this task's source revision `2a0e51c5` and the final deployed revision `498e1719`.
 
 ## Remote Headless DOM Verification
 
@@ -102,7 +104,7 @@ Content maintenance skipped by `-ContentMaintenance off`; this task owns only th
 
 ## Retro Summary
 
-Remote branch drift caused the earlier UI rollback. Future UI deployments must rebase onto and verify the latest `feature/auth-system` head before release. When a frontend-only release is required, Compose must use `--no-deps` to prevent dependency services from being recreated; the first scoped switch omitted it, recreated the backend once, and the backend was immediately restored to its prior immutable image before validation.
+Remote branch drift caused the earlier UI rollback. Future UI deployments must rebase onto and verify the latest `feature/auth-system` head before release. When a frontend-only release is required, Compose must use `--no-deps` to prevent dependency services from being recreated; the first scoped switch omitted it, recreated the backend once, and the backend was immediately restored to its prior immutable image before validation. The concurrent deployment task later moved both services to repaired revision `498e1719`.
 
 ## Conclusion
 
@@ -114,4 +116,4 @@ The requested frontend is deployed and verified on remote real-pre. The result r
 
 - Copy-introduction permission behavior was not modified or functionally exercised in this task; only the retained entry and disabled/loading unit states were verified.
 - `npm run typecheck:test` still has three pre-existing typing errors in `src/views/product/components/QuickSampleModal.test.ts`; application typecheck and production build pass.
-- The backend remains on its pre-task image by design. Later deployment-script/database fixes are present in the branch but were not deployed as part of this frontend-only task.
+- Final remote revision `498e1719` includes concurrent deployment-script/database repairs. This task did not author those changes; verification here is limited to final container revisions, health, frontend bundle markers, and product-library DOM.
