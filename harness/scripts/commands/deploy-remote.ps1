@@ -56,7 +56,7 @@ docker run --rm \
   maven:3.9.10-eclipse-temurin-17 \
   mvn -f backend/pom.xml -DskipTests clean package
 IMAGE_TAG="`$image_tag" docker compose --env-file '$RemoteEnvFile' --project-name saas-active \
-  -f docker-compose.real-pre.yml build backend-real-pre frontend-real-pre
+  -f docker-compose.real-pre.yml build --build-arg GIT_COMMIT="`$image_tag" backend-real-pre frontend-real-pre
 test "`$(docker image inspect "colonel-saas/backend:`$image_tag" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')" = "`$image_tag"
 test "`$(docker image inspect "colonel-saas/frontend:`$image_tag" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')" = "`$image_tag"
 echo "Running Flyway migrations with backend schedulers paused ..."
@@ -104,7 +104,8 @@ if ($DryRun) {
 }
 
 $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($remoteScript))
-$command = "echo $encoded | base64 -d | bash"
+$remoteTemp = "/tmp/saas-remote-deploy-$([Guid]::NewGuid().ToString('N')).sh"
+$command = "echo $encoded | base64 -d > '$remoteTemp' && bash '$remoteTemp'; rc=`$?; rm -f '$remoteTemp'; exit `$rc"
 ssh $RemoteHost $command
 if ($LASTEXITCODE -ne 0) {
     throw "Remote deploy failed with exit code $LASTEXITCODE."
