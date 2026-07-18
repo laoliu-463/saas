@@ -67,4 +67,18 @@ Describe 'remote deployment safety contract' {
         $content | Should Match 'com\.docker\.compose\.project\.environment_file'
         $content | Should Match 'Stateful service provenance guard passed'
     }
+
+    It 'references only migration files that are present in the database manifest' {
+        $manifestPath = Join-Path $repoRoot 'backend\src\main\resources\db\migrate-all.sql'
+        $migrationDirectory = Split-Path -Parent $manifestPath
+        $manifest = Get-Content -Raw -LiteralPath $manifestPath
+        $includes = [regex]::Matches($manifest, '(?m)^\s*\\i\s+/docker-entrypoint-initdb\.d/db/([^\s]+\.sql)\s*$')
+        $missing = @(
+            $includes |
+                ForEach-Object { $_.Groups[1].Value } |
+                Where-Object { -not (Test-Path -LiteralPath (Join-Path $migrationDirectory $_)) }
+        )
+
+        $missing.Count | Should Be 0
+    }
 }
