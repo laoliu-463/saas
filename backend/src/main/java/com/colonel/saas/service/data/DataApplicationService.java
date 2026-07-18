@@ -15,6 +15,8 @@ import com.colonel.saas.common.time.AppZone;
 import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.domain.order.facade.DataOrderQueryFacade;
+import com.colonel.saas.domain.order.policy.OrderDataCacheKeyPolicy;
+import com.colonel.saas.domain.order.policy.OrderDataScopePolicy;
 import com.colonel.saas.domain.performance.facade.ExclusiveMerchantReadFacade;
 import com.colonel.saas.domain.performance.facade.OrderPerformanceQueryFacade;
 import com.colonel.saas.domain.product.facade.ProductActivityReadFacade;
@@ -184,6 +186,13 @@ public class DataApplicationService extends BaseController {
 
     /** DDD 重构灰度开关，默认关闭以保持 Legacy 行为。 */
     private final DddRefactorProperties dddRefactorProperties;
+
+    /** 订单数据页角色归属策略，不承担查询执行。 */
+    private final OrderDataScopePolicy orderDataScopePolicy = new OrderDataScopePolicy();
+
+    /** 订单数据页缓存键策略，不承担业务查询。 */
+    private final OrderDataCacheKeyPolicy orderDataCacheKeyPolicy =
+            new OrderDataCacheKeyPolicy(orderDataScopePolicy);
 
     /**
      * 构造注入所有依赖服务与只读门面。
@@ -488,7 +497,7 @@ public class DataApplicationService extends BaseController {
                 PerformanceAccessContext.of(
                         userId,
                         deptId,
-                        resolveOrderDetailPerformanceScope(dataScope, roleCodes),
+                        orderDataScopePolicy.resolveOrderDetailPerformanceScope(dataScope, roleCodes),
                         roleCodes));
 
         // 批量查询活动名称
@@ -827,7 +836,7 @@ public class DataApplicationService extends BaseController {
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
             List<String> roleCodes) {
         return ok(shortTtlCacheService.get(
-                orderSummaryCacheKey(timeField, startDate, endDate,
+                orderDataCacheKeyPolicy.orderSummaryKey(ORDER_SUMMARY_CACHE_PREFIX, resolveTimeColumn(timeField), startDate, endDate,
                         orderId, status, talentId, merchantId,
                         productId, productName, shopName,
                         talentName, colonelName, channelName,
@@ -840,6 +849,11 @@ public class DataApplicationService extends BaseController {
                         colonelActivityId, recruitType,
                         startDate, endDate, timeField,
                         userId, deptId, dataScope, roleCodes)));
+    }
+
+    /** 保留订单汇总缓存键的旧反射入口，实际拼接由缓存键策略负责。 */
+    private String orderSummaryCacheKey(String timeField, LocalDate startDate, LocalDate endDate, String orderId, String status, UUID talentId, String merchantId, String productId, String productName, String shopName, String talentName, String colonelName, String channelName, String colonelActivityId, String recruitType, UUID userId, UUID deptId, DataScope dataScope, Collection<String> roleCodes) {
+        return orderDataCacheKeyPolicy.orderSummaryKey(ORDER_SUMMARY_CACHE_PREFIX, resolveTimeColumn(timeField), startDate, endDate, orderId, status, talentId, merchantId, productId, productName, shopName, talentName, colonelName, channelName, colonelActivityId, recruitType, userId, deptId, dataScope, roleCodes);
     }
 
     private OrderSummaryVO buildOrderSummary(
@@ -965,26 +979,6 @@ public class DataApplicationService extends BaseController {
         return vo;
     }
 
-    private String orderSummaryCacheKey(
-            String timeField,
-            LocalDate startDate, LocalDate endDate,
-            String orderId, String status, UUID talentId, String merchantId,
-            String productId, String productName, String shopName,
-            String talentName, String colonelName, String channelName,
-            String colonelActivityId, String recruitType,
-            UUID userId, UUID deptId, DataScope dataScope, Collection<String> roleCodes) {
-        String timeColumn = resolveTimeColumn(timeField);
-        return ORDER_SUMMARY_CACHE_PREFIX + cacheKey(
-                timeColumn,
-                startDate, endDate,
-                orderId, status, talentId, merchantId,
-                productId, productName, shopName,
-                talentName, colonelName, channelName,
-                colonelActivityId, recruitType,
-                userId, deptId, dataScope == null ? "NO_SCOPE" : dataScope,
-                roleCodesCacheKey(roleCodes));
-    }
-
     @Operation(summary = "核心指标", description = "查询数据页首页核心指标与近 7 天趋势，支持双轨（结算/预估）并行返回。")
     @GetMapping("/dashboard/metrics")
     public ApiResult<DualTrackMetricsVO> getMetrics(
@@ -992,8 +986,10 @@ public class DataApplicationService extends BaseController {
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
             @RequestAttribute(value = "roleCodes", required = false) List<String> roleCodes) {
-        String cacheKeySettle = METRICS_CACHE_PREFIX + metricsCacheKey("settleTime", userId, deptId, dataScope, roleCodes);
-        String cacheKeyEstimate = METRICS_CACHE_PREFIX + metricsCacheKey("createTime", userId, deptId, dataScope, roleCodes);
+        String cacheKeySettle = METRICS_CACHE_PREFIX + orderDataCacheKeyPolicy.metricsKey(
+                resolveTimeColumn("settleTime"), userId, deptId, dataScope, roleCodes);
+        String cacheKeyEstimate = METRICS_CACHE_PREFIX + orderDataCacheKeyPolicy.metricsKey(
+                resolveTimeColumn("createTime"), userId, deptId, dataScope, roleCodes);
 
         MetricsVO settleMetrics = shortTtlCacheService.get(cacheKeySettle, METRICS_CACHE_TTL,
                 () -> buildMetrics("settleTime", userId, deptId, dataScope, roleCodes));
@@ -1580,40 +1576,6 @@ public class DataApplicationService extends BaseController {
 
     private static String formatCsvTime(LocalDateTime value) {
         return value == null ? null : value.toString().replace('T', ' ');
-    }
-
-    private String cacheKey(Object... values) {
-        StringBuilder builder = new StringBuilder();
-        for (Object value : values) {
-            if (builder.length() > 0) {
-                builder.append('|');
-            }
-            builder.append(value == null ? "" : value);
-        }
-        return builder.toString();
-    }
-
-    private String metricsCacheKey(String timeField, UUID userId, UUID deptId, DataScope dataScope) {
-        return metricsCacheKey(timeField, userId, deptId, dataScope, null);
-    }
-
-    private String metricsCacheKey(
-            String timeField,
-            UUID userId,
-            UUID deptId,
-            DataScope dataScope,
-            Collection<String> roleCodes) {
-        String timeColumn = resolveTimeColumn(timeField);
-        if (dataScope == DataScope.PERSONAL) {
-            return cacheKey(timeColumn, DataScope.PERSONAL, userId, roleCodesCacheKey(roleCodes));
-        }
-        if (dataScope == DataScope.DEPT) {
-            return cacheKey(timeColumn, DataScope.DEPT, deptId, roleCodesCacheKey(roleCodes));
-        }
-        if (dataScope == DataScope.ALL) {
-            return cacheKey(timeColumn, DataScope.ALL, roleCodesCacheKey(roleCodes));
-        }
-        return cacheKey(timeColumn, "NO_SCOPE", roleCodesCacheKey(roleCodes));
     }
 
     private String resolveTimeColumn(String timeField) {
@@ -2268,80 +2230,16 @@ public class DataApplicationService extends BaseController {
             DataScope dataScope,
             Collection<String> roleCodes) {
         if (roleCodes == null || roleCodes.isEmpty()) {
-            applyQueryDataScope(
-                    wrapper,
-                    userId,
-                    deptId,
-                    dataScope,
-                    column(aliased, "user_id"),
-                    column(aliased, "dept_id"));
+            applyQueryDataScope(wrapper, userId, deptId, dataScope,
+                    column(aliased, "user_id"), column(aliased, "dept_id"));
             return;
         }
-        // 招商专员的订单明细是全量只读业务视图，不按个人/部门归属裁剪订单行。
-        // 该例外只作用于订单明细查询，其他数据域仍按各自的数据范围策略执行。
-        if (hasAnyRole(roleCodes, RoleCodes.BIZ_STAFF)) {
+        OrderDataScopePolicy.Scope scope = orderDataScopePolicy.resolve(roleCodes);
+        if (scope.fullReadOnly()) {
             return;
         }
-        String ownerColumn = column(aliased, resolveOrderOwnerColumn(roleCodes));
-        String deptColumn = column(aliased, resolveOrderDeptColumn(roleCodes));
-        applyQueryDataScope(wrapper, userId, deptId, dataScope, ownerColumn, deptColumn);
-    }
-
-    private String roleCodesCacheKey(Collection<String> roleCodes) {
-        if (roleCodes == null || roleCodes.isEmpty()) {
-            return "NO_ROLES";
-        }
-        List<String> normalized = roleCodes.stream()
-                .filter(StringUtils::hasText)
-                .map(role -> role.trim().toLowerCase(Locale.ROOT))
-                .distinct()
-                .sorted()
-                .toList();
-        return normalized.isEmpty() ? "NO_ROLES" : String.join(",", normalized);
-    }
-
-    /**
-     * 订单明细是招商专员的全量只读业务视图，补充的业绩字段必须沿用同一权限例外。
-     * 该调整仅作用于订单明细 BFF 的业绩补充，不改变业绩域其他接口的数据范围策略。
-     */
-    private DataScope resolveOrderDetailPerformanceScope(
-            DataScope dataScope,
-            Collection<String> roleCodes) {
-        return hasAnyRole(roleCodes, RoleCodes.BIZ_STAFF) ? DataScope.ALL : dataScope;
-    }
-
-    private String resolveOrderOwnerColumn(Collection<String> roleCodes) {
-        if (hasAnyRole(roleCodes, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF)) {
-            return "colonel_user_id";
-        }
-        if (hasAnyRole(roleCodes, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF)) {
-            return "channel_user_id";
-        }
-        return "user_id";
-    }
-
-    private String resolveOrderDeptColumn(Collection<String> roleCodes) {
-        if (hasAnyRole(roleCodes, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF)) {
-            return "dept_id";
-        }
-        if (hasAnyRole(roleCodes, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF)) {
-            return "channel_dept_id";
-        }
-        return "dept_id";
-    }
-
-    private boolean hasAnyRole(Collection<String> roleCodes, String... expectedRoles) {
-        if (roleCodes == null || roleCodes.isEmpty()) {
-            return false;
-        }
-        for (String roleCode : roleCodes) {
-            for (String expectedRole : expectedRoles) {
-                if (expectedRole.equalsIgnoreCase(roleCode)) {
-                    return true;
-                }
-            }
-        }
-        return false;
+        applyQueryDataScope(wrapper, userId, deptId, dataScope,
+                column(aliased, scope.ownerColumn()), column(aliased, scope.deptColumn()));
     }
 
     private String column(boolean aliased, String column) {
