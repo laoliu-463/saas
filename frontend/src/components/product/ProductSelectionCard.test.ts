@@ -15,6 +15,9 @@
  * 不依赖 NCollapseTransition 的 stub（vue-test-utils 2.x 会把 NCollapseTransition
  * 自动识别为 <transition> 变体，自定义 stub 配置成本太高）。
  */
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+
 import { mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -264,7 +267,7 @@ describe('ProductSelectionCard hover drawer', () => {
     })
 
     const style = wrapper.find('[data-testid="product-selection-card"]').attributes('style') || ''
-    expect(style).toContain('--selection-card-height: 432px')
+    expect(style).toContain('--selection-card-height: 492px')
   })
 
   it('商品图片使用懒加载和异步解码，降低批量渲染压力', () => {
@@ -276,21 +279,33 @@ describe('ProductSelectionCard hover drawer', () => {
     expect(image.attributes('decoding')).toBe('async')
   })
 
-  it('提供复制ID和复制链接按钮且行为正确', async () => {
-    const wrapper = mountCard()
-    const copyIdBtn = wrapper.find('[data-testid="product-copy-id"]')
-    const copyUrlBtn = wrapper.find('[data-testid="product-copy-url"]')
-    expect(copyIdBtn.exists()).toBe(true)
-    expect(copyUrlBtn.exists()).toBe(true)
+  it('完整展示商品名称和商品ID，快捷按钮只保留复制ID', () => {
+    const productName = '很长的商品名称用于验证卡片直接完整换行展示且不会使用两行截断'
+    const productId = '1234567890123456789'
+    const wrapper = mountCard({ card: { ...baseCard, productName, productId } })
+
+    expect(wrapper.get('.selection-card__title').text()).toContain(productName)
+    expect(wrapper.get('[data-testid="product-id-value"]').text()).toBe(productId)
+    expect(wrapper.find('[data-testid="product-copy-id"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="product-copy-url"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="product-refresh"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="product-detail-btn"]').exists()).toBe(false)
+    const source = readFileSync(resolve(process.cwd(), 'src/components/product/ProductSelectionCard.vue'), 'utf8')
+    expect(source).not.toContain('-webkit-line-clamp')
   })
 
-  it('渠道点击复制链接图标时触发商品图文复制事件', async () => {
-    const card = { ...baseCard, productUrl: 'https://haohuo.example.com/product/1' }
-    const wrapper = mountCard({ card, canCopyBrief: true })
+  it('复制ID写入完整商品ID', async () => {
+    const productId = '1234567890123456789'
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText }
+    })
+    const wrapper = mountCard({ card: { ...baseCard, productId } })
 
-    await wrapper.get('[data-testid="product-copy-url"]').trigger('click')
+    await wrapper.get('[data-testid="product-copy-id"]').trigger('click')
 
-    expect(wrapper.emitted('copyBrief')?.[0]).toEqual([card.raw])
+    expect(writeText).toHaveBeenCalledWith(productId)
   })
 
   it('默认态投放期佣金为空占位时回退展示佣金率', () => {
