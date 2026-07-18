@@ -68,15 +68,18 @@ jobs:
       - name: Validate real-pre Compose configuration
         shell: bash
         run: |
-          # docker-compose.real-pre.yml hardcodes env_file: .env.real-pre inside
-          # the YAML anchor; docker compose config refuses to render without it.
-          # Stage the example in /tmp so the gate runs against the committed
-          # example values without writing a real .env.real-pre into the repo.
+          # docker-compose.real-pre.yml hardcodes env_file: .env.real-pre
+          # inside the YAML anchor. docker compose config requires that exact
+          # working-tree path to exist regardless of --env-file, so symlink
+          # the example into the working tree before validation and remove
+          # it afterwards to keep the tree clean for downstream steps.
           cp -f .env.real-pre.example /tmp/.env.real-pre
+          ln -sf /tmp/.env.real-pre .env.real-pre
           full_sha=0000000000000000000000000000000000000000
           IMAGE_TAG="$full_sha" docker compose --env-file /tmp/.env.real-pre -f docker-compose.real-pre.yml config > /tmp/compose.yml
           grep -q "colonel-saas/backend:$full_sha" /tmp/compose.yml
           grep -q "colonel-saas/frontend:$full_sha" /tmp/compose.yml
+          rm -f .env.real-pre
 
       - name: Validate migration, backup and Schema precheck scripts
         shell: bash
