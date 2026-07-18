@@ -5,6 +5,7 @@ import { reactive } from 'vue'
 import ProductLibrary from './ProductLibrary.vue'
 import { DEFAULT_PRODUCT_FILTERS } from './product-filters'
 import { getProductLibraryCategories, getProducts } from '../../api/product'
+import { convertActivityProductLink } from '../../api/activityProduct'
 import { ROLE_CODES } from '../../constants/rbac'
 import { PRODUCT_LIBRARY_ROW_HEIGHT } from './product-library-layout'
 
@@ -108,6 +109,7 @@ function mountLibrary(options: { attachTo?: HTMLElement } = {}) {
         ProductSelectionCard: {
           name: 'ProductSelectionCard',
           props: ['card', 'canCopyBrief'],
+          emits: ['copyBrief'],
           template: '<article data-testid="product-card">{{ card.productId }}</article>'
         },
         ProductDetail: true,
@@ -160,8 +162,47 @@ describe('ProductLibrary infinite scroll', () => {
     })
   })
 
-  it('allows recruiting staff to generate an attributable promotion link', async () => {
-    authState.roleCodes = [ROLE_CODES.BIZ_STAFF]
+  it('does not derive promotion-link availability from client role codes', async () => {
+    authState.roleCodes = ['viewer']
+    authState.isAdmin = false
+    vi.mocked(getProducts).mockResolvedValue({
+      data: { records: buildRows(1, 1), total: 1, hasMore: false, nextCursor: null }
+    } as any)
+
+    const wrapper = mountLibrary()
+    await flushPromises()
+
+    expect(wrapper.findComponent({ name: 'ProductSelectionCard' }).props('canCopyBrief')).toBe(true)
+  })
+
+  it('sends the copy request to the server even without a client-side role match', async () => {
+    authState.roleCodes = ['viewer']
+    authState.isAdmin = false
+    vi.mocked(getProducts).mockResolvedValue({
+      data: { records: buildRows(1, 1), total: 1, hasMore: false, nextCursor: null }
+    } as any)
+    vi.mocked(convertActivityProductLink).mockResolvedValue({ data: { promotionLinkGenerated: false } } as any)
+
+    const wrapper = mountLibrary()
+    await flushPromises()
+
+    wrapper.findComponent({ name: 'ProductSelectionCard' }).vm.$emit('copyBrief', {
+      productId: 'product-1',
+      activityId: 'activity-1'
+    })
+    await flushPromises()
+
+    expect(convertActivityProductLink).toHaveBeenCalledWith(
+      'activity-1',
+      'product-1',
+      { scene: 'PRODUCT_LIBRARY' },
+      { suppressErrorNotice: true }
+    )
+  })
+
+  it('allows administrators to generate an attributable promotion link', async () => {
+    authState.roleCodes = []
+    authState.isAdmin = true
     vi.mocked(getProducts).mockResolvedValue({
       data: { records: buildRows(1, 1), total: 1, hasMore: false, nextCursor: null }
     } as any)

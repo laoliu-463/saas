@@ -82,7 +82,7 @@
             v-for="item in visibleProducts"
             :key="productCardKey(item)"
             :card="item.card"
-            :can-copy-brief="canCopyPromotionLink"
+            :can-copy-brief="true"
             :can-quick-sample="canQuickSample"
             :copy-brief-loading="promotionLoadingIds.has(item.card.productId)"
             @detail="openDetail"
@@ -96,7 +96,7 @@
             v-for="item in visibleProducts"
             :key="productCardKey(item)"
             :card="item.card"
-            :can-copy-brief="canCopyPromotionLink"
+            :can-copy-brief="true"
             :can-quick-sample="canQuickSample"
             :copy-brief-loading="promotionLoadingIds.has(item.card.productId)"
             @detail="openDetail"
@@ -194,7 +194,6 @@ import {
   PRODUCT_LIBRARY_GRID_GAP,
   PRODUCT_LIBRARY_ROW_HEIGHT
 } from './product-library-layout'
-import { canGenerateAttributionPromotionLink } from './product-actions'
 import { canApplyQuickSampleByRole } from './product-permissions'
 
 const PRODUCT_LIBRARY_REQUEST_BATCH_SIZE = 100
@@ -242,10 +241,6 @@ let loadMoreObserver: IntersectionObserver | null = null
 let loadMoreObserverRoot: Element | null = null
 let productGridViewportRaf: number | null = null
 let productScrollTarget: Window | HTMLElement | null = null
-
-const canCopyPromotionLink = computed(() =>
-  canGenerateAttributionPromotionLink({ roles: authStore.roleCodes })
-)
 
 const convertLinkForBriefCopy = (
   activityId: string | number,
@@ -712,10 +707,6 @@ const handleDetailAction = (_payload: { action: string; row: any }) => {
 }
 
 const copyPromotionLink = async (item: any) => {
-  if (!canCopyPromotionLink.value) {
-    message.warning('仅渠道或招商角色可生成可归因推广链接')
-    return
-  }
   const productId = String(item?.productId || '')
   const activityId = String(item?.sourceActivityId || item?.activityId || '')
   if (!productId || !activityId) {
