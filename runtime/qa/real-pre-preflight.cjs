@@ -29,6 +29,8 @@ const REQUIRED_SCHEMA = [
 async function runRealPrePreflight(options = {}) {
   const root = options.root || ROOT;
   const runtimeEnv = options.env || process.env;
+  // applyRealPreEnv 会补默认容器名；先保存调用方值，避免默认值遮蔽实际容器发现。
+  const inheritedDbContainer = runtimeEnv.QA_POSTGRES_CONTAINER || runtimeEnv.E2E_DB_CONTAINER || '';
   const urls = applyRealPreEnv(runtimeEnv);
   const fetchImpl = options.fetchImpl || globalThis.fetch;
   const spawnSyncImpl = options.spawnSyncImpl || spawnSync;
@@ -44,11 +46,12 @@ async function runRealPrePreflight(options = {}) {
       envFile: options.envFile || path.join(root, '.env.real-pre')
     }) || ''
   ).trim();
-  const dbContainer = options.dbContainer ||
-    runtimeEnv.QA_POSTGRES_CONTAINER ||
-    runtimeEnv.E2E_DB_CONTAINER ||
-    detectRealPrePostgresContainer(spawnSyncImpl) ||
-    DEFAULT_REAL_PRE_DB_CONTAINER;
+  const dbContainer = resolvePreflightDbContainer({
+    requested: options.dbContainer,
+    inherited: inheritedDbContainer,
+    detected: detectRealPrePostgresContainer(spawnSyncImpl),
+    appliedDefault: runtimeEnv.E2E_DB_CONTAINER
+  });
   const dbUser = options.dbUser || runtimeEnv.QA_DB_USER || runtimeEnv.E2E_DB_USER || DEFAULT_REAL_PRE_DB_USER;
   const dbName = options.dbName || runtimeEnv.QA_DB_NAME || runtimeEnv.E2E_DB_NAME || DEFAULT_REAL_PRE_DB_NAME;
 
@@ -181,6 +184,20 @@ function detectRealPrePostgresContainer(spawnSyncImpl) {
     .map((line) => line.trim())
     .filter(Boolean);
   return names.find((name) => /postgres-real-pre/.test(name)) || '';
+}
+
+function resolvePreflightDbContainer({ requested, inherited, detected, appliedDefault } = {}) {
+  const explicit = String(requested || '').trim();
+  if (explicit) return explicit;
+
+  const inheritedValue = String(inherited || '').trim();
+  if (inheritedValue
+      && inheritedValue !== DEFAULT_REAL_PRE_DB_CONTAINER
+      && inheritedValue !== 'saas-active-postgres-real-pre-1') {
+    return inheritedValue;
+  }
+
+  return String(detected || inheritedValue || appliedDefault || DEFAULT_REAL_PRE_DB_CONTAINER).trim();
 }
 
 async function login(backendUrl, fetchImpl, username, password, timeoutMs, retryOptions) {
@@ -441,5 +458,6 @@ module.exports = {
   REQUIRED_SCHEMA,
   runRealPrePreflight,
   assertRealPrePreflight,
-  summarizeStatus
+  summarizeStatus,
+  resolvePreflightDbContainer
 };

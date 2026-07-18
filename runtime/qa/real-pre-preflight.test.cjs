@@ -6,6 +6,7 @@ const path = require('node:path');
 
 const {
   runRealPrePreflight,
+  resolvePreflightDbContainer,
   summarizeStatus
 } = require('./real-pre-preflight.cjs');
 
@@ -14,6 +15,21 @@ test('summarizeStatus classifies fail, blocked, pending, and pass distinctly', (
   assert.equal(summarizeStatus([{ status: 'PASS' }, { status: 'PENDING_PICK_SOURCE' }]), 'PENDING');
   assert.equal(summarizeStatus([{ status: 'BLOCKED_AUTH' }]), 'BLOCKED');
   assert.equal(summarizeStatus([{ status: 'FAIL' }, { status: 'BLOCKED_AUTH' }]), 'FAIL');
+});
+
+test('resolvePreflightDbContainer prefers detected container over injected default', () => {
+  assert.equal(resolvePreflightDbContainer({
+    inherited: 'saas-active-postgres-real-pre-1',
+    detected: 'a19fc2195055_saas-active-postgres-real-pre-1',
+    appliedDefault: 'saas-active-postgres-real-pre-1'
+  }), 'a19fc2195055_saas-active-postgres-real-pre-1');
+});
+
+test('resolvePreflightDbContainer preserves an explicitly requested container', () => {
+  assert.equal(resolvePreflightDbContainer({
+    requested: 'controlled-postgres',
+    detected: 'auto-detected-postgres'
+  }), 'controlled-postgres');
 });
 
 test('runRealPrePreflight passes with real-pre env, token, schema, mapping, and cleanup plan', async () => {
