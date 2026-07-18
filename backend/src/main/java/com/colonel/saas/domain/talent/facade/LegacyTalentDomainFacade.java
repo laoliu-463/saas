@@ -3,14 +3,11 @@ package com.colonel.saas.domain.talent.facade;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.colonel.saas.common.exception.OptimisticLockSupport;
 import com.colonel.saas.domain.talent.facade.dto.TalentClaimAddressDTO;
-import com.colonel.saas.domain.talent.facade.dto.TalentComplaintRiskDTO;
 import com.colonel.saas.domain.talent.facade.dto.TalentReadDTO;
 import com.colonel.saas.entity.Talent;
 import com.colonel.saas.entity.TalentClaim;
 import com.colonel.saas.mapper.TalentClaimMapper;
-import com.colonel.saas.mapper.TalentComplaintMapper;
 import com.colonel.saas.mapper.TalentMapper;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -33,23 +30,9 @@ public class LegacyTalentDomainFacade implements TalentDomainFacade {
 
     private final TalentMapper talentMapper;
     private final TalentClaimMapper talentClaimMapper;
-    private final TalentComplaintMapper talentComplaintMapper;
-
-    @Autowired
-    public LegacyTalentDomainFacade(
-            TalentMapper talentMapper,
-            TalentClaimMapper talentClaimMapper,
-            TalentComplaintMapper talentComplaintMapper) {
+    public LegacyTalentDomainFacade(TalentMapper talentMapper, TalentClaimMapper talentClaimMapper) {
         this.talentMapper = talentMapper;
         this.talentClaimMapper = talentClaimMapper;
-        this.talentComplaintMapper = talentComplaintMapper;
-    }
-
-    /**
-     * 保留既有测试和非 Spring 调用方的构造方式。
-     */
-    public LegacyTalentDomainFacade(TalentMapper talentMapper, TalentClaimMapper talentClaimMapper) {
-        this(talentMapper, talentClaimMapper, null);
     }
 
     @Override
@@ -89,36 +72,6 @@ public class LegacyTalentDomainFacade implements TalentDomainFacade {
         OptimisticLockSupport.requireUpdated(
                 talentClaimMapper.updateById(claim),
                 "达人认领地址已被修改或认领已失效，请刷新后重试");
-    }
-
-    @Override
-    public Map<UUID, TalentComplaintRiskDTO> loadComplaintRisks(Collection<UUID> talentIds) {
-        if (talentIds == null || talentIds.isEmpty() || talentComplaintMapper == null) {
-            return Map.of();
-        }
-        List<UUID> distinctTalentIds = talentIds.stream()
-                .filter(Objects::nonNull)
-                .distinct()
-                .toList();
-        if (distinctTalentIds.isEmpty()) {
-            return Map.of();
-        }
-        List<TalentComplaintMapper.TalentRiskSummary> summaries =
-                talentComplaintMapper.selectRiskSummariesByTalentIds(distinctTalentIds);
-        if (summaries == null || summaries.isEmpty()) {
-            return Map.of();
-        }
-        Map<UUID, TalentComplaintRiskDTO> risks = new LinkedHashMap<>();
-        for (TalentComplaintMapper.TalentRiskSummary summary : summaries) {
-            if (summary == null || summary.talentId() == null) {
-                continue;
-            }
-            risks.putIfAbsent(summary.talentId(), new TalentComplaintRiskDTO(
-                    summary.talentId(),
-                    summary.complaintCount(),
-                    summary.latestComplaintAt()));
-        }
-        return risks;
     }
 
     @Override

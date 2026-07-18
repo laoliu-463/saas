@@ -12,10 +12,7 @@ import com.colonel.saas.dto.sample.SampleBatchActionRequest;
 import com.colonel.saas.dto.sample.SampleBatchShipRequest;
 import com.colonel.saas.dto.sample.SampleCooperationUpdateRequest;
 import com.colonel.saas.dto.sample.SamplePrivateNoteRequest;
-import com.colonel.saas.dto.talent.TalentComplaintCreateRequest;
 import com.colonel.saas.domain.sample.policy.SampleCooperationActionPolicy;
-import com.colonel.saas.domain.talent.facade.TalentDomainFacade;
-import com.colonel.saas.domain.talent.facade.dto.TalentComplaintRiskDTO;
 import com.colonel.saas.vo.SampleTalentVO;
 import com.colonel.saas.vo.sample.SampleBoardCard;
 import com.colonel.saas.vo.sample.SampleCopyTextVO;
@@ -27,7 +24,6 @@ import com.colonel.saas.vo.sample.SamplePrivateNoteVO;
 import com.colonel.saas.vo.sample.SampleStatusTransitionVO;
 import com.colonel.saas.vo.sample.SampleVO;
 import com.colonel.saas.vo.sample.StatusLogVO;
-import com.colonel.saas.vo.talent.TalentComplaintVO;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -37,7 +33,6 @@ import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -50,34 +45,31 @@ public class SampleApplicationService {
     private final SampleQueryApplicationService sampleQueryApplicationService;
     private final SampleCommandApplicationService sampleCommandApplicationService;
     private final SampleCooperationActionPolicy cooperationActionPolicy;
-    private final TalentDomainFacade talentDomainFacade;
     private final SampleCooperationApplicationService sampleCooperationApplicationService;
 
     /** 保留给现有单元测试和兼容调用方的构造器。 */
     public SampleApplicationService(
             SampleQueryApplicationService sampleQueryApplicationService,
             SampleCommandApplicationService sampleCommandApplicationService) {
-        this(sampleQueryApplicationService, sampleCommandApplicationService, null, null, null);
+        this(sampleQueryApplicationService, sampleCommandApplicationService, null, null);
     }
 
-    /** Spring 运行路径使用带权限策略和达人域门面的完整构造器。 */
+    /** Spring 运行路径使用带权限策略和合作单能力的完整构造器。 */
     @Autowired
     public SampleApplicationService(
             SampleQueryApplicationService sampleQueryApplicationService,
             SampleCommandApplicationService sampleCommandApplicationService,
             SampleCooperationActionPolicy cooperationActionPolicy,
-            TalentDomainFacade talentDomainFacade,
             SampleCooperationApplicationService sampleCooperationApplicationService) {
         this.sampleQueryApplicationService = sampleQueryApplicationService;
         this.sampleCommandApplicationService = sampleCommandApplicationService;
         this.cooperationActionPolicy = cooperationActionPolicy;
-        this.talentDomainFacade = talentDomainFacade;
         this.sampleCooperationApplicationService = sampleCooperationApplicationService;
     }
 
     public ApiResult<SampleVO> createSample(SampleApplyRequest request, UUID userId, Object roleCodes) {
         ApiResult<SampleVO> result = sampleCommandApplicationService.createSample(request, userId, roleCodes);
-        enrichOne(result == null ? null : result.getData(), userId, roleCodes, Map.of());
+        enrichOne(result == null ? null : result.getData(), userId, roleCodes);
         return result;
     }
 
@@ -205,22 +197,6 @@ public class SampleApplicationService {
                 id, userId, deptId, dataScope, roleCodes);
     }
 
-    public TalentComplaintVO createComplaint(
-            UUID id,
-            TalentComplaintCreateRequest request,
-            List<? extends MultipartFile> files,
-            UUID userId,
-            UUID deptId,
-            DataScope dataScope,
-            Object roleCodes) {
-        if (sampleCooperationApplicationService == null) {
-            throw com.colonel.saas.common.exception.BusinessException.stateInvalid(
-                    "达人投诉能力不可用，请检查应用服务装配");
-        }
-        return sampleCooperationApplicationService.createComplaint(
-                id, request, files, userId, deptId, dataScope, roleCodes);
-    }
-
     public ApiResult<List<StatusLogVO>> getStatusLogs(
             UUID id, UUID userId, UUID deptId, DataScope dataScope, Object roleCodes) {
         return sampleCommandApplicationService.getStatusLogs(id, userId, deptId, dataScope, roleCodes);
@@ -230,7 +206,7 @@ public class SampleApplicationService {
             UUID id, SampleActionRequest request, UUID userId, UUID deptId, DataScope dataScope, Object roleCodes) {
         ApiResult<SampleVO> result = sampleCommandApplicationService.actionSample(
                 id, request, userId, deptId, dataScope, roleCodes);
-        enrichOne(result == null ? null : result.getData(), userId, roleCodes, Map.of());
+        enrichOne(result == null ? null : result.getData(), userId, roleCodes);
         return result;
     }
 
@@ -248,7 +224,7 @@ public class SampleApplicationService {
             UUID id, UUID userId, UUID deptId, DataScope dataScope, Object roleCodes) {
         ApiResult<SampleVO> result = sampleCommandApplicationService.refreshLogistics(
                 id, userId, deptId, dataScope, roleCodes);
-        enrichOne(result == null ? null : result.getData(), userId, roleCodes, Map.of());
+        enrichOne(result == null ? null : result.getData(), userId, roleCodes);
         return result;
     }
 
@@ -321,27 +297,15 @@ public class SampleApplicationService {
         if (samples == null || samples.isEmpty() || cooperationActionPolicy == null) {
             return;
         }
-        Map<UUID, TalentComplaintRiskDTO> risks = talentDomainFacade == null
-                ? Map.of()
-                : talentDomainFacade.loadComplaintRisks(samples.stream()
-                        .filter(Objects::nonNull)
-                        .map(SampleVO::getTalentId)
-                        .filter(Objects::nonNull)
-                        .distinct()
-                        .toList());
-        if (risks == null) {
-            risks = Map.of();
-        }
         for (SampleVO sample : samples) {
-            enrichOne(sample, currentUserId, roleCodes, risks);
+            enrichOne(sample, currentUserId, roleCodes);
         }
     }
 
     private void enrichOne(
             SampleVO sample,
             UUID currentUserId,
-            Object roleCodes,
-            Map<UUID, TalentComplaintRiskDTO> risks) {
+            Object roleCodes) {
         if (sample == null || cooperationActionPolicy == null) {
             return;
         }
@@ -351,8 +315,5 @@ public class SampleApplicationService {
                 sample.getApplicantUserId(),
                 currentUserId,
                 roleCodes));
-        if (sample.getTalentId() != null && risks != null) {
-            sample.setComplaintRisk(risks.get(sample.getTalentId()));
-        }
     }
 }

@@ -123,7 +123,6 @@ services:
     volumes:
       - ./backend:/app
       - maven_cache:/root/.m2
-      - complaint_evidence:/var/lib/colonel-saas/complaints
     depends_on:
       postgres:
         condition: service_healthy
@@ -175,5 +174,3 @@ volumes:
     name: saas_active_maven_cache
   frontend_node_modules:
     name: saas_${SAAS_ENV_SLUG}_frontend_node_modules
-  complaint_evidence:
-    name: saas_${SAAS_ENV_SLUG}_complaint_evidence

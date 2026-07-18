@@ -20,11 +20,6 @@ import java.util.UUID;
 public interface UserDomainFacade {
 
     /**
-     * 按角色编码查询启用且未删除的通知接收人用户 ID。
-     */
-    List<UUID> listActiveUserIdsByRoleCodes(Collection<String> roleCodes);
-
-    /**
      * 解析指定用户的数据范围（self / group / all）及可见用户 ID 列表。
      */
     UserDataScopeResponse resolveDataScope(UUID userId);

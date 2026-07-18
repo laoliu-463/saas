@@ -1,6 +1,5 @@
 package com.colonel.saas.vo.sample;
 
-import com.colonel.saas.domain.talent.facade.dto.TalentComplaintRiskDTO;
 import lombok.Data;
 
 import java.time.LocalDateTime;
@@ -264,11 +263,8 @@ public class SampleVO {
      */
     private String status;
 
-    /** 固定八键、有序的合作台操作能力矩阵。 */
+    /** 固定七键、有序的合作台操作能力矩阵。 */
     private Map<String, SampleActionAvailabilityVO> actionAvailability;
-
-    /** 达人投诉风险摘要，不包含投诉正文或举报人。 */
-    private TalentComplaintRiskDTO complaintRisk;
 
     /** 创建时间（寄样申请提交时间）。 */
     private LocalDateTime createTime;

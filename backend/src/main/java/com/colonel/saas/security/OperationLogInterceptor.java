@@ -1,7 +1,6 @@
 package com.colonel.saas.security;
 
 import com.colonel.saas.entity.OperationLog;
-import com.colonel.saas.domain.talent.policy.TalentComplaintPolicy;
 import com.colonel.saas.service.OperationLogService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -16,7 +15,6 @@ import org.springframework.web.servlet.HandlerMapping;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -58,11 +56,6 @@ public class OperationLogInterceptor implements HandlerInterceptor {
 
     /** request attribute 键名，用于在 preHandle 和 afterCompletion 之间传递请求开始时间 */
     private static final String ATTR_STARTED_AT = "operationLog.startedAt";
-    private static final int MAX_IGNORED_COMPLAINT_PARAMETERS = 1_000;
-    private static final Set<String> COMPLAINT_REASONS = Set.of(
-            TalentComplaintPolicy.REPEATED_NO_FULFILLMENT,
-            TalentComplaintPolicy.LOW_PRICE_RESALE,
-            TalentComplaintPolicy.OTHER);
 
     /** 操作日志持久化服务 */
     private final OperationLogService operationLogService;
@@ -144,7 +137,7 @@ public class OperationLogInterceptor implements HandlerInterceptor {
             entry.setUserAgent(request.getHeader("User-Agent"));
             entry.setDurationMs(resolveDuration(request));
             entry.setErrorMessage(ex == null ? null : ex.getMessage());
-            entry.setRequestParams(copyParams(request.getParameterMap(), request.getRequestURI()));
+            entry.setRequestParams(copyParams(request.getParameterMap()));
 
             // 根据处理器类型提取模块和操作元数据
             if (handler instanceof HandlerMethod handlerMethod) {
@@ -236,14 +229,9 @@ public class OperationLogInterceptor implements HandlerInterceptor {
      * @param parameterMap Servlet 原始参数映射
      * @return 复制后的参数 Map，可安全序列化；若输入为空则返回 {@code null}
      */
-    private Map<String, Object> copyParams(
-            Map<String, String[]> parameterMap,
-            String requestUri) {
+    private Map<String, Object> copyParams(Map<String, String[]> parameterMap) {
         if (parameterMap == null || parameterMap.isEmpty()) {
             return null;
-        }
-        if (isComplaintCreateRoute(requestUri)) {
-            return copyComplaintCreateParams(parameterMap);
         }
         Map<String, Object> result = new LinkedHashMap<>();
         parameterMap.forEach((key, value) -> {
@@ -256,38 +244,6 @@ public class OperationLogInterceptor implements HandlerInterceptor {
             }
         });
         return result;
-    }
-
-    private Map<String, Object> copyComplaintCreateParams(
-            Map<String, String[]> parameterMap) {
-        Map<String, Object> result = new LinkedHashMap<>(3);
-        if (parameterMap.containsKey("reason")) {
-            String[] reason = parameterMap.get("reason");
-            result.put("reason", reason != null
-                            && reason.length == 1
-                            && COMPLAINT_REASONS.contains(reason[0])
-                    ? reason[0]
-                    : "[INVALID]");
-        }
-        if (parameterMap.containsKey("content")) {
-            result.put("content", "[REDACTED]");
-        }
-        int ignored = parameterMap.size()
-                - (parameterMap.containsKey("reason") ? 1 : 0)
-                - (parameterMap.containsKey("content") ? 1 : 0);
-        if (ignored > 0) {
-            result.put("ignoredParameterCount", Math.min(
-                    ignored, MAX_IGNORED_COMPLAINT_PARAMETERS));
-        }
-        return result;
-    }
-
-    private boolean isComplaintCreateRoute(String requestUri) {
-        if (requestUri == null) {
-            return false;
-        }
-        return requestUri.matches(
-                "^/(?:api/)?samples/[0-9a-fA-F-]{36}/complaints/?$");
     }
 
     /**

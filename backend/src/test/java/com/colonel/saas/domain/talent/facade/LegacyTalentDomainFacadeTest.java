@@ -3,13 +3,10 @@ package com.colonel.saas.domain.talent.facade;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.domain.talent.facade.dto.TalentClaimAddressDTO;
-import com.colonel.saas.domain.talent.facade.dto.TalentComplaintRiskDTO;
 import com.colonel.saas.domain.talent.facade.dto.TalentReadDTO;
 import com.colonel.saas.entity.Talent;
 import com.colonel.saas.entity.TalentClaim;
 import com.colonel.saas.mapper.TalentClaimMapper;
-import com.colonel.saas.mapper.TalentComplaintMapper;
-import com.colonel.saas.mapper.TalentComplaintMapper.TalentRiskSummary;
 import com.colonel.saas.mapper.TalentMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -19,7 +16,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
-import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -38,14 +34,11 @@ class LegacyTalentDomainFacadeTest {
     private TalentMapper talentMapper;
     @Mock
     private TalentClaimMapper talentClaimMapper;
-    @Mock
-    private TalentComplaintMapper talentComplaintMapper;
-
     private TalentDomainFacade facade;
 
     @BeforeEach
     void setUp() {
-        facade = new LegacyTalentDomainFacade(talentMapper, talentClaimMapper, talentComplaintMapper);
+        facade = new LegacyTalentDomainFacade(talentMapper, talentClaimMapper);
     }
 
     @Test
@@ -204,20 +197,6 @@ class LegacyTalentDomainFacadeTest {
                 talentId, ownerUserId, "新收件人", "13900000000", "新地址"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("认领地址");
-    }
-
-    @Test
-    void loadComplaintRisks_shouldConvertAggregateProjection() {
-        UUID talentId = UUID.randomUUID();
-        LocalDateTime lastComplaintAt = LocalDateTime.of(2026, 7, 16, 10, 30);
-        when(talentComplaintMapper.selectRiskSummariesByTalentIds(List.of(talentId)))
-                .thenReturn(List.of(new TalentRiskSummary(talentId, 3L, lastComplaintAt)));
-
-        Map<UUID, TalentComplaintRiskDTO> risks = facade.loadComplaintRisks(List.of(talentId));
-
-        assertThat(risks).containsEntry(
-                talentId,
-                new TalentComplaintRiskDTO(talentId, 3L, lastComplaintAt));
     }
 
     @Test

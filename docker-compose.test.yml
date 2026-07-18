@@ -79,7 +79,6 @@ services:
     volumes:
       - ./backend/scripts/run-jar.sh:/app/scripts/run-jar.sh:ro
       - ./backend/target:/app/target
-      - complaint_evidence_test:/var/lib/colonel-saas/complaints
     depends_on:
       postgres:
         condition: service_healthy
@@ -126,4 +125,3 @@ volumes:
   redis_test_data:
   frontend_test_node_modules:
   frontend_test_vite_cache:
-  complaint_evidence_test:

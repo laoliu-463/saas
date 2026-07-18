@@ -12,12 +12,10 @@ import com.colonel.saas.domain.sample.policy.SampleCooperationActionPolicy;
 import com.colonel.saas.domain.sample.policy.SampleOrderCopyPolicy;
 import com.colonel.saas.domain.sample.policy.SampleRemarkPolicy;
 import com.colonel.saas.domain.talent.facade.TalentDomainFacade;
-import com.colonel.saas.domain.talent.facade.TalentComplaintFacade;
 import com.colonel.saas.domain.talent.facade.dto.TalentClaimAddressDTO;
 import com.colonel.saas.domain.talent.facade.dto.TalentReadDTO;
 import com.colonel.saas.dto.sample.SampleCooperationUpdateRequest;
 import com.colonel.saas.dto.sample.SamplePrivateNoteRequest;
-import com.colonel.saas.dto.talent.TalentComplaintCreateRequest;
 import com.colonel.saas.entity.SamplePrivateNote;
 import com.colonel.saas.entity.SampleRequest;
 import com.colonel.saas.mapper.SamplePrivateNoteMapper;
@@ -26,16 +24,13 @@ import com.colonel.saas.vo.sample.SampleEditContextVO;
 import com.colonel.saas.vo.sample.SampleCopyTextVO;
 import com.colonel.saas.vo.sample.SamplePrivateNoteVO;
 import com.colonel.saas.vo.sample.SampleVO;
-import com.colonel.saas.vo.talent.TalentComplaintVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
-import org.springframework.web.multipart.MultipartFile;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.List;
 import java.util.UUID;
 
 /**
@@ -52,7 +47,6 @@ public class SampleCooperationApplicationService {
     private final SampleRemarkPolicy remarkPolicy;
     private final ProductPromotionFacade productPromotionFacade;
     private final SampleOrderCopyPolicy orderCopyPolicy;
-    private final TalentComplaintFacade talentComplaintFacade;
 
     /** 保留 Task 3 既有测试和非 Spring 调用方的构造方式。 */
     public SampleCooperationApplicationService(
@@ -70,33 +64,10 @@ public class SampleCooperationApplicationService {
                 actionPolicy,
                 remarkPolicy,
                 null,
-                new SampleOrderCopyPolicy(),
-                null);
+                new SampleOrderCopyPolicy());
     }
 
     /** Spring 运行路径使用包含商品推广门面的完整构造器。 */
-    public SampleCooperationApplicationService(
-            SampleQueryApplicationService sampleQueryApplicationService,
-            SampleRequestMapper sampleRequestMapper,
-            SamplePrivateNoteMapper samplePrivateNoteMapper,
-            TalentDomainFacade talentDomainFacade,
-            SampleCooperationActionPolicy actionPolicy,
-            SampleRemarkPolicy remarkPolicy,
-            ProductPromotionFacade productPromotionFacade,
-            SampleOrderCopyPolicy orderCopyPolicy) {
-        this(
-                sampleQueryApplicationService,
-                sampleRequestMapper,
-                samplePrivateNoteMapper,
-                talentDomainFacade,
-                actionPolicy,
-                remarkPolicy,
-                productPromotionFacade,
-                orderCopyPolicy,
-                null);
-    }
-
-    /** Spring 运行路径使用包含推广复制与达人投诉门面的完整构造器。 */
     @Autowired
     public SampleCooperationApplicationService(
             SampleQueryApplicationService sampleQueryApplicationService,
@@ -106,8 +77,7 @@ public class SampleCooperationApplicationService {
             SampleCooperationActionPolicy actionPolicy,
             SampleRemarkPolicy remarkPolicy,
             ProductPromotionFacade productPromotionFacade,
-            SampleOrderCopyPolicy orderCopyPolicy,
-            TalentComplaintFacade talentComplaintFacade) {
+            SampleOrderCopyPolicy orderCopyPolicy) {
         this.sampleQueryApplicationService = sampleQueryApplicationService;
         this.sampleRequestMapper = sampleRequestMapper;
         this.samplePrivateNoteMapper = samplePrivateNoteMapper;
@@ -116,7 +86,6 @@ public class SampleCooperationApplicationService {
         this.remarkPolicy = remarkPolicy;
         this.productPromotionFacade = productPromotionFacade;
         this.orderCopyPolicy = orderCopyPolicy;
-        this.talentComplaintFacade = talentComplaintFacade;
     }
 
     /**
@@ -192,35 +161,6 @@ public class SampleCooperationApplicationService {
                 context.recipientPhone(),
                 context.recipientAddress()));
         return new SampleCopyTextVO(text);
-    }
-
-    /**
-     * 在带数据范围的合作单可见性校验之后，用服务端寄样事实创建达人投诉。
-     */
-    public TalentComplaintVO createComplaint(
-            UUID sampleId,
-            TalentComplaintCreateRequest request,
-            List<? extends MultipartFile> files,
-            UUID currentUserId,
-            UUID currentDeptId,
-            DataScope dataScope,
-            Object roleCodes) {
-        requireOrderCopyVisibleSample(
-                sampleId, currentUserId, currentDeptId, dataScope, roleCodes);
-        SampleRequest sample = requireSample(sampleId);
-        if (sample.getTalentId() == null || sample.getProductId() == null) {
-            throw BusinessException.stateInvalid("合作单缺少达人或商品事实，暂无法投诉");
-        }
-        if (talentComplaintFacade == null) {
-            throw BusinessException.stateInvalid("达人投诉能力不可用，请检查应用服务装配");
-        }
-        return talentComplaintFacade.create(
-                sampleId,
-                sample.getTalentId(),
-                sample.getProductId(),
-                currentUserId,
-                request,
-                files == null ? List.of() : files);
     }
 
     public SampleEditContextVO getEditContext(

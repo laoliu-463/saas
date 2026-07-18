@@ -6,7 +6,6 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
-import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 
@@ -81,38 +80,4 @@ public interface TalentClaimMapper extends BaseMapper<TalentClaim> {
      */
     @Select("SELECT * FROM talent_claim WHERE talent_id = #{talentId} AND status = 1 AND deleted = 0 ORDER BY apply_time DESC")
     List<TalentClaim> findActiveByTalentId(@Param("talentId") UUID talentId);
-
-    @Select("""
-            <script>
-            SELECT DISTINCT talent_id
-            FROM talent_claim
-            WHERE user_id = #{userId}
-              AND status = 1
-              AND deleted = 0
-              AND talent_id IN
-              <foreach collection="talentIds" item="talentId" open="(" separator="," close=")">
-                #{talentId}
-              </foreach>
-            </script>
-            """)
-    List<UUID> selectActiveTalentIdsByUserAndTalentIds(
-            @Param("userId") UUID userId,
-            @Param("talentIds") Collection<UUID> talentIds);
-
-    @Select("""
-            <script>
-            SELECT DISTINCT talent_id
-            FROM talent_claim
-            WHERE dept_id = #{deptId}
-              AND status = 1
-              AND deleted = 0
-              AND talent_id IN
-              <foreach collection="talentIds" item="talentId" open="(" separator="," close=")">
-                #{talentId}
-              </foreach>
-            </script>
-            """)
-    List<UUID> selectActiveTalentIdsByDeptAndTalentIds(
-            @Param("deptId") UUID deptId,
-            @Param("talentIds") Collection<UUID> talentIds);
 }

@@ -29,7 +29,7 @@ class SampleCooperationActionPolicyTest {
     }
 
     @Test
-    void availability_shouldAlwaysReturnEightActionsInFixedOrder() {
+    void availability_shouldAlwaysReturnSevenActionsInFixedOrder() {
         UUID ownerId = UUID.randomUUID();
 
         Map<String, SampleActionAvailabilityVO> actions = policy.availability(
@@ -40,7 +40,7 @@ class SampleCooperationActionPolicyTest {
 
         assertThat(new ArrayList<>(actions.keySet())).containsExactly(
                 "APPROVE", "REJECT", "EDIT", "PROGRESS",
-                "COPY_LINK", "COPY_ORDER", "COMPLAIN", "NOTE");
+                "COPY_LINK", "COPY_ORDER", "NOTE");
         assertThat(actions.values()).allSatisfy(action -> {
             assertThat(action).isNotNull();
             if (action.enabled()) {
@@ -110,7 +110,6 @@ class SampleCooperationActionPolicyTest {
         assertThat(actions.get("NOTE").enabled()).isTrue();
         assertThat(actions.get("COPY_LINK").enabled()).isFalse();
         assertThat(actions.get("COPY_ORDER").enabled()).isFalse();
-        assertThat(actions.get("COMPLAIN").enabled()).isFalse();
     }
 
     @Test
@@ -124,7 +123,7 @@ class SampleCooperationActionPolicyTest {
             Map<String, SampleActionAvailabilityVO> actions = policy.availability(
                     status, ownerId, ownerId, List.of(RoleCodes.ADMIN));
 
-            assertThat(actions).hasSize(8);
+            assertThat(actions).hasSize(7);
             assertThat(actions.get("APPROVE").enabled()).isFalse();
             assertThat(actions.get("REJECT").enabled()).isFalse();
             assertThat(actions.get("EDIT").enabled()).isFalse();

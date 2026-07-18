@@ -26,7 +26,6 @@ public class SampleCooperationActionPolicy {
     public static final String PROGRESS = "PROGRESS";
     public static final String COPY_LINK = "COPY_LINK";
     public static final String COPY_ORDER = "COPY_ORDER";
-    public static final String COMPLAIN = "COMPLAIN";
     public static final String NOTE = "NOTE";
 
     private static final Set<SampleStatus> EDITABLE_STATUSES = Set.of(
@@ -66,7 +65,6 @@ public class SampleCooperationActionPolicy {
         actions.put(PROGRESS, SampleActionAvailabilityVO.available());
         actions.put(COPY_LINK, SampleActionAvailabilityVO.unavailable("商品链接复制能力暂不可用"));
         actions.put(COPY_ORDER, SampleActionAvailabilityVO.unavailable("订单复制能力暂不可用"));
-        actions.put(COMPLAIN, SampleActionAvailabilityVO.unavailable("投诉提交能力暂不可用"));
         actions.put(NOTE, SampleActionAvailabilityVO.available());
         return actions;
     }

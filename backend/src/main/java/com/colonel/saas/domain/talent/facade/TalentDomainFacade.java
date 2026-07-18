@@ -1,7 +1,6 @@
 package com.colonel.saas.domain.talent.facade;
 
 import com.colonel.saas.domain.talent.facade.dto.TalentClaimAddressDTO;
-import com.colonel.saas.domain.talent.facade.dto.TalentComplaintRiskDTO;
 import com.colonel.saas.domain.talent.facade.dto.TalentReadDTO;
 
 import java.util.Collection;
@@ -26,8 +25,6 @@ public interface TalentDomainFacade {
             String recipientName,
             String recipientPhone,
             String recipientAddress);
-
-    Map<UUID, TalentComplaintRiskDTO> loadComplaintRisks(Collection<UUID> talentIds);
 
     /** 按内部主键查询达人，不存在时返回 null。 */
     TalentReadDTO findTalentById(UUID talentId);
