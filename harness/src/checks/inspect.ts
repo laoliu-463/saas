@@ -12,10 +12,10 @@ import {
   parseEnvText,
   type EnvironmentName,
 } from "../core/config.js";
-import {
-  runProcess,
-  type ProcessOptions,
-  type ProcessResult,
+import { runPlatformProcess } from "../core/platform-process-runner.js";
+import type {
+  ProcessResult,
+  ProcessRunner,
 } from "../core/process-runner.js";
 import {
   createCheckResult,
@@ -25,7 +25,7 @@ import {
   type RunResult,
 } from "../core/result.js";
 
-export type InspectProcessRunner = (options: ProcessOptions) => Promise<ProcessResult>;
+export type InspectProcessRunner = ProcessRunner;
 
 export interface RunInspectOptions {
   readonly environment: EnvironmentName;
@@ -81,18 +81,6 @@ export function buildInspectCommandPlan(): readonly InspectCommand[] {
     { command: "docker", args: ["--version"] },
     { command: "docker", args: ["compose", "version"] },
   ];
-}
-
-async function platformProcessRunner(options: ProcessOptions): Promise<ProcessResult> {
-  if (process.platform === "win32" && (options.command === "npm" || options.command === "mvn")) {
-    const { command, args, ...shared } = options;
-    return runProcess({
-      ...shared,
-      command: process.env["ComSpec"] ?? "cmd.exe",
-      args: ["/d", "/s", "/c", `${command}.cmd`, ...args],
-    });
-  }
-  return runProcess(options);
 }
 
 function normalizedPath(repoRoot: string, path: string): string {
@@ -423,7 +411,7 @@ async function executeCommandPlan(
 export async function runInspect(options: RunInspectOptions): Promise<RunResult> {
   const contracts = loadEnvironmentContracts();
   const contract = getEnvironmentContract(options.environment, contracts);
-  const runner = options.processRunner ?? platformProcessRunner;
+  const runner = options.processRunner ?? runPlatformProcess;
   const checks: CheckResult[] = [
     repositoryStructureCheck(options.repoRoot, contract.composeFile, contract.envExampleFile),
   ];

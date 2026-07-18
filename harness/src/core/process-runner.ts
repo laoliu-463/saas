@@ -46,6 +46,8 @@ export interface ProcessResult {
   readonly stopCondition: string | null;
 }
 
+export type ProcessRunner = (options: ProcessOptions) => Promise<ProcessResult>;
+
 interface ExecutionRequest {
   readonly command: string;
   readonly args: readonly string[];
