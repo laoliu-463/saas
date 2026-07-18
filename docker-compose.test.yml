@@ -10,6 +10,7 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
     volumes:
       - postgres_test_data:/var/lib/postgresql/data
+      - ./backend/src/main/resources/db:/opt/saas-db-source:ro
       - ./backend/src/main/resources/db/00-set-env.sh:/docker-entrypoint-initdb.d/00-set-env.sh
       - ./backend/src/main/resources/db/init-db.sql:/docker-entrypoint-initdb.d/01-init.sql
       - ./backend/src/main/resources/db/migrate-all.sql:/docker-entrypoint-initdb.d/02-migrate-all.sql

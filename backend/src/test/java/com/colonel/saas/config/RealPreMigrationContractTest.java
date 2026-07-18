@@ -148,6 +148,38 @@ class RealPreMigrationContractTest {
         assertFinancialAndExclusiveConstraints(migrationSql);
     }
 
+    @Test
+    void unifiedMigration_shouldCreatePerformanceRecordsBeforeAlteringExpenseColumns() throws IOException {
+        String migrateAll = readLower(DB_DIR.resolve("migrate-all.sql"));
+
+        int createTable = migrateAll.indexOf("create table if not exists performance_records");
+        int addExpenseColumns = migrateAll.indexOf("alter table performance_records\n"
+                + "    add column if not exists estimate_service_fee_expense");
+
+        assertThat(createTable).isNotNegative();
+        assertThat(addExpenseColumns).isGreaterThan(createTable);
+    }
+
+    @Test
+    void unifiedMigrationIncludes_shouldResolveAgainstMountedDbDirectory() throws IOException {
+        String migrateAll = readLower(DB_DIR.resolve("migrate-all.sql"));
+        String initEnvironment = readLower(DB_DIR.resolve("00-set-env.sh"));
+        String testCompose = Files.readString(REPO_ROOT.resolve("docker-compose.test.yml"));
+        String realPreCompose = Files.readString(COMPOSE_FILE);
+
+        int includeRoot = migrateAll.indexOf("\\cd /tmp/saas-db");
+        int firstInclude = migrateAll.indexOf("\\i alter-colonel-activity-recruiter-assignment.sql");
+
+        assertThat(includeRoot).isNotNegative();
+        assertThat(firstInclude).isGreaterThan(includeRoot);
+        assertThat(initEnvironment)
+                .contains("db_source_dir=\"/opt/saas-db-source\"")
+                .contains("db_stage_dir=\"/tmp/saas-db\"")
+                .contains("cp -r \"${db_source_dir}/.\" \"${db_stage_dir}/\"");
+        assertThat(testCompose).contains("./backend/src/main/resources/db:/opt/saas-db-source:ro");
+        assertThat(realPreCompose).contains("./backend/src/main/resources/db:/opt/saas-db-source:ro");
+    }
+
     private static void assertFinancialAndExclusiveConstraints(String sql) {
         assertThat(sql).contains("ck_exclusive_talent_non_negative_financials");
         assertThat(sql).contains("service_fee >= 0");

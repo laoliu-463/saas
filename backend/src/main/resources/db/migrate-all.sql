@@ -1116,10 +1116,6 @@ ALTER TABLE colonelsettlement_order
     ADD COLUMN IF NOT EXISTS estimate_service_fee_expense BIGINT NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS effective_service_fee_expense BIGINT NOT NULL DEFAULT 0;
 
-ALTER TABLE performance_records
-    ADD COLUMN IF NOT EXISTS estimate_service_fee_expense BIGINT NOT NULL DEFAULT 0,
-    ADD COLUMN IF NOT EXISTS effective_service_fee_expense BIGINT NOT NULL DEFAULT 0;
-
 CREATE TABLE IF NOT EXISTS performance_records (
     id                              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     order_id                        VARCHAR(50) NOT NULL,
@@ -1161,6 +1157,10 @@ CREATE TABLE IF NOT EXISTS performance_records (
     updated_at                      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT uk_performance_records_order_id UNIQUE (order_id)
 );
+
+ALTER TABLE performance_records
+    ADD COLUMN IF NOT EXISTS estimate_service_fee_expense BIGINT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS effective_service_fee_expense BIGINT NOT NULL DEFAULT 0;
 
 CREATE INDEX IF NOT EXISTS idx_performance_records_settle_time
     ON performance_records (settle_time DESC);
@@ -1564,6 +1564,9 @@ CREATE INDEX IF NOT EXISTS idx_order_sync_dedup_claim_row_id
 -- 后续迁移不得覆盖已有用户的密码，否则会导致已修改的密码在迁移后被意外重置。
 -- 如需强制重置管理员密码，应通过后台管理界面或专门的 SQL 脚本操作。
 -- ============================================================
+-- 00-set-env.sh 将 Compose 的只读 SQL 源复制到该可写目录；
+-- apply-test-db-patches.ps1 后续也会受控重建同一目录，保持 \i 解析语义一致。
+\cd /tmp/saas-db
 \i alter-colonel-activity-recruiter-assignment.sql
 \i alter-role-code-merge-colonel-leader.sql
 \i alter-colonel-activity-product-state-split.sql
