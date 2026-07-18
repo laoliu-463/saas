@@ -279,6 +279,23 @@ describe('ProductSelectionCard hover drawer', () => {
     expect(image.attributes('decoding')).toBe('async')
   })
 
+  it('保留悬浮复制简介入口并按权限和 loading 状态控制交互', async () => {
+    const enabled = mountCard({ canCopyBrief: true })
+    const enabledButton = enabled.get('[data-testid="product-copy-brief"]')
+
+    expect(enabledButton.attributes('disabled')).toBeUndefined()
+    await enabledButton.trigger('click')
+    expect(enabled.emitted('copyBrief')?.[0]).toEqual([baseCard.raw])
+
+    const denied = mountCard({ canCopyBrief: false })
+    expect(denied.get('[data-testid="product-copy-brief"]').attributes('disabled')).toBeDefined()
+
+    const loading = mountCard({ canCopyBrief: true, copyBriefLoading: true })
+    const loadingButton = loading.get('[data-testid="product-copy-brief"]')
+    expect(loadingButton.attributes('disabled')).toBeDefined()
+    expect(loadingButton.text()).toContain('复制中')
+  })
+
   it('完整展示商品名称和商品ID，快捷按钮只保留复制ID', () => {
     const productName = '很长的商品名称用于验证卡片直接完整换行展示且不会使用两行截断'
     const productId = '1234567890123456789'
