@@ -211,8 +211,8 @@
 - 标记：P0。
 
 ## 第三方授权 / Token
-- 本轮修复（2026-07-18）：刷新接口在上游未返回轮换 `refresh_token` 时保留现有刷新凭据，并继续将新的访问令牌、刷新令牌和过期时间写入同一 Redis 命名空间；本地 appId/client-key 已对齐已有 Redis 授权主体，但 `DOUYIN_CLIENT_SECRET` 仍是占位值，授权码换取和 refresh live 调用均被上游以 `40003 / isv.signature-invalid` 拒绝。未记录任何凭证或令牌值。
-- 报告：`harness/reports/current/latest-douyin-token-local-bootstrap.md`；验证：`DouyinTokenServiceTest` 31 tests PASS、前端/后端构建 PASS、real-pre 容器健康 PASS；live token bootstrap/refresh 为 BLOCKED，preflight 旧状态不能替代上游签名验证。
-- 当前风险：本地环境文件未纳入 Git，需由用户补齐与远端一致的真实 `DOUYIN_CLIENT_SECRET` 后重跑唯一入口；远端未部署；旧 Redis Token 仍可能使只读状态显示 ready，不能据此声明周期刷新正常。
+- 本轮修复（2026-07-18）：刷新接口在上游未返回轮换 `refresh_token` 时保留现有刷新凭据，并继续将新的访问令牌、刷新令牌和过期时间写入同一 Redis 命名空间；本地 appId/client-key 与真实 client-secret 已恢复，授权码 bootstrap 与 refresh live 均通过。未记录任何凭证或令牌值。
+- 报告：`harness/reports/current/latest-douyin-token-local-bootstrap.md`；验证：`DouyinTokenServiceTest` 31 tests PASS、后端/前端构建 PASS、real-pre 容器健康 PASS、preflight PASS、live bootstrap/refresh PASS。
+- 当前风险：本地环境文件未纳入 Git，远端未部署；周期刷新仍需在后续定时窗口持续观察，full backend regression 仍有未归属 sample 服务债务基线失败。
 - DDD 优化下一步：TOKEN-LOCAL-REFRESH-OBSERVE，补充刷新周期日志与只读状态观测，保持 OAuth/Gateway 适配、Redis 凭据存储和业务域规则边界不变。
 - 标记：P0。

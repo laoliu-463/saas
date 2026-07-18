@@ -2,11 +2,11 @@
 
 ## Metadata
 
-- Time: 2026-07-18 20:11:29 +08:00
+- Time: 2026-07-18 20:12:29 +08:00
 - Environment: real-pre
 - Scope: full
 - Branch: codex/ddd-user-role-application
-- Commit: 4139e9ee
+- Commit: 855fcf78
 - Owned worktree: dirty
 - Deploy remote: false
 
@@ -39,6 +39,9 @@ M harness/reports/current/latest-content-retire.md
 not collected
 Backend build: PASS (mvn -f backend/pom.xml -DskipTests package)
 Frontend build: PASS (npm --prefix frontend ci; npm --prefix frontend run build)
+Targeted backend test: PASS (mvn -f backend/pom.xml -Dtest=DouyinTokenServiceTest test, 31 tests).
+Targeted preflight tests: PASS (node --test runtime/qa/real-pre-preflight.test.cjs, 9 tests).
+Backend full regression: FAIL (3297 tests / 1 failure / 0 errors / 3 skipped); unrelated unowned sample service debt baseline failure.
 ~~~
 
 ## Docker Status
@@ -75,6 +78,14 @@ Local health verification: PASS
 Business validation: PASS (npm run e2e:real-pre:p0:preflight)
 ~~~
 
+## Live Token Validation
+
+~~~text
+Authorization-code bootstrap: PASS (HTTP 200, business code 200, hasAccessToken=true, hasRefreshToken=true, reauthorizeRequired=false).
+Refresh endpoint: PASS (HTTP 200, business code 200, hasAccessToken=true, hasRefreshToken=true, reauthorizeRequired=false).
+Redis metadata after validation: access exists=1, refresh exists=1, expire-at exists=1; all three keys had positive TTL. Token values were not read or recorded.
+~~~
+
 ## Content Maintenance Result
 
 ~~~text
@@ -93,8 +104,11 @@ No actionable Harness improvement was recorded; no standalone retro is required.
 
 ## Conclusion
 
-PASS
+PARTIAL
 
 ## Residual Risk
 
 - Items marked as not collected are not proof of success.
+- Live authorization-code bootstrap and refresh are now PASS.
+- Full backend regression previously had one unrelated `LargeServiceDebtRedlineTest` failure in the unowned sample service; targeted Token tests passed.
+- Remote deployment was not requested or performed.
