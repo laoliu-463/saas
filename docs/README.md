@@ -63,7 +63,7 @@
 - [V1 必做] [对接/](对接/)：抖音 / 抖店接口、Token、转链、订单、物流、达人信息。
 - [V1 必做] [验收/](验收/)：P0、E2E、real-pre、回归脚本、证据索引。
 - [V1 必做] [release/](release/)：real-pre 上线前总审查报告和证据目录索引；最近审查见 [release/real-pre上线总审查报告-20260528-171543.md](release/real-pre上线总审查报告-20260528-171543.md)。
-- [V1 必做] [方案/](方案/)：专项计划和执行提示；DDD / Harness 收口见 [方案/PLAN-004-DDD边界与Harness工程收口.md](方案/PLAN-004-DDD边界与Harness工程收口.md)，跨平台验证核心设计见 [方案/PLAN-006-Harness跨平台验证核心重构设计.md](方案/PLAN-006-Harness跨平台验证核心重构设计.md)。
+- [V1 必做] [方案/](方案/)：专项计划和执行提示；DDD / Harness 收口见 [方案/PLAN-004-DDD边界与Harness工程收口.md](方案/PLAN-004-DDD边界与Harness工程收口.md)，跨平台验证核心见 [方案/PLAN-006-Harness跨平台验证核心重构设计.md](方案/PLAN-006-Harness跨平台验证核心重构设计.md) 和 [方案/PLAN-007-Harness跨平台验证核心实施计划.md](方案/PLAN-007-Harness跨平台验证核心实施计划.md)。
 - [V1 必做] [决策/](决策/)：ADR 和冲突处理。
 - [历史归档] [归档/](归档/)：旧 V2.2 主干、旧七域文档、历史记录、审计与 runbook。
 
