@@ -69,6 +69,65 @@ export interface TalentItem {
 }
 
 // 寄样台模块
+export type CooperationActionKey =
+  | 'APPROVE'
+  | 'REJECT'
+  | 'EDIT'
+  | 'PROGRESS'
+  | 'COPY_LINK'
+  | 'COPY_ORDER'
+  | 'NOTE';
+
+export interface SampleActionAvailability {
+  enabled: boolean;
+  disabledReason?: string | null;
+}
+
+export type SampleActionAvailabilityMap = Partial<Record<CooperationActionKey, SampleActionAvailability>>;
+
+export interface SampleEditContext {
+  sampleId: string;
+  talentNickname?: string | null;
+  talentDouyinNo?: string | null;
+  talentFansCount?: number | null;
+  talentWindowSales30d?: number | null;
+  productId: string;
+  productExternalId?: string | null;
+  productName?: string | null;
+  shopName?: string | null;
+  productSpecification?: string | null;
+  quantity?: number | null;
+  sampleThreshold?: Record<string, unknown> | null;
+  activityId?: string | null;
+  activityName?: string | null;
+  remark?: string | null;
+  addressAvailable: boolean;
+  recipientName?: string | null;
+  recipientPhone?: string | null;
+  recipientAddress?: string | null;
+  version: number;
+}
+
+export interface SampleCooperationUpdateRequest {
+  version: number;
+  remark?: string | null;
+  recipientName?: string | null;
+  recipientPhone?: string | null;
+  recipientAddress?: string | null;
+}
+
+export interface SamplePrivateNote {
+  content?: string | null;
+  version?: number | null;
+}
+
+export interface SampleCopyText {
+  text: string;
+  promotionLinkGenerated: boolean;
+  promotionLink?: string | null;
+  fallbackReason?: string | null;
+}
+
 export interface SampleItem {
   id: string;
   requestNo?: string;
@@ -85,6 +144,8 @@ export interface SampleItem {
   productName?: string;
   productCover?: string;
   productPriceText?: string;
+  productSpecification?: string;
+  activityId?: string;
   shopId?: string;
   shopName?: string;
   quantity: number;
@@ -136,6 +197,8 @@ export interface SampleItem {
   createTime: string;
   updateTime?: string;
   completeTime?: string;
+  version?: number;
+  actionAvailability?: SampleActionAvailabilityMap;
 }
 
 // 数据大盘与订单模块
