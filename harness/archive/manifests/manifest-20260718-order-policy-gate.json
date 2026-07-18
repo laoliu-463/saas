@@ -1,0 +1,10 @@
+{
+  "manifestVersion": 1,
+  "archivedAt": "2026-07-18T13:35:00+08:00",
+  "reason": "保留 agent-do 原始业务阻塞证据；current 只保留固定稳定性入口，避免报告治理门禁因新增 current 文件恶化。",
+  "source": "harness/reports/current/latest-order-policy-gate.md",
+  "destination": "harness/archive/by-date/2026-07-18/stability-closeout/latest-order-policy-gate-20260718.md",
+  "sha256": "90249FE4DACEE38F055285484F249F3D164624D427DAD7C9B430B7F4D862C235",
+  "classification": "C_HARNESS_REPORT",
+  "remoteDeploy": false
+}

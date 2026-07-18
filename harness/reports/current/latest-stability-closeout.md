@@ -139,3 +139,11 @@ b729fd2dc89059408c4b6d5bcf7db51341c8769c fix(qa): detect actual real-pre databas
 - DDD：本次低风险订单访问策略已进入 Dashboard/Data 读取主调用路径，按“order 域 ROUTED”记录；未声明 PRIMARY/VERIFIED/RETIRED，未进行大规模拆解。
 - 回滚：代码可执行 `git revert c27738d4` 并重新走 compile/package；运行时不得切换浮动标签，必须使用此前完整 SHA 镜像，数据库无需回滚（本提交无数据库变更）。
 - 当前结论：`PARTIAL`。CI/CD 代码门禁和本次架构回归已收口；真实多角色/三条业务链、Jenkins 实跑、不可变 SHA 镜像发布和远端部署仍为 `PENDING/BLOCKED`。
+
+## agent-do 最终复核（2026-07-18T13:31:32+08:00）
+
+- 复核提交：`528fba25dba82c58bcb161fb922fe27822bf8b09`；未执行远端部署。
+- 项目入口结果：backend package PASS、frontend `npm ci + build` PASS、Compose 重启 PASS、backend readiness PASS、frontend health PASS；Harness byte[] 响应解码修复已验证。
+- real-pre preflight：`PARTIAL/BLOCKED_AUTH`，证据 `runtime/qa/out/real-pre-preflight-20260718-133126/report.md`；frontend/backend/admin login/env/schema/reusable mapping PASS，抖音 token readiness 缺 access/refresh token，requestId=`7eb0d291-ef10-4079-8352-1203e37d9f00`，未启动真实写入业务流。
+- 复核后运行镜像：backend `sha256:4dc7d4e53e0246d542ebd8307f7cd1326a4d648d21d66f545ceaaeca282d41a5`、frontend `sha256:cca4a88249e0b435a9d9fbc89f8304f54ee0c8c96598c98d301ec8427a19e00e`、PostgreSQL 15.17、Redis 7；backend/frontend 仍使用 `real-pre` 浮动标签，不能作为不可变 CD 发布证据。
+- 新增 Harness 变更单独提交：`528fba25 fix(harness): decode byte responses in health probe`；真实 token 重新授权需要 release owner 提供凭证/业务授权，继续保持 BLOCKED，不启用 test/mock 模式。
