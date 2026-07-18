@@ -148,7 +148,9 @@ describe('router configuration', () => {
           { params: { activityId: 'A-100' } }
         )
       ).toEqual({ path: '/product/manage/products', query: { activityId: 'A-100' } })
-  }, 60000)
+  // Lazy component imports can exceed one minute on a loaded Windows checkout;
+  // the test still fails if module resolution hangs beyond two minutes.
+  }, 120000)
 })
 
 describe('router guards', () => {

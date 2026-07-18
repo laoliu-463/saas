@@ -47,8 +47,35 @@ jobs:
           "-Dtest=RoleAwareAttributionSchemaContractTest,RoleAwareAttributionFlywayIntegrationTest,CoreEntityDatabaseSchemaContractTest,ColonelsettlementOrderMapperSchemaIntegrationTest,ColonelsettlementOrderMapperDualDimensionContractTest,RealPreMigrationContractTest"
           test
 
+      - name: Start isolated PostgreSQL and Redis for backend tests
+        working-directory: .
+        run: >-
+          docker compose
+          --project-name saas-ci-test
+          --file docker-compose.test.yml
+          up -d --wait postgres redis
+
       - name: Run backend unit, architecture and integration tests
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: "5432"
+          DB_NAME: colonel_saas_test
+          DB_USER: saas
+          DB_PASSWORD: saas123
+          REDIS_HOST: 127.0.0.1
+          REDIS_PORT: "6379"
+          REDIS_PASSWORD: test-redis123
+          REDIS_DATABASE: "1"
         run: mvn -B test
+
+      - name: Stop isolated backend test dependencies
+        if: always()
+        working-directory: .
+        run: >-
+          docker compose
+          --project-name saas-ci-test
+          --file docker-compose.test.yml
+          down --remove-orphans
 
   governance:
     name: Repository and deployment gates
