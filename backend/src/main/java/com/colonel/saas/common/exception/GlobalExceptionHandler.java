@@ -3,11 +3,13 @@ package com.colonel.saas.common.exception;
 import com.baomidou.mybatisplus.core.exceptions.MybatisPlusException;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.common.result.ResultCode;
+import com.colonel.saas.common.web.RequestIdContext;
 import com.colonel.saas.douyin.DouyinApiException;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.CannotAcquireLockException;
 import org.springframework.dao.DuplicateKeyException;
+import org.springframework.dao.DataAccessException;
 import org.springframework.dao.QueryTimeoutException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -76,8 +78,16 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler({QueryTimeoutException.class, TransactionTimedOutException.class, CannotAcquireLockException.class})
     public ApiResult<Void> handleQueryTimeout(Exception e) {
-        log.warn("查询超时: {}", e.getMessage());
+        log.warn("查询超时 requestId={} rootCause={}", RequestIdContext.current(), rootCauseMessage(e));
         return ApiResult.of(504, "查询超时，请缩小时间范围或增加筛选条件后重试", null, ERROR_CODE_QUERY_TIMEOUT);
+    }
+
+    /** 记录数据库根因并返回可关联 requestId 的稳定错误响应。 */
+    @ExceptionHandler(DataAccessException.class)
+    public ApiResult<Void> handleDatabase(DataAccessException e) {
+        log.error("数据库访问失败 requestId={} rootCause={}", RequestIdContext.current(), rootCauseMessage(e), e);
+        return ApiResult.of(ResultCode.SERVER_ERROR.getCode(), "数据库访问失败，请提供 requestId 给运维", null,
+                "DATABASE_ERROR");
     }
 
     /**
@@ -95,7 +105,7 @@ public class GlobalExceptionHandler {
         if (isOptimisticLockFailure(e)) {
             return ApiResult.of(ResultCode.CONFLICT.getCode(), "数据已被他人修改，请刷新后重试", null);
         }
-        log.error("MyBatis-Plus 异常", e);
+        log.error("MyBatis-Plus 异常 requestId={} rootCause={}", RequestIdContext.current(), rootCauseMessage(e), e);
         return ApiResult.of(ResultCode.SERVER_ERROR, null);
     }
 
@@ -115,7 +125,7 @@ public class GlobalExceptionHandler {
             log.warn("用户名唯一约束冲突: {}", e.getMessage());
             return ApiResult.of(ResultCode.DUPLICATE.getCode(), "用户名已存在", null);
         }
-        log.error("数据库唯一键异常", e);
+        log.error("数据库唯一键异常 requestId={} rootCause={}", RequestIdContext.current(), rootCauseMessage(e), e);
         return ApiResult.of(ResultCode.SERVER_ERROR, null);
     }
 
@@ -281,8 +291,16 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler(Exception.class)
     public ApiResult<Void> handleGeneral(Exception e) {
-        log.error("系统异常", e);
+        log.error("系统异常 requestId={} rootCause={}", RequestIdContext.current(), rootCauseMessage(e), e);
         return ApiResult.of(ResultCode.SERVER_ERROR, null);
+    }
+
+    private static String rootCauseMessage(Throwable error) {
+        Throwable root = error;
+        while (root.getCause() != null) {
+            root = root.getCause();
+        }
+        return root.getClass().getSimpleName() + ": " + String.valueOf(root.getMessage());
     }
 
     /**

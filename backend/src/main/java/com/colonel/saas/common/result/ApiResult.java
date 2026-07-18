@@ -1,6 +1,7 @@
 package com.colonel.saas.common.result;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import com.colonel.saas.common.web.RequestIdContext;
 import lombok.Data;
 
 import java.io.Serializable;
@@ -63,6 +64,10 @@ public class ApiResult<T> implements Serializable {
      */
     @Schema(description = "错误码（机器可读）", example = "DOUYIN_TIMEOUT")
     private String errorCode;
+
+    /** 请求链路 ID，失败响应必须可据此检索服务端根因日志。 */
+    @Schema(description = "请求链路 ID", example = "req-20260718-001")
+    private String requestId;
 
     /** 服务器处理完成时的时间戳（毫秒），用于前端时序对齐和请求链路追踪 */
     @Schema(description = "服务器时间戳（毫秒）", example = "1713628800000")
@@ -156,6 +161,7 @@ public class ApiResult<T> implements Serializable {
         result.msg = msg;
         result.data = data;
         result.errorCode = errorCode;
+        result.requestId = RequestIdContext.current();
         result.timestamp = System.currentTimeMillis();
         return result;
     }

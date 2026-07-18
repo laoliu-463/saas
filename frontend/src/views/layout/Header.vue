@@ -69,7 +69,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
+import { isNavigationFailure, NavigationFailureType, useRouter, useRoute } from 'vue-router'
 import { NIcon, useMessage } from 'naive-ui'
 import { useAuthStore } from '../../stores/auth'
 import { ROLE_CODES, hasOnlyCanonicalRole } from '../../constants/rbac'
@@ -156,11 +156,34 @@ const visibleTabs = computed(() =>
   })
 )
 
+/**
+ * 执行带结果反馈的页面跳转。
+ * Vue Router 将重复导航、守卫中止等情况作为返回值交给调用方；如果不等待，
+ * 用户只能看到页面没有变化，无法区分重复点击、权限拦截和加载异常。
+ */
+const safeNavigate = async (target: string) => {
+  try {
+    const failure = await router.push(target)
+    if (!failure) return true
+
+    if (isNavigationFailure(failure, NavigationFailureType.duplicated)) {
+      message.warning('当前已在该页面')
+    } else {
+      message.error('页面跳转失败，请稍后重试')
+    }
+    console.warn('[router navigation] failed', { target, failureType: failure.type })
+  } catch (error) {
+    message.error('页面跳转失败，请稍后重试')
+    console.error('[router navigation] exception', { target, error })
+  }
+  return false
+}
+
 /** 顶部菜单 Tab 点击处理：解析该菜单下的默认路由并跳转 */
-const handleTopMenuClick = (topKey: string) => {
+const handleTopMenuClick = async (topKey: string) => {
   const target = resolveTopMenuDefaultPath(topKey, authStore.roleCodes)
   if (!target) return
-  router.push(target)
+  await safeNavigate(target)
 }
 
 /** 用户头像显示的首字母：取姓名或用户名的第一个字符，大写 */
@@ -208,7 +231,7 @@ const revokeServerSession = async (accessToken: string, refreshToken: string) =>
 /** 用户下拉菜单选择处理：跳转个人中心或执行退出登录流程 */
 const handleUserMenu = async (key: string) => {
   if (key === 'profile') {
-    router.push('/profile')
+    await safeNavigate('/profile')
     return
   }
   if (key === 'logout') {

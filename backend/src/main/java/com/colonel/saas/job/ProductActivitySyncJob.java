@@ -1,6 +1,7 @@
 package com.colonel.saas.job;
 
 import com.colonel.saas.gateway.douyin.DouyinProductGateway;
+import com.colonel.saas.config.RequiresCompatibleSchema;
 import com.colonel.saas.mapper.ColonelsettlementActivityMapper;
 import com.colonel.saas.service.DistributedConcurrencyLimiter;
 import com.colonel.saas.service.DistributedJobLockService;
@@ -28,6 +29,7 @@ import java.util.concurrent.Executor;
  */
 @Slf4j
 @Component
+@RequiresCompatibleSchema
 public class ProductActivitySyncJob {
 
     private static final Duration LOCK_TTL = Duration.ofMinutes(30);

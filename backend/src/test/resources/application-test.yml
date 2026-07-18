@@ -107,3 +107,7 @@ logging:
     org.springframework.web: info
 
 debug: false
+
+schema:
+  validation:
+    startup-fail-fast: false

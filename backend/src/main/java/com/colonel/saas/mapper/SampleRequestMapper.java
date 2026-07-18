@@ -37,6 +37,7 @@ public interface SampleRequestMapper extends BaseMapper<SampleRequest> {
      * @param wrapper 查询条件构造器
      * @return 分页结果
      */
+    @DataScope(userField = "sr.channel_user_id")
     default IPage<SampleRequest> findPageWithScope(
             Page<SampleRequest> page,
             QueryWrapper<SampleRequest> wrapper

@@ -9,6 +9,8 @@ const routerPush = vi.fn()
 const routerReplace = vi.fn()
 
 vi.mock('vue-router', () => ({
+  isNavigationFailure: (failure: { type?: number }, type: number) => failure?.type === type,
+  NavigationFailureType: { duplicated: 16 },
   useRouter: () => ({
     push: routerPush,
     replace: routerReplace
@@ -19,7 +21,8 @@ vi.mock('vue-router', () => ({
 }))
 
 const messageApi = {
-  warning: vi.fn()
+  warning: vi.fn(),
+  error: vi.fn()
 }
 
 vi.mock('naive-ui', async (importOriginal) => {
@@ -77,5 +80,24 @@ describe('layout Header logout', () => {
       body: JSON.stringify({ refreshToken: 'refresh-token' })
     }))
     expect(routerReplace).toHaveBeenCalledWith('/login')
+  })
+
+  it('reports duplicate navigation instead of failing silently', async () => {
+    routerPush.mockResolvedValueOnce({ type: 16 })
+    const { wrapper } = await mountHeader()
+
+    await (wrapper.vm as any).handleTopMenuClick('sample')
+
+    expect(routerPush).toHaveBeenCalledWith('/sample')
+    expect(messageApi.warning).toHaveBeenCalledWith('当前已在该页面')
+  })
+
+  it('reports aborted navigation instead of failing silently', async () => {
+    routerPush.mockResolvedValueOnce({ type: 4 })
+    const { wrapper } = await mountHeader()
+
+    await (wrapper.vm as any).handleTopMenuClick('sample')
+
+    expect(messageApi.error).toHaveBeenCalledWith('页面跳转失败，请稍后重试')
   })
 })

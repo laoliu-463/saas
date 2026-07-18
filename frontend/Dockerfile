@@ -20,6 +20,8 @@ RUN pnpm build
 
 # Stage 2: Serve
 FROM nginx:1.27-alpine
+ARG GIT_COMMIT=unknown
+LABEL org.opencontainers.image.revision=${GIT_COMMIT}
 
 # Remove default nginx site
 RUN rm -rf /usr/share/nginx/html/*

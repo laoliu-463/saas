@@ -4,6 +4,7 @@ import com.colonel.saas.domain.order.application.OrderSyncApplicationService;
 import com.colonel.saas.domain.order.application.OrderSyncCommand;
 import com.colonel.saas.domain.order.application.OrderSyncExecutionContext;
 import com.colonel.saas.domain.order.application.OrderSyncResult;
+import com.colonel.saas.config.RequiresCompatibleSchema;
 import com.colonel.saas.service.OrderSyncService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -43,6 +44,7 @@ import org.springframework.stereotype.Component;
  */
 @Slf4j
 @Component
+@RequiresCompatibleSchema
 public class OrderSyncJob {
 
     /** 订单同步服务，负责与抖音 API 交互并持久化订单 */

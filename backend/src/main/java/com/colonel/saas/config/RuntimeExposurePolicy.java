@@ -52,7 +52,11 @@ public final class RuntimeExposurePolicy {
             "/api/public/logistics/kuaidi100/callback",
             "/error",
             "/system/health",
-            "/api/system/health"
+            "/api/system/health",
+            "/actuator/health/liveness",
+            "/api/actuator/health/liveness",
+            "/actuator/health/readiness",
+            "/api/actuator/health/readiness"
     );
 
     /** 文档公开路径：Swagger/OpenAPI 相关路径，仅 test 环境开放 */

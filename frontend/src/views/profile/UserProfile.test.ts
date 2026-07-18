@@ -30,6 +30,6 @@ describe('user profile page wiring', () => {
 
     expect(source).toContain("label: '个人中心'")
     expect(source).toContain("key: 'profile'")
-    expect(source).toContain("router.push('/profile')")
+    expect(source).toContain("await safeNavigate('/profile')")
   })
 })
