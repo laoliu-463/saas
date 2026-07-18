@@ -2,11 +2,11 @@
 
 ## Metadata
 
-- Time: 2026-07-18 18:29:58 +08:00
+- Time: 2026-07-18 18:32:20 +08:00
 - Environment: real-pre
 - Scope: full
 - Branch: codex/fix-product-copy-link-admin
-- Commit: 498e1719
+- Commit: 1069cac6
 - Owned worktree: dirty
 - Deploy remote: true
 
@@ -17,6 +17,9 @@ backend/src/main/resources/db/alter-cso-dual-attribution-status-20260716.sql
 frontend/src/views/product/ProductLibrary.test.ts
 frontend/src/views/product/ProductLibrary.vue
 harness/reports/current/latest-product-copy-link-admin-fix.md
+harness/rules/changelog.md
+harness/rules/state/snapshots/01-当前项目状态.md
+harness/rules/state/snapshots/DOMAIN_STATUS.md
 harness/scripts/commands/deploy-remote.ps1
 harness/scripts/tests/deploy-remote.Tests.ps1
 scripts/check-real-pre-schema.sh
@@ -25,7 +28,9 @@ scripts/check-real-pre-schema.sh
 ## Owned Git Status
 
 ~~~text
-M harness/reports/current/latest-product-copy-link-admin-fix.md
+M harness/rules/changelog.md
+ M harness/rules/state/snapshots/01-当前项目状态.md
+ M harness/rules/state/snapshots/DOMAIN_STATUS.md
 ~~~
 
 ## Build Result
@@ -37,22 +42,8 @@ PASS: backend Maven package. PASS: frontend production build. PASS: ProductLibra
 ## Docker Status
 
 ~~~text
-NAME                              IMAGE                            COMMAND                  SERVICE             CREATED         STATUS                        PORTS
-saas-active-backend-real-pre-1    colonel-saas/backend:real-pre    "sh -c 'java $JAVA_O…"   backend-real-pre    2 minutes ago   Up 2 minutes (healthy)        127.0.0.1:8081->8080/tcp
-saas-active-frontend-real-pre-1   colonel-saas/frontend:real-pre   "/docker-entrypoint.…"   frontend-real-pre   2 minutes ago   Up About a minute (healthy)   127.0.0.1:3001->80/tcp
-saas-active-postgres-real-pre-1   postgres:15-alpine               "docker-entrypoint.s…"   postgres-real-pre   2 minutes ago   Up 2 minutes (healthy)        5432/tcp
-saas-active-redis-real-pre-1      redis:7-alpine                   "docker-entrypoint.s…"   redis-real-pre      2 minutes ago   Up 2 minutes (healthy)        6379/tcp
-NAMES                             STATUS                        PORTS
-saas-active-frontend-real-pre-1   Up About a minute (healthy)   127.0.0.1:3001->80/tcp
-saas-active-backend-real-pre-1    Up 2 minutes (healthy)        127.0.0.1:8081->8080/tcp
-saas-active-postgres-real-pre-1   Up 2 minutes (healthy)        5432/tcp
-saas-active-redis-real-pre-1      Up 2 minutes (healthy)        6379/tcp
-campus_frontend                   Up 51 minutes                 0.0.0.0:5173->5173/tcp, [::]:5173->5173/tcp
-campus_backend                    Up 51 minutes (healthy)       0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp
-campus_postgres                   Up 51 minutes (healthy)       0.0.0.0:5433->5432/tcp, [::]:5433->5432/tcp
-saas-test-backend-1               Restarting (1) 1 second ago
-saas-test-postgres-1              Up 51 minutes (healthy)       0.0.0.0:5432->5432/tcp, [::]:5432->5432/tcp
-saas-test-redis-1                 Up 51 minutes (healthy)       6379/tcp
+collection failed: time="2026-07-18T18:32:20+08:00" level=warning msg="The \"DB_NAME\" variable is not set. Defaulting to a blank string."
+collection failed: time="2026-07-18T18:32:20+08:00" level=warning msg="The \"DB_NAME\" variable is not set. Defaulting to a blank string."
 ~~~
 
 ## Health Check Result
@@ -70,7 +61,7 @@ PASS: component coverage proves Copy Brief is available without frontend role in
 ## Content Maintenance Result
 
 ~~~text
-off
+State snapshot and changelog updated with deployed SHA 498e1719 and remaining BLOCKED_AUTH risk.
 ~~~
 
 ## Remote Deploy Result
