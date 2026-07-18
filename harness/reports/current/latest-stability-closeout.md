@@ -2,10 +2,10 @@
 
 ## 1. 结论与事实基线
 
-- 生成时间：2026-07-18 12:20 +08:00；执行环境：本地真实 `real-pre`；远端未部署。
+- 生成时间：2026-07-18 13:16 +08:00；执行环境：本地真实 `real-pre`；远端未部署。
 - 执行前完整 SHA：`76a5e2e8ffc8217517d3c2969c9ec11978474344`。
-- 执行后可复核代码 SHA：`1644ea55042874fecd88214230820eed29d9dd6e`；分支：`codex/ddd-user-role-application`。
-- 远端：GitHub `origin` 为主源，Gitee `gitee` 为镜像；报告写入前本地相对 origin 为 `ahead 3 / behind 0`，最终推送结果以交付消息为准。
+- 执行后可复核代码 SHA：`c27738d4c1f01b921eddc7e9b48a8d463222fa00`；分支：`codex/ddd-user-role-application`。
+- 远端：GitHub `origin` 为主源，Gitee `gitee` 为镜像；当前相对 `origin/codex/ddd-user-role-application` 为 `ahead 0 / behind 0`，本次代码提交已推送。
 - 总结：`PARTIAL`。P0 缺列、Schema/Flyway/readiness、订单调度 OOM 根因、CI/CD 代码门禁和本地核心验证已落地；真实寄样、多角色、可归因订单、Jenkins 实跑和远端部署仍缺凭证/样本/授权，不能宣称今晚全部完成。
 - 固定报告入口：`harness/reports/current/latest-stability-closeout.md`；DDD 入口：`harness/reports/current/latest-ddd-progress-audit.md`。
 
@@ -114,7 +114,7 @@ b729fd2dc89059408c4b6d5bcf7db51341c8769c fix(qa): detect actual real-pre databas
 
 本轮两类事故都来自“运行事实未绑定版本”：旧 volume 绕过 init SQL、多个同步模式缺少全局互斥。已用 Flyway ledger + readiness/schema guard + 调度互斥 + 完整 SHA/OCI evidence 收口。可执行改进是把受控 env 文件生命周期和 Jenkins 实跑纳入 release owner 检查；验证标准是 clean checkout 中 Compose/CI PASS、同一真实样本多角色对账和远端部署证据完整。
 
-## CI/CD 复核增量（2026-07-18T12:52:48+08:00）
+## 历史 CI/CD 复核增量（2026-07-18T12:52:48+08:00）
 
 - 当前复核 HEAD：`c4b5b560`；前置并行提交后的 `d269914e` 已不是当前基线。
 - 本轮变更已单独提交并推送：`c4b5b560 ci: provision backend test dependencies and stabilize frontend gate`；文件仅为 `.github/workflows/ci.yml`、`frontend/src/router/index.test.ts`。
@@ -124,3 +124,18 @@ b729fd2dc89059408c4b6d5bcf7db51341c8769c fix(qa): detect actual real-pre databas
 - Harness：`TASK_GATE=PASS`、`REPOSITORY_HEALTH=PARTIAL`；历史债务为 reports 直属 39、current 65、258 行报告，未伪造为健康。
 - 本轮未执行 GitHub/Jenkins 实跑、real-pre 迁移、远端部署或多角色 E2E。当前本地 real-pre 后端在复核期间因 PostgreSQL `saas` 认证失败退出（Exit 137），PostgreSQL/Redis healthy、前端 healthy；未改密码、未清库、未删卷，运行时结论为 `BLOCKED`，需 release owner 使用受控 env/凭证恢复后再验收。
 - CI/CD 结论：`PARTIAL/BLOCKED`，可合并的门禁修复已推送；整体发布不可放行，直到两个架构测试失败和 real-pre 凭证/运行时阻塞清除。
+
+## 当前收口复核（2026-07-18T13:16:32+08:00）
+
+- 当前代码基线：`c27738d4`（完整 SHA 见文件首部），已推送 `origin/codex/ddd-user-role-application`；本次代码提交仅含 5 个 Policy/Service 文件，报告未混入代码提交。
+- 根因修复：Dashboard 与数据页的订单可见性、角色归属列、缓存键和招商专员只读范围抽到订单域 Policy；旧反射兼容入口保留，未改变 API、金额、归因、状态机或权限语义。
+- 架构门禁：`mvn -B -Dtest=LargeServiceDebtRedlineTest,DddDashboardApiSqlConsistencyContractTest test`，4/4 PASS；DashboardService 1139 行、DataApplicationService 2576 行，均未超过基线。
+- 受影响业务回归：`mvn -B -Dtest=DataApplicationServiceOrderSummaryCacheTest,DataControllerTest,DashboardServiceTest,DashboardControllerTest,PerformanceMetricsQueryServiceTest,PerformanceAggregateApplicationServiceTest test`，102/102 PASS。
+- 构建：`mvn -B -DskipTests compile` PASS；`mvn -B -DskipTests package` PASS。JaCoCo 有执行数据与当前 class 不匹配警告，但报告阶段成功，未伪造为零警告。
+- Harness：`powershell -NoProfile -ExecutionPolicy Bypass -File harness/scripts/check-harness-limits.ps1 -BaselineRef HEAD`；`TASK_GATE=PASS / REPOSITORY_HEALTH=PARTIAL`，仅历史报告数量/超长债务。
+- 本地运行事实（只读）：backend/frontend/PostgreSQL/Redis 容器均 `healthy`；backend `/api/system/health` HTTP 200 `{"status":"UP"}`，frontend `/healthz` HTTP 200；数据库 `saas_real_pre`、PostgreSQL 15.17。
+- 当前镜像证据：backend `colonel-saas/backend:real-pre`、image `sha256:cfaa44eec159e343507b7a55aba25a0abb8ee0a5b606baf98d20791ae54f82cc`；frontend image `sha256:7efab6740f2310e5f02a8b9d7f087a9721a02346e2f0c6c0045a4500371b8945`。backend 仍为浮动 `real-pre` 标签且 revision label 为 `real-pre`，所以不可作为本次 SHA 不变 CD 发布证据。
+- 业务/角色真实验收：本轮没有新增真实寄样、可归因订单或六角色完整样本；A/B/C 及角色矩阵继续按原报告的 `PASS/BLOCKED/PENDING` 标记，不把本地单测替代真实验收。
+- DDD：本次低风险订单访问策略已进入 Dashboard/Data 读取主调用路径，按“order 域 ROUTED”记录；未声明 PRIMARY/VERIFIED/RETIRED，未进行大规模拆解。
+- 回滚：代码可执行 `git revert c27738d4` 并重新走 compile/package；运行时不得切换浮动标签，必须使用此前完整 SHA 镜像，数据库无需回滚（本提交无数据库变更）。
+- 当前结论：`PARTIAL`。CI/CD 代码门禁和本次架构回归已收口；真实多角色/三条业务链、Jenkins 实跑、不可变 SHA 镜像发布和远端部署仍为 `PENDING/BLOCKED`。
