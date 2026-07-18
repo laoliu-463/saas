@@ -11,18 +11,27 @@ class DddUserDataScopePolicyDashboardBoundaryTest {
 
     @Test
     void dashboardService_shouldDelegateDataScopeDecisionToUserResolver() throws Exception {
-        String source = Files.readString(Path.of(
+        String serviceSource = Files.readString(Path.of(
                 "src/main/java/com/colonel/saas/service/DashboardService.java"));
+        String policySource = Files.readString(Path.of(
+                "src/main/java/com/colonel/saas/domain/order/policy/DashboardOrderAccessPolicy.java"));
 
-        assertThat(source)
+        assertThat(serviceSource)
                 .contains("DataScopeResolver")
-                .contains("DddRefactorProperties")
-                .contains("dddRefactorProperties.getDataScopePolicy().isEnabled()")
-                .contains("dataScopeResolver")
+                .contains("DashboardOrderAccessPolicy")
+                .contains("orderAccessPolicy.resolveOrderVisibility")
                 .contains("appendScopeClauseLegacy")
                 .contains("appendScopeClauseWithResolver")
                 .contains("buildOrderVisibility")
-                .contains("buildOrderVisibilityLegacy")
+                .doesNotContain("import com.colonel.saas.domain.user.policy.DataScopePolicy;")
+                .doesNotContain("dataScopePolicy.")
+                .doesNotContain("switch (dataScope)");
+
+        assertThat(policySource)
+                .contains("DddRefactorProperties")
+                .contains("dddRefactorProperties.getDataScopePolicy().isEnabled()")
+                .contains("dataScopeResolver.resolve")
+                .contains("resolveLegacyVisibility")
                 .doesNotContain("import com.colonel.saas.domain.user.policy.DataScopePolicy;")
                 .doesNotContain("dataScopePolicy.")
                 .doesNotContain("switch (dataScope)");
