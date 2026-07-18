@@ -193,6 +193,12 @@ export const batchShipSamples = (data: { items: { requestNo: string; trackingNo:
 export const syncSampleLogistics = (id: string) => request.post(`/samples/${id}/logistics/sync`);
 
 /**
+ * 补录已发货历史寄样单缺失的快递公司编码，并立即重试物流同步。
+ */
+export const repairSampleLogistics = (id: string, data: { shipperCode: string }) =>
+  request.put(`/samples/${id}/logistics`, data);
+
+/**
  * 查询寄样单物流详情
  *
  * @param id - 寄样单 ID

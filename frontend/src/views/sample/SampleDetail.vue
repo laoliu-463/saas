@@ -39,6 +39,7 @@
             <n-descriptions-item :label="isChannelStaffOnly ? '审核负责人' : '招商组长'">{{ detail.colonelUserName || '-' }}</n-descriptions-item>
             <n-descriptions-item label="商品名称">{{ detail.productName || '-' }}</n-descriptions-item>
             <n-descriptions-item label="达人昵称">{{ detail.talentName || '-' }}</n-descriptions-item>
+            <n-descriptions-item label="快递公司编码">{{ detail.shipperCode || '-' }}</n-descriptions-item>
             <n-descriptions-item label="物流单号">{{ detail.trackingNo || '-' }}</n-descriptions-item>
             <n-descriptions-item label="物流状态">{{ detail.logisticsStatusName || detail.logisticsStatus || '-' }}</n-descriptions-item>
             <n-descriptions-item label="最近同步">{{ formatDateTime(detail.logisticsLastQueryAt) }}</n-descriptions-item>
@@ -66,6 +67,16 @@
               @click="refreshLogistics"
             >
               刷新物流
+            </n-button>
+            <n-button
+              v-if="canRepairLogistics"
+              size="small"
+              type="warning"
+              :loading="repairLoading"
+              data-testid="sample-logistics-repair"
+              @click="repairLogistics"
+            >
+              补录快递公司
             </n-button>
           </div>
           <n-alert v-if="logisticsError" type="warning" style="margin-bottom: 12px">{{ logisticsError }}</n-alert>
@@ -183,7 +194,7 @@ import { computed, h, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { NInput, useDialog, useMessage } from 'naive-ui'
 import { MODAL_WIDTH } from '../../constants/ui'
-import { actionSample, getSampleById, getSampleLogistics, getSampleStatusLogs, syncSampleLogistics } from '../../api/sample'
+import { actionSample, getSampleById, getSampleLogistics, getSampleStatusLogs, repairSampleLogistics, syncSampleLogistics } from '../../api/sample'
 import StatusTag from '../../components/StatusTag.vue'
 import { ROLE_CODES, hasOnlyCanonicalRole } from '../../constants/rbac'
 import { useAuthStore } from '../../stores/auth'
@@ -209,6 +220,7 @@ const detail = ref<SampleItem | null>(null)
 const statusLogs = ref<any[]>([])
 const logisticsTraces = ref<any[]>([])
 const logisticsLoading = ref(false)
+const repairLoading = ref(false)
 const logisticsError = ref('')
 const detailLoadError = ref('')
 const actionError = ref('')
@@ -227,6 +239,9 @@ const effectiveSampleId = computed(() => routeSampleId.value || props.sampleId)
 
 const canAudit = canReviewSamplesByRole(authStore.roleCodes)
 const canShip = authStore.isAdmin || authStore.roleCodes.includes(ROLE_CODES.OPS_STAFF)
+const canRepairLogistics = computed(() =>
+  canShip && detail.value?.status === 'SHIPPED' && !detail.value?.shipperCode
+)
 const isChannelStaffOnly = computed(() => {
   return hasOnlyCanonicalRole(authStore.roleCodes, ROLE_CODES.CHANNEL_STAFF)
 })
@@ -345,6 +360,73 @@ async function refreshLogistics() {
     })
   } finally {
     logisticsLoading.value = false
+  }
+}
+
+function askLogisticsRepairCode() {
+  return new Promise<string | null>((resolve) => {
+    let value = ''
+    let error = ''
+    dialog.warning({
+      title: '补录快递公司',
+      content: () =>
+        h('div', [
+          h('div', { style: 'margin-bottom: 8px;' }, '快递公司编码：'),
+          h(NInput, {
+            placeholder: 'SF / YTO / ZTO',
+            status: error ? 'error' : undefined,
+            value,
+            onUpdateValue: (nextValue) => {
+              value = nextValue
+              if (error && nextValue.trim()) error = ''
+            }
+          }),
+          error
+            ? h('div', { style: 'margin-top: 6px; color: var(--color-danger); font-size: var(--text-xs);' }, error)
+            : null
+        ]),
+      positiveText: '补录并同步',
+      negativeText: '取消',
+      onPositiveClick: () => {
+        const shipperCode = value.trim()
+        if (!shipperCode) {
+          error = '请填写快递公司编码'
+          return false
+        }
+        resolve(shipperCode)
+        return true
+      },
+      onNegativeClick: () => resolve(null)
+    })
+  })
+}
+
+async function repairLogistics() {
+  if (!effectiveSampleId.value) return
+  const shipperCode = await askLogisticsRepairCode()
+  if (!shipperCode) return
+  repairLoading.value = true
+  try {
+    const res: any = await repairSampleLogistics(effectiveSampleId.value, { shipperCode })
+    const data = res?.data || res
+    logisticsTraces.value = Array.isArray(data?.traces) ? data.traces : []
+    logisticsError.value = data?.querySuccess === false ? (data?.queryErrorMessage || '物流同步失败') : ''
+    if (logisticsError.value) {
+      message.warning(`快递公司已补录，但物流同步失败：${logisticsError.value}`)
+    } else {
+      message.success('快递公司已补录，物流已同步')
+    }
+    emit('refresh')
+    await loadDetail()
+  } catch (error: any) {
+    handleApiFailure(error, {
+      onPermissionHint: (msg) => { logisticsError.value = msg },
+      permissionFallback: '当前角色无权补录物流',
+      onFallback: (msg) => { logisticsError.value = msg },
+      fallbackMessage: '补录物流失败'
+    })
+  } finally {
+    repairLoading.value = false
   }
 }
 

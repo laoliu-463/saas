@@ -8,6 +8,7 @@ import com.colonel.saas.dto.sample.LogisticsImportResult;
 import com.colonel.saas.dto.sample.SampleActionRequest;
 import com.colonel.saas.dto.sample.SampleBatchActionRequest;
 import com.colonel.saas.dto.sample.SampleBatchShipRequest;
+import com.colonel.saas.dto.sample.SampleLogisticsRepairRequest;
 import com.colonel.saas.dto.SampleTalentQueryRequest;
 import com.colonel.saas.vo.SampleTalentVO;
 import com.colonel.saas.vo.sample.SampleBoardCard;
@@ -48,6 +49,14 @@ public interface SampleCommandService {
     ApiResult<Void> deleteSample(UUID id, UUID userId, UUID deptId, DataScope dataScope, Object roleCodes);
 
     ApiResult<SampleLogisticsVO> syncLogistics(UUID id, UUID userId, UUID deptId, DataScope dataScope, Object roleCodes);
+
+    ApiResult<SampleLogisticsVO> repairLogistics(
+            UUID id,
+            SampleLogisticsRepairRequest request,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            Object roleCodes);
 
     ApiResult<SampleVO> refreshLogistics(UUID id, UUID userId, UUID deptId, DataScope dataScope, Object roleCodes);
 

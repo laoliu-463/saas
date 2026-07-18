@@ -11,6 +11,7 @@ import com.colonel.saas.dto.sample.SampleActionRequest;
 import com.colonel.saas.dto.sample.SampleBatchActionRequest;
 import com.colonel.saas.dto.sample.SampleBatchShipItem;
 import com.colonel.saas.dto.sample.SampleBatchShipRequest;
+import com.colonel.saas.dto.sample.SampleLogisticsRepairRequest;
 import com.colonel.saas.dto.SampleTalentQueryRequest;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.BusinessException;
@@ -2474,6 +2475,49 @@ class SampleControllerTest {
         assertThat(response.getData().getTrackingNo()).isEqualTo("SF123");
         assertThat(response.getData().getTraces()).hasSize(1);
         assertThat(response.getData().getTraces().get(0).getTraceContent()).isEqualTo("已揽收");
+        verify(sampleLogisticsSyncService).syncOne(sampleId);
+    }
+
+    @Test
+    void repairLogistics_shouldFillMissingShipperCodeAndRetrySync() {
+        UUID sampleId = UUID.randomUUID();
+        SampleRequest sample = new SampleRequest();
+        sample.setId(sampleId);
+        sample.setStatus(3);
+        sample.setRequestNo("QS20260717371F7A25");
+        sample.setTrackingNo("79019161326440");
+        sample.setShipperCode(null);
+
+        SampleLogisticsRepairRequest request = new SampleLogisticsRepairRequest();
+        request.setShipperCode("YTO");
+
+        LogisticsQueryResult queryResult = LogisticsQueryResult.builder()
+                .success(true)
+                .provider("kuaidi100")
+                .trackingNo(sample.getTrackingNo())
+                .logisticsCompany("YTO")
+                .statusCode(LogisticsStatusCode.IN_TRANSIT)
+                .statusName("运输中")
+                .traces(List.of())
+                .build();
+
+        when(sampleRequestMapper.selectById(sampleId)).thenReturn(sample);
+        when(sampleLogisticsSyncService.syncOne(sampleId)).thenReturn(queryResult);
+
+        var response = sampleController.repairLogistics(
+                sampleId,
+                request,
+                UUID.randomUUID(),
+                null,
+                DataScope.ALL,
+                List.of(RoleCodes.OPS_STAFF));
+
+        assertThat(response.getData().getQuerySuccess()).isTrue();
+        assertThat(response.getData().getLogisticsCompany()).isEqualTo("YTO");
+        assertThat(sample.getShipperCode()).isEqualTo("YTO");
+        assertThat(sample.getExtraData()).containsEntry("logisticsSource", "MANUAL_REPAIR");
+        verify(sampleRequestMapper).updateById(sample);
+        verify(sampleLogisticsSubscriptionService).subscribeAfterShipment(sample);
         verify(sampleLogisticsSyncService).syncOne(sampleId);
     }
 

@@ -9,6 +9,7 @@ import com.colonel.saas.dto.sample.LogisticsImportResult;
 import com.colonel.saas.dto.sample.SampleActionRequest;
 import com.colonel.saas.dto.sample.SampleBatchActionRequest;
 import com.colonel.saas.dto.sample.SampleBatchShipRequest;
+import com.colonel.saas.dto.sample.SampleLogisticsRepairRequest;
 import com.colonel.saas.vo.SampleTalentVO;
 import com.colonel.saas.vo.sample.SampleBoardCard;
 import com.colonel.saas.vo.sample.SampleEligibilityCheckVO;
@@ -125,6 +126,16 @@ public class SampleApplicationService {
     public ApiResult<SampleLogisticsVO> syncLogistics(
             UUID id, UUID userId, UUID deptId, DataScope dataScope, Object roleCodes) {
         return sampleCommandApplicationService.syncLogistics(id, userId, deptId, dataScope, roleCodes);
+    }
+
+    public ApiResult<SampleLogisticsVO> repairLogistics(
+            UUID id,
+            SampleLogisticsRepairRequest request,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            Object roleCodes) {
+        return sampleCommandApplicationService.repairLogistics(id, request, userId, deptId, dataScope, roleCodes);
     }
 
     public ApiResult<SampleVO> refreshLogistics(

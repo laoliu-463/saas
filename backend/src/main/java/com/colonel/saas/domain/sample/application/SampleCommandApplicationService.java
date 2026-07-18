@@ -12,6 +12,7 @@ import com.colonel.saas.dto.sample.LogisticsImportResult;
 import com.colonel.saas.dto.sample.SampleActionRequest;
 import com.colonel.saas.dto.sample.SampleBatchActionRequest;
 import com.colonel.saas.dto.sample.SampleBatchShipRequest;
+import com.colonel.saas.dto.sample.SampleLogisticsRepairRequest;
 import com.colonel.saas.service.sample.SampleCommandService;
 import com.colonel.saas.vo.SampleTalentVO;
 import com.colonel.saas.vo.sample.SampleEligibilityCheckVO;
@@ -107,6 +108,19 @@ public class SampleCommandApplicationService {
             assertSampleExistsViaFacade(id);
         }
         return sampleCommandService.syncLogistics(id, userId, deptId, dataScope, roleCodes);
+    }
+
+    public ApiResult<SampleLogisticsVO> repairLogistics(
+            UUID id,
+            SampleLogisticsRepairRequest request,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            Object roleCodes) {
+        if (isRoutingEnabled()) {
+            assertSampleExistsViaFacade(id);
+        }
+        return sampleCommandService.repairLogistics(id, request, userId, deptId, dataScope, roleCodes);
     }
 
     public ApiResult<SampleVO> refreshLogistics(

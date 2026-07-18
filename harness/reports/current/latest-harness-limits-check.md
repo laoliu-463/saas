@@ -19,5 +19,5 @@
 
 ## Historical Debt
 - [DIRECT_FILE_COUNT_EXCEEDED] harness/reports: Repository file count 39 exceeds 20.
-- [DIRECT_FILE_COUNT_EXCEEDED] harness/reports/current: Repository file count 66 exceeds 50.
+- [DIRECT_FILE_COUNT_EXCEEDED] harness/reports/current: Repository file count 69 exceeds 50.
 - [TEXT_LINE_COUNT_EXCEEDED] harness/reports/evidence-20260713-221229.md: Repository text line count 258 exceeds 200.

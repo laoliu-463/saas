@@ -2343,6 +2343,8 @@ public class TestDataService implements ApplicationRunner {
         order.setSettleAmount(orderAmount);
         order.setEstimateServiceFee(serviceFee);
         order.setEffectiveServiceFee(serviceFee);
+        order.setEstimateServiceFeeExpense(0L);
+        order.setEffectiveServiceFeeExpense(0L);
         order.setEstimateTechServiceFee(0L);
         order.setEffectiveTechServiceFee(0L);
         order.setSettleColonelCommission(serviceFee);

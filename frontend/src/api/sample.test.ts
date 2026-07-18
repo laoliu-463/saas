@@ -10,6 +10,7 @@ import {
   getSampleFilterOptions,
   getSampleStatusTransitions,
   importSampleLogistics,
+  repairSampleLogistics,
   syncAllSampleLogistics,
   syncSampleLogistics
 } from './sample'
@@ -17,7 +18,8 @@ import {
 vi.mock('../utils/request', () => ({
   default: {
     get: vi.fn(),
-    post: vi.fn()
+    post: vi.fn(),
+    put: vi.fn()
   }
 }))
 
@@ -62,11 +64,13 @@ describe('sample API', () => {
 
   it('calls sample logistics endpoints', () => {
     syncSampleLogistics('sample-1')
+    repairSampleLogistics('sample-1', { shipperCode: 'YTO' })
     getSampleLogistics('sample-1')
     syncAllSampleLogistics()
     downloadLogisticsImportTemplate()
 
     expect(request.post).toHaveBeenCalledWith('/samples/sample-1/logistics/sync')
+    expect(request.put).toHaveBeenCalledWith('/samples/sample-1/logistics', { shipperCode: 'YTO' })
     expect(request.get).toHaveBeenCalledWith('/samples/sample-1/logistics')
     expect(request.post).toHaveBeenCalledWith('/admin/samples/logistics/sync')
     expect(request.get).toHaveBeenCalledWith('/samples/logistics/import-template', { responseType: 'blob' })

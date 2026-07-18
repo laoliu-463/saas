@@ -21,6 +21,7 @@ import com.colonel.saas.dto.sample.SampleActionRequest;
 import com.colonel.saas.dto.sample.SampleBatchActionRequest;
 import com.colonel.saas.dto.sample.SampleBatchShipItem;
 import com.colonel.saas.dto.sample.SampleBatchShipRequest;
+import com.colonel.saas.dto.sample.SampleLogisticsRepairRequest;
 import com.colonel.saas.domain.sample.event.SampleDomainEventPublisher;
 import com.colonel.saas.domain.sample.policy.SampleStateMachine;
 import com.colonel.saas.gateway.logistics.query.LogisticsQueryResult;
@@ -1182,6 +1183,48 @@ public class SampleApplicationService extends BaseController {
         LogisticsQueryResult result = sampleLogisticsSyncService.syncOne(sample.getId());
         sample = sampleRequestMapper.selectById(id);
         return ok(toLogisticsVO(sample, result));
+        });
+    }
+
+    /**
+     * 补录已发货寄样单缺失的快递公司编码，并立即重试物流订阅与查询。
+     *
+     * <p>只允许修复运输中的历史记录，且仅当当前记录没有快递公司编码时生效；
+     * 已有编码和物流单号均不可通过该接口覆盖。</p>
+     */
+    @Operation(summary = "补录寄样快递公司", description = "修复已发货历史寄样单缺失的快递公司编码，并重试物流同步。")
+    @RequireRoles({RoleCodes.ADMIN, RoleCodes.OPS_STAFF})
+    @PutMapping("/{id:[0-9a-fA-F\\-]{36}}/logistics")
+    public ApiResult<SampleLogisticsVO> repairLogistics(
+            @Parameter(description = "寄样申请 ID，使用 UUID 格式。") @PathVariable UUID id,
+            @Valid @RequestBody SampleLogisticsRepairRequest request,
+            @RequestAttribute("userId") UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
+            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
+            @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
+        return sampleWriteTransactionService.execute(() -> {
+            SampleRequest sample = requireSample(id, userId, deptId, dataScope, roleCodes);
+            ensureLogisticsSyncPermission(roleCodes);
+            if (!Objects.equals(sample.getStatus(), SampleStatus.SHIPPING.getCode())) {
+                throw BusinessException.param("仅运输中的寄样单允许补录物流公司");
+            }
+            if (!StringUtils.hasText(sample.getTrackingNo())) {
+                throw BusinessException.param("trackingNo is required before repairing logistics");
+            }
+            if (StringUtils.hasText(sample.getShipperCode())) {
+                throw BusinessException.param("该寄样单已有快递公司编码，不能重复补录");
+            }
+
+            sample.setShipperCode(request.getShipperCode().trim());
+            sample.setLogisticsLastError(null);
+            sample.setLogisticsExceptionReason(null);
+            putExtraValue(sample, "logisticsSource", "MANUAL_REPAIR");
+            persistSample(sample);
+            sampleLogisticsSubscriptionService.subscribeAfterShipment(sample);
+
+            LogisticsQueryResult result = sampleLogisticsSyncService.syncOne(id);
+            sample = sampleRequestMapper.selectById(id);
+            return ok(toLogisticsVO(sample, result));
         });
     }
 

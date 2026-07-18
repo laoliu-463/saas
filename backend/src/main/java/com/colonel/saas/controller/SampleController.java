@@ -12,6 +12,7 @@ import com.colonel.saas.dto.sample.LogisticsImportResult;
 import com.colonel.saas.dto.sample.SampleActionRequest;
 import com.colonel.saas.dto.sample.SampleBatchActionRequest;
 import com.colonel.saas.dto.sample.SampleBatchShipRequest;
+import com.colonel.saas.dto.sample.SampleLogisticsRepairRequest;
 import com.colonel.saas.vo.SampleTalentVO;
 import com.colonel.saas.vo.sample.SampleBoardCard;
 import com.colonel.saas.vo.sample.SampleEligibilityCheckVO;
@@ -200,6 +201,18 @@ public class SampleController {
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
             @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
         return sampleApplicationService.syncLogistics(id, userId, deptId, dataScope, roleCodes);
+    }
+
+    @RequireRoles({RoleCodes.ADMIN, RoleCodes.OPS_STAFF})
+    @PutMapping("/{id:[0-9a-fA-F\\-]{36}}/logistics")
+    public ApiResult<SampleLogisticsVO> repairLogistics(
+            @Parameter(description = "寄样申请 ID，使用 UUID 格式。") @PathVariable UUID id,
+            @Valid @RequestBody SampleLogisticsRepairRequest request,
+            @RequestAttribute("userId") UUID userId,
+            @RequestAttribute(value = "deptId", required = false) UUID deptId,
+            @RequestAttribute(value = "dataScope", required = false) DataScope dataScope,
+            @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
+        return sampleApplicationService.repairLogistics(id, request, userId, deptId, dataScope, roleCodes);
     }
 
     @RequireRoles({RoleCodes.ADMIN, RoleCodes.OPS_STAFF})
