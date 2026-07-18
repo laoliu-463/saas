@@ -52,6 +52,23 @@ describe("运行上下文", () => {
     expect(createRunContext(input).runId).not.toBe(createRunContext(input).runId);
   });
 
+  it("未注入快照时如实标记 Git 未采集且不自行调用 Git", () => {
+    const context = createRunContext({
+      repoRoot: "C:\\repo",
+      environment: "test",
+      scope: "backend",
+      reportKey: "no-git-boundary",
+    });
+
+    expect(context.git).toEqual({
+      headSha: null,
+      branch: null,
+      clean: null,
+      changedFiles: [],
+      identity: { kind: "UNAVAILABLE", reason: "NODE_GIT_BOUNDARY" },
+    });
+  });
+
   it.each([
     "",
     "Task-5",

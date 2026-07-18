@@ -99,41 +99,59 @@
         }
       }
     },
-    "gitSnapshot": {
+    "unavailableIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "reason"],
+      "properties": {
+        "kind": { "const": "UNAVAILABLE" },
+        "reason": { "const": "NODE_GIT_BOUNDARY" }
+      }
+    },
+    "unavailableGitSnapshot": {
       "type": "object",
       "additionalProperties": false,
       "required": ["headSha", "branch", "clean", "changedFiles", "identity"],
       "properties": {
-        "headSha": { "$ref": "#/$defs/sha" },
-        "branch": { "type": "string", "minLength": 1 },
-        "clean": { "type": "boolean" },
-        "changedFiles": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": { "$ref": "#/$defs/relativePath" }
-        },
-        "identity": {
-          "oneOf": [
-            { "$ref": "#/$defs/commitIdentity" },
-            { "$ref": "#/$defs/worktreeIdentity" }
-          ]
-        }
-      },
+        "headSha": { "type": "null" },
+        "branch": { "type": "null" },
+        "clean": { "type": "null" },
+        "changedFiles": { "type": "array", "maxItems": 0 },
+        "identity": { "$ref": "#/$defs/unavailableIdentity" }
+      }
+    },
+    "gitSnapshot": {
       "oneOf": [
         {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["headSha", "branch", "clean", "changedFiles", "identity"],
           "properties": {
+            "headSha": { "$ref": "#/$defs/sha" },
+            "branch": { "type": "string", "minLength": 1 },
             "clean": { "const": true },
             "changedFiles": { "type": "array", "maxItems": 0 },
             "identity": { "$ref": "#/$defs/commitIdentity" }
           }
         },
         {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["headSha", "branch", "clean", "changedFiles", "identity"],
           "properties": {
+            "headSha": { "$ref": "#/$defs/sha" },
+            "branch": { "type": "string", "minLength": 1 },
             "clean": { "const": false },
-            "changedFiles": { "type": "array", "minItems": 1 },
+            "changedFiles": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": { "$ref": "#/$defs/relativePath" }
+            },
             "identity": { "$ref": "#/$defs/worktreeIdentity" }
           }
-        }
+        },
+        { "$ref": "#/$defs/unavailableGitSnapshot" }
       ]
     }
   }
