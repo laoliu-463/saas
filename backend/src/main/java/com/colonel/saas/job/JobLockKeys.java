@@ -44,6 +44,13 @@ public final class JobLockKeys {
     public static final String LOG_CLEANUP = "operation-log:cleanup:job:lock";
     /** 订单同步任务锁（默认增量 update 窗口） */
     public static final String ORDER_SYNC = "order:sync:lock";
+    /**
+     * 所有定时订单同步模式共享的外层互斥锁。
+     *
+     * <p>各模式仍保留自己的业务锁和水位；该锁只负责避免不同模式并发写入同一订单，
+     * 防止调度线程同时占用大量堆内存并触发乐观锁冲突。手动同步不使用此锁。</p>
+     */
+    public static final String ORDER_SYNC_SCHEDULED_MUTEX = "order:sync:scheduled:mutex:lock";
     /** 订单事实源同步任务锁（6468 instituteOrderColonel）。与结算同步互不影响。 */
     public static final String ORDER_SYNC_INSTITUTE = "order:sync:institute:lock";
     /** 6468 近实时热同步任务锁（小窗口、高频）。与 {@link #ORDER_SYNC_INSTITUTE} 独立，避免阻塞补偿任务。 */

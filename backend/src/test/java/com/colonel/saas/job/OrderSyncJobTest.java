@@ -4,6 +4,7 @@ import com.colonel.saas.domain.order.application.OrderSyncApplicationService;
 import com.colonel.saas.domain.order.application.OrderSyncCommand;
 import com.colonel.saas.domain.order.application.OrderSyncExecutionContext;
 import com.colonel.saas.domain.order.application.OrderSyncResult;
+import com.colonel.saas.service.DistributedJobLockService;
 import com.colonel.saas.service.OrderSyncService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -13,6 +14,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
@@ -25,7 +27,11 @@ class OrderSyncJobTest {
 
     private com.colonel.saas.job.OrderSyncJob newJob() {
         lenient().when(orderSyncApplicationService.isRoutingEnabled()).thenReturn(false);
-        return new com.colonel.saas.job.OrderSyncJob(orderSyncService, orderSyncApplicationService);
+        lenient().when(jobLockService.tryAcquire(
+                        eq(JobLockKeys.ORDER_SYNC_SCHEDULED_MUTEX), any(), anyString()))
+                .thenReturn(true);
+        return new com.colonel.saas.job.OrderSyncJob(
+                orderSyncService, orderSyncApplicationService, jobLockService);
     }
 
     @Mock
@@ -33,6 +39,9 @@ class OrderSyncJobTest {
 
     @Mock
     private OrderSyncApplicationService orderSyncApplicationService;
+
+    @Mock
+    private DistributedJobLockService jobLockService;
 
     @Test
     void syncOrders_shouldSkipWhenLocked() {
@@ -268,7 +277,10 @@ class OrderSyncJobTest {
     @Test
     void syncOrders_whenRoutingEnabled_shouldUseApplicationService() {
         when(orderSyncApplicationService.isRoutingEnabled()).thenReturn(true);
-        OrderSyncJob job = new OrderSyncJob(orderSyncService, orderSyncApplicationService);
+        when(jobLockService.tryAcquire(
+                eq(JobLockKeys.ORDER_SYNC_SCHEDULED_MUTEX), any(), anyString())).thenReturn(true);
+        OrderSyncJob job = new OrderSyncJob(
+                orderSyncService, orderSyncApplicationService, jobLockService);
         OrderSyncResult applicationResult = OrderSyncResult.fromLegacy(
                 new OrderSyncService.SyncResult(1000L, 2000L, 1, 5, 2, 0, 3, 1, 0, false),
                 900L,
@@ -283,5 +295,31 @@ class OrderSyncJobTest {
 
         verify(orderSyncApplicationService).execute(any(), any());
         verify(orderSyncService, never()).syncLatestWindow();
+    }
+
+    @Test
+    void syncOrders_shouldSkipBeforeBusinessCallWhenScheduledMutexIsBusy() {
+        OrderSyncJob job = newJob();
+        when(jobLockService.tryAcquire(
+                eq(JobLockKeys.ORDER_SYNC_SCHEDULED_MUTEX), any(), anyString())).thenReturn(false);
+
+        job.syncOrders();
+
+        verifyNoInteractions(orderSyncService);
+        verify(orderSyncApplicationService, never()).execute(any(), any());
+        verify(jobLockService, never()).releaseWithOwner(anyString(), anyString());
+    }
+
+    @Test
+    void syncOrders_shouldReleaseScheduledMutexWhenBusinessCallFails() {
+        OrderSyncJob job = newJob();
+        when(orderSyncService.syncLatestWindow()).thenThrow(new RuntimeException("sync failed"));
+
+        assertThatThrownBy(job::syncOrders)
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("sync failed");
+
+        verify(jobLockService).releaseWithOwner(
+                eq(JobLockKeys.ORDER_SYNC_SCHEDULED_MUTEX), anyString());
     }
 }

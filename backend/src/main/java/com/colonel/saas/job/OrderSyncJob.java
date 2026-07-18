@@ -5,7 +5,9 @@ import com.colonel.saas.domain.order.application.OrderSyncCommand;
 import com.colonel.saas.domain.order.application.OrderSyncExecutionContext;
 import com.colonel.saas.domain.order.application.OrderSyncResult;
 import com.colonel.saas.config.RequiresCompatibleSchema;
+import com.colonel.saas.service.DistributedJobLockService;
 import com.colonel.saas.service.OrderSyncService;
+import java.time.Duration;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -51,6 +53,11 @@ public class OrderSyncJob {
     private final OrderSyncService orderSyncService;
     /** 订单同步应用层入口（DDD-ORDER-001，受 refactor 开关控制） */
     private final OrderSyncApplicationService orderSyncApplicationService;
+    /** 不同定时订单同步模式的外层互斥锁，避免并发写入和堆内存峰值叠加。 */
+    private final DistributedJobLockService jobLockService;
+    /** 外层互斥锁 TTL；覆盖已观测到的 5-6 分钟补偿同步，异常退出后自动恢复。 */
+    @Value("${order.sync.scheduled-mutex-ttl-seconds:900}")
+    private long scheduledMutexTtlSeconds = 900L;
     /** 是否启用订单同步任务，可通过 {@code order.sync.enabled=false} 关闭 */
     @Value("${order.sync.enabled:true}")
     private boolean enabled = true;
@@ -75,9 +82,11 @@ public class OrderSyncJob {
 
     public OrderSyncJob(
             OrderSyncService orderSyncService,
-            OrderSyncApplicationService orderSyncApplicationService) {
+            OrderSyncApplicationService orderSyncApplicationService,
+            DistributedJobLockService jobLockService) {
         this.orderSyncService = orderSyncService;
         this.orderSyncApplicationService = orderSyncApplicationService;
+        this.jobLockService = jobLockService;
     }
 
     /**
@@ -269,10 +278,21 @@ public class OrderSyncJob {
             OrderSyncCommand command,
             OrderSyncExecutionContext context,
             java.util.function.Supplier<OrderSyncService.SyncResult> legacyFallback) {
-        if (orderSyncApplicationService.isRoutingEnabled()) {
-            OrderSyncResult applicationResult = orderSyncApplicationService.execute(command, context);
-            return applicationResult.toLegacySyncResult();
+        String owner = "order-sync:scheduled:" + context.scheduledTask() + ":"
+                + Thread.currentThread().getId() + ":" + System.nanoTime();
+        Duration ttl = Duration.ofSeconds(Math.max(60L, scheduledMutexTtlSeconds));
+        if (!jobLockService.tryAcquire(JobLockKeys.ORDER_SYNC_SCHEDULED_MUTEX, ttl, owner)) {
+            log.info("OrderSyncJob skipped, task={}, reason=scheduled-mutex-locked", context.scheduledTask());
+            return new OrderSyncService.SyncResult(0, 0, 0, 0, 0, true);
         }
-        return legacyFallback.get();
+        try {
+            if (orderSyncApplicationService.isRoutingEnabled()) {
+                OrderSyncResult applicationResult = orderSyncApplicationService.execute(command, context);
+                return applicationResult.toLegacySyncResult();
+            }
+            return legacyFallback.get();
+        } finally {
+            jobLockService.releaseWithOwner(JobLockKeys.ORDER_SYNC_SCHEDULED_MUTEX, owner);
+        }
     }
 }
