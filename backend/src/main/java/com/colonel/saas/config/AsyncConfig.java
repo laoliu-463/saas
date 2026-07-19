@@ -2,6 +2,7 @@ package com.colonel.saas.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.scheduling.annotation.AsyncConfigurer;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 import java.util.concurrent.Executor;
@@ -23,10 +24,18 @@ import java.util.concurrent.ThreadPoolExecutor;
  * </ul>
  */
 @Configuration
-public class AsyncConfig {
+public class AsyncConfig implements AsyncConfigurer {
 
-    @Bean("applicationTaskExecutor")
-    public Executor applicationTaskExecutor() {
+    /**
+     * 创建应用级异步执行器，并同时使用 Spring 约定的 {@code taskExecutor} 别名。
+     * <p>
+     * 这样既兼容现有 {@code @Qualifier("applicationTaskExecutor")} 注入，
+     * 也避免未指定执行器的 {@code @Async} 回退到无界的
+     * {@code SimpleAsyncTaskExecutor}。
+     * </p>
+     */
+    @Bean(name = {"applicationTaskExecutor", "taskExecutor"})
+    public ThreadPoolTaskExecutor applicationTaskExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
         executor.setCorePoolSize(4);
         executor.setMaxPoolSize(8);
@@ -38,5 +47,14 @@ public class AsyncConfig {
         executor.setAwaitTerminationSeconds(60);
         executor.initialize();
         return executor;
+    }
+
+    /**
+     * 明确告诉 Spring {@code @Async} 使用受控线程池，避免多个执行器 bean
+     * 同时存在时发生默认执行器解析歧义。
+     */
+    @Override
+    public Executor getAsyncExecutor() {
+        return applicationTaskExecutor();
     }
 }
