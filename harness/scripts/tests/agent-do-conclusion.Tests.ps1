@@ -5,10 +5,10 @@ $agentDoScript = Join-Path $repoRoot 'harness\scripts\commands\agent-do.ps1'
 $content = Get-Content -Raw -LiteralPath $agentDoScript
 
 Describe 'agent-do evidence conclusion contract' {
-    It 'keeps remote deployment partial when business validation is skipped' {
-        $content | Should Match '\$remoteConclusion = if \(\$SkipBusinessValidation'
-        $content | Should Match '-Conclusion \$remoteConclusion'
-        $content | Should Match '\$conclusion = \$remoteConclusion'
+    It 'routes all remote deployments through the Jenkins release queue' {
+        $content | Should Match 'Direct remote deployment is disabled'
+        $content | Should Match 'Jenkins release queue'
+        $content | Should Not Match 'deploy-remote\.ps1'
     }
 
     It 'skips runtime collection for docs and apifox evidence' {
@@ -17,6 +17,6 @@ Describe 'agent-do evidence conclusion contract' {
             '-SkipRuntimeCollection:\(\$Scope -eq "docs" -or \$Scope -eq "apifox"\)'
         )
 
-        $matches.Count | Should BeGreaterThan 2
+        $matches.Count | Should BeGreaterThan 1
     }
 }

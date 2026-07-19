@@ -1,88 +1,82 @@
-# Runbook: remote deploy
+# Runbook：远端 real-pre 发布
 
 ## 适用场景
 
-用户明确要求部署远端 real-pre 服务器时使用。
+用户明确要求把已合并变更发布到远端 `real-pre` 时使用。普通 Codex/Agent 只准备候选、验证和记录，不直接 SSH 修改或部署服务器。
 
-## 默认参数
+## 唯一发布链路
 
-- SSH alias：`saas`
-- 远端目录：`/opt/saas/app`
-- Compose 文件：`docker-compose.real-pre.yml`
-- 远端 env：`/opt/saas/env/.env.real-pre`
-
-## 执行入口
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\deploy-remote.ps1 -Env real-pre -RemoteHost saas -RemoteDir /opt/saas/app
+```text
+任务分支 -> PR/CI -> main -> 发布提升 PR -> release/real-pre -> Jenkins saas-real-pre-cd
 ```
 
-或由总入口触发：
+- `main` 是唯一集成主线。
+- `release/real-pre` 是唯一可部署分支。
+- Jenkins 是唯一发布控制器。
+- `agent-do.ps1 -DeployRemote true` 与 `deploy-remote.ps1` 直接部署入口均已停用。
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\agent-do.ps1 -Env real-pre -Scope full -ReportKey task-key -OwnedFiles 'path1;path2' -DeployRemote true -Message "说明本次部署"
+## 发布前条件
+
+1. 候选提交已经进入 `main`，禁止发布未合并的任务分支。
+2. `main` 的 `Backend tests`、`Frontend tests and build`、`Repository governance` 全部通过。
+3. 通过独立 PR 将目标提交串行提升到 `release/real-pre`。
+4. 发布人确认目标是 40 位完整 SHA，并检查回滚版本。
+5. 真实推广写开关开启时，必须显式确认 `CONFIRM_REAL_PROMOTION_WRITE=true`。
+
+## Jenkins 参数
+
+| 参数 | 值 / 规则 |
+| --- | --- |
+| `DEPLOY_BRANCH` | 固定 `release/real-pre` |
+| `DEPLOY_REAL_PRE` | 发布人批准后设为 `true` |
+| `CONFIRM_REAL_PROMOTION_WRITE` | 真实推广写开启时必须为 `true` |
+| `ROLLBACK_APPROVED` | 仅批准回滚或非后继发布时为 `true` |
+
+## 串行与顺序门禁
+
+- 同 Job 使用 `disableConcurrentBuilds(abortPrevious: false)` 排队，不取消运行中的发布。
+- 所有 Job 共享 `saas-real-pre-deploy` 全局锁。
+- Jenkins 比较 `/opt/saas/releases/current.json` 或当前运行镜像的 SHA。
+- 目标不是当前版本后继提交时默认拒绝；只有 `ROLLBACK_APPROVED=true` 才允许。
+
+## 数据库边界
+
+- Jenkins 比较当前 SHA 与目标 SHA 的迁移输入。
+- 只有数据库 migration / 聚合迁移入口变化时，才执行备份、迁移和 Schema 预检。
+- 纯文档、Harness、前端或无迁移的后端变更记录 `RUN_DB_MIGRATIONS=false`，不得强制远端数据库操作。
+- 禁止临时 SQL、清库、删除 volume 和 `docker compose down -v`。
+
+## 发布成功条件
+
+以下证据全部一致后才允许更新 `current.json`：
+
+1. Jenkins 目标完整 SHA。
+2. 后端 `/api/system/health` 的 `gitSha` 与 `imageDigest`。
+3. 前端 `/version.json` 的 `gitSha`。
+4. 运行容器镜像 tag、Docker 内容摘要与 OCI revision。
+5. Flyway 成功版本查询。
+6. health、smoke 与多角色 E2E。
+
+发布清单位置：
+
+```text
+/opt/saas/releases/<完整SHA>/release.json
+/opt/saas/releases/current.json
+/opt/saas/releases/previous.json
 ```
 
-## 固定远端流程
+只有全部验证通过后才原子更新 `current.json`。失败时保持当前发布指针不变，并使用 `previous.json` / 部署前镜像执行受控回滚。
 
-1. `ssh` 进入远端目录。
-2. `git pull --ff-only`。
-3. `docker compose --env-file /opt/saas/env/.env.real-pre -f docker-compose.real-pre.yml up -d --build backend-real-pre frontend-real-pre`。
-4. `docker compose ps`。
-5. `curl http://127.0.0.1:8081/api/system/health`。
-6. `curl http://127.0.0.1:3001/healthz`。
+## Evidence
 
-## 部署前检查（同步参数）
-
-部署前必须确认远端 env 文件包含同步相关参数：
-
-```bash
-ssh saas "grep PRODUCT_ACTIVITY_SYNC /opt/saas/env/.env.real-pre"
-ssh saas "cd /opt/saas/app && docker compose --env-file /opt/saas/env/.env.real-pre -f docker-compose.real-pre.yml config | grep PRODUCT_ACTIVITY"
-```
-
-期望输出：
-
-```env
-PRODUCT_ACTIVITY_SYNC_ENABLED=true
-PRODUCT_ACTIVITY_SYNC_CRON=0 */5 * * * ?
-```
-
-如果 env 文件缺失，必须在部署前补充到远端 env 文件。compose 与 real-pre profile 仍提供默认值，但远端受控部署必须显式记录 `PRODUCT_ACTIVITY_SYNC_ENABLED=true` 和 5 分钟周期，避免环境漂移。
-
-远端启用前必须确认 `P-FIX-002B` 已修复 `uk_pos_one_displaying_per_product` 唯一索引冲突；否则 5 分钟同步会放大失败频率。
-
-## 部署后检查（同步任务）
-
-部署后必须验证同步任务配置已加载：
-
-```bash
-ssh saas "docker exec backend-real-pre printenv | grep PRODUCT_ACTIVITY"
-ssh saas "docker logs --tail=200 backend-real-pre 2>&1 | grep ProductActivitySyncJob"
-ssh saas "curl -s http://127.0.0.1:8081/api/system/health"
-ssh saas "curl -s http://127.0.0.1:3001/healthz"
-```
-
-期望日志：
-
-```
-ProductActivitySyncJob config: enabled=true, cron=0 */5 * * * ?, batchSize=20, whitelist=(all active)
-```
-
-远端启用后必须复核商品库数量，至少对账 `product_snapshot`、`product_operation_state`、`DISPLAYING` 数量和商品库 API total。
+- Jenkins artifact：`harness/reports/current/latest-jenkins-cd.md`
+- 服务器归档：`/opt/saas/runtime/qa/out/jenkins-<build>/latest-evidence-jenkins-cd.md`
+- 未执行数据库操作必须明确记录为 `false` / `SKIPPED`，不得写成已迁移。
 
 ## 禁止事项
 
-- 不执行 `down -v`。
-- 不删除 PostgreSQL / Redis volume。
-- 不把本机 `.env.real-pre` 复制到远端。
-- 不输出密钥或 Token。
-
-## 常见失败处理
-
-| 失败 | 处理 |
-| --- | --- |
-| SSH 不通 | 检查 `RemoteHost`、网络和密钥，不猜测密码 |
-| `git pull` 失败 | 检查远端工作区和分支，不强制 reset |
-| compose 构建失败 | 保留构建日志，标记 `FAIL` |
-| 健康检查失败 | 查容器日志和 env guard，标记 `FAIL` 或 `BLOCKED` |
+- 禁止 Agent 直接 SSH 部署或修改 `/opt/saas/app`。
+- 禁止从任务分支部署。
+- 禁止 `latest`、短 SHA、本地临时 tag。
+- 禁止修改共享 `/opt/saas/env/.env.real-pre`。
+- 禁止并行合并、并行迁移、并行远端 E2E 或并行部署。

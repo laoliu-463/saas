@@ -34,7 +34,9 @@ class SystemEnvControllerTest {
                 true,
                 false,
                 " saas_real ",
-                "jdbc:postgresql://localhost:5432/ignored"
+                "jdbc:postgresql://localhost:5432/ignored",
+                "test-sha",
+                "sha256:test"
         );
 
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/system/env");
@@ -67,7 +69,9 @@ class SystemEnvControllerTest {
                 false,
                 true,
                 "",
-                "jdbc:postgresql://localhost:5432/saas_test?currentSchema=public"
+                "jdbc:postgresql://localhost:5432/saas_test?currentSchema=public",
+                "test-sha",
+                "sha256:test"
         );
 
         Map<String, Object> body = controller.env().getData();
@@ -89,7 +93,9 @@ class SystemEnvControllerTest {
                 false,
                 false,
                 "",
-                "postgresql://localhost:5432/db name"
+                "postgresql://localhost:5432/db name",
+                "test-sha",
+                "sha256:test"
         );
 
         assertThat(controller.env().getData()).containsEntry("database", "db name");
@@ -105,7 +111,9 @@ class SystemEnvControllerTest {
                 false,
                 false,
                 "",
-                ""
+                "",
+                "test-sha",
+                "sha256:test"
         );
 
         assertThat(controller.env().getData()).containsEntry("database", "unknown");
@@ -122,7 +130,9 @@ class SystemEnvControllerTest {
                 false,
                 false,
                 "colonel_saas",
-                ""
+                "",
+                "test-sha",
+                "sha256:test"
         );
 
         assertThatThrownBy(controller::env)
@@ -150,7 +160,9 @@ class SystemEnvControllerTest {
                 false,
                 false,
                 "colonel_saas",
-                ""
+                "",
+                "test-sha",
+                "sha256:test"
         );
 
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/system/env");
@@ -164,7 +176,7 @@ class SystemEnvControllerTest {
     }
 
     @Test
-    void health_returnsOnlyUpStatus() throws Exception {
+    void health_returnsUpStatusAndImmutableReleaseIdentity() throws Exception {
         MockEnvironment environment = new MockEnvironment();
         SystemEnvController controller = new SystemEnvController(
                 environment,
@@ -173,13 +185,17 @@ class SystemEnvControllerTest {
                 true,
                 true,
                 "saas_test",
-                ""
+                "",
+                "0123456789abcdef0123456789abcdef01234567",
+                "sha256:0123456789abcdef"
         );
         MockMvc mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
 
         mockMvc.perform(get("/system/health"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("UP"))
+                .andExpect(jsonPath("$.gitSha").value("0123456789abcdef0123456789abcdef01234567"))
+                .andExpect(jsonPath("$.imageDigest").value("sha256:0123456789abcdef"))
                 .andExpect(jsonPath("$.database").doesNotExist())
                 .andExpect(jsonPath("$.activeProfiles").doesNotExist());
     }

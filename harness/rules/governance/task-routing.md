@@ -4,7 +4,7 @@
 
 任务开始后先判断所属类型和领域，再读取对应文档。不能只凭文件名或报错内容直接下结论。
 
-默认执行环境为本地 `real-pre`。除非用户明确要求 `test`，或专项测试只能在 `test` 中验证，否则后端、前端、全链路和 Harness 变更都应使用 `-Env real-pre`。远端 `real-pre` 部署仍只在用户明确要求时添加 `-DeployRemote true`。
+默认执行环境为本地 `real-pre`。除非用户明确要求 `test`，或专项测试只能在 `test` 中验证，否则后端、前端、全链路和 Harness 变更都应使用 `-Env real-pre`。远端发布必须经 `main -> release/real-pre -> Jenkins` 唯一队列，普通 Agent 不得直接部署。
 
 所有 `agent-do.ps1` 调用必须提供稳定 `-ReportKey <key>` 和显式 `-OwnedFiles '<path1>;<path2>'`。Evidence 覆盖 `reports/current/latest-<key>.md`；retro 默认内联。
 
@@ -19,7 +19,7 @@
 | 第三方 API 联调 | `docs/08-第三方对接总览.md`、`docs/对接/*.md`、`docs/验收/real-pre联调手册.md`、`harness/rules/runbooks/third-party-integration.md` | `harness/rules/skills/ddd/real-pre-debug.skill.md` | `full` | `npm run e2e:real-pre:p0:preflight` | 真实 Token/开关/上游响应；缺权限或样本只能记 `BLOCKED`/`PENDING` |
 | Docker / 容器 / 服务重启 | `docs/10-部署运行总览.md`、`harness/rules/environment/envs/docker-compose-map.md`、`harness/rules/runbooks/governance/docker-compose-operations.md` | `harness/rules/governance/forbidden-scope.md` | 按任务 | `restart-compose.ps1`、`verify-local.ps1` | 不执行 `down -v`；记录 compose ps、健康检查 |
 | 本地部署 / real-pre 变更 | `docs/10-部署运行总览.md`、`harness/rules/environment/envs/real-pre-env.md`、`harness/rules/runbooks/real-pre-change.md` | `docs/deploy/README.md` | `full` | `agent-do.ps1 -Env real-pre -Scope full` | 构建、重启、健康、preflight、稳定 evidence |
-| 远端部署 | `harness/rules/environment/envs/remote-real-pre-env.md`、`harness/rules/runbooks/remote-deploy.md`、`docs/deploy/README.md` | `docs/10-部署运行总览.md` | `full` | 仅用户明确要求时加 `-DeployRemote true` | 远端 docker ps、后端健康、前端健康、部署报告 |
+| 远端发布 | `harness/rules/environment/envs/remote-real-pre-env.md`、`harness/rules/runbooks/remote-deploy.md`、`harness/rules/cicd-real-pre-policy.md` | `docs/10-部署运行总览.md` | Jenkins | 提升 PR 到 `release/real-pre`，由 `saas-real-pre-cd` 排队 | 完整 SHA、镜像摘要、运行版本、Flyway、发布清单与 Jenkins 报告 |
 | 测试与验收 | `docs/09-测试验收总览.md`、`docs/验收/*.md`、`harness/rules/runbooks/governance/test-validation.md` | 对应 eval | 按任务 | `npm run e2e:v1-p0`、`npm run e2e:real-pre:p0:preflight`、`mvn -f backend/pom.xml test` | 测试报告、失败截图/日志、结论不能夸大 |
 | 业务规则修改 | `docs/01-V2交付范围与边界.md`、对应领域合同、对应流程、`docs/决策/ADR-002-V1范围优先级.md`、`docs/决策/ADR-010-仓库阶段口径拍板为V2.md` | `harness/rules/governance/domains-map.md` | `full` | 按领域选择 `agent-do.ps1` Scope | 明确业务来源、状态机合法性、历史数据影响、回归测试 |
 | Bug 排查 | `harness/rules/state/snapshots/01-当前项目状态.md`、`harness/rules/state/snapshots/KNOWN_ISSUES.md`、对应领域/流程/API/数据文档 | 相关 skill、日志、最近 diff | 先不定 | 先收集日志/API/DB 证据，再选 Scope | 复现路径、证据链、阶段性结论、修复后验证 |
@@ -172,15 +172,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\a
 # real-pre 全链路验证
 powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\agent-do.ps1 -Env real-pre -Scope full -ReportKey task-key -OwnedFiles 'path1;path2' -Message "fix: update real-pre flow"
 
-# 远端部署（用户明确要求时）
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\agent-do.ps1 -Env real-pre -Scope full -ReportKey task-key -OwnedFiles 'path1;path2' -DeployRemote true -Message "deploy: real-pre update"
+# 远端发布前的本地候选验证；本命令不会部署服务器
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\agent-do.ps1 -Env real-pre -Scope full -ReportKey task-key -OwnedFiles 'path1;path2' -Message "release: validate real-pre candidate"
 ```
 
-远端部署只有用户明确要求时才加：
-
-```powershell
--DeployRemote true
-```
+`-DeployRemote true` 已停用。远端发布只能由 Jenkins 从 `release/real-pre` 执行。
 
 ## 直接子命令
 
@@ -194,6 +190,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\a
 # 旧内容维护候选计划
 powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\retire-content.ps1 -Action Plan -DryRun
 
-# 远端部署子命令
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\deploy-remote.ps1 -Env real-pre -RemoteHost saas -RemoteDir /opt/saas/app -DryRun
+# 直接 SSH 部署入口已退休；调用会失败并提示进入 Jenkins 发布队列
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\deploy-remote.ps1 -DryRun
 ```

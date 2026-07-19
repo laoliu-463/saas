@@ -2,15 +2,16 @@ pipeline {
     agent any
 
     options {
-        disableConcurrentBuilds()
+        disableConcurrentBuilds(abortPrevious: false)
         buildDiscarder(logRotator(numToKeepStr: '20'))
         skipDefaultCheckout(true)
     }
 
     parameters {
-        string(name: 'DEPLOY_BRANCH', defaultValue: 'codex/ddd-user-role-application', description: 'Controlled real-pre CD branch.')
+        string(name: 'DEPLOY_BRANCH', defaultValue: 'release/real-pre', description: 'Only release/real-pre is deployable.')
         booleanParam(name: 'DEPLOY_REAL_PRE', defaultValue: false, description: 'Explicit approval required to deploy real-pre.')
         booleanParam(name: 'CONFIRM_REAL_PROMOTION_WRITE', defaultValue: false, description: 'Required only when real-pre promotion-write switches are enabled.')
+        booleanParam(name: 'ROLLBACK_APPROVED', defaultValue: false, description: 'Explicit approval required when the target is not a descendant of the deployed commit.')
     }
 
     environment {
@@ -22,10 +23,12 @@ pipeline {
         PROJECT_NAME = 'saas-active'
         REAL_PRE_BACKEND = 'http://127.0.0.1:8081'
         REAL_PRE_FRONTEND = 'http://127.0.0.1:3001'
-        RUN_DB_MIGRATIONS = 'true'
+        RUN_DB_MIGRATIONS = ''
         IMAGE_TAG = ''
         FULL_COMMIT = ''
         BUILD_BRANCH = ''
+        BACKEND_IMAGE_DIGEST = ''
+        FRONTEND_IMAGE_DIGEST = ''
     }
 
     stages {
@@ -46,7 +49,7 @@ pipeline {
                   /var/lib/jenkins/.cache/saas-real-pre-cd/pnpm-store
                 full_commit="$(git rev-parse HEAD)"
                 image_tag="$full_commit"
-                build_branch="${DEPLOY_BRANCH:-codex/ddd-user-role-application}"
+                build_branch="${DEPLOY_BRANCH:-release/real-pre}"
                 {
                   printf 'FULL_COMMIT=%s\n' "$full_commit"
                   printf 'IMAGE_TAG=%s\n' "$image_tag"
@@ -77,8 +80,8 @@ pipeline {
                   echo "ERROR: DEPLOY_REAL_PRE must be true for this real-pre CD job."
                   exit 1
                 fi
-                if [ "$RUN_DB_MIGRATIONS" != "true" ]; then
-                  echo "ERROR: compatible database migrations are mandatory for this CD closure."
+                if [ "$BUILD_BRANCH" != "release/real-pre" ]; then
+                  echo "ERROR: only release/real-pre may deploy real-pre."
                   exit 1
                 fi
                 if [ "$COMPOSE_FILE" != "docker-compose.real-pre.yml" ]; then
@@ -93,6 +96,25 @@ pipeline {
                   echo "ERROR: IMAGE_TAG must be the full 40-character commit SHA."
                   exit 1
                 fi
+                remote_release="$(git ls-remote "$CD_GIT_URL" refs/heads/release/real-pre | awk '{print $1}')"
+                if [ -z "$remote_release" ] || [ "$remote_release" != "$FULL_COMMIT" ]; then
+                  echo "ERROR: checkout SHA is not the current release/real-pre head."
+                  exit 1
+                fi
+                git fetch --no-tags origin main
+                target_tree="$(git rev-parse "$FULL_COMMIT^{tree}")"
+                source_main_sha="$(git rev-list origin/main | while read -r candidate; do
+                  if [ "$(git rev-parse "$candidate^{tree}")" = "$target_tree" ]; then
+                    printf '%s\n' "$candidate"
+                    break
+                  fi
+                done)"
+                if ! printf '%s' "$source_main_sha" | grep -Eq '^[0-9a-f]{40}$'; then
+                  echo "ERROR: release tree does not match any commit reachable from main."
+                  exit 1
+                fi
+                printf 'SOURCE_MAIN_SHA=%s\n' "$source_main_sha" >> runtime/qa/out/jenkins/cd-env.sh
+                printf '%s\n' "$source_main_sha" > runtime/qa/out/jenkins/source-main-sha.txt
                 ln -sfn "$ENV_FILE" .env.real-pre
                 chmod +x scripts/*.sh || true
 
@@ -270,6 +292,20 @@ pipeline {
                 docker image inspect "colonel-saas/frontend:$IMAGE_TAG" >/dev/null
                 test "$(docker image inspect "colonel-saas/backend:$IMAGE_TAG" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')" = "$FULL_COMMIT"
                 test "$(docker image inspect "colonel-saas/frontend:$IMAGE_TAG" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')" = "$FULL_COMMIT"
+                backend_image_digest="$(docker image inspect "colonel-saas/backend:$IMAGE_TAG" --format '{{.Id}}')"
+                frontend_image_digest="$(docker image inspect "colonel-saas/frontend:$IMAGE_TAG" --format '{{.Id}}')"
+                for image_digest in "$backend_image_digest" "$frontend_image_digest"; do
+                  if ! printf '%s' "$image_digest" | grep -Eq '^sha256:[0-9a-f]{64}$'; then
+                    echo "ERROR: Docker image digests must be content-addressed sha256 values."
+                    exit 1
+                  fi
+                done
+                {
+                  printf 'BACKEND_IMAGE_DIGEST=%s\n' "$backend_image_digest"
+                  printf 'FRONTEND_IMAGE_DIGEST=%s\n' "$frontend_image_digest"
+                } >> runtime/qa/out/jenkins/cd-env.sh
+                printf '%s\n' "$backend_image_digest" > runtime/qa/out/jenkins/backend-image-digest.txt
+                printf '%s\n' "$frontend_image_digest" > runtime/qa/out/jenkins/frontend-image-digest.txt
                 '''
             }
         }
@@ -286,11 +322,73 @@ pipeline {
             }
         }
 
+        stage('Serialized real-pre release') {
+            options {
+                lock(resource: 'saas-real-pre-deploy', inversePrecedence: false)
+            }
+            stages {
+        stage('Release Order and Migration Guard') {
+            steps {
+                sh '''#!/usr/bin/env bash
+                set -eu
+                . runtime/qa/out/jenkins/cd-env.sh
+                release_root="/opt/saas/releases"
+                current_manifest="$release_root/current.json"
+                mkdir -p "$release_root"
+
+                current_sha=""
+                if [ -f "$current_manifest" ]; then
+                  current_sha="$(grep -Eo '"gitSha"[[:space:]]*:[[:space:]]*"[0-9a-f]{40}"' "$current_manifest" | grep -Eo '[0-9a-f]{40}' | head -n 1)"
+                fi
+                if [ -z "$current_sha" ]; then
+                  current_container="$(docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" ps -q backend-real-pre 2>/dev/null || true)"
+                  if [ -n "$current_container" ]; then
+                    current_image_id="$(docker inspect "$current_container" --format '{{.Image}}')"
+                    current_sha="$(docker image inspect "$current_image_id" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' 2>/dev/null || true)"
+                  fi
+                fi
+                if ! printf '%s' "$current_sha" | grep -Eq '^[0-9a-f]{40}$'; then
+                  echo "ERROR: current deployed SHA is unavailable; refusing an unordered release."
+                  exit 1
+                fi
+                git cat-file -e "$current_sha^{commit}"
+                if ! git merge-base --is-ancestor "$current_sha" "$FULL_COMMIT"; then
+                  if [ "${ROLLBACK_APPROVED:-false}" != "true" ]; then
+                    echo "ERROR: target is not a descendant of current deployment; set ROLLBACK_APPROVED=true only for an approved rollback."
+                    exit 1
+                  fi
+                  echo "Approved rollback/non-descendant release: $current_sha -> $FULL_COMMIT"
+                fi
+
+                RUN_DB_MIGRATIONS=false
+                if ! git diff --quiet "$current_sha" "$FULL_COMMIT" -- \
+                  backend/src/main/resources/db/migration \
+                  ':(glob)backend/src/main/resources/db/*.sql' \
+                  scripts/run-real-pre-db-migrations.sh; then
+                  RUN_DB_MIGRATIONS=true
+                fi
+                {
+                  printf 'CURRENT_SHA=%s\n' "$current_sha"
+                  printf 'RUN_DB_MIGRATIONS=%s\n' "$RUN_DB_MIGRATIONS"
+                } >> runtime/qa/out/jenkins/cd-env.sh
+                printf '%s\n' "$current_sha" > runtime/qa/out/jenkins/current-sha.txt
+                printf '%s\n' "$RUN_DB_MIGRATIONS" > runtime/qa/out/jenkins/run-db-migrations.txt
+                echo "Release order guard passed: $current_sha -> $FULL_COMMIT; RUN_DB_MIGRATIONS=$RUN_DB_MIGRATIONS"
+                '''
+            }
+        }
+
         stage('Database Backup, Migration and Schema Precheck') {
             steps {
                 sh '''#!/usr/bin/env bash
                 set -eu
                 . runtime/qa/out/jenkins/cd-env.sh
+                if [ "$RUN_DB_MIGRATIONS" != "true" ]; then
+                  echo "Database work skipped: no migration inputs changed" | tee runtime/qa/out/jenkins/database-migration.txt
+                  printf '%s\n' "SKIPPED: no migration inputs changed" > runtime/qa/out/jenkins/database-backup.txt
+                  printf '%s\n' "SKIPPED: no migration inputs changed" > runtime/qa/out/jenkins/schema-precheck.txt
+                  exit 0
+                fi
                 backup_dir="/opt/saas/backups/jenkins-${BUILD_NUMBER:-manual}"
                 mkdir -p "$backup_dir"
 
@@ -299,7 +397,8 @@ pipeline {
                   bash scripts/backup-db.sh | tee runtime/qa/out/jenkins/database-backup.txt
 
                 ENV_FILE="$ENV_FILE" COMPOSE_FILE="$COMPOSE_FILE" \
-                  COMPOSE_PROJECT_NAME="$PROJECT_NAME" IMAGE_TAG="$IMAGE_TAG" REQUIRE_PINNED_IMAGE=true \
+                  COMPOSE_PROJECT_NAME="$PROJECT_NAME" IMAGE_TAG="$IMAGE_TAG" \
+                  BACKEND_IMAGE_DIGEST="$BACKEND_IMAGE_DIGEST" REQUIRE_PINNED_IMAGE=true \
                   sh scripts/run-real-pre-db-migrations.sh | tee runtime/qa/out/jenkins/database-migration.txt
 
                 REAL_PRE_COMPOSE_ENV="$ENV_FILE" REAL_PRE_COMPOSE_FILE="$COMPOSE_FILE" \
@@ -322,7 +421,7 @@ pipeline {
                 docker inspect saas-active-frontend-real-pre-1 --format '{{.Config.Image}}' > runtime/qa/out/jenkins/pre-frontend-image.txt 2>/dev/null || true
 
                 echo "Deploying backend real-pre with schedulers paused, image tag: $IMAGE_TAG"
-                APP_SCHEDULING_ENABLED=false IMAGE_TAG="$IMAGE_TAG" COMPOSE_PROJECT_NAME="$PROJECT_NAME" \
+                APP_SCHEDULING_ENABLED=false IMAGE_TAG="$IMAGE_TAG" BACKEND_IMAGE_DIGEST="$BACKEND_IMAGE_DIGEST" COMPOSE_PROJECT_NAME="$PROJECT_NAME" \
                   docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d --no-build --no-deps backend-real-pre
                 touch runtime/qa/out/jenkins/schedulers-paused
 
@@ -379,7 +478,7 @@ pipeline {
                 sh '''#!/usr/bin/env bash
                 set -eu
                 . runtime/qa/out/jenkins/cd-env.sh
-                APP_SCHEDULING_ENABLED=true IMAGE_TAG="$IMAGE_TAG" COMPOSE_PROJECT_NAME="$PROJECT_NAME" \
+                APP_SCHEDULING_ENABLED=true IMAGE_TAG="$IMAGE_TAG" BACKEND_IMAGE_DIGEST="$BACKEND_IMAGE_DIGEST" COMPOSE_PROJECT_NAME="$PROJECT_NAME" \
                   docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d --no-build --no-deps backend-real-pre
                 for _ in $(seq 1 120); do
                   if curl -fsS "$REAL_PRE_BACKEND/api/actuator/health/readiness" | grep -q '"status":"UP"'; then
@@ -408,10 +507,11 @@ pipeline {
                 old_frontend_image="$(cat runtime/qa/out/jenkins/pre-frontend-image.txt 2>/dev/null || true)"
                 old_backend_tag="${old_backend_image##*:}"
                 old_frontend_tag="${old_frontend_image##*:}"
+                old_backend_image_id="$(docker image inspect "$old_backend_image" --format '{{.Id}}' 2>/dev/null || true)"
 
-                if [ -n "$old_backend_tag" ] && [ "$old_backend_tag" = "$old_frontend_tag" ]; then
+                if [ -n "$old_backend_tag" ] && [ "$old_backend_tag" = "$old_frontend_tag" ] && [ -n "$old_backend_image_id" ]; then
                   echo "Rollback image tag: $old_backend_tag"
-                  IMAGE_TAG="$old_backend_tag" COMPOSE_PROJECT_NAME="$PROJECT_NAME" \
+                  IMAGE_TAG="$old_backend_tag" BACKEND_IMAGE_DIGEST="$old_backend_image_id" COMPOSE_PROJECT_NAME="$PROJECT_NAME" \
                     docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d --no-build --no-deps backend-real-pre || true
                   IMAGE_TAG="$old_backend_tag" COMPOSE_PROJECT_NAME="$PROJECT_NAME" \
                     docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d --no-build --no-deps frontend-real-pre || true
@@ -436,18 +536,80 @@ pipeline {
                 evidence_result="PASS"
                 backend_health=""
                 frontend_health=""
+                frontend_version=""
                 migration_versions=""
                 backend_image_id=""
                 frontend_image_id=""
-                if ! backend_health="$(curl -fsS "$REAL_PRE_BACKEND/api/actuator/health/readiness")"; then evidence_result="FAIL"; fi
+                backend_container="$(docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" ps -q backend-real-pre)"
+                frontend_container="$(docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" ps -q frontend-real-pre)"
+                backend_running_image="$(docker inspect "$backend_container" --format '{{.Config.Image}}')"
+                frontend_running_image="$(docker inspect "$frontend_container" --format '{{.Config.Image}}')"
+                backend_running_id="$(docker inspect "$backend_container" --format '{{.Image}}')"
+                frontend_running_id="$(docker inspect "$frontend_container" --format '{{.Image}}')"
+                backend_revision="$(docker image inspect "$backend_running_id" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')"
+                frontend_revision="$(docker image inspect "$frontend_running_id" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')"
+                if ! backend_health="$(curl -fsS "$REAL_PRE_BACKEND/api/system/health")"; then evidence_result="FAIL"; fi
                 if ! frontend_health="$(curl -fsS "$REAL_PRE_FRONTEND/healthz")"; then evidence_result="FAIL"; fi
+                if ! frontend_version="$(curl -fsS "$REAL_PRE_FRONTEND/version.json")"; then evidence_result="FAIL"; fi
                 if ! migration_versions="$(docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" exec -T postgres-real-pre sh -lc 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -At -v ON_ERROR_STOP=1 -c "SELECT version FROM flyway_schema_history WHERE success ORDER BY installed_rank;"')"; then evidence_result="FAIL"; fi
                 if ! backend_image_id="$(docker image inspect "colonel-saas/backend:$IMAGE_TAG" --format '{{.Id}}')"; then evidence_result="FAIL"; fi
                 if ! frontend_image_id="$(docker image inspect "colonel-saas/frontend:$IMAGE_TAG" --format '{{.Id}}')"; then evidence_result="FAIL"; fi
-                printf '%s\n' "$migration_versions" | grep -q '20260718.001' || evidence_result="FAIL"
-                printf '%s\n' "$migration_versions" | grep -q '20260718.002' || evidence_result="FAIL"
                 printf '%s\n' "$backend_health" | grep -q '"status":"UP"' || evidence_result="FAIL"
+                printf '%s\n' "$backend_health" | grep -Eq "\"gitSha\"[[:space:]]*:[[:space:]]*\"$FULL_COMMIT\"" || evidence_result="FAIL"
+                printf '%s\n' "$backend_health" | grep -Eq "\"imageDigest\"[[:space:]]*:[[:space:]]*\"$BACKEND_IMAGE_DIGEST\"" || evidence_result="FAIL"
+                printf '%s\n' "$frontend_version" | grep -Eq "\"gitSha\"[[:space:]]*:[[:space:]]*\"$FULL_COMMIT\"" || evidence_result="FAIL"
                 test -n "$frontend_health" || evidence_result="FAIL"
+                test "$backend_running_image" = "colonel-saas/backend:$IMAGE_TAG" || evidence_result="FAIL"
+                test "$frontend_running_image" = "colonel-saas/frontend:$IMAGE_TAG" || evidence_result="FAIL"
+                test "$backend_running_id" = "$BACKEND_IMAGE_DIGEST" || evidence_result="FAIL"
+                test "$frontend_running_id" = "$FRONTEND_IMAGE_DIGEST" || evidence_result="FAIL"
+                test "$backend_image_id" = "$BACKEND_IMAGE_DIGEST" || evidence_result="FAIL"
+                test "$frontend_image_id" = "$FRONTEND_IMAGE_DIGEST" || evidence_result="FAIL"
+                test "$backend_revision" = "$FULL_COMMIT" || evidence_result="FAIL"
+                test "$frontend_revision" = "$FULL_COMMIT" || evidence_result="FAIL"
+
+                release_root="/opt/saas/releases"
+                release_dir="$release_root/$FULL_COMMIT"
+                release_candidate="runtime/qa/out/jenkins/release.json"
+                release_manifest="$release_dir/release.json"
+                cat > "$release_candidate" <<EOF
+                {
+                  "gitSha": "$FULL_COMMIT",
+                  "sourceMainSha": "$SOURCE_MAIN_SHA",
+                  "branch": "$BUILD_BRANCH",
+                  "backend": {
+                    "tag": "colonel-saas/backend:$IMAGE_TAG",
+                    "digest": "$BACKEND_IMAGE_DIGEST",
+                    "revision": "$backend_revision"
+                  },
+                  "frontend": {
+                    "tag": "colonel-saas/frontend:$IMAGE_TAG",
+                    "digest": "$FRONTEND_IMAGE_DIGEST",
+                    "revision": "$frontend_revision"
+                  }
+                }
+EOF
+
+                if [ "$evidence_result" = "PASS" ]; then
+                  mkdir -p "$release_dir"
+                  if [ -f "$release_manifest" ]; then
+                    cmp -s "$release_candidate" "$release_manifest" || {
+                      echo "ERROR: immutable release manifest already exists with different content."
+                      evidence_result="FAIL"
+                    }
+                  else
+                    install -m 0444 "$release_candidate" "$release_manifest"
+                  fi
+                fi
+                if [ "$evidence_result" = "PASS" ]; then
+                  current_sha="$(cat runtime/qa/out/jenkins/current-sha.txt)"
+                  if [ -f "$release_root/current.json" ] && [ "$current_sha" != "$FULL_COMMIT" ]; then
+                    cp "$release_root/current.json" "$release_root/previous.json.tmp"
+                    mv "$release_root/previous.json.tmp" "$release_root/previous.json"
+                  fi
+                  cp "$release_manifest" "$release_root/current.json.tmp"
+                  mv "$release_root/current.json.tmp" "$release_root/current.json"
+                fi
 
                 {
                   echo "# Jenkins CD Evidence"
@@ -457,13 +619,14 @@ pipeline {
                   echo "- Source: $CD_GIT_URL"
                   echo "- Branch: $BUILD_BRANCH"
                   echo "- Commit: $FULL_COMMIT"
+                  echo "- Source main commit: $SOURCE_MAIN_SHA"
                   echo "- Image tag: $IMAGE_TAG"
                   echo "- Jenkins job: ${JOB_NAME:-unknown}"
                   echo "- Build number: ${BUILD_NUMBER:-unknown}"
                   echo "- Build URL: ${BUILD_URL:-unknown}"
                   echo "- Time: $(date -Iseconds)"
                   echo "- Production touched: NO"
-                  echo "- Database migration/write by pipeline: YES (additive versioned migrations only)"
+                  echo "- Database migration/write by pipeline: $RUN_DB_MIGRATIONS"
                   echo "- Backup/restore validation: $(tail -n 1 runtime/qa/out/jenkins/database-backup.txt 2>/dev/null || echo missing)"
                   echo "- Previous backend image: $(cat runtime/qa/out/jenkins/pre-backend-image.txt 2>/dev/null || echo unknown)"
                   echo "- Previous frontend image: $(cat runtime/qa/out/jenkins/pre-frontend-image.txt 2>/dev/null || echo unknown)"
@@ -475,6 +638,9 @@ pipeline {
                   echo '```'
                   echo "- Backend image ID: $backend_image_id"
                   echo "- Frontend image ID: $frontend_image_id"
+                  echo "- Backend OCI revision: $backend_revision"
+                  echo "- Frontend OCI revision: $frontend_revision"
+                  echo "- Release manifest: $release_manifest"
                   echo
                   echo "## Database Migration Versions"
                   echo '```'
@@ -485,6 +651,7 @@ pipeline {
                   echo '```'
                   printf '%s\n' "$backend_health"
                   printf '%s\n' "$frontend_health"
+                  printf '%s\n' "$frontend_version"
                   echo '```'
                 } > "$report"
 
@@ -492,6 +659,8 @@ pipeline {
                 cat "$report"
                 test "$evidence_result" = PASS
                 '''
+            }
+        }
             }
         }
     }
@@ -507,7 +676,7 @@ pipeline {
             mkdir -p runtime/qa/out/jenkins harness/reports/current "/opt/saas/runtime/qa/out/jenkins-${BUILD_NUMBER:-manual}"
             if [ -f runtime/qa/out/jenkins/schedulers-paused ]; then
               echo "Restoring schedulers after interrupted deployment flow."
-              if APP_SCHEDULING_ENABLED=true IMAGE_TAG="$IMAGE_TAG" COMPOSE_PROJECT_NAME="$PROJECT_NAME" \
+              if APP_SCHEDULING_ENABLED=true IMAGE_TAG="$IMAGE_TAG" BACKEND_IMAGE_DIGEST="$BACKEND_IMAGE_DIGEST" COMPOSE_PROJECT_NAME="$PROJECT_NAME" \
                 docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d --no-build --no-deps backend-real-pre; then
                 rm -f runtime/qa/out/jenkins/schedulers-paused
               else

@@ -59,7 +59,7 @@
 -> 旧内容维护计划 / 归档 / 删除候选报告
 -> 生成/覆盖稳定 evidence，并内联 retro 结论
 -> Git 提交与推送
--> 按用户明确要求部署远端
+-> 按用户明确要求提交发布候选，由 Jenkins 队列部署远端
 -> 仅在存在可执行改进时生成独立 retro
 -> 必要时升级 Harness 并更新 HARNESS_CHANGELOG.md
 -> 输出结论和剩余风险
@@ -73,7 +73,7 @@
 powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\agent-do.ps1 -Env real-pre -Scope full -ReportKey task-key -OwnedFiles 'path1;path2' -Message "说明本次修改"
 ```
 
-`ReportKey` 使用稳定主题键；`OwnedFiles` 逐项列出当前任务拥有的仓库相对路径。自动生成的 evidence、content-retire 报告和归档目标由脚本合并进任务文件集合。后续 Agent 不允许临时发明构建、重启、部署流程。除非用户明确要求 `test`，默认使用本地 `real-pre`；远端部署仍必须由用户明确要求后再传 `-DeployRemote true`。
+`ReportKey` 使用稳定主题键；`OwnedFiles` 逐项列出当前任务拥有的仓库相对路径。自动生成的 evidence、content-retire 报告和归档目标由脚本合并进任务文件集合。后续 Agent 不允许临时发明构建、重启、部署流程。除非用户明确要求 `test`，默认使用本地 `real-pre`；`-DeployRemote true` 已停用，远端只能由 Jenkins 从 `release/real-pre` 部署。
 
 ## Completion Gate：禁止提前完成
 
@@ -127,7 +127,7 @@ Session Exit Gate 证明"仓库是否处于可交接状态"。
 - 已生成旧内容维护计划，或明确说明本轮无需整理归档删除。
 - 已生成或覆盖 `harness/reports/current/latest-<topic>.md`。
 - Git commit 已生成并 push 到当前分支上游，或明确说明本轮被用户要求不提交 / 推送。
-- 若用户明确要求远端部署，远端部署完成并记录远端健康检查。
+- 若用户明确要求发布，候选已进入 `release/real-pre` 与 Jenkins 队列，并记录 Jenkins 结果、远端健康和版本一致性证据。
 - Evidence 已内联 retro 结论；只有存在责任人、改进动作和验证方式时才生成独立 retro。
 - 剩余风险已列出。
 - 统一最终输出模板已按 `harness/rules/governance/COMPLETION_GATES.md` 格式填写。
