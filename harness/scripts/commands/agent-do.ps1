@@ -268,6 +268,12 @@ try {
             -SkipBackup:$SkipRemoteBackup `
             -DryRun:$DryRun
         $remoteResult = "Remote deploy: PASS"
+        $remoteConclusion = if ($SkipBusinessValidation -or $Scope -eq "docs" -or $Scope -eq "apifox") {
+            "PARTIAL"
+        }
+        else {
+            "PASS"
+        }
         $remoteReportPath = & (Join-Path $PSScriptRoot "collect-evidence.ps1") `
             -Env $TargetEnv `
             -Scope $Scope `
@@ -276,7 +282,7 @@ try {
             -BusinessResult $businessResult `
             -ContentMaintenanceResult $contentMaintenanceResult `
             -RemoteResult $remoteResult `
-            -Conclusion "PASS" `
+            -Conclusion $remoteConclusion `
             -DeployRemote $true `
             -ReportKey $ReportKey `
             -OwnedFiles $taskOwnedFiles `
@@ -290,7 +296,7 @@ try {
                 -Message "docs(harness): record remote deployment evidence" `
                 -OwnedFiles @($remoteReportRelative)
         }
-        $conclusion = "PASS"
+        $conclusion = $remoteConclusion
     }
 
     Write-Host "Review HARNESS_CHANGELOG.md and update it when Harness behavior changed." -ForegroundColor Yellow

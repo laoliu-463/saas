@@ -65,6 +65,8 @@ Describe 'GitHub Actions CI contract' {
 
         $content | Should Match '(?m)^  pull_request:\s*$'
         $content | Should Match '(?m)^  merge_group:\s*$'
+        $content | Should Match '(?m)^\s{6}- main\s*$'
+        $content | Should Match '(?m)^\s{6}- release/real-pre\s*$'
         $content | Should Not Match 'paths-ignore:\s*[\r\n]+\s*-\s*"?harness/reports/'
     }
 
@@ -87,13 +89,11 @@ Describe 'GitHub Actions CI contract' {
         }
     }
 
-    It 'declares isolated PostgreSQL and Redis service containers without repository migrations' {
+    It 'starts isolated PostgreSQL and Redis dependencies without applying repository migrations' {
         $content = Get-Content -Raw -LiteralPath $ciPath
 
-        $content | Should Match '(?ms)^\s{4}services:\s*\r?\n\s{6}postgres:.*?\r?\n\s{6}redis:'
-        $content | Should Match 'image:\s*postgres:15-alpine'
-        $content | Should Match 'image:\s*redis:7-alpine'
-        $content | Should Not Match 'docker-compose\.test\.yml'
+        $content | Should Match 'docker compose --project-name saas-ci-test --file docker-compose\.test\.yml up -d --wait postgres redis'
+        $content | Should Match 'docker compose --project-name saas-ci-test --file docker-compose\.test\.yml down --remove-orphans'
         $content | Should Not Match 'migrate-all\.sql'
         $content | Should Match 'mvn -B test'
     }

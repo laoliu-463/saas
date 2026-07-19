@@ -4,8 +4,6 @@ on:
   push:
     branches:
       - "**"
-    paths-ignore:
-      - "harness/reports/**"
   pull_request:
     branches:
       - main
@@ -27,6 +25,9 @@ jobs:
     name: Backend tests
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    env:
+      DB_PASSWORD: ci-test-placeholder
+      REDIS_PASSWORD: ci-test-placeholder
     defaults:
       run:
         working-directory: backend
@@ -60,12 +61,22 @@ jobs:
           DB_PORT: "5432"
           DB_NAME: colonel_saas_test
           DB_USER: saas
-          DB_PASSWORD: saas123
           REDIS_HOST: 127.0.0.1
           REDIS_PORT: "6379"
-          REDIS_PASSWORD: test-redis123
           REDIS_DATABASE: "1"
         run: mvn -B test
+
+      - name: Capture dependency diagnostics
+        if: failure()
+        working-directory: .
+        run: |
+          docker compose --project-name saas-ci-test --file docker-compose.test.yml ps --all
+          docker compose --project-name saas-ci-test --file docker-compose.test.yml logs --no-color --tail=300 postgres redis
+
+      - name: Stop isolated test dependencies
+        if: always()
+        working-directory: .
+        run: docker compose --project-name saas-ci-test --file docker-compose.test.yml down --remove-orphans
 
   frontend:
     name: Frontend tests and build

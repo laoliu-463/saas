@@ -5,7 +5,7 @@
 ## 1. 开始任务
 
 1. 先创建或认领 GitHub Issue，补齐现象、证据、范围和验收标准。
-2. 从当前默认集成分支 `feature/auth-system` 的最新远端提交创建独立 worktree。
+2. 从受保护默认分支 `main` 的最新远端提交创建独立 worktree。
 3. 分支使用 `<类型>/<issue>-<slug>`；Codex 默认使用 `codex/<issue>-<slug>`。
 4. 执行 Git Intake Gate，确认工作区无来源不明的 dirty 文件。
 
@@ -13,10 +13,10 @@
 
 ```powershell
 git fetch origin
-git worktree add -b codex/166-git-governance-phase1 .worktrees/git-governance-phase1 origin/feature/auth-system
+git worktree add -b codex/123-task-slug .worktrees/123-task-slug origin/main
 ```
 
-默认分支完成迁移后，应同步更新本文件和 CI 的目标分支；不得在单个任务中自行切换默认分支。
+`main` 是唯一集成主线；`release/real-pre` 只接收已经在 `main` 验证并获准进入 real-pre 发布队列的提交。
 
 ## 2. 开发与提交
 
@@ -33,7 +33,7 @@ git worktree add -b codex/166-git-governance-phase1 .worktrees/git-governance-ph
 2. PR 必须关联 Issue，列出 Owned files、风险、回滚、数据库影响、部署需求、验证结果和 evidence。
 3. 未完成或存在阻塞时保持 Draft，结论使用 `PARTIAL` / `BLOCKED`，不能写成已完成。
 4. CI 全部通过并完成评审后才能标记 Ready for review。
-5. 禁止直接推送默认分支；启用 Merge Queue 后，只有队列可以执行最终串行合并。
+5. 禁止直接推送 `main` 或 `release/real-pre`；合并控制器必须逐个确认并串行合并。平台 Merge Queue 可用时必须由队列执行。
 
 高风险路径由 `CODEOWNERS` 指定评审人，包括 `.github/`、Jenkins、Harness、部署脚本、Compose 和数据库迁移目录。
 
@@ -51,7 +51,7 @@ git worktree add -b codex/166-git-governance-phase1 .worktrees/git-governance-ph
 
 - 普通开发任务只提交候选变更，不合并、不部署。
 - 合并必须串行；发布必须进入唯一 Jenkins 发布队列。
-- real-pre 只能部署批准发布分支上的完整 Git SHA 镜像，不能使用 `latest` 或未合并分支。
+- real-pre 只能部署 `release/real-pre` 上批准提交对应的完整 Git SHA 镜像，不能使用 `latest`、短 SHA 或未合并分支。
 - 未包含数据库变更的 Harness / GitHub 治理任务，不要求远端迁移数据库。
 - 任何生产发布都需要用户明确授权。
 
