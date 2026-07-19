@@ -5,6 +5,7 @@ param(
     [string]$RemoteHost = "saas",
     [string]$RemoteDir = "/opt/saas/app",
     [string]$RemoteEnvFile = "/opt/saas/env/.env.real-pre",
+    [switch]$SkipBackup,
     [switch]$DryRun
 )
 
@@ -14,6 +15,17 @@ $ErrorActionPreference = "Stop"
 
 Write-HarnessStage "Remote deploy"
 & (Join-Path $PSScriptRoot "safety-check.ps1") -Env $TargetEnv -Scope full
+
+$backupStep = if ($SkipBackup) {
+    'echo "Skipping pre-migration PostgreSQL backup by explicit operator request ..."'
+}
+else {
+    @"
+echo "Creating and validating the pre-migration PostgreSQL backup ..."
+ENV_FILE='$RemoteEnvFile' COMPOSE_FILE=docker-compose.real-pre.yml COMPOSE_PROJECT_NAME=saas-active \
+  BACKUP_DIR="/opt/saas/backups/remote-`$(date +%Y%m%d-%H%M%S)" bash scripts/backup-db.sh
+"@
+}
 
 $remoteScript = @"
 set -e
@@ -44,9 +56,7 @@ compose() {
 }
 echo "Checking compose syntax without rendering environment values ..."
 compose config --quiet
-echo "Creating and validating the pre-migration PostgreSQL backup ..."
-ENV_FILE='$RemoteEnvFile' COMPOSE_FILE=docker-compose.real-pre.yml COMPOSE_PROJECT_NAME=saas-active \
-  BACKUP_DIR="/opt/saas/backups/remote-`$(date +%Y%m%d-%H%M%S)" bash scripts/backup-db.sh
+$backupStep
 echo "Building immutable images for `$image_tag ..."
 mkdir -p "`$HOME/.m2"
 docker run --rm \
