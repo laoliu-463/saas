@@ -1,3 +1,7 @@
+<<<<<<< HEAD
+=======
+# 本地验证/Jenkins 数据库迁移专用；远端应用使用 digest 固定的 release Compose。
+>>>>>>> b8cb837b (refactor: establish real-pre single-channel CD)
 name: saas-active
 x-real-pre-env-file: &real_pre_env_file
   - .env.real-pre
@@ -57,9 +61,13 @@ services:
     networks:
       - real-pre-net
   backend-real-pre:
+<<<<<<< HEAD
     # Local real-pre keeps a tag fallback for development. Jenkins must always
     # override this with repository@sha256:digest from release/real-pre.json.
     image: ${BACKEND_IMAGE:-colonel-saas/backend:real-pre}
+=======
+    image: colonel-saas/backend:${IMAGE_TAG:-local-real-pre}
+>>>>>>> b8cb837b (refactor: establish real-pre single-channel CD)
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -78,7 +86,10 @@ services:
       REDIS_PORT: 6379
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       REDIS_DATABASE: ${REDIS_DATABASE:-0}
+<<<<<<< HEAD
       # JWT_SECRET and CORS_ALLOWED_ORIGIN_PATTERNS must stay in env_file; host-side ${} defaults can override them.
+=======
+>>>>>>> b8cb837b (refactor: establish real-pre single-channel CD)
       DOUYIN_BASE_URL: ${DOUYIN_BASE_URL:-https://openapi-fxg.jinritemai.com}
       DOUYIN_APP_ID: ${DOUYIN_APP_ID:-}
       DOUYIN_CLIENT_KEY: ${DOUYIN_CLIENT_KEY:-}
@@ -136,8 +147,12 @@ services:
       SPRING_DEVTOOLS_ADD_PROPERTIES: "false"
       LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_WEB_CLIENT_RESTTEMPLATE: "INFO"
       LOGGING_LEVEL_COM_DOUDIAN_OPEN_CORE: "WARN"
+<<<<<<< HEAD
       JAVA_OPTS: "-Dspring.devtools.restart.enabled=false -XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError -Djava.security.egd=file:/dev/./urandom"
     # SECURE-REMOTE-DEPLOY-001: bind localhost; Nginx is the public entry (Gate 7).
+=======
+      JAVA_OPTS: "-Dspring.devtools.restart.enabled=false -XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -Djava.security.egd=file:/dev/./urandom"
+>>>>>>> b8cb837b (refactor: establish real-pre single-channel CD)
     ports:
       - "127.0.0.1:${BACKEND_HOST_PORT:-8081}:8080"
     depends_on: {postgres-real-pre: {condition: service_healthy}, redis-real-pre: {condition: service_healthy}}
@@ -158,9 +173,13 @@ services:
     networks:
       - real-pre-net
   frontend-real-pre:
+<<<<<<< HEAD
     # Local real-pre keeps a tag fallback for development. Jenkins must always
     # override this with repository@sha256:digest from release/real-pre.json.
     image: ${FRONTEND_IMAGE:-colonel-saas/frontend:real-pre}
+=======
+    image: colonel-saas/frontend:${IMAGE_TAG:-local-real-pre}
+>>>>>>> b8cb837b (refactor: establish real-pre single-channel CD)
     build:
       context: ./frontend
       dockerfile: Dockerfile
@@ -170,8 +189,11 @@ services:
     environment:
       DOMAIN: ${FRONTEND_DOMAIN:-_}
       BACKEND_UPSTREAM: ${BACKEND_UPSTREAM:-backend-real-pre:8080}
+<<<<<<< HEAD
       VITE_ENV_LABEL: ${VITE_ENV_LABEL:-REAL-PRE}
     # SECURE-REMOTE-DEPLOY-001: bind localhost; Nginx is the public entry (Gate 7).
+=======
+>>>>>>> b8cb837b (refactor: establish real-pre single-channel CD)
     ports:
       - "127.0.0.1:${FRONTEND_HOST_PORT:-3001}:80"
     depends_on:

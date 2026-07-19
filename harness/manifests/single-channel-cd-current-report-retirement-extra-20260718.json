@@ -1,0 +1,18 @@
+{
+  "taskId": "HARNESS-SINGLE-CHANNEL-CD-EXTRA-20260718",
+  "reason": "archive harness design evidence superseded by ADR-013 and current governance reports",
+  "items": [
+    {
+      "path": "harness/reports/current/latest-evidence-20260713-harness-layered-file-governance-design.md",
+      "action": "archive",
+      "archiveGroup": "superseded-harness-design",
+      "category": "superseded-by-adr-013"
+    },
+    {
+      "path": "harness/reports/current/latest-evidence-20260713.md",
+      "action": "archive",
+      "archiveGroup": "superseded-harness-design",
+      "category": "superseded-generic-summary"
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+# Harness Archive Index
+
+本目录（`harness/archive/`）是历史归档存储。
+
+- **顶层入口**：参见 `harness/README.md` 的目录结构说明（archive 行）。
+- **当前摘要入口**：活跃报告位于 `harness/reports/current/`。
+- **声明**：本目录为历史归档，存放 evidence、retro、browser 截图与 zipped report packages，遵循 `.gitignore` 的 `harness/archive/*` 规则；新文件 `git add` 会自动忽略。
+

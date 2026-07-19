@@ -1,0 +1,66 @@
+$ErrorActionPreference = "Stop"
+
+$scriptDir = Split-Path -Parent $PSCommandPath
+$repoRoot = (Resolve-Path (Join-Path $scriptDir "..")).Path
+. (Join-Path $scriptDir "stack-utils.ps1")
+
+function Invoke-ComposeDown {
+    param(
+        [Parameter(Mandatory = $true)][string]$ProjectName,
+        [Parameter(Mandatory = $true)][string]$ComposeFile,
+        [string]$EnvFile
+    )
+
+    if (Test-Path -LiteralPath $ComposeFile) {
+        Write-Host "Stopping compose project '$ProjectName' with $ComposeFile"
+        $args = @("compose", "--project-name", $ProjectName)
+        if ($EnvFile -and (Test-Path -LiteralPath $EnvFile)) {
+            $args += @("--env-file", $EnvFile)
+        }
+        $args += @("-f", $ComposeFile, "down", "--remove-orphans")
+        docker @args
+        Assert-LastExitCode -CommandName "docker $($args -join ' ')"
+    }
+}
+
+function Remove-ContainerIfExists {
+    param([Parameter(Mandatory = $true)][string]$Name)
+
+    $ids = docker ps -aq --filter "name=^/$Name$"
+    Assert-LastExitCode -CommandName "docker ps -aq --filter name=^/$Name$"
+    if ($ids) {
+        Write-Host "Removing leftover container $Name"
+        docker rm -f $ids | Out-Null
+        Assert-LastExitCode -CommandName "docker rm -f $Name"
+    }
+}
+
+Push-Location $repoRoot
+try {
+    Invoke-ComposeDown -ProjectName "saas-test" -ComposeFile (Join-Path $repoRoot "docker-compose.test.yml") -EnvFile (Join-Path $repoRoot ".env.test")
+    Invoke-ComposeDown -ProjectName "saas-active" -ComposeFile (Join-Path $repoRoot "docker-compose.real-pre.yml") -EnvFile (Join-Path $repoRoot ".env.real-pre")
+
+    @(
+        "saas-test-frontend-1",
+        "saas-test-backend-1",
+        "saas-test-postgres-1",
+        "saas-test-redis-1",
+        "saas-frontend-real-pre-1",
+        "saas-backend-real-pre-1",
+        "saas-postgres-real-pre-1",
+        "saas-redis-real-pre-1"
+    ) | ForEach-Object { Remove-ContainerIfExists -Name $_ }
+
+    Wait-ContainersStopped -TimeoutSeconds 120 -PollIntervalMilliseconds 2000 -CheckScript {
+        $names = docker ps -a --filter "name=saas" --format "{{.Names}}"
+        return -not $names
+    } | Out-Null
+}
+finally {
+    Pop-Location
+}
+
+Write-Host "All SAAS containers are stopped. Volumes were kept." -ForegroundColor Green
+Write-Host ""
+docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+Assert-LastExitCode -CommandName "docker ps"
