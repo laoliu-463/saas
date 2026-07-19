@@ -14,6 +14,7 @@
 
 ~~~text
 AGENTS.md
+.github/workflows/ci.yml
 backend/src/main/java/com/colonel/saas/controller/SystemEnvController.java
 backend/src/test/java/com/colonel/saas/controller/SystemEnvControllerTest.java
 docker-compose.real-pre.yml
@@ -55,6 +56,8 @@ Release queue contract: PASS (9 tests)
 Jenkins Groovy syntax: PASS
 Jenkins shell syntax: PASS (17 blocks)
 Harness TASK_GATE: PASS; REPOSITORY_HEALTH: PARTIAL (historical report debt only)
+Initial GitHub CI: backend/frontend PASS; governance FAIL because CI still inspected the retired SSH script.
+CI gate correction: PASS locally; immutable tag/branch/lock checks now inspect Jenkinsfile and verify the SSH path remains retired.
 ~~~
 
 ## Docker Status

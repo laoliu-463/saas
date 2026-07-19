@@ -4,6 +4,7 @@ $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
 $jenkinsfile = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'Jenkinsfile')
 $agentDo = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'harness\scripts\commands\agent-do.ps1')
 $deployRemote = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'harness\scripts\commands\deploy-remote.ps1')
+$ci = Get-Content -Raw -LiteralPath (Join-Path $repoRoot '.github\workflows\ci.yml')
 $compose = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'docker-compose.real-pre.yml')
 $frontendDockerfile = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'frontend\Dockerfile')
 
@@ -73,5 +74,12 @@ Describe 'agent deployment boundary contract' {
         $agentDo | Should Match 'Jenkins release queue'
         $deployRemote | Should Match 'Direct SSH deployment is retired'
         $deployRemote | Should Not Match '\bssh\s+\$RemoteHost'
+    }
+
+    It 'keeps CI governance aligned with Jenkins as the only release controller' {
+        $ci | Should Match 'Check Jenkins release identity and retired SSH deploy path'
+        $ci | Should Match 'Jenkins must reject floating image tags'
+        $ci | Should Match 'direct SSH deploy path must remain retired'
+        $ci | Should Not Match 'deploy script must validate IMAGE_TAG'
     }
 }

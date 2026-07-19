@@ -172,12 +172,15 @@ jobs:
         shell: pwsh
         run: ./harness/scripts/check-harness-limits.ps1 -BaselineRef HEAD -NoReport
 
-      - name: Check deploy script rejects floating image tags
+      - name: Check Jenkins release identity and retired SSH deploy path
         shell: pwsh
         run: |
-          $script = Get-Content -Raw harness/scripts/commands/deploy-remote.ps1
-          if ($script -notmatch 'IMAGE_TAG') { throw 'deploy script must validate IMAGE_TAG' }
-          if ($script -notmatch '40') { throw 'deploy script must require a full commit SHA image tag' }
+          $jenkins = Get-Content -Raw Jenkinsfile
+          $retired = Get-Content -Raw harness/scripts/commands/deploy-remote.ps1
+          if ($jenkins -notmatch "defaultValue:\s*'release/real-pre'") { throw 'Jenkins must only deploy release/real-pre' }
+          if ($jenkins -notmatch 'IMAGE_TAG must be the full 40-character commit SHA') { throw 'Jenkins must reject floating image tags' }
+          if ($jenkins -notmatch "lock\(resource:\s*'saas-real-pre-deploy'") { throw 'Jenkins must hold the global real-pre lock' }
+          if ($retired -notmatch 'Direct SSH deployment is retired') { throw 'direct SSH deploy path must remain retired' }
 
       - name: Reject generated workspace changes
         shell: bash
