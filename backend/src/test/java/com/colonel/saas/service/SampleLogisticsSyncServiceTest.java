@@ -1,6 +1,7 @@
 package com.colonel.saas.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.colonel.saas.domain.sample.event.SampleDomainEventPublisher;
 import com.colonel.saas.entity.SampleRequest;
 import com.colonel.saas.gateway.logistics.query.LogisticsQueryGateway;
@@ -22,6 +23,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -116,6 +118,32 @@ class SampleLogisticsSyncServiceTest {
         assertThat(sample.getLogisticsStatusName()).isEqualTo("运输中");
         assertThat(sample.getLogisticsRawPayload()).containsEntry("state", "IN_TRANSIT");
         verify(sampleRequestMapper, never()).updateById(any());
+    }
+
+    @Test
+    @DisplayName("成功查询显式清除数据库中的历史物流错误")
+    void handleLogisticsResult_success_clearsPersistedHistoricalError() {
+        SampleRequest sample = new SampleRequest();
+        sample.setId(UUID.randomUUID());
+        sample.setLogisticsLastError("历史限频错误");
+        LogisticsQueryResult success = LogisticsQueryResult.builder()
+                .success(true)
+                .provider("KUAIDI100")
+                .logisticsCompany("YTO")
+                .trackingNo("YT001")
+                .statusCode(LogisticsStatusCode.UNKNOWN)
+                .statusName("UNKNOWN")
+                .traces(List.of())
+                .rawPayload(Map.of())
+                .build();
+        when(sampleRequestMapper.updateById(sample)).thenReturn(1);
+        when(sampleRequestMapper.update(isNull(), any(UpdateWrapper.class))).thenReturn(1);
+
+        service.handleLogisticsResult(sample, success);
+
+        assertThat(sample.getLogisticsLastError()).isNull();
+        verify(sampleRequestMapper).updateById(sample);
+        verify(sampleRequestMapper).update(isNull(), any(UpdateWrapper.class));
     }
 
     @Test

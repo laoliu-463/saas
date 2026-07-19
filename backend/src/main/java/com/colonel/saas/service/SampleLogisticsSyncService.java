@@ -2,6 +2,7 @@ package com.colonel.saas.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.colonel.saas.common.exception.OptimisticLockSupport;
 import com.colonel.saas.entity.SampleLogisticsTrace;
 import com.colonel.saas.entity.SampleRequest;
@@ -271,6 +272,7 @@ public class SampleLogisticsSyncService {
             applySigned(sample, result.getSignedAt() != null ? result.getSignedAt() : now);
         }
         persistSample(sample);
+        clearPersistedLogisticsError(sample.getId());
         return result;
     }
 
@@ -461,6 +463,15 @@ public class SampleLogisticsSyncService {
      */
     private void persistSample(SampleRequest sample) {
         OptimisticLockSupport.requireUpdated(sampleRequestMapper.updateById(sample));
+    }
+
+    /** 成功查询后显式清除数据库中的历史错误；MyBatis-Plus 默认不会持久化 null 字段。 */
+    private void clearPersistedLogisticsError(UUID sampleId) {
+        OptimisticLockSupport.requireUpdated(sampleRequestMapper.update(
+                null,
+                new UpdateWrapper<SampleRequest>()
+                        .eq("id", sampleId)
+                        .set("logistics_last_error", null)));
     }
 
     /**
