@@ -67,18 +67,6 @@ jobs:
           REDIS_DATABASE: "1"
         run: mvn -B test
 
-      - name: Capture dependency diagnostics
-        if: failure()
-        working-directory: .
-        run: |
-          docker compose --project-name saas-ci-test --file docker-compose.test.yml ps --all
-          docker compose --project-name saas-ci-test --file docker-compose.test.yml logs --no-color --tail=300 postgres redis
-
-      - name: Stop isolated test dependencies
-        if: always()
-        working-directory: .
-        run: docker compose --project-name saas-ci-test --file docker-compose.test.yml down --remove-orphans
-
   frontend:
     name: Frontend tests and build
     runs-on: ubuntu-latest

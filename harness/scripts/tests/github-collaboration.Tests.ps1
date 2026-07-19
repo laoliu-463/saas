@@ -87,12 +87,15 @@ Describe 'GitHub Actions CI contract' {
         }
     }
 
-    It 'starts isolated PostgreSQL and Redis dependencies before backend tests' {
+    It 'declares isolated PostgreSQL and Redis service containers without repository migrations' {
         $content = Get-Content -Raw -LiteralPath $ciPath
 
-        $content | Should Match 'docker compose[^\r\n]*docker-compose\.test\.yml[^\r\n]*up[^\r\n]*postgres[^\r\n]*redis'
+        $content | Should Match '(?ms)^\s{4}services:\s*\r?\n\s{6}postgres:.*?\r?\n\s{6}redis:'
+        $content | Should Match 'image:\s*postgres:15-alpine'
+        $content | Should Match 'image:\s*redis:7-alpine'
+        $content | Should Not Match 'docker-compose\.test\.yml'
+        $content | Should Not Match 'migrate-all\.sql'
         $content | Should Match 'mvn -B test'
-        $content | Should Match 'docker compose[^\r\n]*docker-compose\.test\.yml[^\r\n]*down'
     }
 
     It 'always exposes a repository governance result' {
