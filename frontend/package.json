@@ -24,7 +24,7 @@
     "xlsx": "npm:@e965/xlsx@^0.20.3"
   },
   "devDependencies": {
-    "@types/node": "^24.12.2",
+    "@types/node": "^26.1.1",
     "@vitejs/plugin-vue": "^6.0.6",
     "@vitest/coverage-v8": "^3.2.4",
     "@vue/test-utils": "^2.4.6",
