@@ -124,8 +124,8 @@ try {
 
     $branch = (& git branch --show-current).Trim()
     if ([string]::IsNullOrWhiteSpace($branch)) { throw 'Cannot determine current branch for push.' }
-    & git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>$null | Out-Null
-    if ($LASTEXITCODE -eq 0) {
+    $upstream = (& git for-each-ref --format='%(upstream:short)' "refs/heads/$branch").Trim()
+    if (-not [string]::IsNullOrWhiteSpace($upstream)) {
         $upstreamRemote = (& git config --get "branch.$branch.remote").Trim()
         $upstreamMerge = (& git config --get "branch.$branch.merge").Trim()
         if ([string]::IsNullOrWhiteSpace($upstreamRemote) -or $upstreamRemote -eq '.') {
