@@ -32,8 +32,7 @@
 
 | # | Title | State | Labels | Created | Link |
 | --- | --- | --- | --- | --- | --- |
-| 168 | 修复后端 CI 测试基线与隔离数据库 bootstrap | OPEN | ready-for-agent | 2026-07-19 | https://github.com/laoliu-463/saas/issues/168 |
-| 166 | 建立 GitHub 协作治理与可执行 CI 门禁（Phase 1） | OPEN | ready-for-agent | 2026-07-19 | https://github.com/laoliu-463/saas/issues/166 |
+| 180 | 建立 real-pre 唯一发布队列与不可变版本证据 | OPEN | ready-for-agent | 2026-07-19 | https://github.com/laoliu-463/saas/issues/180 |
 | 165 | 重构 Harness 为跨平台 Node 验证核心（第一阶段） | OPEN | ready-for-agent | 2026-07-18 | https://github.com/laoliu-463/saas/issues/165 |
 
 ## 本地验证补充（2026-06-20）
@@ -49,6 +48,8 @@
 
 | # | Title | State | Closed Date | Link |
 | --- | --- | --- | --- | --- |
+| 168 | 修复后端 CI 测试基线与隔离数据库 bootstrap（旧默认分支基线，已被 main 取代） | CLOSED | 2026-07-19 | https://github.com/laoliu-463/saas/issues/168 |
+| 166 | 建立 GitHub 协作治理与可执行 CI 门禁（Phase 1） | CLOSED | 2026-07-19 | https://github.com/laoliu-463/saas/issues/166 |
 | 4 | test | CLOSED | 2026-06-19 | https://github.com/laoliu-463/saas/issues/4 |
 | 5 | [DDD-USER-DATASCOPE-003] verify OrderController integration with DataScopePolicy | CLOSED | 2026-06-19 | https://github.com/laoliu-463/saas/issues/5 |
 | 6 | [DDD-USER-DATASCOPE-004] 接入 service/OrderService.applyDataScope | CLOSED | 2026-06-19 | https://github.com/laoliu-463/saas/issues/6 |

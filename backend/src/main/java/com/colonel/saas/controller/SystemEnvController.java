@@ -53,6 +53,10 @@ public class SystemEnvController extends BaseController {
     private final String dbNameProp;
     /** 数据源连接 URL（spring.datasource.url） */
     private final String datasourceUrl;
+    /** 当前运行镜像对应的完整 Git SHA */
+    private final String gitSha;
+    /** 当前运行后端镜像的内容摘要 */
+    private final String imageDigest;
 
     /**
      * 构造注入.
@@ -64,6 +68,8 @@ public class SystemEnvController extends BaseController {
      * @param douyinTestEnabled           抖音测试模式开关
      * @param dbNameProp                  数据库名称环境变量
      * @param datasourceUrl               数据源连接 URL
+     * @param gitSha                      当前运行镜像对应的完整 Git SHA
+     * @param imageDigest                 当前运行后端镜像的内容摘要
      */
     public SystemEnvController(
             Environment environment,
@@ -72,7 +78,9 @@ public class SystemEnvController extends BaseController {
             @Value("${app.test.enabled:false}") boolean appTestEnabled,
             @Value("${douyin.test.enabled:false}") boolean douyinTestEnabled,
             @Value("${DB_NAME:}") String dbNameProp,
-            @Value("${spring.datasource.url:}") String datasourceUrl) {
+            @Value("${spring.datasource.url:}") String datasourceUrl,
+            @Value("${APP_GIT_SHA:unknown}") String gitSha,
+            @Value("${APP_IMAGE_DIGEST:unknown}") String imageDigest) {
         this.environment = environment;
         this.currentUserPermissionPolicy = currentUserPermissionPolicy;
         this.envLabel = envLabel;
@@ -80,6 +88,8 @@ public class SystemEnvController extends BaseController {
         this.douyinTestEnabled = douyinTestEnabled;
         this.dbNameProp = dbNameProp;
         this.datasourceUrl = datasourceUrl;
+        this.gitSha = gitSha;
+        this.imageDigest = imageDigest;
     }
 
     /**
@@ -116,13 +126,17 @@ public class SystemEnvController extends BaseController {
     /**
      * 健康检查接口.
      *
-     * <p>无需认证，返回简单的状态标识，用于负载均衡器或容器编排探针。</p>
+     * <p>无需认证，返回状态和不可变发布身份，用于负载均衡器、容器编排探针和发布核验。</p>
      *
      * @return 包含 status=UP 的健康状态映射
      */
     @GetMapping("/health")
     public Map<String, Object> health() {
-        return Map.of("status", "UP");
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("status", "UP");
+        body.put("gitSha", gitSha);
+        body.put("imageDigest", imageDigest);
+        return body;
     }
 
     /**

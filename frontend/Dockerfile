@@ -15,8 +15,10 @@ RUN pnpm install --frozen-lockfile
 
 COPY . .
 ARG VITE_ENV_LABEL=REAL-PRE
+ARG GIT_COMMIT=unknown
 ENV VITE_ENV_LABEL=${VITE_ENV_LABEL}
-RUN pnpm build
+RUN pnpm build \
+    && printf '{"gitSha":"%s"}\n' "$GIT_COMMIT" > /app/dist/version.json
 
 # Stage 2: Serve
 FROM nginx:1.27-alpine
