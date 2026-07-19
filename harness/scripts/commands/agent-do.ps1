@@ -249,6 +249,7 @@ try {
         -ReportKey $ReportKey `
         -OwnedFiles $taskOwnedFiles `
         -RetroSummary $RetroSummary `
+        -SkipRuntimeCollection:($Scope -eq "docs" -or $Scope -eq "apifox") `
         -DryRun:$DryRun
 
     $commitOwnedFiles = @($taskOwnedFiles)
@@ -280,6 +281,7 @@ try {
             -ReportKey $ReportKey `
             -OwnedFiles $taskOwnedFiles `
             -RetroSummary $RetroSummary `
+            -SkipRuntimeCollection:($Scope -eq "docs" -or $Scope -eq "apifox") `
             -DryRun:$DryRun
         if (-not $DryRun -and (Test-Path -LiteralPath $remoteReportPath)) {
             $remoteReportRelative = Get-HarnessRepoRelativePath -RepoRoot $config.RepoRoot -Path $remoteReportPath
@@ -313,6 +315,7 @@ catch {
             -ReportKey $ReportKey `
             -OwnedFiles $taskOwnedFiles `
             -RetroSummary "agent-do failed: $failure" `
+            -SkipRuntimeCollection:($Scope -eq "docs" -or $Scope -eq "apifox") `
             -DryRun:$DryRun
     }
     catch {

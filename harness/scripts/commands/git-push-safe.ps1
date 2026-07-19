@@ -12,7 +12,7 @@ if ([string]::IsNullOrWhiteSpace($RepoRoot)) { $RepoRoot = Get-HarnessRepoRoot }
 $RepoRoot = (Resolve-Path -LiteralPath $RepoRoot).Path
 
 function Get-ChangedFiles {
-    $lines = @(& git -c core.quotepath=false status --porcelain=v1)
+    $lines = @(& git -c core.quotepath=false status --porcelain=v1 --untracked-files=all)
     if ($LASTEXITCODE -ne 0) { throw 'git status failed.' }
     $files = @()
     foreach ($line in $lines) {

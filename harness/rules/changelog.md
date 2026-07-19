@@ -15,7 +15,8 @@
 - CI 增加 merge queue 触发、完整 SHA Action 固定、Job 超时、Node 20、后端 PostgreSQL/Redis 依赖和仓库治理检查。
 - 增加可执行 Pester 契约测试；本次不触发远端部署、容器重启或数据库迁移。
 - 刷新 `harness/engineering/issues-index.md`，当前 open issue 镜像与 GitHub #165、#166 一致，旧 Sprint 排期明确标记为历史快照。
-- 修正 docs/governance 统一入口：无本地运行环境文件时仍可执行安全扫描、Harness 门禁与 evidence 收口，不触发应用构建、容器或数据库操作。
+- 修正 docs/governance 统一入口：无本地运行环境文件时仍可执行安全扫描、Harness 门禁与 evidence 收口，并跳过 evidence 的运行时采集，不触发应用构建、容器或数据库操作。
+- 修复 scoped push 对 `.github/` 的路径截断与未跟踪目录折叠问题，保证 dot-prefixed Owned files 被逐文件暂存，不会静默漏提交。
 
 ### v0.8.2 — 2026-07-18
 - 修正 `git-push-safe.ps1` 明文密钥扫描：仅将带引号的字面量或配置文件行识别为候选值，避免把 Java 函数调用、变量赋值和 Redis key 名误报为密钥。
