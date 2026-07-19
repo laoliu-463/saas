@@ -2,12 +2,13 @@
 
 ## Metadata
 
-- Time: 2026-07-19 14:56:47 +08:00
+- Time: 2026-07-19 14:57:22 +08:00
 - Environment: real-pre
 - Scope: docs
 - Branch: codex/166-git-governance-phase1
-- Commit: 70ac1c65
-- Owned worktree: dirty
+- Implementation commits: 70ac1c65, 27239a79
+- Evidence refresh base: 27239a79
+- Owned worktree: clean after implementation commit; this report is the final evidence-only refresh
 - Deploy remote: false
 
 ## Owned Files
@@ -38,26 +39,16 @@ SECURITY.md
 ## Owned Git Status
 
 ~~~text
-M .github/workflows/ci.yml
- M harness/rules/changelog.md
- M harness/scripts/commands/_lib.ps1
- M harness/scripts/commands/agent-do.ps1
- M harness/scripts/commands/git-push-safe.ps1
- M harness/scripts/tests/agent-do-conclusion.Tests.ps1
- M harness/scripts/tests/git-push-safe.Tests.ps1
- M harness/scripts/tests/safety-check-docs.Tests.ps1
-?? .github/CODEOWNERS
-?? .github/ISSUE_TEMPLATE/bug.yml
-?? .github/ISSUE_TEMPLATE/config.yml
-?? .github/ISSUE_TEMPLATE/feature.yml
-?? .github/dependabot.yml
-?? .github/pull_request_template.md
+(clean after implementation commit 27239a79)
 ~~~
 
 ## Build Result
 
 ~~~text
-Scope=docs: build skipped.
+Gate requirement: Scope=docs, application build/restart not required.
+Supplementary frontend verification: pnpm test PASS; pnpm typecheck PASS; pnpm build PASS.
+Supplementary backend verification: Java compile PASS; mvn -B test FAIL on the pre-existing default-branch baseline (3598 tests, 24 failures, 42 errors, 3 skipped).
+The backend failures are outside this PR's .github/Harness governance change set and match the already failing default-branch Backend tests job.
 ~~~
 
 ## Docker Status
@@ -78,6 +69,19 @@ Scope=docs: compose restart and HTTP health checks skipped by scoped local harne
 ~~~text
 Scope=docs: business validation not applicable; safety check executed.
 ~~~
+
+## Governance Verification
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| GitHub/Harness Pester contracts | PASS | 16 passed, 0 failed |
+| GitHub YAML parse | PASS | 5 YAML files parsed |
+| GitHub Actions actionlint | PASS | actionlint 1.7.12 |
+| Harness incremental limits | PASS | `TASK_GATE=PASS`; existing report debt keeps `REPOSITORY_HEALTH=PARTIAL` |
+| Scoped push dry-run | PASS | all 11 then-pending Owned files enumerated, including `.github/ISSUE_TEMPLATE/*` |
+| Git whitespace check | PASS | `git diff --check` returned no findings |
+| Remote deployment | SKIP | not requested and not executed |
+| Database migration | SKIP | no database files changed; not required for docs/governance scope |
 
 ## Content Maintenance Result
 
@@ -101,4 +105,6 @@ PARTIAL
 
 ## Residual Risk
 
-- Items marked as not collected are not proof of success.
+- The default branch backend baseline remains red; required checks must not be enabled as merge blockers until that debt is fixed or explicitly split into an approved baseline policy.
+- GitHub ruleset, Merge Queue, default-branch migration, visibility changes, branch cleanup, deployment, and database changes are intentionally outside Phase 1.
+- `harness/reports` and `harness/reports/current` retain pre-existing file-count debt; this task did not add a new violation.
