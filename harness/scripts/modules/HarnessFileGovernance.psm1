@@ -7,7 +7,17 @@ $script:ScriptExtensions = @('.ps1', '.psm1', '.psd1', '.sh', '.py', '.js', '.ts
 function ConvertTo-GovernancePath {
     param([Parameter(Mandatory = $true)][string]$Path)
 
-    return $Path.Replace('\', '/').TrimStart('./')
+    $normalized = $Path.Replace('\', '/')
+    if ($normalized.StartsWith('./')) {
+        $normalized = $normalized.Substring(2)
+    }
+    return $normalized
+}
+
+function ConvertFrom-GovernancePath {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    return $Path.Replace([char]'/', [System.IO.Path]::DirectorySeparatorChar)
 }
 
 function Get-RepoRelativeGovernancePath {
@@ -18,10 +28,20 @@ function Get-RepoRelativeGovernancePath {
 
     # Get-Item expands Windows 8.3 path segments consistently. Resolve-Path may
     # keep a short repo root while Get-ChildItem returns long child paths.
-    $root = (Get-Item -LiteralPath $RepoRoot).FullName.TrimEnd('\')
+    $trimChars = [char[]]@(
+        [System.IO.Path]::DirectorySeparatorChar,
+        [System.IO.Path]::AltDirectorySeparatorChar
+    )
+    $root = (Get-Item -LiteralPath $RepoRoot).FullName.TrimEnd($trimChars)
     $resolved = (Get-Item -LiteralPath $FullPath).FullName
-    $prefix = $root + '\'
-    if (-not $resolved.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+    $prefix = $root + [System.IO.Path]::DirectorySeparatorChar
+    $comparison = if ([System.IO.Path]::DirectorySeparatorChar -eq [char]'\') {
+        [System.StringComparison]::OrdinalIgnoreCase
+    }
+    else {
+        [System.StringComparison]::Ordinal
+    }
+    if (-not $resolved.StartsWith($prefix, $comparison)) {
         throw "Path is outside repository: $resolved"
     }
     return ConvertTo-GovernancePath -Path $resolved.Substring($prefix.Length)
@@ -158,7 +178,7 @@ function Test-IsUnchangedLegacyArchiveBlob {
     if ($BaselineSnapshot.PSObject.Properties.Name -notcontains 'BlobIds') { return $false }
     if ($BaselineSnapshot.BlobIds.Count -eq 0) { return $false }
 
-    $fullPath = Join-Path $RepoRoot $Path.Replace('/', '\')
+    $fullPath = Join-Path $RepoRoot (ConvertFrom-GovernancePath -Path $Path)
     if (-not (Test-Path -LiteralPath $fullPath -PathType Leaf)) { return $false }
     $blobOutput = @(& git -C $RepoRoot hash-object -- $fullPath 2>$null)
     $hashExitCode = $LASTEXITCODE
@@ -201,7 +221,7 @@ function Compare-HarnessFileGovernance {
     $taskPaths = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     foreach ($path in $BaselineSnapshot.Files) { [void]$taskPaths.Add($path) }
     foreach ($path in $normalizedOwned) {
-        $fullPath = Join-Path $RepoRoot $path.Replace('/', '\')
+        $fullPath = Join-Path $RepoRoot (ConvertFrom-GovernancePath -Path $path)
         if (Test-Path -LiteralPath $fullPath -PathType Leaf) {
             [void]$taskPaths.Add($path)
         }
@@ -266,7 +286,7 @@ function Compare-HarnessFileGovernance {
     }
 
     foreach ($path in $normalizedOwned) {
-        $fullPath = Join-Path $RepoRoot $path.Replace('/', '\')
+        $fullPath = Join-Path $RepoRoot (ConvertFrom-GovernancePath -Path $path)
         if (-not (Test-Path -LiteralPath $fullPath -PathType Leaf)) { continue }
 
         if ($path -match '^harness/reports/(evidence|retro|content-retire)-\d{8}') {
