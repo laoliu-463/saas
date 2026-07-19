@@ -140,11 +140,17 @@ public class OperationLog {
      */
     private Long durationMs;
 
+    /** 结构化错误码，成功操作时为 null。 */
+    private String errorCode;
+
     /**
      * 错误信息
      * <p>操作执行失败时的错误描述，成功操作时为 null</p>
      */
     private String errorMessage;
+
+    /** 请求或后台任务链路 ID，用于跨日志检索。 */
+    private String traceId;
 
     /**
      * 创建时间

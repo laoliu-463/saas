@@ -177,6 +177,25 @@ class DomainEventDispatcherJobTest {
     }
 
     @Test
+    @DisplayName("未知事件类型不能被误标为已发布")
+    void dispatchPendingEvents_unknownEventType_marksFailedInsteadOfPublished() {
+        DomainEventOutbox event = buildOutbox("UnknownEvent", "{}");
+        when(domainEventOutboxService.lockPendingEvents(anyInt(), anyInt())).thenReturn(List.of(event));
+        when(productDomainEventOutboxRouter.supports("UnknownEvent")).thenReturn(false);
+        when(sampleDomainEventOutboxRouter.supports("UnknownEvent")).thenReturn(false);
+        when(orderDomainEventOutboxRouter.supports("UnknownEvent")).thenReturn(false);
+
+        job.dispatchPendingEvents();
+
+        verify(domainEventOutboxService).markFailed(
+                org.mockito.ArgumentMatchers.eq(event.getEventId()),
+                org.mockito.ArgumentMatchers.eq(1),
+                org.mockito.ArgumentMatchers.contains("Unsupported outbox event type"),
+                org.mockito.ArgumentMatchers.eq(3));
+        verify(domainEventOutboxService, never()).markPublished(any(), anyInt());
+    }
+
+    @Test
     @DisplayName("多个事件按顺序处理")
     void dispatchPendingEvents_multipleEvents_processesInOrder() throws Exception {
         DomainEventOutbox configEvent = buildOutbox(ConfigChangedEventPayload.EVENT_TYPE, "{\"items\":[]}");

@@ -1,5 +1,6 @@
 package com.colonel.saas.domain.event;
 
+import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.config.ConfigChangedEventFactory;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -145,7 +146,10 @@ public class DomainEventOutboxService {
      * @param eventId 事件唯一标识
      */
     public void retryDeadEvent(UUID eventId) {
-        domainEventOutboxMapper.resetToPending(eventId);
+        int affected = domainEventOutboxMapper.resetToPending(eventId);
+        if (affected != 1) {
+            throw BusinessException.stateInvalid("Outbox 事件不存在或当前状态不是 DEAD，拒绝重放");
+        }
     }
 
     /**

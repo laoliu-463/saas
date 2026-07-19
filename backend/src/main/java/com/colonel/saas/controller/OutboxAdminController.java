@@ -82,7 +82,7 @@ public class OutboxAdminController {
     }
 
     /**
-     * 重试 DEAD 或 FAILED 状态的 Outbox 事件。
+     * 重试 DEAD 状态的 Outbox 事件。
      *
      * <p>处理流程：
      * <ol>
@@ -97,7 +97,7 @@ public class OutboxAdminController {
      * @return 空响应，表示重试请求已接受
      * @throws com.colonel.saas.common.exception.BusinessException 事件不存在或状态不允许重试
      */
-    @Operation(summary = "重试 DEAD/FAILED Outbox 事件")
+    @Operation(summary = "重试 DEAD Outbox 事件")
     @RequireRoles({RoleCodes.ADMIN})
     @PostMapping("/{id}/retry")
     public ApiResult<Void> retry(@PathVariable("id") UUID eventId) {

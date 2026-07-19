@@ -10,7 +10,11 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataAccessResourceFailureException;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.ValueOperations;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -18,6 +22,8 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -30,6 +36,10 @@ class Kuaidi100LogisticsQueryGatewayTest {
     private Kuaidi100LogisticsGateway delegate;
     @Mock
     private ObjectProvider<Kuaidi100LogisticsGateway> delegateProvider;
+    @Mock
+    private RedisTemplate<String, Object> redisTemplate;
+    @Mock
+    private ValueOperations<String, Object> valueOperations;
 
     private LogisticsProperties properties;
     private Kuaidi100LogisticsQueryGateway gateway;
@@ -38,7 +48,10 @@ class Kuaidi100LogisticsQueryGatewayTest {
     void setUp() {
         properties = new LogisticsProperties();
         lenient().when(delegateProvider.getIfAvailable()).thenReturn(delegate);
-        gateway = new Kuaidi100LogisticsQueryGateway(properties, delegateProvider);
+        lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        lenient().when(valueOperations.setIfAbsent(anyString(), any(), eq(Duration.ofMinutes(31))))
+                .thenReturn(true);
+        gateway = new Kuaidi100LogisticsQueryGateway(properties, delegateProvider, redisTemplate);
     }
 
     @Test
@@ -158,6 +171,8 @@ class Kuaidi100LogisticsQueryGatewayTest {
     @Test
     void query_shouldThrottleRepeatedTrackingNoBeforeCallingDelegateAgain() {
         enableKd100();
+        when(valueOperations.setIfAbsent(anyString(), any(), eq(Duration.ofMinutes(31))))
+                .thenReturn(true, false);
         when(delegate.queryTrack(LogisticsTrackCommand.builder()
                 .companyCode("YTO")
                 .trackingNo("YT001")
@@ -170,12 +185,29 @@ class Kuaidi100LogisticsQueryGatewayTest {
         assertThat(first.isSuccess()).isTrue();
         assertThat(second.isSuccess()).isFalse();
         assertThat(second.getErrorCode()).isEqualTo("QUERY_THROTTLED");
-        assertThat(second.getErrorMessage()).contains("30分钟");
+        assertThat(second.getErrorMessage()).contains("31分钟");
+        verify(valueOperations, org.mockito.Mockito.times(2)).setIfAbsent(
+                org.mockito.ArgumentMatchers.startsWith("logistics:kuaidi100:query-throttle:"),
+                any(),
+                eq(Duration.ofMinutes(31)));
         verify(delegate).queryTrack(LogisticsTrackCommand.builder()
                 .companyCode("YTO")
                 .trackingNo("YT001")
                 .resultV2("4")
                 .build());
+    }
+
+    @Test
+    void query_shouldFailClosedWhenRedisThrottleStateUnavailable() {
+        enableKd100();
+        when(valueOperations.setIfAbsent(anyString(), any(), eq(Duration.ofMinutes(31))))
+                .thenThrow(new DataAccessResourceFailureException("redis unavailable"));
+
+        LogisticsQueryResult result = gateway.query("YTO", "YT-REDIS-DOWN");
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getErrorCode()).isEqualTo("THROTTLE_STATE_UNAVAILABLE");
+        verify(delegate, never()).queryTrack(any(LogisticsTrackCommand.class));
     }
 
     @Test

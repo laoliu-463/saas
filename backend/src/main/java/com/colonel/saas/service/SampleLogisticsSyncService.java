@@ -64,6 +64,9 @@ public class SampleLogisticsSyncService {
     private static final int STATUS_PENDING_SHIP = 2;
     private static final int STATUS_SHIPPING = 3;
     private static final int STATUS_PENDING_HOMEWORK = 5;
+    private static final int MIN_QUERY_INTERVAL_MINUTES = 31;
+    private static final String ERROR_QUERY_THROTTLED = "QUERY_THROTTLED";
+    private static final String ERROR_THROTTLE_STATE_UNAVAILABLE = "THROTTLE_STATE_UNAVAILABLE";
 
     /** 物流查询网关 */
     private final LogisticsQueryGateway logisticsQueryGateway;
@@ -122,22 +125,33 @@ public class SampleLogisticsSyncService {
                 .isNotNull(SampleRequest::getTrackingNo)
                 .ne(SampleRequest::getTrackingNo, "")
                 .isNotNull(SampleRequest::getShipperCode)
-                .ne(SampleRequest::getShipperCode, "");
+                .ne(SampleRequest::getShipperCode, "")
+                .and(w -> w.isNull(SampleRequest::getLogisticsLastQueryAt)
+                        .or()
+                        .le(SampleRequest::getLogisticsLastQueryAt,
+                                LocalDateTime.now().minusMinutes(MIN_QUERY_INTERVAL_MINUTES)));
         List<SampleRequest> samples = sampleRequestMapper.selectList(wrapper);
 
         log.info("LogisticsTrackJob processing {} shipping samples", samples.size());
         int success = 0;
         int failed = 0;
+        int skipped = 0;
         for (SampleRequest sample : samples) {
             try {
-                syncAndPersistBatchItem(sample);
-                success++;
+                LogisticsQueryResult result = syncAndPersistBatchItem(sample);
+                if (result.isSuccess()) {
+                    success++;
+                } else if (isSkipped(result)) {
+                    skipped++;
+                } else {
+                    failed++;
+                }
             } catch (Exception ex) {
                 failed++;
                 log.error("LogisticsTrackJob failed for sample {}", sample.getRequestNo(), ex);
             }
         }
-        return new SyncBatchSummary(samples.size(), success, failed, 0);
+        return new SyncBatchSummary(samples.size(), success, failed, skipped);
     }
 
     /**
@@ -169,7 +183,7 @@ public class SampleLogisticsSyncService {
      * <p>处理流程：</p>
      * <ol>
      *     <li>查询状态为待发货或运输中、且有物流单号的寄样申请</li>
-     *     <li>筛选最近30分钟未查询过或最近6小时未收到回调的记录</li>
+     *     <li>筛选最近31分钟未查询过或最近6小时未收到回调的记录</li>
      *     <li>逐条调用物流查询网关并持久化更新</li>
      *     <li>汇总成功、失败、跳过计数</li>
      * </ol>
@@ -185,7 +199,7 @@ public class SampleLogisticsSyncService {
                 .ne("tracking_no", "")
                 .and(w -> w.isNull("logistics_last_query_at")
                         .or()
-                        .le("logistics_last_query_at", now.minusMinutes(30)))
+                        .le("logistics_last_query_at", now.minusMinutes(MIN_QUERY_INTERVAL_MINUTES)))
                 .and(w -> w.isNull("logistics_last_callback_at")
                         .or()
                         .le("logistics_last_callback_at", now.minusHours(6)))
@@ -201,7 +215,7 @@ public class SampleLogisticsSyncService {
                 LogisticsQueryResult result = syncAndPersistBatchItem(sample);
                 if (result.isSuccess()) {
                     success++;
-                } else if (LogisticsStatusCode.NOT_CONFIGURED == result.getStatusCode()) {
+                } else if (isSkipped(result)) {
                     skipped++;
                 } else {
                     failed++;
@@ -233,6 +247,11 @@ public class SampleLogisticsSyncService {
         if (sample == null || result == null) {
             return result;
         }
+        if (shouldPreserveLogisticsState(result)) {
+            log.debug("Skip non-logistics result without mutating sample, requestNo={}, trackingNo={}, errorCode={}",
+                    sample.getRequestNo(), sample.getTrackingNo(), result.getErrorCode());
+            return result;
+        }
         LocalDateTime now = LocalDateTime.now();
         sample.setLogisticsLastQueryAt(now);
         sample.setLogisticsStatus(result.getStatusCode() == null ? null : result.getStatusCode().name());
@@ -253,6 +272,18 @@ public class SampleLogisticsSyncService {
         }
         persistSample(sample);
         return result;
+    }
+
+    private boolean isSkipped(LogisticsQueryResult result) {
+        return result != null
+                && (LogisticsStatusCode.NOT_CONFIGURED == result.getStatusCode()
+                || ERROR_QUERY_THROTTLED.equals(result.getErrorCode()));
+    }
+
+    private boolean shouldPreserveLogisticsState(LogisticsQueryResult result) {
+        return result != null
+                && (isSkipped(result)
+                || ERROR_THROTTLE_STATE_UNAVAILABLE.equals(result.getErrorCode()));
     }
 
     /**

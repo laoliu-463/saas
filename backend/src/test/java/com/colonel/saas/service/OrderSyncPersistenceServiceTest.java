@@ -97,6 +97,9 @@ class OrderSyncPersistenceServiceTest {
         when(orderSyncDedupClaimMapper.claim(order.getOrderId(), order.getId())).thenReturn(1);
         when(orderMapper.findByOrderId(order.getOrderId())).thenReturn(null);
         when(orderMapper.insertIgnoreByOrderId(order)).thenReturn(1);
+        when(pickSourceMappingService.ensureFromOrder(order)).thenReturn(true);
+        when(merchantService.ensureMerchantFromOrder(order)).thenReturn(true);
+        when(sampleHomeworkFacade.completePendingHomeworkByOrder(order)).thenReturn(1);
 
         boolean result = service.persistOrder(order);
 
@@ -115,6 +118,9 @@ class OrderSyncPersistenceServiceTest {
         when(orderSyncDedupClaimMapper.claim(order.getOrderId(), order.getId())).thenReturn(1);
         when(orderMapper.findByOrderId(order.getOrderId())).thenReturn(null);
         when(orderMapper.insertIgnoreByOrderId(order)).thenReturn(1);
+        when(pickSourceMappingService.ensureFromOrder(order)).thenReturn(true);
+        when(merchantService.ensureMerchantFromOrder(order)).thenReturn(true);
+        when(sampleHomeworkFacade.completePendingHomeworkByOrder(order)).thenReturn(1);
 
         service.persistOrder(order);
 
@@ -386,7 +392,7 @@ class OrderSyncPersistenceServiceTest {
     }
 
     @Test
-    void persistOrder_shouldRecordSystemLogsForAttributionAndMerchantOnUpdate() {
+    void persistOrder_shouldNotRecordFollowUpLogsWhenNoStateChanged() {
         UUID channelUserId = UUID.randomUUID();
         ColonelsettlementOrder order = makeOrder(channelUserId);
         order.setUserId(channelUserId);
@@ -401,33 +407,7 @@ class OrderSyncPersistenceServiceTest {
 
         service.persistOrder(order);
 
-        verify(operationLogService).recordSystemAction(
-                channelUserId,
-                "订单归因",
-                "补齐推广映射",
-                "POST",
-                "order",
-                order.getOrderId(),
-                "测试商品",
-                "订单归因副作用: ensureFromOrder");
-        verify(operationLogService).recordSystemAction(
-                channelUserId,
-                "订单归因",
-                "沉淀商家",
-                "POST",
-                "order",
-                order.getOrderId(),
-                "测试商品",
-                "订单归因副作用: ensureMerchantFromOrder");
-        verify(operationLogService).recordSystemAction(
-                channelUserId,
-                "订单归因",
-                "完成寄样作业",
-                "POST",
-                "order",
-                order.getOrderId(),
-                "测试商品",
-                "订单归因副作用: completePendingHomeworkByOrder");
+        verifyNoInteractions(operationLogService);
     }
 
     @Test

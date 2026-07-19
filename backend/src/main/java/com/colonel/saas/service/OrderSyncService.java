@@ -7,7 +7,9 @@ import com.colonel.saas.job.JobLockKeys;
 import com.colonel.saas.gateway.douyin.DouyinOrderGateway;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.time.AppZone;
+import com.colonel.saas.common.web.RequestIdContext;
 import com.colonel.saas.entity.ColonelsettlementOrder;
+import com.colonel.saas.entity.OperationLog;
 import com.colonel.saas.service.settlement.InstituteOrderColonelSettlementGateway;
 import com.colonel.saas.service.settlement.MultiSettlementOrderFallbackGateway;
 import com.colonel.saas.service.settlement.SettlementOrderGateway;
@@ -32,6 +34,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -150,6 +153,7 @@ public class OrderSyncService {
     private final DistributedJobLockService jobLockService;
     private final AppProperties appProperties;
     private final OrderAmountMappingRouter orderAmountMappingRouter;
+    private final OperationLogService operationLogService;
     private volatile long localLastSyncTime;
     private final AtomicInteger consecutiveGatewayFailures = new AtomicInteger();
     private volatile Instant gatewayCircuitOpenedAt;
@@ -235,7 +239,8 @@ public class OrderSyncService {
             RedisTemplate<String, Object> redisTemplate,
             DistributedJobLockService jobLockService,
             AppProperties appProperties,
-            OrderAmountMappingRouter orderAmountMappingRouter) {
+            OrderAmountMappingRouter orderAmountMappingRouter,
+            OperationLogService operationLogService) {
         this.douyinOrderGateway = douyinOrderGateway;
         this.instituteSettlementGateway = instituteSettlementGateway;
         this.multiSettlementFallbackGateway = multiSettlementFallbackGateway;
@@ -245,6 +250,7 @@ public class OrderSyncService {
         this.jobLockService = jobLockService;
         this.appProperties = appProperties;
         this.orderAmountMappingRouter = orderAmountMappingRouter;
+        this.operationLogService = operationLogService;
     }
 
     /** 判断当前是否处于 test 模式（影响 Redis 不可用时的降级策略）。 */
@@ -983,6 +989,11 @@ public class OrderSyncService {
             if (STOP_REASON_UNKNOWN.equals(stopReason)) {
                 stopReason = STOP_REASON_FETCH_ERROR;
             }
+            SyncResult failedResult = new SyncResult(
+                    startTime, endTime, pages, totalFetched, created, updated,
+                    attributedCount, unattributedCount, failedCount, false, seenOrderIds.size(), stopReason);
+            recordSyncSummary(logName, api, mode, timeType, failedResult,
+                    "ORDER_SYNC_FETCH_ERROR", e.getMessage());
             throw e;
         } finally {
             log.info("{} api={} mode={} timeType={} startTime={} endTime={} range=[{}, {}] pagesFetched={} "
@@ -1000,8 +1011,69 @@ public class OrderSyncService {
                     hasSettleTimeCount, hasEffectiveFeeCount, stopReason);
         }
 
-        return new SyncResult(startTime, endTime, pages, totalFetched, created, updated,
+        SyncResult result = new SyncResult(startTime, endTime, pages, totalFetched, created, updated,
                 attributedCount, unattributedCount, failedCount, false, seenOrderIds.size(), stopReason);
+        recordSyncSummary(logName, api, mode, timeType, result);
+        return result;
+    }
+
+    /** 单次批量同步只记录一条汇总日志，且仅在有数据变化或失败时写入。 */
+    void recordSyncSummary(String logName, String api, String mode, String timeType, SyncResult result) {
+        recordSyncSummary(logName, api, mode, timeType, result, null, null);
+    }
+
+    private void recordSyncSummary(
+            String logName,
+            String api,
+            String mode,
+            String timeType,
+            SyncResult result,
+            String terminalErrorCode,
+            String terminalErrorMessage) {
+        if (result == null || result.locked()
+                || (!StringUtils.hasText(terminalErrorCode)
+                && result.created() == 0 && result.updated() == 0 && result.failed() == 0)) {
+            return;
+        }
+        OperationLog audit = new OperationLog();
+        audit.setModule("订单同步");
+        audit.setAction("批量同步汇总");
+        audit.setRequestMethod("SYSTEM");
+        audit.setTargetType("order-sync-batch");
+        audit.setTargetId(mode + ":" + result.startTime() + ":" + result.endTime());
+        audit.setTargetName(logName);
+        audit.setContent("订单批量同步汇总");
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("api", api);
+        summary.put("mode", mode);
+        summary.put("timeType", timeType);
+        summary.put("pages", result.pages());
+        summary.put("totalFetched", result.totalFetched());
+        summary.put("uniqueOrders", result.uniqueOrders());
+        summary.put("created", result.created());
+        summary.put("updated", result.updated());
+        summary.put("attributed", result.attributed());
+        summary.put("unattributed", result.unattributed());
+        summary.put("failed", result.failed());
+        summary.put("stopReason", result.stopReason());
+        audit.setResponseBody(summary);
+        String traceId = RequestIdContext.current();
+        audit.setTraceId(StringUtils.hasText(traceId) ? traceId : "order-sync-" + UUID.randomUUID());
+        if (StringUtils.hasText(terminalErrorCode)) {
+            audit.setErrorCode(terminalErrorCode);
+            audit.setErrorMessage(StringUtils.hasText(terminalErrorMessage)
+                    ? terminalErrorMessage
+                    : "订单同步异常终止");
+        } else if (result.failed() > 0) {
+            audit.setErrorCode("ORDER_SYNC_PARTIAL_FAILURE");
+            audit.setErrorMessage(result.failed() + " 条订单处理失败");
+        }
+        try {
+            operationLogService.record(audit);
+        } catch (RuntimeException ex) {
+            log.warn("Order sync summary audit failed, mode={}, range=[{}, {}]",
+                    mode, result.startTime(), result.endTime(), ex);
+        }
     }
 
     private String resolveNextCursor(DouyinOrderGateway.OrderListResult response) {

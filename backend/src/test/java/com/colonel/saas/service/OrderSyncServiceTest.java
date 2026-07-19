@@ -7,6 +7,7 @@ import com.colonel.saas.domain.order.application.OrderAmountMappingRouter;
 import com.colonel.saas.domain.order.application.OrderAttributionRouter;
 import com.colonel.saas.domain.order.application.OrderDefaultAttributionResolver;
 import com.colonel.saas.entity.ColonelsettlementOrder;
+import com.colonel.saas.entity.OperationLog;
 import com.colonel.saas.gateway.douyin.DouyinOrderGateway;
 import com.colonel.saas.job.JobLockKeys;
 import com.colonel.saas.service.settlement.SettlementOrderGateway;
@@ -80,6 +81,8 @@ class OrderSyncServiceTest {
     private DistributedJobLockService jobLockService;
     @Mock
     private ApplicationEventPublisher eventPublisher;
+    @Mock
+    private OperationLogService operationLogService;
 
     private AppProperties appProperties;
     private OrderAmountMappingRouter orderAmountMappingRouter;
@@ -120,8 +123,31 @@ class OrderSyncServiceTest {
                 redisTemplate,
                 jobLockService,
                 appProperties,
-                orderAmountMappingRouter
+                orderAmountMappingRouter,
+                operationLogService
         );
+    }
+
+    @Test
+    void recordSyncSummary_shouldWriteOneStructuredBatchLog() {
+        OrderSyncService.SyncResult result = new OrderSyncService.SyncResult(
+                100L, 200L, 2, 12, 3, 7, 8, 2, 1, false, 10, "NO_MORE");
+
+        service.recordSyncSummary("ORDER_SYNC_SETTLEMENT", "buyin.api", "INCREMENTAL", "update", result);
+
+        ArgumentCaptor<OperationLog> captor = ArgumentCaptor.forClass(OperationLog.class);
+        verify(operationLogService).record(captor.capture());
+        OperationLog log = captor.getValue();
+        assertThat(log.getModule()).isEqualTo("订单同步");
+        assertThat(log.getAction()).isEqualTo("批量同步汇总");
+        assertThat(log.getTargetId()).isEqualTo("INCREMENTAL:100:200");
+        assertThat(log.getResponseBody())
+                .containsEntry("created", 3)
+                .containsEntry("updated", 7)
+                .containsEntry("failed", 1)
+                .containsEntry("uniqueOrders", 10);
+        assertThat(log.getErrorCode()).isEqualTo("ORDER_SYNC_PARTIAL_FAILURE");
+        assertThat(log.getTraceId()).isNotBlank();
     }
 
     @Test

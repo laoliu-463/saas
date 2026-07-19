@@ -1,0 +1,3 @@
+ALTER TABLE operation_log
+    ADD COLUMN IF NOT EXISTS error_code VARCHAR(128),
+    ADD COLUMN IF NOT EXISTS trace_id VARCHAR(128);

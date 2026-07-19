@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.colonel.saas.entity.OperationLog;
 import com.colonel.saas.mapper.OperationLogMapper;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
+import com.colonel.saas.common.web.RequestIdContext;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -97,16 +98,19 @@ public class OperationLogService {
         if (log.getDeleted() == null) {
             log.setDeleted(0);
         }
+        if (!StringUtils.hasText(log.getTraceId())) {
+            log.setTraceId(RequestIdContext.current());
+        }
         ensureLogPartition(log.getCreateTime());
         String sql = """
                 INSERT INTO operation_log (
                     id, user_id, username, module, action, target_type, target_id, target_name, content,
                     request_method, request_url, request_params, request_body, response_code, response_body,
-                    ip_address, user_agent, duration_ms, error_message, create_time, deleted
+                    ip_address, user_agent, duration_ms, error_code, error_message, trace_id, create_time, deleted
                 ) VALUES (
                     ?, ?, ?, ?, ?, ?, ?, ?, ?,
                     ?, ?, CAST(? AS jsonb), CAST(? AS jsonb), ?, CAST(? AS jsonb),
-                    ?, ?, ?, ?, ?, ?
+                    ?, ?, ?, ?, ?, ?, ?, ?
                 )
                 """;
         jdbcTemplate.update(
@@ -129,7 +133,9 @@ public class OperationLogService {
                 log.getIpAddress(),
                 log.getUserAgent(),
                 log.getDurationMs(),
+                log.getErrorCode(),
                 log.getErrorMessage(),
+                log.getTraceId(),
                 log.getCreateTime(),
                 log.getDeleted()
         );

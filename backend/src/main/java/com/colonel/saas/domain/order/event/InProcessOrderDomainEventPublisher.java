@@ -180,9 +180,12 @@ public class InProcessOrderDomainEventPublisher implements OrderDomainEventPubli
                 OrderRefundFactSyncedEvent event = objectMapper.readValue(
                         payloadJson, OrderRefundFactSyncedEvent.class);
                 applicationEventPublisher.publishEvent(event);
+                return;
             }
+            throw new IllegalArgumentException("Unsupported order domain event type: " + eventType);
         } catch (Exception ex) {
             log.warn("Spring republish failed for eventType={}", eventType, ex);
+            throw new IllegalStateException("Order domain event republish failed: " + eventType, ex);
         }
     }
 }

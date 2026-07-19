@@ -1188,7 +1188,9 @@ CREATE TABLE IF NOT EXISTS operation_log (
     ip_address      VARCHAR(50),
     user_agent      VARCHAR(500),
     duration_ms     BIGINT,
+    error_code      VARCHAR(128),
     error_message   TEXT,
+    trace_id        VARCHAR(128),
     create_time     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     deleted         SMALLINT NOT NULL DEFAULT 0,
     CONSTRAINT pk_ol PRIMARY KEY (id, create_time)

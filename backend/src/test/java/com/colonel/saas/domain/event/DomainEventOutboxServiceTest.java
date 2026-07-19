@@ -156,10 +156,21 @@ class DomainEventOutboxServiceTest {
     @Test
     void retryDeadEvent_shouldResetToPending() {
         UUID eventId = UUID.fromString("88888888-8888-8888-8888-888888888888");
+        when(domainEventOutboxMapper.resetToPending(eventId)).thenReturn(1);
 
         service.retryDeadEvent(eventId);
 
         verify(domainEventOutboxMapper).resetToPending(eventId);
+    }
+
+    @Test
+    void retryDeadEvent_shouldRejectNonDeadOrMissingEvent() {
+        UUID eventId = UUID.fromString("89888888-8888-8888-8888-888888888888");
+        when(domainEventOutboxMapper.resetToPending(eventId)).thenReturn(0);
+
+        assertThatThrownBy(() -> service.retryDeadEvent(eventId))
+                .isInstanceOf(com.colonel.saas.common.exception.BusinessException.class)
+                .hasMessageContaining("DEAD");
     }
 
     @Test

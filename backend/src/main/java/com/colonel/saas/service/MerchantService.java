@@ -240,18 +240,18 @@ public class MerchantService {
      * @param order 团长结算订单，提供商家 ID、店铺等原始信息
      */
     @Transactional(rollbackFor = Exception.class)
-    public void ensureMerchantFromOrder(ColonelsettlementOrder order) {
+    public boolean ensureMerchantFromOrder(ColonelsettlementOrder order) {
         // 第一步：从订单 extraData 或 shopId 中解析出商家 ID
         String merchantId = resolveMerchantId(order);
         if (!StringUtils.hasText(merchantId)) {
-            return;
+            return false;
         }
         // 第二步：查询商家是否已存在，存在则直接返回（幂等）
         Merchant existing = merchantMapper.selectOne(new LambdaQueryWrapper<Merchant>()
                 .eq(Merchant::getMerchantId, merchantId)
                 .last("limit 1"));
         if (existing != null) {
-            return;
+            return false;
         }
         // 第三步：构建商家实体
         Merchant merchant = new Merchant();
@@ -268,8 +268,10 @@ public class MerchantService {
         // 第四步：尝试插入，忽略并发重复插入异常
         try {
             merchantMapper.insert(merchant);
+            return true;
         } catch (DuplicateKeyException ignore) {
             // 并发插入是可接受的，直接忽略
+            return false;
         }
     }
 

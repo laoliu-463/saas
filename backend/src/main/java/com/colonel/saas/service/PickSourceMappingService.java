@@ -817,22 +817,22 @@ public class PickSourceMappingService {
      * </ul>
      */
     @Transactional(rollbackFor = Exception.class)
-    public void ensureFromOrder(ColonelsettlementOrder order) {
+    public boolean ensureFromOrder(ColonelsettlementOrder order) {
         if (order == null
                 || !StringUtils.hasText(order.getAttributionStatus())
                 || !"ATTRIBUTED".equalsIgnoreCase(order.getAttributionStatus())
                 || order.getUserId() == null) {
-            return;
+            return false;
         }
         if (StringUtils.hasText(order.getPickSource())) {
-            ensurePickSourceMappingFromOrder(order);
-            return;
+            return ensurePickSourceMappingFromOrder(order);
         }
         if (order.getColonelBuyinId() != null
                 && StringUtils.hasText(order.getProductId())
                 && StringUtils.hasText(order.getActivityId())) {
-            ensureNativeMappingFromOrder(order);
+            return ensureNativeMappingFromOrder(order);
         }
+        return false;
     }
 
     /**
@@ -841,22 +841,22 @@ public class PickSourceMappingService {
      * 若 pickSource 或从中提取的 shortId 已存在对应映射则跳过；
      * 插入遇到 {@link DuplicateKeyException} 时静默忽略（并发创建场景安全）。
      */
-    private void ensurePickSourceMappingFromOrder(ColonelsettlementOrder order) {
+    private boolean ensurePickSourceMappingFromOrder(ColonelsettlementOrder order) {
         PickSourceMapping existingByPickSource = pickSourceMappingMapper.selectOne(new LambdaQueryWrapper<PickSourceMapping>()
                 .eq(PickSourceMapping::getPickSource, order.getPickSource())
                 .last("limit 1"));
         if (existingByPickSource != null) {
-            return;
+            return false;
         }
         String shortId = extractShortId(order.getPickSource());
         if (!StringUtils.hasText(shortId)) {
-            return;
+            return false;
         }
         PickSourceMapping existing = pickSourceMappingMapper.selectOne(new LambdaQueryWrapper<PickSourceMapping>()
                 .eq(PickSourceMapping::getShortId, shortId)
                 .last("limit 1"));
         if (existing != null) {
-            return;
+            return false;
         }
         PickSourceMapping mapping = new PickSourceMapping();
         mapping.setId(UUID.randomUUID());
@@ -874,8 +874,10 @@ public class PickSourceMappingService {
         mapping.setUuidSeed(UUID.nameUUIDFromBytes(shortId.getBytes(StandardCharsets.UTF_8)));
         try {
             pickSourceMappingMapper.insert(mapping);
+            return true;
         } catch (DuplicateKeyException ex) {
             log.debug("Concurrent insert detected for pickSource={}, skipping", order.getPickSource());
+            return false;
         }
     }
 
@@ -886,7 +888,7 @@ public class PickSourceMappingService {
      * 合成 {@code colonel_native_{shortId}} 形式的 pickSource。
      * 存在映射时跳过；插入遇到 {@link DuplicateKeyException} 时静默忽略。
      */
-    private void ensureNativeMappingFromOrder(ColonelsettlementOrder order) {
+    private boolean ensureNativeMappingFromOrder(ColonelsettlementOrder order) {
         String colonelBuyinId = String.valueOf(order.getColonelBuyinId());
         String productId = order.getProductId().trim();
         String activityId = order.getActivityId().trim();
@@ -898,7 +900,7 @@ public class PickSourceMappingService {
                 .eq(PickSourceMapping::getUserId, order.getUserId())
                 .last("limit 1"));
         if (existing != null) {
-            return;
+            return false;
         }
 
         String seedMaterial = colonelBuyinId + ":" + productId + ":" + activityId + ":" + order.getUserId();
@@ -909,7 +911,7 @@ public class PickSourceMappingService {
                 .eq(PickSourceMapping::getPickSource, syntheticPickSource)
                 .last("limit 1"));
         if (existingBySyntheticSource != null) {
-            return;
+            return false;
         }
 
         PickSourceMapping mapping = new PickSourceMapping();
@@ -931,9 +933,11 @@ public class PickSourceMappingService {
         mapping.setUuidSeed(uuidSeed);
         try {
             pickSourceMappingMapper.insert(mapping);
+            return true;
         } catch (DuplicateKeyException ex) {
             log.debug("Concurrent native mapping insert detected for activityId={}, productId={}, colonelBuyinId={}, userId={}, skipping",
                     activityId, productId, colonelBuyinId, order.getUserId());
+            return false;
         }
     }
 

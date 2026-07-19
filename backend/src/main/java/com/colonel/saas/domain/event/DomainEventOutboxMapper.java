@@ -95,11 +95,22 @@ public interface DomainEventOutboxMapper extends BaseMapper<DomainEventOutbox> {
      */
     @Update("""
             UPDATE domain_event_outbox
-            SET status = 'PENDING',
+            SET headers = COALESCE(headers, '{}'::jsonb) || jsonb_build_object(
+                    'replayCount', CASE
+                        WHEN COALESCE(headers ->> 'replayCount', '') ~ '^[0-9]+$'
+                            THEN (headers ->> 'replayCount')::integer + 1
+                        ELSE 1
+                    END,
+                    'replayedAt', CURRENT_TIMESTAMP,
+                    'replayLastError', error_message
+                ),
+                status = 'PENDING',
                 retry_count = 0,
                 error_message = NULL,
+                published_at = NULL,
                 next_retry_at = CURRENT_TIMESTAMP
             WHERE event_id = #{eventId}
+              AND status = 'DEAD'
             """)
     int resetToPending(@Param("eventId") UUID eventId);
 }

@@ -1,5 +1,6 @@
 package com.colonel.saas.security;
 
+import com.colonel.saas.common.web.RequestIdContext;
 import com.colonel.saas.entity.OperationLog;
 import com.colonel.saas.service.OperationLogService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -56,6 +57,9 @@ public class OperationLogInterceptor implements HandlerInterceptor {
 
     /** request attribute 键名，用于在 preHandle 和 afterCompletion 之间传递请求开始时间 */
     private static final String ATTR_STARTED_AT = "operationLog.startedAt";
+    static final String ATTR_ERROR_CODE = "operationLog.errorCode";
+    static final String ATTR_ERROR_MESSAGE = "operationLog.errorMessage";
+    static final String ATTR_SKIP = "operationLog.skip";
 
     /** 操作日志持久化服务 */
     private final OperationLogService operationLogService;
@@ -117,6 +121,9 @@ public class OperationLogInterceptor implements HandlerInterceptor {
         if (!shouldRecord(request.getMethod())) {
             return;
         }
+        if (Boolean.TRUE.equals(request.getAttribute(ATTR_SKIP))) {
+            return;
+        }
 
         try {
             OperationLog entry = new OperationLog();
@@ -136,7 +143,11 @@ public class OperationLogInterceptor implements HandlerInterceptor {
             entry.setIpAddress(resolveClientIp(request));
             entry.setUserAgent(request.getHeader("User-Agent"));
             entry.setDurationMs(resolveDuration(request));
-            entry.setErrorMessage(ex == null ? null : ex.getMessage());
+            entry.setErrorCode(attributeText(request, ATTR_ERROR_CODE));
+            entry.setErrorMessage(ex == null
+                    ? attributeText(request, ATTR_ERROR_MESSAGE)
+                    : ex.getMessage());
+            entry.setTraceId(attributeText(request, RequestIdContext.MDC_KEY));
             entry.setRequestParams(copyParams(request.getParameterMap()));
 
             // 根据处理器类型提取模块和操作元数据
@@ -158,6 +169,11 @@ public class OperationLogInterceptor implements HandlerInterceptor {
             // 日志记录失败不影响业务流程，仅打印警告
             log.warn("operation log record failed: method={}, uri={}", request.getMethod(), request.getRequestURI(), ex2);
         }
+    }
+
+    private String attributeText(HttpServletRequest request, String name) {
+        Object value = request.getAttribute(name);
+        return value == null ? null : String.valueOf(value);
     }
 
     /**

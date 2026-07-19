@@ -1,6 +1,7 @@
 package com.colonel.saas.security;
 
 import com.colonel.saas.controller.SysConfigController;
+import com.colonel.saas.common.web.RequestIdContext;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.entity.OperationLog;
 import com.colonel.saas.entity.SystemConfig;
@@ -23,6 +24,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 @ExtendWith(MockitoExtension.class)
 class OperationLogInterceptorTest {
@@ -85,8 +87,11 @@ class OperationLogInterceptorTest {
         request.addHeader("User-Agent", "JUnit");
         request.addParameter("keyword", "达人");
         request.addParameter("tag", "a", "b");
+        request.setAttribute(RequestIdContext.MDC_KEY, "req-operation-log-1");
+        request.setAttribute("operationLog.errorCode", "STATE_INVALID");
+        request.setAttribute("operationLog.errorMessage", "状态不允许");
 
-        interceptor.afterCompletion(request, response, new Object(), new RuntimeException("boom"));
+        interceptor.afterCompletion(request, response, new Object(), null);
 
         ArgumentCaptor<OperationLog> captor = ArgumentCaptor.forClass(OperationLog.class);
         verify(operationLogService).record(captor.capture());
@@ -98,7 +103,9 @@ class OperationLogInterceptorTest {
         assertThat(log.getIpAddress()).isEqualTo("1.1.1.1");
         assertThat(log.getUserAgent()).isEqualTo("JUnit");
         assertThat(log.getDurationMs()).isZero();
-        assertThat(log.getErrorMessage()).isEqualTo("boom");
+        assertThat(log.getErrorCode()).isEqualTo("STATE_INVALID");
+        assertThat(log.getErrorMessage()).isEqualTo("状态不允许");
+        assertThat(log.getTraceId()).isEqualTo("req-operation-log-1");
         assertThat(log.getModule()).isEqualTo("api");
         assertThat(log.getAction()).isEqualTo("POST /api/test/path");
         assertThat(log.getTargetType()).isEqualTo("api");
@@ -120,5 +127,17 @@ class OperationLogInterceptorTest {
         interceptor.afterCompletion(request, response, new Object(), null);
 
         verify(operationLogService).record(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void afterCompletion_shouldSkipWhenBusinessSummaryOwnsAudit() {
+        OperationLogInterceptor interceptor = new OperationLogInterceptor(operationLogService);
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/orders/sync");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        request.setAttribute(OperationLogInterceptor.ATTR_SKIP, true);
+
+        interceptor.afterCompletion(request, response, new Object(), null);
+
+        verifyNoInteractions(operationLogService);
     }
 }

@@ -57,8 +57,9 @@ public class DomainEventDispatcherJob {
 
     /** 事件最大重试次数 */
     private static final int MAX_RETRY = 3;
-    /** 每次拉取的事件批次大小 */
-    private static final int BATCH_SIZE = 20;
+    /** 每次拉取的事件批次大小，可在积压消化期间按环境调节。 */
+    @Value("${app.domain-event.dispatch-batch-size:20}")
+    private int batchSize = 20;
 
     /** Outbox 事件服务，负责事件的锁定、状态更新等 */
     private final DomainEventOutboxService domainEventOutboxService;
@@ -103,7 +104,8 @@ public class DomainEventDispatcherJob {
     @Transactional(rollbackFor = Exception.class)
     public void dispatchPendingEvents() {
         // 锁定待处理事件（悲观锁，防止多实例并发处理同一批事件）
-        List<DomainEventOutbox> pending = domainEventOutboxService.lockPendingEvents(MAX_RETRY, BATCH_SIZE);
+        List<DomainEventOutbox> pending = domainEventOutboxService.lockPendingEvents(
+                MAX_RETRY, Math.max(1, batchSize));
         for (DomainEventOutbox event : pending) {
             dispatchOne(event);
         }
@@ -140,6 +142,8 @@ public class DomainEventDispatcherJob {
                 sampleDomainEventOutboxRouter.dispatch(event);
             } else if (orderDomainEventOutboxRouter.supports(event.getEventType())) {
                 orderDomainEventOutboxRouter.dispatch(event);
+            } else {
+                throw new IllegalArgumentException("Unsupported outbox event type: " + event.getEventType());
             }
             // 分发成功，标记为已发布
             domainEventOutboxService.markPublished(event.getEventId(), event.getRetryCount() == null ? 0 : event.getRetryCount());

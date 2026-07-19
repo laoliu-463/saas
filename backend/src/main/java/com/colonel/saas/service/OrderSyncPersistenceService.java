@@ -251,17 +251,21 @@ public class OrderSyncPersistenceService {
         }
     }
 
-    /** 依次执行归因后置步骤：补齐推广映射、沉淀商家、完成寄样作业，每步记录操作日志。 */
+    /** 依次执行归因后置步骤；仅在实际产生状态变化时记录操作日志。 */
     private void runAttributionFollowUps(ColonelsettlementOrder order) {
-        pickSourceMappingService.ensureFromOrder(order);
-        recordAttributionFollowUp(order, "补齐推广映射", "ensureFromOrder");
+        if (pickSourceMappingService.ensureFromOrder(order)) {
+            recordAttributionFollowUp(order, "补齐推广映射", "ensureFromOrder");
+        }
 
-        merchantService.ensureMerchantFromOrder(order);
-        recordAttributionFollowUp(order, "沉淀商家", "ensureMerchantFromOrder");
+        if (merchantService.ensureMerchantFromOrder(order)) {
+            recordAttributionFollowUp(order, "沉淀商家", "ensureMerchantFromOrder");
+        }
 
         if (!isSampleHomeworkEventDriven()) {
-            sampleHomeworkFacade.completePendingHomeworkByOrder(order);
-            recordAttributionFollowUp(order, "完成寄样作业", "completePendingHomeworkByOrder");
+            int completed = sampleHomeworkFacade.completePendingHomeworkByOrder(order);
+            if (completed > 0) {
+                recordAttributionFollowUp(order, "完成寄样作业", "completePendingHomeworkByOrder");
+            }
         }
     }
 

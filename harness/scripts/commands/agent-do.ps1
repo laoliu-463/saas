@@ -14,6 +14,7 @@ param(
     [AllowEmptyCollection()][string[]]$OwnedFiles = @(),
     [string]$RetroSummary = "No actionable Harness improvement was recorded; no standalone retro is required.",
     [switch]$AllowSourceCodeRetire,
+    [switch]$SkipRemoteBackup,
     [switch]$SkipBusinessValidation,
     [switch]$DryRun
 )
@@ -42,6 +43,7 @@ try {
     Write-Host "ContentMaintenance: $ContentMaintenance"
     Write-Host "ReportKey: $ReportKey"
     Write-Host "OwnedFiles: $($ownedFilesValue.Count)"
+    Write-Host "SkipRemoteBackup: $SkipRemoteBackup"
     Write-Host "DryRun: $($DryRun.IsPresent)"
 
     $allChangedFiles = @(Get-HarnessChangedFiles)
@@ -260,7 +262,10 @@ try {
         -DryRun:$DryRun
 
     if ($deployRemoteValue) {
-        & (Join-Path $PSScriptRoot "deploy-remote.ps1") -Env real-pre -DryRun:$DryRun
+        & (Join-Path $PSScriptRoot "deploy-remote.ps1") `
+            -Env real-pre `
+            -SkipBackup:$SkipRemoteBackup `
+            -DryRun:$DryRun
         $remoteResult = "Remote deploy: PASS"
         $remoteReportPath = & (Join-Path $PSScriptRoot "collect-evidence.ps1") `
             -Env $TargetEnv `

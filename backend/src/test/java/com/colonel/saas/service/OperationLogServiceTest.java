@@ -80,6 +80,9 @@ class OperationLogServiceTest {
         log.setRequestParams(Map.of("page", 1));
         log.setRequestBody(Map.of("orderId", "A001"));
         log.setResponseBody(Map.of("ok", true));
+        log.setErrorCode("ORDER_SYNC_PARTIAL_FAILURE");
+        log.setErrorMessage("1 条失败");
+        log.setTraceId("trace-order-sync-1");
         ArgumentCaptor<Object[]> argsCaptor = ArgumentCaptor.forClass(Object[].class);
 
         service.record(log);
@@ -94,7 +97,10 @@ class OperationLogServiceTest {
         assertThat(args[11]).isEqualTo("{\"page\":1}");
         assertThat(args[12]).isEqualTo("{\"orderId\":\"A001\"}");
         assertThat(args[14]).isEqualTo("{\"ok\":true}");
-        assertThat(args[20]).isEqualTo(0);
+        assertThat(args[18]).isEqualTo("ORDER_SYNC_PARTIAL_FAILURE");
+        assertThat(args[19]).isEqualTo("1 条失败");
+        assertThat(args[20]).isEqualTo("trace-order-sync-1");
+        assertThat(args[22]).isEqualTo(0);
     }
 
     @Test

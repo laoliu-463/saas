@@ -22,6 +22,7 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
@@ -88,6 +89,15 @@ class DddOutbox001OrderRoutingTest {
         verify(applicationEventPublisher).publishEvent(captor.capture());
         assertThat(captor.getValue()).isInstanceOf(OrderSyncedEvent.class);
         assertThat(((OrderSyncedEvent) captor.getValue()).orderId()).isEqualTo("ORD-1");
+    }
+
+    @Test
+    @DisplayName("Outbox 载荷反序列化失败必须向派发器传播，不能伪装发布成功")
+    void republishSpringEvent_invalidPayload_shouldPropagateFailure() {
+        assertThatThrownBy(() -> publisher.republishSpringEvent(OrderDomainEventTypes.ORDER_SYNCED, "{"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Order domain event republish failed");
+        verify(applicationEventPublisher, never()).publishEvent(any());
     }
 
     @Test

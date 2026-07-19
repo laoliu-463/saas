@@ -6,16 +6,19 @@ import com.colonel.saas.gateway.logistics.LogisticsTrackCommand;
 import com.colonel.saas.gateway.logistics.kuaidi100.Kuaidi100LogisticsGateway;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 
 /**
  * 快递100 V2 统一查询适配器。
@@ -27,7 +30,7 @@ import java.util.concurrent.ConcurrentMap;
  * <ul>
  *   <li>配置检查：未配置快递100凭证时返回 {@code NOT_CONFIGURED}，禁止伪造成功</li>
  *   <li>参数校验：快递公司编码、物流单号非空校验，顺丰/中通手机号强制校验</li>
- *   <li>频率节流：同一运单 30 分钟内禁止重复查询（快递100 API 限制）</li>
+ *   <li>频率节流：同一运单 31 分钟内禁止重复查询（Redis 跨实例状态）</li>
  *   <li>状态映射：将 V1 内部状态（IN_TRANSIT / SIGNED / EXCEPTION 等）映射为 V2 统一状态码</li>
  *   <li>轨迹转换：将 V1 {@link LogisticsGateway.LogisticsTraceNode} 转换为 V2 {@link LogisticsQueryResult.LogisticsTraceItem}</li>
  * </ul>
@@ -46,11 +49,10 @@ import java.util.concurrent.ConcurrentMap;
 public class Kuaidi100LogisticsQueryGateway implements LogisticsQueryGateway {
 
     /**
-     * 同一运单最小查询间隔（30 分钟）。
-     * <p>快递100 API 要求同一运单号两次查询之间至少间隔 30 分钟，
-     * 否则会触发频率限制。此常量用于 {@link #throttleIfNeeded} 方法。</p>
+     * 同一运单最小查询间隔（31 分钟），为上游 30 分钟限制保留调度抖动余量。
      */
-    private static final Duration MIN_QUERY_INTERVAL = Duration.ofMinutes(30);
+    private static final Duration MIN_QUERY_INTERVAL = Duration.ofMinutes(31);
+    private static final String THROTTLE_KEY_PREFIX = "logistics:kuaidi100:query-throttle:";
 
     /** 物流配置属性（用于检查快递100是否已配置） */
     private final LogisticsProperties properties;
@@ -61,12 +63,8 @@ public class Kuaidi100LogisticsQueryGateway implements LogisticsQueryGateway {
      */
     private final ObjectProvider<Kuaidi100LogisticsGateway> delegateProvider;
 
-    /**
-     * 运单查询时间记录表。
-     * <p>Key 为 "公司编码::单号"（大写），Value 为上次查询时间。
-     * 用于实现同一运单 30 分钟内禁止重复查询的节流逻辑。</p>
-     */
-    private final ConcurrentMap<String, LocalDateTime> lastQueryAtByWaybill = new ConcurrentHashMap<>();
+    /** Redis 跨实例限频状态；不可用时关闭查询，避免突破快递100限制。 */
+    private final RedisTemplate<String, Object> redisTemplate;
 
     /**
      * 构造函数，通过 Spring 依赖注入获取所有必需组件。
@@ -76,9 +74,11 @@ public class Kuaidi100LogisticsQueryGateway implements LogisticsQueryGateway {
      */
     public Kuaidi100LogisticsQueryGateway(
             LogisticsProperties properties,
-            ObjectProvider<Kuaidi100LogisticsGateway> delegateProvider) {
+            ObjectProvider<Kuaidi100LogisticsGateway> delegateProvider,
+            RedisTemplate<String, Object> redisTemplate) {
         this.properties = properties;
         this.delegateProvider = delegateProvider;
+        this.redisTemplate = redisTemplate;
     }
 
     /**
@@ -108,7 +108,7 @@ public class Kuaidi100LogisticsQueryGateway implements LogisticsQueryGateway {
      *   <li>第四步：校验手机号（顺丰/中通强制要求）</li>
      *   <li>第五步：获取 V1 网关实例，不可用时返回 NOT_CONFIGURED</li>
      *   <li>第六步：标准化命令参数（trim、默认值等）</li>
-     *   <li>第七步：频率节流检查（同一运单 30 分钟内禁止重复查询）</li>
+     *   <li>第七步：频率节流检查（同一运单 31 分钟内禁止重复查询）</li>
      *   <li>第八步：委托 V1 网关查询轨迹</li>
      *   <li>第九步：调用 {@link #mapTrack} 将 V1 结果转换为 V2 统一格式</li>
      * </ol>
@@ -215,33 +215,48 @@ public class Kuaidi100LogisticsQueryGateway implements LogisticsQueryGateway {
     }
 
     /**
-     * 频率节流检查：同一运单 30 分钟内禁止重复查询。
-     * <p>快递100 API 要求同一运单号两次查询之间至少间隔 {@value #MIN_QUERY_INTERVAL} 分钟，
-     * 否则会触发频率限制。此方法通过 {@link #lastQueryAtByWaybill} 记录上次查询时间：</p>
-     * <ol>
-     *   <li>第一步：构造缓存键，格式为 "公司编码::单号"（大写），确保同一运单唯一性</li>
-     *   <li>第二步：从 {@link #lastQueryAtByWaybill} 获取该运单上次查询时间</li>
-     *   <li>第三步：若上次查询时间存在且距当前时间不足 30 分钟，返回 {@code QUERY_THROTTLED} 错误结果</li>
-     *   <li>第四步：若未触发节流，记录当前时间为最新查询时间</li>
-     * </ol>
+     * 频率节流检查：使用 Redis SET NX EX 保证所有实例共享同一 31 分钟窗口。
+     * Redis 不可用时失败关闭，宁可跳过本轮，也不绕过上游限频。
      *
      * @param command 已标准化的物流查询命令对象
      * @return 若被节流返回 {@link LogisticsQueryResult}（错误），否则返回 {@code null} 表示可继续查询
      */
     private LogisticsQueryResult throttleIfNeeded(LogisticsTrackCommand command) {
-        String key = (command.getCompanyCode() + "::" + command.getTrackingNo()).toUpperCase();
-        LocalDateTime now = LocalDateTime.now();
-        LocalDateTime lastQueryAt = lastQueryAtByWaybill.get(key);
-        if (lastQueryAt != null && lastQueryAt.plus(MIN_QUERY_INTERVAL).isAfter(now)) {
+        String identity = (command.getCompanyCode() + "::" + command.getTrackingNo()).toUpperCase();
+        String key = THROTTLE_KEY_PREFIX + sha256(identity);
+        try {
+            Boolean acquired = redisTemplate.opsForValue().setIfAbsent(
+                    key, System.currentTimeMillis(), MIN_QUERY_INTERVAL);
+            if (Boolean.TRUE.equals(acquired)) {
+                return null;
+            }
+            if (acquired == null) {
+                throw new IllegalStateException("Redis SETNX returned null");
+            }
             return LogisticsQueryResult.queryFailed(
                     providerName(),
                     command.getCompanyCode(),
                     command.getTrackingNo(),
                     "QUERY_THROTTLED",
-                    "快递100要求同一运单查询间隔至少30分钟，请稍后再试");
+                    "快递100同一运单查询安全间隔至少31分钟，本次已跳过");
+        } catch (RuntimeException ex) {
+            log.error("Kuaidi100 throttle state unavailable, key={}", key, ex);
+            return LogisticsQueryResult.queryFailed(
+                    providerName(),
+                    command.getCompanyCode(),
+                    command.getTrackingNo(),
+                    "THROTTLE_STATE_UNAVAILABLE",
+                    "物流限频状态不可用，本次查询已阻止");
         }
-        lastQueryAtByWaybill.put(key, now);
-        return null;
+    }
+
+    private String sha256(String value) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            return HexFormat.of().formatHex(digest.digest(value.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException ex) {
+            throw new IllegalStateException("SHA-256 unavailable", ex);
+        }
     }
 
     /**

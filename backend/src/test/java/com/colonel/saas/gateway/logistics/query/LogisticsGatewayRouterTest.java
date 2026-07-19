@@ -5,6 +5,7 @@ import com.colonel.saas.gateway.logistics.LogisticsGateway;
 import com.colonel.saas.gateway.logistics.fallback.ManualFallbackLogisticsGateway;
 import com.colonel.saas.gateway.logistics.kuaidi100.Kuaidi100LogisticsGateway;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -22,7 +23,9 @@ class LogisticsGatewayRouterTest {
         KuaidiNiaoLogisticsQueryGateway kdn = new KuaidiNiaoLogisticsQueryGateway(properties, fallback);
         ObjectProvider<Kuaidi100LogisticsGateway> kd100Provider = mock(ObjectProvider.class);
         when(kd100Provider.getIfAvailable()).thenReturn(null);
-        Kuaidi100LogisticsQueryGateway kd100 = new Kuaidi100LogisticsQueryGateway(properties, kd100Provider);
+        RedisTemplate<String, Object> redisTemplate = mock(RedisTemplate.class);
+        Kuaidi100LogisticsQueryGateway kd100 = new Kuaidi100LogisticsQueryGateway(
+                properties, kd100Provider, redisTemplate);
         LogisticsGatewayRouter router = new LogisticsGatewayRouter(properties, mock, kdn, kd100, false);
 
         LogisticsQueryResult result = router.query("SF", "SF1234567890");
