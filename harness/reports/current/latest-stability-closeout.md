@@ -2,26 +2,24 @@
 
 ## Metadata
 
-- Time: 2026-07-19 14:58:55 +08:00
+- Time: 2026-07-19 15:07:11 +08:00
 - Environment: real-pre
 - Scope: full
 - Branch: codex/ddd-user-role-application
-- Commit: d761a0e8
-- Owned worktree: dirty
-- Deploy remote: false
+- Commit: dbe8686b
+- Owned worktree: clean
+- Deploy remote: true
 
 ## Owned Files
 
 ~~~text
-backend/src/main/java/com/colonel/saas/auth/service/AuthService.java
-backend/src/test/java/com/colonel/saas/auth/service/AuthServiceTest.java
+harness/reports/current/latest-stability-closeout.md
 ~~~
 
 ## Owned Git Status
 
 ~~~text
-M backend/src/main/java/com/colonel/saas/auth/service/AuthService.java
- M backend/src/test/java/com/colonel/saas/auth/service/AuthServiceTest.java
+(clean)
 ~~~
 
 ## Build Result
@@ -44,8 +42,8 @@ NAMES                             STATUS                        PORTS
 saas-active-frontend-real-pre-1   Up About a minute (healthy)   127.0.0.1:3001->80/tcp
 saas-active-backend-real-pre-1    Up About a minute (healthy)   127.0.0.1:8081->8080/tcp
 saas-active-redis-real-pre-1      Up 18 hours (healthy)         6379/tcp
-saas-test-frontend-1              Up 19 hours (healthy)         0.0.0.0:3000->3000/tcp, [::]:3000->3000/tcp
-saas-test-backend-1               Up 19 hours (healthy)         0.0.0.0:5005->5005/tcp, [::]:5005->5005/tcp, 0.0.0.0:8080->8080/tcp, [::]:8080->8080/tcp
+saas-test-frontend-1              Up 20 hours (healthy)         0.0.0.0:3000->3000/tcp, [::]:3000->3000/tcp
+saas-test-backend-1               Up 20 hours (healthy)         0.0.0.0:5005->5005/tcp, [::]:5005->5005/tcp, 0.0.0.0:8080->8080/tcp, [::]:8080->8080/tcp
 saas-test-postgres-1              Up 20 hours (healthy)         0.0.0.0:5432->5432/tcp, [::]:5432->5432/tcp
 saas-active-postgres-real-pre-1   Up 20 hours (healthy)         5432/tcp
 campus_frontend                   Up 21 hours                   0.0.0.0:5173->5173/tcp, [::]:5173->5173/tcp
@@ -80,11 +78,11 @@ remote not deployed
 
 ## Retro Summary
 
-结构化字段必须在真实线上失败样本中核验；仅建列和覆盖通用异常不足以证明所有直接审计入口都有 error_code。
+直接写 operation_log 的业务入口也必须设置结构化错误码；线上失败样本是验证字段完整性的必要证据。
 
 ## Conclusion
 
-PASS
+PARTIAL
 
 ## Residual Risk
 
