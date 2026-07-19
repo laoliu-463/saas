@@ -25,8 +25,9 @@ class DddEventDispatcherRuntimeRetryContractTest {
                         "@Scheduled(fixedDelayString = \"${app.domain-event.dispatch-interval-ms:5000}\")",
                         "@Transactional(rollbackFor = Exception.class)",
                         "private static final int MAX_RETRY = 3;",
-                        "private static final int BATCH_SIZE = 20;",
-                        "domainEventOutboxService.lockPendingEvents(MAX_RETRY, BATCH_SIZE)");
+                        "@Value(\"${app.domain-event.dispatch-batch-size:20}\")",
+                        "private int batchSize = 20;",
+                        "MAX_RETRY, Math.max(1, batchSize)");
         assertThat(mapper)
                 .contains(
                         "WHERE status IN ('PENDING', 'FAILED')",
@@ -75,7 +76,7 @@ class DddEventDispatcherRuntimeRetryContractTest {
         assertThat(mapper)
                 .contains(
                         "int resetToPending(",
-                        "SET status = 'PENDING'",
+                        "status = 'PENDING'",
                         "retry_count = 0",
                         "error_message = NULL",
                         "next_retry_at = CURRENT_TIMESTAMP");

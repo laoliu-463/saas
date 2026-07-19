@@ -7,9 +7,7 @@ import com.colonel.saas.job.JobLockKeys;
 import com.colonel.saas.gateway.douyin.DouyinOrderGateway;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.time.AppZone;
-import com.colonel.saas.common.web.RequestIdContext;
 import com.colonel.saas.entity.ColonelsettlementOrder;
-import com.colonel.saas.entity.OperationLog;
 import com.colonel.saas.service.settlement.InstituteOrderColonelSettlementGateway;
 import com.colonel.saas.service.settlement.MultiSettlementOrderFallbackGateway;
 import com.colonel.saas.service.settlement.SettlementOrderGateway;
@@ -34,7 +32,6 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -45,33 +42,9 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
- * 订单同步服务 (god service - Application 实现层, 不再 DDD 切片).
+ * 订单同步应用服务，负责编排时间窗口、分布式锁、熔断器和上游网关调用。
  *
- * <p><strong>当前状态 (2026-07-14):</strong></p>
- * <ul>
- *   <li>1470 行 / 12 public method / 6 个同步模式</li>
- *   <li>已标 "Application 实现层" (commit e930d81e)</li>
- *   <li>已 owner-safe 修复 (commit 387b3e10 P9.5 阶段 2)</li>
- *   <li>不切理由: Application 直接调度 + 状态机, 切委派壳破坏 Application 调度逻辑</li>
- * </ul>
- * 订单同步服务：从抖音结算网关拉取最新订单并持久化。
- *
- * <p>支持按时间窗口自动同步、手动触发、按订单号精确同步三种模式；
- * 内置分布式锁（Redis）防并发，熔断器保护上游网关；同步过程中
- * 通过 {@link OrderAttributionRouter} 完成订单归属解析与字段写入。</p>
- *
- * <p><b>DDD 切片状态（DDD-ORDER-006 Slice 3 收尾）：</b>
- * 本服务是 {@link com.colonel.saas.domain.order.application.OrderSyncApplicationService}
- * 调度的"实现层"——Application 负责 Command 模式路由、Checkpoint 解析、SyncResult 包装，
- * 本类负责 Redis 锁、熔断器、Gateway 调用、订单落库的实际逻辑。</p>
- *
- * <p><b>不切为委派壳的原因：</b>
- * 本服务是 6 种同步模式（INCREMENTAL/PAY_RECENT/SETTLE/INSTITUTE_RECENT/
- * INSTITUTE_HOT_RECENT/SPECIFIC）的实现中心，1445 行包含熔断器阈值 / 锁 TTL /
- * 多 gateway 调用细节，全部都是基础设施级配置与运行时控制；Application 层的
- * 包装（command 模式、checkpoint 解析、dry-run 短路）依赖本类 SyncResult 的
- * 完整字段语义（pages/totalFetched/stopReason 等），直接二次切会破坏应用层封装
- * 并引入数据流入风险。</p>
+ * <p>订单持久化、归因和批次审计分别委托给独立协作者，本类只保留同步流程控制。</p>
  */
 @Slf4j
 @Service
@@ -153,7 +126,7 @@ public class OrderSyncService {
     private final DistributedJobLockService jobLockService;
     private final AppProperties appProperties;
     private final OrderAmountMappingRouter orderAmountMappingRouter;
-    private final OperationLogService operationLogService;
+    private final OrderSyncAuditService orderSyncAuditService;
     private volatile long localLastSyncTime;
     private final AtomicInteger consecutiveGatewayFailures = new AtomicInteger();
     private volatile Instant gatewayCircuitOpenedAt;
@@ -240,7 +213,7 @@ public class OrderSyncService {
             DistributedJobLockService jobLockService,
             AppProperties appProperties,
             OrderAmountMappingRouter orderAmountMappingRouter,
-            OperationLogService operationLogService) {
+            OrderSyncAuditService orderSyncAuditService) {
         this.douyinOrderGateway = douyinOrderGateway;
         this.instituteSettlementGateway = instituteSettlementGateway;
         this.multiSettlementFallbackGateway = multiSettlementFallbackGateway;
@@ -250,7 +223,7 @@ public class OrderSyncService {
         this.jobLockService = jobLockService;
         this.appProperties = appProperties;
         this.orderAmountMappingRouter = orderAmountMappingRouter;
-        this.operationLogService = operationLogService;
+        this.orderSyncAuditService = orderSyncAuditService;
     }
 
     /** 判断当前是否处于 test 模式（影响 Redis 不可用时的降级策略）。 */
@@ -992,7 +965,7 @@ public class OrderSyncService {
             SyncResult failedResult = new SyncResult(
                     startTime, endTime, pages, totalFetched, created, updated,
                     attributedCount, unattributedCount, failedCount, false, seenOrderIds.size(), stopReason);
-            recordSyncSummary(logName, api, mode, timeType, failedResult,
+            orderSyncAuditService.recordSyncSummary(logName, api, mode, timeType, failedResult,
                     "ORDER_SYNC_FETCH_ERROR", e.getMessage());
             throw e;
         } finally {
@@ -1013,67 +986,8 @@ public class OrderSyncService {
 
         SyncResult result = new SyncResult(startTime, endTime, pages, totalFetched, created, updated,
                 attributedCount, unattributedCount, failedCount, false, seenOrderIds.size(), stopReason);
-        recordSyncSummary(logName, api, mode, timeType, result);
+        orderSyncAuditService.recordSyncSummary(logName, api, mode, timeType, result);
         return result;
-    }
-
-    /** 单次批量同步只记录一条汇总日志，且仅在有数据变化或失败时写入。 */
-    void recordSyncSummary(String logName, String api, String mode, String timeType, SyncResult result) {
-        recordSyncSummary(logName, api, mode, timeType, result, null, null);
-    }
-
-    private void recordSyncSummary(
-            String logName,
-            String api,
-            String mode,
-            String timeType,
-            SyncResult result,
-            String terminalErrorCode,
-            String terminalErrorMessage) {
-        if (result == null || result.locked()
-                || (!StringUtils.hasText(terminalErrorCode)
-                && result.created() == 0 && result.updated() == 0 && result.failed() == 0)) {
-            return;
-        }
-        OperationLog audit = new OperationLog();
-        audit.setModule("订单同步");
-        audit.setAction("批量同步汇总");
-        audit.setRequestMethod("SYSTEM");
-        audit.setTargetType("order-sync-batch");
-        audit.setTargetId(mode + ":" + result.startTime() + ":" + result.endTime());
-        audit.setTargetName(logName);
-        audit.setContent("订单批量同步汇总");
-        Map<String, Object> summary = new LinkedHashMap<>();
-        summary.put("api", api);
-        summary.put("mode", mode);
-        summary.put("timeType", timeType);
-        summary.put("pages", result.pages());
-        summary.put("totalFetched", result.totalFetched());
-        summary.put("uniqueOrders", result.uniqueOrders());
-        summary.put("created", result.created());
-        summary.put("updated", result.updated());
-        summary.put("attributed", result.attributed());
-        summary.put("unattributed", result.unattributed());
-        summary.put("failed", result.failed());
-        summary.put("stopReason", result.stopReason());
-        audit.setResponseBody(summary);
-        String traceId = RequestIdContext.current();
-        audit.setTraceId(StringUtils.hasText(traceId) ? traceId : "order-sync-" + UUID.randomUUID());
-        if (StringUtils.hasText(terminalErrorCode)) {
-            audit.setErrorCode(terminalErrorCode);
-            audit.setErrorMessage(StringUtils.hasText(terminalErrorMessage)
-                    ? terminalErrorMessage
-                    : "订单同步异常终止");
-        } else if (result.failed() > 0) {
-            audit.setErrorCode("ORDER_SYNC_PARTIAL_FAILURE");
-            audit.setErrorMessage(result.failed() + " 条订单处理失败");
-        }
-        try {
-            operationLogService.record(audit);
-        } catch (RuntimeException ex) {
-            log.warn("Order sync summary audit failed, mode={}, range=[{}, {}]",
-                    mode, result.startTime(), result.endTime(), ex);
-        }
     }
 
     private String resolveNextCursor(DouyinOrderGateway.OrderListResult response) {
