@@ -12,7 +12,7 @@
 - 增加 CODEOWNERS、中文友好的 PR/Issue 模板、Dependabot、贡献指南和私密安全报告入口。
 - CI 增加 merge queue 触发、完整 SHA Action 固定、Job 超时、Node 20、无仓库迁移的 PostgreSQL/Redis service containers 和仓库治理检查。
 - 增加可执行 Pester 契约测试；本次不改变默认分支、仓库可见性、平台 ruleset、部署或数据库。
-- 刷新 `harness/engineering/issues-index.md`，当前 open issue 镜像与 GitHub #165、#166 一致，旧 Sprint 排期明确标记为历史快照。
+- 刷新 `harness/engineering/issues-index.md`，当前 open issue 镜像与 GitHub #165、#166、#168 一致；#168 跟踪后端 CI 基线与隔离数据库 bootstrap，旧 Sprint 排期明确标记为历史快照。
 - 修正 docs/governance 统一入口：无本地运行环境文件时仍可执行安全扫描、Harness 门禁与 evidence 收口，并跳过 evidence 的运行时采集，不触发应用构建、容器或数据库操作。
 - 修复 scoped push 对 `.github/` 的路径截断与未跟踪目录折叠问题，并让 Harness 文件路径按平台分隔符解析；保证 dot-prefixed Owned files 被逐文件暂存且 Linux 治理 Job 可执行。
 
