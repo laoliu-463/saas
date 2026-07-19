@@ -26,6 +26,7 @@ import java.math.BigDecimal;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
@@ -137,6 +138,101 @@ class ProductDisplayRuleServiceTest {
         verify(operationStateMapper).updateById(argThat(state ->
                 state.getId().equals(firstOtherActivity.getId())
                         && ProductDisplayStatus.HIDDEN.name().equals(state.getDisplayStatus())));
+    }
+
+    @Test
+    void applyForProductId_shouldRecomputeFromLatestStateAfterOptimisticConflict() {
+        String productId = "concurrent-product";
+        ProductOperationState staleWinner = libraryState(
+                "ACT-1", productId, 3000L, false, LocalDateTime.now().minusDays(2));
+        ProductOperationState staleLoser = libraryState(
+                "ACT-2", productId, 1000L, false, LocalDateTime.now().minusDays(1));
+        ProductOperationState freshWinner = libraryState(
+                "ACT-1", productId, 3000L, false, LocalDateTime.now().minusDays(2));
+        ProductOperationState freshLoser = libraryState(
+                "ACT-2", productId, 1000L, false, LocalDateTime.now().minusDays(1));
+
+        when(operationStateMapper.selectList(any()))
+                .thenReturn(List.of(staleWinner, staleLoser))
+                .thenReturn(List.of(freshWinner, freshLoser));
+        when(snapshotMapper.selectList(any()))
+                .thenReturn(List.of(
+                        snapshot("ACT-1", productId, 3000L, 1),
+                        snapshot("ACT-2", productId, 1000L, 1)))
+                .thenReturn(List.of(
+                        snapshot("ACT-1", productId, 3000L, 1),
+                        snapshot("ACT-2", productId, 1000L, 1)));
+        when(productBizStatusService.readBizStatus(any())).thenReturn(ProductBizStatus.APPROVED);
+        when(operationStateMapper.updateById(any(ProductOperationState.class)))
+                .thenReturn(0)
+                .thenReturn(1);
+
+        service.applyForProductId(productId);
+
+        verify(operationStateMapper, times(2)).selectList(any());
+        verify(snapshotMapper, times(2)).selectList(any());
+        verify(operationStateMapper, atLeastOnce()).updateById(argThat(state ->
+                state.getId().equals(freshLoser.getId())
+                        || state.getId().equals(freshWinner.getId())));
+    }
+
+    @Test
+    void applyForActivityId_shouldRecomputeConflictingProductWithoutFailingWholeActivity() {
+        String activityId = "ACT-1";
+        String productId = "activity-concurrent-product";
+        ProductOperationState selectedRelation = libraryState(
+                activityId, productId, 3000L, false, LocalDateTime.now().minusDays(2));
+        ProductOperationState staleOtherRelation = libraryState(
+                "ACT-2", productId, 1000L, false, LocalDateTime.now().minusDays(1));
+        ProductOperationState freshSelectedRelation = libraryState(
+                activityId, productId, 3000L, false, LocalDateTime.now().minusDays(2));
+        ProductOperationState freshOtherRelation = libraryState(
+                "ACT-2", productId, 1000L, false, LocalDateTime.now().minusDays(1));
+
+        when(operationStateMapper.selectList(any()))
+                .thenReturn(List.of(selectedRelation))
+                .thenReturn(List.of(selectedRelation, staleOtherRelation))
+                .thenReturn(List.of(freshSelectedRelation, freshOtherRelation))
+                .thenReturn(List.of(freshSelectedRelation, freshOtherRelation));
+        when(snapshotMapper.selectList(any()))
+                .thenReturn(List.of(
+                        snapshot(activityId, productId, 3000L, 1),
+                        snapshot("ACT-2", productId, 1000L, 1)))
+                .thenReturn(List.of(
+                        snapshot(activityId, productId, 3000L, 1),
+                        snapshot("ACT-2", productId, 1000L, 1)));
+        when(productBizStatusService.readBizStatus(any())).thenReturn(ProductBizStatus.APPROVED);
+        when(operationStateMapper.updateById(any(ProductOperationState.class)))
+                .thenReturn(0)
+                .thenReturn(1);
+
+        service.applyForActivityId(activityId);
+
+        verify(operationStateMapper, times(4)).selectList(any());
+        verify(snapshotMapper, times(2)).selectList(any());
+        verify(operationStateMapper, atLeastOnce()).updateById(argThat(state ->
+                state.getId().equals(freshSelectedRelation.getId())
+                        || state.getId().equals(freshOtherRelation.getId())));
+    }
+
+    @Test
+    void applyForProductId_shouldFailAfterOptimisticRecalculationIsExhausted() {
+        String productId = "always-conflicting-product";
+        when(operationStateMapper.selectList(any())).thenAnswer(ignored -> List.of(
+                libraryState("ACT-1", productId, 3000L, false, LocalDateTime.now().minusDays(2)),
+                libraryState("ACT-2", productId, 1000L, false, LocalDateTime.now().minusDays(1))));
+        when(snapshotMapper.selectList(any())).thenAnswer(ignored -> List.of(
+                snapshot("ACT-1", productId, 3000L, 1),
+                snapshot("ACT-2", productId, 1000L, 1)));
+        when(productBizStatusService.readBizStatus(any())).thenReturn(ProductBizStatus.APPROVED);
+        when(operationStateMapper.updateById(any(ProductOperationState.class))).thenReturn(0);
+
+        assertThatThrownBy(() -> service.applyForProductId(productId))
+                .isInstanceOf(com.colonel.saas.common.exception.BusinessException.class)
+                .hasMessageContaining("数据已被他人修改");
+
+        verify(operationStateMapper, times(4)).selectList(any());
+        verify(snapshotMapper, times(4)).selectList(any());
     }
 
     @Test

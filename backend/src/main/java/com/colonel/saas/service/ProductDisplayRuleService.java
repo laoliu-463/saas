@@ -2,7 +2,9 @@ package com.colonel.saas.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.colonel.saas.common.enums.ProductBizStatus;
+import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.exception.OptimisticLockSupport;
+import com.colonel.saas.common.result.ResultCode;
 import com.colonel.saas.constant.ProductDisplayStatus;
 import com.colonel.saas.service.display.DisplayRuleOperatorContext;
 import com.colonel.saas.service.display.ProductDisplayAuditService;
@@ -93,6 +95,8 @@ public class ProductDisplayRuleService {
     public static final int DISPLAY_RULE_VERSION = 3;
     /** 默认保护期月数：当前展示候选在保护期内不会被普通优先级替换 */
     public static final int DEFAULT_PROTECTION_MONTHS = 3;
+    /** 并行活动同步更新重叠商品时，展示决策基于最新状态重新计算的最大次数。 */
+    private static final int OPTIMISTIC_RECALCULATION_MAX = 3;
 
     /** 隐藏原因：被更高优先级的候选替换 */
     public static final String HIDDEN_REASON_REPLACED = "REPLACED_BY_HIGHER_PRIORITY";
@@ -855,7 +859,12 @@ public class ProductDisplayRuleService {
     private void applyForStates(String productId, List<ProductOperationState> states, DisplayRuleOperatorContext operator) {
         Map<String, ProductSnapshot> snapshotMap = loadSnapshots(states);
         hydrateProtectionMonths(snapshotMap);
-        applyForStates(productId, states, snapshotMap, operator, LocalDateTime.now());
+        applyForStatesWithOptimisticRecalculation(
+                productId,
+                states,
+                snapshotMap,
+                operator,
+                LocalDateTime.now());
     }
 
     private int applyForProductIdsBatch(
@@ -884,11 +893,68 @@ public class ProductDisplayRuleService {
         for (String productId : productIds) {
             List<ProductOperationState> productStates = statesByProductId.get(productId);
             if (productStates != null && !productStates.isEmpty()) {
-                applyForStates(productId, productStates, snapshotMap, operator, now);
+                applyForStatesWithOptimisticRecalculation(
+                        productId,
+                        productStates,
+                        snapshotMap,
+                        operator,
+                        now);
                 processed++;
             }
         }
         return processed;
+    }
+
+    /**
+     * 并行活动可能同时刷新同一商品在不同活动下的运营关系。若批量预读后的版本已过期，
+     * 必须重新读取该商品的全部关系和快照并重新做展示决策，不能用旧决策直接覆盖新状态，
+     * 也不能重新请求上游。
+     */
+    private void applyForStatesWithOptimisticRecalculation(
+            String productId,
+            List<ProductOperationState> initialStates,
+            Map<String, ProductSnapshot> initialSnapshotMap,
+            DisplayRuleOperatorContext operator,
+            LocalDateTime initialNow) {
+        List<ProductOperationState> states = initialStates;
+        Map<String, ProductSnapshot> snapshotMap = initialSnapshotMap;
+        LocalDateTime now = initialNow;
+        int recalculationCount = 0;
+
+        while (true) {
+            try {
+                applyForStates(productId, states, snapshotMap, operator, now);
+                return;
+            } catch (BusinessException ex) {
+                if (!isOptimisticConflict(ex) || recalculationCount >= OPTIMISTIC_RECALCULATION_MAX) {
+                    throw ex;
+                }
+                recalculationCount++;
+                log.warn("[ProductDisplayRule] optimistic conflict, recomputing from latest state, productId={}, retry={}/{}",
+                        productId,
+                        recalculationCount,
+                        OPTIMISTIC_RECALCULATION_MAX);
+                states = loadLatestProductStates(productId);
+                if (states.isEmpty()) {
+                    return;
+                }
+                snapshotMap = loadSnapshots(states);
+                hydrateProtectionMonths(snapshotMap);
+                now = LocalDateTime.now();
+            }
+        }
+    }
+
+    private List<ProductOperationState> loadLatestProductStates(String productId) {
+        return operationStateMapper.selectList(
+                new LambdaQueryWrapper<ProductOperationState>()
+                        .eq(ProductOperationState::getProductId, productId)
+                        .orderByAsc(ProductOperationState::getCreateTime)
+                        .orderByAsc(ProductOperationState::getId));
+    }
+
+    private boolean isOptimisticConflict(BusinessException ex) {
+        return ex.getCode() == ResultCode.CONFLICT.getCode();
     }
 
     private void applyForStates(
