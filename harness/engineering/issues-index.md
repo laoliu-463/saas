@@ -32,6 +32,7 @@
 
 | # | Title | State | Labels | Created | Link |
 | --- | --- | --- | --- | --- | --- |
+| 168 | 修复后端 CI 测试基线与隔离数据库 bootstrap | OPEN | ready-for-agent | 2026-07-19 | https://github.com/laoliu-463/saas/issues/168 |
 | 166 | 建立 GitHub 协作治理与可执行 CI 门禁（Phase 1） | OPEN | ready-for-agent | 2026-07-19 | https://github.com/laoliu-463/saas/issues/166 |
 | 165 | 重构 Harness 为跨平台 Node 验证核心（第一阶段） | OPEN | ready-for-agent | 2026-07-18 | https://github.com/laoliu-463/saas/issues/165 |
 
