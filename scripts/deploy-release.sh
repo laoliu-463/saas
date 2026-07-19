@@ -46,13 +46,18 @@ FRONTEND_IMAGE="$(jq -er '.frontend.image' "$MANIFEST_PATH")"
 FRONTEND_DIGEST="$(jq -er '.frontend.digest' "$MANIFEST_PATH")"
 DATABASE_MIGRATION_VERSION="$(jq -er '.databaseMigrationVersion' "$MANIFEST_PATH")"
 FLYWAY_VERSION="$(jq -er '.flywayVersion' "$MANIFEST_PATH")"
+DATABASE_MIGRATION_REQUIRED="$(jq -er '.databaseMigration.required | if type == "boolean" then tostring else error("required must be boolean") end' "$MANIFEST_PATH")"
+DATABASE_MIGRATION_REASON="$(jq -er '.databaseMigration.reason' "$MANIFEST_PATH")"
 
 [[ "$BACKEND_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || fail '后端 digest 非法。'
 [[ "$FRONTEND_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || fail '前端 digest 非法。'
 [[ "$BACKEND_IMAGE" == *":$TARGET_SHA" ]] || fail '后端镜像 tag 必须等于完整目标 SHA。'
 [[ "$FRONTEND_IMAGE" == *":$TARGET_SHA" ]] || fail '前端镜像 tag 必须等于完整目标 SHA。'
-[[ -n "$DATABASE_MIGRATION_VERSION" && "$DATABASE_MIGRATION_VERSION" != 'NOT_MANAGED' ]] || fail '数据库迁移版本不可验证。'
-[[ -n "$FLYWAY_VERSION" && "$FLYWAY_VERSION" != 'NOT_MANAGED' ]] || fail 'Flyway 版本不可验证。'
+[[ "$DATABASE_MIGRATION_REQUIRED" == 'true' || "$DATABASE_MIGRATION_REQUIRED" == 'false' ]] || fail '数据库迁移决策非法。'
+if [[ "$DATABASE_MIGRATION_REQUIRED" == 'true' ]]; then
+  [[ -n "$DATABASE_MIGRATION_VERSION" && "$DATABASE_MIGRATION_VERSION" != 'NOT_MANAGED' ]] || fail '需要迁移时数据库迁移版本不可验证。'
+  [[ -n "$FLYWAY_VERSION" && "$FLYWAY_VERSION" != 'NOT_MANAGED' ]] || fail '需要迁移时 Flyway 版本不可验证。'
+fi
 
 CURRENT_POINTER="$RELEASE_ROOT/current.json"
 PREVIOUS_POINTER="$RELEASE_ROOT/previous.json"
@@ -134,18 +139,30 @@ compose_release up -d --no-build --no-deps backend-real-pre
 compose_release up -d --no-build --no-deps frontend-real-pre
 
 verify_runtime_versions() {
-  local backend_json frontend_json attempt
+  local backend_json frontend_json attempt runtime_matches
   for attempt in $(seq 1 60); do
     backend_json="$(curl -fsS --max-time 5 "$BACKEND_HEALTH_URL" 2>/dev/null || true)"
     frontend_json="$(curl -fsS --max-time 5 "$FRONTEND_VERSION_URL" 2>/dev/null || true)"
-    if jq -e \
-      --arg sha "$TARGET_SHA" \
-      --arg digest "$BACKEND_DIGEST" \
-      --arg migration "$DATABASE_MIGRATION_VERSION" \
-      --arg flyway "$FLYWAY_VERSION" \
-      '.status == "UP" and .gitSha == $sha and .imageDigest == $digest and
-       .databaseMigrationVersion == $migration and .flywayVersion == $flyway' \
-      <<<"$backend_json" >/dev/null 2>&1 \
+    runtime_matches=false
+    if [[ "$DATABASE_MIGRATION_REQUIRED" == 'true' ]]; then
+      jq -e \
+        --arg sha "$TARGET_SHA" \
+        --arg digest "$BACKEND_DIGEST" \
+        --arg migration "$DATABASE_MIGRATION_VERSION" \
+        --arg flyway "$FLYWAY_VERSION" \
+        '.status == "UP" and .gitSha == $sha and .imageDigest == $digest and
+         .databaseMigrationVersion == $migration and .flywayVersion == $flyway' \
+        <<<"$backend_json" >/dev/null 2>&1 && runtime_matches=true
+    else
+      jq -e \
+        --arg sha "$TARGET_SHA" \
+        --arg digest "$BACKEND_DIGEST" \
+        '.status == "UP" and .gitSha == $sha and .imageDigest == $digest and
+         (.databaseMigrationVersion | type == "string") and
+         (.flywayVersion | type == "string")' \
+        <<<"$backend_json" >/dev/null 2>&1 && runtime_matches=true
+    fi
+    if [[ "$runtime_matches" == 'true' ]] \
       && jq -e --arg sha "$TARGET_SHA" '.gitSha == $sha' <<<"$frontend_json" >/dev/null 2>&1; then
       printf '%s\n' "$backend_json" > "$RELEASE_DIR/backend-health.json"
       printf '%s\n' "$frontend_json" > "$RELEASE_DIR/frontend-version.json"
@@ -160,16 +177,27 @@ verify_runtime_versions() {
 verify_runtime_versions
 trap - ERR
 
+OBSERVED_DATABASE_MIGRATION_VERSION="$(jq -er '.databaseMigrationVersion' "$RELEASE_DIR/backend-health.json")"
+OBSERVED_FLYWAY_VERSION="$(jq -er '.flywayVersion' "$RELEASE_DIR/backend-health.json")"
+
 jq -n \
   --arg status 'PASS' \
   --arg gitSha "$TARGET_SHA" \
   --arg backendDigest "$BACKEND_DIGEST" \
   --arg frontendDigest "$FRONTEND_DIGEST" \
-  --arg databaseMigrationVersion "$DATABASE_MIGRATION_VERSION" \
-  --arg flywayVersion "$FLYWAY_VERSION" \
+  --argjson databaseMigrationRequired "$DATABASE_MIGRATION_REQUIRED" \
+  --arg databaseMigrationReason "$DATABASE_MIGRATION_REASON" \
+  --arg expectedDatabaseMigrationVersion "$DATABASE_MIGRATION_VERSION" \
+  --arg expectedFlywayVersion "$FLYWAY_VERSION" \
+  --arg databaseMigrationVersion "$OBSERVED_DATABASE_MIGRATION_VERSION" \
+  --arg flywayVersion "$OBSERVED_FLYWAY_VERSION" \
   --arg deployedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   '{deployment:$status,gitSha:$gitSha,backendDigest:$backendDigest,
-    frontendDigest:$frontendDigest,databaseMigrationVersion:$databaseMigrationVersion,
+    frontendDigest:$frontendDigest,databaseMigrationRequired:$databaseMigrationRequired,
+    databaseMigrationReason:$databaseMigrationReason,
+    expectedDatabaseMigrationVersion:$expectedDatabaseMigrationVersion,
+    expectedFlywayVersion:$expectedFlywayVersion,
+    databaseMigrationVersion:$databaseMigrationVersion,
     flywayVersion:$flywayVersion,deployedAt:$deployedAt}' > "$DEPLOYMENT_RECORD.tmp"
 mv "$DEPLOYMENT_RECORD.tmp" "$DEPLOYMENT_RECORD"
 chmod 0444 "$DEPLOYMENT_RECORD"

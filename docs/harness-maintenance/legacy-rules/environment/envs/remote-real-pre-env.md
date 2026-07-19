@@ -20,7 +20,7 @@
 - 普通 Codex 任务：本地验证、推送分支、PR、候选证据。
 - Merge Queue：串行决定合并顺序。
 - CI：构建并推送完整 SHA 镜像，产出 digest。
-- Jenkins：持有镜像仓库和服务器权限，串行迁移、部署、验证和记录。
+- Jenkins：持有镜像仓库和服务器权限，串行判定迁移差异、按需迁移、部署、验证和记录。
 
 <<<<<<< HEAD:docs/harness-maintenance/legacy-rules/environment/envs/remote-real-pre-env.md
 ```powershell

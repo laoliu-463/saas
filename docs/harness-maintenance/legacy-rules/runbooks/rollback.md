@@ -24,7 +24,7 @@ git revert <bad_commit>
 2. 重新进入 Jenkins `saas-real-pre-deploy` 全局队列；
 3. 目标镜像仍需完整 SHA、OCI revision 和 digest 一致；
 4. 显式设置 `ROLLBACK_APPROVED=true`；
-5. 重新验证后端、前端、镜像、数据库迁移和 Flyway 版本；
+5. 重新验证后端、前端和镜像身份，并记录数据库/Flyway 观测值；应用回滚不执行旧迁移；
 6. 生成独立回滚发布记录。
 
 `scripts/rollback-real-pre.sh` 已停用，不是备用入口。
@@ -34,3 +34,4 @@ git revert <bad_commit>
 - real-pre 禁止清库、删除 volume 或执行未经评审的破坏性 SQL。
 - 数据库回滚需独立影响评估、备份和迁移审查。
 - 应用回滚不自动等于数据库回滚；版本不兼容时必须 BLOCKED。
+- 数据库迁移 forward-only；如需数据库修复，必须作为新的受控迁移独立评审。

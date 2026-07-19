@@ -74,4 +74,4 @@ git push --set-upstream origin <current-branch>
 
 `.env` 例外：可以是远端本地运行配置，但不得 commit。
 
-远端发布后必须验证：目标 SHA、前后端运行 SHA、镜像 digest、数据库迁移/Flyway 版本和 `current.json`。
+远端发布后必须验证：目标 SHA、前后端运行 SHA、镜像 digest、迁移决策和 `current.json`；只有 `databaseMigration.required=true` 时才强制数据库迁移/Flyway 版本一致。

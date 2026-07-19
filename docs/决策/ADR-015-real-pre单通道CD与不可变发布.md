@@ -29,6 +29,7 @@
 7. 发布清单和 Compose 写入 `/opt/saas/releases/<SHA>/`，服务器固定 env 独立只读管理。
 8. 当前版本只有在运行版本一致性验证全部通过后更新。
 9. 非后继提交必须拒绝；回滚仍进入 Jenkins 队列并要求 `ROLLBACK_APPROVED=true`。
+10. 数据库迁移由当前部署 SHA 与目标 SHA 的迁移路径差异触发；无迁移差异的发布禁止执行数据库写操作。
 
 ## 版本一致性契约
 
@@ -38,9 +39,11 @@
 - 后端运行 SHA 与后端镜像 digest；
 - 前端 `/version.json` SHA；
 - 前后端镜像 tag、OCI revision 与发布清单 digest；
-- 数据库 aggregate migration 与 Flyway 版本。
+- 当 `databaseMigration.required=true` 时，数据库 aggregate migration 与 Flyway 版本。
 
-任何 `UNAVAILABLE`、`NOT_MANAGED`、缺字段或不一致都阻断发布。
+数据库/Flyway 字段始终留证，但只有本次需要迁移时，`UNAVAILABLE`、`NOT_MANAGED`、缺字段或不一致才阻断。纯 Harness、文档或普通应用发布不因未启用 Flyway而被迫迁移。
+
+首次发布默认需要迁移；正常后继发布仅在 `backend/src/main/resources/db/` 或迁移执行脚本变化时执行；经批准回滚遵循 forward-only，不逆向运行旧迁移。
 
 ## 权限边界
 

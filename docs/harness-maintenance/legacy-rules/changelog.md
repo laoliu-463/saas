@@ -8,6 +8,7 @@
 ## 最近版本摘要
 
 <<<<<<< HEAD:docs/harness-maintenance/legacy-rules/changelog.md
+<<<<<<< HEAD:docs/harness-maintenance/legacy-rules/changelog.md
 ### v0.8.5 — 2026-07-20
 - Issue #182 将达人认领到期判断从全量订单实体/JSONB 分页累积改为订单域 `SELECT 1 / LIMIT 1` 有界存在性查询，保持 `author_id OR talent_uid` 原匹配语义。
 - `TalentClaimReleaseJob` 的 Cron 显式固定 `Asia/Shanghai`，业务比较时间继续与无时区数据库字段使用同一 JVM 默认时钟。
@@ -43,6 +44,13 @@
 - CD 预检不再落盘渲染后的 Compose 环境值；证据结果由 readiness、镜像 ID、OCI revision 和迁移版本共同决定，取证失败不得写 `PASS`。
 - 远端部署增加 checkout SHA 与 `IMAGE_TAG` 一致性、镜像 OCI revision、数据库备份和恢复前置校验。
 =======
+=======
+### v0.10.1 — 2026-07-19
+- real-pre 数据库迁移改为差异触发：首次发布或迁移路径变化才执行，纯 Harness/文档/普通应用发布不写数据库。
+- 发布清单新增 `databaseMigration.required/reason/baseGitSha/changedPaths`；需要迁移时严格校验数据库/Flyway 版本，无迁移时只记录观测值。
+- 回滚保持数据库 forward-only，不自动执行旧迁移或逆向数据库。
+
+>>>>>>> 643e04cb (fix: run database migrations only when required):harness/rules/changelog.md
 ### v0.10.0 — 2026-07-18
 - 采用 ADR-015：允许独立 worktree 并行开发，GitHub Merge Queue 与 Jenkins 全局锁串行合并、迁移和 real-pre 发布。
 - 关闭 `DeployRemote`、SSH 现场构建和手工回滚旁路；唯一发布源固定为 `release/real-pre`。

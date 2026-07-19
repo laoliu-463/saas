@@ -1,10 +1,12 @@
 $ErrorActionPreference = 'Stop'
 
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
+$library = Join-Path $projectRoot 'harness\scripts\commands\_lib.ps1'
 $jenkinsfile = Join-Path $projectRoot 'Jenkinsfile'
 $releaseWorkflow = Join-Path $projectRoot '.github\workflows\release-images.yml'
 $ciWorkflow = Join-Path $projectRoot '.github\workflows\ci.yml'
 $deployRelease = Join-Path $projectRoot 'scripts\deploy-release.sh'
+$migrationDetector = Join-Path $projectRoot 'scripts\detect-release-db-migration.sh'
 $releaseCompose = Join-Path $projectRoot 'docker-compose.real-pre.release.yml'
 $backendDockerfile = Join-Path $projectRoot 'backend\Dockerfile'
 $frontendDockerfile = Join-Path $projectRoot 'frontend\Dockerfile'
@@ -13,6 +15,8 @@ $credentialProbe = Join-Path $projectRoot 'scripts\check-acr-creds.ps1'
 $legacyHarnessDeploy = Join-Path $projectRoot 'harness\scripts\commands\deploy-remote.ps1'
 $legacyServerDeploy = Join-Path $projectRoot 'scripts\deploy-real-pre.sh'
 $legacyRollback = Join-Path $projectRoot 'scripts\rollback-real-pre.sh'
+
+. $library
 
 Describe 'real-pre 唯一发布通道契约' {
     It '让 Jenkins 作唯一串行发布控制器' {
@@ -24,6 +28,81 @@ Describe 'real-pre 唯一发布通道契约' {
         $content | Should Match 'scripts/deploy-release\.sh'
         $content | Should Not Match 'git\.rev-parse --short'
         $content | Should Not Match '(?m)^\s*(mvn|pnpm|npm|docker build|docker compose build)\b'
+    }
+
+    It '仅在发布差异包含数据库迁移时执行远端迁移' {
+        $jenkins = Get-Content -Raw -LiteralPath $jenkinsfile
+        $deploy = Get-Content -Raw -LiteralPath $deployRelease
+        $detector = Get-Content -Raw -LiteralPath $migrationDetector
+
+        $jenkins | Should Match 'mapfile -t migration_paths'
+        $jenkins | Should Match 'detect-release-db-migration\.sh'
+        $detector | Should Match 'backend/src/main/resources/db'
+        $jenkins | Should Match 'git diff --name-only "\$migration_base_sha" "\$TARGET_GIT_SHA" -- "\$\{migration_paths\[@\]\}"'
+        $detector | Should Match 'git diff --quiet "\$BASE_SHA" "\$TARGET_SHA"'
+        $jenkins | Should Match '\.databaseMigration\s*='
+        $jenkins | Should Match 'if \[\[ "\$database_migration_required" == ''true'' \]\]; then[\s\S]*run-real-pre-db-migrations\.sh[\s\S]*未检测到数据库迁移变更'
+        $deploy | Should Match '\.databaseMigration\.required'
+        $deploy | Should Match 'DATABASE_MIGRATION_REQUIRED'
+        $deploy | Should Match 'databaseMigrationRequired'
+        $deploy | Should Match 'if \[\[ "\$DATABASE_MIGRATION_REQUIRED" == ''true'' \]\]; then[\s\S]*\.databaseMigrationVersion == \$migration[\s\S]*else[\s\S]*\(\.databaseMigrationVersion \| type == "string"\)'
+        $deploy | Should Match 'OBSERVED_DATABASE_MIGRATION_VERSION'
+    }
+
+    It '用真实 Git 差异区分 Harness 变更、迁移变更、首发和回滚' {
+        $repo = Join-Path $TestDrive 'migration-decision-repo'
+        New-Item -ItemType Directory -Path (Join-Path $repo 'backend\src\main\resources\db') -Force | Out-Null
+        New-Item -ItemType Directory -Path (Join-Path $repo 'harness\rules') -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $repo 'backend\src\main\resources\db\migrate-all.sql') -Value '-- baseline' -Encoding UTF8
+        Set-Content -LiteralPath (Join-Path $repo 'harness\rules\policy.md') -Value 'baseline' -Encoding UTF8
+        Push-Location $repo
+        try {
+            git init -q
+            git config user.email 'harness-tests@example.invalid'
+            git config user.name 'Harness Tests'
+            git add .
+            git commit -q -m 'test: baseline'
+            $baselineSha = (& git rev-parse HEAD).Trim()
+
+            Set-Content -LiteralPath (Join-Path $repo 'harness\rules\policy.md') -Value 'harness only' -Encoding UTF8
+            git add .
+            git commit -q -m 'test: harness only'
+            $harnessSha = (& git rev-parse HEAD).Trim()
+
+            Set-Content -LiteralPath (Join-Path $repo 'backend\src\main\resources\db\migrate-all.sql') -Value '-- migration changed' -Encoding UTF8
+            git add .
+            git commit -q -m 'test: migration changed'
+            $migrationSha = (& git rev-parse HEAD).Trim()
+        }
+        finally {
+            Pop-Location
+        }
+
+        $bash = Get-HarnessBashPath
+        $repoForBash = Convert-HarnessPathToMsys -Path $repo
+        $detectorForBash = Convert-HarnessPathToMsys -Path $migrationDetector
+        function Invoke-Decision([string]$Target, [string]$Base, [string]$Rollback = 'false') {
+            $command = "cd '$repoForBash' && ROLLBACK_APPROVED='$Rollback' bash '$detectorForBash' '$Target' '$Base'"
+            $output = (& $bash -lc $command).Trim()
+            [void]($LASTEXITCODE | Should Be 0)
+            return @($output -split "`t")
+        }
+
+        $harnessOnly = Invoke-Decision -Target $harnessSha -Base $baselineSha
+        $harnessOnly[0] | Should Be 'false'
+        $harnessOnly[1] | Should Be 'NO_MIGRATION_CHANGE'
+
+        $migration = Invoke-Decision -Target $migrationSha -Base $harnessSha
+        $migration[0] | Should Be 'true'
+        $migration[1] | Should Be 'MIGRATION_PATH_CHANGED'
+
+        $firstRelease = Invoke-Decision -Target $baselineSha -Base ''
+        $firstRelease[0] | Should Be 'true'
+        $firstRelease[1] | Should Be 'FIRST_RELEASE'
+
+        $rollback = Invoke-Decision -Target $baselineSha -Base $migrationSha -Rollback 'true'
+        $rollback[0] | Should Be 'false'
+        $rollback[1] | Should Be 'ROLLBACK_FORWARD_ONLY'
     }
 
     It '只允许 CI 为 release real-pre 构建完整 SHA 镜像并把 digest 交给 Jenkins' {
