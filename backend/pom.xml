@@ -105,6 +105,11 @@
         </dependency>
 
         <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+        </dependency>
+
+        <dependency>
             <groupId>com.zaxxer</groupId>
             <artifactId>HikariCP</artifactId>
         </dependency>
@@ -243,6 +248,10 @@
                 <version>3.1.2</version>
                 <configuration>
                     <argLine>@{argLine} -Djdk.net.URLClassPath.disableClassPathURLCheck=true</argLine>
+                    <systemPropertyVariables>
+                        <!-- 普通测试不自动迁移；Flyway 集成测试显式创建并迁移独立数据库。 -->
+                        <spring.flyway.enabled>false</spring.flyway.enabled>
+                    </systemPropertyVariables>
                     <excludes>
                         <exclude>**/mapper/*MapperTest.java</exclude>
                     </excludes>

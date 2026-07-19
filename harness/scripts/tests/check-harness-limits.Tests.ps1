@@ -186,6 +186,18 @@ Describe 'check-harness-limits baseline-aware governance' {
         $result.Output | Should Not Match 'TEXT_LINE_COUNT_EXCEEDED'
     }
 
+    It 'exempts a project root package lock from the text line budget' {
+        $repo = New-GovernanceTestRepo -Name 'project-package-lock'
+        Save-Baseline -Repo $repo
+        Add-TextFile -Repo $repo -RelativePath 'frontend\package-lock.json' -Lines 201
+
+        $result = Invoke-GovernanceCheck -Repo $repo -OwnedFiles @('frontend/package-lock.json')
+
+        $result.ExitCode | Should Be 0
+        $result.Output | Should Match 'TASK_GATE=PASS'
+        $result.Output | Should Not Match 'TEXT_LINE_COUNT_EXCEEDED'
+    }
+
     It 'does not exempt another package lock from the text line budget' {
         $repo = New-GovernanceTestRepo -Name 'nested-package-lock'
         Save-Baseline -Repo $repo

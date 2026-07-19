@@ -200,6 +200,13 @@ Describe 'agent-do delegates code scopes to Node exactly once' {
         }
         $thrown | Should Be $true
     }
+
+    It 'captures npm stderr notices and decides from the native exit code' {
+        $content = Get-Content -Raw -LiteralPath $agentDo
+
+        $content | Should Match '\$ErrorActionPreference\s*=\s*''Continue''[\s\S]*\$nodeOutput\s*=\s*@\(npm @nodeArguments 2>&1\)[\s\S]*\$nodeExitCode\s*=\s*\$LASTEXITCODE'
+        $content | Should Match '\$ErrorActionPreference\s*=\s*\$previousNodeErrorActionPreference'
+    }
 }
 
 Describe 'agent-do consumes Node exits without upgrading status' {
@@ -361,5 +368,41 @@ Describe 'agent-do rejects direct deployment before external actions' {
         ($output -join "`n") | Should Match 'release/real-pre.*Jenkins'
         $marker | Should Not Exist
         (Get-Content -Raw -LiteralPath $agentDo) | Should Not Match 'deploy-remote\.ps1'
+    }
+}
+
+Describe 'agent-do serializes the shared local runtime across worktrees' {
+    It 'blocks a second lease and releases the queue with the file handle' {
+        $lockPath = Join-Path $TestDrive 'runtime-queue\real-pre.lock'
+        New-Item -ItemType Directory -Path (Split-Path -Parent $lockPath) -Force | Out-Null
+        $held = [System.IO.File]::Open(
+            $lockPath,
+            [System.IO.FileMode]::OpenOrCreate,
+            [System.IO.FileAccess]::ReadWrite,
+            [System.IO.FileShare]::None
+        )
+        try {
+            { Enter-HarnessRuntimeQueue -Environment real-pre -LockPath $lockPath -TimeoutSeconds 0 -PollMilliseconds 1 } |
+                Should Throw '等待本机 real-pre 运行队列超时；共享 Docker、健康检查和业务验证未启动。'
+        }
+        finally {
+            $held.Dispose()
+        }
+
+        $lease = Enter-HarnessRuntimeQueue `
+            -Environment real-pre -LockPath $lockPath -TimeoutSeconds 1 -PollMilliseconds 1
+        try {
+            $lease | Should Not BeNullOrEmpty
+        }
+        finally {
+            Exit-HarnessRuntimeQueue -Lease $lease
+        }
+    }
+
+    It 'holds the queue around Node verify and always releases it' {
+        $content = Get-Content -Raw -LiteralPath $agentDo
+
+        $content | Should Match 'Enter-HarnessRuntimeQueue'
+        $content | Should Match 'finally\s*\{[\s\S]*Exit-HarnessRuntimeQueue'
     }
 }

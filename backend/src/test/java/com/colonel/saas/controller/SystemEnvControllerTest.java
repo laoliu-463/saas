@@ -164,7 +164,7 @@ class SystemEnvControllerTest {
     }
 
     @Test
-    void health_returnsOnlyUpStatus() throws Exception {
+    void health_returnsUpStatusAndExplicitUnavailableVersionFacts() throws Exception {
         MockEnvironment environment = new MockEnvironment();
         SystemEnvController controller = new SystemEnvController(
                 environment,
@@ -180,6 +180,10 @@ class SystemEnvControllerTest {
         mockMvc.perform(get("/system/health"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("UP"))
+                .andExpect(jsonPath("$.gitSha").value("UNAVAILABLE"))
+                .andExpect(jsonPath("$.imageDigest").value("UNAVAILABLE"))
+                .andExpect(jsonPath("$.databaseMigrationVersion").value("NOT_MANAGED"))
+                .andExpect(jsonPath("$.flywayVersion").value("NOT_MANAGED"))
                 .andExpect(jsonPath("$.database").doesNotExist())
                 .andExpect(jsonPath("$.activeProfiles").doesNotExist());
     }

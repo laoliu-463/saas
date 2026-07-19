@@ -2,8 +2,8 @@
 
 ## Status
 
-- TASK_GATE=PASS
-- REPOSITORY_HEALTH=PASS
+- TASK_GATE=FAIL
+- REPOSITORY_HEALTH=PARTIAL
 
 ## Active Budgets
 
@@ -12,10 +12,10 @@
 - Non-script text: warning 160 lines, hard limit 200.
 
 ## Task Violations
-- None
+- [TEXT_LINE_COUNT_EXCEEDED] frontend/package-lock.json: Text line count 4897 exceeds 200.
 
 ## Warnings
-- None
+- [TEXT_LINE_COUNT_WARNING] docker-compose.real-pre.yml: Text line count reached warning level 198.
 
 ## Historical Debt
-- None
+- [DIRECT_FILE_COUNT_EXCEEDED] harness/reports: Repository file count 23 exceeds 20.

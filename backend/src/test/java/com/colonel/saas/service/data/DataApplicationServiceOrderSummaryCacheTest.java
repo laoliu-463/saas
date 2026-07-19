@@ -210,7 +210,7 @@ class DataApplicationServiceOrderSummaryCacheTest {
         assertThat(all).contains("ALL");
     }
 
-    /** 通过反射调私有 {@code orderSummaryCacheKey},避开包装在 supplier 内的 17 维度签名。 */
+    /** 通过反射调私有 {@code orderSummaryCacheKey}，避开包装在 supplier 内的多维签名。 */
     private String invokeOrderSummaryCacheKey(
             String timeField, java.time.LocalDate startDate, java.time.LocalDate endDate,
             String orderId, String status, UUID talentId, String merchantId,
@@ -226,7 +226,7 @@ class DataApplicationServiceOrderSummaryCacheTest {
                             String.class, String.class, String.class,
                             String.class, String.class, String.class,
                             String.class, String.class,
-                            UUID.class, UUID.class, DataScope.class);
+                            UUID.class, UUID.class, DataScope.class, java.util.Collection.class);
             m.setAccessible(true);
             return (String) m.invoke(service,
                     timeField, startDate, endDate,
@@ -234,7 +234,7 @@ class DataApplicationServiceOrderSummaryCacheTest {
                     productId, productName, shopName,
                     talentName, colonelName, channelName,
                     colonelActivityId, recruitType,
-                    userId, deptId, dataScope);
+                    userId, deptId, dataScope, java.util.List.of());
         } catch (ReflectiveOperationException e) {
             throw new AssertionError("reflection failed", e);
         }

@@ -47,11 +47,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\a
 | 项 | 默认值 | 备注 |
 | --- | --- | --- |
 | SSH alias | `saas` | 实际值见用户私有配置；非必要不在文档写出 |
-| 远端目录 | `/opt/saas/app` | 与本仓库同名 |
-| 远端 compose | `docker-compose.real-pre.yml` | 与本地一致 |
+| 发布目录 | `/opt/saas/releases/<完整SHA>` | 不可变清单与 Compose |
+| 固定 env | `/opt/saas/env/.env.real-pre` | Jenkins 只读使用 |
 | 远端 backend | `backend-real-pre` | 容器名与本地一致 |
 | 远端 frontend | `frontend-real-pre` | 容器名与本地一致 |
-| 远端 deploy 入口 | `agent-do.ps1 -Env real-pre -Scope full -DeployRemote true` | 必须用户明确要求 |
+| 远端发布入口 | `release/real-pre` → CI → Jenkins | 普通任务禁止 SSH/部署 |
 
 ## 5. test vs real-pre 差异
 
@@ -84,6 +84,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\v
 | `git commit --amend` | 改写历史 |
 | `git push --force` to main/master | 危险 |
 | 修改 `.env.real-pre` 真实文件 | 密钥 |
+| `-DeployRemote true` 或旧部署脚本 | 绕过 Jenkins 唯一发布队列 |
 
 ## 8. 关联文档
 

@@ -1,93 +1,51 @@
-# Runbook: Scope → Command Matrix
+# Runbook：Scope → Command Matrix
 
-> 单一权威表：每种 scope 走哪条命令，必须输出什么，禁止什么。
-> 取代在 `TASK_ROUTING.md` 表格中分散的命令段落。
-
-## 1. 主入口（90% 场景）
+## 主入口
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\agent-do.ps1 -Env real-pre -Scope <SCOPE> -ReportKey <key> -OwnedFiles '<path1>;<path2>' -Message "<msg>" [-DeployRemote true] [-DryRun]
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\agent-do.ps1 -Env real-pre -Scope <SCOPE> -ReportKey <key> -OwnedFiles '<path1>;<path2>' -Message "<msg>" [-DryRun]
 ```
 
-`<SCOPE>` 决定后续自动调用哪些子命令；`ReportKey` 决定稳定 evidence 路径，`OwnedFiles` 限定任务可暂存的文件。
+`-DeployRemote true` 已停用；主入口只负责本地验证、证据、提交和推送。
 
-## 2. Scope 决策表
+## Scope 决策
 
-| Scope | 适用 | 必跑命令 | 可选命令 | 跳过 | 失败处理 |
-| --- | --- | --- | --- | --- | --- |
-| **docs** | 只改 harness / docs / 报告 / 状态 | `safety-check.ps1 -Env real-pre -Scope docs -DryRun` + `verify-local.ps1 -Scope docs` + `git diff --check` | `retire-content.ps1 -Action Plan` | build / restart / health / E2E | 升级到 backend / frontend / full |
-| **backend** | 改 Java / Mapper / Service / Controller / SQL / migration | `mvn -f backend/pom.xml test` + `mvn -f backend/pom.xml -DskipTests package` + `safety-check.ps1 -Scope backend` + `restart-compose.ps1 -Scope backend` + `curl /api/system/health` + 一条相关 API smoke | 只读 SQL 对账 | 前端构建 | E2E 业务验证缺失 → 升级 full |
-| **frontend** | 改 Vue / Vite / Pinia / 路由 / API 调用 | `npm --prefix frontend run build` + `npm --prefix frontend run test` + `safety-check.ps1 -Scope frontend` + `curl /healthz` + 页面 smoke | `playwright` 关键页 | 后端 build | 后端联动缺失 → 升级 full |
-| **full** | 同时改前后端 / SQL / 跨域 | backend 必跑 + frontend 必跑 + `restart-compose.ps1` + backend health + frontend healthz + 业务 smoke | E2E（real-pre） | 无 | 必跑稳定 evidence；状态变化时更新 CURRENT_STATE |
-| **deploy** | 部署远端 | `git fetch` + `git checkout` + `git pull --ff-only` + 远端 `git rev-parse HEAD` 对齐 + `restart-compose.ps1 -Scope full` + 远端 health + 远端 `docker compose ps` | 远端 `npm run e2e:real-pre:p0:preflight` | 无 | 立即生成 rollback 报告，远端 `git revert` |
-| **diagnosis** | 排查问题，先不改 | `code-review-graph` 工具 + `rg` + API / SQL / 日志取证 | 复现脚本 | 无 | 阶段性结论（未修） |
+| Scope | 适用 | 必跑 | 限制 |
+| --- | --- | --- | --- |
+| `docs` | 文档、Harness、报告 | safety、结构门禁、稳定 evidence | 构建/重启/健康明确跳过 |
+| `backend` | Java、SQL、迁移 | Maven 测试/打包、本地后端重启、健康、业务 smoke | 不部署远端 |
+| `frontend` | Vue/Vite/页面 | 测试、typecheck、build、本地前端重启、页面 smoke | 不部署远端 |
+| `full` | 跨前后端/数据库 | backend + frontend + 本地 Compose + 业务验证 | 不部署远端 |
+| `diagnosis` | 只读排查 | 图谱、日志、API/SQL 证据 | 不实现、不部署 |
+| 远端发布候选 | 用户要求发布 | `full` 验证、提交、推送、PR/候选 SHA | 等待 Merge Queue/Jenkins |
 
-## 3. Env 决策
+## 环境决策
 
-| Env | 何时使用 |
+| 环境 | 何时使用 |
 | --- | --- |
-| `real-pre` | **默认**。本地 `real-pre` 容器；前端 `3001`、后端 `8081`、PostgreSQL、Redis。 |
-| `test` | 用户明确要求或专项 mock / 回归（`npm run e2e:v1-p0`）。 |
-| 远端 | 部署任务用 `-DeployRemote true`；不能单独 `-Env remote`。 |
+| 本地 `real-pre` | 默认工程修改和验证环境 |
+| `test` | 用户明确要求或专项 mock / 回归 |
+| 远端 `real-pre` | 仅 Jenkins；普通任务没有 SSH、部署或回滚入口 |
 
-## 4. Deploy 决策
+## 发布决策
 
-| 触发 | 行为 |
+| 触发 | 普通任务行为 |
 | --- | --- |
-| 用户明确说"部署" | 加 `-DeployRemote true` |
-| 用户说"本地测" | **不要**加 `-DeployRemote true` |
-| 用户没提部署 | 保持本地验证，不主动部署 |
+| 用户没提发布 | 只做本地验证 |
+| 用户要求发布 | 生成候选 SHA 与证据，进入 PR/Merge Queue |
+| Jenkins 成功 | 记录完整 SHA/digest、五项版本一致和发布清单 |
+| Jenkins 失败/阻塞 | 如实记录 FAIL/BLOCKED，不改用手工部署 |
+| 用户要求回滚 | 进入同一 Jenkins 队列，需 `ROLLBACK_APPROVED=true` |
 
-## 5. 必读文件（按 scope）
+## 禁止矩阵
 
-| Scope | 必读 |
+| 禁止 | 范围 |
 | --- | --- |
-| docs | `AGENTS.md`、`CLAUDE.md`、`harness/rules/state/snapshots/01-当前项目状态.md`、`harness/rules/governance/task-routing.md`、`harness/rules/governance/forbidden-scope.md` |
-| backend | docs + `harness/rules/instructions/domain/<domain>.md` + 对应 `docs/领域/*.md` + `docs/05-API契约总表.md` + `docs/06-数据模型总表.md` |
-| frontend | docs + `harness/rules/skills/workflow/frontend-ux.skill.md` + 对应 API |
-| full | backend + frontend 全套 |
-| deploy | `harness/rules/environment/envs/remote-real-pre-env.md` + `harness/rules/runbooks/remote-deploy.md` |
-| diagnosis | `harness/rules/state/snapshots/01-当前项目状态.md` + `harness/rules/state/snapshots/KNOWN_ISSUES.md` + 对应 domain 文档 |
+| `git add .`、提交密钥、改真实 `.env*` | 全部 |
+| SSH 修改服务器、`/opt/saas/app` 现场构建 | 普通任务 |
+| `deploy-remote.ps1`、`deploy-real-pre.sh`、`rollback-real-pre.sh` | 全部普通任务 |
+| 短 SHA、`latest`、可变发布 tag | 远端发布 |
+| 并行合并、并行迁移、并行部署/E2E | 远端流程 |
+| 清库、`docker compose down -v` | 全部 |
 
-## 6. 验证命令最小集
-
-```powershell
-# docs
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\safety-check.ps1 -Env real-pre -Scope docs -DryRun
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\verify-local.ps1 -Env real-pre -Scope docs
-git diff --check
-
-# backend
-mvn -f backend/pom.xml test
-mvn -f backend/pom.xml -DskipTests package
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\safety-check.ps1 -Env real-pre -Scope backend
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\restart-compose.ps1 -Env real-pre -Scope backend
-curl http://localhost:8081/api/system/health
-
-# frontend
-npm --prefix frontend run build
-npm --prefix frontend run test
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\safety-check.ps1 -Env real-pre -Scope frontend
-curl http://localhost:3001/healthz
-```
-
-## 7. 禁止矩阵
-
-| 禁止 | 适用 scope |
-| --- | --- |
-| 修改 `backend/src/main/` | docs / harness-only |
-| 修改 `frontend/src/` | docs / harness-only / backend-only |
-| 修改 SQL migration | docs / harness-only |
-| 重启容器 | docs / harness-only |
-| `git add .` | 全部 |
-| 远端部署 | 未明确要求时 |
-| 修改 `.env*` 真实文件 | 全部 |
-| 清库 / `docker compose down -v` | 全部 |
-
-## 8. 关联文档
-
-- `harness/scripts/commands/*.ps1`
-- `harness/rules/governance/task-routing.md`
-- `harness/rules/governance/COMPLETION_GATES.md`
-- `harness/rules/runbooks/governance/task-lifecycle.md`
-- `harness/rules/environment/CHEATSHEET.md`
+发布详情见 `harness/rules/cicd-real-pre-policy.md`。

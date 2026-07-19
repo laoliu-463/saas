@@ -11,6 +11,8 @@ on:
       - "**"
     paths-ignore:
       - "harness/reports/**"
+  merge_group:
+    types: [checks_requested]
   workflow_dispatch:
 
 permissions:

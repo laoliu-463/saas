@@ -1,0 +1,115 @@
+name: Build immutable real-pre images
+
+on:
+  push:
+    branches:
+      - release/real-pre
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-image-${{ github.sha }}
+  cancel-in-progress: false
+
+env:
+  BACKEND_IMAGE: ${{ vars.REAL_PRE_BACKEND_IMAGE_REPOSITORY }}
+  FRONTEND_IMAGE: ${{ vars.REAL_PRE_FRONTEND_IMAGE_REPOSITORY }}
+
+jobs:
+  build-and-enqueue:
+    name: 构建不可变镜像并进入 Jenkins 队列
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact release commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Validate release configuration
+        shell: bash
+        env:
+          REGISTRY_USERNAME: ${{ secrets.REAL_PRE_REGISTRY_USERNAME }}
+          REGISTRY_PASSWORD: ${{ secrets.REAL_PRE_REGISTRY_PASSWORD }}
+          JENKINS_URL: ${{ secrets.REAL_PRE_JENKINS_URL }}
+          JENKINS_USER: ${{ secrets.REAL_PRE_JENKINS_USER }}
+          JENKINS_TOKEN: ${{ secrets.REAL_PRE_JENKINS_TOKEN }}
+        run: |
+          set -Eeuo pipefail
+          [ "${#GITHUB_SHA}" -eq 40 ]
+          [ -n "$BACKEND_IMAGE" ] && [ -n "$FRONTEND_IMAGE" ]
+          [ -n "$REGISTRY_USERNAME" ] && [ -n "$REGISTRY_PASSWORD" ]
+          [ -n "$JENKINS_URL" ] && [ -n "$JENKINS_USER" ] && [ -n "$JENKINS_TOKEN" ]
+          [ "$GITHUB_REF_NAME" = 'release/real-pre' ]
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      - name: Package backend once
+        working-directory: backend
+        run: mvn -B package -DskipTests
+
+      - name: Log in to controlled registry
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ vars.REAL_PRE_REGISTRY }}
+          username: ${{ secrets.REAL_PRE_REGISTRY_USERNAME }}
+          password: ${{ secrets.REAL_PRE_REGISTRY_PASSWORD }}
+
+      - name: Build and push backend
+        id: backend_image
+        uses: docker/build-push-action@v7
+        with:
+          context: backend
+          push: true
+          tags: |
+            ${{ env.BACKEND_IMAGE }}:${{ github.sha }}
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+
+      - name: Build and push frontend
+        id: frontend_image
+        uses: docker/build-push-action@v7
+        with:
+          context: frontend
+          push: true
+          tags: |
+            ${{ env.FRONTEND_IMAGE }}:${{ github.sha }}
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+            VITE_ENV_LABEL=REAL-PRE
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+
+      - name: Enqueue the only Jenkins deployment channel
+        shell: bash
+        env:
+          backend_digest: ${{ steps.backend_image.outputs.digest }}
+          frontend_digest: ${{ steps.frontend_image.outputs.digest }}
+          JENKINS_URL: ${{ secrets.REAL_PRE_JENKINS_URL }}
+          JENKINS_USER: ${{ secrets.REAL_PRE_JENKINS_USER }}
+          JENKINS_TOKEN: ${{ secrets.REAL_PRE_JENKINS_TOKEN }}
+          JENKINS_JOB: ${{ vars.REAL_PRE_JENKINS_JOB }}
+        run: |
+          set -Eeuo pipefail
+          digest_pattern='^sha256:[0-9a-f]{64}$'
+          [[ "$backend_digest" =~ $digest_pattern ]]
+          [[ "$frontend_digest" =~ $digest_pattern ]]
+          [ -n "$JENKINS_JOB" ]
+          curl --fail --silent --show-error \
+            --user "$JENKINS_USER:$JENKINS_TOKEN" \
+            --data-urlencode "TARGET_GIT_SHA=$GITHUB_SHA" \
+            --data-urlencode "BACKEND_IMAGE=$BACKEND_IMAGE" \
+            --data-urlencode "BACKEND_IMAGE_DIGEST=$backend_digest" \
+            --data-urlencode "FRONTEND_IMAGE=$FRONTEND_IMAGE" \
+            --data-urlencode "FRONTEND_IMAGE_DIGEST=$frontend_digest" \
+            --data-urlencode 'ROLLBACK_APPROVED=false' \
+            "${JENKINS_URL%/}/job/$JENKINS_JOB/buildWithParameters"

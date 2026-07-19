@@ -1,120 +1,99 @@
-# CICD Real-pre Policy
+# real-pre 单通道 CI/CD 策略
 
-## 1. Scope
+## 1. 不可变原则
 
-- 当前 CD 标准方案固定为 Jenkins。
-- 第一阶段只允许自动部署 `real-pre`。
-- 生产环境不得由当前 Jenkins job 自动触碰。
-- 本规范记录 Jenkins real-pre CD 的最低门禁，不替代业务验收文档。
+> 允许并行开发，禁止并行合并和并行部署。所有 real-pre 部署必须进入 Jenkins 唯一发布队列。
 
-## 2. Jenkins Job
+- Codex 任务可在独立 worktree / `codex/*` 分支并行开发、测试、推送并提交 PR。
+- 同机独立分析和单元测试仍可并行；涉及共享 Docker、健康检查和业务验证的 `agent-do` 集成执行按环境进入本机唯一运行队列。
+- GitHub Merge Queue 串行决定合并顺序，必需 CI 必须响应 `merge_group`。
+- 只有 `release/real-pre` 当前提交可构建发布镜像和进入部署队列。
+- Jenkins 是唯一发布控制器；普通 Codex 任务不得 SSH、部署、回滚或改服务器工作树。
+- 生产分支为 `main`；生产发布需另建审批型 Job，不复用 real-pre Job。
 
-- Job 名称：`saas-real-pre-cd`。
-- 源码来源：`https://gitee.com/cao-jianing463/saas.git`。
-- 默认分支：`feature/ddd/DDD-VERIFY-001`。
-- 运行环境：服务器本机 Jenkins，仅面向 real-pre。
-- 镜像标签：使用 Git short commit，例如 `e248b611`。
+## 2. 发布链路
 
-## 3. Required Parameters
+```text
+独立分支 → PR/CI → Merge Queue → release/real-pre
+→ GitHub Actions 构建并推送一次 → 完整 SHA + digest
+→ Jenkins 全局队列 → 串行迁移 → digest 固定部署 → 五项版本验证 → 发布记录
+```
 
-| 参数 | 要求 |
-| --- | --- |
-| `DEPLOY_BRANCH` | 必须指向受控 real-pre CD 分支 |
-| `DEPLOY_REAL_PRE` | 必须为 `true` |
-| `CONFIRM_REAL_PROMOTION_WRITE` | real-pre 推广写入双开关开启时必须为 `true` |
+GitHub 主源固定为 `https://github.com/laoliu-463/saas.git`。Gitee 只可作为只读镜像，不参与发布判定。
 
-## 4. Preflight Guard
+## 3. CI 镜像契约
 
-Jenkins 部署前必须校验：
+`.github/workflows/release-images.yml` 只在 `release/real-pre` 上运行：
 
-- `DEPLOY_ENV=real-pre`。
-- `RUN_DB_MIGRATIONS=false`。
-- Compose 文件只能是 `docker-compose.real-pre.yml`。
-- Compose project 固定为 `saas-active`。
-- 服务器环境文件固定为 `/opt/saas/env/.env.real-pre`。
-- `APP_TEST_ENABLED=false`。
-- `DOUYIN_TEST_ENABLED=false`。
-- `DOUYIN_REAL_UPSTREAM_MODE=live`。
-- `SPRING_PROFILES_ACTIVE=real-pre`。
-- `DB_NAME=saas_real_pre`。
-- PostgreSQL / Redis 不对公网暴露。
-- 不输出 `.env.real-pre` 中的密钥值。
+- 后端与前端镜像 tag 必须等于 40 位完整 Git SHA；
+- OCI `org.opencontainers.image.revision` 必须等于同一 SHA；
+- CI 构建一次并推送镜像仓库，输出两个 `sha256` digest；
+- 禁止 `latest`、短 SHA、`real-pre` 可变发布 tag 和服务器现场构建；
+- CI 只把 SHA、镜像仓库和 digest 传给 Jenkins，不直接操作服务器。
 
-## 5. Pipeline Stages
+仓库需配置：
 
-Jenkins real-pre CD 必须按以下顺序执行：
+- Variables：`REAL_PRE_REGISTRY`、`REAL_PRE_BACKEND_IMAGE_REPOSITORY`、`REAL_PRE_FRONTEND_IMAGE_REPOSITORY`、`REAL_PRE_JENKINS_JOB`；
+- Secrets：`REAL_PRE_REGISTRY_USERNAME`、`REAL_PRE_REGISTRY_PASSWORD`、`REAL_PRE_JENKINS_URL`、`REAL_PRE_JENKINS_USER`、`REAL_PRE_JENKINS_TOKEN`。
 
-1. Checkout 指定分支并记录 commit / image tag。
-2. Preflight Guard。
-3. Backend Test：执行 `mvn clean test`，不得跳过测试阶段。
-4. Backend Package：执行 `mvn clean package -DskipTests`，只复用已通过的测试结果。
-5. Frontend Build：执行依赖安装、`test`、`typecheck`、`build`。
-6. Docker Build：构建 `backend-real-pre` 与 `frontend-real-pre` 镜像。
-7. Compose Config：输出并校验 `docker compose config`。
-8. Deploy real-pre：只更新 backend / frontend，不重建 DB / Redis。
-9. Health Check：验证后端 `/api/system/health` 与前端 `/healthz`。
-10. Evidence Report：归档 Jenkins CD 证据。
+## 4. Jenkins 队列契约
 
-## 6. Deploy Boundary
+`Jenkinsfile` 同时使用：
 
-- 只允许 `backend-real-pre` 与 `frontend-real-pre` 自动重建和重启。
-- 不允许自动执行数据库迁移。
-- 不允许 `docker compose down -v`。
-- 不允许删除 PostgreSQL / Redis volume。
-- 不允许切换到 test/mock 配置证明 real-pre 通过。
-- 不允许引用 production compose 或 production env 文件。
-- 不允许把 `BLOCKED`、`PENDING`、`PARTIAL` 写成 `PASS`。
+- `disableConcurrentBuilds(abortPrevious: false)`：同一 Job 排队，禁止新任务取消旧部署；
+- `lock(resource: 'saas-real-pre-deploy')`：跨 Job 共享 real-pre 全局锁。
 
-## 7. Rollback
+Jenkins 凭证 ID 固定为 `saas-real-pre-registry`。输入为：
 
-部署前必须记录当前 backend / frontend 镜像。
+- `TARGET_GIT_SHA`：40 位完整 SHA；
+- `BACKEND_IMAGE` / `FRONTEND_IMAGE`：不含 tag/digest 的仓库路径；
+- `BACKEND_IMAGE_DIGEST` / `FRONTEND_IMAGE_DIGEST`：CI 产生的 digest；
+- `ROLLBACK_APPROVED`：普通发布必须为 `false`，明确回滚才允许 `true`。
 
-Health Check 失败时：
+Jenkins 不运行 Maven、pnpm 或 Docker build，只拉取和部署 CI 产物。
 
-1. 尝试切回部署前 backend / frontend 镜像标签。
-2. 重新执行健康检查。
-3. Jenkins build 标记为失败。
-4. evidence report 记录失败、回滚动作和剩余风险。
+## 5. 防降级与不可变目录
 
-## 8. Evidence
+`scripts/deploy-release.sh` 必须校验：
 
-每次 Jenkins CD 必须生成：
+- HEAD、发布清单、镜像 tag、OCI revision 都等于目标完整 SHA；
+- 本地 RepoDigest 与发布清单 digest 一致；
+- `git merge-base --is-ancestor CURRENT_SHA TARGET_SHA` 成立；
+- 非后继提交只有 `ROLLBACK_APPROVED=true` 才可继续；
+- 调用方必须提供 `RELEASE_CONTROLLER=jenkins`。
 
-- Jenkins build number 和 result。
-- source、branch、commit、image tag。
-- 后端测试汇总。
-- 前端测试 / typecheck / build 结果。
-- Docker image 和 container 状态。
-- `docker compose config` 结果。
-- 后端 / 前端健康检查结果。
-- `Production touched: NO`。
-- `Database migration/write by pipeline: NO`。
-- `Secret leaked: NO`。
+服务器目录固定为：
 
-证据文件固定写入：
+```text
+/opt/saas/env/.env.real-pre       固定配置，不由任务修改
+/opt/saas/releases/<完整SHA>/     不可变 release.json、Compose、运行证据
+/opt/saas/releases/current.json   验证通过后的当前版本
+/opt/saas/releases/previous.json  上一个可回滚版本
+```
 
-- Jenkins artifact：`harness/reports/latest-evidence-jenkins-cd.md`。
-- 服务器归档：`/opt/saas/runtime/qa/out/jenkins-<build>/latest-evidence-jenkins-cd.md`。
+禁止在 `/opt/saas/app` 执行 `git pull`、`checkout`、`reset`、改 Compose 或现场构建。
 
-## 9. Verified Baseline
+## 6. 运行版本门禁
 
-最近已验证的 Jenkins CD 基线：
+只有以下事实全部一致才允许写 `DEPLOYMENT=PASS` 并更新 `current.json`：
 
-- Job：`saas-real-pre-cd #9`。
-- Commit：`e248b611698e56e1e1e924fc65e79bee0fcb8fac`。
-- Image tag：`e248b611`。
-- Result：`SUCCESS`。
-- 后端测试：`2511` run，`0` failures，`0` errors，`3` skipped。
-- 后端健康：`{"status":"UP"}`。
-- 前端健康：`ok`。
-- real-pre 容器：backend / frontend 已切到 `colonel-saas/*:e248b611`。
+1. Jenkins 目标 Git SHA；
+2. 后端 `/api/system/health` 的 `gitSha`；
+3. 前端 `/version.json` 的 `gitSha`；
+4. 后端/前端镜像 tag、OCI revision 与 digest；
+5. 数据库 `schema_migration_log` 与 `flyway_schema_history` 版本。
 
-## 10. Production Rule
+后端还必须返回 `imageDigest`、`databaseMigrationVersion` 和 `flywayVersion`。`UNAVAILABLE`、`NOT_MANAGED`、缺字段或不一致都必须失败。
 
-生产环境后续如需接入 Jenkins，必须另建审批型 job，并满足：
+当前 `.env.real-pre.example` 将 `FLYWAY_ENABLED=false` 作为安全默认值。正式切换前须先完成迁移演练并在服务器固定配置中显式启用；未启用时发布会被版本门禁阻断，不得降级为 PASS。
 
-- 默认不自动触发。
-- 必须人工确认部署窗口、commit、回滚镜像和数据库迁移策略。
-- 必须先有 real-pre PASS 证据。
-- 必须单独生成生产 evidence report。
-- 不得复用 `saas-real-pre-cd` 直接部署生产。
+## 7. 旧入口
+
+以下入口已停用并必须保持阻断：
+
+- `harness/scripts/commands/deploy-remote.ps1`；
+- `scripts/deploy-real-pre.sh`；
+- `scripts/rollback-real-pre.sh`；
+- `agent-do.ps1 -DeployRemote true`。
+
+Harness 只负责本地验证、生成候选证据和记录 Jenkins 发布结果，不拥有远端部署权限。

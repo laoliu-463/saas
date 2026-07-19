@@ -73,7 +73,7 @@
 powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\agent-do.ps1 -Env real-pre -Scope full -ReportKey task-key -OwnedFiles 'path1;path2' -Message "说明本次修改"
 ```
 
-`ReportKey` 使用稳定主题键；`OwnedFiles` 逐项列出当前任务拥有的仓库相对路径。自动生成的 evidence、content-retire 报告和归档目标由脚本合并进任务文件集合。后续 Agent 不允许临时发明构建、重启、部署流程。除非用户明确要求 `test`，默认使用本地 `real-pre`；远端部署仍必须由用户明确要求后再传 `-DeployRemote true`。
+`ReportKey` 使用稳定主题键；`OwnedFiles` 逐项列出当前任务拥有的仓库相对路径。自动生成的 evidence、content-retire 报告和归档目标由脚本合并进任务文件集合。后续 Agent 不允许临时发明构建、重启、部署流程。除非用户明确要求 `test`，默认使用本地 `real-pre`；远端发布只能提交候选 SHA 并进入 `release/real-pre` 与 Jenkins 唯一队列，`-DeployRemote true` 已停用。
 
 ## Completion Gate：禁止提前完成
 
@@ -127,7 +127,7 @@ Session Exit Gate 证明"仓库是否处于可交接状态"。
 - 已生成旧内容维护计划，或明确说明本轮无需整理归档删除。
 - 已生成或覆盖 `harness/reports/current/latest-<topic>.md`。
 - Git commit 已生成并 push 到当前分支上游，或明确说明本轮被用户要求不提交 / 推送。
-- 若用户明确要求远端部署，远端部署完成并记录远端健康检查。
+- 若用户明确要求远端发布，候选 SHA、CI/Merge Queue/Jenkins 状态和最终结果已如实记录；普通 Agent 不得绕过发布控制器。
 - Evidence 已内联 retro 结论；只有存在责任人、改进动作和验证方式时才生成独立 retro。
 - 剩余风险已列出。
 - 统一最终输出模板已按 `harness/rules/governance/COMPLETION_GATES.md` 格式填写。
@@ -142,10 +142,10 @@ Session Exit Gate 证明"仓库是否处于可交接状态"。
 4. **Staged Scope Gate**：提交前必须执行 `git diff --cached --name-only` / `git diff --cached --stat` / `git diff --cached --check`，并逐项确认 6 条通过条件。禁止 `git add .` / `git add -A` / `git add <dir>/`。
 5. **Commit Gate**：commit message 必须含类型和 scope（如 `feat(product-ui)` / `fix(user-domain)` / `docs(harness)` / `chore(cleanup)`）。不允许 `git commit --amend`、空 message、`--no-verify` 跳过 hook。
 6. **Push Gate**：推送当前分支已配置的 upstream；无 upstream 时设置为 `origin/<current-branch>`。`gitee` 是只读镜像，不作为自动推送目标。
-7. **Deploy Commit Gate**：部署前远端必须 `git fetch` + `git checkout` + `git pull --ff-only` 拉到目标 commit；远端 `git rev-parse HEAD` 必须等于目标 commit；远端 `git status --short` 必须为空。禁止从本地 dirty 工作区直接部署，禁止使用未提交代码部署，禁止远端 dirty 源码部署。
+7. **Deploy Commit Gate**：候选提交必须先进入 PR/CI 与 Merge Queue；只有 `release/real-pre` 当前完整 SHA 可由 CI 构建 digest 固定镜像，并由 Jenkins 串行部署。禁止普通 Agent SSH、部署未合并分支或使用共享远端工作树。
 8. **Git Exit Gate**：任务结束前必须输出 `DONE_CLEAN` / `DONE_WITH_REGISTERED_DIRTY` / `PARTIAL_DIRTY_REMAINING` / `BLOCKED_DIRTY_UNKNOWN` 之一。`DONE` 状态不得有 unknown dirty。
 9. **Unknown Dirty Policy**：unknown 文件必须立即停止 commit / push / deploy，调查摘要写入任务稳定 evidence。
-10. **Rollback Policy**：部署失败时把 rollback 证据写入任务稳定 evidence，远端 `git revert`，重新构建/重启，最终状态写 `ROLLBACK_REQUIRED`。
+10. **Rollback Policy**：部署失败时把证据写入稳定 evidence；回滚仍进入同一 Jenkins 队列并显式设置 `ROLLBACK_APPROVED=true`，最终状态写 `ROLLBACK_REQUIRED`，禁止手工覆盖服务器。
 11. **批次提交**：多任务 dirty 必须按 `harness/rules/skills/git/git-batch-submit.md` 划分批次，业务代码批次和 docs / reports 批次必须分开。
 12. **禁止行为**：
     - 禁止 `git add .` / `git add -A` / `git add <dir>/`。

@@ -125,7 +125,7 @@
 4. 通过 `agent-do.ps1 -ReportKey <key> -OwnedFiles '<path1>;<path2>'` 只暂存任务拥有的文件；手工回退时才逐文件 `git add -- <file>`。
 5. 检查 commit message 含 type + scope（如 `docs(harness): ...` / `fix(order): ...`）。
 6. 推送当前 upstream；无 upstream 时设置 `origin/<current-branch>`。`gitee` 只读，不自动推送。
-7. 远端部署场景：先 `git fetch` + `git checkout` + `git pull --ff-only`，确认 `git rev-parse HEAD` 等于目标 commit、`git status --short` 为空。
+7. 远端发布场景：完成候选提交、推送和 PR/CI 证据；等待 Merge Queue 合入 `release/real-pre` 与 Jenkins 队列。普通任务不得 SSH 或直接部署。
 
 **输出**：commit hash + 远端同步结果 + 终态 (`DONE_CLEAN` / `DONE_WITH_REGISTERED_DIRTY` / `PARTIAL_DIRTY_REMAINING` / `BLOCKED_DIRTY_UNKNOWN`)。
 

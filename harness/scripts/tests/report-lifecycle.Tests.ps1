@@ -146,6 +146,32 @@ Describe 'stable Harness report lifecycle' {
         $result.Output | Should Not Match 'unrelated.md'
     }
 
+    It 'preserves leading-dot owned file paths in git dry-run' {
+        $repo = New-ReportTestRepo -Name 'owned-dotfiles'
+        $workflowDir = Join-Path $repo '.github\workflows'
+        New-Item -ItemType Directory -Path $workflowDir -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $workflowDir 'ci.yml') -Value 'name: baseline' -Encoding UTF8
+        Push-Location $repo
+        try {
+            git add -- '.github/workflows/ci.yml'
+            git commit -q -m 'test: add dotfile baseline'
+        }
+        finally {
+            Pop-Location
+        }
+        Set-Content -LiteralPath (Join-Path $repo '.env.real-pre.example') -Value 'SAFE_EXAMPLE=true' -Encoding UTF8
+        Set-Content -LiteralPath (Join-Path $workflowDir 'ci.yml') -Value 'name: ci' -Encoding UTF8
+
+        $result = Invoke-GitPushDryRun -Repo $repo -OwnedFiles @(
+            '.env.real-pre.example',
+            '.github/workflows/ci.yml'
+        )
+
+        $result.ExitCode | Should Be 0
+        $result.Output | Should Match ([regex]::Escape('.env.real-pre.example'))
+        $result.Output | Should Match ([regex]::Escape('.github/workflows/ci.yml'))
+    }
+
     It 'rejects an empty owned set when changes exist' {
         $repo = New-ReportTestRepo -Name 'empty-owned'
         Set-Content -LiteralPath (Join-Path $repo 'owned.md') -Value 'changed-owned' -Encoding UTF8
@@ -198,6 +224,35 @@ Describe 'stable Harness report lifecycle' {
         $remoteHead = (& git --git-dir $remote rev-parse 'refs/heads/feature/first-push').Trim()
         $upstream | Should Be 'origin/feature/first-push'
         $remoteHead | Should Be $localHead
+    }
+
+    It 'force-stages only an owned Harness archive ignored by policy' {
+        $repo = New-ReportTestRepo -Name 'owned-ignored-archive'
+        $remote = Join-Path $TestDrive 'owned-ignored-archive-remote.git'
+        git init --bare -q $remote
+        Push-Location $repo
+        try {
+            Set-Content -LiteralPath (Join-Path $repo '.gitignore') -Value 'harness/archive/*' -Encoding UTF8
+            git add -- .gitignore
+            git commit -q -m 'test: ignore generated archive'
+            git checkout -q -b 'feature/owned-ignored-archive'
+            git remote add origin $remote
+        }
+        finally {
+            Pop-Location
+        }
+        $archivePath = 'harness/archive/retired-content/batch/evidence.md'
+        $archiveFile = Join-Path $repo $archivePath
+        New-Item -ItemType Directory -Path (Split-Path -Parent $archiveFile) -Force | Out-Null
+        Set-Content -LiteralPath $archiveFile -Value 'archived evidence' -Encoding UTF8
+
+        $result = Invoke-GitPush -Repo $repo -OwnedFiles @($archivePath)
+
+        $result.ExitCode | Should Be 0
+        Push-Location $repo
+        try { $tracked = (@(& git ls-tree -r --name-only HEAD -- $archivePath) -join "`n").Trim() }
+        finally { Pop-Location }
+        $tracked | Should Be $archivePath
     }
 
     It 'skips runtime collection automatically for docs and apifox scopes' {

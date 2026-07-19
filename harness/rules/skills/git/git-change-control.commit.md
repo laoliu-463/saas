@@ -62,15 +62,16 @@ git push --set-upstream origin <current-branch>
 
 必须满足：
 - 代码已 commit 并推送到目标 remote
-- 远端 `git pull --ff-only` 拉到目标 commit
-- 远端 `git rev-parse HEAD` 等于目标 commit
-- 远端 `git status --short` 为空
+- 本地部署由 `agent-do.ps1` 加载当前提交和工作区事实
+- 远端候选通过 PR/CI 与 Merge Queue 进入 `release/real-pre`
+- CI 镜像使用完整 SHA、OCI revision 和 digest，Jenkins 串行部署
 
 禁止：
 - 从 dirty 工作区直接 scp/rsync
 - 使用未提交代码部署
 - 远端手工 patch 后再 commit
+- SSH、共享工作树现场构建或绕过 Jenkins
 
 `.env` 例外：可以是远端本地运行配置，但不得 commit。
 
-部署后必须验证：容器状态、health check、commit hash、jar/dist 时间。
+远端发布后必须验证：目标 SHA、前后端运行 SHA、镜像 digest、数据库迁移/Flyway 版本和 `current.json`。

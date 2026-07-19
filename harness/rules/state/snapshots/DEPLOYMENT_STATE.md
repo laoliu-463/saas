@@ -1,26 +1,17 @@
 # Deployment State
 
-> **主源说明**：远端部署以 `harness/rules/environment/envs/remote-real-pre-env.md` 为准；
-> 命令决策表以 `harness/rules/runbooks/governance/scope-command-matrix.md` 为准。冲突应登记到 `harness/rules/changelog.md`。
+> 远端发布主源：`harness/rules/cicd-real-pre-policy.md` 与 `harness/rules/environment/envs/remote-real-pre-env.md`。
 
-## 当前部署口径
+| 环境 | 状态 | 执行边界 |
+| --- | --- | --- |
+| test | 可用于 mock / P0 回归 | 用户明确要求或专项测试 |
+| 本地 real-pre | 默认工程验证环境 | `agent-do.ps1` 可构建、重启和验证本地容器 |
+| 远端 real-pre | 仅 Jenkins 单通道发布 | `release/real-pre` + 完整 SHA/digest + 全局锁 |
 
-| 环境 | 状态 | 证据主源 | 说明 |
-| --- | --- | --- | --- |
-| test | 可用于 mock / P0 回归 | `harness/rules/environment/envs/test-env.md`、`docker-compose.test.yml` | 仅在显式要求或专项测试中使用 |
-| 本地 real-pre | 默认工程修改环境 | `harness/rules/environment/envs/real-pre-env.md`、`docker-compose.real-pre.yml` | 前端 `3001`，后端 `8081` |
-| 远端 real-pre | 允许受控部署，但需用户明确要求 | `harness/rules/environment/envs/remote-real-pre-env.md`、`docs/10-部署运行总览.md` | 不等于正式全量上线 |
+当前约束：
 
-## 当前限制
-
-- real-pre P0 不能因环境健康而直接判定全量通过；仍受真实订单 / `pick_source` 样本影响。
-- 远端部署必须使用固定入口，不能临时手写部署流程。
-- `.env.real-pre` 不进入 Git，也不复制到文档。
-
-## 远端部署触发条件
-
-只有用户明确要求远端部署时，才允许执行：
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\agent-do.ps1 -Env real-pre -Scope full -ReportKey task-key -OwnedFiles 'path1;path2' -DeployRemote true -Message "deploy: real-pre update"
-```
+- 普通 Codex 任务无远端部署和回滚权限；`-DeployRemote true` 会被拒绝。
+- 旧 SSH、共享工作树和现场构建入口已停用。
+- real-pre P0 不能因容器健康直接判定全量通过，仍需真实样本与业务闭环证据。
+- `.env.real-pre` 不进入 Git；Flyway 未显式启用时发布必须 BLOCKED。
+- `current.json` 只有在后端、前端、镜像和数据库版本全部一致后更新。

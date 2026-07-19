@@ -82,20 +82,37 @@ if ($executionMode -eq "NODE") {
 
     Write-HarnessStage "Node verify single source"
     Write-Host "npm $($nodeArguments -join ' ')"
-    Push-Location $config.RepoRoot
-    $previousInvocationId = $env:HARNESS_VERIFY_INVOCATION_ID
-    $previousGitSnapshot = $env:HARNESS_VERIFY_GIT_SNAPSHOT_JSON
+    $runtimeLease = $null
     try {
-        $env:HARNESS_VERIFY_INVOCATION_ID = $invocationId
-        $env:HARNESS_VERIFY_GIT_SNAPSHOT_JSON = $gitSnapshotJson
-        $nodeOutput = @(npm @nodeArguments 2>&1)
-        $nodeExitCode = $LASTEXITCODE
-        $nodeOutput | ForEach-Object { Write-Host ([string]$_) }
+        if (-not $DryRun) {
+            Write-HarnessStage "Local runtime queue"
+            $runtimeLease = Enter-HarnessRuntimeQueue -Environment $TargetEnv
+        }
+        Push-Location $config.RepoRoot
+        $previousInvocationId = $env:HARNESS_VERIFY_INVOCATION_ID
+        $previousGitSnapshot = $env:HARNESS_VERIFY_GIT_SNAPSHOT_JSON
+        try {
+            $env:HARNESS_VERIFY_INVOCATION_ID = $invocationId
+            $env:HARNESS_VERIFY_GIT_SNAPSHOT_JSON = $gitSnapshotJson
+            $previousNodeErrorActionPreference = $ErrorActionPreference
+            try {
+                $ErrorActionPreference = 'Continue'
+                $nodeOutput = @(npm @nodeArguments 2>&1)
+                $nodeExitCode = $LASTEXITCODE
+            }
+            finally {
+                $ErrorActionPreference = $previousNodeErrorActionPreference
+            }
+            $nodeOutput | ForEach-Object { Write-Host ([string]$_) }
+        }
+        finally {
+            $env:HARNESS_VERIFY_INVOCATION_ID = $previousInvocationId
+            $env:HARNESS_VERIFY_GIT_SNAPSHOT_JSON = $previousGitSnapshot
+            Pop-Location
+        }
     }
     finally {
-        $env:HARNESS_VERIFY_INVOCATION_ID = $previousInvocationId
-        $env:HARNESS_VERIFY_GIT_SNAPSHOT_JSON = $previousGitSnapshot
-        Pop-Location
+        Exit-HarnessRuntimeQueue -Lease $runtimeLease
     }
 
     $receipt = $null

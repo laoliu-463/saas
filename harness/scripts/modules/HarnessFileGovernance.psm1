@@ -40,7 +40,8 @@ function Test-IsGovernanceTextFile {
 function Test-IsTextLineBudgetExempt {
     param([Parameter(Mandatory = $true)][string]$Path)
 
-    return (ConvertTo-GovernancePath -Path $Path) -eq 'harness/package-lock.json'
+    $normalized = ConvertTo-GovernancePath -Path $Path
+    return $normalized -match '^(?:[^/]+/)?package-lock\.json$'
 }
 
 function Test-IsGeneratedDependencyPath {

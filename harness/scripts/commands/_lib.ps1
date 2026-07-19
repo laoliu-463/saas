@@ -290,10 +290,65 @@ function Expand-HarnessOwnedFiles {
             if ([System.IO.Path]::IsPathRooted($path) -or $path -match '(^|/)\.\.(/|$)' -or $path -match '[*?]') {
                 throw "Owned file must be a repository-relative literal path: $candidate"
             }
-            $expanded += $path.TrimStart('./')
+            if ($path.StartsWith('./', [System.StringComparison]::Ordinal)) {
+                $path = $path.Substring(2)
+            }
+            $expanded += $path
         }
     }
     return @($expanded | Sort-Object -Unique)
+}
+
+function Enter-HarnessRuntimeQueue {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][ValidateSet("test", "real-pre")][string]$Environment,
+        [string]$LockPath = "",
+        [ValidateRange(0, 86400)][int]$TimeoutSeconds = 3600,
+        [ValidateRange(1, 10000)][int]$PollMilliseconds = 500
+    )
+
+    if ([string]::IsNullOrWhiteSpace($LockPath)) {
+        $LockPath = Join-Path ([System.IO.Path]::GetTempPath()) "colonel-saas-$Environment-runtime.lock"
+    }
+    $parent = Split-Path -Parent $LockPath
+    if (-not [string]::IsNullOrWhiteSpace($parent)) {
+        New-Item -ItemType Directory -Path $parent -Force | Out-Null
+    }
+
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    $announced = $false
+    while ($true) {
+        try {
+            $lease = [System.IO.File]::Open(
+                $LockPath,
+                [System.IO.FileMode]::OpenOrCreate,
+                [System.IO.FileAccess]::ReadWrite,
+                [System.IO.FileShare]::None
+            )
+            Write-Host "已进入本机 $Environment 运行队列。"
+            return $lease
+        }
+        catch [System.IO.IOException] {
+            if ([DateTime]::UtcNow -ge $deadline) {
+                throw "等待本机 $Environment 运行队列超时；共享 Docker、健康检查和业务验证未启动。"
+            }
+            if (-not $announced) {
+                Write-Host "等待本机 $Environment 运行队列；其他 worktree 正在执行集成验证。"
+                $announced = $true
+            }
+            Start-Sleep -Milliseconds $PollMilliseconds
+        }
+    }
+}
+
+function Exit-HarnessRuntimeQueue {
+    [CmdletBinding()]
+    param([AllowNull()][System.IDisposable]$Lease)
+
+    if ($null -eq $Lease) { return }
+    $Lease.Dispose()
+    Write-Host "已释放本机运行队列。"
 }
 
 function Get-HarnessRepoRelativePath {

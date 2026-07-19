@@ -2,31 +2,25 @@
 
 ## Metadata
 
-- Time: 2026-07-17 17:47:14 +08:00
-- Action: Plan
+- Time: 2026-07-18 23:27:43 +08:00
+- Action: Archive
 - DryRun: False
-- Reason: deploy: today permissions and frontend display updates
-- Manifest: (none)
+- Reason: post-task content maintenance
+- Manifest: harness/manifests/single-channel-cd-current-report-retirement-extra-20260718.json
 - ArchiveRoot: harness/archive/retired-content
 - AllowSourceCode: False
 
 ## Auto Candidates
 
 ~~~text
-- docs/06-技术架构与数据模型.md [document-debt] -> review/resolve-from-debt-register; evidence=listed in harness/rules/state/snapshots/05-*.md debt register
-- docs/deploy/02-jenkins-later.md [document-debt] -> review/resolve-from-debt-register; evidence=listed in harness/rules/state/snapshots/05-*.md debt register
-- docs/deploy/07-Jenkins自动化部署规划.md [document-debt] -> review/resolve-from-debt-register; evidence=listed in harness/rules/state/snapshots/05-*.md debt register
-- docs/归档/旧版V2.2完整方案.md [document-debt] -> review/resolve-from-debt-register; evidence=listed in harness/rules/state/snapshots/05-*.md debt register
-- docs/领域/业绩域.md [document-debt] -> review/resolve-from-debt-register; evidence=listed in harness/rules/state/snapshots/05-*.md debt register
-- out [generated-output-directory] -> review/delete-after-retention; evidence=generated output directory exists
-- playwright-report [generated-output-directory] -> review/delete-after-retention; evidence=generated output directory exists
-- test-results [generated-output-directory] -> review/delete-after-retention; evidence=generated output directory exists
+(none)
 ~~~
 
 ## Planned / Applied Operations
 
 ~~~text
-(none)
+ARCHIVE harness\reports\current\latest-evidence-20260713-harness-layered-file-governance-design.md -> harness\archive\retired-content\20260718-232743\superseded-harness-design\latest-evidence-20260713-harness-layered-file-governance-design.md
+ARCHIVE harness\reports\current\latest-evidence-20260713.md -> harness\archive\retired-content\20260718-232743\superseded-harness-design\latest-evidence-20260713.md
 ~~~
 
 ## Safety Rules

@@ -1,10 +1,6 @@
-# Runbook: rollback
+# Runbook：回滚
 
-## 适用场景
-
-本地或远端部署后出现构建、健康检查、业务验证失败。
-
-## Git 回滚
+## 本地代码回滚
 
 优先使用非破坏方式：
 
@@ -12,34 +8,29 @@
 git revert <bad_commit>
 ```
 
-不得在未获用户明确要求时执行：
+未经用户明确要求，禁止 `git reset --hard` 或覆盖用户修改。
 
-```text
-git reset --hard
-git checkout -- <file>
-```
+## 本地容器回滚
 
-## Docker 镜像回滚
+1. 回退或 revert 当前任务提交。
+2. 通过 `agent-do.ps1` 重新构建、重启和验证本地服务。
+3. 生成新的 evidence；不得沿用回滚前结论。
 
-1. 确认上一个可用镜像 tag 或 commit。
-2. 修改 `IMAGE_TAG` 或切回上一个 commit。
-3. 执行 `restart-compose.ps1`。
-4. 执行 `verify-local.ps1`。
+## 远端 real-pre 回滚
 
-## 配置回滚
+远端回滚不是手工 Docker 或 Git 操作，必须：
 
-- `.env.real-pre` 不进 Git。
-- 远端配置回滚必须先备份当前文件。
-- 不输出配置值，只记录存在性和变更项。
+1. 从 `/opt/saas/releases/current.json` 与 `previous.json` 确认完整 SHA 和 digest；
+2. 重新进入 Jenkins `saas-real-pre-deploy` 全局队列；
+3. 目标镜像仍需完整 SHA、OCI revision 和 digest 一致；
+4. 显式设置 `ROLLBACK_APPROVED=true`；
+5. 重新验证后端、前端、镜像、数据库迁移和 Flyway 版本；
+6. 生成独立回滚发布记录。
 
-## 数据库 migration 回滚注意事项
+`scripts/rollback-real-pre.sh` 已停用，不是备用入口。
 
-- real-pre 禁止清库。
-- 不删除 volume。
-- 不直接手写破坏性 SQL。
-- 若 migration 已产生数据影响，先形成影响评估和回滚 SQL 审查，再执行。
+## 数据库边界
 
-## 验证
-
-回滚后必须生成新的 evidence report，结论不能沿用回滚前报告。
-
+- real-pre 禁止清库、删除 volume 或执行未经评审的破坏性 SQL。
+- 数据库回滚需独立影响评估、备份和迁移审查。
+- 应用回滚不自动等于数据库回滚；版本不兼容时必须 BLOCKED。

@@ -7,6 +7,12 @@
 
 ## 最近版本摘要
 
+### v0.10.0 — 2026-07-18
+- 采用 ADR-015：允许独立 worktree 并行开发，GitHub Merge Queue 与 Jenkins 全局锁串行合并、迁移和 real-pre 发布。
+- 关闭 `DeployRemote`、SSH 现场构建和手工回滚旁路；唯一发布源固定为 `release/real-pre`。
+- CI 以完整 SHA 构建并推送镜像，Jenkins 校验 OCI revision、digest、防降级和不可变 release manifest。
+- 后端/前端暴露运行 SHA，后端同时读取镜像 digest、aggregate migration 与 Flyway 版本；五项不一致不得 PASS。
+
 ### v0.9.0 — 2026-07-18
 - 依据 ADR-014 将 Harness 一级目录白名单由 9 个扩展为 13 个，新增 `src/`、`contracts/`、`state/`、`tests/`；未知目录继续阻断。
 - 保留 40/50/200、报告生命周期和基线感知语义；仅标准 `harness/package-lock.json` 精确豁免行数预算，Git 忽略的 `harness/node_modules/` 不计入结构健康，其他 JSON/lockfile 和未知目录仍阻断。

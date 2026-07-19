@@ -1574,3 +1574,4 @@ CREATE INDEX IF NOT EXISTS idx_order_sync_dedup_claim_row_id
 \i migrate-sys-dept-dept-type.sql
 \i alter-authorization-foundation-20260713.sql
 \i alter-cso-dual-attribution-status-20260716.sql
+\i migrate/V20260718_001__role_aware_attribution_schema.sql

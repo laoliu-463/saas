@@ -1,0 +1,42 @@
+{
+  "taskId": "HARNESS-SINGLE-CHANNEL-CD-20260718",
+  "reason": "archive standalone retro and superseded evidence-maintenance summaries before writing the single-channel CD evidence",
+  "items": [
+    {
+      "path": "harness/reports/current/latest-retro-evidence-20260713.md",
+      "action": "archive",
+      "archiveGroup": "standalone-retro",
+      "category": "retro-now-inlined"
+    },
+    {
+      "path": "harness/reports/current/retro-20260713-harness-redundancy-cleanup.md",
+      "action": "archive",
+      "archiveGroup": "standalone-retro",
+      "category": "retro-now-inlined"
+    },
+    {
+      "path": "harness/reports/current/retro-user-soft-deleted-restore.md",
+      "action": "archive",
+      "archiveGroup": "standalone-retro",
+      "category": "retro-now-inlined"
+    },
+    {
+      "path": "harness/reports/current/retro-xiangyun-biz-staff-talent-20260717.md",
+      "action": "archive",
+      "archiveGroup": "standalone-retro",
+      "category": "retro-now-inlined"
+    },
+    {
+      "path": "harness/reports/current/latest-product-library-cross-platform-evidence-retire.md",
+      "action": "archive",
+      "archiveGroup": "superseded-evidence-maintenance",
+      "category": "superseded-meta-report"
+    },
+    {
+      "path": "harness/reports/current/latest-product-library-rich-clipboard-evidence-amend.md",
+      "action": "archive",
+      "archiveGroup": "superseded-evidence-maintenance",
+      "category": "superseded-meta-report"
+    }
+  ]
+}

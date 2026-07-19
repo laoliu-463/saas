@@ -1,283 +1,31 @@
-# 部署文档入口
+# real-pre 发布文档索引
 
-## 适用场景
+## 当前执行主源
 
-本文是抖音团长 SaaS `real-pre` 服务器受控部署的入口。当前目标是先完成 Docker 手动部署和真实联调，再沉淀脚本，最后接 Jenkins 自动化。
+1. `docs/10-部署运行总览.md`：环境、分支、目录和发布总口径。
+2. `harness/rules/cicd-real-pre-policy.md`：CI/Jenkins 强制门禁。
+3. `harness/rules/runbooks/remote-deploy.md`：普通任务与发布控制器职责。
+4. `Jenkinsfile`：唯一远端发布队列。
+5. `.github/workflows/release-images.yml`：完整 SHA 镜像构建与入队。
+6. `scripts/deploy-release.sh`：digest 固定部署、防降级和版本一致性验证。
 
-## 当前仓库实际情况
+## 历史文档状态
 
-当前部署以这些仓库文件为准：
+本目录下以下旧手册描述 SSH、`/opt/saas/app`、`git pull`、现场构建或手工回滚，均降级为历史排障资料，不得照其命令执行：
 
-- `docker-compose.real-pre.yml`
-- `.env.real-pre.example`
-- `scripts/deploy-real-pre.sh`
-- `scripts/backup-db.sh`
-- `scripts/health-check.sh`
-- `scripts/real-pre-startup-check.sh`
-- `scripts/rollback-real-pre.sh`
-- `package.json`
-- `backend/pom.xml`
-- `frontend/Dockerfile`
-- `frontend/nginx/default.conf.template`
+- `00-服务器部署总览.md`；
+- `01-xshell-manual-deploy.md`；
+- `02-Docker手动部署real-pre.md`；
+- `06-回滚与故障排查.md`；
+- `07-Jenkins自动化部署规划.md`；
+- `08-real-pre全过程命令清单.md`。
 
-核心口径：
+旧 `deploy-real-pre.sh`、`rollback-real-pre.sh` 和 Harness `deploy-remote.ps1` 已改为阻断入口。若历史文档与当前主源冲突，以当前主源为准。
 
-```text
-当前开发分支: feature/auth-system
-当前优先同步仓库: https://gitee.com/cao-jianing463/saas.git
-本机 SSH 部署入口: ssh saas
-SSH 目标: root@1.14.108.159:22
-SSH IdentityFile: C:\Users\caojianing\.ssh\saas_ed25519
-Compose project: saas-active
-后端: backend-real-pre, 127.0.0.1:8081 -> 容器 8080
-前端: frontend-real-pre, 127.0.0.1:3001 -> 容器 80
-后端健康检查: /api/system/health
-前端健康检查: /healthz
-```
+## 当前边界
 
-## 本机 SSH 部署入口
-
-> 记录日期：2026-06-02。这里只记录可用于部署的 SSH alias 和公钥指纹，不记录私钥内容、密码、Token 或 `.env.real-pre`。
-
-当前本机 `C:\Users\caojianing\.ssh\config` 已配置：
-
-```sshconfig
-Host saas
-    HostName 1.14.108.159
-    User root
-    Port 22
-    IdentityFile C:\Users\caojianing\.ssh\saas_ed25519
-    IdentitiesOnly yes
-    ServerAliveInterval 30
-    ServerAliveCountMax 3
-```
-
-本机公钥指纹：
-
-```text
-saas_ed25519.pub: 256 SHA256:bXULR/UyKWCrNdXcO3pIM1xuKDvjpF1DiKPnEA8EfbQ saas-server (ED25519)
-```
-
-已验证的只读连通性：
-
-```bash
-ssh -o BatchMode=yes -o ConnectTimeout=8 saas "hostname; whoami; test -d /opt/saas && echo OPT_SAAS_EXISTS"
-```
-
-最近验证结果：
-
-```text
-hostname: VM-0-12-ubuntu
-whoami: root
-/opt/saas: exists
-```
-
-后续远程部署默认直接使用：
-
-```bash
-ssh saas
-cd /opt/saas/app
-git fetch gitee
-git pull --ff-only gitee feature/auth-system
-ENV_FILE=/opt/saas/env/.env.real-pre ./scripts/real-pre-startup-check.sh
-ENV_FILE=/opt/saas/env/.env.real-pre ./scripts/deploy-real-pre.sh
-```
-
-## 推荐阅读顺序
-
-1. [00-服务器部署总览.md](00-服务器部署总览.md)
-2. [01-服务器初始化与宝塔配置.md](01-服务器初始化与宝塔配置.md)
-3. [02-Docker手动部署real-pre.md](02-Docker手动部署real-pre.md)
-4. [03-域名SSL与宝塔Nginx反向代理.md](03-域名SSL与宝塔Nginx反向代理.md)
-5. [04-百应抖音授权与Token联调.md](04-百应抖音授权与Token联调.md)
-6. [05-real-pre部署后验收门禁.md](05-real-pre部署后验收门禁.md)
-7. [06-回滚与故障排查.md](06-回滚与故障排查.md)
-8. [07-Jenkins自动化部署规划.md](07-Jenkins自动化部署规划.md)
-9. [08-real-pre全过程命令清单.md](08-real-pre全过程命令清单.md)
-10. [08-real-pre参数开关契约.md](08-real-pre参数开关契约.md)
-
-旧文档仍保留：
-
-- `00-deploy-audit.md`
-- `01-xshell-manual-deploy.md`
-- `02-jenkins-later.md`
-
-如命令冲突，以本目录新文档和当前仓库实际文件为准。
-
-## 前置条件
-
-- 服务器已安装 Git、Docker、Docker Compose。
-- 已创建 `/opt/saas/app`、`/opt/saas/env`、`/opt/saas/logs`、`/opt/saas/backups`、`/opt/saas/runtime/qa/out`。
-- 已准备真实 `.env.real-pre`。
-- 未把 `.env.real-pre` 提交 Git。
-- 不直接复用本机 `.env.real-pre`；服务器环境文件必须重新核对域名、OAuth 回调、CORS、快递100回调和真实推广写入开关。
-
-## 新手第一次部署步骤
-
-完整过程命令见 [08-real-pre全过程命令清单.md](08-real-pre全过程命令清单.md)。第一次只做最小部署时按下面命令执行：
-
-```bash
-sudo mkdir -p /opt/saas/app /opt/saas/env /opt/saas/logs /opt/saas/backups /opt/saas/runtime/qa/out
-sudo chown -R "$USER":"$USER" /opt/saas
-
-cd /opt/saas
-git clone -o gitee -b feature/auth-system https://gitee.com/cao-jianing463/saas.git app
-cd /opt/saas/app
-git pull --ff-only
-
-cp .env.real-pre.example /opt/saas/env/.env.real-pre
-chmod 600 /opt/saas/env/.env.real-pre
-vi /opt/saas/env/.env.real-pre
-ln -sfn /opt/saas/env/.env.real-pre /opt/saas/app/.env.real-pre
-
-# 部署前自检：验证 .env.real-pre 开关基线（参考 docs/deploy/08-real-pre参数开关契约.md）
-ENV_FILE=/opt/saas/env/.env.real-pre ./scripts/real-pre-startup-check.sh
-
-ENV_FILE=/opt/saas/env/.env.real-pre ./scripts/deploy-real-pre.sh
-```
-
-部署后检查：
-
-```bash
-curl -fsS http://127.0.0.1:8081/api/system/health
-curl -fsS http://127.0.0.1:3001/healthz
-```
-
-## 本地更新后如何同步到服务器
-
-本地修改必须先提交并推送，服务器再拉取。未提交的工作区改动不会被服务器获取。
-
-本地执行：
-
-```bash
-cd D:/Projects/SAAS
-git status
-git add <本次修改文件>
-git commit -m "描述本次修改"
-git push gitee feature/auth-system
-```
-
-服务器执行：
-
-```bash
-ssh saas
-cd /opt/saas/app
-git remote get-url gitee >/dev/null 2>&1 || git remote add gitee https://gitee.com/cao-jianing463/saas.git
-git fetch gitee
-git pull --ff-only
-ENV_FILE=/opt/saas/env/.env.real-pre ./scripts/real-pre-startup-check.sh
-ENV_FILE=/opt/saas/env/.env.real-pre ./scripts/deploy-real-pre.sh
-```
-
-如服务器没有 `saas` SSH 别名，则使用实际登录方式，例如 `ssh root@服务器IP`。
-
-## 只有服务器无域名时
-
-走 IP + 端口测试：
-
-```text
-http://服务器IP:3001
-http://服务器IP:8081/api/system/health
-```
-
-`.env.real-pre` 中临时配置：
-
-```dotenv
-CORS_ALLOWED_ORIGIN_PATTERNS=http://服务器IP:3001
-DOUYIN_OAUTH_REDIRECT_URI=http://服务器IP:8081/api/douyin/oauth/callback
-DOUYIN_OAUTH_FRONTEND_SUCCESS_URL=http://服务器IP:3001/system/douyin?oauth=success
-DOUYIN_OAUTH_FRONTEND_FAILURE_URL=http://服务器IP:3001/system/douyin?oauth=failed
-```
-
-限制：不能完整验证 HTTPS 百应授权跳转体验。
-
-## 有域名 SSL 时
-
-走完整联调：
-
-```text
-https://real-pre.xxx.com
-https://real-pre.xxx.com/api/system/health
-https://real-pre.xxx.com/api/douyin/oauth/callback
-```
-
-`.env.real-pre` 中配置：
-
-```dotenv
-CORS_ALLOWED_ORIGIN_PATTERNS=https://real-pre.xxx.com
-DOUYIN_OAUTH_REDIRECT_URI=https://real-pre.xxx.com/api/douyin/oauth/callback
-DOUYIN_OAUTH_FRONTEND_SUCCESS_URL=https://real-pre.xxx.com/system/douyin?oauth=success
-DOUYIN_OAUTH_FRONTEND_FAILURE_URL=https://real-pre.xxx.com/system/douyin?oauth=failed
-```
-
-宝塔 Nginx：
-
-```text
-/api/ -> http://127.0.0.1:8081/api/
-/     -> http://127.0.0.1:3001/
-```
-
-实际 Nginx 配置见 [03-域名SSL与宝塔Nginx反向代理.md](03-域名SSL与宝塔Nginx反向代理.md)。
-
-## Jenkins 自动化什么时候做
-
-Jenkins 放在第二阶段：
-
-1. 手动部署成功。
-2. OAuth 和真实 Token 能跑通。
-3. 健康检查和门禁结果能稳定归档。
-4. 再让 Jenkins 调用同一套 `scripts/deploy-real-pre.sh`。
-
-第一版 Jenkins 不强制接入 P0 E2E；第二版再逐步加入 preflight / roles / p0。
-
-## 执行步骤
-
-最小执行顺序：
-
-```text
-服务器初始化
--> Docker 手动部署
--> 健康检查
--> 如有域名则配置 SSL / Nginx
--> 百应 OAuth 授权
--> E2E 门禁
--> 观察真实订单
--> 输出部署验收报告
-```
-
-## 验收标准
-
-部署成功不等于正式上线。最低验收：
-
-- Docker 四个服务运行。
-- `/api/system/health` 返回 `UP`。
-- `/healthz` 返回 `ok`。
-- `APP_TEST_ENABLED=false`。
-- `DOUYIN_TEST_ENABLED=false`。
-- `DOUYIN_REAL_UPSTREAM_MODE=live`。
-- real-pre 涉及上游的读、同步、刷新、回调和写入类开关默认开启；真实推广写入保持 `DOUYIN_REAL_PROMOTION_WRITE_ENABLED=true` 且 `ALLOW_REAL_PROMOTION_WRITE=true`。
-- 如因风控、上游冻结或只读排障临时关闭真实写入，必须记录关闭原因、影响范围和恢复计划；相关验收项只能记为 `BLOCKED` / `PENDING`，不能记为通过。
-- 三组门禁已执行并归档。
-
-最终结论口径：
-
-```text
-服务器 real-pre 受控部署完成。
-环境健康检查通过。
-real-pre 测试开关关闭。
-真实 upstream 模式开启。
-真实上游读、同步、刷新、回调和写入类开关默认开启；真实推广写双开关保持开启。
-E2E preflight / roles / p0 已执行。
-若仍有 PENDING，原因归类为真实订单样本不足，不定义为代码硬失败。
-```
-
-## 常见问题
-
-| 问题 | 处理 |
-| --- | --- |
-| 不知道先看哪篇 | 从 `00-服务器部署总览.md` 开始 |
-| 没域名能不能部署 | 可以端口测试，但不能完整验证百应授权体验 |
-| Jenkins 要不要先上 | 不要，先手动部署跑通 |
-| PENDING 算不算成功 | 不算 PASS，也不算代码硬失败，需要按样本不足记录 |
-| 真实推广写入默认是否开启 | 开启；real-pre 是真实上游 / 生产形态环境 |
-| 复制简介不含推广链接 | 先查两个真实推广写开关是否被临时关闭；若关闭，按降级原因记录并恢复后复验 |
+- 普通 Codex 任务：本地验证、提交、推送、PR、候选 evidence。
+- Merge Queue：串行合并。
+- CI：构建并推送完整 SHA 镜像，产出 digest。
+- Jenkins：串行迁移、部署、回滚、五项版本验证和发布记录。
+- 生产：另建审批型流程，不得复用 real-pre Job 直接发布。

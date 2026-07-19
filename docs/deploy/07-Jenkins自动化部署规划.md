@@ -1,5 +1,7 @@
 # Jenkins 自动化部署规划
 
+> **历史方案，已被单通道 CD 替代。** 当前事实以根目录 `Jenkinsfile` 和 `harness/rules/cicd-real-pre-policy.md` 为准。
+
 ## 适用场景
 
 本文用于 real-pre 手动部署稳定后的第二阶段自动化。第一次服务器部署不依赖 Jenkins，先用 `scripts/deploy-real-pre.sh` 跑通端口、Token、真实 API 和门禁。

@@ -15,11 +15,15 @@ RUN pnpm install --frozen-lockfile
 
 COPY . .
 ARG VITE_ENV_LABEL=REAL-PRE
+ARG GIT_SHA=UNAVAILABLE
 ENV VITE_ENV_LABEL=${VITE_ENV_LABEL}
-RUN pnpm build
+RUN pnpm build \
+    && printf '{"gitSha":"%s"}\n' "$GIT_SHA" > /app/dist/version.json
 
 # Stage 2: Serve
 FROM nginx:1.27-alpine
+ARG GIT_SHA=UNAVAILABLE
+LABEL org.opencontainers.image.revision="${GIT_SHA}"
 
 # Remove default nginx site
 RUN rm -rf /usr/share/nginx/html/*
