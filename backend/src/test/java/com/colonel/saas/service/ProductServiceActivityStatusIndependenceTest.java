@@ -868,7 +868,8 @@ class ProductServiceActivityStatusIndependenceTest {
     @Test
     void refreshActivitySnapshotsByStatusPartitions_shouldQueryEverySupportedStatusAndReconcileWholeActivity() {
         String activityId = "ACT011";
-        List<DouyinProductGateway.ActivityProductQueryRequest> requests = new ArrayList<>();
+        List<DouyinProductGateway.ActivityProductQueryRequest> requests =
+                new java.util.concurrent.CopyOnWriteArrayList<>();
         when(douyinProductGateway.queryActivityProducts(any())).thenAnswer(invocation -> {
             DouyinProductGateway.ActivityProductQueryRequest request = invocation.getArgument(0);
             requests.add(request);

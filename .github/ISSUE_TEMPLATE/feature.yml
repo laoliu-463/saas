@@ -1,0 +1,53 @@
+name: Improvement / 改进建议
+description: 提交有验收标准和边界的功能或流程改进
+title: "[Improvement]: "
+labels:
+  - needs-triage
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 要解决的问题
+      description: 描述当前事实、用户影响和已有证据，不要只描述预设方案。
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: 期望结果
+      description: 写成可观察、可验收的结果。
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: 范围与非范围
+      placeholder: |
+        包含：
+        不包含：
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 验收标准
+      placeholder: |
+        - [ ] ...
+        - [ ] ...
+    validations:
+      required: true
+  - type: dropdown
+    id: database
+    attributes:
+      label: 是否预期涉及数据库变更
+      options:
+        - 否
+        - 是，需要迁移与回滚评审
+        - 尚未确认
+    validations:
+      required: true
+  - type: textarea
+    id: risks
+    attributes:
+      label: 风险、依赖与替代方案
+      description: 包括外部服务、权限、兼容、发布或数据风险。

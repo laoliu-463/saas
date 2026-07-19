@@ -1,0 +1,62 @@
+name: Bug / 缺陷报告
+description: 提交可复现、可验证的工程缺陷
+title: "[Bug]: "
+labels:
+  - needs-triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请先移除密钥、Token、密码、个人信息和真实业务敏感数据。安全漏洞请使用 Security Advisories 私下报告。
+  - type: textarea
+    id: symptom
+    attributes:
+      label: 现象与影响
+      description: 说明实际表现、影响页面/接口/模块和影响范围。
+      placeholder: 实际发生了什么？
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: 最小复现步骤
+      description: 提供环境、账号角色、前置数据、操作路径、请求参数和稳定性。
+      placeholder: |
+        1. 使用环境...
+        2. 执行...
+        3. 观察到...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 预期结果与实际结果
+      placeholder: |
+        预期：
+        实际：
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 工程证据
+      description: 脱敏后附日志、堆栈、请求响应、Git commit、截图或最小复现仓库。
+    validations:
+      required: true
+  - type: dropdown
+    id: environment
+    attributes:
+      label: 环境
+      options:
+        - 本地 real-pre
+        - test
+        - 远端 real-pre
+        - GitHub Actions / Jenkins
+        - 尚未确认
+    validations:
+      required: true
+  - type: textarea
+    id: recent_changes
+    attributes:
+      label: 最近相关变更
+      description: 提供首次出现时间、相关 commit、配置或依赖变更；未知请写未知。

@@ -59,7 +59,7 @@ class DddOutboxInventoryContractTest {
                         "FOR UPDATE SKIP LOCKED",
                         "int updateDispatchResult(",
                         "int resetToPending(",
-                        "SET status = 'PENDING'",
+                        "status = 'PENDING'",
                         "retry_count = 0",
                         "next_retry_at = CURRENT_TIMESTAMP");
 

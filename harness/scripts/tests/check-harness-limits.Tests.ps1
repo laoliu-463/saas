@@ -2,6 +2,8 @@ $ErrorActionPreference = 'Stop'
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
 $checker = Join-Path $repoRoot 'harness\scripts\check-harness-limits.ps1'
+$module = Join-Path $repoRoot 'harness\scripts\modules\HarnessFileGovernance.psm1'
+$powerShellHost = (Get-Process -Id $PID).Path
 $allowedRootDirs = @('rules', 'tasks', 'probes', 'reports', 'scripts', 'manifests', 'archive', 'templates', 'engineering')
 
 function New-GovernanceTestRepo {
@@ -82,7 +84,7 @@ function Invoke-GovernanceCheck {
         $arguments += ($OwnedFiles -join ';')
     }
 
-    $output = & powershell @arguments 2>&1
+    $output = & $powerShellHost @arguments 2>&1
     return [pscustomobject]@{
         ExitCode = $LASTEXITCODE
         Output = ($output -join "`n")
@@ -90,6 +92,12 @@ function Invoke-GovernanceCheck {
 }
 
 Describe 'check-harness-limits baseline-aware governance' {
+    It 'uses the platform directory separator for repository-relative paths' {
+        $content = Get-Content -Raw -LiteralPath $module
+
+        $content | Should Match '\[System\.IO\.Path\]::DirectorySeparatorChar'
+    }
+
     It 'does not block unchanged historical report debt' {
         $repo = New-GovernanceTestRepo -Name 'unchanged-debt'
         Add-LegacyRootReports -Repo $repo -Count 89
@@ -245,7 +253,7 @@ Describe 'check-harness-limits baseline-aware governance' {
         $repo = New-GovernanceTestRepo -Name 'stable-report-newline'
         Save-Baseline -Repo $repo
 
-        $output = & powershell -NoProfile -ExecutionPolicy Bypass -File $checker `
+        $output = & $powerShellHost -NoProfile -ExecutionPolicy Bypass -File $checker `
             -RepoRoot $repo -BaselineRef HEAD 2>&1
         $exitCode = $LASTEXITCODE
         $reportPath = Join-Path $repo 'harness\reports\current\latest-harness-limits-check.md'

@@ -12,6 +12,8 @@
 5. **部署前**：执行 Deploy Commit Gate → [详情](git-change-control.commit.md)
 6. **任务结束前**：执行 Git Exit Gate → [详情](git-change-control.exit.md)
 
+GitHub 协作采用固定链路：`Issue → 独立 worktree/短期分支 → Draft PR → CI → 评审 → 串行合并`。普通任务禁止直接推送 `main` / `release/real-pre`、直接合并或直接部署；平台 Merge Queue 可用时由队列执行，否则由唯一合并控制器逐个合并。
+
 ## 2. 禁止命令
 
 ```powershell
@@ -58,17 +60,30 @@ git add frontend/
 | `frontend` | frontend/src/, package.json | backend/, harness/, Docker |
 | `docker_deploy` | docker-compose*.yml, Dockerfile | 业务代码, env |
 | `cleanup_retire` | harness/reports/, archive/ | 业务代码 |
+| `governance` | .github/, CONTRIBUTING.md, SECURITY.md, harness 规则与测试 | 业务代码, SQL, env, 部署 |
 
-## 6. Commit Message 规范
+`governance` 在 `agent-do.ps1` 中映射为 `Scope=docs`：跳过应用构建、容器重启和数据库迁移，但必须执行安全检查、治理契约测试、Harness 限制检查并生成 evidence。
+
+## 6. 分支与 PR 规范
+
+- 每个任务必须关联 GitHub Issue，并使用独立 worktree。
+- Codex 分支命名：`codex/<issue>-<slug>`。
+- `main` 是唯一集成主线；`release/real-pre` 是唯一 real-pre 部署来源，不接受未进入 `main` 的任务分支。
+- 初次推送后创建 Draft PR；未完成项不得标记 Ready for review。
+- PR 必须列出 Owned files、验证结果、evidence、数据库影响、部署需求和回滚方式。
+- 合并与部署保持串行；普通任务不拥有 Merge Queue 或发布队列的执行权。
+
+## 7. Commit Message 规范
 
 ```text
 feat(<scope>): <描述>
 fix(<scope>): <描述>
 docs(harness): <描述>
 chore(cleanup): <描述>
+ci(github): <描述>
 ```
 
-## 7. 关联文件
+## 8. 关联文件
 
 - [Git Intake Gate](git-change-control.intake.md)
 - [Commit / Push / Deploy Gate](git-change-control.commit.md)

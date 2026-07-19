@@ -249,6 +249,7 @@ try {
         -ReportKey $ReportKey `
         -OwnedFiles $taskOwnedFiles `
         -RetroSummary $RetroSummary `
+        -SkipRuntimeCollection:($Scope -eq "docs" -or $Scope -eq "apifox") `
         -DryRun:$DryRun
 
     $commitOwnedFiles = @($taskOwnedFiles)
@@ -267,6 +268,12 @@ try {
             -SkipBackup:$SkipRemoteBackup `
             -DryRun:$DryRun
         $remoteResult = "Remote deploy: PASS"
+        $remoteConclusion = if ($SkipBusinessValidation -or $Scope -eq "docs" -or $Scope -eq "apifox") {
+            "PARTIAL"
+        }
+        else {
+            "PASS"
+        }
         $remoteReportPath = & (Join-Path $PSScriptRoot "collect-evidence.ps1") `
             -Env $TargetEnv `
             -Scope $Scope `
@@ -275,11 +282,12 @@ try {
             -BusinessResult $businessResult `
             -ContentMaintenanceResult $contentMaintenanceResult `
             -RemoteResult $remoteResult `
-            -Conclusion "PASS" `
+            -Conclusion $remoteConclusion `
             -DeployRemote $true `
             -ReportKey $ReportKey `
             -OwnedFiles $taskOwnedFiles `
             -RetroSummary $RetroSummary `
+            -SkipRuntimeCollection:($Scope -eq "docs" -or $Scope -eq "apifox") `
             -DryRun:$DryRun
         if (-not $DryRun -and (Test-Path -LiteralPath $remoteReportPath)) {
             $remoteReportRelative = Get-HarnessRepoRelativePath -RepoRoot $config.RepoRoot -Path $remoteReportPath
@@ -288,7 +296,7 @@ try {
                 -Message "docs(harness): record remote deployment evidence" `
                 -OwnedFiles @($remoteReportRelative)
         }
-        $conclusion = "PASS"
+        $conclusion = $remoteConclusion
     }
 
     Write-Host "Review HARNESS_CHANGELOG.md and update it when Harness behavior changed." -ForegroundColor Yellow
@@ -313,6 +321,7 @@ catch {
             -ReportKey $ReportKey `
             -OwnedFiles $taskOwnedFiles `
             -RetroSummary "agent-do failed: $failure" `
+            -SkipRuntimeCollection:($Scope -eq "docs" -or $Scope -eq "apifox") `
             -DryRun:$DryRun
     }
     catch {

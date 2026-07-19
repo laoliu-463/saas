@@ -12,6 +12,7 @@ $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "_lib.ps1")
 
 $config = Get-HarnessEnvConfig -Env $TargetEnv
+$requiresRuntimeEnvironment = $Scope -ne "docs"
 
 Write-HarnessStage "Safety check"
 Assert-HarnessRepoRoot -RepoRoot $config.RepoRoot
@@ -21,13 +22,15 @@ if (-not (Test-Path -LiteralPath $config.ComposeFile)) {
     throw "Compose file not found: $($config.ComposeFile)"
 }
 
-if ($TargetEnv -eq "real-pre" -and -not (Test-Path -LiteralPath $config.EnvFile)) {
-    throw "real-pre env file not found: $($config.EnvFile)"
+$envMap = @{}
+if ($requiresRuntimeEnvironment) {
+    if (-not (Test-Path -LiteralPath $config.EnvFile)) {
+        throw "$TargetEnv env file not found: $($config.EnvFile)"
+    }
+    $envMap = Read-HarnessEnvFile -Path $config.EnvFile
 }
 
-$envMap = Read-HarnessEnvFile -Path $config.EnvFile
-
-if ($TargetEnv -eq "real-pre") {
+if ($TargetEnv -eq "real-pre" -and $requiresRuntimeEnvironment) {
     $appTest = if ($envMap.ContainsKey("APP_TEST_ENABLED")) { $envMap["APP_TEST_ENABLED"] } else { "(missing)" }
     $douyinTest = if ($envMap.ContainsKey("DOUYIN_TEST_ENABLED")) { $envMap["DOUYIN_TEST_ENABLED"] } else { "(missing)" }
     $upstream = if ($envMap.ContainsKey("DOUYIN_REAL_UPSTREAM_MODE")) { $envMap["DOUYIN_REAL_UPSTREAM_MODE"] } else { "(missing)" }
@@ -66,15 +69,22 @@ $secretKeys = @(
 Write-Host "Env: $TargetEnv"
 Write-Host "Scope: $Scope"
 Write-Host "Compose: $($config.ComposeFile)"
-Write-Host "Env file: $($config.EnvFile)"
+if ($requiresRuntimeEnvironment) {
+    Write-Host "Env file: $($config.EnvFile)"
+}
+else {
+    Write-Host "Runtime environment config: not required for Scope=docs"
+}
 Write-Host "DryRun: $($DryRun.IsPresent)"
 Write-Host "Harness dir: present"
 Write-Host "AGENTS.md: present"
-Write-Host ""
-Write-Host "Secret presence only:"
-foreach ($key in $secretKeys) {
-    $present = $envMap.ContainsKey($key) -and -not [string]::IsNullOrWhiteSpace($envMap[$key])
-    Write-Host ("- {0}: {1}" -f $key, $(if ($present) { "present" } else { "missing" }))
+if ($requiresRuntimeEnvironment) {
+    Write-Host ""
+    Write-Host "Secret presence only:"
+    foreach ($key in $secretKeys) {
+        $present = $envMap.ContainsKey($key) -and -not [string]::IsNullOrWhiteSpace($envMap[$key])
+        Write-Host ("- {0}: {1}" -f $key, $(if ($present) { "present" } else { "missing" }))
+    }
 }
 
 $scanRoots = @("scripts", "harness")

@@ -87,6 +87,7 @@ class OrderSyncServiceTest {
     private AppProperties appProperties;
     private OrderAmountMappingRouter orderAmountMappingRouter;
     private OrderAttributionRouter orderAttributionRouter;
+    private OrderSyncAuditService orderSyncAuditService;
     private OrderSyncService service;
 
     @BeforeEach
@@ -97,6 +98,7 @@ class OrderSyncServiceTest {
         orderAmountMappingRouter = new OrderAmountMappingRouter(dddRefactorProperties);
         orderAttributionRouter = new OrderAttributionRouter(
                 dddRefactorProperties, attributionService, defaultAttributionResolver);
+        orderSyncAuditService = new OrderSyncAuditService(operationLogService);
 
         lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         // Default: empty gateway response so syncItems exits immediately.
@@ -124,7 +126,7 @@ class OrderSyncServiceTest {
                 jobLockService,
                 appProperties,
                 orderAmountMappingRouter,
-                operationLogService
+                orderSyncAuditService
         );
     }
 
@@ -133,7 +135,8 @@ class OrderSyncServiceTest {
         OrderSyncService.SyncResult result = new OrderSyncService.SyncResult(
                 100L, 200L, 2, 12, 3, 7, 8, 2, 1, false, 10, "NO_MORE");
 
-        service.recordSyncSummary("ORDER_SYNC_SETTLEMENT", "buyin.api", "INCREMENTAL", "update", result);
+        orderSyncAuditService.recordSyncSummary(
+                "ORDER_SYNC_SETTLEMENT", "buyin.api", "INCREMENTAL", "update", result);
 
         ArgumentCaptor<OperationLog> captor = ArgumentCaptor.forClass(OperationLog.class);
         verify(operationLogService).record(captor.capture());
