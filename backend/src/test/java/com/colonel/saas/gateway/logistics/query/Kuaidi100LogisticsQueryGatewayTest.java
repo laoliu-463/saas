@@ -49,7 +49,7 @@ class Kuaidi100LogisticsQueryGatewayTest {
         properties = new LogisticsProperties();
         lenient().when(delegateProvider.getIfAvailable()).thenReturn(delegate);
         lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-        lenient().when(valueOperations.setIfAbsent(anyString(), any(), eq(Duration.ofMinutes(31))))
+        lenient().when(valueOperations.setIfAbsent(anyString(), anyString(), eq(Duration.ofMinutes(31))))
                 .thenReturn(true);
         gateway = new Kuaidi100LogisticsQueryGateway(properties, delegateProvider, redisTemplate);
     }
@@ -171,7 +171,7 @@ class Kuaidi100LogisticsQueryGatewayTest {
     @Test
     void query_shouldThrottleRepeatedTrackingNoBeforeCallingDelegateAgain() {
         enableKd100();
-        when(valueOperations.setIfAbsent(anyString(), any(), eq(Duration.ofMinutes(31))))
+        when(valueOperations.setIfAbsent(anyString(), anyString(), eq(Duration.ofMinutes(31))))
                 .thenReturn(true, false);
         when(delegate.queryTrack(LogisticsTrackCommand.builder()
                 .companyCode("YTO")
@@ -188,7 +188,7 @@ class Kuaidi100LogisticsQueryGatewayTest {
         assertThat(second.getErrorMessage()).contains("31分钟");
         verify(valueOperations, org.mockito.Mockito.times(2)).setIfAbsent(
                 org.mockito.ArgumentMatchers.startsWith("logistics:kuaidi100:query-throttle:"),
-                any(),
+                anyString(),
                 eq(Duration.ofMinutes(31)));
         verify(delegate).queryTrack(LogisticsTrackCommand.builder()
                 .companyCode("YTO")
@@ -200,7 +200,7 @@ class Kuaidi100LogisticsQueryGatewayTest {
     @Test
     void query_shouldFailClosedWhenRedisThrottleStateUnavailable() {
         enableKd100();
-        when(valueOperations.setIfAbsent(anyString(), any(), eq(Duration.ofMinutes(31))))
+        when(valueOperations.setIfAbsent(anyString(), anyString(), eq(Duration.ofMinutes(31))))
                 .thenThrow(new DataAccessResourceFailureException("redis unavailable"));
 
         LogisticsQueryResult result = gateway.query("YTO", "YT-REDIS-DOWN");

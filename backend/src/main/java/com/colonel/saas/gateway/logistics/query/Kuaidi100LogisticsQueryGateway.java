@@ -226,7 +226,7 @@ public class Kuaidi100LogisticsQueryGateway implements LogisticsQueryGateway {
         String key = THROTTLE_KEY_PREFIX + sha256(identity);
         try {
             Boolean acquired = redisTemplate.opsForValue().setIfAbsent(
-                    key, System.currentTimeMillis(), MIN_QUERY_INTERVAL);
+                    key, Long.toString(System.currentTimeMillis()), MIN_QUERY_INTERVAL);
             if (Boolean.TRUE.equals(acquired)) {
                 return null;
             }
