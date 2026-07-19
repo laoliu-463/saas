@@ -1,11 +1,21 @@
 # Harness Changelog（索引）
 
-> 任务 ID：HARNESS-REDUNDANCY-CLEANUP-20260713
-> 更新时间：2026-07-13
+> 任务 ID：GIT-REPOSITORY-GOVERNANCE-20260719
+> 更新时间：2026-07-19
 > 详细历史（含每版修改文件、行为变化、证据）：`archive/20260610/harness-changelog-full.md`
 > 治理政策：`file-retention-policy.md`（changelog 索引 ≤200 行）
 
 ## 最近版本摘要
+
+### v0.8.3 — 2026-07-19
+- 以服务器实际运行提交 `db930364f577f965f93601297e5e9854b4ff1813` 为发布基线，建立 `main` 与 `release/real-pre`，GitHub 默认分支切换为 `main`。
+- `main` 与 `release/real-pre` 启用 PR、禁止强推、禁止删除和管理员同样受约束的基础保护；旧分叉分支进入分批核对，不做无证据整支合并。
+- 建立 Issue → 独立 worktree/分支 → Draft PR → CI → 串行合并的 GitHub 协作合同，普通任务不再拥有直接合并或部署权限。
+- 增加 CODEOWNERS、中文友好的 PR/Issue 模板、Dependabot、贡献指南和私密安全报告入口。
+- CI 增加 merge queue 触发、完整 SHA Action 固定、Job 超时、Node 20、后端 PostgreSQL/Redis 依赖和仓库治理检查。
+- 增加可执行 Pester 契约测试；本次不触发远端部署、容器重启或数据库迁移。
+- 刷新 `harness/engineering/issues-index.md`，当前 open issue 镜像与 GitHub #165、#166 一致，旧 Sprint 排期明确标记为历史快照。
+- 修正 docs/governance 统一入口：无本地运行环境文件时仍可执行安全扫描、Harness 门禁与 evidence 收口，不触发应用构建、容器或数据库操作。
 
 ### v0.8.2 — 2026-07-18
 - 修正 `git-push-safe.ps1` 明文密钥扫描：仅将带引号的字面量或配置文件行识别为候选值，避免把 Java 函数调用、变量赋值和 Redis key 名误报为密钥。

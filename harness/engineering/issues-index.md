@@ -3,7 +3,7 @@
 > **状态**：本目录是 Matt Pocock engineering skills 的配置入口。
 > 本文件是 GitHub Issues 的**本地镜像**，提供 harness 内的 issue 可见性。
 >
-> **最后更新**：2026-06-20（用户域 CRUD A/B + GroupMembership 本地验证后）
+> **最后更新**：2026-07-19（GitHub open issues 权威快照）
 
 ## 同步规则
 
@@ -11,9 +11,11 @@
 - **每次 issue 状态变更后**：手动 `gh issue list > /tmp/issues.txt` 同步到本文件
 - **每周自动同步**：CI 任务或本地 cron 跑 `gh issue list --state all`
 
-## Sprint 2M 状态（2026-06-22 → 2026-08-22）
+## 历史 Sprint 2M 计划（2026-06-22 → 2026-08-22）
 
-详见 `docs/决策/DDD-MIGRATION-SPRINT-2M.md`
+> 以下排期仅保留历史背景，不代表 GitHub 当前状态。当前 in-flight 以紧随其后的 open issue 快照为准。
+
+详见 `docs/决策/DDD-MIGRATION-SPRINT-2M.md`。
 
 | 周 | Phase | 状态 |
 |---|---|---|
@@ -30,19 +32,8 @@
 
 | # | Title | State | Labels | Created | Link |
 | --- | --- | --- | --- | --- | --- |
-| 3 | PRD: DDD 渐进式迁移到 100%（DDD-MIGRATION-100） | OPEN | ready-for-agent | 2026-06-19 | https://github.com/laoliu-463/saas/issues/3 |
-| 8 | [DDD-USER-DATASCOPE-006] 删除 OrderController 旧 applyDataScope 方法 | CLOSED | ready-for-human | 2026-06-19 | https://github.com/laoliu-463/saas/issues/8 |
-| 15 | [Sprint-2M-W1] DDD-MIGRATION-006 (rerun) SysDeptService 修复 | CLOSED | ready-for-agent | 2026-06-19 | https://github.com/laoliu-463/saas/issues/15 |
-| 16 | [Sprint-2M-W2] DDD-USER-MIGRATION-007 创建 UserAssignmentPolicy | CLOSED | ready-for-agent | 2026-06-19 | https://github.com/laoliu-463/saas/issues/16 |
-| 17 | [Sprint-2M-W2] DDD-USER-MIGRATION-008 创建 SysUserCRUDApplication | CLOSED | ready-for-agent | 2026-06-19 | https://github.com/laoliu-463/saas/issues/17 |
-| 18 | [Sprint-2M-W2] DDD-USER-MIGRATION-009 创建 SysUserAssignmentApplication | CLOSED | ready-for-agent | 2026-06-19 | https://github.com/laoliu-463/saas/issues/18 |
-| 19 | [Sprint-2M-W2] DDD-USER-MIGRATION-010 创建 SysUserPermissionApplication | CLOSED | ready-for-agent | 2026-06-19 | https://github.com/laoliu-463/saas/issues/19 |
-| 20 | [Sprint-2M-W2] DDD-USER-MIGRATION-011 创建 SysUserRoleAssignmentApplication | CLOSED | ready-for-agent | 2026-06-19 | https://github.com/laoliu-463/saas/issues/20 |
-| 21 | [Sprint-2M-W2] DDD-USER-MIGRATION-012 创建 SysUserCRUDApplicationA (getById + create) | CLOSED | ready-for-agent | 2026-06-20 | https://github.com/laoliu-463/saas/issues/21 |
-| 22 | [Sprint-4M-W3] DDD-USER-MIGRATION-013 创建 SysMenuApplication | OPEN | ready-for-agent | 2026-06-21 | https://github.com/laoliu-463/saas/issues/22 |
-| 23 | [Sprint-4M-W3] DDD-USER-MIGRATION-014 创建 SysRoleApplication | OPEN | ready-for-agent | 2026-06-21 | https://github.com/laoliu-463/saas/issues/23 |
-| 24 | [Sprint-4M-W3] DDD-USER-MIGRATION-015 创建 AuthApplication | OPEN | ready-for-agent | 2026-06-21 | https://github.com/laoliu-463/saas/issues/24 |
-| 25 | [P1-URGENT] DDD-DATASCOPE-001 加 Feature Flag + 恢复 OrderController 旧 switch | OPEN | ready-for-agent | 2026-06-21 | https://github.com/laoliu-463/saas/issues/25 |
+| 166 | 建立 GitHub 协作治理与可执行 CI 门禁（Phase 1） | OPEN | ready-for-agent | 2026-07-19 | https://github.com/laoliu-463/saas/issues/166 |
+| 165 | 重构 Harness 为跨平台 Node 验证核心（第一阶段） | OPEN | ready-for-agent | 2026-07-18 | https://github.com/laoliu-463/saas/issues/165 |
 
 ## 本地验证补充（2026-06-20）
 
@@ -102,7 +93,9 @@ ready-for-agent        /implement 新 session     关闭 issue + 引用 commit
 gh issue close --comment "..."
 ```
 
-## 当前 Sprint 进度（DDD-MIGRATION-SPRINT-2M）
+## 历史 Sprint 进度记录（2026-06-20）
+
+> 本节是历史快照，不参与当前 issue 状态判断。
 
 - **整体迁移率**：23.3% → 目标 70%+
 - **已完成 Phase**：1（DataScope）/ 2 部分（OrgStructure）
