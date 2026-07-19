@@ -108,10 +108,49 @@ pipeline {
                         docker pull "$BACKEND_IMAGE:$TARGET_GIT_SHA"
                         docker pull "$FRONTEND_IMAGE:$TARGET_GIT_SHA"
 
-                        REAL_PRE_ENV_FILE="$RELEASE_ENV_FILE" \
-                        REAL_PRE_COMPOSE_FILE="docker-compose.real-pre.yml" \
-                        REAL_PRE_COMPOSE_PROJECT="saas-active" \
-                          sh scripts/run-real-pre-db-migrations.sh
+                        mapfile -t migration_paths < <(bash scripts/detect-release-db-migration.sh --paths)
+                        migration_base_sha=''
+                        migration_changed_paths='[]'
+                        current_pointer="$RELEASE_ROOT/current.json"
+
+                        if [[ -f "$current_pointer" ]]; then
+                          migration_base_sha="$(jq -er '.gitSha' "$current_pointer")"
+                        fi
+
+                        migration_decision="$(ROLLBACK_APPROVED="$ROLLBACK_APPROVED" \
+                          bash scripts/detect-release-db-migration.sh "$TARGET_GIT_SHA" "$migration_base_sha")"
+                        IFS=$'\t' read -r database_migration_required database_migration_reason <<<"$migration_decision"
+                        [[ "$database_migration_required" == 'true' || "$database_migration_required" == 'false' ]] \
+                          || { echo '数据库迁移判定脚本返回非法结果。'; exit 2; }
+                        if [[ -n "$migration_base_sha" ]]; then
+                          migration_changed_paths="$(git diff --name-only "$migration_base_sha" "$TARGET_GIT_SHA" -- "${migration_paths[@]}" | jq -R -s -c 'split("\n") | map(select(length > 0))')"
+                        fi
+
+                        jq -n \
+                          --argjson required "$database_migration_required" \
+                          --arg reason "$database_migration_reason" \
+                          --arg baseGitSha "$migration_base_sha" \
+                          --argjson changedPaths "$migration_changed_paths" \
+                          '{required:$required,reason:$reason,
+                            baseGitSha:(if $baseGitSha == "" then null else $baseGitSha end),
+                            changedPaths:$changedPaths}' \
+                          > runtime/qa/out/jenkins/migration-decision.json
+                        jq --slurpfile migration runtime/qa/out/jenkins/migration-decision.json \
+                          '.databaseMigration = $migration[0]' \
+                          runtime/qa/out/jenkins/release-manifest.json \
+                          > runtime/qa/out/jenkins/release-manifest.json.tmp
+                        mv runtime/qa/out/jenkins/release-manifest.json.tmp runtime/qa/out/jenkins/release-manifest.json
+                        jq -e '.databaseMigration.required | type == "boolean"' \
+                          runtime/qa/out/jenkins/release-manifest.json >/dev/null
+
+                        if [[ "$database_migration_required" == 'true' ]]; then
+                          REAL_PRE_ENV_FILE="$RELEASE_ENV_FILE" \
+                          REAL_PRE_COMPOSE_FILE="docker-compose.real-pre.yml" \
+                          REAL_PRE_COMPOSE_PROJECT="saas-active" \
+                            sh scripts/run-real-pre-db-migrations.sh
+                        else
+                          echo "未检测到数据库迁移变更，跳过远端数据库迁移：$database_migration_reason"
+                        fi
 
                         RELEASE_ROOT="$RELEASE_ROOT" \
                         REAL_PRE_ENV_FILE="$RELEASE_ENV_FILE" \
@@ -133,7 +172,7 @@ pipeline {
             echo "real-pre 发布通过：${params.TARGET_GIT_SHA}"
         }
         failure {
-            echo 'real-pre 发布失败；current.json 只有在五项版本验证全部通过后才会更新。'
+            echo 'real-pre 发布失败；current.json 只有在本次适用门禁全部通过后才会更新。'
         }
     }
 }

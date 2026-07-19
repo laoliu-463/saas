@@ -7,6 +7,11 @@
 
 ## 最近版本摘要
 
+### v0.10.1 — 2026-07-19
+- real-pre 数据库迁移改为差异触发：首次发布或迁移路径变化才执行，纯 Harness/文档/普通应用发布不写数据库。
+- 发布清单新增 `databaseMigration.required/reason/baseGitSha/changedPaths`；需要迁移时严格校验数据库/Flyway 版本，无迁移时只记录观测值。
+- 回滚保持数据库 forward-only，不自动执行旧迁移或逆向数据库。
+
 ### v0.10.0 — 2026-07-18
 - 采用 ADR-015：允许独立 worktree 并行开发，GitHub Merge Queue 与 Jenkins 全局锁串行合并、迁移和 real-pre 发布。
 - 关闭 `DeployRemote`、SSH 现场构建和手工回滚旁路；唯一发布源固定为 `release/real-pre`。
