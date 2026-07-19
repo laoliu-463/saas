@@ -535,11 +535,25 @@ public class AuthService {
             log.setResponseCode(success ? "SUCCESS" : "FAILED");
             log.setRequestBody(safeAuthRequest(username));
             log.setResponseBody(Map.of("success", success));
+            log.setErrorCode(resolveAuthErrorCode(success, action, content));
             log.setErrorMessage(errorMessage);
             operationLogService.record(log);
         } catch (Exception ignored) {
             // 登录与登出不能因审计日志写入失败而影响认证主流程。
         }
+    }
+
+    private String resolveAuthErrorCode(boolean success, String action, String content) {
+        if (success) {
+            return null;
+        }
+        if ("登录锁定".equals(action)) {
+            return "AUTH_ACCOUNT_LOCKED";
+        }
+        if (content != null && content.contains("账号已停用")) {
+            return "AUTH_ACCOUNT_DISABLED";
+        }
+        return "AUTH_INVALID_CREDENTIALS";
     }
 
     /**

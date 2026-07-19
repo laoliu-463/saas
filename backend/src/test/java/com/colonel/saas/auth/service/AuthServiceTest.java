@@ -200,6 +200,7 @@ class AuthServiceTest {
         verify(operationLogService).record(logCaptor.capture());
         assertThat(logCaptor.getValue().getAction()).isEqualTo("登录失败");
         assertThat(logCaptor.getValue().getResponseCode()).isEqualTo("FAILED");
+        assertThat(logCaptor.getValue().getErrorCode()).isEqualTo("AUTH_INVALID_CREDENTIALS");
         assertThat(logCaptor.getValue().getRequestBody()).doesNotContainKey("password");
     }
 
@@ -224,6 +225,7 @@ class AuthServiceTest {
         ArgumentCaptor<OperationLog> logCaptor = ArgumentCaptor.forClass(OperationLog.class);
         verify(operationLogService).record(logCaptor.capture());
         assertThat(logCaptor.getValue().getAction()).isEqualTo("登录锁定");
+        assertThat(logCaptor.getValue().getErrorCode()).isEqualTo("AUTH_ACCOUNT_LOCKED");
     }
 
     @Test
@@ -242,6 +244,7 @@ class AuthServiceTest {
         ArgumentCaptor<OperationLog> logCaptor = ArgumentCaptor.forClass(OperationLog.class);
         verify(operationLogService).record(logCaptor.capture());
         assertThat(logCaptor.getValue().getAction()).isEqualTo("登录锁定");
+        assertThat(logCaptor.getValue().getErrorCode()).isEqualTo("AUTH_ACCOUNT_LOCKED");
     }
 
     @Test
@@ -259,6 +262,9 @@ class AuthServiceTest {
         assertThatThrownBy(() -> authService.login(request))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("账号已停用");
+        ArgumentCaptor<OperationLog> logCaptor = ArgumentCaptor.forClass(OperationLog.class);
+        verify(operationLogService).record(logCaptor.capture());
+        assertThat(logCaptor.getValue().getErrorCode()).isEqualTo("AUTH_ACCOUNT_DISABLED");
     }
 
     @Test

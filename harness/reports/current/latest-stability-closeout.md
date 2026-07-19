@@ -2,24 +2,26 @@
 
 ## Metadata
 
-- Time: 2026-07-19 14:35:55 +08:00
+- Time: 2026-07-19 14:58:55 +08:00
 - Environment: real-pre
 - Scope: full
 - Branch: codex/ddd-user-role-application
-- Commit: 0090e3a4
-- Owned worktree: clean
-- Deploy remote: true
+- Commit: d761a0e8
+- Owned worktree: dirty
+- Deploy remote: false
 
 ## Owned Files
 
 ~~~text
-harness/reports/current/latest-stability-closeout.md
+backend/src/main/java/com/colonel/saas/auth/service/AuthService.java
+backend/src/test/java/com/colonel/saas/auth/service/AuthServiceTest.java
 ~~~
 
 ## Owned Git Status
 
 ~~~text
-(clean)
+M backend/src/main/java/com/colonel/saas/auth/service/AuthService.java
+ M backend/src/test/java/com/colonel/saas/auth/service/AuthServiceTest.java
 ~~~
 
 ## Build Result
@@ -33,23 +35,23 @@ Frontend build: PASS (npm --prefix frontend ci; npm --prefix frontend run build)
 ## Docker Status
 
 ~~~text
-NAME                              IMAGE                            COMMAND                  SERVICE             CREATED         STATUS                   PORTS
-saas-active-backend-real-pre-1    colonel-saas/backend:real-pre    "sh -c 'java $JAVA_O…"   backend-real-pre    3 minutes ago   Up 3 minutes (healthy)   127.0.0.1:8081->8080/tcp
-saas-active-frontend-real-pre-1   colonel-saas/frontend:real-pre   "/docker-entrypoint.…"   frontend-real-pre   3 minutes ago   Up 3 minutes (healthy)   127.0.0.1:3001->80/tcp
-saas-active-postgres-real-pre-1   postgres:15-alpine               "docker-entrypoint.s…"   postgres-real-pre   20 hours ago    Up 20 hours (healthy)    5432/tcp
-saas-active-redis-real-pre-1      redis:7-alpine                   "docker-entrypoint.s…"   redis-real-pre      18 hours ago    Up 18 hours (healthy)    6379/tcp
-NAMES                             STATUS                   PORTS
-saas-active-frontend-real-pre-1   Up 3 minutes (healthy)   127.0.0.1:3001->80/tcp
-saas-active-backend-real-pre-1    Up 3 minutes (healthy)   127.0.0.1:8081->8080/tcp
-saas-active-redis-real-pre-1      Up 18 hours (healthy)    6379/tcp
-saas-test-frontend-1              Up 19 hours (healthy)    0.0.0.0:3000->3000/tcp, [::]:3000->3000/tcp
-saas-test-backend-1               Up 19 hours (healthy)    0.0.0.0:5005->5005/tcp, [::]:5005->5005/tcp, 0.0.0.0:8080->8080/tcp, [::]:8080->8080/tcp
-saas-test-postgres-1              Up 19 hours (healthy)    0.0.0.0:5432->5432/tcp, [::]:5432->5432/tcp
-saas-active-postgres-real-pre-1   Up 20 hours (healthy)    5432/tcp
-campus_frontend                   Up 21 hours              0.0.0.0:5173->5173/tcp, [::]:5173->5173/tcp
-campus_backend                    Up 21 hours (healthy)    0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp
-campus_postgres                   Up 21 hours (healthy)    0.0.0.0:5433->5432/tcp, [::]:5433->5432/tcp
-saas-test-redis-1                 Up 21 hours (healthy)    6379/tcp
+NAME                              IMAGE                            COMMAND                  SERVICE             CREATED              STATUS                        PORTS
+saas-active-backend-real-pre-1    colonel-saas/backend:real-pre    "sh -c 'java $JAVA_O…"   backend-real-pre    About a minute ago   Up About a minute (healthy)   127.0.0.1:8081->8080/tcp
+saas-active-frontend-real-pre-1   colonel-saas/frontend:real-pre   "/docker-entrypoint.…"   frontend-real-pre   About a minute ago   Up About a minute (healthy)   127.0.0.1:3001->80/tcp
+saas-active-postgres-real-pre-1   postgres:15-alpine               "docker-entrypoint.s…"   postgres-real-pre   20 hours ago         Up 20 hours (healthy)         5432/tcp
+saas-active-redis-real-pre-1      redis:7-alpine                   "docker-entrypoint.s…"   redis-real-pre      18 hours ago         Up 18 hours (healthy)         6379/tcp
+NAMES                             STATUS                        PORTS
+saas-active-frontend-real-pre-1   Up About a minute (healthy)   127.0.0.1:3001->80/tcp
+saas-active-backend-real-pre-1    Up About a minute (healthy)   127.0.0.1:8081->8080/tcp
+saas-active-redis-real-pre-1      Up 18 hours (healthy)         6379/tcp
+saas-test-frontend-1              Up 19 hours (healthy)         0.0.0.0:3000->3000/tcp, [::]:3000->3000/tcp
+saas-test-backend-1               Up 19 hours (healthy)         0.0.0.0:5005->5005/tcp, [::]:5005->5005/tcp, 0.0.0.0:8080->8080/tcp, [::]:8080->8080/tcp
+saas-test-postgres-1              Up 20 hours (healthy)         0.0.0.0:5432->5432/tcp, [::]:5432->5432/tcp
+saas-active-postgres-real-pre-1   Up 20 hours (healthy)         5432/tcp
+campus_frontend                   Up 21 hours                   0.0.0.0:5173->5173/tcp, [::]:5173->5173/tcp
+campus_backend                    Up 21 hours (healthy)         0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp
+campus_postgres                   Up 21 hours (healthy)         0.0.0.0:5433->5432/tcp, [::]:5433->5432/tcp
+saas-test-redis-1                 Up 21 hours (healthy)         6379/tcp
 ~~~
 
 ## Health Check Result
@@ -61,7 +63,7 @@ Local health verification: PASS
 ## Business Validation Result
 
 ~~~text
-Business validation: PASS (& mvn -q -f backend/pom.xml '-Dtest=Kuaidi100LogisticsQueryGatewayTest,LogisticsGatewayRouterTest,SampleLogisticsSyncServiceTest,Kuaidi100CallbackApplicationServiceTest,DomainEventOutboxServiceTest,DomainEventDispatcherJobTest,DddOutbox001OrderRoutingTest,OrderSyncPersistenceServiceTest,OrderSyncServiceTest,OperationLogServiceTest,OperationLogInterceptorTest,OperationLogResponseAdviceTest,MerchantServiceTest,PickSourceMappingServiceTest,OperationLogRetentionAcceptanceTest,LogCleanupJobTest,CurrentUserPasswordAuditIntegrationTest' test)
+Business validation: PASS (& mvn -q -f backend/pom.xml '-Dtest=AuthServiceTest,Kuaidi100LogisticsQueryGatewayTest,LogisticsGatewayRouterTest,SampleLogisticsSyncServiceTest,Kuaidi100CallbackApplicationServiceTest,DomainEventOutboxServiceTest,DomainEventDispatcherJobTest,DddOutbox001OrderRoutingTest,OrderSyncPersistenceServiceTest,OrderSyncServiceTest,OperationLogServiceTest,OperationLogInterceptorTest,OperationLogResponseAdviceTest,MerchantServiceTest,PickSourceMappingServiceTest,OperationLogRetentionAcceptanceTest,LogCleanupJobTest,CurrentUserPasswordAuditIntegrationTest' test)
 ~~~
 
 ## Content Maintenance Result
@@ -73,12 +75,12 @@ Content maintenance skipped by -ContentMaintenance off.
 ## Remote Deploy Result
 
 ~~~text
-Remote deploy: PASS
+remote not deployed
 ~~~
 
 ## Retro Summary
 
-部署不等于闭环完成；必须分别验证回调、DEAD 重放、积压水位与账号业务链，未通过项保持 PARTIAL/BLOCKED。
+结构化字段必须在真实线上失败样本中核验；仅建列和覆盖通用异常不足以证明所有直接审计入口都有 error_code。
 
 ## Conclusion
 
