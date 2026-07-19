@@ -290,7 +290,10 @@ function Expand-HarnessOwnedFiles {
             if ([System.IO.Path]::IsPathRooted($path) -or $path -match '(^|/)\.\.(/|$)' -or $path -match '[*?]') {
                 throw "Owned file must be a repository-relative literal path: $candidate"
             }
-            $expanded += $path.TrimStart('./')
+            if ($path.StartsWith('./')) {
+                $path = $path.Substring(2)
+            }
+            $expanded += $path
         }
     }
     return @($expanded | Sort-Object -Unique)

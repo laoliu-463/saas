@@ -10,4 +10,13 @@ Describe 'agent-do evidence conclusion contract' {
         $content | Should Match '-Conclusion \$remoteConclusion'
         $content | Should Match '\$conclusion = \$remoteConclusion'
     }
+
+    It 'skips runtime collection for docs and apifox evidence' {
+        $matches = [regex]::Matches(
+            $content,
+            '-SkipRuntimeCollection:\(\$Scope -eq "docs" -or \$Scope -eq "apifox"\)'
+        )
+
+        $matches.Count | Should BeGreaterThan 2
+    }
 }

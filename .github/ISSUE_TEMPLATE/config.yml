@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability / 安全漏洞
+    url: https://github.com/laoliu-463/saas/security/advisories/new
+    about: 请通过 GitHub Security Advisories 私下报告，不要创建公开 Issue。
