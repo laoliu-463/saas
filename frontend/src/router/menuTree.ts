@@ -3,7 +3,7 @@
  *
  * 职责：
  * - 维护全局菜单树 MENU_TREE（两级结构：顶部业务域 -> 左侧子功能）
- * - 提供按角色过滤菜单树的工具函数
+ * - 提供按权限过滤菜单树的工具函数
  * - 解析当前路由路径对应的活跃顶部 key / 左侧 key
  * - 计算点击顶部菜单时的默认跳转路径
  *
@@ -12,7 +12,7 @@
  * - 二级节点（children）为左侧边栏子菜单
  * - 路由路径统一在 navigation.ts 的 SECTION_MAP 中声明归属
  */
-import { hasAccess, ROLE_CODES } from '../constants/rbac'
+import { hasPermission, PERMISSION_CODES } from '../constants/permissions'
 import {
   isRoutePathUnderPrefix,
   resolveActiveSection,
@@ -48,8 +48,8 @@ export interface MenuTreeNode extends NavigationMenuItem {
   key: string
   /** 顶部业务域 key，一级节点等于自身 key，二级节点指向所属一级节点 */
   topKey: string
-  /** 允许访问该菜单的角色代码列表，为空表示不限制 */
-  roles?: string[]
+  /** 允许访问该菜单的权限代码列表，为空表示不限制 */
+  permissions?: string[]
   /** E2E 测试用的 data-testid 标识 */
   testId?: string
   /** 是否在顶部导航栏展示，为 false 时只在特定条件下可见 */
@@ -58,8 +58,7 @@ export interface MenuTreeNode extends NavigationMenuItem {
   children?: MenuTreeNode[]
 }
 
-/** 角色代码别名，简化菜单定义中的引用 */
-const ROLE = ROLE_CODES
+const PERMISSION = PERMISSION_CODES
 
 /**
  * 统一菜单数据源
@@ -67,7 +66,7 @@ const ROLE = ROLE_CODES
  * 结构说明：
  * - 一级节点：顶部业务域（归因工作台、商品库、商品管理、达人CRM、合作管理、数据看板、系统管理）
  * - 二级节点：左侧边栏子功能菜单
- * - roles 字段控制可见性，未设置则不限制
+ * - permissions 字段控制可见性，未设置则不限制
  */
 export const MENU_TREE: MenuTreeNode[] = [
   {
@@ -75,10 +74,10 @@ export const MENU_TREE: MenuTreeNode[] = [
     key: 'attribution',
     topKey: 'attribution',
     showInTop: false, // 不在顶部导航展示，通过其他入口访问
-    roles: [ROLE.BIZ_LEADER, ROLE.CHANNEL_LEADER, ROLE.ADMIN],
+    permissions: [PERMISSION.DASHBOARD_ACCESS, PERMISSION.ORDER_ACCESS],
     children: [
-      { label: '归因概览', key: '/dashboard', topKey: 'attribution', path: '/dashboard' },
-      { label: '订单工作台', key: '/orders', topKey: 'attribution', path: '/orders' }
+      { label: '归因概览', key: '/dashboard', topKey: 'attribution', path: '/dashboard', permissions: [PERMISSION.DASHBOARD_ACCESS] },
+      { label: '订单工作台', key: '/orders', topKey: 'attribution', path: '/orders', permissions: [PERMISSION.ORDER_ACCESS] }
     ]
   },
   {
@@ -87,8 +86,8 @@ export const MENU_TREE: MenuTreeNode[] = [
     topKey: 'product',
     testId: 'nav-product',
     showInTop: true,
-    roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF],
-    children: [{ label: '商品库', key: '/product', topKey: 'product', path: '/product' }]
+    permissions: [PERMISSION.PRODUCT_ACCESS],
+    children: [{ label: '商品库', key: '/product', topKey: 'product', path: '/product', permissions: [PERMISSION.PRODUCT_ACCESS] }]
   },
   {
     label: '商品管理',
@@ -96,16 +95,16 @@ export const MENU_TREE: MenuTreeNode[] = [
     topKey: 'product-manage',
     testId: 'nav-activity-product',
     showInTop: true,
-    roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.ADMIN],
+    permissions: [PERMISSION.PRODUCT_MANAGE_ACCESS],
     children: [
       {
         label: '商品列表',
         key: '/product/manage/products',
         topKey: 'product-manage',
         path: '/product/manage/products',
-        roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF]
+        permissions: [PERMISSION.PRODUCT_MANAGE_ACCESS]
       },
-      { label: '活动列表', key: '/product/manage', topKey: 'product-manage', path: '/product/manage', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF] }
+      { label: '活动列表', key: '/product/manage', topKey: 'product-manage', path: '/product/manage', permissions: [PERMISSION.PRODUCT_MANAGE_ACCESS] }
     ]
   },
   {
@@ -114,7 +113,7 @@ export const MENU_TREE: MenuTreeNode[] = [
     topKey: 'talent',
     testId: 'nav-talent',
     showInTop: true,
-    roles: [ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF, ROLE.ADMIN],
+    permissions: [PERMISSION.TALENT_ACCESS],
     children: [
       { label: '团队公海', key: TALENT_MENU_KEYS.teamPublic, topKey: 'talent', path: TALENT_MENU_KEYS.teamPublic },
       { label: '我的达人', key: TALENT_MENU_KEYS.myTalents, topKey: 'talent', path: TALENT_MENU_KEYS.myTalents },
@@ -129,28 +128,21 @@ export const MENU_TREE: MenuTreeNode[] = [
     topKey: 'sample',
     testId: 'nav-sample',
     showInTop: true,
-    roles: [
-      ROLE.BIZ_LEADER,
-      ROLE.BIZ_STAFF,
-      ROLE.CHANNEL_LEADER,
-      ROLE.CHANNEL_STAFF,
-      ROLE.OPS_STAFF
-    ],
+    permissions: [PERMISSION.SAMPLE_ACCESS, PERMISSION.SHIPPING_ACCESS],
     children: [
       {
         label: '合作单',
         key: '/sample',
         topKey: 'sample',
         path: '/sample',
-        roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF]
+        permissions: [PERMISSION.SAMPLE_ACCESS]
       },
       {
         label: '发货台',
         key: '/ops/shipping',
         topKey: 'sample',
         path: '/ops/shipping',
-        // 发货台仅运维人员可见
-        roles: [ROLE.OPS_STAFF],
+        permissions: [PERMISSION.SHIPPING_ACCESS],
         testId: 'nav-shipping'
       }
     ]
@@ -161,17 +153,16 @@ export const MENU_TREE: MenuTreeNode[] = [
     topKey: 'data',
     testId: 'nav-dashboard',
     showInTop: true,
-    roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF],
+    permissions: [PERMISSION.DATA_ACCESS],
     children: [
-      { label: '核心看板', key: '/data', topKey: 'data', path: '/data' },
-      { label: '订单明细', key: '/data/orders', topKey: 'data', path: '/data/orders' },
+      { label: '核心看板', key: '/data', topKey: 'data', path: '/data', permissions: [PERMISSION.DATA_ACCESS] },
+      { label: '订单明细', key: '/data/orders', topKey: 'data', path: '/data/orders', permissions: [PERMISSION.DATA_ACCESS] },
       {
         label: '独家状态',
         key: '/ops/exclusive',
         topKey: 'data',
         path: '/ops/exclusive',
-        // 独家状态仅业务主管、渠道主管和管理员可见
-        roles: [ROLE.BIZ_LEADER, ROLE.CHANNEL_LEADER, ROLE.ADMIN]
+        permissions: [PERMISSION.EXCLUSIVE_ACCESS]
       }
     ]
   },
@@ -181,16 +172,25 @@ export const MENU_TREE: MenuTreeNode[] = [
     topKey: 'system',
     testId: 'nav-system',
     showInTop: true,
-    roles: [ROLE.ADMIN], // 系统管理仅管理员可见
+    permissions: [
+      PERMISSION.SYS_USER_ACCESS,
+      PERMISSION.SYS_ROLE_ACCESS,
+      PERMISSION.SYS_DEPT_ACCESS,
+      PERMISSION.RULE_CENTER_ACCESS,
+      PERMISSION.SYS_CONFIG_ACCESS,
+      PERMISSION.COMMISSION_RULE_ACCESS,
+      PERMISSION.DOUYIN_ACCESS,
+      PERMISSION.OPERATION_LOG_ACCESS
+    ],
     children: [
-      { label: '用户管理', key: '/system/users', topKey: 'system', path: '/system/users' },
-      { label: '角色管理', key: '/system/roles', topKey: 'system', path: '/system/roles' },
-      { label: '部门管理', key: '/system/depts', topKey: 'system', path: '/system/depts', roles: [ROLE.ADMIN, ROLE.CHANNEL_LEADER] },
-      { label: '规则中心', key: '/system/rule-center', topKey: 'system', path: '/system/rule-center' },
-      { label: '高级配置', key: '/system/config', topKey: 'system', path: '/system/config' },
-      { label: '提成规则', key: '/system/commission-rules', topKey: 'system', path: '/system/commission-rules' },
-      { label: '抖店联调', key: '/system/douyin', topKey: 'system', path: '/system/douyin' },
-      { label: '操作日志', key: '/system/operation-logs', topKey: 'system', path: '/system/operation-logs' }
+      { label: '用户管理', key: '/system/users', topKey: 'system', path: '/system/users', permissions: [PERMISSION.SYS_USER_ACCESS] },
+      { label: '角色管理', key: '/system/roles', topKey: 'system', path: '/system/roles', permissions: [PERMISSION.SYS_ROLE_ACCESS] },
+      { label: '部门管理', key: '/system/depts', topKey: 'system', path: '/system/depts', permissions: [PERMISSION.SYS_DEPT_ACCESS] },
+      { label: '规则中心', key: '/system/rule-center', topKey: 'system', path: '/system/rule-center', permissions: [PERMISSION.RULE_CENTER_ACCESS] },
+      { label: '高级配置', key: '/system/config', topKey: 'system', path: '/system/config', permissions: [PERMISSION.SYS_CONFIG_ACCESS] },
+      { label: '提成规则', key: '/system/commission-rules', topKey: 'system', path: '/system/commission-rules', permissions: [PERMISSION.COMMISSION_RULE_ACCESS] },
+      { label: '抖店联调', key: '/system/douyin', topKey: 'system', path: '/system/douyin', permissions: [PERMISSION.DOUYIN_ACCESS] },
+      { label: '操作日志', key: '/system/operation-logs', topKey: 'system', path: '/system/operation-logs', permissions: [PERMISSION.OPERATION_LOG_ACCESS] }
     ]
   }
 ]
@@ -210,7 +210,7 @@ function cloneWithoutMeta(node: MenuTreeNode): MenuTreeNode {
     label: node.label,
     key: node.key,
     topKey: node.topKey,
-    roles: node.roles,
+    permissions: node.permissions,
     testId: node.testId,
     showInTop: node.showInTop,
     path: node.path
@@ -233,16 +233,16 @@ function cloneWithoutMeta(node: MenuTreeNode): MenuTreeNode {
  * @param roles - 当前用户的角色代码列表
  * @returns 过滤后的菜单树副本
  */
-export function filterMenuTreeByRoles(
+export function filterMenuTreeByPermissions(
   nodes: readonly MenuTreeNode[],
-  roles: readonly string[]
+  permissionCodes: readonly string[]
 ): MenuTreeNode[] {
-  const roleList = [...roles]
+  const permissions = [...permissionCodes]
   return nodes
-    .filter((node) => hasAccess(roleList, node.roles))
+    .filter((node) => hasPermission(permissions, node.permissions))
     .map((node) => {
       if (!node.children?.length) return cloneWithoutMeta(node)
-      const children = filterMenuTreeByRoles(node.children, roleList)
+      const children = filterMenuTreeByPermissions(node.children, permissions)
       return { ...cloneWithoutMeta(node), children }
     })
     // 移除过滤后无子节点的分组（避免展示空壳分组）
@@ -255,8 +255,8 @@ export function filterMenuTreeByRoles(
  * @param roles - 当前用户的角色代码列表
  * @returns 按权限过滤后的完整菜单树
  */
-export function buildAccessibleMenuTree(roles: readonly string[]): MenuTreeNode[] {
-  return filterMenuTreeByRoles(MENU_TREE, roles)
+export function buildAccessibleMenuTree(permissionCodes: readonly string[]): MenuTreeNode[] {
+  return filterMenuTreeByPermissions(MENU_TREE, permissionCodes)
 }
 
 /**
@@ -265,8 +265,8 @@ export function buildAccessibleMenuTree(roles: readonly string[]): MenuTreeNode[
  * @param roles - 当前用户的角色代码列表
  * @returns 可见的顶部菜单项数组（仅包含 showInTop 不为 false 的节点）
  */
-export function getTopMenus(roles: readonly string[]): TopMenuItem[] {
-  return buildAccessibleMenuTree(roles)
+export function getTopMenus(permissionCodes: readonly string[]): TopMenuItem[] {
+  return buildAccessibleMenuTree(permissionCodes)
     .filter((node) => node.showInTop !== false)
     .map(({ label, key, testId, topKey }) => ({ label, key, testId, topKey }))
 }
@@ -320,15 +320,15 @@ export function getLeftMenus(tree: readonly MenuTreeNode[], topKey: string | nul
  */
 export function resolveFirstAccessiblePath(
   node: MenuTreeNode | null | undefined,
-  roles: readonly string[]
+  permissionCodes: readonly string[]
 ): string | null {
   if (!node) return null
-  const roleList = [...roles]
+  const permissions = [...permissionCodes]
 
   // 分组节点：递归查找第一个可访问子节点
   if (node.children?.length) {
     for (const child of node.children) {
-      const target = resolveFirstAccessiblePath(child, roleList)
+      const target = resolveFirstAccessiblePath(child, permissions)
       if (target) return target
     }
     // 所有子节点均不可访问，回退到分组默认路由
@@ -336,7 +336,7 @@ export function resolveFirstAccessiblePath(
   }
 
   // 叶子节点：检查角色权限
-  if (!hasAccess(roleList, node.roles)) return null
+  if (!hasPermission(permissions, node.permissions)) return null
   const path = typeof node.path === 'string' ? node.path : undefined
   if (path) return path
   return resolveMenuNavigateTarget(node.key)
@@ -349,10 +349,10 @@ export function resolveFirstAccessiblePath(
  * @param roles - 当前用户的角色代码列表
  * @returns 默认跳转路径，无法解析返回 null
  */
-export function resolveTopMenuDefaultPath(topKey: string, roles: readonly string[]): string | null {
-  const tree = buildAccessibleMenuTree(roles)
+export function resolveTopMenuDefaultPath(topKey: string, permissionCodes: readonly string[]): string | null {
+  const tree = buildAccessibleMenuTree(permissionCodes)
   const topNode = findTopMenuNode(tree, topKey)
-  return resolveFirstAccessiblePath(topNode, roles)
+  return resolveFirstAccessiblePath(topNode, permissionCodes)
 }
 
 /**

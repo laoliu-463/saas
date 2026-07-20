@@ -1,14 +1,11 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { ROLE_CODES, hasAccess, hasOnlyCanonicalRole } from '../constants/rbac'
+import { PERMISSION_CODES, hasPermission } from '../constants/permissions'
 import { useAuthStore } from '../stores/auth'
 import { nowMs, recordFrontendTiming } from '../utils/performanceTiming'
 import { createGuardWarningDeduper, resolveGuardDecision, type GuardRedirectDecision } from './guard'
 
-const ROLE = ROLE_CODES
 const HOME_CANDIDATES = ['/data', '/orders', '/product', '/product/manage', '/product/manage/products', '/talent', '/ops/shipping', '/sample', '/system/users']
-const CHANNEL_STAFF_HOME_CANDIDATES = ['/product', '/talent', '/sample', '/data']
-const BIZ_STAFF_HOME_CANDIDATES = ['/product/manage/products', '/product/manage', '/sample', '/data']
-const OPS_STAFF_HOME_CANDIDATES = ['/ops/shipping']
+const PERMISSION = PERMISSION_CODES
 
 const router = createRouter({
   history: createWebHistory(),
@@ -21,22 +18,22 @@ const router = createRouter({
         {
           path: 'product',
           component: () => import('../views/product/ProductLibrary.vue'),
-          meta: { title: '商品库', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] }
+          meta: { title: '商品库', permissions: [PERMISSION.PRODUCT_ACCESS] }
         },
         {
           path: 'product/library',
           component: () => import('../views/product/ProductLibrary.vue'),
-          meta: { title: '商品库', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] }
+          meta: { title: '商品库', permissions: [PERMISSION.PRODUCT_ACCESS] }
         },
         {
           path: 'product/manage',
           component: () => import('../views/product/ActivityList.vue'),
-          meta: { title: '活动列表', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF] }
+          meta: { title: '活动列表', permissions: [PERMISSION.PRODUCT_MANAGE_ACCESS] }
         },
         {
           path: 'product/manage/products',
           component: () => import('../views/product/index.vue'),
-          meta: { title: '商品列表', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF] }
+          meta: { title: '商品列表', permissions: [PERMISSION.PRODUCT_MANAGE_ACCESS] }
         },
         {
           path: 'product/manage/list',
@@ -54,7 +51,7 @@ const router = createRouter({
         {
           path: 'product/activity',
           redirect: '/product/manage',
-          meta: { title: '商品管理', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF] }
+          meta: { title: '商品管理', permissions: [PERMISSION.PRODUCT_MANAGE_ACCESS] }
         },
         {
           // 同步重定向到统一入口，避免二次跳转
@@ -68,97 +65,97 @@ const router = createRouter({
         {
           path: 'product/:id',
           redirect: '/product',
-          meta: { title: '商品库', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] }
+          meta: { title: '商品库', permissions: [PERMISSION.PRODUCT_ACCESS] }
         },
         {
           path: 'talent',
           component: () => import('../views/talent/index.vue'),
-          meta: { title: '达人 CRM', roles: [ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] }
+          meta: { title: '达人 CRM', permissions: [PERMISSION.TALENT_ACCESS] }
         },
         {
           path: 'sample',
           component: () => import('../views/sample/index.vue'),
-          meta: { title: '合作单', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] }
+          meta: { title: '合作单', permissions: [PERMISSION.SAMPLE_ACCESS] }
         },
         {
           path: 'sample/apply',
           component: () => import('../views/sample/Apply.vue'),
-          meta: { title: '寄样申请', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] }
+          meta: { title: '寄样申请', permissions: [PERMISSION.SAMPLE_ACCESS] }
         },
         {
           path: 'sample/:id',
           component: () => import('../views/sample/SampleDetail.vue'),
-          meta: { title: '寄样详情', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF, ROLE.OPS_STAFF] }
+          meta: { title: '寄样详情', permissions: [PERMISSION.SAMPLE_ACCESS, PERMISSION.SHIPPING_ACCESS] }
         },
         {
           path: 'ops/exclusive',
           component: () => import('../views/ops/ExclusiveStatus.vue'),
-          meta: { title: '独家状态', roles: [ROLE.BIZ_LEADER, ROLE.CHANNEL_LEADER, ROLE.ADMIN] }
+          meta: { title: '独家状态', permissions: [PERMISSION.EXCLUSIVE_ACCESS] }
         },
         {
           path: 'ops/shipping',
           component: () => import('../views/ops/Shipping.vue'),
-          meta: { title: '发货台', roles: [ROLE.OPS_STAFF] }
+          meta: { title: '发货台', permissions: [PERMISSION.SHIPPING_ACCESS] }
         },
         {
           path: 'data',
           component: () => import('../views/data/index.vue'),
-          meta: { title: '数据看板', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] }
+          meta: { title: '数据看板', permissions: [PERMISSION.DATA_ACCESS] }
         },
         {
           path: 'data/orders',
           component: () => import('../views/data/OrderList.vue'),
-          meta: { title: '订单明细', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] }
+          meta: { title: '订单明细', permissions: [PERMISSION.DATA_ACCESS] }
         },
         {
           path: 'system',
           redirect: '/system/users',
-          meta: { title: '系统管理', roles: [ROLE.ADMIN] }
+          meta: { title: '系统管理', permissions: [PERMISSION.SYS_USER_ACCESS] }
         },
         {
           path: 'system/users',
           component: () => import('../views/system/UserList.vue'),
-          meta: { title: '用户管理', roles: [ROLE.ADMIN] }
+          meta: { title: '用户管理', permissions: [PERMISSION.SYS_USER_ACCESS] }
         },
         {
           path: 'system/roles',
           component: () => import('../views/system/RoleList.vue'),
-          meta: { title: '角色管理', roles: [ROLE.ADMIN] }
+          meta: { title: '角色管理', permissions: [PERMISSION.SYS_ROLE_ACCESS] }
         },
         {
           path: 'system/depts',
           component: () => import('../views/system/DeptList.vue'),
-          meta: { title: '部门管理', roles: [ROLE.ADMIN] }
+          meta: { title: '部门管理', permissions: [PERMISSION.SYS_DEPT_ACCESS] }
         },
         {
           path: 'system/departments',
           redirect: '/system/depts',
-          meta: { title: '部门管理', roles: [ROLE.ADMIN] }
+          meta: { title: '部门管理', permissions: [PERMISSION.SYS_DEPT_ACCESS] }
         },
         {
           path: 'system/rule-center',
           component: () => import('../views/system/rule-center/index.vue'),
-          meta: { title: '规则中心', roles: [ROLE.ADMIN] }
+          meta: { title: '规则中心', permissions: [PERMISSION.RULE_CENTER_ACCESS] }
         },
         {
           path: 'system/config',
           component: () => import('../views/system/ConfigList.vue'),
-          meta: { title: '高级配置', roles: [ROLE.ADMIN] }
+          meta: { title: '高级配置', permissions: [PERMISSION.SYS_CONFIG_ACCESS] }
         },
         {
           path: 'system/commission-rules',
           component: () => import('../views/system/CommissionRuleList.vue'),
-          meta: { title: '提成规则', roles: [ROLE.ADMIN] }
+          meta: { title: '提成规则', permissions: [PERMISSION.COMMISSION_RULE_ACCESS] }
         },
         {
           path: 'system/douyin',
           component: () => import('../views/ops/DouyinIntegration.vue'),
-          meta: { title: '抖店联调', roles: [ROLE.ADMIN] }
+          meta: { title: '抖店联调', permissions: [PERMISSION.DOUYIN_ACCESS] }
         },
         {
           path: 'system/operation-logs',
           component: () => import('../views/system/OperationLogList.vue'),
-          meta: { title: '操作日志', roles: [ROLE.ADMIN] }
+          meta: { title: '操作日志', permissions: [PERMISSION.OPERATION_LOG_ACCESS] }
         },
         {
           path: 'profile',
@@ -168,12 +165,12 @@ const router = createRouter({
         {
           path: 'orders',
           component: () => import('../views/orders/index.vue'),
-          meta: { title: '订单工作台', roles: [ROLE.BIZ_LEADER, ROLE.CHANNEL_LEADER, ROLE.ADMIN] }
+          meta: { title: '订单工作台', permissions: [PERMISSION.ORDER_ACCESS] }
         },
         {
           path: 'dashboard',
           component: () => import('../views/dashboard/index.vue'),
-          meta: { title: '归因概览', roles: [ROLE.BIZ_LEADER, ROLE.CHANNEL_LEADER, ROLE.ADMIN] }
+          meta: { title: '归因概览', permissions: [PERMISSION.DASHBOARD_ACCESS] }
         },
         { path: '', redirect: '/data' }
       ]
@@ -186,21 +183,13 @@ const shouldEmitGuardWarning = createGuardWarningDeduper()
 let routeStartedAt = 0
 
 const resolveHomePath = (authStore: ReturnType<typeof useAuthStore>): string => {
-  const roles = authStore.roleCodes
-  const candidates =
-    hasOnlyCanonicalRole(roles, ROLE.CHANNEL_STAFF)
-      ? CHANNEL_STAFF_HOME_CANDIDATES
-      : hasOnlyCanonicalRole(roles, ROLE.OPS_STAFF)
-        ? OPS_STAFF_HOME_CANDIDATES
-      : hasOnlyCanonicalRole(roles, ROLE.BIZ_STAFF)
-        ? BIZ_STAFF_HOME_CANDIDATES
-        : HOME_CANDIDATES
-  const accessible = candidates.find((path) => {
+  const permissionCodes = authStore.permissionCodes
+  const accessible = HOME_CANDIDATES.find((path) => {
     const matched = router.resolve(path).matched
-    const required = matched[matched.length - 1]?.meta?.roles as string[] | undefined
-    return hasAccess(roles, required)
+    const required = matched[matched.length - 1]?.meta?.permissions as string[] | undefined
+    return hasPermission(permissionCodes, required)
   })
-  return accessible || '/login'
+  return accessible || '/profile'
 }
 
 router.beforeEach((to, from) => {
@@ -214,20 +203,20 @@ router.beforeEach((to, from) => {
   const authStore = useAuthStore()
   authStore.hydrateFromStorage()
 
-  const roleCodes = authStore.roleCodes
-  const requiredRoles = to.meta?.roles as string[] | undefined
+  const permissionCodes = authStore.permissionCodes
+  const requiredPermissions = to.meta?.permissions as string[] | undefined
   const decision = resolveGuardDecision({
     toPath: to.path,
     toFullPath: to.fullPath,
     fromPath: from.path,
     isLoggedIn: authStore.isLoggedIn,
-    roleCodes,
-    requiredRoles,
+    permissionCodes,
+    requiredPermissions,
     resolveHomePath: () => resolveHomePath(authStore)
   })
 
   if (decision.type !== 'allow') {
-    warnGuardDecision(decision, from.fullPath, to.fullPath, roleCodes)
+    warnGuardDecision(decision, from.fullPath, to.fullPath, permissionCodes)
   }
 
   if (decision.type === 'redirect') {
@@ -252,14 +241,14 @@ router.afterEach((to, from, failure) => {
   }, { failed: Boolean(failure) })
 })
 
-function warnGuardDecision(decision: GuardRedirectDecision, from: string, to: string, roleCodes: string[]) {
-  if (!shouldEmitGuardWarning(decision, from, to, roleCodes)) {
+function warnGuardDecision(decision: GuardRedirectDecision, from: string, to: string, permissionCodes: string[]) {
+  if (!shouldEmitGuardWarning(decision, from, to, permissionCodes)) {
     return
   }
   console.warn('[router guard] redirect', {
     from,
     to,
-    roleCodes,
+    permissionCodes,
     redirectTarget: decision.redirectTarget,
     reason: decision.reason
   })

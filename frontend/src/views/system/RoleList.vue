@@ -50,6 +50,16 @@
         <n-form-item label="数据范围" path="dataScope">
           <n-select v-model:value="formData.dataScope" :options="dataScopeOptions" />
         </n-form-item>
+        <n-form-item label="功能权限" path="permissionCodes">
+          <n-select
+            v-model:value="formData.permissionCodes"
+            multiple
+            filterable
+            clearable
+            :options="permissionOptions"
+            placeholder="请选择该角色可访问的功能"
+          />
+        </n-form-item>
         <n-form-item label="状态" path="status">
           <n-switch v-model:value="formData.status" :checked-value="1" :unchecked-value="0" />
         </n-form-item>
@@ -71,7 +81,15 @@ import { ref, reactive, h, onMounted } from 'vue';
 import { NButton, NPopconfirm, NTag, useMessage } from 'naive-ui';
 import PageHeader from '../../components/PageHeader.vue';
 import { MODAL_WIDTH } from '../../constants/ui';
-import { getRolePage, createRole, updateRole, deleteRole } from '../../api/sys';
+import {
+  getRolePage,
+  createRole,
+  updateRole,
+  deleteRole,
+  getPermissionCatalog,
+  getRolePermissions,
+  assignRolePermissions
+} from '../../api/sys';
 import { createPaginationState, normalizePageSize } from '../../utils/pagination';
 import { sanitizeRoleName } from './user-list-options';
 import { ROLE_CODES } from '../../constants/rbac';
@@ -167,6 +185,7 @@ const modalType = ref<'add'|'edit'>('add');
 const modalTitle = ref('新增角色');
 const formRef = ref();
 const submitting = ref(false);
+const permissionOptions = ref<Array<{ label: string; value: string }>>([]);
 
 const formData = reactive({
   id: undefined as string | undefined,
@@ -174,7 +193,8 @@ const formData = reactive({
   roleName: '',
   dataScope: 1,
   status: 1,
-  remark: ''
+  remark: '',
+  permissionCodes: [] as string[]
 });
 
 const isValidationFailure = (error: unknown): boolean => Array.isArray(error);
@@ -184,20 +204,48 @@ const rules = {
   dataScope: { type: 'number', required: true, message: '请选择数据范围', trigger: 'change' }
 };
 
-const openModal = (type: 'add'|'edit', row?: any) => {
+const loadPermissionCatalog = async () => {
+  if (permissionOptions.value.length) return;
+  const response = await getPermissionCatalog();
+  const items = response?.data || response || [];
+  permissionOptions.value = (Array.isArray(items) ? items : []).map((item: any) => ({
+    label: `${item.permissionCode}（${item.resourceCode}/${item.actionCode}）`,
+    value: item.permissionCode
+  }));
+};
+
+const openModal = async (type: 'add'|'edit', row?: any) => {
   modalType.value = type;
   modalTitle.value = type === 'add' ? '新增角色' : '编辑角色';
 
+  try {
+    await loadPermissionCatalog();
+  } catch (error: any) {
+    notifyApiFailure(error, message, { fallbackMessage: '获取权限目录失败' });
+    return;
+  }
+
   if (type === 'add') {
-    Object.assign(formData, { id: undefined, roleCode: '', roleName: '', dataScope: 1, status: 1, remark: '' }); // roleCode 由后端自动生成
+    Object.assign(formData, {
+      id: undefined,
+      roleCode: '',
+      roleName: '',
+      dataScope: 1,
+      status: 1,
+      remark: '',
+      permissionCodes: []
+    }); // roleCode 由后端自动生成
   } else if (row) {
+    const permissionResponse = await getRolePermissions(row.id);
+    const permissionCodes = permissionResponse?.data || permissionResponse || [];
     Object.assign(formData, {
       id: row.id,
       roleCode: row.roleCode,
       roleName: sanitizeRoleName(row),
       dataScope: row.dataScope,
       status: row.status,
-      remark: row.remark
+      remark: row.remark,
+      permissionCodes: Array.isArray(permissionCodes) ? permissionCodes : []
     });
   }
 
@@ -218,11 +266,16 @@ const handleSubmit = async () => {
   submitting.value = true;
   try {
     if (modalType.value === 'add') {
-      const { roleCode: _ignored, ...payload } = formData;
-      await createRole(payload);
+      const { roleCode: _ignored, permissionCodes, ...payload } = formData;
+      const created = await createRole(payload);
+      const createdRole = created?.data || created;
+      if (!createdRole?.id) throw new Error('创建角色后未返回角色 ID');
+      await assignRolePermissions(createdRole.id, permissionCodes);
       message.success('新增成功');
     } else {
-      await updateRole(formData.id!, formData);
+      const { permissionCodes, ...payload } = formData;
+      await updateRole(formData.id!, payload);
+      await assignRolePermissions(formData.id!, permissionCodes);
       message.success('编辑成功');
     }
     showModal.value = false;
@@ -304,5 +357,6 @@ const columns = [
 
 onMounted(() => {
   fetchData();
+  loadPermissionCatalog().catch(() => undefined);
 });
 </script>

@@ -10,6 +10,7 @@ import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.common.result.PageResult;
 import com.colonel.saas.vo.SysRoleVO;
+import com.colonel.saas.vo.AuthorizationPermissionVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -151,6 +152,28 @@ public class SysRoleController extends BaseController {
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
         return ok(sysRoleService.findAllEnabled());
+    }
+
+    @Operation(summary = "权限目录", description = "查询可分配给角色的全部启用权限。")
+    @GetMapping("/permissions")
+    public ApiResult<List<AuthorizationPermissionVO>> permissionCatalog() {
+        return ok(sysRoleService.findPermissionCatalog());
+    }
+
+    @Operation(summary = "角色权限", description = "查询指定角色当前拥有的权限编码。")
+    @GetMapping("/{id}/permissions")
+    public ApiResult<List<String>> rolePermissions(@PathVariable("id") UUID id) {
+        return ok(sysRoleService.findPermissionCodes(id));
+    }
+
+    @Operation(summary = "分配角色权限", description = "以请求中的权限编码覆盖角色当前权限。")
+    @PutMapping("/{id}/permissions")
+    public ApiResult<Void> assignRolePermissions(
+            @PathVariable("id") UUID id,
+            @RequestBody List<String> permissionCodes,
+            @RequestAttribute("userId") UUID userId) {
+        sysRoleService.assignPermissions(id, permissionCodes, userId);
+        return ok();
     }
 
     /**

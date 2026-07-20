@@ -65,11 +65,14 @@ describe('frontend business rule boundary scan', () => {
   it('keeps frontend permission and action-decision hotspots explicitly inventoried', () => {
     expect(matchingFiles([
       /\bhasAccess\s*\(/,
+      /\bhasPermission\s*\(/,
       /\bROLE_CODES\b/,
+      /\bPERMISSION_CODES\b/,
       /\broleCodes\.includes\s*\(/,
       /\bcanExport[A-Za-z]*\b/,
       /\bgetProductActions\s*\(/
     ])).toEqual([
+      'frontend/src/constants/permissions.ts',
       'frontend/src/constants/rbac.ts',
       'frontend/src/main.ts',
       'frontend/src/router/guard.ts',

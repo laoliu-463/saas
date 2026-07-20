@@ -114,6 +114,13 @@ export const createRole = (data: any) => request.post('/roles', data);
 export const updateRole = (id: string, data: any) => request.put(`/roles/${id}`, data);
 /** 删除角色 @param id - 角色 ID */
 export const deleteRole = (id: string) => request.delete(`/roles/${id}`);
+/** 查询 RBAC 权限目录 */
+export const getPermissionCatalog = () => request.get('/roles/permissions');
+/** 查询角色已授权权限编码 */
+export const getRolePermissions = (id: string) => request.get(`/roles/${id}/permissions`);
+/** 覆盖保存角色权限编码 */
+export const assignRolePermissions = (id: string, permissionCodes: string[]) =>
+  request.put(`/roles/${id}/permissions`, permissionCodes);
 
 // ==================== 部门管理 ====================
 

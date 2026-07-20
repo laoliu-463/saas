@@ -1,4 +1,4 @@
-import { hasAccess } from '../constants/rbac'
+import { hasPermission } from '../constants/permissions'
 import { buildLoginRedirectTarget } from './redirect'
 
 export type GuardDecision =
@@ -13,34 +13,28 @@ export interface GuardDecisionInput {
   toFullPath?: string
   fromPath: string
   isLoggedIn: boolean
-  roleCodes: readonly string[]
-  requiredRoles?: string[]
+  permissionCodes: readonly string[]
+  requiredPermissions?: string[]
   resolveHomePath: () => string
 }
 
 export function resolveGuardDecision(input: GuardDecisionInput): GuardDecision {
-  const roleCodes = [...input.roleCodes]
-
   if (input.toPath !== '/login' && !input.isLoggedIn) {
     return createRedirectDecision(input, buildLoginRedirectTarget(input.toFullPath || input.toPath), 'anonymous', true)
   }
 
   if (input.toPath === '/login') {
-    if (!input.isLoggedIn || roleCodes.length === 0) {
+    if (!input.isLoggedIn) {
       return { type: 'allow' }
     }
     return buildHomeRedirectDecision(input, 'logged-in-login')
-  }
-
-  if (input.isLoggedIn && roleCodes.length === 0) {
-    return buildRedirectDecision(input, '/login', 'missing-role-codes')
   }
 
   if (input.toPath === '/') {
     return buildHomeRedirectDecision(input, 'root')
   }
 
-  if (!hasAccess(roleCodes, input.requiredRoles)) {
+  if (!hasPermission(input.permissionCodes, input.requiredPermissions)) {
     return buildHomeRedirectDecision(input, 'access-denied')
   }
 
@@ -49,14 +43,14 @@ export function resolveGuardDecision(input: GuardDecisionInput): GuardDecision {
 
 export function createGuardWarningDeduper() {
   const emitted = new Set<string>()
-  return (decision: GuardRedirectDecision, from: string, to: string, roleCodes: readonly string[]): boolean => {
+  return (decision: GuardRedirectDecision, from: string, to: string, permissionCodes: readonly string[]): boolean => {
     if (isRoutineRedirectReason(decision.reason)) {
       return false
     }
     const key = JSON.stringify({
       from,
       to,
-      roleCodes: [...roleCodes],
+      permissionCodes: [...permissionCodes],
       redirectTarget: decision.redirectTarget,
       reason: decision.reason
     })
