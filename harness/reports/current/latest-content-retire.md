@@ -2,10 +2,10 @@
 
 ## Metadata
 
-- Time: 2026-07-20 19:56:39 +08:00
+- Time: 2026-07-20 20:28:49 +08:00
 - Action: Plan
 - DryRun: False
-- Reason: 从旧 DDD 分支提取 main 缺失的 sample board/export/logistics 查询端口与 Legacy 适配器
+- Reason: ddd: route talent claim release job through application port
 - Manifest: (none)
 - ArchiveRoot: harness/archive/retired-content
 - AllowSourceCode: False
