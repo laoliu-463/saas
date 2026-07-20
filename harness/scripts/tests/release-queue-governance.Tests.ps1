@@ -6,6 +6,10 @@ $agentDo = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'harness\scripts\c
 $deployRemote = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'harness\scripts\commands\deploy-remote.ps1')
 $ci = Get-Content -Raw -LiteralPath (Join-Path $repoRoot '.github\workflows\ci.yml')
 $compose = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'docker-compose.real-pre.yml')
+$backendService = [regex]::Match(
+    $compose,
+    '(?ms)^  backend-real-pre:\s*\r?\n(?<body>.*?)(?=^  frontend-real-pre:\s*\r?\n)'
+).Groups['body'].Value
 $frontendDockerfile = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'frontend\Dockerfile')
 
 Describe 'real-pre single release queue contract' {
@@ -65,6 +69,11 @@ Describe 'runtime version contract' {
     It 'publishes a static frontend version document from the immutable build' {
         $frontendDockerfile | Should Match '/app/dist/version\.json'
         $frontendDockerfile | Should Match '"gitSha"'
+    }
+
+    It 'restarts the backend instead of leaving a half-dead JVM after heap exhaustion' {
+        $backendService | Should Match '-XX:\+ExitOnOutOfMemoryError'
+        $backendService | Should Match '(?m)^    restart:\s*always\s*$'
     }
 }
 

@@ -28,7 +28,6 @@ import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
@@ -272,7 +271,7 @@ public class TalentClaimApplicationService {
                 .collect(Collectors.toMap(Talent::getId, talent -> talent, (left, right) -> left));
         for (TalentClaim claim : activeClaims) {
             Talent talent = talentMap.get(claim.getTalentId());
-            if (talent != null && hasOutputSinceClaim(talent, claim)) {
+            if (talent != null && hasOutputSinceClaim(talent, claim, now)) {
                 continue;
             }
             claim.setStatus(CLAIM_STATUS_EXPIRED);
@@ -310,19 +309,16 @@ public class TalentClaimApplicationService {
     /**
      * 是否有订单产出（用于跳过有效认领）。
      *
-     * <p>只读取订单域的聚合结果，禁止把认领以来的全部订单事实（含 JSONB）累积到 JVM。
-     * 过期认领任务会逐条执行该判断；全量分页会在订单量增长时造成堆内存耗尽。</p>
+     * <p>只通过订单域执行 {@code LIMIT 1} 存在性查询，保持原有
+     * {@code author_id OR talent_uid} 匹配语义，禁止把订单事实及 JSONB 累积到 JVM。</p>
      */
-    private boolean hasOutputSinceClaim(Talent talent, TalentClaim claim) {
+    private boolean hasOutputSinceClaim(Talent talent, TalentClaim claim, LocalDateTime now) {
         if (talent == null || claim == null || !StringUtils.hasText(talent.getDouyinUid())) {
             return false;
         }
+        LocalDateTime since = claim.getClaimedAt() == null ? now.minusDays(getProtectDays()) : claim.getClaimedAt();
         String talentUid = talent.getDouyinUid().trim();
-        LocalDateTime since = claim.getClaimedAt() == null ? LocalDateTime.now().minusDays(getProtectDays()) : claim.getClaimedAt();
-        Map<String, OrderReadFacade.TalentOrderSummary> summaries =
-                orderReadFacade.summarizeTalentOrdersByDouyinUid(List.of(talentUid), since);
-        OrderReadFacade.TalentOrderSummary summary = summaries.get(talentUid);
-        return summary != null && summary.orderCount() > 0;
+        return orderReadFacade.existsTalentOrderCreatedSince(talentUid, since);
     }
 
     /**

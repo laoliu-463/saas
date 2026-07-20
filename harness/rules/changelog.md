@@ -7,6 +7,12 @@
 
 ## 最近版本摘要
 
+### v0.8.5 — 2026-07-20
+- Issue #182 将达人认领到期判断从全量订单实体/JSONB 分页累积改为订单域 `SELECT 1 / LIMIT 1` 有界存在性查询，保持 `author_id OR talent_uid` 原匹配语义。
+- `TalentClaimReleaseJob` 的 Cron 显式固定 `Asia/Shanghai`，业务比较时间继续与无时区数据库字段使用同一 JVM 默认时钟。
+- real-pre 后端 JVM 增加 `ExitOnOutOfMemoryError`，Compose 治理测试限定后端服务块，避免半死 JVM 长期保持 running/unhealthy。
+- 本轮无数据库 migration；只生成候选提交、PR/CI 和本地 evidence，不由 Agent 直接部署远端。
+
 ### v0.8.4 — 2026-07-19
 - real-pre 唯一部署来源固定为 `release/real-pre`，Jenkins 同 Job 排队且使用 `saas-real-pre-deploy` 跨 Job 全局锁。
 - 发布前校验目标 release tree 来自 `main`，并拒绝非当前部署后继提交；回滚必须显式设置 `ROLLBACK_APPROVED=true`。

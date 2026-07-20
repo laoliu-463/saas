@@ -51,6 +51,9 @@ public interface OrderReadFacade {
     /** 按 createTime 起点分页读取订单事实。 */
     OrderPage findOrdersCreatedSince(LocalDateTime createStart, long pageNo, long pageSize);
 
+    /** 达人认领保护期：按原始 author_id / talent_uid 语义有界判断是否存在产出。 */
+    boolean existsTalentOrderCreatedSince(String talentUid, LocalDateTime createStart);
+
     /** 按 settleTime 起点分页读取订单事实，可选按用户或部门过滤。 */
     OrderPage findOrdersSettledSince(LocalDateTime settleStart, UUID userId, UUID deptId, long pageNo, long pageSize);
 

@@ -254,6 +254,31 @@ class LegacyOrderReadFacadeTest {
     }
 
     @Test
+    void existsTalentOrderCreatedSince_shouldUseBoundedAuthorOrTalentUidQuery() {
+        LocalDateTime createStart = LocalDateTime.of(2026, 6, 1, 0, 0);
+        when(orderMapper.selectObjs(any())).thenReturn(List.of(1));
+
+        boolean exists = facade.existsTalentOrderCreatedSince(" dy_1 ", createStart);
+
+        assertThat(exists).isTrue();
+        ArgumentCaptor<QueryWrapper<ColonelsettlementOrder>> captor = ArgumentCaptor.forClass(QueryWrapper.class);
+        verify(orderMapper).selectObjs(captor.capture());
+        QueryWrapper<ColonelsettlementOrder> wrapper = captor.getValue();
+        assertThat(wrapper.getSqlSelect()).isEqualTo("1");
+        assertThat(wrapper.getCustomSqlSegment())
+                .contains("create_time", "author_id", "talent_uid", "OR", "LIMIT 1");
+        assertThat(wrapper.getParamNameValuePairs().values()).contains("dy_1", createStart);
+    }
+
+    @Test
+    void existsTalentOrderCreatedSince_shouldRejectInvalidInputWithoutQuerying() {
+        assertThat(facade.existsTalentOrderCreatedSince(" ", LocalDateTime.now())).isFalse();
+        assertThat(facade.existsTalentOrderCreatedSince("dy_1", null)).isFalse();
+
+        verify(orderMapper, never()).selectObjs(any());
+    }
+
+    @Test
     void findRecentOrdersByTalentUid_shouldReturnRecentTalentOrders() {
         LocalDateTime createTime = LocalDateTime.of(2026, 6, 2, 10, 0);
         when(orderMapper.selectMaps(any())).thenReturn(List.of(Map.of(
