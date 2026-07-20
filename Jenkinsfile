@@ -12,6 +12,7 @@ pipeline {
         booleanParam(name: 'DEPLOY_REAL_PRE', defaultValue: false, description: 'Explicit approval required to deploy real-pre.')
         booleanParam(name: 'CONFIRM_REAL_PROMOTION_WRITE', defaultValue: false, description: 'Required only when real-pre promotion-write switches are enabled.')
         booleanParam(name: 'ROLLBACK_APPROVED', defaultValue: false, description: 'Explicit approval required when the target is not a descendant of the deployed commit.')
+        booleanParam(name: 'RUN_BACKEND_TEST', defaultValue: false, description: 'Diagnostic rerun only; does not bypass required GitHub Actions checks.')
     }
 
     environment {
@@ -80,6 +81,9 @@ pipeline {
         }
 
         stage('Preflight Guard') {
+            options {
+                timeout(time: 55, unit: 'MINUTES')
+            }
             steps {
                 sh '''#!/usr/bin/env bash
                 set -eu
@@ -114,6 +118,22 @@ pipeline {
                   echo "ERROR: checkout SHA is not the current release/real-pre head."
                   exit 1
                 fi
+                # PR #6: GHA SHA Gate.
+                # The exact FULL_COMMIT being deployed must have a successful ci.yml
+                # push run on release/real-pre (Backend tests, Frontend tests and
+                # build, Repository governance all green). RUN_BACKEND_TEST=true on
+                # the job only re-runs Jenkins diagnostics; it cannot bypass this gate.
+                if [ -z "${GITHUB_TOKEN:-}" ]; then
+                  echo "ERROR: GITHUB_TOKEN credential is required (credentialId: github-actions-read-token)."
+                  echo "Create a fine-grained PAT with Actions:read on the repo and add it as a Jenkins Secret text."
+                  exit 1
+                fi
+                GITHUB_REPOSITORY="${CD_GIT_URL#*github.com/}"; GITHUB_REPOSITORY="${GITHUB_REPOSITORY%.git}"
+                GITHUB_WORKFLOW=ci.yml \
+                GITHUB_BRANCH=release/real-pre \
+                GITHUB_SHA="$FULL_COMMIT" \
+                  bash scripts/verify-github-ci-gate.sh
+                echo "GHA SHA Gate passed for $FULL_COMMIT." 
                 git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
                 target_tree="$(git rev-parse "$FULL_COMMIT^{tree}")"
                 source_main_sha="$(git rev-list origin/main | while read -r candidate; do
@@ -233,6 +253,9 @@ pipeline {
         }
 
         stage('Backend Test') {
+            when {
+                expression { params.RUN_BACKEND_TEST }
+            }
             steps {
                 sh '''#!/usr/bin/env bash
                 set -eu

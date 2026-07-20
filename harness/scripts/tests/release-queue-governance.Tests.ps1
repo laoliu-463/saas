@@ -92,3 +92,49 @@ Describe 'agent deployment boundary contract' {
         $ci | Should Not Match 'deploy script must validate IMAGE_TAG'
     }
 }
+
+Describe 'PR #6: GHA SHA Gate + RUN_BACKEND_TEST default-skip' {
+    It 'verify-github-ci-gate.sh exists at scripts/' {
+        $scriptPath = Join-Path $repoRoot 'scripts' 'verify-github-ci-gate.sh'
+        Test-Path -LiteralPath $scriptPath | Should Be $true
+    }
+
+    It 'Jenkinsfile references the GHA SHA Gate script from Preflight Guard' {
+        $jenkinsfile | Should Match "bash\s+scripts/verify-github-ci-gate\.sh"
+    }
+
+    It 'Jenkinsfile GHA SHA Gate binds GITHUB_SHA=$FULL_COMMIT' {
+        $jenkinsfile | Should Match 'GITHUB_SHA=\"\$FULL_COMMIT\"'
+    }
+
+    It 'Jenkinsfile exposes RUN_BACKEND_TEST parameter defaulting to false' {
+        $jenkinsfile | Should Match "booleanParam\(name:\s*'RUN_BACKEND_TEST',\s*defaultValue:\s*false"
+    }
+
+    It 'Backend Test stage runs only when params.RUN_BACKEND_TEST is true' {
+        $body = (([regex]::Matches($jenkinsfile, "stage\('Backend Test'\)\s*\{(.+?)\n        \}", 'Singleline')) | ForEach-Object { $_.Groups[1].Value }) | Select-Object -First 1
+        ($body -match 'when\s*\{') | Should Be $true
+        ($body -match 'params\.RUN_BACKEND_TEST') | Should Be $true
+    }
+
+    $scriptPath = Join-Path $repoRoot 'scripts' 'verify-github-ci-gate.sh'
+    It 'verify-github-ci-gate.sh uses fail-closed error codes (2/3/4/5)' {
+        $script = Get-Content -Raw -LiteralPath $scriptPath
+        ($script -match 'GITHUB_CI_GATE_API_ERROR') | Should Be $true
+        ($script -match 'GITHUB_CI_GATE_RUN_FAILED') | Should Be $true
+        ($script -match 'GITHUB_CI_GATE_TIMEOUT') | Should Be $true
+        ($script -match 'GITHUB_CI_GATE_JOB_FAILED') | Should Be $true
+    }
+
+    It 'verify-github-ci-gate.sh requires 40-character GITHUB_SHA' {
+        $script = Get-Content -Raw -LiteralPath $scriptPath
+        ($script -match "\[0-9a-f\]\{40\}") | Should Be $true
+    }
+
+    It 'verify-github-ci-gate.sh checks the three required job names' {
+        $script = Get-Content -Raw -LiteralPath $scriptPath
+        ($script -match 'Backend tests') | Should Be $true
+        ($script -match 'Frontend tests and build') | Should Be $true
+        ($script -match 'Repository governance') | Should Be $true
+    }
+}
