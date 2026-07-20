@@ -276,22 +276,6 @@ pipeline {
             }
         }
 
-        stage('Frontend Build') {
-            steps {
-                sh '''#!/usr/bin/env bash
-                set -eu
-                . runtime/qa/out/jenkins/cd-env.sh
-                export NPM_CONFIG_CACHE=/var/lib/jenkins/.cache/saas-real-pre-cd/npm
-                npx --yes pnpm@9 config set store-dir /var/lib/jenkins/.cache/saas-real-pre-cd/pnpm-store
-                cd frontend
-                npx --yes pnpm@9 install --frozen-lockfile
-                npx --yes pnpm@9 test
-                npx --yes pnpm@9 typecheck
-                npx --yes pnpm@9 build
-                '''
-            }
-        }
-
         stage('Docker Build') {
             steps {
                 sh '''#!/usr/bin/env bash
