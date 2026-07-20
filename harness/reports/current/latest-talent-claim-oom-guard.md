@@ -16,6 +16,8 @@
 backend/src/main/java/com/colonel/saas/domain/talent/application/TalentClaimApplicationService.java
 backend/src/test/java/com/colonel/saas/domain/talent/application/TalentClaimApplicationServiceTest.java
 backend/src/test/java/com/colonel/saas/architecture/RoleAwareAttributionFlywayIntegrationTest.java
+backend/src/test/java/com/colonel/saas/architecture/DddTalentDomainInventoryEvidenceTest.java
+backend/src/test/java/com/colonel/saas/service/TalentServiceTest.java
 docker-compose.real-pre.yml
 ~~~
 
@@ -59,6 +61,8 @@ Local health verification: PASS
 Business validation: PASS (mvn -f backend/pom.xml -Dtest=TalentClaimApplicationServiceTest test)
 CI migration regression: PASS (RoleAwareAttributionFlywayIntegrationTest, 2 tests)
 Order facade and claim regression: PASS (LegacyOrderReadFacadeTest + TalentClaimApplicationServiceTest, 17 tests)
+Service/dependency regression: PASS (TalentServiceTest + DddTalentDomainInventoryEvidenceTest + order facade + claim tests, 74 tests)
+Full backend suite: PASS (3,322 tests; 0 failures; 0 errors; 3 skipped)
 ~~~
 
 ## Content Maintenance Result
