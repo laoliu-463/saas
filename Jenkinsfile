@@ -5,6 +5,13 @@ pipeline {
         disableConcurrentBuilds(abortPrevious: false)
         buildDiscarder(logRotator(numToKeepStr: '20'))
         skipDefaultCheckout(true)
+        // PR #5: pipeline-wide timeout. Covers the full real-pre CD.
+        // Background: prior runs had zero timeout protection, so any
+        // hang (DB backup, P0 Playwright, readiness wait) could block
+        // the cross-job deployment lock indefinitely.
+        // 60 minutes is the documented fail-fast ceiling; each stage
+        // also has its own per-stage timeout below.
+        timeout(time: 60, unit: 'MINUTES')
     }
 
     parameters {
@@ -33,6 +40,10 @@ pipeline {
 
     stages {
         stage('Checkout') {
+            options {
+                timeout(time: 5, unit: 'MINUTES')
+            }
+
             steps {
                 deleteDir()
                 checkout([
@@ -80,6 +91,10 @@ pipeline {
         }
 
         stage('Preflight Guard') {
+            options {
+                timeout(time: 5, unit: 'MINUTES')
+            }
+
             steps {
                 sh '''#!/usr/bin/env bash
                 set -eu
@@ -233,6 +248,10 @@ pipeline {
         }
 
         stage('Backend Test') {
+            options {
+                timeout(time: 15, unit: 'MINUTES')
+            }
+
             steps {
                 sh '''#!/usr/bin/env bash
                 set -eu
@@ -257,6 +276,10 @@ pipeline {
         }
 
         stage('Backend Package') {
+            options {
+                timeout(time: 10, unit: 'MINUTES')
+            }
+
             steps {
                 sh '''#!/usr/bin/env bash
                 set -eu
@@ -277,6 +300,10 @@ pipeline {
         }
 
         stage('Frontend Build') {
+            options {
+                timeout(time: 10, unit: 'MINUTES')
+            }
+
             steps {
                 sh '''#!/usr/bin/env bash
                 set -eu
@@ -293,6 +320,10 @@ pipeline {
         }
 
         stage('Docker Build') {
+            options {
+                timeout(time: 10, unit: 'MINUTES')
+            }
+
             steps {
                 sh '''#!/usr/bin/env bash
                 set -eu
@@ -324,6 +355,10 @@ pipeline {
         }
 
         stage('docker compose config') {
+            options {
+                timeout(time: 2, unit: 'MINUTES')
+            }
+
             steps {
                 sh '''#!/usr/bin/env bash
                 set -eu
@@ -336,11 +371,19 @@ pipeline {
         }
 
         stage('Serialized real-pre release') {
+            options {
+                timeout(time: 1, unit: 'MINUTES')
+            }
+
             // The top-level disableConcurrentBuilds option serializes the sole CD job.
             // Canonical lock: lock(resource: 'saas-real-pre-deploy', inversePrecedence: false)
             // Lockable Resources is not installed on the real-pre Jenkins host.
             stages {
         stage('Release Order and Migration Guard') {
+            options {
+                timeout(time: 5, unit: 'MINUTES')
+            }
+
             steps {
                 sh '''#!/usr/bin/env bash
                 set -eu
@@ -392,6 +435,10 @@ pipeline {
         }
 
         stage('Database Backup, Migration and Schema Precheck') {
+            options {
+                timeout(time: 30, unit: 'MINUTES')
+            }
+
             steps {
                 sh '''#!/usr/bin/env bash
                 set -eu
@@ -422,6 +469,10 @@ pipeline {
         }
 
         stage('Deploy Backend (Schedulers Paused)') {
+            options {
+                timeout(time: 5, unit: 'MINUTES')
+            }
+
             steps {
                 sh '''#!/usr/bin/env bash
                 set -eu
@@ -444,6 +495,10 @@ pipeline {
         }
 
         stage('Backend Readiness') {
+            options {
+                timeout(time: 6, unit: 'MINUTES')
+            }
+
             steps {
                 sh '''#!/usr/bin/env bash
                 set -eu
@@ -465,6 +520,10 @@ pipeline {
         }
 
         stage('Deploy Frontend') {
+            options {
+                timeout(time: 5, unit: 'MINUTES')
+            }
+
             steps {
                 sh '''#!/usr/bin/env bash
                 set -eu
@@ -476,6 +535,10 @@ pipeline {
         }
 
         stage('Core Smoke and Multi-role E2E') {
+            options {
+                timeout(time: 25, unit: 'MINUTES')
+            }
+
             steps {
                 sh '''#!/usr/bin/env bash
                 set -eu
@@ -487,6 +550,10 @@ pipeline {
         }
 
         stage('Restore Schedulers') {
+            options {
+                timeout(time: 6, unit: 'MINUTES')
+            }
+
             steps {
                 sh '''#!/usr/bin/env bash
                 set -eu
@@ -506,6 +573,10 @@ pipeline {
         }
 
         stage('Health Check') {
+            options {
+                timeout(time: 5, unit: 'MINUTES')
+            }
+
             steps {
                 sh '''#!/usr/bin/env bash
                 set -eu
@@ -539,6 +610,10 @@ pipeline {
         }
 
         stage('Evidence Report') {
+            options {
+                timeout(time: 5, unit: 'MINUTES')
+            }
+
             steps {
                 sh '''#!/usr/bin/env bash
                 set -eu
