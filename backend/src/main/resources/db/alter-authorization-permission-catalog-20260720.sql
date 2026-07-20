@@ -465,4 +465,11 @@ FROM (VALUES
 ) AS seed(role_code, permission_code)
 JOIN sys_role r ON r.role_code = seed.role_code AND r.deleted = 0
 JOIN sys_permission p ON p.permission_code = seed.permission_code
+-- Built-in grants are bootstrap defaults only. Once a role has any configured
+-- grant, later deployments must preserve the administrator's complete set.
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM sys_role_permission configured
+    WHERE configured.role_id = r.id
+)
 ON CONFLICT (role_id, permission_id) DO NOTHING;

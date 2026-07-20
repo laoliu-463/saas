@@ -49,6 +49,19 @@ class AuthorizationPermissionCatalogMigrationIntegrationTest extends BaseIntegra
         assertThat(hasPermission("biz_staff", "talent:access")).isTrue();
         assertThat(hasPermission("channel_staff", "product:page")).isTrue();
         assertThat(hasPermission("biz_staff", "commission-rule:access")).isFalse();
+
+        jdbcTemplate.update("""
+                DELETE FROM sys_role_permission
+                WHERE role_id = (SELECT id FROM sys_role WHERE role_code = 'admin')
+                  AND permission_id = (
+                      SELECT id FROM sys_permission
+                      WHERE permission_code = 'admin-colonel-partner:sync'
+                  )
+                """);
+        migration.execute(dataSource);
+
+        assertThat(permissionCount("admin")).isEqualTo(128);
+        assertThat(hasPermission("admin", "admin-colonel-partner:sync")).isFalse();
     }
 
     private void insertRole(String roleCode) {

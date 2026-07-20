@@ -36,6 +36,7 @@ class DddAuthorizationPermissionCatalogContractTest {
 
         assertThat(permissionCodes(sql, SQL_PERMISSION)).containsExactlyElementsOf(controllerCodes);
         assertThat(sql).contains("ON CONFLICT (role_id, permission_id) DO NOTHING");
+        assertThat(sql).contains("WHERE configured.role_id = r.id");
     }
 
     @Test
