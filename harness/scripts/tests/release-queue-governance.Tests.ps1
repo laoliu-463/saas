@@ -17,7 +17,7 @@ Describe 'real-pre single release queue contract' {
         $jenkinsfile | Should Match "defaultValue:\s*'release/real-pre'"
         $jenkinsfile | Should Match 'BUILD_BRANCH"?\s*!=\s*"release/real-pre"'
         $jenkinsfile | Should Match 'refs/heads/release/real-pre'
-        $jenkinsfile | Should Match 'git fetch --no-tags origin main'
+        $jenkinsfile | Should Match 'git fetch --no-tags origin \+refs/heads/main:refs/remotes/origin/main'
         $jenkinsfile | Should Match 'release tree does not match any commit reachable from main'
     }
 

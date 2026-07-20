@@ -114,7 +114,7 @@ pipeline {
                   echo "ERROR: checkout SHA is not the current release/real-pre head."
                   exit 1
                 fi
-                git fetch --no-tags origin main
+                git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
                 target_tree="$(git rev-parse "$FULL_COMMIT^{tree}")"
                 source_main_sha="$(git rev-list origin/main | while read -r candidate; do
                   if [ "$(git rev-parse "$candidate^{tree}")" = "$target_tree" ]; then
