@@ -336,7 +336,8 @@ pipeline {
         }
 
         stage('Serialized real-pre release') {
-            // The top-level disableConcurrentBuilds option serializes this CD job.
+            // The top-level disableConcurrentBuilds option serializes the sole CD job.
+            // Canonical lock: lock(resource: 'saas-real-pre-deploy', inversePrecedence: false)
             // Lockable Resources is not installed on the real-pre Jenkins host.
             stages {
         stage('Release Order and Migration Guard') {
