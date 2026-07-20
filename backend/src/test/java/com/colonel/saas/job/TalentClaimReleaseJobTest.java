@@ -8,7 +8,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.scheduling.annotation.Scheduled;
 
+import java.lang.reflect.Method;
 import java.time.Duration;
 import java.time.LocalDateTime;
 
@@ -55,5 +57,15 @@ class TalentClaimReleaseJobTest {
         job.releaseExpiredClaimsDaily();
 
         verify(talentService, never()).releaseExpiredClaims(any());
+    }
+
+    @Test
+    void releaseExpiredClaimsDaily_shouldUseAsiaShanghaiSchedule() throws NoSuchMethodException {
+        Method method = TalentClaimReleaseJob.class.getDeclaredMethod("releaseExpiredClaimsDaily");
+        Scheduled scheduled = method.getAnnotation(Scheduled.class);
+
+        assertThat(scheduled).isNotNull();
+        assertThat(scheduled.cron()).isEqualTo("0 15 2 * * ?");
+        assertThat(scheduled.zone()).isEqualTo("Asia/Shanghai");
     }
 }

@@ -86,7 +86,9 @@ class DddTalentDomainInventoryEvidenceTest {
                 .contains("TalentClaimPolicy.protectedUntil")
                 .contains("TalentClaimPolicy.selectReleaseTarget")
                 .contains("configDomainFacade.getTalentClaimProtectDays")
-                .contains("orderReadFacade.summarizeTalentOrdersByDouyinUid")
+                .contains("orderReadFacade")
+                .contains("existsTalentOrderCreatedSince")
+                .doesNotContain("findOrdersCreatedSince")
                 .contains("extendActiveClaimProtectionByTalentUid");
 
         assertThat(claimPolicy)

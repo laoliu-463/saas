@@ -176,6 +176,25 @@ public class LegacyOrderReadFacade implements OrderReadFacade {
     }
 
     @Override
+    public boolean existsTalentOrderCreatedSince(String talentUid, LocalDateTime createStart) {
+        if (!StringUtils.hasText(talentUid) || createStart == null) {
+            return false;
+        }
+        String normalizedTalentUid = talentUid.trim();
+        QueryWrapper<ColonelsettlementOrder> wrapper = new QueryWrapper<ColonelsettlementOrder>()
+                .select("1")
+                .eq("deleted", 0)
+                .ge("create_time", createStart)
+                .and(nested -> nested
+                        .apply("extra_data ->> 'author_id' = {0}", normalizedTalentUid)
+                        .or()
+                        .apply("extra_data ->> 'talent_uid' = {0}", normalizedTalentUid))
+                .last("LIMIT 1");
+        List<Object> rows = orderMapper.selectObjs(wrapper);
+        return rows != null && !rows.isEmpty();
+    }
+
+    @Override
     public OrderPage findOrdersSettledSince(LocalDateTime settleStart, UUID userId, UUID deptId, long pageNo, long pageSize) {
         if (settleStart == null) {
             return new OrderPage(List.of(), 0L);

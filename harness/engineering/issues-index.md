@@ -3,7 +3,7 @@
 > **状态**：本目录是 Matt Pocock engineering skills 的配置入口。
 > 本文件是 GitHub Issues 的**本地镜像**，提供 harness 内的 issue 可见性。
 >
-> **最后更新**：2026-07-19（GitHub open issues 权威快照）
+> **最后更新**：2026-07-20（GitHub open issues 权威快照）
 
 ## 同步规则
 
@@ -32,6 +32,7 @@
 
 | # | Title | State | Labels | Created | Link |
 | --- | --- | --- | --- | --- | --- |
+| 182 | fix(talent): prevent claim release job from exhausting JVM heap | OPEN | ready-for-agent | 2026-07-20 | https://github.com/laoliu-463/saas/issues/182 |
 | 180 | 建立 real-pre 唯一发布队列与不可变版本证据 | OPEN | ready-for-agent | 2026-07-19 | https://github.com/laoliu-463/saas/issues/180 |
 | 165 | 重构 Harness 为跨平台 Node 验证核心（第一阶段） | OPEN | ready-for-agent | 2026-07-18 | https://github.com/laoliu-463/saas/issues/165 |
 

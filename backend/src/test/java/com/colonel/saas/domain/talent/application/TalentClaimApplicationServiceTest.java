@@ -23,13 +23,11 @@ import org.springframework.data.redis.core.RedisTemplate;
 
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -89,55 +87,59 @@ class TalentClaimApplicationServiceTest {
     }
 
     @Test
-    void releaseExpiredClaims_shouldUseAggregateInsteadOfLoadingAllOrders() {
+    void releaseExpiredClaims_shouldUseBoundedExistenceCheckInsteadOfLoadingAllOrders() {
         LocalDateTime now = LocalDateTime.of(2026, 7, 20, 2, 15);
-        LocalDateTime claimedAt = now.minusDays(30);
+        LocalDateTime claimedAt = now.minusDays(35);
         UUID talentId = UUID.randomUUID();
-        TalentClaim claim = claim(now.minusMinutes(1));
-        claim.setTalentId(talentId);
-        claim.setClaimedAt(claimedAt);
-        claim.setStatus(TalentClaimApplicationService.CLAIM_STATUS_ACTIVE);
-        Talent talent = new Talent();
-        talent.setId(talentId);
-        talent.setDouyinUid("dy_aggregate");
+        TalentClaim expiredClaim = expiredClaim(talentId, claimedAt, now.minusDays(1));
+        Talent talent = talent(talentId, "dy_output");
 
-        when(talentClaimMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(claim));
+        when(talentClaimMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(expiredClaim));
         when(talentMapper.selectBatchIds(any())).thenReturn(List.of(talent));
-        when(orderReadFacade.summarizeTalentOrdersByDouyinUid(List.of("dy_aggregate"), claimedAt))
-                .thenReturn(Map.of("dy_aggregate", new OrderReadFacade.TalentOrderSummary(
-                        "dy_aggregate", 1L, 100L, 10L)));
+        when(orderReadFacade.existsTalentOrderCreatedSince("dy_output", claimedAt)).thenReturn(true);
 
         service.releaseExpiredClaims(now);
 
-        assertThat(claim.getStatus()).isEqualTo(TalentClaimApplicationService.CLAIM_STATUS_ACTIVE);
-        verify(talentClaimMapper, never()).updateById(claim);
-        verify(orderReadFacade).summarizeTalentOrdersByDouyinUid(List.of("dy_aggregate"), claimedAt);
-        verify(orderReadFacade, never()).findOrdersCreatedSince(any(), anyLong(), anyLong());
+        verify(talentClaimMapper, never()).updateById(any(TalentClaim.class));
+        verify(orderReadFacade, never()).findOrdersCreatedSince(any(LocalDateTime.class), anyLong(), anyLong());
     }
 
     @Test
-    void releaseExpiredClaims_shouldExpireClaimWhenAggregateHasNoOrders() {
+    void releaseExpiredClaims_shouldExpireClaimWhenBoundedCheckHasNoOrders() {
         LocalDateTime now = LocalDateTime.of(2026, 7, 20, 2, 15);
+        LocalDateTime claimedAt = now.minusDays(35);
         UUID talentId = UUID.randomUUID();
-        TalentClaim claim = claim(now.minusMinutes(1));
-        claim.setTalentId(talentId);
-        claim.setClaimedAt(now.minusDays(7));
-        claim.setStatus(TalentClaimApplicationService.CLAIM_STATUS_ACTIVE);
-        Talent talent = new Talent();
-        talent.setId(talentId);
-        talent.setDouyinUid("dy_no_output");
+        TalentClaim expiredClaim = expiredClaim(talentId, claimedAt, now.minusDays(1));
+        Talent talent = talent(talentId, "dy_no_output");
 
-        when(talentClaimMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(claim));
+        when(talentClaimMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(expiredClaim));
         when(talentMapper.selectBatchIds(any())).thenReturn(List.of(talent));
-        when(orderReadFacade.summarizeTalentOrdersByDouyinUid(eq(List.of("dy_no_output")), any(LocalDateTime.class)))
-                .thenReturn(Map.of());
-        when(talentClaimMapper.updateById(claim)).thenReturn(1);
+        when(orderReadFacade.existsTalentOrderCreatedSince("dy_no_output", claimedAt)).thenReturn(false);
+        when(talentClaimMapper.updateById(expiredClaim)).thenReturn(1);
 
         service.releaseExpiredClaims(now);
 
-        assertThat(claim.getStatus()).isEqualTo(TalentClaimApplicationService.CLAIM_STATUS_EXPIRED);
-        verify(talentClaimMapper).updateById(claim);
-        verify(orderReadFacade, never()).findOrdersCreatedSince(any(), anyLong(), anyLong());
+        assertThat(expiredClaim.getStatus()).isEqualTo(2);
+        verify(talentClaimMapper).updateById(expiredClaim);
+        verify(orderReadFacade, never()).findOrdersCreatedSince(any(LocalDateTime.class), anyLong(), anyLong());
+    }
+
+    @Test
+    void releaseExpiredClaims_shouldUseJobTimeWhenClaimedAtIsMissing() {
+        LocalDateTime now = LocalDateTime.of(2026, 7, 20, 2, 15);
+        UUID talentId = UUID.randomUUID();
+        TalentClaim expiredClaim = expiredClaim(talentId, null, now.minusDays(1));
+        Talent talent = talent(talentId, "dy_missing_claim_time");
+
+        when(configDomainFacade.getTalentClaimProtectDays()).thenReturn(7);
+        when(talentClaimMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(expiredClaim));
+        when(talentMapper.selectBatchIds(any())).thenReturn(List.of(talent));
+        when(orderReadFacade.existsTalentOrderCreatedSince(
+                "dy_missing_claim_time", now.minusDays(7))).thenReturn(true);
+
+        service.releaseExpiredClaims(now);
+
+        verify(talentClaimMapper, never()).updateById(any(TalentClaim.class));
     }
 
     private static TalentClaim claim(LocalDateTime protectedUntil) {
@@ -145,5 +147,21 @@ class TalentClaimApplicationServiceTest {
         claim.setId(UUID.randomUUID());
         claim.setProtectedUntil(protectedUntil);
         return claim;
+    }
+
+    private static TalentClaim expiredClaim(UUID talentId, LocalDateTime claimedAt, LocalDateTime protectedUntil) {
+        TalentClaim claim = claim(protectedUntil);
+        claim.setTalentId(talentId);
+        claim.setClaimedAt(claimedAt);
+        claim.setStatus(1);
+        claim.setDeleted(0);
+        return claim;
+    }
+
+    private static Talent talent(UUID talentId, String douyinUid) {
+        Talent talent = new Talent();
+        talent.setId(talentId);
+        talent.setDouyinUid(douyinUid);
+        return talent;
     }
 }
