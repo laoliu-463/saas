@@ -14,7 +14,6 @@ import com.colonel.saas.domain.user.facade.dto.UserOwnershipReference;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
 import com.colonel.saas.domain.user.policy.DataScopeResolver;
 import com.colonel.saas.domain.config.facade.ConfigDomainFacade;
-import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.Talent;
 import com.colonel.saas.entity.TalentClaim;
 import com.colonel.saas.mapper.TalentClaimMapper;
@@ -29,6 +28,7 @@ import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
@@ -61,8 +61,6 @@ public class TalentClaimApplicationService {
     public static final int CLAIM_STATUS_ACTIVE = 1;
     public static final int CLAIM_STATUS_EXPIRED = 2;
     public static final int CLAIM_STATUS_RELEASED = 3;
-    private static final long ORDER_BATCH_SIZE = 2000L;
-
     private final TalentClaimMapper talentClaimMapper;
     private final TalentMapper talentMapper;
     private final OrderReadFacade orderReadFacade;
@@ -311,56 +309,20 @@ public class TalentClaimApplicationService {
 
     /**
      * 是否有订单产出（用于跳过有效认领）。
-     * 1:1 等价 TalentService.hasOutputSinceClaim(Talent, TalentClaim)。
+     *
+     * <p>只读取订单域的聚合结果，禁止把认领以来的全部订单事实（含 JSONB）累积到 JVM。
+     * 过期认领任务会逐条执行该判断；全量分页会在订单量增长时造成堆内存耗尽。</p>
      */
     private boolean hasOutputSinceClaim(Talent talent, TalentClaim claim) {
         if (talent == null || claim == null || !StringUtils.hasText(talent.getDouyinUid())) {
             return false;
         }
+        String talentUid = talent.getDouyinUid().trim();
         LocalDateTime since = claim.getClaimedAt() == null ? LocalDateTime.now().minusDays(getProtectDays()) : claim.getClaimedAt();
-        return loadOrdersCreatedSinceInBatches(since).stream()
-                .anyMatch(order -> matchesTalent(order, talent.getDouyinUid()));
-    }
-
-    /**
-     * 分批加载订单。
-     * 1:1 等价 TalentService.loadOrdersInBatches(LambdaQueryWrapper)。
-     */
-    private List<ColonelsettlementOrder> loadOrdersCreatedSinceInBatches(LocalDateTime since) {
-        java.util.List<ColonelsettlementOrder> all = new java.util.ArrayList<>();
-        long pageNo = 1L;
-        boolean hasMore = true;
-        while (hasMore) {
-            OrderReadFacade.OrderPage result = orderReadFacade.findOrdersCreatedSince(since, pageNo, ORDER_BATCH_SIZE);
-            if (result == null || result.records() == null || result.records().isEmpty()) {
-                break;
-            }
-            all.addAll(result.records());
-            hasMore = pageNo < result.pages();
-            pageNo++;
-        }
-        return all;
-    }
-
-    /**
-     * 匹配达人订单（按 douyinUid 或其他字段）。
-     * 1:1 等价 TalentService.matchesTalent(ColonelsettlementOrder, String)。
-     */
-    private boolean matchesTalent(ColonelsettlementOrder order, String talentDouyinUid) {
-        if (order == null || !StringUtils.hasText(talentDouyinUid)) {
-            return false;
-        }
-        if (order.getExtraData() != null) {
-            Object authorId = order.getExtraData().get("author_id");
-            if (authorId != null && talentDouyinUid.equals(String.valueOf(authorId))) {
-                return true;
-            }
-            Object talentUid = order.getExtraData().get("talent_uid");
-            if (talentUid != null && talentDouyinUid.equals(String.valueOf(talentUid))) {
-                return true;
-            }
-        }
-        return false;
+        Map<String, OrderReadFacade.TalentOrderSummary> summaries =
+                orderReadFacade.summarizeTalentOrdersByDouyinUid(List.of(talentUid), since);
+        OrderReadFacade.TalentOrderSummary summary = summaries.get(talentUid);
+        return summary != null && summary.orderCount() > 0;
     }
 
     /**
