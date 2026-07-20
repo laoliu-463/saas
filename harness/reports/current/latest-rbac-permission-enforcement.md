@@ -2,11 +2,11 @@
 
 ## Metadata
 
-- Time: 2026-07-20 14:41:46 +08:00
+- Time: 2026-07-20 15:01:04 +08:00
 - Environment: real-pre
 - Scope: full
 - Branch: codex/rbac-permission-enforcement
-- Commit: c269440b
+- Commit: 4ae83ba3
 - Owned worktree: dirty
 - Deploy remote: false
 
@@ -33,7 +33,7 @@ runtime/qa/rbac-permission-real-pre-probe.cjs
 ## Owned Git Status
 
 ~~~text
-?? harness/reports/current/latest-rbac-permission-enforcement.md
+M harness/reports/current/latest-rbac-permission-enforcement.md
 ~~~
 
 ## Build Result
@@ -47,16 +47,16 @@ Frontend build: PASS (npm --prefix frontend ci; npm --prefix frontend run build)
 ## Docker Status
 
 ~~~text
-NAME                              IMAGE                                                                     COMMAND                  SERVICE             CREATED          STATUS                        PORTS
-saas-active-backend-real-pre-1    sha256:a29385e7effac99f1cac48126ec60e9aad9b055709025162d5edda2ff6e9d2ea   "sh -c 'java $JAVA_O…"   backend-real-pre    2 minutes ago    Up 2 minutes (healthy)        127.0.0.1:8081->8080/tcp
-saas-active-frontend-real-pre-1   colonel-saas/frontend:real-pre                                            "/docker-entrypoint.…"   frontend-real-pre   2 minutes ago    Up About a minute (healthy)   127.0.0.1:3001->80/tcp
-saas-active-postgres-real-pre-1   postgres:15-alpine                                                        "docker-entrypoint.s…"   postgres-real-pre   12 minutes ago   Up 12 minutes (healthy)       5432/tcp
-saas-active-redis-real-pre-1      redis:7-alpine                                                            "docker-entrypoint.s…"   redis-real-pre      42 hours ago     Up 42 hours (healthy)         6379/tcp
-NAMES                             STATUS                        PORTS
-saas-active-frontend-real-pre-1   Up About a minute (healthy)   127.0.0.1:3001->80/tcp
-saas-active-backend-real-pre-1    Up 2 minutes (healthy)        127.0.0.1:8081->8080/tcp
-saas-active-postgres-real-pre-1   Up 12 minutes (healthy)       5432/tcp
-saas-active-redis-real-pre-1      Up 42 hours (healthy)         6379/tcp
+NAME                              IMAGE                                               COMMAND                  SERVICE             CREATED          STATUS                    PORTS
+saas-active-backend-real-pre-1    colonel-saas/backend:rbac-permission-enforcement    "sh -c 'java $JAVA_O…"   backend-real-pre    53 seconds ago   Up 47 seconds (healthy)   127.0.0.1:8081->8080/tcp
+saas-active-frontend-real-pre-1   colonel-saas/frontend:rbac-permission-enforcement   "/docker-entrypoint.…"   frontend-real-pre   50 seconds ago   Up 23 seconds (healthy)   127.0.0.1:3001->80/tcp
+saas-active-postgres-real-pre-1   postgres:15-alpine                                  "docker-entrypoint.s…"   postgres-real-pre   7 minutes ago    Up 7 minutes (healthy)    5432/tcp
+saas-active-redis-real-pre-1      redis:7-alpine                                      "docker-entrypoint.s…"   redis-real-pre      42 hours ago     Up 42 hours (healthy)     6379/tcp
+NAMES                             STATUS                    PORTS
+saas-active-frontend-real-pre-1   Up 23 seconds (healthy)   127.0.0.1:3001->80/tcp
+saas-active-backend-real-pre-1    Up 47 seconds (healthy)   127.0.0.1:8081->8080/tcp
+saas-active-postgres-real-pre-1   Up 7 minutes (healthy)    5432/tcp
+saas-active-redis-real-pre-1      Up 42 hours (healthy)     6379/tcp
 ~~~
 
 ## Health Check Result
@@ -85,11 +85,11 @@ remote not deployed
 
 ## Retro Summary
 
-agent-do failed: Harness file governance failed.
+RBAC deployment must use an immutable task-specific image tag, apply its idempotent migration, and run qa:real-pre:rbac; shared real-pre image tags can race across concurrent worktrees.
 
 ## Conclusion
 
-FAIL
+PASS
 
 ## Residual Risk
 
