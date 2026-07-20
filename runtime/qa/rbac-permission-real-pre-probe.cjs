@@ -25,16 +25,7 @@ run().catch((error) => {
 async function run() {
   if (!password) throw new Error('QA admin credential is missing');
 
-  const login = await request('/api/auth/login', {
-    method: 'POST',
-    body: { username, password }
-  });
-  const loginData = unwrapApiBody(login.body) || {};
-  const token = loginData.token || loginData.accessToken;
-  if (!token) throw new Error('admin login response did not contain an access token');
-
-  const projectedPermissions = normalizeCodes(loginData.permissionCodes);
-  assertIncludes(projectedPermissions, 'sys-role:access', 'login permission projection');
+  const { token, projectedPermissions } = await waitForPermissionProjection();
 
   const unauthorized = await request('/api/roles/permissions', {}, false);
   if (unauthorized.response.ok) {
@@ -80,6 +71,28 @@ async function run() {
   };
   writeEvidence(summary);
   console.log(`RBAC real-pre probe PASS; evidence=${evidenceDir}`);
+}
+
+async function waitForPermissionProjection() {
+  let lastError = null;
+  for (let attempt = 1; attempt <= 30; attempt += 1) {
+    try {
+      const login = await request('/api/auth/login', {
+        method: 'POST',
+        body: { username, password }
+      });
+      const loginData = unwrapApiBody(login.body) || {};
+      const token = loginData.token || loginData.accessToken;
+      if (!token) throw new Error('admin login response did not contain an access token');
+      const projectedPermissions = normalizeCodes(loginData.permissionCodes);
+      assertIncludes(projectedPermissions, 'sys-role:access', 'login permission projection');
+      return { token, projectedPermissions };
+    } catch (error) {
+      lastError = error;
+      if (attempt < 30) await new Promise((resolve) => setTimeout(resolve, 2_000));
+    }
+  }
+  throw lastError || new Error('login permission projection did not become ready');
 }
 
 async function request(pathname, options = {}, requireSuccess = true) {
