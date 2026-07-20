@@ -17,7 +17,7 @@ pipeline {
     environment {
         JOB_PURPOSE = 'real-pre-cd'
         DEPLOY_ENV = 'real-pre'
-        CD_GIT_URL = 'https://github.com/laoliu-463/saas.git'
+        CD_GIT_URL = 'git@github.com:laoliu-463/saas.git'
         ENV_FILE = '/opt/saas/env/.env.real-pre'
         COMPOSE_FILE = 'docker-compose.real-pre.yml'
         PROJECT_NAME = 'saas-active'
@@ -35,7 +35,20 @@ pipeline {
         stage('Checkout') {
             steps {
                 deleteDir()
-                git branch: params.DEPLOY_BRANCH, url: env.CD_GIT_URL
+                checkout([
+                    $class: 'GitSCM',
+                    branches: [[name: "*/${params.DEPLOY_BRANCH}"]],
+                    doGenerateSubmoduleConfigurations: false,
+                    extensions: [
+                        [$class: 'CleanBeforeCheckout'],
+                        [$class: 'CloneOption', honorRefspec: true, noTags: true,
+                         reference: '', shallow: false, timeout: 60]
+                    ],
+                    userRemoteConfigs: [[
+                        refspec: "+refs/heads/${params.DEPLOY_BRANCH}:refs/remotes/origin/${params.DEPLOY_BRANCH}",
+                        url: env.CD_GIT_URL
+                    ]]
+                ])
                 script {
                     env.FULL_COMMIT = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
                     env.IMAGE_TAG = env.FULL_COMMIT
