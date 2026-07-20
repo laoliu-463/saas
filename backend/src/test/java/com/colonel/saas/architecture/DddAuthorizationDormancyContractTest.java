@@ -49,8 +49,13 @@ class DddAuthorizationDormancyContractTest {
             "AuthorizationSnapshotMapper",
             "AuthorizationSnapshotRow");
 
+    private static final Set<String> APPROVED_INTEGRATION_ALLOWLIST = Set.of(
+            "com/colonel/saas/aspect/PermissionGuardAspect.java",
+            "com/colonel/saas/auth/service/AuthService.java",
+            "com/colonel/saas/domain/user/application/SysRoleApplication.java");
+
     @Test
-    void authorizationFoundation_shouldRemainDormantOutsideUserDomain() throws IOException {
+    void authorizationFoundation_shouldOnlyBeConsumedAtApprovedIntegrationBoundaries() throws IOException {
         Path root = Path.of("src/main/java");
 
         assertThat(findUnauthorizedConsumers(root)).isEmpty();
@@ -77,11 +82,13 @@ class DddAuthorizationDormancyContractTest {
     }
 
     private static List<String> findUnauthorizedConsumers(Path root) throws IOException {
-        // Phase 2 shadow consumers must be approved by adding their exact path here.
+        // Authorization consumers must be explicit boundary integrations or foundation files.
         try (Stream<Path> paths = Files.walk(root)) {
             return paths
                     .filter(path -> path.toString().endsWith(".java"))
                     .filter(path -> !FOUNDATION_FILE_ALLOWLIST.contains(
+                            normalize(root.relativize(path))))
+                    .filter(path -> !APPROVED_INTEGRATION_ALLOWLIST.contains(
                             normalize(root.relativize(path))))
                     .filter(DddAuthorizationDormancyContractTest::containsFoundationType)
                     .map(path -> normalize(root.relativize(path)))
