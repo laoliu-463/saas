@@ -220,7 +220,7 @@ class CurrentUserControllerTest {
     }
 
     // ========================== 鉴权失败 ==========================
-    // standaloneSetup 不激活 @RequireRoles 切面，因此本测试只能验证
+    // standaloneSetup 不激活 @RequirePermission 切面，因此本测试只能验证
     // controller 不会因缺失 request attribute 而把 service 误调。
     // 真实鉴权失败的端到端验证见 ColonelActivityControllerTest 中 403 相关测试。
 

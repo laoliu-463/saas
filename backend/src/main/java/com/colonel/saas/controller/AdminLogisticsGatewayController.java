@@ -1,9 +1,8 @@
 package com.colonel.saas.controller;
 
-import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.annotation.RequirePermission;
 import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.result.ApiResult;
-import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.dto.logistics.LogisticsGatewayHealthResponse;
 import com.colonel.saas.dto.logistics.LogisticsGatewayTestRequest;
 import com.colonel.saas.dto.logistics.LogisticsGatewayTestResponse;
@@ -34,7 +33,7 @@ import org.springframework.web.bind.annotation.RestController;
 @Tag(name = "物流 Gateway 诊断", description = "物流 provider 配置与联调诊断，不伪造真实联通。")
 @RestController
 @RequestMapping("/admin/logistics/gateway")
-@RequireRoles({RoleCodes.ADMIN, RoleCodes.OPS_STAFF})
+@RequirePermission("admin-logistics-gateway:access")
 public class AdminLogisticsGatewayController extends BaseController {
 
     /** 物流 Gateway 健康检查服务，负责 provider 配置诊断和联通性测试 */

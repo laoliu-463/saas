@@ -43,6 +43,10 @@ class RoleAwareAttributionFlywayIntegrationTest {
             JdbcTemplate jdbc = jdbc(database);
             database.copyFileToContainer(
                     MountableFile.forClasspathResource("db/init-db.sql"), "/tmp/init-db.sql");
+            database.copyFileToContainer(
+                    MountableFile.forClasspathResource(
+                            "db/alter-authorization-permission-catalog-20260720.sql"),
+                    "/tmp/alter-authorization-permission-catalog-20260720.sql");
             var init = database.execInContainer(
                     "sh", "-lc",
                     "ADMIN_PASSWORD=\"${POSTGRES_PASSWORD}\" "

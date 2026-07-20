@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import { ROLE_CODES } from '../constants/rbac';
+import { hasPermission, normalizePermissionCodes } from '../constants/permissions';
 
 const LEGACY_ROLE_MAP: Record<string, string> = {
     zs_leader: ROLE_CODES.BIZ_LEADER,
@@ -43,7 +44,8 @@ const normalizeUserInfo = (userInfo: any): any => {
         ...normalized,
         id: normalizedId,
         userId: normalized.userId || normalizedId,
-        roleCodes: normalizeRoleCodes(normalized.roleCodes)
+        roleCodes: normalizeRoleCodes(normalized.roleCodes),
+        permissionCodes: normalizePermissionCodes(normalized.permissionCodes)
     };
 };
 
@@ -69,6 +71,9 @@ export const useAuthStore = defineStore('auth', {
     getters: {
         isLoggedIn: (state) => !!normalizeStoredToken(state.token),
         roleCodes: (state) => normalizeRoleCodes(state.userInfo?.roleCodes),
+        permissionCodes: (state) => normalizePermissionCodes(state.userInfo?.permissionCodes),
+        hasPermission: (state) => (permissionCode: string) =>
+            hasPermission(normalizePermissionCodes(state.userInfo?.permissionCodes), [permissionCode]),
         isAdmin: (state) => normalizeRoleCodes(state.userInfo?.roleCodes).includes(ROLE_CODES.ADMIN),
         isLeader: (state) =>
             [ROLE_CODES.BIZ_LEADER, ROLE_CODES.CHANNEL_LEADER].some((r) =>

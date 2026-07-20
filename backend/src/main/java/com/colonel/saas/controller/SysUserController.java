@@ -1,6 +1,6 @@
 package com.colonel.saas.controller;
 
-import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.annotation.RequirePermission;
 import com.colonel.saas.auth.dto.SysUserAssignRolesRequest;
 import com.colonel.saas.auth.dto.SysUserCreateRequest;
 import com.colonel.saas.auth.dto.SysUserPageRequest;
@@ -11,7 +11,6 @@ import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.common.result.PageResult;
-import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.vo.SysUserVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -50,7 +49,7 @@ import java.util.UUID;
 @Tag(name = "系统用户", description = "系统后台用户管理接口，包括分页、详情、新增、编辑、删除、重置密码与分配角色。")
 @RestController
 @RequestMapping("/users")
-@RequireRoles(RoleCodes.ADMIN)
+@RequirePermission("sys-user:access")
 public class SysUserController extends BaseController {
 
     /** 系统用户服务，负责用户的增删改查和角色分配 */
@@ -110,7 +109,7 @@ public class SysUserController extends BaseController {
      */
     @Operation(summary = "查询可分配负责人候选", description = "返回可用于商品分配招商弹窗的负责人候选，仅暴露最小必要字段。")
     @GetMapping("/assignable")
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER})
+    @RequirePermission("sys-user:assignable")
     public ApiResult<List<SysUserVO>> assignable(
             @Parameter(description = "负责人关键字，匹配用户名或姓名。") @RequestParam(name = "keyword", required = false) String keyword,
             @RequestAttribute(value = "roleCodes", required = false) List<String> roleCodes,

@@ -4,7 +4,6 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.colonel.saas.annotation.RequireRoles;
 import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.enums.SampleStatus;
@@ -1168,7 +1167,6 @@ public class SampleApplicationService extends BaseController {
      * @see SampleLogisticsVO 物流详情视图对象
      */
     @Operation(summary = "手动刷新物流状态", description = "手动触发物流状态查询，若已签收则自动推进寄样单状态。")
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.OPS_STAFF})
     @PostMapping("/{id:[0-9a-fA-F\\-]{36}}/logistics/sync")
     public ApiResult<SampleLogisticsVO> syncLogistics(
             @Parameter(description = "寄样申请 ID，使用 UUID 格式。") @PathVariable UUID id,
@@ -1192,7 +1190,6 @@ public class SampleApplicationService extends BaseController {
      * 已有编码和物流单号均不可通过该接口覆盖。</p>
      */
     @Operation(summary = "补录寄样快递公司", description = "修复已发货历史寄样单缺失的快递公司编码，并重试物流同步。")
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.OPS_STAFF})
     @PutMapping("/{id:[0-9a-fA-F\\-]{36}}/logistics")
     public ApiResult<SampleLogisticsVO> repairLogistics(
             @Parameter(description = "寄样申请 ID，使用 UUID 格式。") @PathVariable UUID id,
@@ -1253,7 +1250,6 @@ public class SampleApplicationService extends BaseController {
      * @see SampleLogisticsSyncService#syncOne 物流同步核心逻辑
      */
     @Operation(summary = "手动刷新物流状态（兼容路径）", description = "与 /logistics/sync 等价。")
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.OPS_STAFF})
     @PostMapping("/{id:[0-9a-fA-F\\-]{36}}/logistics/refresh")
     public ApiResult<SampleVO> refreshLogistics(
             @Parameter(description = "寄样申请 ID，使用 UUID 格式。") @PathVariable UUID id,
@@ -1324,7 +1320,6 @@ public class SampleApplicationService extends BaseController {
      * @see SampleLogisticsSyncService#syncPendingInTransit(int)
      */
     @Operation(summary = "批量同步物流", description = "运营/管理员批量同步快递中寄样单物流状态。")
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.OPS_STAFF})
     @PostMapping("/logistics/sync-all")
     public ApiResult<Map<String, Integer>> syncAllLogistics(
             @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
@@ -1351,7 +1346,6 @@ public class SampleApplicationService extends BaseController {
      * @see SampleLogisticsImportService#generateTemplate()
      */
     @Operation(summary = "下载物流导入模板", description = "下载 Excel 批量导入物流单号模板。")
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.OPS_STAFF})
     @GetMapping("/logistics/import-template")
     public void downloadLogisticsImportTemplate(HttpServletResponse response) throws IOException {
         byte[] bytes = sampleLogisticsImportService.generateTemplate();
@@ -1382,7 +1376,6 @@ public class SampleApplicationService extends BaseController {
      * @see SampleLogisticsImportService#importTrackingNumbers(MultipartFile, UUID, Object, boolean)
      */
     @Operation(summary = "Excel 批量导入物流单号", description = "逐行校验，部分成功部分失败。")
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.OPS_STAFF})
     @PostMapping(value = "/logistics/import", consumes = "multipart/form-data")
     public ApiResult<LogisticsImportResult> importLogisticsTracking(
             @RequestPart("file") MultipartFile file,
@@ -1420,7 +1413,6 @@ public class SampleApplicationService extends BaseController {
      * @see SampleStatus#PENDING_SHIP 待发货状态
      */
     @Operation(summary = "批量审批通过", description = "批量将 PENDING_AUDIT 的寄样申请审批为待发货。内部角色均可操作。")
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.OPS_STAFF})
     @PostMapping("/batch-approve")
     public ApiResult<Map<String, Integer>> batchApprove(
             @Valid @RequestBody SampleBatchActionRequest request,
@@ -1484,7 +1476,6 @@ public class SampleApplicationService extends BaseController {
      * @see SampleStatus#REJECTED 已驳回状态
      */
     @Operation(summary = "批量驳回", description = "批量将 PENDING_AUDIT 的寄样申请驳回。内部角色均可操作，驳回原因必填。")
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.OPS_STAFF})
     @PostMapping("/batch-reject")
     public ApiResult<Map<String, Integer>> batchReject(
             @Valid @RequestBody SampleBatchActionRequest request,
@@ -1553,7 +1544,6 @@ public class SampleApplicationService extends BaseController {
      * @see SampleStatus#SHIPPING 快递中状态
      */
     @Operation(summary = "批量发货", description = "批量将 PENDING_SHIP 的寄样单标记为发货（SHIPPING），同时录入物流单号。仅运营角色可操作。")
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.OPS_STAFF})
     @PostMapping("/batch-ship")
     public ApiResult<Map<String, Integer>> batchShip(
             @Valid @RequestBody SampleBatchShipRequest request,
@@ -1641,7 +1631,6 @@ public class SampleApplicationService extends BaseController {
      * @throws BusinessException 状态参数不合法时抛出
      */
     @Operation(summary = "寄样导出 CSV", description = "导出寄样申请列表为 CSV 文件，支持状态筛选和关键字搜索。")
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.OPS_STAFF})
     @GetMapping("/exports")
     public void exportSamples(
             @Parameter(description = "寄样状态。") @RequestParam(required = false) String status,
@@ -1814,7 +1803,6 @@ public class SampleApplicationService extends BaseController {
      * @throws IOException CSV 写入响应输出流失败时抛出
      * @see #exportSamples(String, String, List, UUID, UUID, UUID, DataScope, Object, HttpServletResponse)
      */
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.OPS_STAFF})
     public void exportSamples(
             String status,
             String keyword,

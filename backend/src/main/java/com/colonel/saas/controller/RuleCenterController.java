@@ -1,11 +1,10 @@
 package com.colonel.saas.controller;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
-import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.annotation.RequirePermission;
 import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.common.result.PageResult;
-import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.dto.rulecenter.RuleCenterBatchUpdateRequest;
 import com.colonel.saas.dto.rulecenter.RuleCenterChangeLogView;
 import com.colonel.saas.dto.rulecenter.RuleCenterEventStatusResponse;
@@ -52,7 +51,7 @@ import java.util.UUID;
 @Tag(name = "规则中心", description = "业务规则维护入口，按分组展示与保存系统配置。")
 @RestController
 @RequestMapping("/rule-center")
-@RequireRoles({RoleCodes.ADMIN})
+@RequirePermission("rule-center:access")
 public class RuleCenterController extends BaseController {
 
     /** 规则中心服务，负责规则的 Schema 定义、校验、保存和变更日志管理 */

@@ -5,6 +5,7 @@ import com.colonel.saas.auth.dto.SysRoleCreateRequest;
 import com.colonel.saas.auth.dto.SysRoleUpdateRequest;
 import com.colonel.saas.domain.user.application.SysRoleApplication;
 import com.colonel.saas.vo.SysRoleVO;
+import com.colonel.saas.vo.AuthorizationPermissionVO;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -32,6 +33,18 @@ public class SysRoleService {
 
     public List<SysRoleVO> findAllEnabled() {
         return sysRoleApplication.findAllEnabled();
+    }
+
+    public List<AuthorizationPermissionVO> findPermissionCatalog() {
+        return sysRoleApplication.findPermissionCatalog();
+    }
+
+    public List<String> findPermissionCodes(UUID roleId) {
+        return sysRoleApplication.findPermissionCodes(roleId);
+    }
+
+    public void assignPermissions(UUID roleId, List<String> permissionCodes, UUID currentUserId) {
+        sysRoleApplication.assignPermissions(roleId, permissionCodes, currentUserId);
     }
 
     public SysRoleVO create(SysRoleCreateRequest request, UUID currentUserId) {

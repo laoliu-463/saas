@@ -1,6 +1,6 @@
 package com.colonel.saas.controller;
 
-import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.annotation.RequirePermission;
 import com.colonel.saas.auth.dto.DeptMemberPageRequest;
 import com.colonel.saas.auth.dto.GroupMemberMutationRequest;
 import com.colonel.saas.auth.dto.SysDeptCreateRequest;
@@ -10,7 +10,6 @@ import com.colonel.saas.auth.service.SysDeptService;
 import com.colonel.saas.auth.service.SysUserService;
 import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.result.ApiResult;
-import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.vo.DeptStatsVO;
 import com.colonel.saas.vo.SysDeptVO;
 import com.colonel.saas.vo.SysUserVO;
@@ -56,7 +55,7 @@ import java.util.UUID;
 @Tag(name = "系统部门", description = "组织/业务组（sys_dept）管理。")
 @RestController
 @RequestMapping({"/depts", "/departments"})
-@RequireRoles({RoleCodes.ADMIN, RoleCodes.CHANNEL_LEADER})
+@RequirePermission("sys-dept:access")
 public class SysDeptController extends BaseController {
 
     /** 系统部门服务，负责部门的增删改查、树形结构和统计查询 */

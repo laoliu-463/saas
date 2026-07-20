@@ -1,6 +1,6 @@
 package com.colonel.saas.controller;
 
-import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.annotation.RequirePermission;
 import com.colonel.saas.common.exception.GlobalExceptionHandler;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.service.ProductDisplayRuleService;
@@ -122,9 +122,9 @@ class ProductLibraryRepairControllerTest {
 
     @Test
     void controller_shouldRequireAdminRole() {
-        RequireRoles requireRoles = ProductLibraryRepairController.class.getAnnotation(RequireRoles.class);
+        RequirePermission requireRoles = ProductLibraryRepairController.class.getAnnotation(RequirePermission.class);
         assertThat(requireRoles).isNotNull();
-        assertThat(requireRoles.value()).containsExactly(RoleCodes.ADMIN);
+        assertThat(requireRoles.value()).isEqualTo("product-library-repair:access");
     }
 
     @Test

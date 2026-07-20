@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { ROLE_CODES } from '../constants/rbac'
+import { PERMISSION_CODES } from '../constants/permissions'
 import { createGuardWarningDeduper, resolveGuardDecision } from './guard'
 
 describe('resolveGuardDecision', () => {
@@ -11,8 +11,8 @@ describe('resolveGuardDecision', () => {
         toFullPath: '/orders',
         fromPath: '/login',
         isLoggedIn: false,
-        roleCodes: [],
-        requiredRoles: [ROLE_CODES.ADMIN],
+        permissionCodes: [],
+        requiredPermissions: [PERMISSION_CODES.SYS_USER_ACCESS],
         resolveHomePath: () => '/dashboard'
       })
     ).toEqual({ type: 'redirect', redirectTarget: '/login?redirect=%2Forders', reason: 'anonymous' })
@@ -25,7 +25,7 @@ describe('resolveGuardDecision', () => {
         toFullPath: '/login',
         fromPath: '/',
         isLoggedIn: false,
-        roleCodes: [],
+        permissionCodes: [],
         resolveHomePath: () => '/dashboard'
       })
     ).toEqual({ type: 'allow' })
@@ -38,7 +38,7 @@ describe('resolveGuardDecision', () => {
         toFullPath: '/login',
         fromPath: '/orders',
         isLoggedIn: true,
-        roleCodes: [ROLE_CODES.ADMIN],
+        permissionCodes: [PERMISSION_CODES.SYS_USER_ACCESS],
         resolveHomePath: () => '/system/users'
       })
     ).toEqual({ type: 'redirect', redirectTarget: '/system/users', reason: 'logged-in-login' })
@@ -51,23 +51,24 @@ describe('resolveGuardDecision', () => {
         toFullPath: '/',
         fromPath: '/orders',
         isLoggedIn: true,
-        roleCodes: [ROLE_CODES.ADMIN],
+        permissionCodes: [PERMISSION_CODES.SYS_USER_ACCESS],
         resolveHomePath: () => '/'
       })
     ).toEqual({ type: 'abort', redirectTarget: '/', reason: 'root' })
   })
 
-  it('redirects logged-in users with no roles back to login', () => {
+  it('keeps logged-in users with no grants authenticated and redirects denied routes to profile', () => {
     expect(
       resolveGuardDecision({
         toPath: '/orders',
         toFullPath: '/orders',
         fromPath: '/',
         isLoggedIn: true,
-        roleCodes: [],
-        resolveHomePath: () => '/dashboard'
+        permissionCodes: [],
+        requiredPermissions: [PERMISSION_CODES.ORDER_ACCESS],
+        resolveHomePath: () => '/profile'
       })
-    ).toEqual({ type: 'redirect', redirectTarget: '/login', reason: 'missing-role-codes' })
+    ).toEqual({ type: 'redirect', redirectTarget: '/profile', reason: 'access-denied' })
   })
 
   it('redirects root to the resolved home path', () => {
@@ -77,7 +78,7 @@ describe('resolveGuardDecision', () => {
         toFullPath: '/',
         fromPath: '/login',
         isLoggedIn: true,
-        roleCodes: [ROLE_CODES.CHANNEL_STAFF],
+        permissionCodes: [PERMISSION_CODES.PRODUCT_ACCESS],
         resolveHomePath: () => '/product'
       })
     ).toEqual({ type: 'redirect', redirectTarget: '/product', reason: 'root' })
@@ -90,22 +91,22 @@ describe('resolveGuardDecision', () => {
         toFullPath: '/system/users',
         fromPath: '/product',
         isLoggedIn: true,
-        roleCodes: [ROLE_CODES.CHANNEL_STAFF],
-        requiredRoles: [ROLE_CODES.ADMIN],
+        permissionCodes: [PERMISSION_CODES.PRODUCT_ACCESS],
+        requiredPermissions: [PERMISSION_CODES.SYS_USER_ACCESS],
         resolveHomePath: () => '/product'
       })
     ).toEqual({ type: 'redirect', redirectTarget: '/product', reason: 'access-denied' })
   })
 
-  it('allows logged-in users with matching roles', () => {
+  it('allows logged-in users with matching permissions', () => {
     expect(
       resolveGuardDecision({
         toPath: '/orders',
         toFullPath: '/orders',
         fromPath: '/dashboard',
         isLoggedIn: true,
-        roleCodes: [ROLE_CODES.ADMIN],
-        requiredRoles: [ROLE_CODES.ADMIN],
+        permissionCodes: [PERMISSION_CODES.SYS_USER_ACCESS],
+        requiredPermissions: [PERMISSION_CODES.SYS_USER_ACCESS],
         resolveHomePath: () => '/dashboard'
       })
     ).toEqual({ type: 'allow' })
@@ -118,7 +119,7 @@ describe('resolveGuardDecision', () => {
         toFullPath: '/',
         fromPath: '/orders',
         isLoggedIn: true,
-        roleCodes: [ROLE_CODES.ADMIN],
+        permissionCodes: [PERMISSION_CODES.SYS_USER_ACCESS],
         resolveHomePath: () => ''
       })
     ).toEqual({ type: 'redirect', redirectTarget: '/login', reason: 'root' })
@@ -131,7 +132,7 @@ describe('resolveGuardDecision', () => {
         toFullPath: '/login',
         fromPath: '/',
         isLoggedIn: true,
-        roleCodes: [ROLE_CODES.ADMIN],
+        permissionCodes: [PERMISSION_CODES.SYS_USER_ACCESS],
         resolveHomePath: () => 'dashboard/?tab=summary#top'
       })
     ).toEqual({ type: 'redirect', redirectTarget: '/dashboard', reason: 'logged-in-login' })
@@ -142,7 +143,7 @@ describe('resolveGuardDecision', () => {
         toFullPath: '',
         fromPath: '/',
         isLoggedIn: false,
-        roleCodes: [],
+        permissionCodes: [],
         resolveHomePath: () => '/dashboard'
       })
     ).toEqual({ type: 'redirect', redirectTarget: '/login', reason: 'anonymous' })
@@ -153,7 +154,7 @@ describe('resolveGuardDecision', () => {
         toFullPath: '/login',
         fromPath: '/',
         isLoggedIn: true,
-        roleCodes: [ROLE_CODES.ADMIN],
+        permissionCodes: [PERMISSION_CODES.SYS_USER_ACCESS],
         resolveHomePath: () => '?tab=summary'
       })
     ).toEqual({ type: 'redirect', redirectTarget: '/', reason: 'logged-in-login' })
@@ -166,8 +167,8 @@ describe('resolveGuardDecision', () => {
         toFullPath: '/system/douyin?oauth=success',
         fromPath: '/',
         isLoggedIn: false,
-        roleCodes: [],
-        requiredRoles: [ROLE_CODES.ADMIN],
+        permissionCodes: [],
+        requiredPermissions: [PERMISSION_CODES.SYS_USER_ACCESS],
         resolveHomePath: () => '/dashboard'
       })
     ).toEqual({
@@ -183,11 +184,11 @@ describe('createGuardWarningDeduper', () => {
     const shouldWarn = createGuardWarningDeduper()
 
     expect(
-      shouldWarn({ type: 'redirect', redirectTarget: '/dashboard', reason: 'root' }, '/', '/', [ROLE_CODES.ADMIN])
+      shouldWarn({ type: 'redirect', redirectTarget: '/dashboard', reason: 'root' }, '/', '/', [PERMISSION_CODES.SYS_USER_ACCESS])
     ).toBe(false)
     expect(
       shouldWarn({ type: 'redirect', redirectTarget: '/dashboard', reason: 'logged-in-login' }, '/', '/login', [
-        ROLE_CODES.ADMIN
+        PERMISSION_CODES.SYS_USER_ACCESS
       ])
     ).toBe(false)
   })
@@ -196,8 +197,8 @@ describe('createGuardWarningDeduper', () => {
     const shouldWarn = createGuardWarningDeduper()
     const decision = { type: 'redirect' as const, redirectTarget: '/product', reason: 'access-denied' }
 
-    expect(shouldWarn(decision, '/system/users', '/product', [ROLE_CODES.CHANNEL_STAFF])).toBe(true)
-    expect(shouldWarn(decision, '/system/users', '/product', [ROLE_CODES.CHANNEL_STAFF])).toBe(false)
-    expect(shouldWarn(decision, '/system/roles', '/product', [ROLE_CODES.CHANNEL_STAFF])).toBe(true)
+    expect(shouldWarn(decision, '/system/users', '/product', [PERMISSION_CODES.PRODUCT_ACCESS])).toBe(true)
+    expect(shouldWarn(decision, '/system/users', '/product', [PERMISSION_CODES.PRODUCT_ACCESS])).toBe(false)
+    expect(shouldWarn(decision, '/system/roles', '/product', [PERMISSION_CODES.PRODUCT_ACCESS])).toBe(true)
   })
 })

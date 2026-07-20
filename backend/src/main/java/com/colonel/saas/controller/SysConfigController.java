@@ -1,7 +1,7 @@
 package com.colonel.saas.controller;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
-import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.annotation.RequirePermission;
 import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.common.result.PageResult;
@@ -46,7 +46,7 @@ import java.util.UUID;
 @Tag(name = "系统配置", description = "系统配置管理接口，提供配置项的增删改查和分组查询。")
 @RestController
 @RequestMapping("/configs")
-@RequireRoles({RoleCodes.ADMIN})
+@RequirePermission("sys-config:access")
 public class SysConfigController extends BaseController {
 
     /** 系统配置服务，负责配置项的增删改查和分组查询 */
@@ -109,7 +109,7 @@ public class SysConfigController extends BaseController {
      */
     @Operation(summary = "分组查询配置", description = "返回按 configGroup 分组的启用配置项，供业务模块直接使用。")
     @GetMapping("/grouped")
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.OPS_STAFF})
+    @RequirePermission("sys-config:grouped")
     public ApiResult<Map<String, List<SystemConfig>>> grouped(
             @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
         return ok(sysConfigService.findGrouped(hasAdminRole(roleCodes)));

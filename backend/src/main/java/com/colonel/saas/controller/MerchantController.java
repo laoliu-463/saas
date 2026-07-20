@@ -1,10 +1,9 @@
 package com.colonel.saas.controller;
 
-import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.annotation.RequirePermission;
 import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.common.result.PageResult;
-import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.dto.talent.OverrideAssigneeRequest;
 import com.colonel.saas.entity.Merchant;
 import com.colonel.saas.service.MerchantService;
@@ -46,7 +45,7 @@ import java.util.UUID;
 @Tag(name = "商家管理", description = "商家归属与基本信息管理。")
 @RestController
 @RequestMapping("/merchants")
-@RequireRoles({RoleCodes.ADMIN})
+@RequirePermission("merchant:access")
 public class MerchantController extends BaseController {
 
     /** 商家服务，负责合作方列表、详情、商品查询和归属覆盖等操作 */
@@ -81,7 +80,7 @@ public class MerchantController extends BaseController {
      */
     @Operation(summary = "查询合作方列表", description = "从活动商品快照和商家沉淀数据中查询商家型合作方，用于商品域 list_partners。")
     @GetMapping
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF})
+    @RequirePermission("merchant:list-partners")
     public ApiResult<PageResult<PartnerVO>> listPartners(
             @RequestParam(required = false) String keyword,
             @RequestParam(name = "type", required = false) String partnerType,
@@ -109,7 +108,7 @@ public class MerchantController extends BaseController {
      */
     @Operation(summary = "查询合作方详情", description = "查询商家型合作方的基础信息和商品聚合统计，用于商品域 get_partner_detail。")
     @GetMapping("/{id}")
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF})
+    @RequirePermission("merchant:get-partner-detail")
     public ApiResult<PartnerDetailVO> getPartnerDetail(
             @Parameter(description = "合作方 ID，商家型通常为 shop_id 或 merchant_id。") @PathVariable("id") String partnerId,
             @RequestParam(name = "type", required = false) String partnerType) {
@@ -136,7 +135,7 @@ public class MerchantController extends BaseController {
      */
     @Operation(summary = "查询合作方商品", description = "分页查询商家型合作方关联的活动商品快照，用于商品域 get_partner_products。")
     @GetMapping("/{id}/products")
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF})
+    @RequirePermission("merchant:list-partner-products")
     public ApiResult<PageResult<PartnerProductVO>> listPartnerProducts(
             @Parameter(description = "合作方 ID；商家型为 shop_id/merchant_id，团长型为 colonel_buyin_id。") @PathVariable("id") String partnerId,
             @RequestParam(name = "type", required = false) String partnerType,

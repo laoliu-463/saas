@@ -2,8 +2,7 @@ package com.colonel.saas.controller;
 
 import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.result.ApiResult;
-import com.colonel.saas.constant.RoleCodes;
-import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.annotation.RequirePermission;
 import com.colonel.saas.service.ProductPinService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -29,7 +28,7 @@ import java.util.UUID;
  */
 @Tag(name = "活动商品置顶", description = "招商商品置顶与取消置顶接口。")
 @RequestMapping("/colonel/activities/{activityId}/products")
-@RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.ADMIN})
+@RequirePermission("colonel-activity-product-pin:access")
 @RestController
 public class ColonelActivityProductPinController extends BaseController {
 
@@ -40,7 +39,7 @@ public class ColonelActivityProductPinController extends BaseController {
     }
 
     @Operation(summary = "招商置顶商品", description = "置顶 24 小时，每位招商最多 10 个规格（P-05）。")
-    @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF})
+    @RequirePermission("colonel-activity-product-pin:pin-product")
     @PostMapping("/{productId}/pin")
     public ApiResult<Map<String, Object>> pinProduct(
             @Parameter(description = "团长活动 ID。") @PathVariable String activityId,
@@ -56,7 +55,7 @@ public class ColonelActivityProductPinController extends BaseController {
     }
 
     @Operation(summary = "取消招商置顶", description = "取消当前商品的置顶状态。")
-    @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF})
+    @RequirePermission("colonel-activity-product-pin:unpin-product")
     @DeleteMapping("/{productId}/pin")
     public ApiResult<Map<String, Object>> unpinProduct(
             @Parameter(description = "团长活动 ID。") @PathVariable String activityId,

@@ -1,6 +1,6 @@
 package com.colonel.saas.controller;
 
-import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.annotation.RequirePermission;
 import com.colonel.saas.auth.dto.SysRoleCreateRequest;
 import com.colonel.saas.auth.dto.SysRoleUpdateRequest;
 import com.colonel.saas.auth.service.SysMenuService;
@@ -9,8 +9,8 @@ import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.common.result.PageResult;
-import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.vo.SysRoleVO;
+import com.colonel.saas.vo.AuthorizationPermissionVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -53,7 +53,7 @@ import java.util.UUID;
 @Tag(name = "系统角色", description = "系统角色管理接口，包括分页、详情、启用列表、新增、编辑与删除。")
 @RestController
 @RequestMapping("/roles")
-@RequireRoles({RoleCodes.ADMIN})
+@RequirePermission("sys-role:access")
 public class SysRoleController extends BaseController {
 
     /** 角色服务，负责角色的增删改查 */
@@ -152,6 +152,28 @@ public class SysRoleController extends BaseController {
             @RequestAttribute(value = "deptId", required = false) UUID deptId,
             @RequestAttribute(value = "dataScope", required = false) DataScope dataScope) {
         return ok(sysRoleService.findAllEnabled());
+    }
+
+    @Operation(summary = "权限目录", description = "查询可分配给角色的全部启用权限。")
+    @GetMapping("/permissions")
+    public ApiResult<List<AuthorizationPermissionVO>> permissionCatalog() {
+        return ok(sysRoleService.findPermissionCatalog());
+    }
+
+    @Operation(summary = "角色权限", description = "查询指定角色当前拥有的权限编码。")
+    @GetMapping("/{id}/permissions")
+    public ApiResult<List<String>> rolePermissions(@PathVariable("id") UUID id) {
+        return ok(sysRoleService.findPermissionCodes(id));
+    }
+
+    @Operation(summary = "分配角色权限", description = "以请求中的权限编码覆盖角色当前权限。")
+    @PutMapping("/{id}/permissions")
+    public ApiResult<Void> assignRolePermissions(
+            @PathVariable("id") UUID id,
+            @RequestBody List<String> permissionCodes,
+            @RequestAttribute("userId") UUID userId) {
+        sysRoleService.assignPermissions(id, permissionCodes, userId);
+        return ok();
     }
 
     /**

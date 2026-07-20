@@ -1,9 +1,8 @@
 package com.colonel.saas.controller;
 
-import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.annotation.RequirePermission;
 import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.result.ApiResult;
-import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.service.ProductSyncDryRunProbeService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -17,7 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @RequestMapping("/product-sync-probes")
-@RequireRoles({RoleCodes.ADMIN})
+@RequirePermission("product-sync-probe:access")
 @Tag(name = "商品同步只读探针")
 public class ProductSyncProbeController extends BaseController {
 

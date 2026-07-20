@@ -1,10 +1,9 @@
 package com.colonel.saas.controller;
 
-import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.annotation.RequirePermission;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.common.result.PageResult;
-import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.domain.event.DomainEventOutbox;
 import com.colonel.saas.domain.event.DomainEventOutboxService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -66,7 +65,7 @@ public class OutboxAdminController {
      * @return 分页后的 Outbox 事件列表
      */
     @Operation(summary = "Outbox 事件列表")
-    @RequireRoles({RoleCodes.ADMIN})
+    @RequirePermission("outbox-admin:list")
     @GetMapping
     public ApiResult<PageResult<DomainEventOutbox>> list(
             @RequestParam(required = false) String status,
@@ -98,7 +97,7 @@ public class OutboxAdminController {
      * @throws com.colonel.saas.common.exception.BusinessException 事件不存在或状态不允许重试
      */
     @Operation(summary = "重试 DEAD Outbox 事件")
-    @RequireRoles({RoleCodes.ADMIN})
+    @RequirePermission("outbox-admin:retry")
     @PostMapping("/{id}/retry")
     public ApiResult<Void> retry(@PathVariable("id") UUID eventId) {
         domainEventOutboxService.retryDeadEvent(eventId);

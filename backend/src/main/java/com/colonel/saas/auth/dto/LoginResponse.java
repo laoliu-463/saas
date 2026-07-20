@@ -105,6 +105,10 @@ public class LoginResponse {
     @Schema(description = "角色编码列表")
     private List<String> roleCodes;
 
+    /** Stable RBAC permission codes granted through active roles. */
+    @Schema(description = "权限编码列表")
+    private List<String> permissionCodes;
+
     /**
      * 登录用户名，对应 sys_user.username，唯一约束.
      * <p>

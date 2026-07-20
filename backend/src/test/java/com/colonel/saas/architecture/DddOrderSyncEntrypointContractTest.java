@@ -31,11 +31,11 @@ class DddOrderSyncEntrypointContractTest {
                         "order2704SettlementDryRunService.dryRun(command)");
 
         assertThat(controller)
-                .containsPattern("@RequireRoles\\(\\{RoleCodes\\.ADMIN}\\)\\s+@PostMapping\\(\"/sync\"\\)")
-                .containsPattern("@RequireRoles\\(\\{RoleCodes\\.ADMIN}\\)\\s+@PostMapping\\(\"/sync-range\"\\)")
-                .containsPattern("@RequireRoles\\(\\{RoleCodes\\.ADMIN}\\)\\s+@PostMapping\\(\"/6468-pagination-dry-run\"\\)")
-                .containsPattern("@RequireRoles\\(\\{RoleCodes\\.ADMIN}\\)\\s+@PostMapping\\(\"/1603-settlement-dry-run\"\\)")
-                .containsPattern("@RequireRoles\\(\\{RoleCodes\\.ADMIN}\\)\\s+@PostMapping\\(\"/2704-settlement-dry-run\"\\)");
+                .containsPattern("@RequirePermission\\(\"order:sync-orders\"\\)\\s+@PostMapping\\(\"/sync\"\\)")
+                .containsPattern("@RequirePermission\\(\"order:sync-orders-by-range\"\\)\\s+@PostMapping\\(\"/sync-range\"\\)")
+                .containsPattern("@RequirePermission\\(\"order:dry-run6468-pagination\"\\)\\s+@PostMapping\\(\"/6468-pagination-dry-run\"\\)")
+                .containsPattern("@RequirePermission\\(\"order:dry-run1603-settlement\"\\)\\s+@PostMapping\\(\"/1603-settlement-dry-run\"\\)")
+                .containsPattern("@RequirePermission\\(\"order:dry-run2704-settlement\"\\)\\s+@PostMapping\\(\"/2704-settlement-dry-run\"\\)");
     }
 
     @Test

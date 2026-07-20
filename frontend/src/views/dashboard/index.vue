@@ -115,7 +115,8 @@ import { computed, onMounted, ref } from 'vue'
 import PageHeader from '../../components/PageHeader.vue'
 import { getSummary } from '../../api/dashboard'
 import { useAuthStore } from '../../stores/auth'
-import { ROLE_CODES, hasAccess, hasOnlyCanonicalRole } from '../../constants/rbac'
+import { ROLE_CODES, hasOnlyCanonicalRole } from '../../constants/rbac'
+import { PERMISSION_CODES, hasPermission } from '../../constants/permissions'
 import { useDelayedFlag } from '../../utils/delayedFlag'
 
 /** 指标卡片数据项 */
@@ -156,6 +157,7 @@ const delayedLoading = useDelayedFlag(loading, 200)
 /** 骨架屏：首次加载中且尚未初始化时显示 */
 const showSkeleton = computed(() => delayedLoading.value && !initialized.value)
 const ROLE = ROLE_CODES
+const PERMISSION = PERMISSION_CODES
 
 /**
  * 判断当前用户是否仅为业务员（BIZ_STAFF 且不是 ADMIN/BIZ_LEADER）
@@ -196,21 +198,21 @@ const rankingTitle = computed(() => {
 })
 
 /**
- * 快捷入口列表：按角色过滤可见项，并对个人视角重命名标签
+ * 快捷入口列表：按权限过滤可见项，并对个人视角重命名标签
  * 例如 CHANNEL_STAFF 看到"我的达人"而非"达人 CRM"
  */
 const quickEntries = computed(() => {
-  const roles = authStore.roleCodes
+  const permissions = authStore.permissionCodes
   return [
-    { label: '订单归因', path: '/orders', roles: [ROLE.BIZ_LEADER, ROLE.CHANNEL_LEADER, ROLE.ADMIN] },
-    { label: '商品库', path: '/product', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] },
-    { label: '商品管理', path: '/product/manage', roles: [ROLE.BIZ_LEADER] },
-    { label: '我的商品', path: '/product/manage/products', roles: [ROLE.BIZ_STAFF] },
-    { label: '达人 CRM', path: '/talent', roles: [ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] },
-    { label: '数据看板', path: '/data', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] },
-    { label: '合作单', path: '/sample', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] }
+    { label: '订单归因', path: '/orders', permissions: [PERMISSION.ORDER_ACCESS] },
+    { label: '商品库', path: '/product', permissions: [PERMISSION.PRODUCT_ACCESS] },
+    { label: '商品管理', path: '/product/manage', permissions: [PERMISSION.PRODUCT_MANAGE_ACCESS] },
+    { label: '我的商品', path: '/product/manage/products', permissions: [PERMISSION.PRODUCT_MANAGE_ACCESS] },
+    { label: '达人 CRM', path: '/talent', permissions: [PERMISSION.TALENT_ACCESS] },
+    { label: '数据看板', path: '/data', permissions: [PERMISSION.DATA_ACCESS] },
+    { label: '合作单', path: '/sample', permissions: [PERMISSION.SAMPLE_ACCESS] }
   ]
-    .filter((entry) => hasAccess(roles, entry.roles))
+    .filter((entry) => hasPermission(permissions, entry.permissions))
     .map((entry) => {
       if (isChannelStaffOnly.value) {
         if (entry.path === '/talent') return { ...entry, label: '我的达人' }

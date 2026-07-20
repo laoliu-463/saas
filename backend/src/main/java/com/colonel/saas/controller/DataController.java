@@ -4,14 +4,13 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.annotation.RequirePermission;
 import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.common.result.PageResult;
 import com.colonel.saas.config.DddRefactorProperties;
-import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.domain.order.facade.DataOrderQueryFacade;
 import com.colonel.saas.domain.performance.facade.ExclusiveMerchantReadFacade;
 import com.colonel.saas.domain.performance.facade.OrderPerformanceQueryFacade;
@@ -77,7 +76,7 @@ import java.util.UUID;
 @Tag(name = "数据平台", description = "数据页专用接口，包括订单数据页、核心指标、导出与运营监控。")
 @RestController
 @RequestMapping
-@RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF})
+@RequirePermission("data:access")
 public class DataController extends DataApplicationService {
 
     public DataController(
@@ -215,7 +214,7 @@ public class DataController extends DataApplicationService {
     }
 
     @GetMapping("/orders/exports")
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER})
+    @RequirePermission("data:export-orders")
     @Override
     public void exportOrders(
             @Parameter(description = "订单号，支持模糊匹配。") @RequestParam(required = false) String orderId,
@@ -241,7 +240,7 @@ public class DataController extends DataApplicationService {
     }
 
     @GetMapping("/orders/exports/detail")
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER})
+    @RequirePermission("data:export-order-detail")
     @Override
     public void exportOrderDetail(
             @Parameter(description = "订单号") @RequestParam(required = false) String orderId,
@@ -273,7 +272,7 @@ public class DataController extends DataApplicationService {
     }
 
     @GetMapping("/operations/exclusive-talents")
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER})
+    @RequirePermission("data:get-exclusive-talent-status")
     @Override
     public ApiResult<PageResult<ExclusiveTalentStatusVO>> getExclusiveTalentStatus(
             @Parameter(description = "页码，从 1 开始。") @RequestParam(defaultValue = "1") @Min(1) long page,
@@ -288,7 +287,7 @@ public class DataController extends DataApplicationService {
     }
 
     @GetMapping("/operations/exclusive-merchants")
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER})
+    @RequirePermission("data:get-exclusive-merchant-status")
     @Override
     public ApiResult<PageResult<ExclusiveMerchantStatusVO>> getExclusiveMerchantStatus(
             @Parameter(description = "页码，从 1 开始。") @RequestParam(defaultValue = "1") @Min(1) long page,
@@ -303,7 +302,7 @@ public class DataController extends DataApplicationService {
     }
 
     @GetMapping("/activities/exports")
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER})
+    @RequirePermission("data:export-activities")
     @Override
     public void exportActivities(
             @Parameter(description = "活动名称关键字。") @RequestParam(required = false) String activityName,

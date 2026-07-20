@@ -1,6 +1,6 @@
 package com.colonel.saas.controller;
 
-import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.annotation.RequirePermission;
 import com.colonel.saas.auth.service.SysUserService;
 import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.service.ColonelActivityListSyncService;
@@ -8,7 +8,6 @@ import lombok.extern.slf4j.Slf4j;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.exception.UpstreamErrorCode;
 import com.colonel.saas.common.result.ApiResult;
-import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.douyin.DouyinApiException;
 import com.colonel.saas.entity.ColonelsettlementActivity;
 import com.colonel.saas.entity.SysUser;
@@ -54,7 +53,7 @@ import java.util.UUID;
 @RestController
 @Tag(name = "团长活动管理", description = "团长活动列表及活动下商品查询接口。")
 @RequestMapping("/colonel/activities")
-@RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.ADMIN, RoleCodes.BIZ_STAFF})
+@RequirePermission("colonel-activity:access")
 public class ColonelActivityController extends BaseController {
 
     private static final Duration ACTIVITY_LIST_CACHE_TTL = Duration.ofSeconds(60);
@@ -139,7 +138,7 @@ public class ColonelActivityController extends BaseController {
     }
 
     @Operation(summary = "分配活动招商组长", description = "管理员将活动分配给招商组长，并级联该活动下商品负责人。")
-    @RequireRoles({RoleCodes.ADMIN})
+    @RequirePermission("colonel-activity:assign-activity")
     @PutMapping("/{activityId}/assignee")
     public ApiResult<Map<String, Object>> assignActivity(
             @Parameter(description = "团长活动 ID。") @PathVariable("activityId") String activityId,
@@ -518,7 +517,7 @@ public class ColonelActivityController extends BaseController {
 
     @Operation(summary = "触发活动列表异步同步", description = "异步拉取抖店活动列表，更新本地活动状态/名称/时间窗口。返回 jobId 用于轮询状态。")
     @PostMapping("/sync")
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER})
+    @RequirePermission("colonel-activity:trigger-activity-list-sync")
     public ApiResult<?> triggerActivityListSync(
             @RequestAttribute(value = "userId", required = false) UUID userId) {
         ColonelActivityListSyncService.SyncTriggerResult result = activityListSyncService.triggerSync(userId);

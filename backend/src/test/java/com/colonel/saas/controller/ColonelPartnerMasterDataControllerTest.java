@@ -27,7 +27,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * 团长主数据控制器单元测试。
  *
  * <p>覆盖 3 类场景：正常返回 / 空数据 / 鉴权失败。
- * <p>注意：{@code standaloneSetup} 不会激活 {@code @RequireRoles} 的 AOP 切面，
+ * <p>注意：{@code standaloneSetup} 不会激活 {@code @RequirePermission} 的 AOP 切面，
  * 因此鉴权失败实际由 Spring Security 过滤器链处理，本测试只能验证 controller 正常委托 service。
  * 鉴权失败的端到端验证进入 real-pre 联调或 {@code ColonelActivityControllerTest#assignee_returns403WhenNonAdmin}。
  */

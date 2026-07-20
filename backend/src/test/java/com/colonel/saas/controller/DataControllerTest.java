@@ -1,6 +1,6 @@
 package com.colonel.saas.controller;
 
-import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.annotation.RequirePermission;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -1426,18 +1426,18 @@ class DataControllerTest {
                 jakarta.servlet.http.HttpServletResponse.class
         );
 
-        assertThat(exportOrders.getAnnotation(RequireRoles.class)).isNotNull();
-        assertThat(exportOrders.getAnnotation(RequireRoles.class).value())
-                .containsExactly(RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER);
-        assertThat(getExclusiveTalentStatus.getAnnotation(RequireRoles.class)).isNotNull();
-        assertThat(getExclusiveTalentStatus.getAnnotation(RequireRoles.class).value())
-                .containsExactly(RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER);
-        assertThat(getExclusiveMerchantStatus.getAnnotation(RequireRoles.class)).isNotNull();
-        assertThat(getExclusiveMerchantStatus.getAnnotation(RequireRoles.class).value())
-                .containsExactly(RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER);
-        assertThat(exportActivities.getAnnotation(RequireRoles.class)).isNotNull();
-        assertThat(exportActivities.getAnnotation(RequireRoles.class).value())
-                .containsExactly(RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER);
+        assertThat(exportOrders.getAnnotation(RequirePermission.class)).isNotNull();
+        assertThat(exportOrders.getAnnotation(RequirePermission.class).value())
+                .isEqualTo("data:export-orders");
+        assertThat(getExclusiveTalentStatus.getAnnotation(RequirePermission.class)).isNotNull();
+        assertThat(getExclusiveTalentStatus.getAnnotation(RequirePermission.class).value())
+                .isEqualTo("data:get-exclusive-talent-status");
+        assertThat(getExclusiveMerchantStatus.getAnnotation(RequirePermission.class)).isNotNull();
+        assertThat(getExclusiveMerchantStatus.getAnnotation(RequirePermission.class).value())
+                .isEqualTo("data:get-exclusive-merchant-status");
+        assertThat(exportActivities.getAnnotation(RequirePermission.class)).isNotNull();
+        assertThat(exportActivities.getAnnotation(RequirePermission.class).value())
+                .isEqualTo("data:export-activities");
     }
 
     @Test
@@ -1840,8 +1840,8 @@ class DataControllerTest {
                 UUID.class, UUID.class, DataScope.class,
                 jakarta.servlet.http.HttpServletResponse.class
         );
-        assertThat(exportOrderDetail.getAnnotation(RequireRoles.class)).isNotNull();
-        assertThat(exportOrderDetail.getAnnotation(RequireRoles.class).value())
-                .containsExactly(RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER);
+        assertThat(exportOrderDetail.getAnnotation(RequirePermission.class)).isNotNull();
+        assertThat(exportOrderDetail.getAnnotation(RequirePermission.class).value())
+                .isEqualTo("data:export-order-detail");
     }
 }

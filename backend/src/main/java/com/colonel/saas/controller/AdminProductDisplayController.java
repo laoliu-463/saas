@@ -1,10 +1,9 @@
 package com.colonel.saas.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.annotation.RequirePermission;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.common.result.PageResult;
-import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.dto.display.ForceDisplayCancelRequest;
 import com.colonel.saas.dto.display.ForceDisplaySwitchRequest;
 import com.colonel.saas.entity.ProductDisplayAuditLog;
@@ -80,7 +79,7 @@ public class AdminProductDisplayController {
      * @throws com.colonel.saas.common.exception.BusinessException 展示记录不存在或参数校验失败
      */
     @Operation(summary = "管理员强制切换展示记录")
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER})
+    @RequirePermission("admin-product-display:force-switch")
     @PostMapping("/force-switch")
     public ApiResult<Void> forceSwitch(
             @Valid @RequestBody ForceDisplaySwitchRequest request,
@@ -112,7 +111,7 @@ public class AdminProductDisplayController {
      * @throws com.colonel.saas.common.exception.BusinessException 展示记录不存在
      */
     @Operation(summary = "取消管理员强制展示")
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER})
+    @RequirePermission("admin-product-display:cancel-force")
     @PostMapping("/cancel-force")
     public ApiResult<Void> cancelForce(
             @Valid @RequestBody ForceDisplayCancelRequest request,
@@ -140,7 +139,7 @@ public class AdminProductDisplayController {
      * @return 分页后的展示规则审计日志列表
      */
     @Operation(summary = "展示规则审计日志")
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF})
+    @RequirePermission("admin-product-display:audit-logs")
     @GetMapping("/audit-logs")
     public ApiResult<PageResult<ProductDisplayAuditLog>> auditLogs(
             @Parameter(description = "商品 ID") @RequestParam(required = false) String productId,

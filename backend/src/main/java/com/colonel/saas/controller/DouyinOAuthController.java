@@ -1,9 +1,8 @@
 package com.colonel.saas.controller;
 
-import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.annotation.RequirePermission;
 import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.result.ApiResult;
-import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.douyin.DouyinOAuthService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -80,7 +79,7 @@ public class DouyinOAuthController extends BaseController {
      */
     @Operation(summary = "生成抖店授权地址", description = "管理员点击后跳转抖店授权页，授权完成后由 callback 自动换取 Token。")
     @SecurityRequirement(name = "bearerAuth")
-    @RequireRoles({RoleCodes.ADMIN})
+    @RequirePermission("douyin-o-auth:authorize-url")
     @GetMapping("/authorize-url")
     public ApiResult<DouyinOAuthService.AuthorizeUrlResult> authorizeUrl(
             @Parameter(description = "抖音应用 appId；不传则使用系统默认应用配置。") @RequestParam(name = "appId", required = false) String appId) {

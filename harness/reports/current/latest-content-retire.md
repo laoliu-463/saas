@@ -2,10 +2,10 @@
 
 ## Metadata
 
-- Time: 2026-07-18 20:11:22 +08:00
+- Time: 2026-07-20 15:43:31 +08:00
 - Action: Plan
 - DryRun: False
-- Reason: verify: validate douyin token credentials and refresh flow
+- Reason: docs(evidence): verify RBAC after main sync
 - Manifest: (none)
 - ArchiveRoot: harness/archive/retired-content
 - AllowSourceCode: False
@@ -18,9 +18,6 @@
 - docs/deploy/07-Jenkins自动化部署规划.md [document-debt] -> review/resolve-from-debt-register; evidence=listed in harness/rules/state/snapshots/05-*.md debt register
 - docs/归档/旧版V2.2完整方案.md [document-debt] -> review/resolve-from-debt-register; evidence=listed in harness/rules/state/snapshots/05-*.md debt register
 - docs/领域/业绩域.md [document-debt] -> review/resolve-from-debt-register; evidence=listed in harness/rules/state/snapshots/05-*.md debt register
-- out [generated-output-directory] -> review/delete-after-retention; evidence=generated output directory exists
-- playwright-report [generated-output-directory] -> review/delete-after-retention; evidence=generated output directory exists
-- test-results [generated-output-directory] -> review/delete-after-retention; evidence=generated output directory exists
 ~~~
 
 ## Planned / Applied Operations

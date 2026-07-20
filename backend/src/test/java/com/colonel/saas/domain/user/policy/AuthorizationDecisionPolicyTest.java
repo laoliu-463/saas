@@ -62,7 +62,7 @@ class AuthorizationDecisionPolicyTest {
                 new PermissionCode("sample:read"),
                 snapshot);
 
-        assertDomainScopeDenied(decision, null);
+        assertDomainScopeDenied(decision, "sample");
     }
 
     @Test

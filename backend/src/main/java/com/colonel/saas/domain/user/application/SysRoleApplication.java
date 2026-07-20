@@ -8,9 +8,11 @@ import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.entity.SysRole;
 import com.colonel.saas.mapper.SysRoleMapper;
+import com.colonel.saas.mapper.SysRolePermissionMapper;
 import com.colonel.saas.mapper.SysUserRoleMapper;
 import com.colonel.saas.service.OperationLogService;
 import com.colonel.saas.vo.SysRoleVO;
+import com.colonel.saas.vo.AuthorizationPermissionVO;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,6 +21,8 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
+import java.util.ArrayList;
+import java.util.TreeSet;
 
 /**
  * 用户域角色管理应用服务。
@@ -40,14 +44,17 @@ public class SysRoleApplication {
     private final SysRoleMapper sysRoleMapper;
     private final SysUserRoleMapper sysUserRoleMapper;
     private final OperationLogService operationLogService;
+    private final SysRolePermissionMapper sysRolePermissionMapper;
 
     public SysRoleApplication(
             SysRoleMapper sysRoleMapper,
             SysUserRoleMapper sysUserRoleMapper,
-            OperationLogService operationLogService) {
+            OperationLogService operationLogService,
+            SysRolePermissionMapper sysRolePermissionMapper) {
         this.sysRoleMapper = sysRoleMapper;
         this.sysUserRoleMapper = sysUserRoleMapper;
         this.operationLogService = operationLogService;
+        this.sysRolePermissionMapper = sysRolePermissionMapper;
     }
 
     public IPage<SysRoleVO> findPage(long page, long size, String keyword, Integer status) {
@@ -61,6 +68,50 @@ public class SysRoleApplication {
 
     public List<SysRoleVO> findAllEnabled() {
         return sysRoleMapper.findAll(1);
+    }
+
+    public List<AuthorizationPermissionVO> findPermissionCatalog() {
+        return sysRolePermissionMapper.findCatalog();
+    }
+
+    public List<String> findPermissionCodes(UUID roleId) {
+        requireRole(roleId);
+        return sysRolePermissionMapper.findPermissionCodesByRoleId(roleId);
+    }
+
+    @Transactional
+    public void assignPermissions(UUID roleId, List<String> permissionCodes, UUID currentUserId) {
+        SysRole role = requireRole(roleId);
+        List<String> requested = permissionCodes == null
+                ? List.of()
+                : new ArrayList<>(new TreeSet<>(permissionCodes.stream()
+                        .map(code -> new com.colonel.saas.domain.user.api.PermissionCode(code).value())
+                        .toList()));
+        List<String> current = sysRolePermissionMapper.findPermissionCodesByRoleId(roleId);
+        if (current.equals(requested)) {
+            return;
+        }
+
+        List<UUID> permissionIds = requested.stream()
+                .map(code -> sysRolePermissionMapper.findPermissionIdByCode(code)
+                        .orElseThrow(() -> BusinessException.param("未知权限编码: " + code)))
+                .toList();
+        sysRolePermissionMapper.deleteByRoleId(roleId);
+        permissionIds.forEach(permissionId ->
+                sysRolePermissionMapper.insertGrant(roleId, permissionId, currentUserId));
+        int affectedUsers = sysRolePermissionMapper.bumpAssignedUserAuthorizationVersion(roleId);
+        operationLogService.recordSystemAction(
+                currentUserId,
+                "角色权限管理",
+                "更新角色权限",
+                "PUT",
+                "SysRolePermission",
+                roleId.toString(),
+                role.getRoleCode(),
+                "更新角色权限: role=" + role.getRoleCode()
+                        + ", before=" + current.size()
+                        + ", after=" + requested.size()
+                        + ", affectedUsers=" + affectedUsers);
     }
 
     @Transactional

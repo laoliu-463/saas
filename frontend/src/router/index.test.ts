@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { ROLE_CODES } from '../constants/rbac'
+import { PERMISSION_CODES } from '../constants/permissions'
 
 vi.mock('../views/Login.vue', () => ({ default: {} }))
 vi.mock('../views/layout/index.vue', () => ({ default: {} }))
@@ -35,7 +35,7 @@ interface RouteStub {
 
 interface AuthState {
   isLoggedIn: boolean
-  roleCodes: string[]
+  permissionCodes: string[]
   hydrateFromStorage: ReturnType<typeof vi.fn>
 }
 
@@ -59,19 +59,19 @@ vi.mock('vue-router', () => ({
       }),
       resolve: vi.fn((path: string) => {
         resolveCalls.push(path)
-        const rolesByPath: Record<string, string[] | undefined> = {
-          '/dashboard': [ROLE_CODES.BIZ_LEADER, ROLE_CODES.CHANNEL_LEADER, ROLE_CODES.ADMIN],
-          '/orders': [ROLE_CODES.BIZ_LEADER, ROLE_CODES.CHANNEL_LEADER, ROLE_CODES.ADMIN],
-          '/data': [ROLE_CODES.BIZ_LEADER, ROLE_CODES.BIZ_STAFF, ROLE_CODES.CHANNEL_LEADER, ROLE_CODES.CHANNEL_STAFF],
-          '/product': [ROLE_CODES.BIZ_LEADER, ROLE_CODES.BIZ_STAFF, ROLE_CODES.CHANNEL_LEADER, ROLE_CODES.CHANNEL_STAFF],
-          '/product/manage': [ROLE_CODES.BIZ_LEADER],
-          '/product/manage/products': [ROLE_CODES.BIZ_LEADER, ROLE_CODES.BIZ_STAFF],
-          '/talent': [ROLE_CODES.BIZ_STAFF, ROLE_CODES.CHANNEL_LEADER, ROLE_CODES.CHANNEL_STAFF],
-          '/sample': [ROLE_CODES.BIZ_LEADER, ROLE_CODES.BIZ_STAFF, ROLE_CODES.CHANNEL_LEADER, ROLE_CODES.CHANNEL_STAFF],
-          '/ops/shipping': [ROLE_CODES.OPS_STAFF],
-          '/system/users': [ROLE_CODES.ADMIN]
+        const permissionsByPath: Record<string, string[] | undefined> = {
+          '/dashboard': [PERMISSION_CODES.DASHBOARD_ACCESS],
+          '/orders': [PERMISSION_CODES.ORDER_ACCESS],
+          '/data': [PERMISSION_CODES.DATA_ACCESS],
+          '/product': [PERMISSION_CODES.PRODUCT_ACCESS],
+          '/product/manage': [PERMISSION_CODES.PRODUCT_MANAGE_ACCESS],
+          '/product/manage/products': [PERMISSION_CODES.PRODUCT_MANAGE_ACCESS],
+          '/talent': [PERMISSION_CODES.TALENT_ACCESS],
+          '/sample': [PERMISSION_CODES.SAMPLE_ACCESS],
+          '/ops/shipping': [PERMISSION_CODES.SHIPPING_ACCESS],
+          '/system/users': [PERMISSION_CODES.SYS_USER_ACCESS]
         }
-        return { matched: [{ meta: { roles: rolesByPath[path] } }] }
+        return { matched: [{ meta: { permissions: permissionsByPath[path] } }] }
       })
     }
   })
@@ -97,7 +97,7 @@ beforeEach(async () => {
   timingCalls.length = 0
   authState = {
     isLoggedIn: true,
-    roleCodes: [ROLE_CODES.ADMIN],
+    permissionCodes: Object.values(PERMISSION_CODES),
     hydrateFromStorage: vi.fn()
   }
   await import('./index')
@@ -157,10 +157,10 @@ describe('router guards', () => {
   it('redirects anonymous users to login with the original target and records beforeEach timing', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     authState.isLoggedIn = false
-    authState.roleCodes = []
+    authState.permissionCodes = []
 
     const result = beforeEachHook?.(
-      route('/orders', { roles: [ROLE_CODES.ADMIN] }),
+      route('/orders', { permissions: [PERMISSION_CODES.SYS_USER_ACCESS] }),
       route('/login')
     )
 
@@ -176,10 +176,10 @@ describe('router guards', () => {
   it('preserves douyin oauth callback query for anonymous users', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     authState.isLoggedIn = false
-    authState.roleCodes = []
+    authState.permissionCodes = []
 
     const result = beforeEachHook?.(
-      route('/system/douyin', { roles: [ROLE_CODES.ADMIN] }, '/system/douyin?oauth=success'),
+      route('/system/douyin', { permissions: [PERMISSION_CODES.SYS_USER_ACCESS] }, '/system/douyin?oauth=success'),
       route('/login')
     )
 
@@ -187,31 +187,33 @@ describe('router guards', () => {
     warnSpy.mockRestore()
   })
 
-  it('sends channel staff to the first channel-accessible home route', () => {
-    authState.roleCodes = [ROLE_CODES.CHANNEL_STAFF]
+  it('sends a product reader to the first granted home route', () => {
+    authState.permissionCodes = [PERMISSION_CODES.PRODUCT_ACCESS]
 
     const result = beforeEachHook?.(route('/', {}), route('/login'))
 
     expect(result).toBe('/product')
-    expect(resolveCalls).toEqual(['/product'])
+    expect(resolveCalls).toEqual(['/data', '/orders', '/product'])
   })
 
-  it('sends ops staff to the shipping home route', () => {
-    authState.roleCodes = [ROLE_CODES.OPS_STAFF]
+  it('sends a shipping operator to the shipping home route', () => {
+    authState.permissionCodes = [PERMISSION_CODES.SHIPPING_ACCESS]
 
     const result = beforeEachHook?.(route('/', {}), route('/login'))
 
     expect(result).toBe('/ops/shipping')
-    expect(resolveCalls).toEqual(['/ops/shipping'])
+    expect(resolveCalls).toEqual([
+      '/data', '/orders', '/product', '/product/manage', '/product/manage/products', '/talent', '/ops/shipping'
+    ])
   })
 
   it('does not collapse a composite business account into the ops-only home route', () => {
-    authState.roleCodes = [
-      ROLE_CODES.BIZ_LEADER,
-      ROLE_CODES.BIZ_STAFF,
-      ROLE_CODES.CHANNEL_LEADER,
-      ROLE_CODES.CHANNEL_STAFF,
-      ROLE_CODES.OPS_STAFF
+    authState.permissionCodes = [
+      PERMISSION_CODES.PRODUCT_MANAGE_ACCESS,
+      PERMISSION_CODES.ORDER_ACCESS,
+      PERMISSION_CODES.PRODUCT_ACCESS,
+      PERMISSION_CODES.DATA_ACCESS,
+      PERMISSION_CODES.SHIPPING_ACCESS
     ]
 
     const result = beforeEachHook?.(route('/', {}), route('/login'))
@@ -220,28 +222,28 @@ describe('router guards', () => {
     expect(resolveCalls).toEqual(['/data'])
   })
 
-  it('sends biz staff to product management when it is the first accessible home route', () => {
-    authState.roleCodes = [ROLE_CODES.BIZ_STAFF]
+  it('sends product management users to the first granted management route', () => {
+    authState.permissionCodes = [PERMISSION_CODES.PRODUCT_MANAGE_ACCESS]
 
     const result = beforeEachHook?.(route('/', {}), route('/login'))
 
-    expect(result).toBe('/product/manage/products')
-    expect(resolveCalls).toEqual(['/product/manage/products'])
+    expect(result).toBe('/product/manage')
+    expect(resolveCalls).toEqual(['/data', '/orders', '/product', '/product/manage'])
   })
 
-  it('registers the talent CRM route for biz staff', () => {
+  it('registers the talent CRM permission', () => {
     const allRoutes = flattenRoutes(routesConfig)
     const talentRoute = allRoutes.find((route) => route.path === 'talent') as {
-      meta?: { roles?: string[] }
+      meta?: { permissions?: string[] }
     } | undefined
 
-    expect(talentRoute?.meta?.roles).toEqual(
-      expect.arrayContaining([ROLE_CODES.BIZ_STAFF])
+    expect(talentRoute?.meta?.permissions).toEqual(
+      expect.arrayContaining([PERMISSION_CODES.TALENT_ACCESS])
     )
   })
 
   it('sends admin users through the default home candidates', () => {
-    authState.roleCodes = [ROLE_CODES.ADMIN]
+    authState.permissionCodes = Object.values(PERMISSION_CODES)
 
     const result = beforeEachHook?.(route('/', {}), route('/login'))
 
@@ -249,12 +251,12 @@ describe('router guards', () => {
     expect(resolveCalls).toEqual(['/data'])
   })
 
-  it('falls back to login when no home candidates are accessible', () => {
-    authState.roleCodes = ['unknown-role']
+  it('falls back to profile when no home candidates are accessible', () => {
+    authState.permissionCodes = ['unknown:permission']
 
     const result = beforeEachHook?.(route('/', {}), route('/login'))
 
-    expect(result).toBe('/login')
+    expect(result).toBe('/profile')
     expect(resolveCalls).toEqual([
       '/data',
       '/orders',
@@ -270,14 +272,14 @@ describe('router guards', () => {
 
   it('aborts loops and warns once for denied routes', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-    authState.roleCodes = [ROLE_CODES.CHANNEL_STAFF]
+    authState.permissionCodes = [PERMISSION_CODES.PRODUCT_ACCESS]
 
     const first = beforeEachHook?.(
-      route('/product', { roles: [ROLE_CODES.ADMIN] }),
+      route('/product', { permissions: [PERMISSION_CODES.SYS_USER_ACCESS] }),
       route('/system/users')
     )
     const duplicate = beforeEachHook?.(
-      route('/product', { roles: [ROLE_CODES.ADMIN] }),
+      route('/product', { permissions: [PERMISSION_CODES.SYS_USER_ACCESS] }),
       route('/system/users')
     )
 
@@ -288,15 +290,15 @@ describe('router guards', () => {
     warnSpy.mockRestore()
   })
 
-  it('allows matching roles', () => {
-    expect(beforeEachHook?.(route('/system/users', { roles: [ROLE_CODES.ADMIN] }), route('/dashboard', {}, ''))).toBe(true)
+  it('allows matching permissions', () => {
+    expect(beforeEachHook?.(route('/system/users', { permissions: [PERMISSION_CODES.SYS_USER_ACCESS] }), route('/dashboard', {}, ''))).toBe(true)
     expect(timingCalls[0]).toMatchObject({
       payload: { from: '(start)' }
     })
   })
 
   it('records afterEach timing and failure status', () => {
-    beforeEachHook?.(route('/dashboard', { roles: [ROLE_CODES.ADMIN] }), route('/login'))
+    beforeEachHook?.(route('/dashboard', { permissions: [PERMISSION_CODES.SYS_USER_ACCESS] }), route('/login'))
 
     afterEachHook?.(route('/dashboard'), route('/login'), { type: 4 })
 

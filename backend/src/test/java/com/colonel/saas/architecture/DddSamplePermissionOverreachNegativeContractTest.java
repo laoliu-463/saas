@@ -28,8 +28,9 @@ class DddSamplePermissionOverreachNegativeContractTest {
                 .contains("public void ensureCanExport(Object roleCodes)");
 
         assertThat(controller)
-                .contains("@RequireRoles({RoleCodes.ADMIN, RoleCodes.OPS_STAFF})")
-                .contains("@RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.OPS_STAFF})")
+                .contains("@RequirePermission(\"sample:batch-approve\")")
+                .contains("@RequirePermission(\"sample:batch-ship\")")
+                .contains("@RequirePermission(\"sample:export-samples\")")
                 .contains("@PostMapping(\"/batch-approve\")")
                 .contains("@PostMapping(\"/batch-reject\")")
                 .contains("@PostMapping(\"/batch-ship\")")
