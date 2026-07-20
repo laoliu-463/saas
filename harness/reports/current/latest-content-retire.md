@@ -2,10 +2,10 @@
 
 ## Metadata
 
-- Time: 2026-07-20 15:36:10 +08:00
+- Time: 2026-07-20 15:43:31 +08:00
 - Action: Plan
 - DryRun: False
-- Reason: test: align RBAC CI contracts
+- Reason: docs(evidence): verify RBAC after main sync
 - Manifest: (none)
 - ArchiveRoot: harness/archive/retired-content
 - AllowSourceCode: False
