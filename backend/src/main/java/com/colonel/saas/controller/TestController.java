@@ -2,9 +2,8 @@ package com.colonel.saas.controller;
 
 import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.result.ApiResult;
-import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.annotation.RequirePermission;
 import com.colonel.saas.config.OrderDerivedCacheKeys;
-import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.service.OrderSyncService;
 import com.colonel.saas.service.ShortTtlCacheService;
 import com.colonel.saas.testsupport.TestDataService;
@@ -41,7 +40,7 @@ import java.util.UUID;
 @RequestMapping("/test")
 @Profile("test")
 @ConditionalOnProperty(prefix = "app.test", name = "enabled", havingValue = "true")
-@RequireRoles({RoleCodes.ADMIN})
+@RequirePermission("test:access")
 @Tag(name = "测试工具", description = "仅用于测试环境的数据初始化、链路回放与状态推进工具")
 public class TestController extends BaseController {
 

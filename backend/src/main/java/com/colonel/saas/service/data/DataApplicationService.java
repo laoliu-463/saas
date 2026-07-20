@@ -5,7 +5,6 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.colonel.saas.annotation.RequireRoles;
 import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.BusinessException;
@@ -1224,7 +1223,6 @@ public class DataApplicationService extends BaseController {
 
     @Operation(summary = "导出订单CSV", description = "按筛选条件导出订单数据页 CSV。")
     @GetMapping("/orders/exports")
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER})
     public void exportOrders(
             @Parameter(description = "订单号，支持模糊匹配。") @RequestParam(required = false) String orderId,
             @Parameter(description = "订单状态，支持 ORDERED、SHIPPED、FINISHED、CANCELLED。") @RequestParam(required = false) String status,
@@ -1327,7 +1325,6 @@ public class DataApplicationService extends BaseController {
      */
     @Operation(summary = "导出订单明细CSV", description = "按筛选条件导出订单明细 CSV，含双轨金额。")
     @GetMapping("/orders/exports/detail")
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER})
     public void exportOrderDetail(
             @Parameter(description = "订单号") @RequestParam(required = false) String orderId,
             @Parameter(description = "订单状态") @RequestParam(required = false) String status,
@@ -1431,7 +1428,6 @@ public class DataApplicationService extends BaseController {
 
     @Operation(summary = "独家状态监控 - 达人", description = "分页查询达人独家状态监控数据。支持按月份、关键字、状态筛选。")
     @GetMapping("/operations/exclusive-talents")
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER})
     public ApiResult<PageResult<ExclusiveTalentStatusVO>> getExclusiveTalentStatus(
             @Parameter(description = "页码，从 1 开始。") @RequestParam(defaultValue = "1") @Min(1) long page,
             @Parameter(description = "每页条数。") @RequestParam(defaultValue = "10") @Min(1) @Max(200) long size,
@@ -1460,7 +1456,6 @@ public class DataApplicationService extends BaseController {
 
     @Operation(summary = "独家状态监控 - 商家", description = "分页查询商家独家状态监控数据。支持按月份、关键字、状态筛选。")
     @GetMapping("/operations/exclusive-merchants")
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER})
     public ApiResult<PageResult<ExclusiveMerchantStatusVO>> getExclusiveMerchantStatus(
             @Parameter(description = "页码，从 1 开始。") @RequestParam(defaultValue = "1") @Min(1) long page,
             @Parameter(description = "每页条数。") @RequestParam(defaultValue = "10") @Min(1) @Max(200) long size,
@@ -1489,7 +1484,6 @@ public class DataApplicationService extends BaseController {
 
     @Operation(summary = "导出活动列表CSV", description = "按活动名称筛选导出活动列表 CSV。")
     @GetMapping("/activities/exports")
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER})
     public void exportActivities(
             @Parameter(description = "活动名称关键字。") @RequestParam(required = false) String activityName,
             @RequestAttribute("userId") UUID userId,

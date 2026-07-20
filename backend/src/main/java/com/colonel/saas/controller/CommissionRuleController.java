@@ -1,11 +1,10 @@
 package com.colonel.saas.controller;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
-import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.annotation.RequirePermission;
 import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.common.result.PageResult;
-import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.entity.CommissionRule;
 import com.colonel.saas.service.CommissionRuleService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -44,7 +43,7 @@ import java.util.UUID;
 @Tag(name = "提成规则", description = "V2 差异化提成规则管理。")
 @RestController
 @RequestMapping("/commission-rules")
-@RequireRoles({RoleCodes.ADMIN})
+@RequirePermission("commission-rule:access")
 public class CommissionRuleController extends BaseController {
 
     /** 提成规则服务，负责提成规则的 CRUD 操作 */

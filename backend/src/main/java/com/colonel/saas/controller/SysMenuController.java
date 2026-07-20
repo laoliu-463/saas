@@ -1,13 +1,12 @@
 package com.colonel.saas.controller;
 
-import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.annotation.RequirePermission;
 import com.colonel.saas.auth.dto.SysMenuCreateRequest;
 import com.colonel.saas.auth.dto.SysMenuUpdateRequest;
 import com.colonel.saas.auth.service.SysMenuService;
 import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.result.ApiResult;
-import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.vo.SysMenuVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -96,7 +95,7 @@ public class SysMenuController extends BaseController {
      */
     @Operation(summary = "全量菜单树", description = "查询全部菜单树，仅管理员可用。")
     @GetMapping("/all")
-    @RequireRoles({RoleCodes.ADMIN})
+    @RequirePermission("sys-menu:all-tree")
     public ApiResult<List<SysMenuVO>> allTree(
             @Parameter(description = "菜单状态筛选") @RequestParam(name = "status", required = false) Integer status,
             @RequestAttribute("userId") UUID userId,
@@ -123,7 +122,7 @@ public class SysMenuController extends BaseController {
      */
     @Operation(summary = "新建菜单", description = "创建系统菜单节点。")
     @PostMapping
-    @RequireRoles({RoleCodes.ADMIN})
+    @RequirePermission("sys-menu:create")
     public ApiResult<SysMenuVO> create(
             @Valid @RequestBody SysMenuCreateRequest request,
             @RequestAttribute("userId") UUID userId,
@@ -151,7 +150,7 @@ public class SysMenuController extends BaseController {
      */
     @Operation(summary = "更新菜单", description = "更新系统菜单节点信息。")
     @PutMapping("/{id}")
-    @RequireRoles({RoleCodes.ADMIN})
+    @RequirePermission("sys-menu:update")
     public ApiResult<SysMenuVO> update(
             @Parameter(description = "菜单主键 ID") @PathVariable("id") UUID id,
             @Valid @RequestBody SysMenuUpdateRequest request,
@@ -178,7 +177,7 @@ public class SysMenuController extends BaseController {
      */
     @Operation(summary = "删除菜单", description = "删除指定菜单节点。")
     @DeleteMapping("/{id}")
-    @RequireRoles({RoleCodes.ADMIN})
+    @RequirePermission("sys-menu:delete")
     public ApiResult<Void> delete(
             @Parameter(description = "菜单主键 ID") @PathVariable("id") UUID id,
             @RequestAttribute("userId") UUID userId,

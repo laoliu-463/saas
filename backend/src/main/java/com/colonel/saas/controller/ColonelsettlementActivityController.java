@@ -1,11 +1,10 @@
 package com.colonel.saas.controller;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
-import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.annotation.RequirePermission;
 import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.common.result.PageResult;
-import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.domain.colonel.application.ColonelActivityDetailQueryService;
 import com.colonel.saas.entity.ColonelsettlementActivity;
 import com.colonel.saas.service.ColonelsettlementActivityService;
@@ -45,7 +44,7 @@ import java.util.Map;
 @Tag(name = "活动管理", description = "本地活动分页与抖音真实活动详情补充接口。")
 @RestController
 @RequestMapping("/activities")
-@RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF})
+@RequirePermission("colonelsettlement-activity:access")
 public class ColonelsettlementActivityController extends BaseController {
 
     /** 活动服务，负责本地活动数据的查询与管理 */

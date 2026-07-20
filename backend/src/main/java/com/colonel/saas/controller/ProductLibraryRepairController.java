@@ -1,9 +1,8 @@
 package com.colonel.saas.controller;
 
-import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.annotation.RequirePermission;
 import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.result.ApiResult;
-import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.service.ProductDisplayRuleService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -21,7 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @Tag(name = "商品库运维修复", description = "商品库展示状态巡检与灰度修复接口。")
 @RequestMapping("/colonel")
-@RequireRoles({RoleCodes.ADMIN})
+@RequirePermission("product-library-repair:access")
 public class ProductLibraryRepairController extends BaseController {
 
     private final ProductDisplayRuleService productDisplayRuleService;

@@ -1,7 +1,7 @@
 package com.colonel.saas.controller;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
-import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.annotation.RequirePermission;
 import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.common.result.PageResult;
@@ -101,7 +101,7 @@ import java.util.UUID;
 @Tag(name = "商品管理（已废弃）", description = "旧版商品兼容接口，仅用于平滑过渡。请优先使用团长活动商品主链路接口。")
 @RestController
 @RequestMapping("/products")
-@RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF})
+@RequirePermission("product:access")
 @Deprecated(since = "2026-04-24", forRemoval = false)
 public class ProductController extends BaseController {
 
@@ -179,7 +179,7 @@ public class ProductController extends BaseController {
      * 允许编辑的字段由商品服务统一校验，专属价金额使用元并保留两位小数。</p>
      */
     @Operation(summary = "编辑商品推广补充信息", description = "更新专属价金额、专属价说明、投流开关、奖励说明、参与要求和本系统推广时间覆盖。")
-    @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF})
+    @RequirePermission("product:update-product-supplement")
     @PutMapping("/{relationId}")
     public ApiResult<Product> updateProductSupplement(
             @Parameter(description = "商品关系 ID，使用 product_snapshot.id。") @PathVariable UUID relationId,
@@ -244,7 +244,7 @@ public class ProductController extends BaseController {
      * @return 分页商品列表
      */
     @Operation(summary = "商品库分页", description = "查询已从选品库沉淀到共享商品库的商品列表，对全员可见。")
-    @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF})
+    @RequirePermission("product:page")
     @GetMapping
     public ApiResult<PageResult<Product>> page(
             @Parameter(description = "页码，从 1 开始。") @RequestParam(defaultValue = "1") @Min(1) long page,
@@ -377,7 +377,7 @@ public class ProductController extends BaseController {
      * @return 快速寄样申请结果，包含各达人对应的寄样单 ID
      */
     @Operation(summary = "快速寄样", description = "商品库弹窗式快速寄样，支持私海达人多选逐个创建寄样申请。")
-    @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF})
+    @RequirePermission("product:quick-sample")
     @PostMapping({"/{relationId}/quick-sample", "/{relationId}/quick-sample-apply"})
     public ApiResult<QuickSampleApplyResponse> quickSample(
             @Parameter(description = "商品关联主键（product_snapshot.id）。") @PathVariable UUID relationId,
@@ -403,7 +403,7 @@ public class ProductController extends BaseController {
     }
 
     @Operation(summary = "商品库管理统计", description = "按 snapshot / relation / DISPLAYING 等口径返回只读统计，不改变商品库分页展示语义。")
-    @RequireRoles({RoleCodes.ADMIN})
+    @RequirePermission("product:admin-counts")
     @GetMapping("/admin/counts")
     public ApiResult<ProductService.AdminProductCounts> adminCounts() {
         return ok(productService.getAdminCounts());
@@ -487,7 +487,7 @@ public class ProductController extends BaseController {
      * @deprecated 请迁移到 {@code /colonel/activities/{activityId}/products/{productId}}
      */
     @Operation(summary = "[已废弃] 商品详情", description = "兼容旧版商品详情查询。请迁移到 /colonel/activities/{activityId}/products/{productId}。")
-    @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF})
+    @RequirePermission("product:detail")
     @GetMapping("/{id}")
     public ApiResult<Product> detail(@Parameter(description = "商品主键 ID，使用 UUID 格式。") @PathVariable UUID id) {
         return ok(productService.getById(id));
@@ -507,7 +507,7 @@ public class ProductController extends BaseController {
      * @deprecated 请迁移到 {@code /colonel/activities/{activityId}/products/{productId}/bind-activity}
      */
     @Operation(summary = "[已废弃] 商品绑定活动", description = "兼容旧版商品绑定活动入口。请迁移到 /colonel/activities/{activityId}/products/{productId}/bind-activity。")
-    @RequireRoles({RoleCodes.BIZ_LEADER})
+    @RequirePermission("product:bind-activity")
     @PutMapping("/{id}/activity")
     public ApiResult<Product> bindActivity(
             @Parameter(description = "商品主键 ID，使用 UUID 格式。") @PathVariable UUID id,
@@ -534,7 +534,7 @@ public class ProductController extends BaseController {
      * @deprecated 请迁移到 {@code /colonel/activities/{activityId}/products/{productId}/assignee}
      */
     @Operation(summary = "[已废弃] 商品分配招商", description = "兼容旧版商品分配招商入口。请迁移到 /colonel/activities/{activityId}/products/{productId}/assignee。")
-    @RequireRoles({RoleCodes.BIZ_LEADER})
+    @RequirePermission("product:assign")
     @PutMapping("/{id}/assignee")
     public ApiResult<Product> assign(
             @Parameter(description = "商品主键 ID，使用 UUID 格式。") @PathVariable UUID id,
@@ -559,7 +559,7 @@ public class ProductController extends BaseController {
      * @deprecated 请迁移到 {@code /colonel/activities/{activityId}/products/{productId}/audit-result}
      */
     @Operation(summary = "[已废弃] 商品审核", description = "兼容旧版商品审核入口。请迁移到 /colonel/activities/{activityId}/products/{productId}/audit-result。")
-    @RequireRoles({RoleCodes.BIZ_STAFF})
+    @RequirePermission("product:audit")
     @PutMapping("/{id}/audit-result")
     public ApiResult<Product> audit(
             @Parameter(description = "商品主键 ID，使用 UUID 格式。") @PathVariable UUID id,
@@ -583,7 +583,7 @@ public class ProductController extends BaseController {
      * @return 审核后的商品详情
      */
     @Operation(summary = "商品管理审核通过", description = "待审核商品通过后直接进入商品库展示竞争。")
-    @RequireRoles({RoleCodes.BIZ_STAFF})
+    @RequirePermission("product:approve-managed-product")
     @PostMapping("/manage/{relationId}/approve")
     public ApiResult<Product> approveManagedProduct(
             @Parameter(description = "商品关联主键，使用 UUID 格式。") @PathVariable UUID relationId,
@@ -605,7 +605,7 @@ public class ProductController extends BaseController {
      * @return 审核后的商品详情
      */
     @Operation(summary = "商品管理审核拒绝", description = "待审核商品拒绝后不进入商品库展示。")
-    @RequireRoles({RoleCodes.BIZ_STAFF})
+    @RequirePermission("product:reject-managed-product")
     @PostMapping("/manage/{relationId}/reject")
     public ApiResult<Product> rejectManagedProduct(
             @Parameter(description = "商品关联主键，使用 UUID 格式。") @PathVariable UUID relationId,
@@ -614,7 +614,7 @@ public class ProductController extends BaseController {
     }
 
     @Operation(summary = "暂停发布商品", description = "将商品关系标记为本地暂停发布，商品库列表不再展示该关系。")
-    @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF})
+    @RequirePermission("product:pause-publish")
     @PostMapping("/{relationId}/pause")
     public ApiResult<Product> pausePublish(
             @Parameter(description = "商品关联主键，使用 UUID 格式。") @PathVariable UUID relationId,
@@ -624,7 +624,7 @@ public class ProductController extends BaseController {
     }
 
     @Operation(summary = "恢复发布商品", description = "清除本地暂停发布标记，并重新进入商品库展示规则计算。")
-    @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF})
+    @RequirePermission("product:resume-publish")
     @PostMapping("/{relationId}/resume")
     public ApiResult<Product> resumePublish(
             @Parameter(description = "商品关联主键，使用 UUID 格式。") @PathVariable UUID relationId,
@@ -654,7 +654,7 @@ public class ProductController extends BaseController {
      * @deprecated 请迁移到 {@code /colonel/activities/{activityId}/products/{productId}/promotion-links}
      */
     @Operation(summary = "[已废弃] 商品转链", description = "兼容旧版商品转链入口。请迁移到 /colonel/activities/{activityId}/products/{productId}/promotion-links。")
-    @RequireRoles({RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF})
+    @RequirePermission("product:generate-promotion-link")
     @PostMapping("/{id}/promotion-links")
     public ApiResult<PromotionLinkResponse> generatePromotionLink(
             @Parameter(description = "商品主键 ID，使用 UUID 格式。") @PathVariable UUID id,
@@ -699,7 +699,7 @@ public class ProductController extends BaseController {
      * @return 分页推广历史记录列表
      */
     @Operation(summary = "[已废弃] 商品推广记录", description = "兼容旧版商品库按商品ID读取历史推广记录。")
-    @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF})
+    @RequirePermission("product:promotion-link-history")
     @GetMapping("/{productId}/promotion-links/history")
     public ApiResult<PageResult<java.util.Map<String, Object>>> promotionLinkHistory(
             @Parameter(description = "业务商品 ID。") @PathVariable String productId,
@@ -726,7 +726,7 @@ public class ProductController extends BaseController {
      * @return 跟进结果 Map
      */
     @Operation(summary = "[已废弃] 商品达人跟进", description = "兼容旧版商品达人跟进入口。请逐步迁移到商品主链路跟进入口。")
-    @RequireRoles({RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF})
+    @RequirePermission("product:follow")
     @PostMapping("/{id}/follow")
     public ApiResult<java.util.Map<String, Object>> follow(
             @Parameter(description = "商品主键 ID，使用 UUID 格式。") @PathVariable UUID id,

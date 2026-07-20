@@ -4,8 +4,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.common.result.PageResult;
-import com.colonel.saas.constant.RoleCodes;
-import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.annotation.RequirePermission;
 import com.colonel.saas.entity.ProductOperationLog;
 import com.colonel.saas.service.ProductService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -34,7 +33,7 @@ import java.util.Map;
  */
 @Tag(name = "活动商品查询", description = "活动商品详情、SKU、操作日志查询接口。")
 @RequestMapping("/colonel/activities/{activityId}/products")
-@RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.ADMIN})
+@RequirePermission("colonel-activity-product-query:access")
 @RestController
 public class ColonelActivityProductQueryController extends BaseController {
 

@@ -1,10 +1,9 @@
 package com.colonel.saas.controller;
 
-import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.annotation.RequirePermission;
 import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.result.ApiResult;
-import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.douyin.DouyinApiException;
 import com.colonel.saas.douyin.DouyinTokenService;
 import com.colonel.saas.domain.shared.application.DouyinActivityDiagnosticService;
@@ -100,7 +99,7 @@ import java.util.stream.Collectors;
 @Validated
 @RestController
 @RequestMapping("/douyin")
-@RequireRoles({RoleCodes.ADMIN})
+@RequirePermission("douyin:access")
 @Tag(name = "抖音联调")
 @SecurityRequirement(name = "bearerAuth")
 public class DouyinController extends BaseController {
@@ -440,7 +439,7 @@ public class DouyinController extends BaseController {
     }
 
     @Operation(summary = "[联调] 推广链接 RAW 探针", description = "使用原始 JSON 直接调用指定推广相关上游方法，便于核对 instPickSourceConvert / kolProductShare / getProductShareMaterial 的真实返回结构。")
-    @RequireRoles({RoleCodes.ADMIN})
+    @RequirePermission("douyin:tuiguang-lianjie-yuanshi")
     @PostMapping("/promotion-link-probes/raw")
     public ApiResult<Map<String, Object>> tuiguangLianjieYuanshi(
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
@@ -489,7 +488,7 @@ public class DouyinController extends BaseController {
     }
 
     @Operation(summary = "[联调] 订单同步 RAW 探针", description = "使用原始 JSON 直接调用 buyin.instituteOrderColonel，便于联调阶段先拿真实订单原始返回，再补本地映射。")
-    @RequireRoles({RoleCodes.ADMIN})
+    @RequirePermission("douyin:dingdan-tongbu-yuanshi")
     @PostMapping("/order-sync-probes/raw")
     public ApiResult<Map<String, Object>> dingdanTongbuYuanshi(
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
@@ -527,7 +526,7 @@ public class DouyinController extends BaseController {
     }
 
     @Operation(summary = "[联调] 创建活动", description = "验证上游 alliance.colonelActivityCreateOrUpdate 创建团长活动能力。")
-    @RequireRoles({RoleCodes.ADMIN})
+    @RequirePermission("douyin:chuangjian-huodong")
     @PostMapping("/activities")
     public ApiResult<Map<String, Object>> chuangjianHuodong(
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
@@ -540,7 +539,7 @@ public class DouyinController extends BaseController {
     }
 
     @Operation(summary = "[联调] 更新活动", description = "验证上游 alliance.colonelActivityCreateOrUpdate 更新团长活动能力。")
-    @RequireRoles({RoleCodes.ADMIN})
+    @RequirePermission("douyin:gengxin-huodong")
     @PutMapping("/activities/{activityId}")
     public ApiResult<Map<String, Object>> gengxinHuodong(
             @Parameter(description = "团长活动 ID。") @PathVariable("activityId") Long activityId,
@@ -554,7 +553,7 @@ public class DouyinController extends BaseController {
     }
 
     @Operation(summary = "[联调] 查询 Token 状态", description = "查看当前 appId 的 Token 缓存状态，用于确认真实联调前授权是否准备完毕。")
-    @RequireRoles({RoleCodes.ADMIN})
+    @RequirePermission("douyin:token-zhuangtai")
     @GetMapping("/tokens")
     public ApiResult<DouyinTokenService.TokenStatus> tokenZhuangtai(
             @Parameter(description = "抖音应用 appId；不传则使用系统默认应用配置。") @RequestParam(name = "appId", required = false) String appId) {
@@ -562,7 +561,7 @@ public class DouyinController extends BaseController {
     }
 
     @Operation(summary = "[联调] 刷新 Token", description = "使用缓存中的 refresh_token 刷新 Token，用于验证 Token 刷新链路。")
-    @RequireRoles({RoleCodes.ADMIN})
+    @RequirePermission("douyin:token-shuaxin")
     @PostMapping("/token-refreshes")
     public ApiResult<DouyinTokenService.TokenStatus> tokenShuaxin(
             @Parameter(description = "抖音应用 appId；不传则使用系统默认应用配置。") @RequestParam(name = "appId", required = false) String appId) {
@@ -571,7 +570,7 @@ public class DouyinController extends BaseController {
     }
 
     @Operation(summary = "[联调] 查询授权机构身份", description = "调用 buyin.institutionInfo 验证当前 Token 对应的授权主体、百应身份与角色信息。")
-    @RequireRoles({RoleCodes.ADMIN})
+    @RequirePermission("douyin:jigou-shenfen")
     @GetMapping("/institution-info")
     public ApiResult<Map<String, Object>> jigouShenfen(
             @Parameter(description = "抖音应用 appId；不传则使用系统默认应用配置。") @RequestParam(name = "appId", required = false) String appId) {
@@ -614,7 +613,7 @@ public class DouyinController extends BaseController {
     }
 
     @Operation(summary = "[联调] TokenCreate SDK 裸调探针", description = "直接调用抖店 SDK 的 token.create，不写入 Redis，不走业务缓存。仅返回脱敏后的请求快照与上游原始响应摘要，用于平台提单取证。")
-    @RequireRoles({RoleCodes.ADMIN})
+    @RequirePermission("douyin:token-create-probe")
     @PostMapping("/token-create-probes")
     public ApiResult<Map<String, Object>> tokenCreateProbe(
             @io.swagger.v3.oas.annotations.parameters.RequestBody(

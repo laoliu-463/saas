@@ -15,7 +15,7 @@ public class AuthorizationDecisionPolicy {
     public AuthorizationDecision decide(
             PermissionCode permission,
             AuthorizationSnapshot snapshot) {
-        if (snapshot == null || snapshot.subject().deptId() == null) {
+        if (snapshot == null) {
             return AuthorizationDecision.deny(
                     permission,
                     null,
@@ -63,6 +63,13 @@ public class AuthorizationDecisionPolicy {
                     permission,
                     domainCode,
                     AuthorizationScope.ALL);
+        }
+
+        if (snapshot.subject().deptId() == null) {
+            return AuthorizationDecision.deny(
+                    permission,
+                    domainCode,
+                    AuthorizationReason.DOMAIN_SCOPE_MISSING);
         }
 
         AuthorizationScope widestScope = matchingGrants.stream()

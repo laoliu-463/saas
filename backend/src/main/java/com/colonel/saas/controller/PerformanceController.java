@@ -1,11 +1,10 @@
 package com.colonel.saas.controller;
 
-import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.annotation.RequirePermission;
 import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.result.ApiResult;
-import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.dto.performance.PerformanceBatchRequest;
 import com.colonel.saas.dto.performance.PerformanceBatchResponse;
 import com.colonel.saas.dto.performance.PerformanceDetailDTO;
@@ -90,14 +89,7 @@ import java.util.UUID;
 @Tag(name = "业绩域", description = "业绩查询、汇总、导出与管理员重算接口。")
 @RestController
 @RequestMapping("/performance")
-@RequireRoles({
-        RoleCodes.ADMIN,
-        RoleCodes.OPS_STAFF,
-        RoleCodes.BIZ_LEADER,
-        RoleCodes.BIZ_STAFF,
-        RoleCodes.CHANNEL_LEADER,
-        RoleCodes.CHANNEL_STAFF
-})
+@RequirePermission("performance:access")
 public class PerformanceController extends BaseController {
 
     /** 业绩查询服务：负责单笔、批量、分页业绩数据查询 */
@@ -399,7 +391,7 @@ public class PerformanceController extends BaseController {
      */
     @Operation(summary = "业绩明细导出")
     @GetMapping("/export")
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER})
+    @RequirePermission("performance:export")
     public void export(
             @RequestParam(required = false) String orderId,
             @RequestParam(required = false) String productId,
@@ -473,7 +465,7 @@ public class PerformanceController extends BaseController {
      */
     @Operation(summary = "重算指定月份业绩（仅未结算订单）")
     @PostMapping("/recalculate-month")
-    @RequireRoles({RoleCodes.ADMIN})
+    @RequirePermission("performance:recalculate-month")
     public ApiResult<PerformanceRecalculateMonthResponse> recalculateMonth(
             @RequestBody PerformanceRecalculateMonthRequest request,
             @RequestAttribute("userId") UUID userId) {

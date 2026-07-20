@@ -2,12 +2,11 @@ package com.colonel.saas.controller;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.annotation.RequirePermission;
 import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.common.result.PageResult;
-import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.service.OrderAttributionService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -49,7 +48,7 @@ import java.util.UUID;
 @Validated
 @RestController
 @RequestMapping
-@RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.ADMIN})
+@RequirePermission("order-attribution:access")
 public class OrderAttributionController extends BaseController {
 
     /** 订单归因排查服务，封装订单域查询和数据范围过滤 */

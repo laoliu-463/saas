@@ -1,6 +1,6 @@
 package com.colonel.saas.controller;
 
-import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.annotation.RequirePermission;
 import com.colonel.saas.auth.dto.SysRoleCreateRequest;
 import com.colonel.saas.auth.dto.SysRoleUpdateRequest;
 import com.colonel.saas.auth.service.SysMenuService;
@@ -9,7 +9,6 @@ import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.common.result.PageResult;
-import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.vo.SysRoleVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -53,7 +52,7 @@ import java.util.UUID;
 @Tag(name = "系统角色", description = "系统角色管理接口，包括分页、详情、启用列表、新增、编辑与删除。")
 @RestController
 @RequestMapping("/roles")
-@RequireRoles({RoleCodes.ADMIN})
+@RequirePermission("sys-role:access")
 public class SysRoleController extends BaseController {
 
     /** 角色服务，负责角色的增删改查 */

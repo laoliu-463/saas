@@ -3,13 +3,12 @@ package com.colonel.saas.controller;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
-import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.annotation.RequirePermission;
 import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.config.OrderDerivedCacheKeys;
 import com.colonel.saas.constant.DeptType;
-import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.dto.order.OrderDetailResponse;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.SysDept;
@@ -121,7 +120,7 @@ import java.util.UUID;
  */
 @Tag(name = "订单管理", description = "订单同步、列表、统计、筛选项与详情查询接口。")
 @Validated
-@RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.ADMIN})
+@RequirePermission("order:access")
 @RestController
 @RequestMapping("/orders")
 public class OrderController extends BaseController {
@@ -246,7 +245,7 @@ public class OrderController extends BaseController {
      * @return 同步结果，包含 created/updated/attributed/unattributed/failed 计数
      */
     @Operation(summary = "手动同步订单", description = "触发 6468 近实时订单同步，用于联调真实网关回流数据。")
-    @RequireRoles({RoleCodes.ADMIN})
+    @RequirePermission("order:sync-orders")
     @PostMapping("/sync")
     public ApiResult<OrderSyncService.SyncResult> syncOrders(
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
@@ -285,7 +284,7 @@ public class OrderController extends BaseController {
      * </p>
      */
     @Operation(summary = "按时间范围同步订单", description = "按明确 startTime/endTime 调用真实上游同步，用于历史窗口补偿。")
-    @RequireRoles({RoleCodes.ADMIN})
+    @RequirePermission("order:sync-orders-by-range")
     @PostMapping("/sync-range")
     public ApiResult<OrderSyncService.SyncResult> syncOrdersByRange(
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
@@ -331,7 +330,7 @@ public class OrderController extends BaseController {
      * </p>
      */
     @Operation(summary = "6468 订单分页 dry-run", description = "只读拉全 6468 cursor 分页并聚合候选口径，不写订单表。")
-    @RequireRoles({RoleCodes.ADMIN})
+    @RequirePermission("order:dry-run6468-pagination")
     @PostMapping("/6468-pagination-dry-run")
     public ApiResult<Order6468PaginationDryRunService.DryRunResult> dryRun6468Pagination(
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
@@ -371,7 +370,7 @@ public class OrderController extends BaseController {
      * </p>
      */
     @Operation(summary = "1603 查询团长订单（结算口径）dry-run", description = "只读调用 1603 结算口径并模拟双轨字段映射，不写订单表。")
-    @RequireRoles({RoleCodes.ADMIN})
+    @RequirePermission("order:dry-run1603-settlement")
     @PostMapping("/1603-settlement-dry-run")
     public ApiResult<Order1603SettlementDryRunService.DryRunResult> dryRun1603Settlement(
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
@@ -404,7 +403,7 @@ public class OrderController extends BaseController {
      * </p>
      */
     @Operation(summary = "2704 多结算订单 dry-run", description = "只读调用 2704 多结算订单接口，输出聚合、字段求和和 upstream/local 差异清单。")
-    @RequireRoles({RoleCodes.ADMIN})
+    @RequirePermission("order:dry-run2704-settlement")
     @PostMapping("/2704-settlement-dry-run")
     public ApiResult<Order2704SettlementDryRunService.DryRunResult> dryRun2704Settlement(
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
@@ -450,7 +449,7 @@ public class OrderController extends BaseController {
      * @return 重算结果，包含 scanned/attributed/unattributed/updated 计数
      */
     @Operation(summary = "重算历史订单归因", description = "对已落库订单重新执行归因逻辑，用于补映射后的历史订单回放验证。默认只扫描未归因订单。")
-    @RequireRoles({RoleCodes.ADMIN})
+    @RequirePermission("order:replay-attribution")
     @PostMapping("/replay-attribution")
     public ApiResult<OrderAttributionReplayService.ReplayResult> replayAttribution(
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
