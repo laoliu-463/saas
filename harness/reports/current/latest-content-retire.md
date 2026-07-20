@@ -2,10 +2,10 @@
 
 ## Metadata
 
-- Time: 2026-07-20 15:43:31 +08:00
+- Time: 2026-07-20 19:36:12 +08:00
 - Action: Plan
 - DryRun: False
-- Reason: docs(evidence): verify RBAC after main sync
+- Reason: 从旧 DDD 分支提取 main 缺失的 performance OrderSyncedEvent 单消费者架构契约测试
 - Manifest: (none)
 - ArchiveRoot: harness/archive/retired-content
 - AllowSourceCode: False
