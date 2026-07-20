@@ -975,18 +975,16 @@ class TalentServiceTest {
         expiredWindowClaim.setClaimedAt(LocalDateTime.now().minusDays(35));
         expiredWindowClaim.setProtectedUntil(LocalDateTime.now().minusDays(1));
 
-        com.colonel.saas.entity.ColonelsettlementOrder outputOrder = new com.colonel.saas.entity.ColonelsettlementOrder();
-        outputOrder.setCreateTime(LocalDateTime.now().minusDays(3));
-        outputOrder.setExtraData(Map.of("talent_uid", "dy_output"));
-
         when(talentClaimMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(expiredWindowClaim));
         when(talentMapper.selectBatchIds(any())).thenReturn(List.of(talent));
-        when(orderReadFacade.findOrdersCreatedSince(any(LocalDateTime.class), eq(1L), eq(2000L)))
-                .thenReturn(new OrderReadFacade.OrderPage(List.of(outputOrder), 1L));
+        when(orderReadFacade.summarizeTalentOrdersByDouyinUid(eq(List.of("dy_output")), any(LocalDateTime.class)))
+                .thenReturn(Map.of("dy_output", new OrderReadFacade.TalentOrderSummary(
+                        "dy_output", 1L, 0L, 0L)));
 
         talentService.releaseExpiredClaims(LocalDateTime.now());
 
         verify(talentClaimMapper, never()).updateById(any(TalentClaim.class));
+        verify(orderReadFacade, never()).findOrdersCreatedSince(any(), anyLong(), anyLong());
     }
 
     @Test
@@ -1005,13 +1003,14 @@ class TalentServiceTest {
 
         when(talentClaimMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(expiredWindowClaim));
         when(talentMapper.selectBatchIds(any())).thenReturn(List.of(talent));
-        when(orderReadFacade.findOrdersCreatedSince(any(LocalDateTime.class), eq(1L), eq(2000L)))
-                .thenReturn(new OrderReadFacade.OrderPage(List.of(), 0L));
+        when(orderReadFacade.summarizeTalentOrdersByDouyinUid(eq(List.of("dy_no_output")), any(LocalDateTime.class)))
+                .thenReturn(Map.of());
 
         talentService.releaseExpiredClaims(LocalDateTime.now());
 
         assertThat(expiredWindowClaim.getStatus()).isEqualTo(2);
         verify(talentClaimMapper).updateById(expiredWindowClaim);
+        verify(orderReadFacade, never()).findOrdersCreatedSince(any(), anyLong(), anyLong());
     }
 
     @Test

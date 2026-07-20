@@ -2,11 +2,11 @@
 
 ## 元数据
 
-- 时间：2026-07-19 16:40 +08:00
+- 时间：2026-07-19 17:20 +08:00
 - 环境：本地与远端 `real-pre`
 - 分支：`codex/ddd-user-role-application`
-- 远端代码：`7b58f3097de16edb6cf21d6eca154fcc4e988df3`
-- 远端镜像：backend/frontend 均为 `7b58f3097de16edb6cf21d6eca154fcc4e988df3`
+- 远端代码：`db930364f577f965f93601297e5e9854b4ff1813`
+- 远端镜像：backend/frontend 均为 `db930364f577f965f93601297e5e9854b4ff1813`
 - 远端部署：已执行，按用户要求跳过备份
 - 任务范围：物流限频、Outbox、操作日志、快递100回调、壮云账号闭环核验
 
@@ -16,15 +16,17 @@
 - `dbe8686b`：认证失败日志补充结构化错误字段。
 - `914e355f`：Redis String 序列化类型修复。
 - `7b58f309`：成功查询后显式清空数据库历史物流错误。
+- `db930364`：商品展示规则遇到 409 乐观锁冲突时，重新读取最新状态并重算，最多重算 3 次；非 409 仍直接失败。
 - 后端 Maven 构建：PASS。
 - 前端构建：PASS。
 - 物流、快递100网关、Outbox、操作日志相关定向测试：PASS。
+- 商品展示规则、活动同步批次和商品服务定向测试：PASS；覆盖冲突后成功、活动批次不中断、重试耗尽三个分支。
 - 本地对应容器重启与健康检查：PASS。
 - Harness 安全检查：TASK_GATE PASS；历史报告数量/行数债务仍使 REPOSITORY_HEALTH 为 PARTIAL。
 
 ## 远端部署与健康
 
-- `/opt/saas/app` HEAD：`7b58f3097de16edb6cf21d6eca154fcc4e988df3`。
+- `/opt/saas/app` HEAD：`db930364f577f965f93601297e5e9854b4ff1813`。
 - `.env.real-pre` IMAGE_TAG：与 HEAD 完全一致。
 - backend、frontend、PostgreSQL、Redis：全部 healthy。
 - backend JAR 版本守卫与 Flyway：PASS。
@@ -74,10 +76,13 @@
 
 ## 远端日志稳定性
 
-- 当前部署后 backend/frontend/PostgreSQL/Redis 均持续 healthy。
-- 当前 backend 仅发现一组同源 ERROR：08:30 抖音订单结算补拉返回 `isp.service-error:256`（“服务打瞌睡了，请稍后再试”），由同一次异常产生 3 行错误日志。
-- 相同抖音订单接口在 08:31、08:32 连续调用成功，分钟级订单同步恢复；服务、锁与调度线程未中断。
-- PAY_RECENT 的自然 Cron 为每 30 分钟，下一次结算专用轮次在 09:00，尚未取得该轮自然复验结果。
+- 当前部署后 backend/frontend/PostgreSQL/Redis 均持续 healthy；远端 HEAD、IMAGE_TAG 与两个业务镜像一致。
+- 09:00 UTC 的 PAY_RECENT 自然轮次完成：65 页、6436 条、inserted=7、updated=6429、attributed=247、failed=0，证明 08:30 的单次上游 `isp.service-error:256` 已恢复。
+- 部署后发现两个活动并行处理共享商品时可能触发 `ProductDisplayRuleService` 409 乐观锁冲突，旧实现会使整个活动失败；已通过 `db930364` 修复并部署。
+- 使用活动负责人 `biz_leader` 通过正式异步接口复验：活动 `3920684` 同步 452 个商品、更新 254；活动 `3916506` 同步 1806 个商品、更新 1064；两个 job 均 SUCCESS、failed=0、complete=true。
+- 上述两个活动涉及的已选品数据中，同一商品存在多条 `DISPLAYING` 的数量为 0；部署后 `optimistic conflict` 与 `activity sync failed` 日志计数均为 0。
+- 状态分片预探测对上游不支持的 `status=4` 返回 `50002`，系统按既定合同降级为串行全量并最终成功；当前 SDK 仍将这一预期降级过程记录为 ERROR，属于日志噪声，不是同步失败。
+- 09:13 UTC 后 backend ERROR 为 0；09:16 UTC 后 PostgreSQL ERROR/FATAL/PANIC 为 0；frontend、Redis 自部署以来相应错误计数均为 0。此前 PostgreSQL ERROR 均来自本次人工诊断中的错误 SQL，不是应用请求。
 - 未再出现物流 Redis `ClassCastException`、Outbox DEAD/PENDING、容器重启循环或数据库连接故障。
 
 ## 壮云账号业务闭环
@@ -94,18 +99,20 @@
 `PARTIAL`
 
 - 本轮要求的应用层修复、构建、测试、远端部署、物流真实轮询、Outbox 重放与清零、结构化日志均已通过。
+- 商品活动同步的乐观锁并发故障已完成根因修复、测试、远端部署和正式异步任务复验。
 - 这次优化属于应用层调度、Redis 并发限频、Outbox 消费与数据库日志治理，不是 JVM GC/堆参数优化。
-- 不能判定“全部业务闭环且完全稳定”：快递100 HTTPS 尚不可用；壮云账号缺少真实渠道归因/签收数据；PAY_RECENT 下一自然轮次待复验。
+- 不能判定“全部业务闭环且完全稳定”：快递100 HTTPS 尚不可用；壮云账号缺少真实渠道归因/签收数据。
 
 ## 剩余风险与后续动作
 
 1. 为快递100回调配置域名、可信 TLS 证书和 443 反向代理，再从公网复验 HTTPS 回调与签名。
 2. 等真实渠道订单携带可确定的 pick_source/达人映射，并在真实签收后验证壮云账号完整闭环；禁止手工伪造归属和签收。
-3. 观察 09:00 PAY_RECENT；若相同 `isp.service-error:256` 连续出现，再按第三方故障升级，不以单次上游错误修改业务状态。
+3. 将上游不支持状态分片的 `50002` 在降级路径中收敛为结构化 WARN，避免预期回退污染 ERROR 告警。
 4. 低峰期评估 operation_log 分区索引与历史分区归档，避免在线大表 DDL。
 5. npm audit 仍有既有 6 项依赖风险（1 low、1 moderate、2 high、2 critical），本轮未执行破坏性自动升级。
 
 ## Retro
 
 - 真实调度先后暴露了 Redis value 序列化类型与 ORM null 更新策略两个单元测试未覆盖的差异；现已分别补充类型断言与数据库显式清空测试。
+- 真实并行活动同步暴露了共享商品状态的乐观锁竞争；代码审查据此增加批次不中断和重算耗尽测试，修复范围保持在展示规则服务内部。
 - 部署脚本要求远端 checkout/IMAGE_TAG 预对齐；仅看到脚本 PASS 不能证明新镜像已上线，后续必须同时核对远端 HEAD、IMAGE_TAG、容器 image label 与健康状态。

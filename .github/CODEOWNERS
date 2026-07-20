@@ -1,0 +1,11 @@
+# Repository fallback owner
+* @laoliu-463
+
+# Collaboration, delivery, and runtime-sensitive paths
+/.github/ @laoliu-463
+/.github/CODEOWNERS @laoliu-463
+/Jenkinsfile @laoliu-463
+/scripts/ @laoliu-463
+/harness/ @laoliu-463
+/backend/src/main/resources/db/ @laoliu-463
+/docker-compose*.yml @laoliu-463

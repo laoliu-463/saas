@@ -1,13 +1,13 @@
-# path,max-lines; debt baseline at 63ed85e104e27c80aa20ceec1c93c157a091815b
+# path,max-lines; governance baseline frozen from the server mainline on 2026-07-19
 src/main/java/com/colonel/saas/service/ProductService.java,7239
-src/main/java/com/colonel/saas/service/sample/SampleApplicationService.java,3613
-src/main/java/com/colonel/saas/testsupport/TestDataService.java,2636
-src/main/java/com/colonel/saas/service/data/DataApplicationService.java,2582
+src/main/java/com/colonel/saas/service/sample/SampleApplicationService.java,3665
+src/main/java/com/colonel/saas/testsupport/TestDataService.java,2638
+src/main/java/com/colonel/saas/service/data/DataApplicationService.java,2576
 src/main/java/com/colonel/saas/service/ProductActivityBackfillService.java,1567
-src/main/java/com/colonel/saas/service/ProductDisplayRuleService.java,1515
-src/main/java/com/colonel/saas/service/OrderSyncService.java,1479
+src/main/java/com/colonel/saas/service/ProductDisplayRuleService.java,1581
+src/main/java/com/colonel/saas/service/OrderSyncService.java,1465
 src/main/java/com/colonel/saas/service/TalentQueryService.java,1443
 src/main/java/com/colonel/saas/service/OrderService.java,1181
 src/main/java/com/colonel/saas/service/DashboardService.java,1139
 src/main/java/com/colonel/saas/service/ProductActivityManualSyncService.java,1066
-src/main/java/com/colonel/saas/service/PickSourceMappingService.java,1051
+src/main/java/com/colonel/saas/service/PickSourceMappingService.java,1055

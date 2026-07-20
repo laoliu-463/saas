@@ -46,6 +46,10 @@ try {
     Write-Host "SkipRemoteBackup: $SkipRemoteBackup"
     Write-Host "DryRun: $($DryRun.IsPresent)"
 
+    if ($deployRemoteValue) {
+        throw "Direct remote deployment is disabled. Merge through main, promote to release/real-pre, and use the Jenkins release queue."
+    }
+
     $allChangedFiles = @(Get-HarnessChangedFiles)
     if (-not $DryRun -and $allChangedFiles.Count -gt 0 -and $ownedFilesValue.Count -eq 0) {
         throw "OwnedFiles is required when the worktree has changes."
@@ -249,6 +253,7 @@ try {
         -ReportKey $ReportKey `
         -OwnedFiles $taskOwnedFiles `
         -RetroSummary $RetroSummary `
+        -SkipRuntimeCollection:($Scope -eq "docs" -or $Scope -eq "apifox") `
         -DryRun:$DryRun
 
     $commitOwnedFiles = @($taskOwnedFiles)
@@ -260,36 +265,6 @@ try {
         -Message $Message `
         -OwnedFiles $commitOwnedFiles `
         -DryRun:$DryRun
-
-    if ($deployRemoteValue) {
-        & (Join-Path $PSScriptRoot "deploy-remote.ps1") `
-            -Env real-pre `
-            -SkipBackup:$SkipRemoteBackup `
-            -DryRun:$DryRun
-        $remoteResult = "Remote deploy: PASS"
-        $remoteReportPath = & (Join-Path $PSScriptRoot "collect-evidence.ps1") `
-            -Env $TargetEnv `
-            -Scope $Scope `
-            -BuildResult $buildResult `
-            -HealthResult $healthResult `
-            -BusinessResult $businessResult `
-            -ContentMaintenanceResult $contentMaintenanceResult `
-            -RemoteResult $remoteResult `
-            -Conclusion "PASS" `
-            -DeployRemote $true `
-            -ReportKey $ReportKey `
-            -OwnedFiles $taskOwnedFiles `
-            -RetroSummary $RetroSummary `
-            -DryRun:$DryRun
-        if (-not $DryRun -and (Test-Path -LiteralPath $remoteReportPath)) {
-            $remoteReportRelative = Get-HarnessRepoRelativePath -RepoRoot $config.RepoRoot -Path $remoteReportPath
-            & (Join-Path $PSScriptRoot "git-push-safe.ps1") `
-                -RepoRoot $config.RepoRoot `
-                -Message "docs(harness): record remote deployment evidence" `
-                -OwnedFiles @($remoteReportRelative)
-        }
-        $conclusion = "PASS"
-    }
 
     Write-Host "Review HARNESS_CHANGELOG.md and update it when Harness behavior changed." -ForegroundColor Yellow
 
@@ -313,6 +288,7 @@ catch {
             -ReportKey $ReportKey `
             -OwnedFiles $taskOwnedFiles `
             -RetroSummary "agent-do failed: $failure" `
+            -SkipRuntimeCollection:($Scope -eq "docs" -or $Scope -eq "apifox") `
             -DryRun:$DryRun
     }
     catch {

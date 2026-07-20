@@ -9,18 +9,19 @@
 | --- | --- | --- | --- |
 | test | 可用于 mock / P0 回归 | `harness/rules/environment/envs/test-env.md`、`docker-compose.test.yml` | 仅在显式要求或专项测试中使用 |
 | 本地 real-pre | 默认工程修改环境 | `harness/rules/environment/envs/real-pre-env.md`、`docker-compose.real-pre.yml` | 前端 `3001`，后端 `8081` |
-| 远端 real-pre | 允许受控部署，但需用户明确要求 | `harness/rules/environment/envs/remote-real-pre-env.md`、`docs/10-部署运行总览.md` | 不等于正式全量上线 |
+| 远端 real-pre | 只允许 Jenkins 串行发布 | `harness/rules/cicd-real-pre-policy.md`、`docs/10-部署运行总览.md` | 唯一来源 `release/real-pre`，不等于正式全量上线 |
 
 ## 当前限制
 
 - real-pre P0 不能因环境健康而直接判定全量通过；仍受真实订单 / `pick_source` 样本影响。
-- 远端部署必须使用固定入口，不能临时手写部署流程。
+- 远端部署必须进入 Jenkins `saas-real-pre-cd` 唯一队列，不能由 Agent 或 SSH 手写流程绕过。
 - `.env.real-pre` 不进入 Git，也不复制到文档。
 
-## 远端部署触发条件
+## 远端发布触发条件
 
-只有用户明确要求远端部署时，才允许执行：
+1. 候选已通过 PR/CI 串行进入 `main`。
+2. 发布提升 PR 将候选进入 `release/real-pre`。
+3. 发布人确认 Jenkins 参数 `DEPLOY_REAL_PRE=true`；真实推广写开启时同时确认对应参数。
+4. Jenkins 顺序、镜像、数据库 diff、运行版本和业务验证门禁全部通过。
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\agent-do.ps1 -Env real-pre -Scope full -ReportKey task-key -OwnedFiles 'path1;path2' -DeployRemote true -Message "deploy: real-pre update"
-```
+`agent-do.ps1 -DeployRemote true` 与 `deploy-remote.ps1` 直接部署入口已停用。

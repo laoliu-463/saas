@@ -11,24 +11,28 @@
 
 - Job 名称：`saas-real-pre-cd`。
 - 主源码来源：`https://github.com/laoliu-463/saas.git`；Gitee 仅作只读镜像。
-- 默认分支：`codex/ddd-user-role-application`。
+- 唯一部署分支：`release/real-pre`；候选必须先进入 `main`，再通过发布提升 PR 串行进入该分支。
 - 运行环境：服务器本机 Jenkins，仅面向 real-pre。
 - 镜像标签：必须使用 40 位完整 Git commit SHA，并写入 OCI revision label。
+- 并发：同 Job 排队且不取消旧任务；跨 Job 使用 `saas-real-pre-deploy` 全局锁。
 
 ## 3. Required Parameters
 
 | 参数 | 要求 |
 | --- | --- |
-| `DEPLOY_BRANCH` | 必须指向受控 real-pre CD 分支 |
+| `DEPLOY_BRANCH` | 固定为 `release/real-pre` |
 | `DEPLOY_REAL_PRE` | 默认 `false`；发布人明确批准后必须为 `true` |
 | `CONFIRM_REAL_PROMOTION_WRITE` | real-pre 推广写入双开关开启时必须为 `true` |
+| `ROLLBACK_APPROVED` | 默认 `false`；仅批准回滚或非后继提交时设为 `true` |
 
 ## 4. Preflight Guard
 
 Jenkins 部署前必须校验：
 
 - `DEPLOY_ENV=real-pre`。
-- `RUN_DB_MIGRATIONS=true`，且只能执行经过测试的增量兼容迁移。
+- 目标 SHA 等于远端 `release/real-pre` 当前 head。
+- 目标必须是当前部署 SHA 的后继提交；非后继提交仅在 `ROLLBACK_APPROVED=true` 时允许。
+- `RUN_DB_MIGRATIONS` 由当前 SHA 与目标 SHA 的迁移输入 diff 自动计算，不接受普通任务强制开启。
 - Compose 文件只能是 `docker-compose.real-pre.yml`。
 - Compose project 固定为 `saas-active`。
 - 服务器环境文件固定为 `/opt/saas/env/.env.real-pre`。
@@ -44,19 +48,19 @@ Jenkins 部署前必须校验：
 
 Jenkins real-pre CD 必须按以下顺序执行：
 
-1. Checkout 指定分支并记录 commit / image tag。
+1. Checkout `release/real-pre` 并记录 commit / image tag。
 2. Preflight Guard。
 3. Backend Test：执行 `mvn clean test`，不得跳过测试阶段。
 4. Backend Package：执行 `mvn clean package -DskipTests`，只复用已通过的测试结果。
 5. Frontend Build：执行依赖安装、`test`、`typecheck`、`build`。
 6. Docker Build：构建 `backend-real-pre` 与 `frontend-real-pre` 镜像。
 7. Compose Config：输出并校验 `docker compose config`。
-8. 数据库备份并以 `pg_restore --list` 验证恢复目录。
-9. 执行兼容迁移并运行只读 Schema 预检。
+8. 获取全局发布锁，校验当前部署 SHA、目标顺序并计算 migration diff。
+9. 仅当 `RUN_DB_MIGRATIONS=true` 时备份数据库、执行兼容迁移和 Schema 预检；否则明确记录 `SKIPPED`。
 10. 以关闭调度的方式部署 backend，验证 `/api/actuator/health/readiness`。
 11. 部署 frontend，执行核心业务 smoke 和多角色 E2E。
 12. 恢复调度并再次验证 readiness。
-13. Evidence Report：归档 SHA、镜像 ID、迁移版本和回滚镜像。
+13. Evidence Report：核对后端/前端运行 SHA、镜像摘要、OCI revision、迁移版本和回滚镜像；全部通过后原子更新发布清单。
 
 ## 6. Deploy Boundary
 
@@ -67,6 +71,7 @@ Jenkins real-pre CD 必须按以下顺序执行：
 - 不允许切换到 test/mock 配置证明 real-pre 通过。
 - 不允许引用 production compose 或 production env 文件。
 - 不允许把 `BLOCKED`、`PENDING`、`PARTIAL` 写成 `PASS`。
+- 不允许普通 Agent、任务分支或手工 SSH 绕过 Jenkins 发布队列。
 
 ## 7. Rollback
 
@@ -91,9 +96,10 @@ Jenkins real-pre CD 必须按以下顺序执行：
 - `docker compose config` 结果。
 - 后端 / 前端健康检查结果。
 - `Production touched: NO`。
-- 数据库备份文件及 `pg_restore --list` 验证结果。
+- 数据库变更判定；执行时记录备份与 `pg_restore --list`，跳过时记录 `SKIPPED`。
 - Flyway/兼容迁移版本和 Schema 预检结果。
 - 部署前回滚镜像、部署后镜像 ID、40 位 SHA 和 OCI revision label。
+- `/opt/saas/releases/<SHA>/release.json`、`current.json`、`previous.json` 状态。
 - `Secret leaked: NO`。
 
 证据文件固定写入：

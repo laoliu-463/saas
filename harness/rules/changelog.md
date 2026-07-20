@@ -1,11 +1,30 @@
 # Harness Changelog（索引）
 
-> 任务 ID：HARNESS-REDUNDANCY-CLEANUP-20260713
-> 更新时间：2026-07-13
+> 任务 ID：GH-180-REAL-PRE-RELEASE-QUEUE
+> 更新时间：2026-07-19
 > 详细历史（含每版修改文件、行为变化、证据）：`archive/20260610/harness-changelog-full.md`
 > 治理政策：`file-retention-policy.md`（changelog 索引 ≤200 行）
 
 ## 最近版本摘要
+
+### v0.8.4 — 2026-07-19
+- real-pre 唯一部署来源固定为 `release/real-pre`，Jenkins 同 Job 排队且使用 `saas-real-pre-deploy` 跨 Job 全局锁。
+- 发布前校验目标 release tree 来自 `main`，并拒绝非当前部署后继提交；回滚必须显式设置 `ROLLBACK_APPROVED=true`。
+- 数据库备份、迁移和 Schema 预检改为 migration diff 驱动；无迁移输入变化时明确 `SKIPPED`，纯 Harness / 文档变更不触碰远端数据库。
+- 后端健康接口增加 `gitSha` / `imageDigest`，前端镜像生成 `/version.json`；Jenkins 核对运行 SHA、Docker 内容摘要、OCI revision 与 Flyway 后才更新不可变发布清单。
+- `agent-do -DeployRemote` 和直接 SSH 部署脚本已退休；普通 Agent 只能提交候选和 evidence，不能绕过 Jenkins。
+- 新增发布队列契约测试与分支治理 manifest；历史分叉分支只允许能力切片移植，脏 Worktree 全部保留。
+
+### v0.8.3 — 2026-07-19
+- 以服务器实际运行提交 `db930364f577f965f93601297e5e9854b4ff1813` 为发布基线，建立 `main` 与 `release/real-pre`，GitHub 默认分支切换为 `main`。
+- `main` 与 `release/real-pre` 启用 PR、禁止强推、禁止删除和管理员同样受约束的基础保护；旧分叉分支进入分批核对，不做无证据整支合并。
+- 建立 Issue → 独立 worktree/分支 → Draft PR → CI → 串行合并的 GitHub 协作合同，普通任务不再拥有直接合并或部署权限。
+- 增加 CODEOWNERS、中文友好的 PR/Issue 模板、Dependabot、贡献指南和私密安全报告入口。
+- CI 增加 merge queue 触发、完整 SHA Action 固定、Job 超时、Node 20、后端 PostgreSQL/Redis 依赖和仓库治理检查。
+- 增加可执行 Pester 契约测试；本次不触发远端部署、容器重启或数据库迁移。
+- 刷新 `harness/engineering/issues-index.md`，当前 open issue 镜像与 GitHub #165、#166、#168 一致；#168 跟踪后端 CI 基线与隔离数据库 bootstrap，旧 Sprint 排期明确标记为历史快照。
+- 修正 docs/governance 统一入口：无本地运行环境文件时仍可执行安全扫描、Harness 门禁与 evidence 收口，并跳过 evidence 的运行时采集，不触发应用构建、容器或数据库操作。
+- 修复 scoped push 对 `.github/` 的路径截断与未跟踪目录折叠问题，并让 Harness 文件路径按平台分隔符解析；保证 dot-prefixed Owned files 被逐文件暂存且 Linux 治理 Job 可执行。
 
 ### v0.8.2 — 2026-07-18
 - 修正 `git-push-safe.ps1` 明文密钥扫描：仅将带引号的字面量或配置文件行识别为候选值，避免把 Java 函数调用、变量赋值和 Redis key 名误报为密钥。

@@ -22,15 +22,17 @@ class RoleAwareAttributionFlywayIntegrationTest {
             createLegacySchema(jdbc);
 
             Flyway flyway = flyway(database);
-            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(2);
+            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(4);
             assertThat(flyway.migrate().migrationsExecuted).isZero();
             assertRoleAwareColumns(jdbc, "colonelsettlement_order");
             assertRoleAwareColumns(jdbc, "colonelsettlement_order_202607");
             assertThat(columnCount(jdbc, "promotion_link", "attribution_owner_type")).isEqualTo(1);
             assertThat(columnCount(jdbc, "pick_source_mapping", "attribution_owner_type")).isEqualTo(1);
+            assertOperationLogObservabilityColumns(jdbc, "operation_log");
+            assertOperationLogObservabilityColumns(jdbc, "operation_log_202607");
             assertThat(jdbc.queryForObject(
                     "SELECT COUNT(*) FROM flyway_schema_history WHERE success = TRUE", Long.class))
-                    .isEqualTo(3L);
+                    .isEqualTo(5L);
         }
     }
 
@@ -43,7 +45,7 @@ class RoleAwareAttributionFlywayIntegrationTest {
                     MountableFile.forClasspathResource("db/init-db.sql"), "/tmp/init-db.sql");
             var init = database.execInContainer(
                     "sh", "-lc",
-                    "ADMIN_PASSWORD='integration-only-password' "
+                    "ADMIN_PASSWORD=\"${POSTGRES_PASSWORD}\" "
                             + "psql -v ON_ERROR_STOP=1 -U " + database.getUsername()
                             + " -d " + database.getDatabaseName() + " -f /tmp/init-db.sql");
             assertThat(init.getExitCode())
@@ -51,12 +53,14 @@ class RoleAwareAttributionFlywayIntegrationTest {
                     .isZero();
 
             Flyway flyway = flyway(database);
-            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(2);
+            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(4);
             assertThat(flyway.migrate().migrationsExecuted).isZero();
             assertRoleAwareColumns(jdbc, "colonelsettlement_order");
+            assertOperationLogObservabilityColumns(jdbc, "operation_log");
+            assertOperationLogObservabilityColumns(jdbc, "op_log_2026_07");
             assertThat(jdbc.queryForObject(
                     "SELECT COUNT(*) FROM flyway_schema_history WHERE success = TRUE", Long.class))
-                    .isEqualTo(3L);
+                    .isEqualTo(5L);
         }
     }
 
@@ -91,10 +95,15 @@ class RoleAwareAttributionFlywayIntegrationTest {
     }
 
     private static void createLegacySchema(JdbcTemplate jdbc) {
-        jdbc.execute("CREATE TABLE colonelsettlement_order (id UUID, create_time TIMESTAMP NOT NULL) PARTITION BY RANGE (create_time)");
+        jdbc.execute("CREATE TABLE colonelsettlement_order ("
+                + "id UUID, create_time TIMESTAMP NOT NULL, extra_data JSONB, "
+                + "talent_name VARCHAR(200), deleted SMALLINT NOT NULL DEFAULT 0"
+                + ") PARTITION BY RANGE (create_time)");
         jdbc.execute("CREATE TABLE colonelsettlement_order_202607 PARTITION OF colonelsettlement_order FOR VALUES FROM ('2026-07-01') TO ('2026-08-01')");
         jdbc.execute("CREATE TABLE promotion_link (id UUID PRIMARY KEY)");
         jdbc.execute("CREATE TABLE pick_source_mapping (id UUID PRIMARY KEY)");
+        jdbc.execute("CREATE TABLE operation_log (id UUID NOT NULL, create_time TIMESTAMP NOT NULL) PARTITION BY RANGE (create_time)");
+        jdbc.execute("CREATE TABLE operation_log_202607 PARTITION OF operation_log FOR VALUES FROM ('2026-07-01') TO ('2026-08-01')");
     }
 
     private static void assertRoleAwareColumns(JdbcTemplate jdbc, String table) {
@@ -102,6 +111,11 @@ class RoleAwareAttributionFlywayIntegrationTest {
         assertThat(columnCount(jdbc, table, "recruiter_attribution_status")).isEqualTo(1);
         assertThat(columnCount(jdbc, table, "channel_attribution_source")).isEqualTo(1);
         assertThat(columnCount(jdbc, table, "recruiter_attribution_source")).isEqualTo(1);
+    }
+
+    private static void assertOperationLogObservabilityColumns(JdbcTemplate jdbc, String table) {
+        assertThat(columnCount(jdbc, table, "error_code")).isEqualTo(1);
+        assertThat(columnCount(jdbc, table, "trace_id")).isEqualTo(1);
     }
 
     private static int columnCount(JdbcTemplate jdbc, String table, String column) {
