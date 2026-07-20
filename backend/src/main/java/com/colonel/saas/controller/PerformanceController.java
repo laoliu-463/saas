@@ -73,9 +73,8 @@ import java.util.UUID;
  *
  * <p><b>访问控制：</b>
  * <ul>
- *   <li>类级别 {@code @RequireRoles} 限制为 6 种预置角色可访问；</li>
- *   <li>导出接口额外限制为 Leader 角色（ADMIN / BIZ_LEADER / CHANNEL_LEADER）；</li>
- *   <li>重算接口仅限 ADMIN 角色。</li>
+ *   <li>类级别 {@code @RequirePermission} 声明稳定访问权限；</li>
+ *   <li>导出与重算接口分别声明独立权限码。</li>
  * </ul>
  *
  * @see PerformanceQueryService 业绩查询服务

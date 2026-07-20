@@ -1,7 +1,7 @@
 package com.colonel.saas.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.annotation.RequirePermission;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.dto.talent.OverrideAssigneeRequest;
 import com.colonel.saas.entity.Merchant;
@@ -31,10 +31,10 @@ class MerchantControllerTest {
     @Test
     void controller_shouldRequireAdminOnly() {
         MerchantController controller = new MerchantController(merchantService);
-        RequireRoles requireRoles = controller.getClass().getAnnotation(RequireRoles.class);
+        RequirePermission requireRoles = controller.getClass().getAnnotation(RequirePermission.class);
 
         assertThat(requireRoles).isNotNull();
-        assertThat(requireRoles.value()).containsExactly(RoleCodes.ADMIN);
+        assertThat(requireRoles.value()).isEqualTo("merchant:access");
     }
 
     @Test
@@ -47,10 +47,10 @@ class MerchantControllerTest {
                 long.class
         );
 
-        RequireRoles requireRoles = method.getAnnotation(RequireRoles.class);
+        RequirePermission requireRoles = method.getAnnotation(RequirePermission.class);
 
         assertThat(requireRoles).isNotNull();
-        assertThat(requireRoles.value()).containsExactly(RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF);
+        assertThat(requireRoles.value()).isEqualTo("merchant:list-partners");
     }
 
     @Test
@@ -74,10 +74,10 @@ class MerchantControllerTest {
     void getPartnerDetail_shouldAllowAdminAndRecruitingRoles() throws Exception {
         Method method = MerchantController.class.getMethod("getPartnerDetail", String.class, String.class);
 
-        RequireRoles requireRoles = method.getAnnotation(RequireRoles.class);
+        RequirePermission requireRoles = method.getAnnotation(RequirePermission.class);
 
         assertThat(requireRoles).isNotNull();
-        assertThat(requireRoles.value()).containsExactly(RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF);
+        assertThat(requireRoles.value()).isEqualTo("merchant:get-partner-detail");
     }
 
     @Test

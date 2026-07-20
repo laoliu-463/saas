@@ -1,7 +1,7 @@
 package com.colonel.saas.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.annotation.RequirePermission;
 import com.colonel.saas.common.exception.GlobalExceptionHandler;
 import com.colonel.saas.config.RuleCenterSchemaRegistry;
 import com.colonel.saas.constant.RoleCodes;
@@ -46,7 +46,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *   <li>鉴权门控为 {@code ADMIN}，{@code dataScope} 不参与（配置域全局可见，admin dataScope=ALL）</li>
  * </ul>
  *
- * <p>{@code standaloneSetup} 不激活 {@code @RequireRoles} AOP 切面，
+ * <p>{@code standaloneSetup} 不激活 {@code @RequirePermission} AOP 切面，
  * 端到端鉴权验证进入 real-pre 联调或 RBAC 专项。
  */
 @ExtendWith(MockitoExtension.class)
@@ -246,10 +246,10 @@ class RuleCenterControllerTest {
 
     @Test
     void controller_shouldOnlyExposeAdminRole() {
-        RequireRoles requireRoles = RuleCenterController.class.getAnnotation(RequireRoles.class);
+        RequirePermission requireRoles = RuleCenterController.class.getAnnotation(RequirePermission.class);
 
         assertThat(requireRoles).isNotNull();
-        assertThat(requireRoles.value()).containsExactly(RoleCodes.ADMIN);
+        assertThat(requireRoles.value()).isEqualTo("rule-center:access");
     }
 
     @Test

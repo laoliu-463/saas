@@ -83,7 +83,7 @@ class DddEventDispatcherRuntimeRetryContractTest {
         assertThat(controller)
                 .contains(
                         "@RequestMapping(\"/api/admin/outbox-events\")",
-                        "@RequireRoles({RoleCodes.ADMIN})",
+                        "@RequirePermission(\"outbox-admin:retry\")",
                         "@PostMapping(\"/{id}/retry\")",
                         "domainEventOutboxService.retryDeadEvent(eventId)");
     }

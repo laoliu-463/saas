@@ -54,8 +54,9 @@ class DddSampleAccessActionOrderEventEvidenceTest {
                 .contains("@PostMapping(\"/batch-approve\")")
                 .contains("@PostMapping(\"/batch-reject\")")
                 .contains("@PostMapping(\"/batch-ship\")")
-                .contains("@RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.OPS_STAFF})")
-                .contains("@RequireRoles({RoleCodes.ADMIN, RoleCodes.OPS_STAFF})");
+                .contains("@RequirePermission(\"sample:batch-approve\")")
+                .contains("@RequirePermission(\"sample:batch-reject\")")
+                .contains("@RequirePermission(\"sample:batch-ship\")");
 
         assertThat(sampleService)
                 .contains("ensureActionRolePermission(\"PENDING_SHIP\", roleCodes)")
@@ -69,7 +70,7 @@ class DddSampleAccessActionOrderEventEvidenceTest {
                 .contains("case \"COMPLETED\", \"CLOSED\" -> throw new ForbiddenException");
 
         assertThat(controllerTest)
-                .contains("sensitiveSampleBatchAndExportEndpoints_shouldDeclareAllInternalRoles")
+                .contains("sensitiveSampleBatchAndExportEndpoints_shouldDeclareStablePermissions")
                 .contains("actionSample_shouldAllowChannelStaffAuditAction")
                 .contains("actionSample_shouldAllowBizLeaderApproveFromPendingAudit")
                 .contains("actionSample_shouldRejectOpsCompleteAction")

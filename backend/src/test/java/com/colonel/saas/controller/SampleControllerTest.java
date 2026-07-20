@@ -1,7 +1,7 @@
 package com.colonel.saas.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
-import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.annotation.RequirePermission;
 import com.colonel.saas.dto.SampleApplyRequest;
 import com.colonel.saas.dto.sample.SampleFilterOptionsDTO;
 import com.colonel.saas.dto.sample.SampleFilterOptionItem;
@@ -1015,8 +1015,8 @@ class SampleControllerTest {
     }
 
     @Test
-    void sensitiveSampleBatchAndExportEndpoints_shouldDeclareAllInternalRoles() throws Exception {
-        RequireRoles batchApprove = SampleController.class
+    void sensitiveSampleBatchAndExportEndpoints_shouldDeclareStablePermissions() throws Exception {
+        RequirePermission batchApprove = SampleController.class
                 .getDeclaredMethod(
                         "batchApprove",
                         SampleBatchActionRequest.class,
@@ -1024,8 +1024,8 @@ class SampleControllerTest {
                         UUID.class,
                         DataScope.class,
                         Object.class)
-                .getAnnotation(RequireRoles.class);
-        RequireRoles batchReject = SampleController.class
+                .getAnnotation(RequirePermission.class);
+        RequirePermission batchReject = SampleController.class
                 .getDeclaredMethod(
                         "batchReject",
                         SampleBatchActionRequest.class,
@@ -1033,8 +1033,8 @@ class SampleControllerTest {
                         UUID.class,
                         DataScope.class,
                         Object.class)
-                .getAnnotation(RequireRoles.class);
-        RequireRoles batchShip = SampleController.class
+                .getAnnotation(RequirePermission.class);
+        RequirePermission batchShip = SampleController.class
                 .getDeclaredMethod(
                         "batchShip",
                         SampleBatchShipRequest.class,
@@ -1042,8 +1042,8 @@ class SampleControllerTest {
                         UUID.class,
                         DataScope.class,
                         Object.class)
-                .getAnnotation(RequireRoles.class);
-        RequireRoles refreshLogistics = SampleController.class
+                .getAnnotation(RequirePermission.class);
+        RequirePermission refreshLogistics = SampleController.class
                 .getDeclaredMethod(
                         "refreshLogistics",
                         UUID.class,
@@ -1051,8 +1051,8 @@ class SampleControllerTest {
                         UUID.class,
                         DataScope.class,
                         Object.class)
-                .getAnnotation(RequireRoles.class);
-        RequireRoles exportSamples = SampleController.class
+                .getAnnotation(RequirePermission.class);
+        RequirePermission exportSamples = SampleController.class
                 .getDeclaredMethod(
                         "exportSamples",
                         String.class,
@@ -1079,21 +1079,18 @@ class SampleControllerTest {
                         DataScope.class,
                         Object.class,
                         jakarta.servlet.http.HttpServletResponse.class)
-                .getAnnotation(RequireRoles.class);
+                .getAnnotation(RequirePermission.class);
 
         assertThat(batchApprove).isNotNull();
-        assertThat(batchApprove.value()).containsExactly(RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF,
-                RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.OPS_STAFF);
+        assertThat(batchApprove.value()).isEqualTo("sample:batch-approve");
         assertThat(batchReject).isNotNull();
-        assertThat(batchReject.value()).containsExactly(RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF,
-                RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.OPS_STAFF);
+        assertThat(batchReject.value()).isEqualTo("sample:batch-reject");
         assertThat(batchShip).isNotNull();
-        assertThat(batchShip.value()).containsExactly(RoleCodes.ADMIN, RoleCodes.OPS_STAFF);
+        assertThat(batchShip.value()).isEqualTo("sample:batch-ship");
         assertThat(refreshLogistics).isNotNull();
-        assertThat(refreshLogistics.value()).containsExactly(RoleCodes.ADMIN, RoleCodes.OPS_STAFF);
+        assertThat(refreshLogistics.value()).isEqualTo("sample:refresh-logistics");
         assertThat(exportSamples).isNotNull();
-        assertThat(exportSamples.value()).containsExactly(RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF,
-                RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.OPS_STAFF);
+        assertThat(exportSamples.value()).isEqualTo("sample:export-samples");
     }
 
     @Test

@@ -1,6 +1,6 @@
 package com.colonel.saas.controller;
 
-import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.annotation.RequirePermission;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.service.ProductActivityBackfillService;
 import org.junit.jupiter.api.BeforeEach;
@@ -88,8 +88,8 @@ class ProductSyncAdminControllerTest {
                 .containsExactly("/product-sync/admin");
         assertThat(method.getAnnotation(PostMapping.class).value())
                 .containsExactly("/backfill-activity-products");
-        assertThat(method.getAnnotation(RequireRoles.class).value())
-                .containsExactly(RoleCodes.ADMIN);
+        assertThat(method.getAnnotation(RequirePermission.class).value())
+                .isEqualTo("product-sync-admin:backfill-activity-products");
     }
 
     @Test
@@ -123,8 +123,8 @@ class ProductSyncAdminControllerTest {
                 UUID.class);
         assertThat(method.getAnnotation(PostMapping.class).value())
                 .containsExactly("/backfill-activity-products/async");
-        assertThat(method.getAnnotation(RequireRoles.class).value())
-                .containsExactly(RoleCodes.ADMIN);
+        assertThat(method.getAnnotation(RequirePermission.class).value())
+                .isEqualTo("product-sync-admin:backfill-activity-products-async");
     }
 
     @Test
@@ -166,7 +166,7 @@ class ProductSyncAdminControllerTest {
         Method method = ProductSyncAdminController.class.getMethod("getBackfillJobStatus", String.class);
         assertThat(method.getAnnotation(GetMapping.class).value())
                 .containsExactly("/backfill-jobs/{jobId}");
-        assertThat(method.getAnnotation(RequireRoles.class).value())
-                .containsExactly(RoleCodes.ADMIN);
+        assertThat(method.getAnnotation(RequirePermission.class).value())
+                .isEqualTo("product-sync-admin:get-backfill-job-status");
     }
 }

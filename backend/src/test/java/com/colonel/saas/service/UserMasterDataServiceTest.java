@@ -242,7 +242,7 @@ class UserMasterDataServiceTest {
     }
 
     // ========================== 鉴权失败 ==========================
-    // service 层不进行角色校验，由 controller 的 @RequireRoles 控制
+    // service 层不进行入口权限校验，由 controller 的 @RequirePermission 控制
     // 此处验证 service 不会自动附加"按调用者过滤"逻辑：
     // 调用同一组入参，无论 caller 角色如何，service 行为一致。
 

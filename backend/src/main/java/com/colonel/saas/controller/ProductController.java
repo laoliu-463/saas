@@ -85,8 +85,7 @@ import java.util.UUID;
  * <p><b>架构角色：</b>REST 控制器层，接收前端商品库页面请求，委托 {@link ProductService}、
  * {@link ProductQuickSampleApplicationService}、{@link ColonelPartnerSyncService} 完成业务逻辑。
  *
- * <p><b>访问控制：</b>需要 {@link RequireRoles} 注解限定业务角色（BIZ_LEADER / BIZ_STAFF /
- * CHANNEL_LEADER / CHANNEL_STAFF），部分操作进一步限制为特定角色。
+ * <p><b>访问控制：</b>由 {@link RequirePermission} 声明稳定权限码，角色与权限关系从数据库读取。
  *
  * <p><b>迁移说明：</b>本控制器为旧版商品管理接口的兼容过渡层。
  * 新的前端已迁移至 {@code /colonel/} 命名空间下的主链路接口。

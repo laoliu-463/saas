@@ -31,7 +31,7 @@ import java.util.UUID;
  *
  * <p>API 路径前缀：{@code /users/current}</p>
  *
- * <p>本控制器不设置 {@code @RequireRoles}，所有已认证用户均可访问。</p>
+ * <p>本控制器不设置 {@code @RequirePermission}，所有已认证用户均可访问。</p>
  *
  * @see CurrentUserApplicationService
  */

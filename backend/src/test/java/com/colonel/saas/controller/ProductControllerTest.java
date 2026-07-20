@@ -1,7 +1,7 @@
 package com.colonel.saas.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.annotation.RequirePermission;
 import com.colonel.saas.common.result.PageResult;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.dto.product.ProductFilterOptionItem;
@@ -302,8 +302,8 @@ class ProductControllerTest {
                 UUID.class);
         assertThat(method.getAnnotation(org.springframework.web.bind.annotation.PostMapping.class).value())
                 .containsExactly("/{relationId}/pause");
-        RequireRoles roles = method.getAnnotation(RequireRoles.class);
-        assertThat(roles.value()).containsExactly(RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF);
+        RequirePermission roles = method.getAnnotation(RequirePermission.class);
+        assertThat(roles.value()).isEqualTo("product:pause-publish");
     }
 
     @Test
@@ -328,8 +328,8 @@ class ProductControllerTest {
                 UUID.class);
         assertThat(method.getAnnotation(org.springframework.web.bind.annotation.PostMapping.class).value())
                 .containsExactly("/{relationId}/resume");
-        RequireRoles roles = method.getAnnotation(RequireRoles.class);
-        assertThat(roles.value()).containsExactly(RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF);
+        RequirePermission roles = method.getAnnotation(RequirePermission.class);
+        assertThat(roles.value()).isEqualTo("product:resume-publish");
     }
 
     @Test
@@ -564,8 +564,8 @@ class ProductControllerTest {
         Method method = ProductController.class.getMethod("adminCounts");
         assertThat(method.getAnnotation(org.springframework.web.bind.annotation.GetMapping.class).value())
                 .containsExactly("/admin/counts");
-        assertThat(method.getAnnotation(RequireRoles.class).value())
-                .containsExactly(RoleCodes.ADMIN);
+        assertThat(method.getAnnotation(RequirePermission.class).value())
+                .isEqualTo("product:admin-counts");
     }
 
     @Test
@@ -596,39 +596,24 @@ class ProductControllerTest {
     @Test
     void controllerRoleAnnotations_shouldKeepSharedLibraryVisibleToBusinessRoles() throws NoSuchMethodException {
         Method pageMethod = selectedLibraryPageMethod();
-        RequireRoles pageRoles = pageMethod.getAnnotation(RequireRoles.class);
-        RequireRoles detailRoles = ProductController.class.getMethod("detail", UUID.class)
-                .getAnnotation(RequireRoles.class);
-        RequireRoles bindRoles = ProductController.class.getMethod(
+        RequirePermission pageRoles = pageMethod.getAnnotation(RequirePermission.class);
+        RequirePermission detailRoles = ProductController.class.getMethod("detail", UUID.class)
+                .getAnnotation(RequirePermission.class);
+        RequirePermission bindRoles = ProductController.class.getMethod(
                         "bindActivity",
                         UUID.class,
                         ProductController.BindActivityRequest.class,
                         UUID.class,
                         UUID.class)
-                .getAnnotation(RequireRoles.class);
+                .getAnnotation(RequirePermission.class);
 
-        assertThat(pageRoles.value()).containsExactly(
-                RoleCodes.BIZ_LEADER,
-                RoleCodes.BIZ_STAFF,
-                RoleCodes.CHANNEL_LEADER,
-                RoleCodes.CHANNEL_STAFF
-        );
-        assertThat(detailRoles.value()).containsExactly(
-                RoleCodes.BIZ_LEADER,
-                RoleCodes.BIZ_STAFF,
-                RoleCodes.CHANNEL_LEADER,
-                RoleCodes.CHANNEL_STAFF
-        );
-        assertThat(bindRoles.value()).containsExactly(RoleCodes.BIZ_LEADER);
-        RequireRoles historyRoles = ProductController.class
+        assertThat(pageRoles.value()).isEqualTo("product:page");
+        assertThat(detailRoles.value()).isEqualTo("product:detail");
+        assertThat(bindRoles.value()).isEqualTo("product:bind-activity");
+        RequirePermission historyRoles = ProductController.class
                 .getMethod("promotionLinkHistory", String.class, long.class, long.class)
-                .getAnnotation(RequireRoles.class);
-        assertThat(historyRoles.value()).containsExactly(
-                RoleCodes.BIZ_LEADER,
-                RoleCodes.BIZ_STAFF,
-                RoleCodes.CHANNEL_LEADER,
-                RoleCodes.CHANNEL_STAFF
-        );
+                .getAnnotation(RequirePermission.class);
+        assertThat(historyRoles.value()).isEqualTo("product:promotion-link-history");
     }
 
     @Test
@@ -641,13 +626,8 @@ class ProductControllerTest {
                 UUID.class,
                 List.class);
 
-        RequireRoles roles = method.getAnnotation(RequireRoles.class);
-        assertThat(roles.value()).containsExactly(
-                RoleCodes.BIZ_LEADER,
-                RoleCodes.BIZ_STAFF,
-                RoleCodes.CHANNEL_LEADER,
-                RoleCodes.CHANNEL_STAFF
-        );
+        RequirePermission roles = method.getAnnotation(RequirePermission.class);
+        assertThat(roles.value()).isEqualTo("product:quick-sample");
     }
 
     private static Method selectedLibraryPageMethod() throws NoSuchMethodException {

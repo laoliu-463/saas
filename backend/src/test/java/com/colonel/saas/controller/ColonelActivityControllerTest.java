@@ -1,6 +1,6 @@
 package com.colonel.saas.controller;
 
-import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.annotation.RequirePermission;
 import com.colonel.saas.common.exception.GlobalExceptionHandler;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.constant.RoleCodes;
@@ -766,9 +766,8 @@ class ColonelActivityControllerTest {
 
     @Test
     void controller_shouldAllowBizStaffAtClassLevel() {
-        RequireRoles requireRoles = ColonelActivityController.class.getAnnotation(RequireRoles.class);
+        RequirePermission requireRoles = ColonelActivityController.class.getAnnotation(RequirePermission.class);
         assertThat(requireRoles).isNotNull();
-        assertThat(requireRoles.value()).contains(RoleCodes.BIZ_STAFF);
-        assertThat(requireRoles.value()).contains(RoleCodes.BIZ_LEADER, RoleCodes.ADMIN, RoleCodes.BIZ_STAFF);
+        assertThat(requireRoles.value()).isEqualTo("colonel-activity:access");
     }
 }

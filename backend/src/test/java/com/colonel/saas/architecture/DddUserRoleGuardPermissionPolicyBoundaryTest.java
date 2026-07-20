@@ -10,19 +10,20 @@ import static org.assertj.core.api.Assertions.assertThat;
 class DddUserRoleGuardPermissionPolicyBoundaryTest {
 
     @Test
-    void roleGuardAspect_shouldDelegateRoleMatchingToUserPermissionChecker() throws Exception {
-        Path sourcePath = Path.of("src/main/java/com/colonel/saas/aspect/RoleGuardAspect.java");
+    void permissionGuardAspect_shouldDelegateToAuthorizationFacade() throws Exception {
+        Path sourcePath = Path.of("src/main/java/com/colonel/saas/aspect/PermissionGuardAspect.java");
         if (!Files.exists(sourcePath)) {
-            sourcePath = Path.of("backend/src/main/java/com/colonel/saas/aspect/RoleGuardAspect.java");
+            sourcePath = Path.of("backend/src/main/java/com/colonel/saas/aspect/PermissionGuardAspect.java");
         }
         String source = Files.readString(sourcePath);
 
         assertThat(source)
-                .doesNotContain("currentRoles.contains")
-                .doesNotContain("toLowerCase(Locale.ROOT)")
-                .contains("CurrentUserPermissionChecker")
-                .contains("hasAnyRole")
-                .contains("normalizeRoleCodes");
+                .contains("AuthorizationFacade")
+                .contains("CurrentUserProvider")
+                .contains("authorizationFacade.authorize")
+                .contains("RequirePermission")
+                .doesNotContain("RoleCodes")
+                .doesNotContain("hasAnyRole");
     }
 
     @Test

@@ -625,7 +625,7 @@ class CharacterizationBaselineTest extends BaseIntegrationTest {
         UUID bizStaffId = UUID.nameUUIDFromBytes("biz_staff".getBytes());
         UUID bizDeptId = UUID.fromString("11111111-1111-1111-1111-111111111111");
 
-        // Bind mock HttpServletRequest for RoleGuardAspect
+        // Bind mock HttpServletRequest for request-scoped business policy checks.
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.setAttribute("roleCodes", List.of(RoleCodes.BIZ_STAFF));
         request.setAttribute("userId", bizStaffId);

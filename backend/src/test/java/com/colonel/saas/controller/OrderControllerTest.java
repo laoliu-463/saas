@@ -5,7 +5,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.annotation.RequirePermission;
 import com.colonel.saas.common.exception.GlobalExceptionHandler;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.handler.UUIDTypeHandler;
@@ -215,8 +215,8 @@ class OrderControllerTest {
                 "syncOrders",
                 OrderController.SyncRequest.class,
                 java.util.UUID.class);
-        assertThat(syncOrders.getAnnotation(RequireRoles.class)).isNotNull();
-        assertThat(syncOrders.getAnnotation(RequireRoles.class).value()).containsExactly(RoleCodes.ADMIN);
+        assertThat(syncOrders.getAnnotation(RequirePermission.class)).isNotNull();
+        assertThat(syncOrders.getAnnotation(RequirePermission.class).value()).isEqualTo("order:sync-orders");
     }
 
     @Test
