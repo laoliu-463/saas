@@ -977,9 +977,8 @@ class TalentServiceTest {
 
         when(talentClaimMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(expiredWindowClaim));
         when(talentMapper.selectBatchIds(any())).thenReturn(List.of(talent));
-        when(orderReadFacade.summarizeTalentOrdersByDouyinUid(eq(List.of("dy_output")), any(LocalDateTime.class)))
-                .thenReturn(Map.of("dy_output", new OrderReadFacade.TalentOrderSummary(
-                        "dy_output", 1L, 0L, 0L)));
+        when(orderReadFacade.existsTalentOrderCreatedSince(eq("dy_output"), any(LocalDateTime.class)))
+                .thenReturn(true);
 
         talentService.releaseExpiredClaims(LocalDateTime.now());
 
@@ -1003,8 +1002,8 @@ class TalentServiceTest {
 
         when(talentClaimMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(List.of(expiredWindowClaim));
         when(talentMapper.selectBatchIds(any())).thenReturn(List.of(talent));
-        when(orderReadFacade.summarizeTalentOrdersByDouyinUid(eq(List.of("dy_no_output")), any(LocalDateTime.class)))
-                .thenReturn(Map.of());
+        when(orderReadFacade.existsTalentOrderCreatedSince(eq("dy_no_output"), any(LocalDateTime.class)))
+                .thenReturn(false);
 
         talentService.releaseExpiredClaims(LocalDateTime.now());
 

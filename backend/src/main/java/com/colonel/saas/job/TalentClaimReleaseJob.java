@@ -35,6 +35,7 @@ import java.time.LocalDateTime;
 @Component
 public class TalentClaimReleaseJob {
 
+    private static final String SCHEDULE_ZONE = "Asia/Shanghai";
     /** 分布式锁 TTL，30 分钟覆盖大批量更新场景 */
     private static final Duration LOCK_TTL = Duration.ofMinutes(30);
 
@@ -54,7 +55,7 @@ public class TalentClaimReleaseJob {
      * 以当前时间为基准，将所有超过认领有效期的达人状态重置。
      * </p>
      */
-    @Scheduled(cron = "0 15 2 * * ?")
+    @Scheduled(cron = "0 15 2 * * ?", zone = SCHEDULE_ZONE)
     public void releaseExpiredClaimsDaily() {
         if (!jobLockService.tryAcquire(JobLockKeys.TALENT_CLAIM_RELEASE, LOCK_TTL)) {
             log.info("TalentClaimReleaseJob skipped, another process is running");

@@ -13,6 +13,7 @@
 
 | 问题 | 状态 | 证据 / 主源 | 下一步 |
 | --- | --- | --- | --- |
+| real-pre 达人认领释放任务全量加载订单导致 JVM OOM | fixed-code, pending-release | GitHub #182、`harness/reports/current/latest-talent-claim-oom-permanent-fix.md` | 候选修复已改为订单域有界存在性查询并增加 OOM 退出策略；必须经 PR/CI、串行合并和 Jenkins 队列发布，发布前不得声明远端恢复 |
 | real-pre 渠道链真实订单归因样本不足 | blocked | `01-当前项目状态.md`、`03-P0-P1问题台账.md` | 等待真实通过系统转链产生的订单样本，不能写 PASS |
 | 寄样自动完成依赖真实归因订单 | blocked | `03-P0-P1问题台账.md`、`docs/验收/real-pre联调手册.md` | 有订单后验证 `channel_id + talent_id + product_id + pay_time` |
 | 推广中商品历史入库可能漂移 | open | `03-P0-P1问题台账.md`、商品域文档 | 优先走商品域同步/repair 入口，先 dry-run |
