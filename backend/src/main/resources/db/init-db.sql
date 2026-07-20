@@ -847,6 +847,15 @@ CREATE INDEX IF NOT EXISTS idx_cso_dept_create_time ON colonelsettlement_order (
 CREATE INDEX IF NOT EXISTS idx_cso_channel_user_id ON colonelsettlement_order (channel_user_id) WHERE deleted = 0;
 CREATE INDEX IF NOT EXISTS idx_cso_colonel_user_id ON colonelsettlement_order (colonel_user_id) WHERE deleted = 0;
 CREATE INDEX IF NOT EXISTS idx_cso_talent_id ON colonelsettlement_order (talent_id);
+-- 系统达人列表/详情按兼容达人标识读取本地订单事实；表达式需与 LegacyOrderReadFacade 保持一致。
+CREATE INDEX IF NOT EXISTS idx_cso_talent_lookup_create_time
+    ON colonelsettlement_order (
+        (COALESCE(extra_data ->> 'talent_uid',
+                  extra_data ->> 'author_id',
+                  talent_name)),
+        create_time DESC
+    )
+    WHERE deleted = 0;
 CREATE INDEX IF NOT EXISTS idx_cso_attribution_status ON colonelsettlement_order (attribution_status);
 
 -- 双维度归属状态：与 alter-cso-dual-attribution-status-20260716.sql 保持一致。

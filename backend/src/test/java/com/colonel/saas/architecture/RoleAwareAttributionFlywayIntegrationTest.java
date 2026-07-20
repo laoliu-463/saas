@@ -22,7 +22,7 @@ class RoleAwareAttributionFlywayIntegrationTest {
             createLegacySchema(jdbc);
 
             Flyway flyway = flyway(database);
-            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(3);
+            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(4);
             assertThat(flyway.migrate().migrationsExecuted).isZero();
             assertRoleAwareColumns(jdbc, "colonelsettlement_order");
             assertRoleAwareColumns(jdbc, "colonelsettlement_order_202607");
@@ -32,7 +32,7 @@ class RoleAwareAttributionFlywayIntegrationTest {
             assertOperationLogObservabilityColumns(jdbc, "operation_log_202607");
             assertThat(jdbc.queryForObject(
                     "SELECT COUNT(*) FROM flyway_schema_history WHERE success = TRUE", Long.class))
-                    .isEqualTo(4L);
+                    .isEqualTo(5L);
         }
     }
 
@@ -57,14 +57,14 @@ class RoleAwareAttributionFlywayIntegrationTest {
                     .isZero();
 
             Flyway flyway = flyway(database);
-            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(3);
+            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(4);
             assertThat(flyway.migrate().migrationsExecuted).isZero();
             assertRoleAwareColumns(jdbc, "colonelsettlement_order");
             assertOperationLogObservabilityColumns(jdbc, "operation_log");
             assertOperationLogObservabilityColumns(jdbc, "op_log_2026_07");
             assertThat(jdbc.queryForObject(
                     "SELECT COUNT(*) FROM flyway_schema_history WHERE success = TRUE", Long.class))
-                    .isEqualTo(4L);
+                    .isEqualTo(5L);
         }
     }
 
@@ -99,7 +99,10 @@ class RoleAwareAttributionFlywayIntegrationTest {
     }
 
     private static void createLegacySchema(JdbcTemplate jdbc) {
-        jdbc.execute("CREATE TABLE colonelsettlement_order (id UUID, create_time TIMESTAMP NOT NULL) PARTITION BY RANGE (create_time)");
+        jdbc.execute("CREATE TABLE colonelsettlement_order ("
+                + "id UUID, create_time TIMESTAMP NOT NULL, extra_data JSONB, "
+                + "talent_name VARCHAR(200), deleted SMALLINT NOT NULL DEFAULT 0"
+                + ") PARTITION BY RANGE (create_time)");
         jdbc.execute("CREATE TABLE colonelsettlement_order_202607 PARTITION OF colonelsettlement_order FOR VALUES FROM ('2026-07-01') TO ('2026-08-01')");
         jdbc.execute("CREATE TABLE promotion_link (id UUID PRIMARY KEY)");
         jdbc.execute("CREATE TABLE pick_source_mapping (id UUID PRIMARY KEY)");

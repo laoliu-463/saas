@@ -134,7 +134,7 @@ services:
       SPRING_DEVTOOLS_ADD_PROPERTIES: "false"
       LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_WEB_CLIENT_RESTTEMPLATE: "INFO"
       LOGGING_LEVEL_COM_DOUDIAN_OPEN_CORE: "WARN"
-      JAVA_OPTS: "-Dspring.devtools.restart.enabled=false -XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -Djava.security.egd=file:/dev/./urandom"
+      JAVA_OPTS: "-Dspring.devtools.restart.enabled=false -XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError -Djava.security.egd=file:/dev/./urandom"
     # SECURE-REMOTE-DEPLOY-001: bind localhost; Nginx is the public entry (Gate 7).
     ports:
       - "127.0.0.1:${BACKEND_HOST_PORT:-8081}:8080"
