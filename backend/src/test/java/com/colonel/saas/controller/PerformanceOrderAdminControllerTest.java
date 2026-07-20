@@ -1,6 +1,6 @@
 package com.colonel.saas.controller;
 
-import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.annotation.RequirePermission;
 import com.colonel.saas.common.exception.GlobalExceptionHandler;
 import com.colonel.saas.config.OrderDerivedCacheKeys;
 import com.colonel.saas.constant.RoleCodes;
@@ -99,7 +99,8 @@ class PerformanceOrderAdminControllerTest {
         verify(commissionService).batchUpsertPerformanceRecords(List.of(order));
 
         Method method = PerformanceOrderAdminController.class.getMethod("recalculateSingle", String.class);
-        assertThat(method.getAnnotation(RequireRoles.class).value()).containsExactly(RoleCodes.ADMIN);
+        assertThat(method.getAnnotation(RequirePermission.class).value())
+                .isEqualTo("performance-order-admin:recalculate-single");
     }
 
     @Test
@@ -164,6 +165,7 @@ class PerformanceOrderAdminControllerTest {
                 "reconcileInvalidatedPerformance",
                 PerformanceOrderAdminController.PerformanceReconcileRequest.class,
                 UUID.class);
-        assertThat(method.getAnnotation(RequireRoles.class).value()).containsExactly(RoleCodes.ADMIN);
+        assertThat(method.getAnnotation(RequirePermission.class).value())
+                .isEqualTo("performance-order-admin:reconcile-invalidated-performance");
     }
 }

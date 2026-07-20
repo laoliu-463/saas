@@ -16,9 +16,9 @@ const siderSource = readFileSync(
 )
 
 describe('CommissionRuleList V2 rule center wiring', () => {
-  it('exposes the admin-only commission rule page in system navigation', () => {
+  it('exposes the permission-backed commission rule page in system navigation', () => {
     expect(routerSource).toContain("path: 'system/commission-rules'")
-    expect(routerSource).toContain("meta: { title: '提成规则', roles: [ROLE.ADMIN] }")
+    expect(routerSource).toContain("meta: { title: '提成规则', permissions: [PERMISSION.COMMISSION_RULE_ACCESS] }")
     expect(siderSource).toContain("/system/commission-rules")
     expect(pageSource).toContain('data-testid="commission-rules-page"')
   })

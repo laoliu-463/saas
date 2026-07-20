@@ -120,6 +120,8 @@ class CharacterizationBaselineTest extends BaseIntegrationTest {
         insertRole(UUID.fromString("88888888-8888-8888-8888-888888888803"), "biz_leader", "招商组长", 2);
         insertRole(UUID.fromString("88888888-8888-8888-8888-888888888804"), "biz_staff", "招商专员", 1);
         insertRole(UUID.fromString("88888888-8888-8888-8888-888888888805"), "ops_staff", "运营", 1);
+        grantPermission("biz_staff", "sample:batch-reject", "sample", "batch-reject");
+        grantPermission("channel_leader", "data:export-orders", "data", "export-orders");
 
         // 3. Insert users
         UUID adminId = UUID.nameUUIDFromBytes("admin".getBytes());
@@ -158,6 +160,28 @@ class CharacterizationBaselineTest extends BaseIntegrationTest {
     private void bindUserRole(UUID userId, String roleCode) {
         jdbcTemplate.update("INSERT INTO sys_user_role (user_id, role_id) SELECT ?, id FROM sys_role WHERE role_code = ? ON CONFLICT DO NOTHING",
                 userId, roleCode);
+    }
+
+    private void grantPermission(
+            String roleCode,
+            String permissionCode,
+            String resourceCode,
+            String actionCode) {
+        jdbcTemplate.update("""
+                INSERT INTO sys_permission (
+                    permission_code, domain_code, resource_code, action_code,
+                    data_scope_required, status, deleted)
+                VALUES (?, 'system', ?, ?, FALSE, 1, 0)
+                ON CONFLICT (permission_code) DO NOTHING
+                """, permissionCode, resourceCode, actionCode);
+        jdbcTemplate.update("""
+                INSERT INTO sys_role_permission (role_id, permission_id)
+                SELECT role.id, permission.id
+                FROM sys_role role
+                JOIN sys_permission permission ON permission.permission_code = ?
+                WHERE role.role_code = ?
+                ON CONFLICT DO NOTHING
+                """, permissionCode, roleCode);
     }
 
     @Test
@@ -625,7 +649,7 @@ class CharacterizationBaselineTest extends BaseIntegrationTest {
         UUID bizStaffId = UUID.nameUUIDFromBytes("biz_staff".getBytes());
         UUID bizDeptId = UUID.fromString("11111111-1111-1111-1111-111111111111");
 
-        // Bind mock HttpServletRequest for RoleGuardAspect
+        // Bind mock HttpServletRequest for request-scoped business policy checks.
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.setAttribute("roleCodes", List.of(RoleCodes.BIZ_STAFF));
         request.setAttribute("userId", bizStaffId);

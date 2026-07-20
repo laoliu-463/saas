@@ -1,9 +1,8 @@
 package com.colonel.saas.controller;
 
-import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.annotation.RequirePermission;
 import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.result.ApiResult;
-import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.dto.talent.ResolveTalentProfileRequest;
 import com.colonel.saas.dto.talent.ResolveTalentProfileResponse;
 import com.colonel.saas.service.TalentQueryService;
@@ -42,7 +41,7 @@ import java.util.UUID;
 @Tag(name = "达人真实资料", description = "真实达人基础资料解析、同步与人工补充。")
 @RestController
 @RequestMapping("/talents")
-@RequireRoles({RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF})
+@RequirePermission("talent-profile:access")
 public class TalentProfileController extends BaseController {
 
     /** 达人资料同步服务 */

@@ -174,7 +174,7 @@ interface SidebarMenuOption {
 }
 
 /** 根据当前用户角色构建可访问的菜单树 */
-const accessibleMenuTree = computed(() => buildAccessibleMenuTree(authStore.roleCodes))
+const accessibleMenuTree = computed(() => buildAccessibleMenuTree(authStore.permissionCodes))
 
 /** 当前激活的顶部菜单 key，用于确定左侧菜单的归属 */
 const activeTopKey = computed(() => resolveActiveTopKey(route.path))

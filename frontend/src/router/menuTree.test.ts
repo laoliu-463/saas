@@ -10,10 +10,10 @@
  */
 import { describe, expect, it } from 'vitest'
 
-import { ROLE_CODES } from '../constants/rbac'
+import { PERMISSION_CODES } from '../constants/permissions'
 import {
   buildAccessibleMenuTree,
-  filterMenuTreeByRoles,
+  filterMenuTreeByPermissions,
   getLeftMenus,
   getTopMenus,
   isTopMenuActive,
@@ -23,17 +23,27 @@ import {
   resolveTopMenuDefaultPath
 } from './menuTree'
 
+const BIZ_STAFF_PERMISSIONS = [
+  PERMISSION_CODES.PRODUCT_ACCESS,
+  PERMISSION_CODES.PRODUCT_MANAGE_ACCESS,
+  PERMISSION_CODES.TALENT_ACCESS,
+  PERMISSION_CODES.SAMPLE_ACCESS,
+  PERMISSION_CODES.DATA_ACCESS
+]
+const OPS_PERMISSIONS = [PERMISSION_CODES.SHIPPING_ACCESS]
+const ADMIN_PERMISSIONS = Object.values(PERMISSION_CODES)
+
 describe('menuTree', () => {
   // 验证：按角色过滤后，顶部菜单只包含该角色有权访问且 showInTop 不为 false 的业务域
   it('builds top menus from accessible tree only', () => {
-    const topMenus = getTopMenus([ROLE_CODES.BIZ_STAFF])
+    const topMenus = getTopMenus(BIZ_STAFF_PERMISSIONS)
     expect(topMenus.map((menu) => menu.key)).toEqual(['product', 'product-manage', 'talent', 'sample', 'data'])
     expect(topMenus.find((menu) => menu.key === 'sample')?.label).toBe('合作管理')
   })
 
   // 验证：左侧菜单只返回当前选中 topKey 对应节点的 children，未匹配则返回空数组
   it('returns only current top domain children for left menus', () => {
-    const tree = buildAccessibleMenuTree([ROLE_CODES.BIZ_STAFF])
+    const tree = buildAccessibleMenuTree(BIZ_STAFF_PERMISSIONS)
     const productMenus = getLeftMenus(tree, 'product')
     const dataMenus = getLeftMenus(tree, 'data')
     const cooperationMenus = getLeftMenus(tree, 'sample')
@@ -51,8 +61,8 @@ describe('menuTree', () => {
 
   // 验证：运维人员只能看到合作管理下的「发货台」子菜单
   it('merges ops shipping into cooperation management top menu', () => {
-    const topMenus = getTopMenus([ROLE_CODES.OPS_STAFF])
-    const tree = buildAccessibleMenuTree([ROLE_CODES.OPS_STAFF])
+    const topMenus = getTopMenus(OPS_PERMISSIONS)
+    const tree = buildAccessibleMenuTree(OPS_PERMISSIONS)
 
     expect(topMenus.map((menu) => ({ key: menu.key, label: menu.label }))).toEqual([
       { key: 'sample', label: '合作管理' }
@@ -64,7 +74,7 @@ describe('menuTree', () => {
 
   // 验证：管理员可以看到合作管理下的全部子菜单（合作单 + 发货台）
   it('shows both cooperation children for admin under sample', () => {
-    const tree = buildAccessibleMenuTree([ROLE_CODES.ADMIN])
+    const tree = buildAccessibleMenuTree(ADMIN_PERMISSIONS)
     expect(getLeftMenus(tree, 'sample').map((menu) => menu.key)).toEqual(['/sample', '/ops/shipping'])
   })
 
@@ -117,24 +127,24 @@ describe('menuTree', () => {
 
   // 验证：点击顶部菜单时，自动导航到该域下第一个角色有权访问的子菜单路径
   it('navigates to first accessible child when clicking top menu', () => {
-    expect(resolveTopMenuDefaultPath('product-manage', [ROLE_CODES.BIZ_STAFF])).toBe('/product/manage/products')
-    expect(resolveTopMenuDefaultPath('data', [ROLE_CODES.BIZ_STAFF])).toBe('/data')
-    expect(resolveTopMenuDefaultPath('sample', [ROLE_CODES.OPS_STAFF])).toBe('/ops/shipping')
+    expect(resolveTopMenuDefaultPath('product-manage', BIZ_STAFF_PERMISSIONS)).toBe('/product/manage/products')
+    expect(resolveTopMenuDefaultPath('data', BIZ_STAFF_PERMISSIONS)).toBe('/data')
+    expect(resolveTopMenuDefaultPath('sample', OPS_PERMISSIONS)).toBe('/ops/shipping')
     // 不存在的 topKey 返回 null
-    expect(resolveTopMenuDefaultPath('missing', [ROLE_CODES.ADMIN])).toBeNull()
+    expect(resolveTopMenuDefaultPath('missing', ADMIN_PERMISSIONS)).toBeNull()
   })
 
   // 验证：各种边界情况下的首次可访问路径解析（null 节点、无权限、无 path、空分组）
   it('resolves first accessible path for custom leaf and fallback group nodes', () => {
     // null 节点
-    expect(resolveFirstAccessiblePath(null, [ROLE_CODES.ADMIN])).toBeNull()
+    expect(resolveFirstAccessiblePath(null, ADMIN_PERMISSIONS)).toBeNull()
     // 角色无权访问
     expect(resolveFirstAccessiblePath({
       label: '不可访问',
       key: '/secret',
       topKey: 'custom',
-      roles: [ROLE_CODES.ADMIN]
-    }, [ROLE_CODES.BIZ_STAFF])).toBeNull()
+      permissions: [PERMISSION_CODES.SYS_USER_ACCESS]
+    }, BIZ_STAFF_PERMISSIONS)).toBeNull()
     // 无 path 的叶子节点，回退到 key
     expect(resolveFirstAccessiblePath({
       label: '无 path 叶子',
@@ -147,22 +157,22 @@ describe('menuTree', () => {
       key: 'data-group',
       topKey: 'custom',
       children: [
-        { label: '不可访问子项', key: '/secret', topKey: 'custom', roles: [ROLE_CODES.ADMIN] }
+        { label: '不可访问子项', key: '/secret', topKey: 'custom', permissions: [PERMISSION_CODES.SYS_USER_ACCESS] }
       ]
-    }, [ROLE_CODES.BIZ_STAFF])).toBe('/data')
+    }, BIZ_STAFF_PERMISSIONS)).toBe('/data')
   })
 
   // 验证：权限过滤会移除无子节点可访问的分组，保留无 children 的公开叶子节点
   it('filters custom menu nodes without children and drops empty denied groups', () => {
-    const tree = filterMenuTreeByRoles([
+    const tree = filterMenuTreeByPermissions([
       { label: '公开叶子', key: '/open', topKey: 'custom' },
       {
         label: '空分组',
         key: 'empty-group',
         topKey: 'custom',
-        children: [{ label: '管理员子项', key: '/admin-only', topKey: 'custom', roles: [ROLE_CODES.ADMIN] }]
+        children: [{ label: '管理员子项', key: '/admin-only', topKey: 'custom', permissions: [PERMISSION_CODES.SYS_USER_ACCESS] }]
       }
-    ], [ROLE_CODES.BIZ_STAFF])
+    ], BIZ_STAFF_PERMISSIONS)
 
     expect(tree).toHaveLength(1)
     expect(tree[0]).toMatchObject({ label: '公开叶子', key: '/open', topKey: 'custom' })

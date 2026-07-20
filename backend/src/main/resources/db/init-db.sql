@@ -1367,3 +1367,4 @@ FROM sys_user u
 JOIN sys_role r ON r.role_code = 'ops_staff'
 WHERE u.username = 'ops_staff'
 ON CONFLICT (user_id, role_id) DO NOTHING;
+\ir alter-authorization-permission-catalog-20260720.sql

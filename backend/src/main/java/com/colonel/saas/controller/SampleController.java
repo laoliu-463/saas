@@ -1,10 +1,9 @@
 package com.colonel.saas.controller;
 
-import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.annotation.RequirePermission;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.common.result.PageResult;
-import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.domain.sample.application.SampleApplicationService;
 import com.colonel.saas.dto.SampleApplyRequest;
 import com.colonel.saas.dto.SampleTalentQueryRequest;
@@ -65,7 +64,7 @@ import java.util.UUID;
 @Tag(name = "寄样管理", description = "寄样申请、寄样列表、达人候选搜索、状态流转与删除接口。")
 @RestController
 @RequestMapping("/samples")
-@RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.OPS_STAFF})
+@RequirePermission("sample:access")
 public class SampleController {
 
     private final SampleApplicationService sampleApplicationService;
@@ -267,7 +266,7 @@ public class SampleController {
         return sampleApplicationService.deleteSample(id, userId, deptId, dataScope, roleCodes);
     }
 
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.OPS_STAFF})
+    @RequirePermission("sample:sync-logistics")
     @PostMapping("/{id:[0-9a-fA-F\\-]{36}}/logistics/sync")
     public ApiResult<SampleLogisticsVO> syncLogistics(
             @Parameter(description = "寄样申请 ID，使用 UUID 格式。") @PathVariable UUID id,
@@ -278,7 +277,7 @@ public class SampleController {
         return sampleApplicationService.syncLogistics(id, userId, deptId, dataScope, roleCodes);
     }
 
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.OPS_STAFF})
+    @RequirePermission("sample:repair-logistics")
     @PutMapping("/{id:[0-9a-fA-F\\-]{36}}/logistics")
     public ApiResult<SampleLogisticsVO> repairLogistics(
             @Parameter(description = "寄样申请 ID，使用 UUID 格式。") @PathVariable UUID id,
@@ -290,7 +289,7 @@ public class SampleController {
         return sampleApplicationService.repairLogistics(id, request, userId, deptId, dataScope, roleCodes);
     }
 
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.OPS_STAFF})
+    @RequirePermission("sample:refresh-logistics")
     @PostMapping("/{id:[0-9a-fA-F\\-]{36}}/logistics/refresh")
     public ApiResult<SampleVO> refreshLogistics(
             @Parameter(description = "寄样申请 ID，使用 UUID 格式。") @PathVariable UUID id,
@@ -311,20 +310,20 @@ public class SampleController {
         return ApiResult.ok(sampleApplicationService.getSampleLogistics(id, userId, deptId, dataScope, roleCodes));
     }
 
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.OPS_STAFF})
+    @RequirePermission("sample:sync-all-logistics")
     @PostMapping("/logistics/sync-all")
     public ApiResult<Map<String, Integer>> syncAllLogistics(
             @RequestAttribute(value = "roleCodes", required = false) Object roleCodes) {
         return sampleApplicationService.syncAllLogistics(roleCodes);
     }
 
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.OPS_STAFF})
+    @RequirePermission("sample:download-logistics-import-template")
     @GetMapping("/logistics/import-template")
     public void downloadLogisticsImportTemplate(HttpServletResponse response) throws IOException {
         sampleApplicationService.downloadLogisticsImportTemplate(response);
     }
 
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.OPS_STAFF})
+    @RequirePermission("sample:import-logistics-tracking")
     @PostMapping(value = "/logistics/import", consumes = "multipart/form-data")
     public ApiResult<LogisticsImportResult> importLogisticsTracking(
             @RequestPart("file") MultipartFile file,
@@ -334,7 +333,7 @@ public class SampleController {
         return sampleApplicationService.importLogisticsTracking(file, allowOverwrite, userId, roleCodes);
     }
 
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.OPS_STAFF})
+    @RequirePermission("sample:batch-approve")
     @PostMapping("/batch-approve")
     public ApiResult<Map<String, Integer>> batchApprove(
             @Valid @RequestBody SampleBatchActionRequest request,
@@ -345,7 +344,7 @@ public class SampleController {
         return sampleApplicationService.batchApprove(request, userId, deptId, dataScope, roleCodes);
     }
 
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.OPS_STAFF})
+    @RequirePermission("sample:batch-reject")
     @PostMapping("/batch-reject")
     public ApiResult<Map<String, Integer>> batchReject(
             @Valid @RequestBody SampleBatchActionRequest request,
@@ -356,7 +355,7 @@ public class SampleController {
         return sampleApplicationService.batchReject(request, userId, deptId, dataScope, roleCodes);
     }
 
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.OPS_STAFF})
+    @RequirePermission("sample:batch-ship")
     @PostMapping("/batch-ship")
     public ApiResult<Map<String, Integer>> batchShip(
             @Valid @RequestBody SampleBatchShipRequest request,
@@ -367,7 +366,7 @@ public class SampleController {
         return sampleApplicationService.batchShip(request, userId, deptId, dataScope, roleCodes);
     }
 
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.OPS_STAFF})
+    @RequirePermission("sample:export-samples")
     @GetMapping("/exports")
     public void exportSamples(
             @Parameter(description = "寄样状态。") @RequestParam(required = false) String status,

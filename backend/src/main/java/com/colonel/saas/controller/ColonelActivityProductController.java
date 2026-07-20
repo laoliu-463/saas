@@ -1,11 +1,10 @@
 package com.colonel.saas.controller;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
-import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.annotation.RequirePermission;
 import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.common.result.PageResult;
-import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.auth.service.SysUserService;
 import com.colonel.saas.domain.product.application.CopyPromotionApplicationService;
 import com.colonel.saas.entity.ProductOperationLog;
@@ -76,7 +75,7 @@ import java.util.UUID;
 @RestController
 @Tag(name = "活动商品主链路", description = "团长活动下商品的详情、绑定、分配、审核、转链、达人跟进与操作日志接口。")
 @RequestMapping("/colonel/activities/{activityId}/products")
-@RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.ADMIN})
+@RequirePermission("colonel-activity-product:access")
 public class ColonelActivityProductController extends BaseController {
 
     /** 商品服务，负责活动商品的详情、绑定、分配、审核、转链等核心业务逻辑 */
@@ -124,7 +123,7 @@ public class ColonelActivityProductController extends BaseController {
          * @return 操作结果 Map
          */
     @Operation(summary = "活动商品绑定活动", description = "为活动商品补绑或修正关联活动。")
-    @RequireRoles({RoleCodes.BIZ_LEADER})
+    @RequirePermission("colonel-activity-product:bind-activity")
     @PutMapping("/{productId}/bind-activity")
     public ApiResult<Map<String, Object>> bindActivity(
             @Parameter(description = "团长活动 ID。") @PathVariable String activityId,
@@ -161,7 +160,7 @@ public class ColonelActivityProductController extends BaseController {
      * @return 操作结果 Map，包含更新后的商品分配信息
      */
     @Operation(summary = "活动商品分配招商", description = "为活动商品指定招商组长。")
-    @RequireRoles({RoleCodes.BIZ_LEADER})
+    @RequirePermission("colonel-activity-product:assign")
     @PutMapping("/{productId}/assignee")
     public ApiResult<Map<String, Object>> assign(
             @Parameter(description = "团长活动 ID。") @PathVariable String activityId,
@@ -201,7 +200,7 @@ public class ColonelActivityProductController extends BaseController {
      * @return 操作结果 Map
      */
     @Operation(summary = "活动商品分配审核人", description = "为待审核活动商品指定招商专员审核负责人，不改变商品主状态。")
-    @RequireRoles({RoleCodes.BIZ_LEADER})
+    @RequirePermission("colonel-activity-product:assign-audit-owner")
     @PutMapping("/{productId}/audit-assignee")
     public ApiResult<Map<String, Object>> assignAuditOwner(
             @Parameter(description = "团长活动 ID。") @PathVariable String activityId,
@@ -241,7 +240,7 @@ public class ColonelActivityProductController extends BaseController {
      * @return 操作结果 Map，包含更新后的商品状态
      */
     @Operation(summary = "活动商品审核", description = "提交活动商品审核结果。")
-    @RequireRoles({RoleCodes.BIZ_STAFF})
+    @RequirePermission("colonel-activity-product:audit")
     @PutMapping("/{productId}/audit-result")
     public ApiResult<Map<String, Object>> audit(
             @Parameter(description = "团长活动 ID。") @PathVariable String activityId,
@@ -281,7 +280,7 @@ public class ColonelActivityProductController extends BaseController {
      * @return 操作结果 Map，包含更新后的商品推进判断信息
      */
     @Operation(summary = "活动商品推进判断", description = "记录商品主推、次推、暂缓或放弃等人工推进判断，不改变商品主状态。")
-    @RequireRoles({RoleCodes.BIZ_STAFF})
+    @RequirePermission("colonel-activity-product:decision")
     @PutMapping("/{productId}/decision")
     public ApiResult<Map<String, Object>> decision(
             @Parameter(description = "团长活动 ID。") @PathVariable String activityId,
@@ -326,7 +325,7 @@ public class ColonelActivityProductController extends BaseController {
      * @return 转链结果，包含推广链接、短链等信息
      */
     @Operation(summary = "活动商品转链", description = "为活动商品生成推广链接。")
-    @RequireRoles({RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF})
+    @RequirePermission("colonel-activity-product:generate-promotion-link")
     @PostMapping("/{productId}/promotion-links")
     public ApiResult<com.colonel.saas.domain.product.application.dto.PromotionLinkCopyResult> generatePromotionLink(
             @Parameter(description = "团长活动 ID。") @PathVariable String activityId,
@@ -372,7 +371,7 @@ public class ColonelActivityProductController extends BaseController {
      * @return 操作结果 Map，包含创建的跟进记录信息
      */
     @Operation(summary = "活动商品达人跟进", description = "记录活动商品的达人跟进信息，用于达人侧协作与后续回访。")
-    @RequireRoles({RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF})
+    @RequirePermission("colonel-activity-product:follow")
     @PostMapping("/{productId}/follow")
     public ApiResult<Map<String, Object>> follow(
             @Parameter(description = "团长活动 ID。") @PathVariable String activityId,
@@ -418,7 +417,7 @@ public class ColonelActivityProductController extends BaseController {
      * @return 批量操作结果，包含 total/succeeded/failed 计数及每个商品的执行详情
      */
     @Operation(summary = "批量分配招商", description = "批量为活动商品指定招商组长；单个商品失败不影响其他商品。")
-    @RequireRoles({RoleCodes.BIZ_LEADER})
+    @RequirePermission("colonel-activity-product:batch-assign")
     @PostMapping("/batch-assign")
     public ApiResult<Map<String, Object>> batchAssign(
             @Parameter(description = "团长活动 ID。") @PathVariable String activityId,
@@ -446,7 +445,7 @@ public class ColonelActivityProductController extends BaseController {
      * @return 批量操作结果，包含 total/succeeded/failed 计数及每个商品的置顶截止时间
      */
     @Operation(summary = "批量置顶商品", description = "批量置顶活动商品 24 小时；单个商品失败不影响其他商品。")
-    @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF})
+    @RequirePermission("colonel-activity-product:batch-pin")
     @PostMapping("/batch-pin")
     public ApiResult<Map<String, Object>> batchPin(
             @Parameter(description = "团长活动 ID。") @PathVariable String activityId,

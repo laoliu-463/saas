@@ -1,10 +1,9 @@
 package com.colonel.saas.controller;
 
-import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.annotation.RequirePermission;
 import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.common.result.PageResult;
-import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.service.MerchantService;
 import com.colonel.saas.vo.PartnerDetailVO;
 import com.colonel.saas.vo.PartnerProductVO;
@@ -39,7 +38,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @Tag(name = "商品域合作方", description = "商品域 list_partners 等接口；商家型来自商品快照/商家表，团长型来自订单/活动/归因映射聚合。")
 @RequestMapping("/colonel/partners")
-@RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.ADMIN})
+@RequirePermission("colonel-partner:access")
 public class ColonelPartnerController extends BaseController {
 
     /** 商家服务，负责合作方列表、详情和商品查询等操作 */

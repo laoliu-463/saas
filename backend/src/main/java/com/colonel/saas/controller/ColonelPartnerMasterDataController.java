@@ -1,10 +1,9 @@
 package com.colonel.saas.controller;
 
-import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.annotation.RequirePermission;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.common.result.PageResult;
-import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.entity.ColonelPartner;
 import com.colonel.saas.service.ColonelPartnerMasterDataService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -72,7 +71,7 @@ public class ColonelPartnerMasterDataController {
      * @return 分页后的团长主数据列表
      */
     @Operation(summary = "团长主数据列表")
-    @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.ADMIN})
+    @RequirePermission("colonel-partner-master-data:list")
     @GetMapping
     public ApiResult<PageResult<ColonelPartner>> list(
             @Parameter(description = "团长名称关键字。") @RequestParam(required = false) String keyword,
@@ -100,7 +99,7 @@ public class ColonelPartnerMasterDataController {
      * @throws BusinessException 团长主数据不存在
      */
     @Operation(summary = "团长主数据详情")
-    @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.ADMIN})
+    @RequirePermission("colonel-partner-master-data:detail")
     @GetMapping("/{id}")
     public ApiResult<ColonelPartner> detail(@PathVariable UUID id) {
         return ApiResult.ok(colonelPartnerMasterDataService.detail(id));
@@ -114,7 +113,7 @@ public class ColonelPartnerMasterDataController {
      * @return 来源字符串列表（按字典序排序）
      */
     @Operation(summary = "团长来源下拉")
-    @RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.ADMIN})
+    @RequirePermission("colonel-partner-master-data:sources")
     @GetMapping("/sources")
     public ApiResult<List<String>> sources() {
         return ApiResult.ok(colonelPartnerMasterDataService.listSources());

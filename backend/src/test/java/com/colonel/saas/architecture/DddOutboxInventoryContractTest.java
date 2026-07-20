@@ -103,7 +103,8 @@ class DddOutboxInventoryContractTest {
         assertThat(controller)
                 .contains(
                         "@RequestMapping(\"/api/admin/outbox-events\")",
-                        "@RequireRoles({RoleCodes.ADMIN})",
+                        "@RequirePermission(\"outbox-admin:list\")",
+                        "@RequirePermission(\"outbox-admin:retry\")",
                         "@GetMapping",
                         "domainEventOutboxService.pageEvents(status, page, size)",
                         "@PostMapping(\"/{id}/retry\")",

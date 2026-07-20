@@ -8,6 +8,7 @@ import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.entity.SysRole;
 import com.colonel.saas.entity.SysUserRole;
 import com.colonel.saas.mapper.SysRoleMapper;
+import com.colonel.saas.mapper.SysRolePermissionMapper;
 import com.colonel.saas.mapper.SysUserRoleMapper;
 import com.colonel.saas.service.OperationLogService;
 import com.colonel.saas.vo.SysRoleVO;
@@ -26,6 +27,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -36,6 +38,7 @@ class SysRoleApplicationTest {
     @Mock SysRoleMapper sysRoleMapper;
     @Mock SysUserRoleMapper sysUserRoleMapper;
     @Mock OperationLogService operationLogService;
+    @Mock SysRolePermissionMapper sysRolePermissionMapper;
 
     private SysRoleApplication application;
     private final UUID roleId = UUID.randomUUID();
@@ -43,7 +46,11 @@ class SysRoleApplicationTest {
 
     @BeforeEach
     void setUp() {
-        application = new SysRoleApplication(sysRoleMapper, sysUserRoleMapper, operationLogService);
+        application = new SysRoleApplication(
+                sysRoleMapper,
+                sysUserRoleMapper,
+                operationLogService,
+                sysRolePermissionMapper);
         testRole = new SysRole();
         testRole.setId(roleId);
         testRole.setRoleCode("test_role");
@@ -88,6 +95,45 @@ class SysRoleApplicationTest {
         assertThatThrownBy(() -> application.getById(roleId))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("角色不存在");
+    }
+
+    @Test
+    void assignPermissions_shouldSkipWritesAndLogsWhenGrantSetIsUnchanged() {
+        when(sysRoleMapper.selectById(roleId)).thenReturn(testRole);
+        when(sysRolePermissionMapper.findPermissionCodesByRoleId(roleId))
+                .thenReturn(List.of("sample:access"));
+
+        application.assignPermissions(roleId, List.of("sample:access", "sample:access"), UUID.randomUUID());
+
+        verify(sysRolePermissionMapper, never()).deleteByRoleId(any());
+        verify(operationLogService, never()).recordSystemAction(
+                any(), anyString(), anyString(), anyString(), anyString(), any(), any(), anyString());
+    }
+
+    @Test
+    void assignPermissions_shouldReplaceGrantsAndBumpAssignedUsers() {
+        UUID operatorId = UUID.randomUUID();
+        UUID permissionId = UUID.randomUUID();
+        when(sysRoleMapper.selectById(roleId)).thenReturn(testRole);
+        when(sysRolePermissionMapper.findPermissionCodesByRoleId(roleId)).thenReturn(List.of());
+        when(sysRolePermissionMapper.findPermissionIdByCode("sample:access"))
+                .thenReturn(Optional.of(permissionId));
+        when(sysRolePermissionMapper.bumpAssignedUserAuthorizationVersion(roleId)).thenReturn(2);
+
+        application.assignPermissions(roleId, List.of("sample:access"), operatorId);
+
+        verify(sysRolePermissionMapper).deleteByRoleId(roleId);
+        verify(sysRolePermissionMapper).insertGrant(roleId, permissionId, operatorId);
+        verify(sysRolePermissionMapper).bumpAssignedUserAuthorizationVersion(roleId);
+        verify(operationLogService).recordSystemAction(
+                eq(operatorId),
+                eq("角色权限管理"),
+                eq("更新角色权限"),
+                eq("PUT"),
+                eq("SysRolePermission"),
+                eq(roleId.toString()),
+                eq("test_role"),
+                eq("更新角色权限: role=test_role, before=0, after=1, affectedUsers=2"));
     }
 
     @Test

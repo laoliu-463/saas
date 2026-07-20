@@ -1,11 +1,10 @@
 package com.colonel.saas.controller;
 
-import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.annotation.RequirePermission;
 import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.common.result.PageResult;
-import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.service.DashboardService;
 import com.colonel.saas.service.ShortTtlCacheService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -41,7 +40,7 @@ import java.util.UUID;
  */
 @Tag(name = "数据看板", description = "首页看板与归因概览接口。")
 @Validated
-@RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF})
+@RequirePermission("dashboard:access")
 @RestController
 @RequestMapping("/dashboard")
 public class DashboardController extends BaseController {

@@ -10,6 +10,7 @@ import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.result.ResultCode;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy.RolePermission;
+import com.colonel.saas.domain.user.facade.AuthorizationFacade;
 import com.colonel.saas.entity.OperationLog;
 import com.colonel.saas.entity.SysRole;
 import com.colonel.saas.entity.SysUser;
@@ -91,6 +92,8 @@ public class AuthService {
     /** 当前用户权限策略，用于统一登录上下文中的数据范围解析 */
     private final CurrentUserPermissionPolicy currentUserPermissionPolicy;
 
+    private final AuthorizationFacade authorizationFacade;
+
     /**
      * 构造注入所有依赖项。
      *
@@ -111,7 +114,8 @@ public class AuthService {
             RedisTemplate<String, Object> redisTemplate,
             OperationLogService operationLogService,
             BusinessRuleConfigService businessRuleConfigService,
-            CurrentUserPermissionPolicy currentUserPermissionPolicy) {
+            CurrentUserPermissionPolicy currentUserPermissionPolicy,
+            AuthorizationFacade authorizationFacade) {
         this.sysUserMapper = sysUserMapper;
         this.sysRoleMapper = sysRoleMapper;
         this.jwtTokenProvider = jwtTokenProvider;
@@ -120,6 +124,7 @@ public class AuthService {
         this.operationLogService = operationLogService;
         this.businessRuleConfigService = businessRuleConfigService;
         this.currentUserPermissionPolicy = currentUserPermissionPolicy;
+        this.authorizationFacade = authorizationFacade;
     }
 
     /**
@@ -191,6 +196,7 @@ public class AuthService {
                 .map(SysRole::getRoleCode)
                 .collect(Collectors.toList());
         int dataScope = resolveDataScope(roles, roleCodes);
+        List<String> permissionCodes = authorizationFacade.grantedPermissionCodes(user.getId());
 
         // 待激活状态的用户登录后需要在前端完成激活流程
         boolean pendingActivation = SysUserStatus.isPendingActivation(user.getStatus());
@@ -224,6 +230,7 @@ public class AuthService {
                 .deptId(user.getDeptId())
                 .dataScope(dataScope)
                 .roleCodes(roleCodes)
+                .permissionCodes(permissionCodes)
                 .username(user.getUsername())
                 .realName(user.getRealName())
                 .status(user.getStatus())

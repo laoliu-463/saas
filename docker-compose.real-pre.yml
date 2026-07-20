@@ -14,6 +14,7 @@ services:
       - ./backend/src/main/resources/db:/opt/saas-db-source:ro
       - ./backend/src/main/resources/db/00-set-env.sh:/docker-entrypoint-initdb.d/00-set-env.sh:ro
       - ./backend/src/main/resources/db/init-db.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - ./backend/src/main/resources/db/alter-authorization-permission-catalog-20260720.sql:/docker-entrypoint-initdb.d/alter-authorization-permission-catalog-20260720.sql:ro
       - ./backend/src/main/resources/db/migrate-all.sql:/docker-entrypoint-initdb.d/99-migrate-all.sql:ro
       - ./backend/src/main/resources/db/alter-product-main-chain.sql:/docker-entrypoint-initdb.d/02-alter-product-main-chain.sql:ro
       - ./backend/src/main/resources/db/alter-product-biz-status.sql:/docker-entrypoint-initdb.d/03-alter-product-biz-status.sql:ro

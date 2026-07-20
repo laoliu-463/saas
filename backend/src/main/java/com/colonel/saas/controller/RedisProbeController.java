@@ -1,9 +1,8 @@
 package com.colonel.saas.controller;
 
-import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.annotation.RequirePermission;
 import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.result.ApiResult;
-import com.colonel.saas.constant.RoleCodes;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -30,7 +29,7 @@ import java.util.Map;
  */
 @RestController
 @RequestMapping("/ops")
-@RequireRoles({RoleCodes.ADMIN})
+@RequirePermission("redis-probe:access")
 @Tag(name = "环境探针")
 @SecurityRequirement(name = "bearerAuth")
 public class RedisProbeController extends BaseController {

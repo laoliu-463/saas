@@ -139,7 +139,7 @@ const envLabel = computed(() => {
  * - 运营专员：寄样 -> "合作管理"
  */
 const visibleTabs = computed(() =>
-  getTopMenus(authStore.roleCodes).map((tab) => {
+  getTopMenus(authStore.permissionCodes).map((tab) => {
     if (isChannelStaffOnly.value) {
       if (tab.key === 'data') return { ...tab, label: '我的业绩' }
       if (tab.key === 'talent') return { ...tab, label: '我的达人' }
@@ -181,7 +181,7 @@ const safeNavigate = async (target: string) => {
 
 /** 顶部菜单 Tab 点击处理：解析该菜单下的默认路由并跳转 */
 const handleTopMenuClick = async (topKey: string) => {
-  const target = resolveTopMenuDefaultPath(topKey, authStore.roleCodes)
+  const target = resolveTopMenuDefaultPath(topKey, authStore.permissionCodes)
   if (!target) return
   await safeNavigate(target)
 }

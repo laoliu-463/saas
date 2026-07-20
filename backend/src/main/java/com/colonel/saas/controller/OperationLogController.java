@@ -1,11 +1,10 @@
 package com.colonel.saas.controller;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
-import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.annotation.RequirePermission;
 import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.common.result.PageResult;
-import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.entity.OperationLog;
 import com.colonel.saas.service.OperationLogService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -40,7 +39,7 @@ import java.time.LocalDate;
 @Tag(name = "操作日志中心", description = "管理员统一追溯系统关键操作的查询接口。")
 @RestController
 @RequestMapping("/operation-logs")
-@RequireRoles({RoleCodes.ADMIN})
+@RequirePermission("operation-log:access")
 public class OperationLogController extends BaseController {
 
     /** 操作日志服务，负责日志的分页查询 */

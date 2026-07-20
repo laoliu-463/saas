@@ -1,9 +1,8 @@
 package com.colonel.saas.controller;
 
-import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.annotation.RequirePermission;
 import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.result.ApiResult;
-import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.domain.product.application.ProductQuickSampleStatusQueryService;
 import com.colonel.saas.dto.douyin.DouyinQuickSampleStatusResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -29,7 +28,7 @@ import org.springframework.web.bind.annotation.RestController;
 @Tag(name = "抖店快速寄样诊断", description = "外部抖店 quick_sample_apply 联通状态诊断。")
 @RestController
 @RequestMapping("/admin/douyin/quick-sample")
-@RequireRoles({RoleCodes.ADMIN, RoleCodes.OPS_STAFF})
+@RequirePermission("admin-douyin-quick-sample:access")
 public class AdminDouyinQuickSampleController extends BaseController {
 
     /** 快速寄样状态查询应用服务。 */

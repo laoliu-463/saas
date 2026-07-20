@@ -3,6 +3,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useAuthStore } from '../../stores/auth'
+import { PERMISSION_CODES } from '../../constants/permissions'
 import Header from './Header.vue'
 
 const routerPush = vi.fn()
@@ -49,7 +50,11 @@ const mountHeader = async () => {
   const pinia = createPinia()
   setActivePinia(pinia)
   const authStore = useAuthStore()
-  authStore.setUserInfo({ username: 'alice', roleCodes: ['admin'] })
+  authStore.setUserInfo({
+    username: 'alice',
+    roleCodes: ['admin'],
+    permissionCodes: [PERMISSION_CODES.SAMPLE_ACCESS]
+  })
   authStore.updateTokens({ token: '', refreshToken: 'refresh-token' })
 
   const wrapper = mount(Header, {

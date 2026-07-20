@@ -1,10 +1,9 @@
 package com.colonel.saas.controller;
 
-import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.annotation.RequirePermission;
 import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.config.OrderDerivedCacheKeys;
-import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.domain.order.facade.OrderReadFacade;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.service.CommissionService;
@@ -40,7 +39,7 @@ import java.util.UUID;
  */
 @Tag(name = "业绩管理", description = "历史订单业绩回填、失效重算与补算兼容接口。")
 @Validated
-@RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.ADMIN})
+@RequirePermission("performance-order-admin:access")
 @RestController
 @RequestMapping("/orders")
 public class PerformanceOrderAdminController extends BaseController {
@@ -65,7 +64,7 @@ public class PerformanceOrderAdminController extends BaseController {
     }
 
     @Operation(summary = "回填历史业绩记录", description = "按订单号或结算时间范围批量写入 performance_records，默认仅处理尚未生成业绩记录的订单。")
-    @RequireRoles({RoleCodes.ADMIN})
+    @RequirePermission("performance-order-admin:performance-backfill")
     @PostMapping("/performance-backfill")
     public ApiResult<PerformanceBackfillService.BackfillResult> performanceBackfill(
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
@@ -102,7 +101,7 @@ public class PerformanceOrderAdminController extends BaseController {
     }
 
     @Operation(summary = "重算失效订单过期业绩", description = "扫描 order_status=4/5 且 performance_records.is_valid=true 的订单并重算冲正。")
-    @RequireRoles({RoleCodes.ADMIN})
+    @RequirePermission("performance-order-admin:reconcile-invalidated-performance")
     @PostMapping("/performance-reconcile-invalidated")
     public ApiResult<PerformanceBackfillService.BackfillResult> reconcileInvalidatedPerformance(
             @RequestBody(required = false) PerformanceReconcileRequest request,
@@ -139,7 +138,7 @@ public class PerformanceOrderAdminController extends BaseController {
 
     @Operation(summary = "管理员单笔重算业绩", description = "传入单个 orderId，重算并回写 performance_records（Y-09）。需 ADMIN 权限。")
     @PostMapping("/commission-recalculate")
-    @RequireRoles({RoleCodes.ADMIN})
+    @RequirePermission("performance-order-admin:recalculate-single")
     public ApiResult<CommissionService.OrderCommissionItem> recalculateSingle(
             @RequestParam("orderId") String orderId) {
         if (!StringUtils.hasText(orderId)) {

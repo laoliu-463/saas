@@ -20,8 +20,8 @@ class DddPerformanceAccessScopeClosureContractTest {
         assertThat(source)
                 .contains("PerformanceAccessScope.canExport(context, currentUserPermissionChecker)")
                 .contains("throw BusinessException.forbidden(\"无权导出业绩明细\")")
-                .contains("@RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.CHANNEL_LEADER})")
-                .contains("@RequireRoles({RoleCodes.ADMIN})");
+                .contains("@RequirePermission(\"performance:export\")")
+                .contains("@RequirePermission(\"performance:recalculate-month\")");
     }
 
     @Test

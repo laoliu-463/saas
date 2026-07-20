@@ -1,9 +1,8 @@
 package com.colonel.saas.controller;
 
-import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.annotation.RequirePermission;
 import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.result.ApiResult;
-import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.dto.performance.ExclusiveMerchantDetailDTO;
 import com.colonel.saas.service.ExclusiveMerchantQueryService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -35,7 +34,7 @@ import java.util.UUID;
 @Tag(name = "独家商家", description = "独家商家查询（V1 保留接口，是否启用由配置控制）。")
 @RestController
 @RequestMapping("/exclusive-merchants")
-@RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF})
+@RequirePermission("exclusive-merchant:access")
 public class ExclusiveMerchantController extends BaseController {
 
     /** 独家商家查询服务，负责按用户或合作方维度查询独家商家信息 */

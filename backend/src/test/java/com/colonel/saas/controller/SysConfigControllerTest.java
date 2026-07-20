@@ -1,7 +1,7 @@
 package com.colonel.saas.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.annotation.RequirePermission;
 import com.colonel.saas.common.exception.GlobalExceptionHandler;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
@@ -137,25 +137,19 @@ class SysConfigControllerTest {
 
     @Test
     void controller_shouldKeepWriteApisAdminOnlyAndGroupedReadExplicitlyWhitelisted() throws Exception {
-        RequireRoles classRoles = SysConfigController.class.getAnnotation(RequireRoles.class);
+        RequirePermission classRoles = SysConfigController.class.getAnnotation(RequirePermission.class);
         Method grouped = SysConfigController.class.getMethod("grouped", Object.class);
         Method create = SysConfigController.class.getMethod("create", SystemConfig.class, UUID.class);
         Method update = SysConfigController.class.getMethod("update", UUID.class, SystemConfig.class, UUID.class);
         Method delete = SysConfigController.class.getMethod("delete", UUID.class, UUID.class);
 
         assertThat(classRoles).isNotNull();
-        assertThat(classRoles.value()).containsExactly(RoleCodes.ADMIN);
-        assertThat(grouped.getAnnotation(RequireRoles.class).value())
-                .containsExactly(
-                        RoleCodes.ADMIN,
-                        RoleCodes.BIZ_LEADER,
-                        RoleCodes.BIZ_STAFF,
-                        RoleCodes.CHANNEL_LEADER,
-                        RoleCodes.CHANNEL_STAFF,
-                        RoleCodes.OPS_STAFF);
-        assertThat(create.getAnnotation(RequireRoles.class)).isNull();
-        assertThat(update.getAnnotation(RequireRoles.class)).isNull();
-        assertThat(delete.getAnnotation(RequireRoles.class)).isNull();
+        assertThat(classRoles.value()).isEqualTo("sys-config:access");
+        assertThat(grouped.getAnnotation(RequirePermission.class).value())
+                .isEqualTo("sys-config:grouped");
+        assertThat(create.getAnnotation(RequirePermission.class)).isNull();
+        assertThat(update.getAnnotation(RequirePermission.class)).isNull();
+        assertThat(delete.getAnnotation(RequirePermission.class)).isNull();
     }
 
     private static SystemConfig config(String key, String value) {

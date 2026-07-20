@@ -7,6 +7,7 @@ import com.colonel.saas.auth.dto.RefreshRequest;
 import com.colonel.saas.auth.dto.RefreshResponse;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
+import com.colonel.saas.domain.user.facade.AuthorizationFacade;
 import com.colonel.saas.entity.OperationLog;
 import com.colonel.saas.entity.SysRole;
 import com.colonel.saas.entity.SysUser;
@@ -61,6 +62,8 @@ class AuthServiceTest {
     private OperationLogService operationLogService;
     @Mock
     private BusinessRuleConfigService businessRuleConfigService;
+    @Mock
+    private AuthorizationFacade authorizationFacade;
 
     private PasswordEncoder passwordEncoder;
     private AuthService authService;
@@ -70,6 +73,7 @@ class AuthServiceTest {
         passwordEncoder = new BCryptPasswordEncoder();
         lenient().when(businessRuleConfigService.getLoginMaxFailures()).thenReturn(5);
         lenient().when(businessRuleConfigService.getLoginLockMinutes()).thenReturn(15);
+        lenient().when(authorizationFacade.grantedPermissionCodes(any())).thenReturn(List.of());
         authService = new AuthService(
                 sysUserMapper,
                 sysRoleMapper,
@@ -78,7 +82,8 @@ class AuthServiceTest {
                 redisTemplate,
                 operationLogService,
                 businessRuleConfigService,
-                new CurrentUserPermissionPolicy());
+                new CurrentUserPermissionPolicy(),
+                authorizationFacade);
     }
 
     private void stubJwtTokenGeneration() {

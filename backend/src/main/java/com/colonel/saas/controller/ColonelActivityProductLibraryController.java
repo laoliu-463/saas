@@ -2,8 +2,7 @@ package com.colonel.saas.controller;
 
 import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.result.ApiResult;
-import com.colonel.saas.constant.RoleCodes;
-import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.annotation.RequirePermission;
 import com.colonel.saas.service.ProductService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -37,7 +36,7 @@ import java.util.function.Function;
  */
 @Tag(name = "活动商品库", description = "活动商品加入共享商品库与批量入库接口。")
 @RequestMapping("/colonel/activities/{activityId}/products")
-@RequireRoles({RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF, RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.ADMIN})
+@RequirePermission("colonel-activity-product-library:access")
 @RestController
 public class ColonelActivityProductLibraryController extends BaseController {
 
@@ -48,7 +47,7 @@ public class ColonelActivityProductLibraryController extends BaseController {
     }
 
     @Operation(summary = "加入商品库", description = "将当前选品结果沉淀到共享商品库，供全员查看。")
-    @RequireRoles({RoleCodes.BIZ_STAFF})
+    @RequirePermission("colonel-activity-product-library:put-into-library")
     @PostMapping("/{productId}/library-entry")
     public ApiResult<Map<String, Object>> putIntoLibrary(
             @Parameter(description = "团长活动 ID。") @PathVariable String activityId,
@@ -59,7 +58,7 @@ public class ColonelActivityProductLibraryController extends BaseController {
     }
 
     @Operation(summary = "批量加入商品库", description = "批量将活动商品沉淀为共享商品库展示资产；单个商品失败不影响其他商品。")
-    @RequireRoles({RoleCodes.BIZ_STAFF})
+    @RequirePermission("colonel-activity-product-library:batch-put-into-library")
     @PostMapping("/batch-library-entry")
     public ApiResult<Map<String, Object>> batchPutIntoLibrary(
             @Parameter(description = "团长活动 ID。") @PathVariable String activityId,

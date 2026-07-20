@@ -76,13 +76,13 @@ class AuthorizationApplicationServiceTest {
 
         assertThat(decision.allowed()).isFalse();
         assertThat(decision.permissionCode()).isEqualTo("sample:read");
-        assertThat(decision.domainCode()).isNull();
+        assertThat(decision.domainCode()).isEqualTo("sample");
         assertThat(decision.reason()).isEqualTo(AuthorizationReason.DOMAIN_SCOPE_MISSING);
         assertThat(decision.scope()).isEqualTo(AuthorizationScope.DENY);
     }
 
     @Test
-    void authorize_shouldDenyUnscopedGrantWhenSubjectDepartmentIsMissing() {
+    void authorize_shouldAllowUnscopedGrantWhenSubjectDepartmentIsMissing() {
         UUID userId = UUID.randomUUID();
         AuthorizationSnapshot snapshot = snapshot(
                 userId,
@@ -93,11 +93,33 @@ class AuthorizationApplicationServiceTest {
 
         AuthorizationDecision decision = service.authorize(userId, "system:login");
 
-        assertThat(decision.allowed()).isFalse();
+        assertThat(decision.allowed()).isTrue();
         assertThat(decision.permissionCode()).isEqualTo("system:login");
-        assertThat(decision.domainCode()).isNull();
-        assertThat(decision.reason()).isEqualTo(AuthorizationReason.DOMAIN_SCOPE_MISSING);
-        assertThat(decision.scope()).isEqualTo(AuthorizationScope.DENY);
+        assertThat(decision.domainCode()).isEqualTo("system");
+        assertThat(decision.reason()).isEqualTo(AuthorizationReason.GRANTED);
+        assertThat(decision.scope()).isEqualTo(AuthorizationScope.ALL);
+    }
+
+    @Test
+    void grantedPermissionCodes_shouldReturnSortedDistinctCodes() {
+        UUID userId = UUID.randomUUID();
+        AuthorizationApplicationService service = service(ignored -> Optional.of(snapshot(
+                userId,
+                List.of(
+                        grant("sample:write", false, AuthorizationScope.DENY),
+                        grant("sample:read", false, AuthorizationScope.DENY),
+                        grant("sample:read", false, AuthorizationScope.DENY)))));
+
+        assertThat(service.grantedPermissionCodes(userId))
+                .containsExactly("sample:read", "sample:write");
+    }
+
+    @Test
+    void grantedPermissionCodes_shouldReturnEmptyForMissingSubject() {
+        AuthorizationApplicationService service = service(ignored -> Optional.empty());
+
+        assertThat(service.grantedPermissionCodes(UUID.randomUUID())).isEmpty();
+        assertThat(service.grantedPermissionCodes(null)).isEmpty();
     }
 
     @Test

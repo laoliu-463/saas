@@ -3,7 +3,7 @@ import { createPinia } from 'pinia'
 
 import App from './App.vue'
 import router from './router'
-import { hasAccess } from './constants/rbac'
+import { hasPermission } from './constants/permissions'
 import { useAuthStore } from './stores/auth'
 import { installNaiveComponents } from './plugins/naive-components'
 import { installNaiveRouteComponents } from './plugins/naive-route-components'
@@ -28,8 +28,8 @@ const authStore = useAuthStore()
 authStore.setupCrossTabSync(() => {
   const currentRoute = router.currentRoute.value
   if (currentRoute.path === '/login') return
-  const requiredRoles = currentRoute.matched[currentRoute.matched.length - 1]?.meta?.roles as string[] | undefined
-  if (!authStore.isLoggedIn || !hasAccess(authStore.roleCodes, requiredRoles)) {
+  const requiredPermissions = currentRoute.matched[currentRoute.matched.length - 1]?.meta?.permissions as string[] | undefined
+  if (!authStore.isLoggedIn || !hasPermission(authStore.permissionCodes, requiredPermissions)) {
     router.replace('/')
   }
 })

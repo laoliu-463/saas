@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.UUID;
+import java.util.List;
 
 @Service
 public class AuthorizationApplicationService implements AuthorizationFacade {
@@ -40,5 +41,20 @@ public class AuthorizationApplicationService implements AuthorizationFacade {
                         permission,
                         null,
                         AuthorizationReason.SUBJECT_NOT_ACTIVE));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<String> grantedPermissionCodes(UUID userId) {
+        if (userId == null) {
+            return List.of();
+        }
+        return store.loadActiveSnapshot(userId)
+                .map(snapshot -> snapshot.grants().stream()
+                        .map(grant -> grant.permission().value())
+                        .distinct()
+                        .sorted()
+                        .toList())
+                .orElseGet(List::of);
     }
 }

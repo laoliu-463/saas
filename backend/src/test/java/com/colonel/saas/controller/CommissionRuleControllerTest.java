@@ -1,7 +1,7 @@
 package com.colonel.saas.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.annotation.RequirePermission;
 import com.colonel.saas.common.exception.GlobalExceptionHandler;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.entity.CommissionRule;
@@ -164,10 +164,10 @@ class CommissionRuleControllerTest {
 
     @Test
     void controller_shouldOnlyExposeAdminRole() {
-        RequireRoles requireRoles = CommissionRuleController.class.getAnnotation(RequireRoles.class);
+        RequirePermission requireRoles = CommissionRuleController.class.getAnnotation(RequirePermission.class);
 
         assertThat(requireRoles).isNotNull();
-        assertThat(requireRoles.value()).containsExactly(RoleCodes.ADMIN);
+        assertThat(requireRoles.value()).isEqualTo("commission-rule:access");
     }
 
     private CommissionRule rule(String dimensionType, String dimensionId, String commissionType, String ratio) {

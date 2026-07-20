@@ -1,8 +1,7 @@
 package com.colonel.saas.controller;
 
-import com.colonel.saas.annotation.RequireRoles;
+import com.colonel.saas.annotation.RequirePermission;
 import com.colonel.saas.common.result.ApiResult;
-import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.domain.colonel.application.ColonelPartnerContactUpdateRouter;
 import com.colonel.saas.dto.colonel.ColonelPartnerContactUpdateRequest;
 import com.colonel.saas.entity.ColonelPartner;
@@ -84,7 +83,7 @@ public class AdminColonelPartnerController {
      * @throws com.colonel.saas.common.exception.BusinessException 团长不存在或参数校验失败
      */
     @Operation(summary = "更新团长联系方式")
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER})
+    @RequirePermission("admin-colonel-partner:update-contact")
     @PutMapping("/{id}/contact")
     public ApiResult<ColonelPartner> updateContact(
             @PathVariable UUID id,
@@ -109,7 +108,7 @@ public class AdminColonelPartnerController {
      * @return 同步结果，包含 upserted（本次同步更新/插入的记录数）
      */
     @Operation(summary = "手动触发团长主数据同步")
-    @RequireRoles({RoleCodes.ADMIN, RoleCodes.BIZ_LEADER})
+    @RequirePermission("admin-colonel-partner:sync")
     @PostMapping("/sync")
     public ApiResult<Map<String, Object>> sync() {
         // 第一步：执行全量同步
