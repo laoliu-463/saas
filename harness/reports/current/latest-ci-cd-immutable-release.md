@@ -1,6 +1,6 @@
 # CI/CD 不可变发布链路证据
 
-- 时间：2026-07-21 18:46:30 +08:00
+- 时间：2026-07-21 18:54:30 +08:00
 - 环境：本地 Windows worktree；目标环境 real-pre；本轮未连接远端服务器
 - 分支：`codex/ci-cd-immutable-release`
 - 代码提交：`750b8be1`（已 rebase 到 `main@4ea8e832`；修复 report lifecycle 测试跨平台执行器，并补齐 Jenkins `IMAGE_TAG` 40 位 SHA 校验）
@@ -19,7 +19,7 @@
 
 - `CI YAML`：PASS（PyYAML 解析）。
 - Jenkins 镜像身份合同：PASS；`Preflight Guard` 现在显式拒绝非 40 位 `IMAGE_TAG`。
-- PR / GitHub Actions：PASS；PR #212 的 run `29823060050` 绑定 head `0097299d`，`Changes`、`Backend tests`、`Repository governance`、`CI Gate` 全部通过；前端、Immutable images、Release manifest 因变更范围正确跳过。
+- PR / GitHub Actions：PASS；PR #212 的功能变更 run `29823060050` 绑定 head `0097299d`，`Changes`、`Backend tests`、`Repository governance`、`CI Gate` 全部通过；证据提交后的最新 head `8179f587` 对应 run `29823557837` 也全部通过。前端、Immutable images、Release manifest 因变更范围正确跳过。
 - 发布清单示例与迁移输入哈希：PASS；当前迁移输入哈希为 `sha256:809df060f465d33ffc7c692ef1c0f76cad8eac5c6c0e12beb0589157abbf0b6e`。
 - Shell 语法：PASS（数据库迁移、部署、回滚脚本）。
 - PowerShell AST：PASS（harness/scripts 下脚本）。
@@ -35,7 +35,7 @@
 
 - GitHub 分支保护是否已将 `CI Gate` 设为 required，未通过本地代码验证；需要仓库管理员在 GitHub 设置并用真实 PR 验证。
 - Jenkins 需要配置 `saas-container-registry` 凭证和 Lockable Resources 的 `saas-real-pre-deploy` 资源；本地没有 Jenkins 控制器，未执行流水线语法与真实部署验证。
-- PR #212 已创建并通过 GitHub Actions。历史首轮 run `29822336993` 暴露了 Ubuntu Runner 的 `powershell`/`pwsh` 跨平台问题；第二轮 run `29822753328` 的 Pester 已 80/80 通过但暴露 Jenkins `IMAGE_TAG` 合同缺口；第三轮 run `29823060050` 在 `0097299d` 上全部必需检查通过。
+- PR #212 已创建并通过 GitHub Actions。历史首轮 run `29822336993` 暴露了 Ubuntu Runner 的 `powershell`/`pwsh` 跨平台问题；第二轮 run `29822753328` 的 Pester 已 80/80 通过但暴露 Jenkins `IMAGE_TAG` 合同缺口；第三轮 run `29823060050` 在 `0097299d` 上全部必需检查通过；证据提交后的 run `29823557837` 在 `8179f587` 上再次全部通过。
 - 首次切换到 digest 发布前，必须为 `release/real-pre.json` 填入真实 main SHA、GHCR 两个 digest、迁移版本和可回滚的 previous manifest；不能直接使用 example 中的零值。
 - `READY_FOR_REVIEW`：代码、合同、本地验证和 PR CI 均通过；仍未完成 GHCR 不可变镜像生成、发布提升 PR、Jenkins 故障注入或首次 real-pre 发布。
 
