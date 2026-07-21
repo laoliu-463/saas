@@ -159,10 +159,17 @@ function Get-HarnessFileSnapshot {
         throw "Harness directory not found: $harnessRoot"
     }
 
+    $nodeModulesRoot = (Join-Path $harnessRoot 'node_modules').TrimEnd([char[]]@(
+        [System.IO.Path]::DirectorySeparatorChar,
+        [System.IO.Path]::AltDirectorySeparatorChar
+    )) + [System.IO.Path]::DirectorySeparatorChar
     $files = @(Get-ChildItem -LiteralPath $harnessRoot -Recurse -File -Force)
     $paths = @()
     $lineCounts = @{}
     foreach ($file in $files) {
+        if ($file.FullName.StartsWith($nodeModulesRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+            continue
+        }
         $relative = Get-RepoRelativeGovernancePath -RepoRoot $RepoRoot -FullPath $file.FullName
         if (Test-IsGeneratedDependencyPath -Path $relative) { continue }
         $paths += $relative

@@ -2,26 +2,24 @@
 
 ## Metadata
 
-- Time: 2026-07-21 20:28:37 +08:00
+- Time: 2026-07-21 20:32:22 +08:00
 - Environment: real-pre
 - Scope: docs
 - Branch: chore/developer-flow-simple
-- Commit: c3ff0e85
+- Commit: 4a8842a8
 - Owned worktree: dirty
 - Deploy remote: false
 
 ## Owned Files
 
 ~~~text
-harness/src/core/evidence.ts
-harness/tests/inspect-cli.test.ts
+harness/scripts/modules/HarnessFileGovernance.psm1
 ~~~
 
 ## Owned Git Status
 
 ~~~text
-M harness/src/core/evidence.ts
- M harness/tests/inspect-cli.test.ts
+M harness/scripts/modules/HarnessFileGovernance.psm1
 ~~~
 
 ## Build Result
