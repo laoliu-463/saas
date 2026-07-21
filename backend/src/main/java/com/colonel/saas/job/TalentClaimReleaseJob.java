@@ -1,7 +1,7 @@
 package com.colonel.saas.job;
 
+import com.colonel.saas.domain.talent.application.TalentClaimReleaseApplicationService;
 import com.colonel.saas.service.DistributedJobLockService;
-import com.colonel.saas.service.TalentService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -28,7 +28,7 @@ import java.time.LocalDateTime;
  * </ul>
  * </p>
  *
- * @see TalentService#releaseExpiredClaims(LocalDateTime)
+ * @see TalentClaimReleaseApplicationService#releaseExpiredClaims(LocalDateTime)
  * @see JobLockKeys#TALENT_CLAIM_RELEASE
  */
 @Slf4j
@@ -39,13 +39,14 @@ public class TalentClaimReleaseJob {
     /** 分布式锁 TTL，30 分钟覆盖大批量更新场景 */
     private static final Duration LOCK_TTL = Duration.ofMinutes(30);
 
-    /** 达人服务 */
-    private final TalentService talentService;
+    /** 达人认领释放应用服务 */
+    private final TalentClaimReleaseApplicationService talentClaimReleaseApplicationService;
     /** 分布式锁服务 */
     private final DistributedJobLockService jobLockService;
 
-    public TalentClaimReleaseJob(TalentService talentService, DistributedJobLockService jobLockService) {
-        this.talentService = talentService;
+    public TalentClaimReleaseJob(TalentClaimReleaseApplicationService talentClaimReleaseApplicationService,
+                                 DistributedJobLockService jobLockService) {
+        this.talentClaimReleaseApplicationService = talentClaimReleaseApplicationService;
         this.jobLockService = jobLockService;
     }
 
@@ -63,7 +64,7 @@ public class TalentClaimReleaseJob {
         }
         try {
             LocalDateTime now = LocalDateTime.now();
-            talentService.releaseExpiredClaims(now);
+            talentClaimReleaseApplicationService.releaseExpiredClaims(now);
             log.info("Talent claim release job completed at {}", now);
         } finally {
             jobLockService.release(JobLockKeys.TALENT_CLAIM_RELEASE);

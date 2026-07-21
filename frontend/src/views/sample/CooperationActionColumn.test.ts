@@ -27,4 +27,21 @@ describe('CooperationActionColumn', () => {
     await wrapper.get('[data-testid="cooperation-action-EDIT"]').trigger('click')
     expect(wrapper.emitted('select')).toEqual([['APPROVE'], ['EDIT']])
   })
+
+  it('disables actions rejected by the server availability matrix', async () => {
+    const wrapper = mount(CooperationActionColumn, {
+      props: {
+        availability: {
+          APPROVE: { enabled: false, disabledReason: '当前状态不允许通过' },
+          PROGRESS: { enabled: true, disabledReason: null }
+        }
+      }
+    })
+
+    expect(wrapper.get('[data-testid="cooperation-action-APPROVE"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('[data-testid="cooperation-action-PROGRESS"]').attributes('disabled')).toBeUndefined()
+
+    await wrapper.get('[data-testid="cooperation-action-APPROVE"]').trigger('click')
+    expect(wrapper.emitted('select')).toBeUndefined()
+  })
 })

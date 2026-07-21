@@ -1,91 +1,55 @@
-﻿# Evidence Report
+# Evidence Report — Talent Claim OOM Guard
 
 ## Metadata
 
-- Time: 2026-07-20 14:55:39 +08:00
-- Environment: real-pre
-- Scope: backend
-- Branch: codex/183-talent-claim-oom-guard-release
-- Commit: d546144c
-- Owned worktree: clean
-- Deploy remote: false
+- Time: 2026-07-20 (Asia/Shanghai)
+- Environment: remote `real-pre`
+- Application release: `release/real-pre` @ `4b426449fe520cf5f056b8f69fe322943c07e3d3`
+- Included backend fix: `568d1648b475ac525e522f65f50efa2ff868c438` (claim release OOM guard)
+- Deployment method: user explicitly directed a manual release after Jenkins checkout delays.
 
-## Owned Files
+## Verified Code and CI
 
-~~~text
-backend/src/main/java/com/colonel/saas/domain/talent/application/TalentClaimApplicationService.java
-backend/src/test/java/com/colonel/saas/domain/talent/application/TalentClaimApplicationServiceTest.java
-backend/src/test/java/com/colonel/saas/architecture/RoleAwareAttributionFlywayIntegrationTest.java
-backend/src/test/java/com/colonel/saas/architecture/DddTalentDomainInventoryEvidenceTest.java
-backend/src/test/java/com/colonel/saas/service/TalentServiceTest.java
-docker-compose.real-pre.yml
-~~~
+- `4b426449` contains the OOM fix; `git diff 568d1648..4b426449 -- backend` is empty.
+- Targeted local governance test: `release-queue-governance.Tests.ps1` 11/11 passed.
+- PR #193 merged the Jenkins tracking-ref fix to `main` (`844636f5`).
+- PR #194 promoted it to `release/real-pre` (`4b426449`).
+- For both PRs, two backend full suites, two frontend build suites, and two governance suites passed.
+- Historical backend verification retained: full suite 3,322 tests, 0 failures, 0 errors, 3 skipped.
 
-## Owned Git Status
+## Jenkins Recovery Evidence
 
-~~~text
-(clean)
-~~~
+- #19 checked out `0f870696`, then failed because a release-only refspec left `origin/main` absent while Preflight read that ref; no deployment occurred.
+- Fixed with `git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main` and a matching governance assertion.
+- #20 reached the corrected Preflight but stopped at the explicit `DEPLOY_REAL_PRE=false` approval gate; no deployment occurred.
+- #21 was cancelled before deployment when the user switched to manual release; no concurrent Jenkins deployment ran.
 
-## Build Result
+## Manual Release Evidence
 
-~~~text
-not collected
-Backend build: PASS (mvn -f backend/pom.xml -DskipTests package)
-~~~
+- Source archive from exact target commit SHA-256: `ea89cccd14079f6e94038630153b85b572891e17ea2c3c5fd41cacbab3289183`; server checksum matched.
+- Reused JAR SHA-256: `6491440b4eabb5a76ae9fa394b9efb1d1ffe280c9f3bf2e37c7f272dcfb94b53`; source-equivalence check above justifies reuse and server checksum matched.
+- Built images: `colonel-saas/backend:4b426449...` and `colonel-saas/frontend:4b426449...`; OCI revision labels match the full target SHA.
+- Previous images (`02fcc18a83b85137954f9bd845344c296ae34b05`) were recorded before replacement for rollback.
+- No database migration, destructive DDL, volume deletion, or database reset was executed.
 
-## Docker Status
+## Remote Health and Business Validation
 
-~~~text
-NAME                              IMAGE                            COMMAND                  SERVICE             CREATED         STATUS                        PORTS
-saas-active-backend-real-pre-1    colonel-saas/backend:real-pre    "sh -c 'java $JAVA_O…"   backend-real-pre    2 minutes ago   Up About a minute (healthy)   127.0.0.1:8081->8080/tcp
-saas-active-frontend-real-pre-1   colonel-saas/frontend:real-pre   "/docker-entrypoint.…"   frontend-real-pre   2 minutes ago   Up About a minute (healthy)   127.0.0.1:3001->80/tcp
-saas-active-postgres-real-pre-1   postgres:15-alpine               "docker-entrypoint.s…"   postgres-real-pre   2 minutes ago   Up 2 minutes (healthy)        5432/tcp
-saas-active-redis-real-pre-1      redis:7-alpine                   "docker-entrypoint.s…"   redis-real-pre      42 hours ago    Up 42 hours (healthy)         6379/tcp
-NAMES                             STATUS                        PORTS
-saas-active-frontend-real-pre-1   Up About a minute (healthy)   127.0.0.1:3001->80/tcp
-saas-active-backend-real-pre-1    Up About a minute (healthy)   127.0.0.1:8081->8080/tcp
-saas-active-postgres-real-pre-1   Up 2 minutes (healthy)        5432/tcp
-saas-active-redis-real-pre-1      Up 42 hours (healthy)         6379/tcp
-~~~
+- Backend container: `running (healthy)`, target SHA image.
+- Frontend container: `running (healthy)`, target SHA image.
+- `GET /api/actuator/health/readiness`: `{"status":"UP"}`.
+- `GET /api/system/health`: `status=UP`, `gitSha=4b426449...`.
+- `GET /healthz`: `ok`; `GET /version.json`: `gitSha=4b426449...`.
+- `APP_SCHEDULING_ENABLED=true`; schedulers were restored after backend readiness.
+- User confirmed the functional group-test items before the direct release; this run additionally verified running revision and service health.
 
-## Health Check Result
+## Gitee Check and Residual Risk
 
-~~~text
-Local health verification: PASS
-~~~
+- Gitee has no `main` or `release/real-pre`; only `feature/ddd/DDD-VERIFY-001` @ `26cf8764...` was found, so it cannot be used as the current release source.
+- Jenkins still reads GitHub SSH. Moving later *test* releases to Gitee requires a controlled mirror, protected branches, and SHA-consistency gate; a direct switch to the stale branch is unsafe.
+- Manual release was user-directed and healthy, but it has no Jenkins PASS artifact.
 
-## Business Validation Result
+## Retro and Conclusion
 
-~~~text
-Business validation: PASS (mvn -f backend/pom.xml -Dtest=TalentClaimApplicationServiceTest test)
-CI migration regression: PASS (RoleAwareAttributionFlywayIntegrationTest, 2 tests)
-Order facade and claim regression: PASS (LegacyOrderReadFacadeTest + TalentClaimApplicationServiceTest, 17 tests)
-Service/dependency regression: PASS (TalentServiceTest + DddTalentDomainInventoryEvidenceTest + order facade + claim tests, 74 tests)
-Full backend suite: PASS (3,322 tests; 0 failures; 0 errors; 3 skipped)
-~~~
-
-## Content Maintenance Result
-
-~~~text
-Content maintenance skipped by -ContentMaintenance off.
-~~~
-
-## Remote Deploy Result
-
-~~~text
-remote not deployed
-~~~
-
-## Retro Summary
-
-直接推送受保护的 main 被 GitHub 拒绝，符合“必须经 Pull Request”的发布规则；已改为候选分支发布路径。根因是过期认领任务逐条把订单事实（含 JSONB）累积到 JVM，后续同类任务必须验证数据库读取有界性和生产数据量下的堆使用。
-
-## Conclusion
-
-PARTIAL
-
-## Residual Risk
-
-- 远端尚未通过 Jenkins 发布，不能将本地验证视为远端已修复。
-- real-pre P0 预检仍受管理员访问 Token 状态接口的 RBAC 403 阻塞；本轮未绕过该门禁，用户已确认组测通过。
+- Improve release-only checkouts by explicitly mapping every remote-tracking ref used later in Preflight; this is now fixed and regression-checked.
+- Improve remote build reliability with a controlled GitHub→Gitee mirror and warmed Maven cache; validate branch and SHA parity before use.
+- Conclusion: `PARTIAL` — application deployment and remote health are PASS; CI governance remains PARTIAL because the final release intentionally bypassed Jenkins, and Gitee is not yet a valid test source.

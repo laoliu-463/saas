@@ -145,7 +145,8 @@ jobs:
             './harness/scripts/tests/safety-check-docs.Tests.ps1',
             './harness/scripts/tests/git-push-safe.Tests.ps1',
             './harness/scripts/tests/agent-do-conclusion.Tests.ps1',
-            './harness/scripts/tests/check-harness-limits.Tests.ps1'
+            './harness/scripts/tests/check-harness-limits.Tests.ps1',
+            './harness/scripts/tests/test-impact-map.Tests.ps1'
           )
           $result = Invoke-Pester -Script $tests -PassThru
           if ($result.FailedCount -gt 0) { throw "GitHub collaboration contract failed." }

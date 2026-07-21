@@ -1116,7 +1116,8 @@ class SampleControllerTest {
         assertThat(approve.getInternalToStatus()).isEqualTo("PENDING_SHIP");
         assertThat(approve.getRoleCodes()).containsExactly(RoleCodes.ADMIN, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF);
         assertThat(approve.getBatchEndpoint()).isEqualTo("POST /samples/batch-approve");
-        assertThat(approve.getInvalidStateMessage()).contains("expected PENDING_AUDIT");
+        // PR #fix-cooperation-action-availability: 不依赖 message 文案，只检查状态码
+        assertThat(approve.getInvalidStateMessage()).contains("PENDING_AUDIT");
 
         SampleStatusTransitionVO reject = transitions.get("REJECTED");
         assertThat(reject.getFromStatuses()).containsExactly("PENDING_AUDIT");
@@ -2149,7 +2150,9 @@ class SampleControllerTest {
                 null,
                 DataScope.ALL,
                 List.of(RoleCodes.BIZ_STAFF)))
-                .hasMessageContaining("expected PENDING_AUDIT but was PENDING_SHIP");
+                // PR #fix-cooperation-action-availability: 兼容中英文错误信息
+                .hasMessageContaining("PENDING_AUDIT")
+                .hasMessageContaining("PENDING_SHIP");
     }
 
     @Test

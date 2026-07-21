@@ -52,7 +52,8 @@ class DddSampleExceptionBranchCoverageContractTest {
                 .contains("if (completed > 0)");
 
         assertThat(stateMachine)
-                .contains("throw BusinessException.stateInvalid(\"Current status does not allow this action: expected \"")
+                .contains("String message = String.format(")
+                .contains("throw BusinessException.stateInvalid(message)")
                 .contains("throw BusinessException.stateInvalid(\"Only pending/rejected sample can be deleted\")");
     }
 
