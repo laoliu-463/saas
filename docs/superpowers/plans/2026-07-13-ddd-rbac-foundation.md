@@ -46,8 +46,8 @@ Modify:
 - `backend/src/main/java/com/colonel/saas/config/DomainPolicyConfig.java`
 - `docs/07-权限与数据范围.md`
 - `docs/领域/用户域.md`
-- `harness/reports/latest-evidence-20260713.md` through the Harness only
-- one `harness/reports/retro-*.md` through the Harness only
+- `runtime/qa/out/latest-evidence-20260713.md` through the Harness only
+- one `runtime/qa/out/retro-*.md` through the Harness only
 
 Explicitly do not modify in this phase:
 
@@ -89,8 +89,8 @@ Expected: the branch is an isolated `codex/` branch, the worktree has no unrelat
 Run:
 
 ```powershell
-$baseReports = git ls-tree -r --name-only ab201aa5 -- harness/reports |
-    Where-Object { $_ -match '^harness/reports/[^/]+$' }
+$baseReports = git ls-tree -r --name-only ab201aa5 -- runtime/qa/out |
+    Where-Object { $_ -match '^runtime/qa/out/[^/]+$' }
 $baseReports.Count
 
 $currentReports = Get-ChildItem .\harness\reports -File
@@ -99,7 +99,7 @@ $currentReports.Count
 Get-Content -Raw .\harness\reports\latest-harness-limits-check.md
 ```
 
-Expected on planning commit `ef76f09a`: `FAIL`. The fixed design base `ab201aa5` contains 85 direct `harness/reports` files, and the planning Harness added 4 tracked reports, so the reproducible current count is 89. The 71-file value in the older `latest-harness-limits-check.md` is stale and is read only as evidence of that discrepancy. `harness/scripts/check-harness-limits.ps1` currently hardcodes `D:\Projects\SAAS\harness` and writes the main worktree report; until a separate Harness-governance change fixes that defect, it is forbidden to invoke the script from an isolated worktree. This inherited exception permits development to continue but forbids a final `PASS` until a separate housekeeping batch fixes it. Do not archive or modify unrelated reports in the RBAC commit.
+Expected on planning commit `ef76f09a`: `FAIL`. The fixed design base `ab201aa5` contains 85 direct `runtime/qa/out` files, and the planning Harness added 4 tracked reports, so the reproducible current count is 89. The 71-file value in the older `latest-harness-limits-check.md` is stale and is read only as evidence of that discrepancy. `harness/scripts/check-harness-limits.ps1` currently hardcodes `D:\Projects\SAAS\harness` and writes the main worktree report; until a separate Harness-governance change fixes that defect, it is forbidden to invoke the script from an isolated worktree. This inherited exception permits development to continue but forbids a final `PASS` until a separate housekeeping batch fixes it. Do not archive or modify unrelated reports in the RBAC commit.
 
 - [ ] **Step 3: Run the current user/security characterization set**
 
@@ -905,8 +905,8 @@ git commit -m "test(auth): keep authorization foundation dormant"
 
 - Modify: `docs/07-权限与数据范围.md`
 - Modify: `docs/领域/用户域.md`
-- Generated/modified by Harness: `harness/reports/latest-evidence-20260713.md`
-- Generated/modified by Harness: one `harness/reports/retro-*.md`
+- Generated/modified by Harness: `runtime/qa/out/latest-evidence-20260713.md`
+- Generated/modified by Harness: one `runtime/qa/out/retro-*.md`
 
 - [ ] **Step 1: Update docs with verified status only**
 

@@ -36,5 +36,5 @@ Closes #
 ## 自动结果
 
 - CI Gate：由 GitHub Actions 回填
-- Evidence：由 Harness 生成，通常位于 `harness/reports/current/latest-<report-key>.md`
+- Evidence：由 Harness 生成，通常位于 `runtime/qa/out/latest-<report-key>.md` 或 CI artifact
 - 剩余风险：

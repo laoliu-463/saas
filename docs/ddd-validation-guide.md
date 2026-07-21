@@ -12,7 +12,7 @@ DDD 1.0 收口表示当前阶段的领域边界、白名单、架构测试和证
 - `PARTIAL` 表示已有部分证据，但缺少完整链路或当前复跑证据。
 - `TODO` 表示尚未形成可验证证据。
 - `BLOCKED` 必须写明阻塞原因和解阻条件，不能伪装成通过。
-- DDD 收口报告默认写入 `harness/reports/latest-ddd-acceptance-report.md`。
+- DDD 收口报告默认写入 `runtime/qa/out/latest-ddd-acceptance-report.md`。
 
 ## 3. 七层验收
 

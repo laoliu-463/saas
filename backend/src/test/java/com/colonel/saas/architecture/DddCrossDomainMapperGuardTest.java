@@ -34,7 +34,7 @@ class DddCrossDomainMapperGuardTest {
 
         assertThat(newViolations)
                 .as("New cross-domain mapper injections detected. Use Facade/Port instead, "
-                        + "or update harness/reports/ddd-dependency-map.md with ADR approval.")
+                        + "or update the runtime evidence artifact with ADR approval.")
                 .isEmpty();
     }
 

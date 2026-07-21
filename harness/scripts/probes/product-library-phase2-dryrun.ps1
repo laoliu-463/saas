@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$BaseUrl = "http://127.0.0.1:8081/api",
     [string]$ActivityId = "3859423",
     [int]$PageSize = 20,
@@ -10,7 +10,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 $repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..\..\..")).Path
-$reportDir = Join-Path $repoRoot "harness\reports"
+$reportDir = Join-Path $repoRoot "runtime\qa\out"
 $stamp = Get-Date -Format "yyyyMMdd-HHmm"
 $reportPath = Join-Path $reportDir "product-library-count-phase2-dryrun-pagination-$stamp.md"
 

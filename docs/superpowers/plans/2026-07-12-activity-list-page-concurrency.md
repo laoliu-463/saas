@@ -34,8 +34,8 @@
 
 **Files:**
 - No production files beyond Task 2.
-- Generate: `harness/reports/latest-evidence-YYYYMMDD-activity-page-concurrency.md`
-- Generate: `harness/reports/retro-YYYYMMDD-activity-page-concurrency.md`
+- Generate: `runtime/qa/out/latest-evidence-YYYYMMDD-activity-page-concurrency.md`
+- Generate: `runtime/qa/out/retro-YYYYMMDD-activity-page-concurrency.md`
 
 - [x] Run the focused test, backend build, frontend tests/build, and the backend full suite while excluding `AllActivitiesSyncAndInspectTest`.
 - [x] Run `restart-compose.ps1 -Env real-pre -Scope full`, `verify-local.ps1`, and `npm run e2e:real-pre:p0:preflight`.

@@ -355,7 +355,7 @@ function New-HarnessReportPath {
     )
 
     $key = ConvertTo-HarnessReportKey -ReportKey $ReportKey
-    $reportsDir = Join-Path $RepoRoot "harness\reports\current"
+    $reportsDir = Join-Path $RepoRoot "runtime\qa\out"
     if (-not (Test-Path -LiteralPath $reportsDir)) {
         New-Item -ItemType Directory -Force -Path $reportsDir | Out-Null
     }
@@ -510,6 +510,16 @@ function Get-HarnessNodeGitSnapshotJson {
     } | ConvertTo-Json -Depth 8 -Compress)
 }
 
+function New-HarnessNodeGitSnapshotFile {
+    param([Parameter(Mandatory = $true)][string]$RepoRoot)
+
+    $snapshotJson = Get-HarnessNodeGitSnapshotJson -RepoRoot $RepoRoot
+    $path = Join-Path ([System.IO.Path]::GetTempPath()) ("harness-verify-" + [guid]::NewGuid().ToString("N") + ".json")
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($path, $snapshotJson, $utf8NoBom)
+    return $path
+}
+
 function Get-HarnessNodeVerifyReceipt {
     param(
         [Parameter(Mandatory = $true)][AllowEmptyCollection()][object[]]$Output,
@@ -537,8 +547,8 @@ function Get-HarnessNodeVerifyReceipt {
             -and ([string]$receipt.runId) -match '^[a-z0-9]+(?:[._-][a-z0-9]+)*$' `
             -and $receipt.status -in @("PASS", "FAIL", "BLOCKED", "PARTIAL") `
             -and $receipt.evidencePaths.rawJson -eq "runtime/qa/out/$($receipt.runId)/run.json" `
-            -and $receipt.evidencePaths.stableJson -eq "harness/reports/current/latest-$ExpectedReportKey.json" `
-            -and $receipt.evidencePaths.stableMarkdown -eq "harness/reports/current/latest-$ExpectedReportKey.md" `
+            -and $receipt.evidencePaths.stableJson -eq "runtime/qa/out/latest-$ExpectedReportKey.json" `
+            -and $receipt.evidencePaths.stableMarkdown -eq "runtime/qa/out/latest-$ExpectedReportKey.md" `
             -and $receipt.evidenceDigests.rawJson -match '^sha256:[a-f0-9]{64}$' `
             -and $receipt.evidenceDigests.stableJson -match '^sha256:[a-f0-9]{64}$' `
             -and $receipt.evidenceDigests.stableMarkdown -match '^sha256:[a-f0-9]{64}$'
@@ -601,8 +611,8 @@ function Resolve-HarnessNodeVerifyDecision {
         $runId = [string]$report.runId
         $status = [string]$report.result.status
         $expectedRaw = "runtime/qa/out/$runId/run.json"
-        $expectedStableJson = "harness/reports/current/latest-$ExpectedReportKey.json"
-        $expectedStableMarkdown = "harness/reports/current/latest-$ExpectedReportKey.md"
+        $expectedStableJson = "runtime/qa/out/latest-$ExpectedReportKey.json"
+        $expectedStableMarkdown = "runtime/qa/out/latest-$ExpectedReportKey.md"
         $rawPath = Join-Path $RepoRoot ($expectedRaw.Replace('/', '\'))
         if (-not (Test-Path -LiteralPath $rawPath -PathType Leaf)) {
             return New-HarnessNodeVerifyDecision -AllowGit $false -Conclusion "BLOCKED" -Reason "Node 原始 JSON 证据缺失，禁止 Git 候选收尾。"

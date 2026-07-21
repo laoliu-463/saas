@@ -7,6 +7,6 @@
 - [服务器部署总览](../deploy/00-服务器部署总览.md)
 - [Docker 手动部署 real-pre](../deploy/02-Docker手动部署real-pre.md)
 - [real-pre 全过程命令清单](../deploy/08-real-pre全过程命令清单.md)
-- [远端部署规则](../../harness/rules/runbooks/remote-deploy.md)
+- [远端部署规则](../../docs/harness-maintenance/legacy-rules/runbooks/remote-deploy.md)
 
 执行记录至少包含审批人、原因、目标完整 SHA、备份、主机级锁、健康检查、回滚结果和补录 PR。

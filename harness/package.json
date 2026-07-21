@@ -7,11 +7,11 @@
     "node": ">=20.19.0 <21"
   },
   "scripts": {
-    "inspect": "jiti src/cli/inspect.ts",
-    "verify": "jiti src/cli/verify.ts",
+    "inspect": "jiti scripts/lib/node/cli/inspect.ts",
+    "verify": "jiti scripts/lib/node/cli/verify.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:result": "vitest run tests/result.test.ts"
+    "test:result": "vitest run scripts/tests/node/result.test.ts"
   },
   "dependencies": {
     "ajv": "8.20.0"

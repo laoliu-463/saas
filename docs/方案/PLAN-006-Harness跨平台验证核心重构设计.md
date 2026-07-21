@@ -128,8 +128,8 @@ runtime/qa/out/<runId>/
 稳定摘要：
 
 ```text
-harness/reports/current/latest-<reportKey>.json
-harness/reports/current/latest-<reportKey>.md
+runtime/qa/out/latest-<reportKey>.json
+runtime/qa/out/latest-<reportKey>.md
 ```
 
 每项结果包含 Schema 版本、检查 ID、中文标题、状态、阻断性、环境、Scope、完整 SHA、时间、耗时、命令、退出码、证据路径、失败原因和中文修复建议。Markdown 与 JSON 必须由同一运行结果生成。

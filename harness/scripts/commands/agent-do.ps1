@@ -56,8 +56,8 @@ if ($executionMode -eq "NODE") {
         Write-Host "代码 Scope 的 ContentMaintenance=plan 不产生文件变更；内容治理请使用独立 docs 任务。" -ForegroundColor Yellow
     }
 
-    $stableJsonPath = Join-Path $config.RepoRoot "harness\reports\current\latest-$reportKeyValue.json"
-    $stableMarkdownPath = Join-Path $config.RepoRoot "harness\reports\current\latest-$reportKeyValue.md"
+    $stableJsonPath = Join-Path $config.RepoRoot "runtime\qa\out\latest-$reportKeyValue.json"
+    $stableMarkdownPath = Join-Path $config.RepoRoot "runtime\qa\out\latest-$reportKeyValue.md"
     $previousRunId = ""
     if (Test-Path -LiteralPath $stableJsonPath -PathType Leaf) {
         try {
@@ -79,16 +79,18 @@ if ($executionMode -eq "NODE") {
 
     Assert-HarnessNoSensitiveChangedFiles
     $invocationId = [guid]::NewGuid().ToString("N")
-    $gitSnapshotJson = Get-HarnessNodeGitSnapshotJson -RepoRoot $config.RepoRoot
+    $gitSnapshotFile = New-HarnessNodeGitSnapshotFile -RepoRoot $config.RepoRoot
 
     Write-HarnessStage "Node verify single source"
     Write-Host "npm $($nodeArguments -join ' ')"
     Push-Location $config.RepoRoot
     $previousInvocationId = $env:HARNESS_VERIFY_INVOCATION_ID
     $previousGitSnapshot = $env:HARNESS_VERIFY_GIT_SNAPSHOT_JSON
+    $previousGitSnapshotFile = $env:HARNESS_VERIFY_GIT_SNAPSHOT_FILE
     try {
         $env:HARNESS_VERIFY_INVOCATION_ID = $invocationId
-        $env:HARNESS_VERIFY_GIT_SNAPSHOT_JSON = $gitSnapshotJson
+        $env:HARNESS_VERIFY_GIT_SNAPSHOT_JSON = $null
+        $env:HARNESS_VERIFY_GIT_SNAPSHOT_FILE = $gitSnapshotFile
         $nodeOutput = @(npm @nodeArguments 2>&1)
         $nodeExitCode = $LASTEXITCODE
         $nodeOutput | ForEach-Object { Write-Host ([string]$_) }
@@ -96,6 +98,8 @@ if ($executionMode -eq "NODE") {
     finally {
         $env:HARNESS_VERIFY_INVOCATION_ID = $previousInvocationId
         $env:HARNESS_VERIFY_GIT_SNAPSHOT_JSON = $previousGitSnapshot
+        $env:HARNESS_VERIFY_GIT_SNAPSHOT_FILE = $previousGitSnapshotFile
+        Remove-Item -LiteralPath $gitSnapshotFile -Force -ErrorAction SilentlyContinue
         Pop-Location
     }
 
@@ -130,8 +134,8 @@ if ($executionMode -eq "NODE") {
 
     $candidateOwnedFiles = @(
         $ownedFilesValue +
-        "harness/reports/current/latest-$reportKeyValue.json" +
-        "harness/reports/current/latest-$reportKeyValue.md" |
+        "runtime/qa/out/latest-$reportKeyValue.json" +
+        "runtime/qa/out/latest-$reportKeyValue.md" |
             Sort-Object -Unique
     )
 

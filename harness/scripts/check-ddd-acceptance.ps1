@@ -1,10 +1,10 @@
-param(
+﻿param(
     [int]$MaxRedlineDebt = 11,
     [switch]$RequireRedlineZero,
     [switch]$SkipMaven,
     [switch]$DocsOnly,
     [switch]$FailOnUnexpectedDirty,
-    [string]$OutputPath = "harness/reports/latest-ddd-acceptance-report.md"
+    [string]$OutputPath = "runtime/qa/out/latest-ddd-acceptance-report.md"
 )
 
 $ErrorActionPreference = "Stop"

@@ -56,9 +56,9 @@ Harness 一级目录白名单由 9 个扩展为 13 个，新增：
 实施批次必须同步更新：
 
 - `AGENTS.md` 中的 Harness 白名单。
-- `harness/rules/harness-structure-policy.md`。
+- `docs/harness-maintenance/legacy-rules/harness-structure-policy.md`。
 - `harness/scripts/check-harness-limits.ps1` 及其测试。
-- `harness/README.md`、`harness/INDEX.md` 和规则变更日志。
+- `harness/README.md`、`harness/README.md` 和规则变更日志。
 
 新增目录不得使用空占位文件制造表面完成；只有存在真实职责和测试时才创建。
 

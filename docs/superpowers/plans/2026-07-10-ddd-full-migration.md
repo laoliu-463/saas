@@ -25,8 +25,8 @@
 - Create: `docs/superpowers/specs/2026-07-10-ddd-full-migration-design.md`
 - Create: `docs/superpowers/plans/2026-07-10-ddd-full-migration.md`
 - Modify: `docs/ddd-completion-evidence-matrix.md`
-- Modify: `harness/rules/state/snapshots/DOMAIN_STATUS.md`
-- Create/Update: `harness/reports/evidence-20260710-ddd-migration-baseline.md`
+- Modify: `docs/harness-maintenance/legacy-rules/state/snapshots/DOMAIN_STATUS.md`
+- Create/Update: `runtime/qa/out/evidence-20260710-ddd-migration-baseline.md`
 
 - [x] **Step 1: 保存已批准设计和计划**
 
@@ -256,10 +256,10 @@
 
 **Files:**
 - Modify: `docs/ddd-completion-evidence-matrix.md`
-- Modify: `harness/rules/state/snapshots/DOMAIN_STATUS.md`
-- Create: `harness/reports/latest-evidence-YYYYMMDD.md`
-- Create: `harness/reports/retro-YYYYMMDD.md`
-- Modify: `harness/rules/changelog.md`
+- Modify: `docs/harness-maintenance/legacy-rules/state/snapshots/DOMAIN_STATUS.md`
+- Create: `runtime/qa/out/latest-evidence-YYYYMMDD.md`
+- Create: `runtime/qa/out/retro-YYYYMMDD.md`
+- Modify: `docs/harness-maintenance/legacy-rules/changelog.md`
 
 - [ ] **Step 1: 恢复有效授权并取得真实样本**
 

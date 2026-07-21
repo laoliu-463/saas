@@ -1,8 +1,7 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 
 $script:AllowedRootDirs = @(
-    'rules', 'tasks', 'probes', 'reports', 'scripts', 'manifests', 'archive', 'templates', 'engineering',
-    'src', 'contracts', 'state', 'tests'
+    'policy', 'runbooks', 'checks', 'scripts', 'templates'
 )
 $script:TextExtensions = @('.md', '.txt', '.json', '.yaml', '.yml', '.csv')
 $script:ScriptExtensions = @('.ps1', '.psm1', '.psd1', '.sh', '.py', '.js', '.ts', '.tsx', '.jsx', '.java', '.kt')
@@ -213,19 +212,7 @@ function Test-IsUnchangedLegacyArchiveBlob {
         [Parameter(Mandatory = $true)]$BaselineSnapshot
     )
 
-    if ($Path -notlike 'harness/archive/*') { return $false }
-    if ($BaselineSnapshot.PSObject.Properties.Name -notcontains 'BlobIds') { return $false }
-    if ($BaselineSnapshot.BlobIds.Count -eq 0) { return $false }
-
-    $fullPath = Join-Path $RepoRoot (ConvertFrom-GovernancePath -Path $Path)
-    if (-not (Test-Path -LiteralPath $fullPath -PathType Leaf)) { return $false }
-    $blobOutput = @(& git -C $RepoRoot hash-object -- $fullPath 2>$null)
-    $hashExitCode = $LASTEXITCODE
-    $blobId = if ($blobOutput.Count -gt 0) { $blobOutput[0] } else { '' }
-    if ($hashExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($blobId)) {
-        throw "Cannot hash archived Harness file: $Path"
-    }
-    return @($BaselineSnapshot.BlobIds.Values) -contains $blobId.Trim()
+    return $false
 }
 
 function New-GovernanceFinding {
@@ -241,9 +228,6 @@ function New-GovernanceFinding {
 function Get-DirectoryBudget {
     param([Parameter(Mandatory = $true)][string]$Path)
 
-    if ($Path -eq 'harness/reports') {
-        return [pscustomobject]@{ FileWarning = 16; FileMax = 20; SubdirWarning = 40; SubdirMax = 50 }
-    }
     return [pscustomobject]@{ FileWarning = 40; FileMax = 50; SubdirWarning = 40; SubdirMax = 50 }
 }
 
@@ -260,6 +244,7 @@ function Compare-HarnessFileGovernance {
     $taskPaths = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     foreach ($path in $BaselineSnapshot.Files) { [void]$taskPaths.Add($path) }
     foreach ($path in $normalizedOwned) {
+        if ($path -notlike 'harness/*') { continue }
         $fullPath = Join-Path $RepoRoot (ConvertFrom-GovernancePath -Path $path)
         if (Test-Path -LiteralPath $fullPath -PathType Leaf) {
             [void]$taskPaths.Add($path)
@@ -332,14 +317,9 @@ function Compare-HarnessFileGovernance {
     }
 
     foreach ($path in $normalizedOwned) {
+        if ($path -notlike 'harness/*') { continue }
         $fullPath = Join-Path $RepoRoot (ConvertFrom-GovernancePath -Path $path)
         if (-not (Test-Path -LiteralPath $fullPath -PathType Leaf)) { continue }
-
-        if ($path -match '^harness/reports/(evidence|retro|content-retire)-\d{8}') {
-            if ($BaselineSnapshot.Files -notcontains $path) {
-                $violations += New-GovernanceFinding -Code 'TIMESTAMP_REPORT_IN_ROOT' -Path $path -Message 'New timestamp reports are forbidden in reports root.'
-            }
-        }
 
         if ((Test-IsGovernanceTextFile -Path $path) -and -not (Test-IsTextLineBudgetExempt -Path $path)) {
             $lines = (Get-Content -LiteralPath $fullPath | Measure-Object -Line).Lines

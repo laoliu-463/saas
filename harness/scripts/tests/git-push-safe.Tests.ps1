@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
 $gitPushSafeScript = Join-Path $repoRoot 'harness\scripts\commands\git-push-safe.ps1'

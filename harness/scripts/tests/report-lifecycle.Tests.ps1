@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
 $library = Join-Path $projectRoot 'harness\scripts\commands\_lib.ps1'
@@ -16,7 +16,7 @@ function New-ReportTestRepo {
     $hooksPath = Join-Path $TestDrive "$Name-hooks"
     New-Item -ItemType Directory -Path $path -Force | Out-Null
     New-Item -ItemType Directory -Path $hooksPath -Force | Out-Null
-    New-Item -ItemType Directory -Path (Join-Path $path 'harness\reports\current') -Force | Out-Null
+    New-Item -ItemType Directory -Path (Join-Path $path 'runtime\qa\out') -Force | Out-Null
     Set-Content -LiteralPath (Join-Path $path 'owned.md') -Value 'baseline-owned' -Encoding UTF8
     Set-Content -LiteralPath (Join-Path $path 'unrelated.md') -Value 'baseline-unrelated' -Encoding UTF8
     Push-Location $path
@@ -117,7 +117,7 @@ Describe 'stable Harness report lifecycle' {
 
         $actual = New-HarnessReportPath -RepoRoot $repo -ReportKey 'file-governance'
 
-        $actual | Should Be (Join-Path $repo 'harness\reports\current\latest-file-governance.md')
+        $actual | Should Be (Join-Path $repo 'runtime\qa\out\latest-file-governance.md')
     }
 
     It 'rejects report key path traversal' {
@@ -208,7 +208,7 @@ Describe 'stable Harness report lifecycle' {
 
             $result.Output | Should Not Match 'Runtime collection with RepoRoot override is not supported'
             $result.ExitCode | Should Be 0
-            $reportPath = Join-Path $repo "harness\reports\current\latest-skip-runtime-$scope.md"
+            $reportPath = Join-Path $repo "runtime\qa\out\latest-skip-runtime-$scope.md"
             $reportPath | Should Exist
             $content = Get-Content -Raw -LiteralPath $reportPath
             $content | Should Match '## Docker Status[\s\S]+not collected'
@@ -249,7 +249,7 @@ Describe 'stable Harness report lifecycle' {
             $ErrorActionPreference = $previousPreference
             $env:PATH = $previousPath
         }
-        $reportPath = Join-Path $repo 'harness\reports\current\latest-trim-runtime-output.md'
+        $reportPath = Join-Path $repo 'runtime\qa\out\latest-trim-runtime-output.md'
 
         $exitCode | Should Be 0
         # Pester 4 may expose TestDrive as an 8.3 path while the child process emits
@@ -273,7 +273,7 @@ Describe 'stable Harness report lifecycle' {
             -RetroSummary 'No separate retro required.' `
             -SkipRuntimeCollection 2>&1
         $exitCode = $LASTEXITCODE
-        $reportPath = Join-Path $repo 'harness\reports\current\latest-file-governance.md'
+        $reportPath = Join-Path $repo 'runtime\qa\out\latest-file-governance.md'
 
         $exitCode | Should Be 0
         $reportPath | Should Exist
@@ -293,7 +293,7 @@ Describe 'stable Harness report lifecycle' {
 
         $exitCode | Should Be 0
         ($output -join "`n") | Should Match 'Retro not generated'
-        (Join-Path $repo 'harness\reports\current\latest-retro-file-governance.md') | Should Not Exist
+        (Join-Path $repo 'runtime\qa\out\latest-retro-file-governance.md') | Should Not Exist
     }
 
     It 'writes a stable standalone retro only for an actionable improvement' {
@@ -307,7 +307,7 @@ Describe 'stable Harness report lifecycle' {
             -NextAction 'Run the regression suite.' `
             -Verification 'Pester passes.' 2>&1
         $exitCode = $LASTEXITCODE
-        $reportPath = Join-Path $repo 'harness\reports\current\latest-retro-file-governance.md'
+        $reportPath = Join-Path $repo 'runtime\qa\out\latest-retro-file-governance.md'
 
         $exitCode | Should Be 0
         $reportPath | Should Exist
