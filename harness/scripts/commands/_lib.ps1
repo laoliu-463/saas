@@ -411,7 +411,7 @@ function New-HarnessNodeVerifyArguments {
 
     $key = ConvertTo-HarnessReportKey -ReportKey $ReportKey
     $arguments = @(
-        "run", "harness:verify", "--",
+        "run", "harness:node:verify", "--",
         "--env", $Env,
         "--scope", $Scope,
         "--report-key", $key

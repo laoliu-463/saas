@@ -56,7 +56,7 @@ describe("inspect CLI", () => {
 
     expect(exitCode).toBe(0);
     expect(output).toBe(renderInspectHelp());
-    expect(output).toContain("npm run harness:inspect -- --env real-pre");
+    expect(output).toContain("npm run harness:node:inspect -- --env real-pre");
     expect(output).toContain("只读");
     expect(output).toContain("阶段");
     expect(output).toContain("退出码");

@@ -28,7 +28,7 @@ $deployRemoteValue = Convert-HarnessBool -Value $DeployRemote
 
 # 发布权限边界必须在 Node、Git、SSH 或任何其他外部动作之前执行。
 if ($deployRemoteValue) {
-    throw "普通 Codex 任务禁止直接部署；请提交候选变更，合并到 release/real-pre 后进入 Jenkins 唯一发布队列。"
+    throw "Direct remote deployment is disabled. 普通 Codex 任务禁止直接部署；请提交候选变更，合并到 release/real-pre 后进入 Jenkins release queue（唯一发布队列）。"
 }
 
 $ownedFilesValue = @(Expand-HarnessOwnedFiles -OwnedFiles $OwnedFiles)
@@ -166,20 +166,20 @@ if ($executionMode -eq "NODE") {
 
 # docs / apifox 暂留 PowerShell 兼容路径，不执行应用构建、容器重启或远端发布。
 $buildResult = "not collected"
-$healthResult = "Scope=${Scope}: compose restart and HTTP health checks skipped by scoped local harness path."
+$healthResult = "Scope=${Scope}: Container restart and health check: NOT_REQUIRED (documentation/governance-only change)."
 $businessResult = "not collected"
 $contentMaintenanceResult = "not collected"
 $contentMaintenanceOwnedFiles = @()
 $taskOwnedFiles = @($ownedFilesValue)
 $remoteResult = "remote not deployed; Jenkins queue required"
-$conclusion = if ($Scope -eq "docs") { "PARTIAL" } else { "PASS" }
+$conclusion = "PASS"
 
 try {
     & (Join-Path $PSScriptRoot "safety-check.ps1") -Env $TargetEnv -Scope $Scope -DryRun:$DryRun
 
     if ($Scope -eq "docs") {
-        $buildResult = "Scope=docs: build skipped."
-        $businessResult = "Scope=docs: business validation not applicable; safety check executed."
+        $buildResult = "Application build: NOT_REQUIRED (documentation/governance-only change)."
+        $businessResult = "E2E: NOT_REQUIRED (documentation/governance-only change)."
     }
     else {
         Write-HarnessStage "Apifox OpenAPI local verification"

@@ -44,10 +44,12 @@ harness/
 根目录提供：
 
 ```text
-npm run harness:inspect -- --env real-pre
-npm run harness:verify -- --env real-pre --scope backend
-npm run harness:verify -- --env real-pre --scope frontend
-npm run harness:verify -- --env real-pre --scope full
+harness inspect
+harness verify
+
+开发者日常使用上层入口 `harness inspect` / `harness verify`；底层 Node 命令
+`npm run harness:node:inspect` / `npm run harness:node:verify` 仅供 Harness
+维护者和自动化调用。Windows 使用 `harness.cmd` 或 `harness.ps1`。
 ```
 
 运行时基线为 Node.js 20（与现有前端 Docker 构建镜像一致）和 Java 17。`harness/package-lock.json` 固定 Node 侧依赖，不复用前端依赖树。

@@ -105,4 +105,12 @@ Describe 'GitHub Actions CI contract' {
         $content | Should Match 'check-harness-limits\.ps1'
         $content | Should Match 'git diff --check'
     }
+
+    It 'exposes one stable CI Gate summary check' {
+        $content = Get-Content -Raw -LiteralPath $ciPath
+
+        $content | Should Match '(?m)^  ci-gate:\s*$'
+        $content | Should Match '(?m)^    name: CI Gate\s*$'
+        $content | Should Match 'needs:\s*\r?\n\s{6}- backend\s*\r?\n\s{6}- frontend\s*\r?\n\s{6}- governance'
+    }
 }

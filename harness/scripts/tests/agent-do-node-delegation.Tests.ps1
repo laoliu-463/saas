@@ -125,7 +125,7 @@ Describe 'agent-do delegates code scopes to Node exactly once' {
                 -SkipBusinessValidation `
                 -DryRun)
 
-            ($arguments -join ' ') | Should Match '^run harness:verify -- '
+            ($arguments -join ' ') | Should Match '^run harness:node:verify -- '
             @($arguments | Where-Object { $_ -eq '--scope' }).Count | Should Be 1
             $arguments[$arguments.IndexOf('--scope') + 1] | Should Be $scope
             @($arguments | Where-Object { $_ -eq '--env' }).Count | Should Be 1
