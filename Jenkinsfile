@@ -67,7 +67,7 @@ pipeline {
                 }
                 sh '''#!/usr/bin/env bash
                 set -eu
-                mkdir -p runtime/qa/out/jenkins harness/reports \
+                mkdir -p runtime/qa/out/jenkins \
                   /var/lib/jenkins/.cache/saas-real-pre-cd/m2 \
                   /var/lib/jenkins/.cache/saas-real-pre-cd/npm \
                   /var/lib/jenkins/.cache/saas-real-pre-cd/pnpm-store
@@ -627,8 +627,8 @@ pipeline {
                 sh '''#!/usr/bin/env bash
                 set -eu
                 . runtime/qa/out/jenkins/cd-env.sh
-                mkdir -p harness/reports/current
-                report="harness/reports/current/latest-jenkins-cd.md"
+                mkdir -p runtime/qa/out
+                report="runtime/qa/out/latest-jenkins-cd.md"
                 remote_report="/opt/saas/runtime/qa/out/jenkins-${BUILD_NUMBER:-manual}/latest-evidence-jenkins-cd.md"
                 evidence_result="PASS"
                 backend_health=""
@@ -770,7 +770,7 @@ EOF
             sh '''#!/usr/bin/env bash
             set +e
             if [ -f runtime/qa/out/jenkins/cd-env.sh ]; then . runtime/qa/out/jenkins/cd-env.sh; fi
-            mkdir -p runtime/qa/out/jenkins harness/reports/current "/opt/saas/runtime/qa/out/jenkins-${BUILD_NUMBER:-manual}"
+            mkdir -p runtime/qa/out/jenkins runtime/qa/out "/opt/saas/runtime/qa/out/jenkins-${BUILD_NUMBER:-manual}"
             if [ -f runtime/qa/out/jenkins/schedulers-paused ]; then
               echo "Restoring schedulers after interrupted deployment flow."
               if APP_SCHEDULING_ENABLED=true IMAGE_TAG="$IMAGE_TAG" BACKEND_IMAGE_DIGEST="$BACKEND_IMAGE_DIGEST" COMPOSE_PROJECT_NAME="$PROJECT_NAME" \
@@ -783,7 +783,7 @@ EOF
             docker ps --format "table {{.Names}}\\t{{.Image}}\\t{{.Status}}" > runtime/qa/out/jenkins/docker-ps-final.txt 2>&1
             docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" ps > runtime/qa/out/jenkins/docker-compose-ps-final.txt 2>&1
 
-            if [ ! -f harness/reports/current/latest-jenkins-cd.md ]; then
+            if [ ! -f runtime/qa/out/latest-jenkins-cd.md ]; then
               {
                 echo "# Jenkins CD Evidence"
                 echo
@@ -805,12 +805,12 @@ EOF
                 echo '```'
                 cat runtime/qa/out/jenkins/docker-ps-final.txt
                 echo '```'
-              } > harness/reports/current/latest-jenkins-cd.md
+              } > runtime/qa/out/latest-jenkins-cd.md
             fi
 
-            cp harness/reports/current/latest-jenkins-cd.md "/opt/saas/runtime/qa/out/jenkins-${BUILD_NUMBER:-manual}/latest-evidence-jenkins-cd.md" 2>/dev/null || true
+            cp runtime/qa/out/latest-jenkins-cd.md "/opt/saas/runtime/qa/out/jenkins-${BUILD_NUMBER:-manual}/latest-evidence-jenkins-cd.md" 2>/dev/null || true
             '''
-            archiveArtifacts artifacts: 'harness/reports/current/latest-jenkins-cd.md,runtime/qa/out/jenkins/**,runtime/qa/out/real-pre-*/**,backend/target/surefire-reports/**,frontend/coverage/**', allowEmptyArchive: true
+            archiveArtifacts artifacts: 'runtime/qa/out/latest-jenkins-cd.md,runtime/qa/out/jenkins/**,runtime/qa/out/real-pre-*/**,backend/target/surefire-reports/**,frontend/coverage/**', allowEmptyArchive: true
         }
 
         success {

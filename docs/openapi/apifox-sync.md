@@ -83,7 +83,7 @@ bash scripts/export-openapi.sh
 | `APIFOX_DEV_BASE_URL` | 是 | Apifox 开发环境对应的接口 Base URL，只能在本地 `.env` 写真实值 |
 | `APIFOX_DEV_PORT` | 是 | 开发端口，必须与 `APIFOX_DEV_BASE_URL` 和 OpenAPI `servers` 匹配 |
 | `APIFOX_ENVIRONMENT_ID` | 否 | Apifox 开发环境 ID；配置后云端同步会回读 environment Base URL |
-| `APIFOX_IMPORT_OUTPUT` | 否 | 默认 `harness/reports/apifox/import-latest.log` |
+| `APIFOX_IMPORT_OUTPUT` | 否 | 默认 `runtime/qa/out/apifox/import-latest.log` |
 
 脚本会优先读取进程环境变量；未设置时，会从仓库根目录 `.env` 读取上述 `APIFOX_*` 键。`.env` 已被 Git 忽略，只能保存本机占位符或真实私密配置，禁止提交。
 
@@ -128,7 +128,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\sync-apifox.ps1
 5. 校验 `APIFOX_DEV_BASE_URL`、`APIFOX_DEV_PORT` 和 OpenAPI `servers` 均指向开发入口。
 6. 调用官方 Open API `POST /v1/projects/{projectId}/import-openapi`。
 7. 在请求体 `options.targetBranchId` 中显式传入目标分支 id。
-8. 保存 import 输出到 `harness/reports/apifox/import-latest.log` 并解析 `data.counters`。
+8. 保存 import 输出到 `runtime/qa/out/apifox/import-latest.log` 并解析 `data.counters`。
 9. 导入后执行 `endpoint list/get` 回读，必要时执行 `environment get` 校验 Base URL。
 
 红线：

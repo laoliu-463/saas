@@ -1,7 +1,7 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
-$mapPath = Join-Path $repoRoot 'harness\rules\test-impact-map.json'
+$mapPath = Join-Path $repoRoot 'harness\checks\impact-map.json'
 $backendTestRoot = Join-Path $repoRoot 'backend\src\test\java'
 $frontendSrcRoot = Join-Path $repoRoot 'frontend\src'
 
@@ -203,8 +203,8 @@ Describe 'agent-do / Jenkinsfile / ci.yml / _lib.ps1 / git-push-safe unchanged a
 
 Describe 'PR #1 file additions only' {
     It 'the three new files exist' {
-        (Test-Path -LiteralPath (Join-Path $repoRoot 'harness\rules\test-impact-map.json')) | Should Be $true
-        (Test-Path -LiteralPath (Join-Path $repoRoot 'harness\rules\governance\risk-routing.md')) | Should Be $true
+        (Test-Path -LiteralPath (Join-Path $repoRoot 'harness\checks\impact-map.json')) | Should Be $true
+        (Test-Path -LiteralPath (Join-Path $repoRoot 'docs\harness-maintenance\legacy-rules\governance\risk-routing.md')) | Should Be $true
         (Test-Path -LiteralPath $PSCommandPath) | Should Be $true
     }
 }
@@ -256,7 +256,7 @@ Describe 'test-impact-map.json frontend risk coverage' {
         ($docs.excludes -join ' ') | Should Match 'AGENTS\.md'
         ($docs.excludes -join ' ') | Should Match 'CLAUDE\.md'
         ($docs.excludes -join ' ') | Should Match 'CONTRIBUTING\.md'
-        ($docs.excludes -join ' ') | Should Match 'harness/rules'
+        ($docs.excludes -join ' ') | Should Match 'harness/policy'
     }
 
     It 'merge semantics documents priority as tie-breaker only, tests as union' {

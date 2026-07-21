@@ -4,7 +4,7 @@ description: 执行或审计 real-pre 真实联调验收。
 
 ## 步骤
 
-[V1 必做] 先读 `harness/rules/governance/forbidden-scope.md` 和 `harness/rules/environment/envs/real-pre-env.md`。
+[V1 必做] 先读 `harness/policy/safety.md` 和 `harness/runbooks/environments/real-pre.md`。
 
 [V1 必做] 跑预检：`npm run e2e:real-pre:p0:preflight`。
 

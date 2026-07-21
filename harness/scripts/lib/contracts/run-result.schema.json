@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://colonel-saas.local/harness/scripts/lib/contracts/run-result.schema.json",
+  "title": "Harness 运行结果",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "status",
+    "statusLabel",
+    "summary",
+    "checks"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "1.0.0"
+    },
+    "status": {
+      "enum": ["PASS", "FAIL", "BLOCKED", "PARTIAL"]
+    },
+    "statusLabel": {
+      "enum": ["通过", "失败", "阻塞", "部分完成"]
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "[\\u3400-\\u9fff]"
+    },
+    "checks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "https://colonel-saas.local/harness/scripts/lib/contracts/check-result.schema.json"
+      }
+    }
+  },
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "status": { "const": "PASS" },
+        "statusLabel": { "const": "通过" }
+      }
+    },
+    {
+      "type": "object",
+      "properties": {
+        "status": { "const": "FAIL" },
+        "statusLabel": { "const": "失败" }
+      }
+    },
+    {
+      "type": "object",
+      "properties": {
+        "status": { "const": "BLOCKED" },
+        "statusLabel": { "const": "阻塞" }
+      }
+    },
+    {
+      "type": "object",
+      "properties": {
+        "status": { "const": "PARTIAL" },
+        "statusLabel": { "const": "部分完成" }
+      }
+    }
+  ]
+}

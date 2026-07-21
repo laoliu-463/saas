@@ -13,7 +13,7 @@
 
 2026-07-13 的只读审计发现：
 
-- `harness/reports/` 根目录有 89 个文件，其中 evidence 33 个、retro 29 个、content-retire 15 个。
+- `runtime/qa/out/` 根目录有 89 个文件，其中 evidence 33 个、retro 29 个、content-retire 15 个。
 - evidence、retro、content-retire 脚本仍向该目录生成时间戳文件，正常流程会持续突破 50 文件限制。
 - Harness 内 1118 个非脚本文本的 P95 为 138 行，仅 3 个文件超过 200 行。
 - 因此，200 行限制仍能约束可读性；主要矛盾是统一目录上限与流水产物生命周期冲突。

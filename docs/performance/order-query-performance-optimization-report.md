@@ -62,8 +62,8 @@ Retro 提交：`5ef2b8f2`
   - 本地健康检查 PASS
   - `npm run e2e:real-pre:p0:preflight` PASS
 
-Evidence：`harness/archive/by-date/report-packages/reports-20260621-ddd-role-policy-2040-2143/evidence-20260621-210019.md`
-Retro：`harness/archive/by-date/report-packages/reports-20260621-ddd-role-policy-2040-2143/retro-20260621-210058.md`
+Evidence：`Git history/by-date/report-packages/reports-20260621-ddd-role-policy-2040-2143/evidence-20260621-210019.md`
+Retro：`Git history/by-date/report-packages/reports-20260621-ddd-role-policy-2040-2143/retro-20260621-210058.md`
 
 ## 五、风险与回滚
 

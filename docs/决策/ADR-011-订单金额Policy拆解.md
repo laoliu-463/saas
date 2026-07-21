@@ -79,7 +79,7 @@
 
 ## 影响
 
-- [V2 必做] `OrderAmountMapperPolicy` 在阶段 5 物理删除；备份留 `harness/manifests/2026-XX-XX-order-amount-policy-decompose.json`。
+- [V2 必做] `OrderAmountMapperPolicy` 在阶段 5 物理删除；备份留 `Git history/2026-XX-XX-order-amount-policy-decompose.json`。
 - [V2 必做] `OrderAmountMappingRouter.map()` 阶段 4 后退化为单行委派；`toDualTrack` / `toMapped` adapter 行为变更（修 bug，`estimateServiceFeeExpense` / `effectiveServiceFeeExpense` 不再丢失）。
 - [V2 必做] 新增 3 Policy + 1 Writer + 至少 200+ 测试用例。
 - [V2 必做] 工期 6 周 + 1 天（4 周灰度 + 2 周开发 + 1 天清理）。

@@ -4,7 +4,7 @@
 
 权威材料：
 
-- [数据库变更规则](../../harness/rules/runbooks/database-change.md)
+- [数据库变更规则](../../docs/harness-maintenance/legacy-rules/runbooks/database-change.md)
 - [部署运行总览](../10-部署运行总览.md)
 - [当前迁移入口](../../backend/src/main/resources/db/migrate-all.sql)
 

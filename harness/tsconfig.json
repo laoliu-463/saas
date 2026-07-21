@@ -15,5 +15,5 @@
     "rootDir": ".",
     "noEmit": true
   },
-  "include": ["src/**/*.ts", "tests/**/*.ts"]
+  "include": ["scripts/lib/node/**/*.ts", "scripts/tests/node/**/*.ts"]
 }

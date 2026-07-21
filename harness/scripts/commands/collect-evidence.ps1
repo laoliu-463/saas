@@ -1,4 +1,4 @@
-param(
+﻿param(
     [Alias('Env')][ValidateSet('test', 'real-pre')][string]$TargetEnv = 'real-pre',
     [ValidateSet('backend', 'frontend', 'full', 'docs', 'apifox')][string]$Scope = 'full',
     [string]$BuildResult = 'not collected',
@@ -45,7 +45,17 @@ Write-Host "Report path: $reportPath"
 
 $branch = (& git -C $RepoRoot branch --show-current 2>$null).Trim()
 $commit = (& git -C $RepoRoot rev-parse --short HEAD 2>$null).Trim()
-$statusOutput = if ($owned.Count -gt 0) { @(& git -C $RepoRoot -c core.quotepath=false status --short -- $owned 2>$null) } else { @() }
+$statusOutput = if ($owned.Count -eq 0) {
+    @()
+}
+elseif ($owned.Count -gt 100) {
+    # Windows 命令行不能安全承载数百个 OwnedFiles 路径；OwnedFiles 已在下方
+    # 记录，因此大列表只读取一次未过滤状态用于人类摘要。
+    @(& git -C $RepoRoot -c core.quotepath=false status --short 2>$null)
+}
+else {
+    @(& git -C $RepoRoot -c core.quotepath=false status --short -- $owned 2>$null)
+}
 $status = ConvertTo-EvidenceCommandText -Output $statusOutput
 $changedFilesBlock = if ($owned.Count -eq 0) { '(none)' } else { ($owned -join "`n") }
 $dirty = if ([string]::IsNullOrWhiteSpace($status)) { 'clean' } else { 'dirty' }

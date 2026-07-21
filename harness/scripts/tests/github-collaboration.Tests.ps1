@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
 $ciPath = Join-Path $repoRoot '.github\workflows\ci.yml'
@@ -67,7 +67,7 @@ Describe 'GitHub Actions CI contract' {
         $content | Should Match '(?m)^  merge_group:\s*$'
         $content | Should Match '(?m)^\s{6}- main\s*$'
         $content | Should Match '(?m)^\s{6}- release/real-pre\s*$'
-        $content | Should Not Match 'paths-ignore:\s*[\r\n]+\s*-\s*"?harness/reports/'
+        $content | Should Not Match 'paths-ignore:\s*[\r\n]+\s*-\s*"?runtime/qa/out/'
     }
 
     It 'uses least privilege, bounded jobs, and a supported Node line' {

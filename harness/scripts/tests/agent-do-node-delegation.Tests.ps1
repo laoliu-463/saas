@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
 $library = Join-Path $projectRoot 'harness\scripts\commands\_lib.ps1'
@@ -24,7 +24,7 @@ function Write-StableNodeEvidenceFixture {
         [string]$RunId = 'run-agent-do-fixture'
     )
 
-    $stableDirectory = Join-Path $Directory 'harness\reports\current'
+    $stableDirectory = Join-Path $Directory 'runtime\qa\out'
     $rawDirectory = Join-Path $Directory "runtime\qa\out\$RunId"
     New-Item -ItemType Directory -Path $stableDirectory,$rawDirectory -Force | Out-Null
     $json = Join-Path $stableDirectory 'latest-task10.json'
@@ -68,8 +68,8 @@ function Write-StableNodeEvidenceFixture {
         }
         evidencePaths = @{
             rawJson = "runtime/qa/out/$RunId/run.json"
-            stableJson = 'harness/reports/current/latest-task10.json'
-            stableMarkdown = 'harness/reports/current/latest-task10.md'
+            stableJson = 'runtime/qa/out/latest-task10.json'
+            stableMarkdown = 'runtime/qa/out/latest-task10.md'
         }
     } | ConvertTo-Json -Depth 10
     Set-Content -LiteralPath $json -Value $report -Encoding UTF8 -NoNewline
@@ -78,8 +78,8 @@ function Write-StableNodeEvidenceFixture {
         "运行 ID：$RunId"
         "运行结论：$Status"
         "runtime/qa/out/$RunId/run.json"
-        'harness/reports/current/latest-task10.json'
-        'harness/reports/current/latest-task10.md'
+        'runtime/qa/out/latest-task10.json'
+        'runtime/qa/out/latest-task10.md'
     )
     return [pscustomobject]@{
         Root = $Directory
@@ -173,8 +173,8 @@ Describe 'agent-do delegates code scopes to Node exactly once' {
             status = 'PARTIAL'
             evidencePaths = @{
                 rawJson = 'runtime/qa/out/run-receipt-001/run.json'
-                stableJson = 'harness/reports/current/latest-task10.json'
-                stableMarkdown = 'harness/reports/current/latest-task10.md'
+                stableJson = 'runtime/qa/out/latest-task10.json'
+                stableMarkdown = 'runtime/qa/out/latest-task10.md'
             }
             evidenceDigests = @{
                 rawJson = ('sha256:' + ('d' * 64))
@@ -296,7 +296,7 @@ Describe 'agent-do consumes Node exits without upgrading status' {
 
     It 'rejects a fresh-looking but incomplete forged report' {
         $root = Join-Path $TestDrive 'forged'
-        $stable = Join-Path $root 'harness\reports\current'
+        $stable = Join-Path $root 'runtime\qa\out'
         New-Item -ItemType Directory -Path $stable -Force | Out-Null
         $json = Join-Path $stable 'latest-task10.json'
         $markdown = Join-Path $stable 'latest-task10.md'

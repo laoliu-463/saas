@@ -18,7 +18,7 @@
 4. [V1 必做] 涉及事件、接口、数据时读 [04-事件契约总表.md](04-事件契约总表.md)、[05-API契约总表.md](05-API契约总表.md)、[06-数据模型总表.md](06-数据模型总表.md)。
 5. [V1 必做] 涉及权限时读 [07-权限与数据范围.md](07-权限与数据范围.md)。
 6. [V1 必做] 涉及抖音 / 抖店真实联调时读 [08-第三方对接总览.md](08-第三方对接总览.md)、[对接/](对接/) 和 [验收/real-pre联调手册.md](验收/real-pre联调手册.md)。
-7. [V1 必做] 修改完成前读 [09-测试验收总览.md](09-测试验收总览.md)、[验收/](验收/) 和 [../harness/rules/governance/COMPLETION_GATES.md](../harness/rules/governance/COMPLETION_GATES.md)。
+7. [V1 必做] 修改完成前读 [09-测试验收总览.md](09-测试验收总览.md)、[验收/](验收/) 和 [../harness/policy/validation.md](../harness/policy/validation.md)。
 8. [V1 必做] 部署和环境排障读 [10-部署运行总览.md](10-部署运行总览.md)。
 9. [V1 必做] 业务试用、用户培训和操作答疑读 [11-用户操作手册.md](11-用户操作手册.md)。
 
@@ -54,7 +54,7 @@
 | [03-领域边界总表.md](03-领域边界总表.md) | [03-领域架构总览.md](03-领域架构总览.md) 与 [领域/](领域/) |
 | [04-上线验收清单.md](04-上线验收清单.md) | [09-测试验收总览.md](09-测试验收总览.md)、[10-部署运行总览.md](10-部署运行总览.md) |
 | [05-real-pre证据索引.md](05-real-pre证据索引.md) | [验收/验收证据索引.md](验收/验收证据索引.md) |
-| [06-P0-P1问题台账.md](06-P0-P1问题台账.md) | [../harness/rules/state/snapshots/03-P0-P1问题台账.md](../harness/rules/state/snapshots/03-P0-P1问题台账.md) |
+| [06-P0-P1问题台账.md](06-P0-P1问题台账.md) | [历史状态快照](harness-maintenance/legacy-rules/state/snapshots/03-P0-P1问题台账.md) |
 
 ## 专项目录
 
@@ -71,17 +71,14 @@
 
 ## Harness Engineering
 
-- [V1 必做] [../harness/README.md](../harness/README.md)：AI Agent 固定执行入口、脚本、skills、runbooks、任务和 evidence reports。
+- [V1 必做] [../harness/README.md](../harness/README.md)：AI Agent 固定执行入口、policy、runbooks、checks、scripts 和 runtime evidence。
 - [V2 必做] [决策/ADR-013-Harness分层文件门禁.md](决策/ADR-013-Harness分层文件门禁.md)：Harness 文件预算、基线感知门禁和报告生命周期的已批准设计。
 - [V2 必做] [决策/ADR-014-Harness跨平台核心目录与渐进迁移.md](决策/ADR-014-Harness跨平台核心目录与渐进迁移.md)：扩展 Harness 目录边界并批准 Node 核心的绞杀式迁移。
-- [V1 必做] [../harness/rules/state/snapshots/01-当前项目状态.md](../harness/rules/state/snapshots/01-当前项目状态.md)：当前技术栈、V2 闭环、real-pre 状态和旧文档冲突处理。
-- [V1 必做] [../harness/rules/governance/task-routing.md](../harness/rules/governance/task-routing.md)：任务分流到领域、验证和执行 Scope。
-- [V1 必做] [../harness/rules/governance/forbidden-scope.md](../harness/rules/governance/forbidden-scope.md)：real-pre、Git 密钥和模块边界禁止项。
-- [V1 必做] [../harness/rules/instructions/](../harness/rules/instructions/)：Instructions 指令系统。
-- [V1 必做] [../harness/rules/skills/](../harness/rules/skills/)：Skills 工具化规则系统。
-- [V1 必做] [../harness/rules/environment/](../harness/rules/environment/)：Environment 环境系统。
-- [V1 必做] [../harness/rules/state/](../harness/rules/state/)：State 状态系统。
-- [V1 必做] [../harness/rules/feedback/](../harness/rules/feedback/)：Feedback 反馈系统。
+- [V1 必做] [历史状态快照](harness-maintenance/legacy-rules/state/snapshots/01-当前项目状态.md)：仅供维护者追溯。
+- [V1 必做] [../harness/policy/](../harness/policy/)：当前安全、验证、real-pre 和证据保留规则。
+- [V1 必做] [../harness/runbooks/](../harness/runbooks/)：当前操作手册。
+- [V1 必做] [../harness/checks/](../harness/checks/)：当前验收场景和变更影响映射。
+- [V2 必做] [../docs/harness-maintenance/](harness-maintenance/)：历史规则、任务和工程维护配置，不是普通开发入口。
 - [V1 必做] Harness 不替代本目录事实主源；涉及业务规则仍以 `docs/*.md` 和当前代码证据为准。
 
 ## 不变量

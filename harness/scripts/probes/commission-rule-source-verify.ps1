@@ -1,4 +1,4 @@
-# COMMISSION-RULE-SOURCE-001 read-only verification (real-pre)
+﻿# COMMISSION-RULE-SOURCE-001 read-only verification (real-pre)
 # Usage: powershell -NoProfile -ExecutionPolicy Bypass -File harness/scripts/probes/commission-rule-source-verify.ps1
 
 $ErrorActionPreference = "Stop"

@@ -110,4 +110,4 @@
 ## 待复核
 
 - 当前 `CONTEXT.md` 仍写 V1，需要按 ADR-010 的 V2 口径另行处理；本文不直接修改业务术语。
-- 当前 DDD 任务进展以 `harness/rules/state/snapshots/DOMAIN_STATUS.md` 和最新 evidence 为准。
+- 当前 DDD 任务进展以 `docs/harness-maintenance/legacy-rules/state/snapshots/DOMAIN_STATUS.md` 和最新 evidence 为准。

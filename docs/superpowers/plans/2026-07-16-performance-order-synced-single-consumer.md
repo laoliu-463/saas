@@ -16,7 +16,7 @@
 - 修改 `backend/src/main/java/com/colonel/saas/domain/performance/application/PerformanceAggregateApplicationService.java`：删除重复空监听、事件/异步/日志依赖及无用 `@Slf4j`。
 - 修改 `backend/src/test/java/com/colonel/saas/domain/performance/application/PerformanceAggregateApplicationServiceTest.java`：删除只验证空事件不抛异常的伪测试，其余聚合查询行为测试保持不变。
 - 只验证 `backend/src/main/java/com/colonel/saas/listener/PerformanceRecordSyncListener.java` 及其测试：现有有效监听逻辑不变。
-- 生成 `harness/reports/current/latest-ddd-performance-order-event-single-consumer.md`：记录门禁证据与 retro。
+- 生成 `runtime/qa/out/latest-ddd-performance-order-event-single-consumer.md`：记录门禁证据与 retro。
 
 ### Task 1: 以架构守卫证明重复领域监听存在
 
@@ -133,7 +133,7 @@ git diff -- backend/src/main/java/com/colonel/saas/domain/performance/applicatio
 - Verify: `backend/src/main/java/com/colonel/saas/domain/performance/application/PerformanceAggregateApplicationService.java`
 - Verify: `backend/src/test/java/com/colonel/saas/architecture/DddPerformanceRecordGenerationEntrypointTest.java`
 - Verify: `backend/src/test/java/com/colonel/saas/domain/performance/application/PerformanceAggregateApplicationServiceTest.java`
-- Create/Update: `harness/reports/current/latest-ddd-performance-order-event-single-consumer.md`
+- Create/Update: `runtime/qa/out/latest-ddd-performance-order-event-single-consumer.md`
 
 - [ ] **Step 1: 通过唯一入口运行完整 Harness**
 
@@ -152,7 +152,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\a
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\check-harness-limits.ps1 -BaselineRef HEAD
 docker compose ps
-git diff --check -- backend/src/main/java/com/colonel/saas/domain/performance/application/PerformanceAggregateApplicationService.java backend/src/test/java/com/colonel/saas/architecture/DddPerformanceRecordGenerationEntrypointTest.java backend/src/test/java/com/colonel/saas/domain/performance/application/PerformanceAggregateApplicationServiceTest.java harness/reports/current/latest-ddd-performance-order-event-single-consumer.md
+git diff --check -- backend/src/main/java/com/colonel/saas/domain/performance/application/PerformanceAggregateApplicationService.java backend/src/test/java/com/colonel/saas/architecture/DddPerformanceRecordGenerationEntrypointTest.java backend/src/test/java/com/colonel/saas/domain/performance/application/PerformanceAggregateApplicationServiceTest.java runtime/qa/out/latest-ddd-performance-order-event-single-consumer.md
 ```
 
 预期：分层门禁没有新增/恶化违规，对应容器为健康运行态，OwnedFiles 与 evidence 没有空白错误。失败时保留证据并继续定位。
@@ -162,7 +162,7 @@ git diff --check -- backend/src/main/java/com/colonel/saas/domain/performance/ap
 执行：
 
 ```powershell
-git add -- backend/src/main/java/com/colonel/saas/domain/performance/application/PerformanceAggregateApplicationService.java backend/src/test/java/com/colonel/saas/architecture/DddPerformanceRecordGenerationEntrypointTest.java backend/src/test/java/com/colonel/saas/domain/performance/application/PerformanceAggregateApplicationServiceTest.java docs/superpowers/plans/2026-07-16-performance-order-synced-single-consumer.md harness/reports/current/latest-ddd-performance-order-event-single-consumer.md
+git add -- backend/src/main/java/com/colonel/saas/domain/performance/application/PerformanceAggregateApplicationService.java backend/src/test/java/com/colonel/saas/architecture/DddPerformanceRecordGenerationEntrypointTest.java backend/src/test/java/com/colonel/saas/domain/performance/application/PerformanceAggregateApplicationServiceTest.java docs/superpowers/plans/2026-07-16-performance-order-synced-single-consumer.md runtime/qa/out/latest-ddd-performance-order-event-single-consumer.md
 git diff --cached --name-only
 git diff --cached --check
 ```

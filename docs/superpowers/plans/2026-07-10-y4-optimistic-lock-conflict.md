@@ -109,9 +109,9 @@ Expected: Maven exits `0`; conflict and existing create/update/delete/resolve te
 
 **Files:**
 - Update after proof: `docs/ddd-completion-evidence-matrix.md`
-- Update after proof: `harness/rules/state/snapshots/DOMAIN_STATUS.md`
-- Update after proof: `harness/rules/state/snapshots/KNOWN_ISSUES.md`
-- Update after proof: `harness/reports/latest-evidence-20260710.md`
+- Update after proof: `docs/harness-maintenance/legacy-rules/state/snapshots/DOMAIN_STATUS.md`
+- Update after proof: `docs/harness-maintenance/legacy-rules/state/snapshots/KNOWN_ISSUES.md`
+- Update after proof: `runtime/qa/out/latest-evidence-20260710.md`
 
 - [x] **Step 1: Run the Y-4 evidence set**
 

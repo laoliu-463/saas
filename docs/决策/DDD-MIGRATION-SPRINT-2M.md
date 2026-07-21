@@ -70,7 +70,7 @@
 5. 跑测试（最少 90% 通过）
 6. /review 自检
 7. 关闭 Issue
-8. 更新 harness/engineering/issues-index.md
+8. 更新 docs/harness-maintenance/engineering/issues-index.md
 ```
 
 ### Sprint 节奏约束
@@ -188,7 +188,7 @@ Sprint 完成后，自然过渡到：
 
 1. 读 `DDD-MIGRATION-STATUS-20260619.md`（状态快照）
 2. 读 `DDD-MIGRATION-SPRINT-2M.md`（本文件）
-3. 打开 `harness/engineering/issues-index.md`（issue 镜像）
+3. 打开 `docs/harness-maintenance/engineering/issues-index.md`（issue 镜像）
 4. 从 #14 开始（Phase 0）
 
 ### 如果这是 Sprint 中间轮（W2-W8）

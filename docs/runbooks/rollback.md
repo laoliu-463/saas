@@ -5,7 +5,7 @@
 权威材料：
 
 - [回滚与故障排查](../deploy/06-回滚与故障排查.md)
-- [Harness 回滚规则](../../harness/rules/runbooks/rollback.md)
+- [Harness 回滚规则](../../docs/harness-maintenance/legacy-rules/runbooks/rollback.md)
 - [real-pre 回滚脚本](../../scripts/rollback-real-pre.sh)
 
 回滚完成后必须再次执行健康检查，记录实际 SHA、容器状态、数据库状态、用户影响和后续修复 PR。
