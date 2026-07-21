@@ -6,6 +6,13 @@ $gitPush = Join-Path $projectRoot 'harness\scripts\commands\git-push-safe.ps1'
 $collectEvidence = Join-Path $projectRoot 'harness\scripts\commands\collect-evidence.ps1'
 $newRetro = Join-Path $projectRoot 'harness\scripts\commands\new-retro.ps1'
 $agentDo = Join-Path $projectRoot 'harness\scripts\commands\agent-do.ps1'
+$powershellExecutable = @('pwsh', 'powershell') |
+    ForEach-Object { Get-Command $_ -ErrorAction SilentlyContinue } |
+    Select-Object -First 1 -ExpandProperty Source
+
+if ([string]::IsNullOrWhiteSpace($powershellExecutable)) {
+    throw 'No PowerShell executable (pwsh or powershell) is available for report lifecycle tests.'
+}
 
 . $library
 
@@ -51,7 +58,7 @@ function Invoke-GitPushDryRun {
     $previousPreference = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     try {
-        $output = & powershell @arguments 2>&1
+        $output = & $powershellExecutable @arguments 2>&1
         $exitCode = $LASTEXITCODE
     }
     finally {
@@ -123,7 +130,7 @@ Describe 'stable Harness report lifecycle' {
         Set-Content -LiteralPath (Join-Path $repo 'owned.md') -Value 'changed-owned' -Encoding UTF8
         Set-Content -LiteralPath (Join-Path $repo 'unrelated.md') -Value 'changed-unrelated' -Encoding UTF8
 
-        $output = & powershell -NoProfile -ExecutionPolicy Bypass -File $collectEvidence `
+        $output = & $powershellExecutable -NoProfile -ExecutionPolicy Bypass -File $collectEvidence `
             -RepoRoot $repo `
             -Env real-pre `
             -Scope docs `
@@ -146,7 +153,7 @@ Describe 'stable Harness report lifecycle' {
     It 'does not create a standalone retro without an actionable improvement' {
         $repo = New-ReportTestRepo -Name 'retro-inline-only'
 
-        $output = & powershell -NoProfile -ExecutionPolicy Bypass -File $newRetro `
+        $output = & $powershellExecutable -NoProfile -ExecutionPolicy Bypass -File $newRetro `
             -RepoRoot $repo -ReportKey file-governance 2>&1
         $exitCode = $LASTEXITCODE
 
@@ -158,7 +165,7 @@ Describe 'stable Harness report lifecycle' {
     It 'writes a stable standalone retro only for an actionable improvement' {
         $repo = New-ReportTestRepo -Name 'retro-actionable'
 
-        $output = & powershell -NoProfile -ExecutionPolicy Bypass -File $newRetro `
+        $output = & $powershellExecutable -NoProfile -ExecutionPolicy Bypass -File $newRetro `
             -RepoRoot $repo `
             -ReportKey file-governance `
             -Actionable `
