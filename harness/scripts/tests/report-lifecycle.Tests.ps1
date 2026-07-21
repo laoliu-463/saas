@@ -86,7 +86,7 @@ function Invoke-GitPush {
     $previousPreference = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     try {
-        $output = & powershell @arguments 2>&1
+        $output = & $powershellExecutable @arguments 2>&1
         $exitCode = $LASTEXITCODE
     }
     finally {
@@ -105,7 +105,7 @@ function Invoke-CollectEvidence {
     $previousPreference = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     try {
-        $output = & powershell -NoProfile -ExecutionPolicy Bypass -File $collectEvidence `
+        $output = & $powershellExecutable -NoProfile -ExecutionPolicy Bypass -File $collectEvidence `
             -RepoRoot $Repo `
             -Env real-pre `
             -Scope $Scope `
@@ -246,7 +246,7 @@ Describe 'stable Harness report lifecycle' {
         $ErrorActionPreference = 'Continue'
         try {
             $env:PATH = "$fakeBin;$previousPath"
-            $output = & powershell -NoProfile -ExecutionPolicy Bypass -File $fixtureCollectEvidence `
+            $output = & $powershellExecutable -NoProfile -ExecutionPolicy Bypass -File $fixtureCollectEvidence `
                 -Env test `
                 -Scope full `
                 -ReportKey trim-runtime-output 2>&1
