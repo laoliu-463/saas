@@ -3,6 +3,7 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
 $jenkinsfile = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'Jenkinsfile')
 $rollbackScript = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'scripts\cd\rollback-real-pre.sh')
+$releaseWrapper = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'scripts\cd\release-real-pre.sh')
 $agentDo = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'harness\scripts\commands\agent-do.ps1')
 $deployRemote = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'harness\scripts\commands\deploy-remote.ps1')
 $ci = Get-Content -Raw -LiteralPath (Join-Path $repoRoot '.github\workflows\ci.yml')
@@ -102,6 +103,8 @@ Describe 'agent deployment boundary contract' {
         $ci | Should Match 'direct SSH deploy path must remain retired'
         $ci | Should Match 'Jenkins must not build images on the deployment host'
         $ci | Should Not Match 'deploy script must validate IMAGE_TAG'
+        $jenkinsfile | Should Match 'scripts/cd/release-real-pre\.sh'
+        $releaseWrapper | Should Match '\bflock\b'
     }
 }
 
@@ -121,7 +124,8 @@ Describe 'lock-scoped failure rollback contract' {
     It 'rolls back when P0 or role E2E fails' {
         $jenkinsfile | Should Match "stage\('Core Smoke and Multi-role E2E'\)"
         $jenkinsfile | Should Match '(?s)stage\(''Serialized real-pre release''\).*?post\s*\{\s*unsuccessful'
-        $jenkinsfile | Should Match 'scripts/cd/rollback-real-pre\.sh'
+        $jenkinsfile | Should Match 'scripts/cd/release-real-pre\.sh rollback-immutable'
+        $releaseWrapper | Should Match 'scripts/cd/rollback-real-pre\.sh'
     }
 
     It 'rolls back when the final health check fails' {

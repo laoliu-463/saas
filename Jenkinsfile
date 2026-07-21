@@ -395,11 +395,11 @@ PY
                         backup_dir="/opt/saas/backups/jenkins-${BUILD_NUMBER:-manual}"
                         mkdir -p "$backup_dir"
                         ENV_FILE="$ENV_FILE" COMPOSE_FILE="$COMPOSE_FILE" COMPOSE_PROJECT_NAME="$PROJECT_NAME" BACKUP_DIR="$backup_dir" \
-                          BACKEND_IMAGE="$BACKEND_IMAGE" FRONTEND_IMAGE="$FRONTEND_IMAGE" bash scripts/backup-db.sh | tee runtime/qa/out/jenkins/database-backup.txt
+                          BACKEND_IMAGE="$BACKEND_IMAGE" FRONTEND_IMAGE="$FRONTEND_IMAGE" bash scripts/cd/release-real-pre.sh backup | tee runtime/qa/out/jenkins/database-backup.txt
                         ENV_FILE="$ENV_FILE" COMPOSE_FILE="$COMPOSE_FILE" COMPOSE_PROJECT_NAME="$PROJECT_NAME" \
                           IMAGE_TAG="$IMAGE_TAG" BACKEND_IMAGE="$BACKEND_IMAGE" FRONTEND_IMAGE="$FRONTEND_IMAGE" \
                           BACKEND_IMAGE_DIGEST="$BACKEND_IMAGE_DIGEST" REQUIRE_PINNED_IMAGE=true \
-                          sh scripts/run-real-pre-db-migrations.sh | tee runtime/qa/out/jenkins/database-migration.txt
+                          bash scripts/cd/release-real-pre.sh migrate | tee runtime/qa/out/jenkins/database-migration.txt
                         REAL_PRE_COMPOSE_ENV="$ENV_FILE" REAL_PRE_COMPOSE_FILE="$COMPOSE_FILE" REAL_PRE_COMPOSE_PROJECT="$PROJECT_NAME" \
                           sh scripts/check-real-pre-schema.sh | tee runtime/qa/out/jenkins/schema-precheck.txt
                         '''
@@ -615,7 +615,7 @@ PY
                         ROLLBACK_SOURCE_MAIN_SHA="${ROLLBACK_SOURCE_MAIN_SHA:-}" \
                         ROLLBACK_BACKEND_IMAGE="${ROLLBACK_BACKEND_IMAGE:-}" \
                         ROLLBACK_FRONTEND_IMAGE="${ROLLBACK_FRONTEND_IMAGE:-}" \
-                        bash scripts/cd/rollback-real-pre.sh
+                        bash scripts/cd/release-real-pre.sh rollback-immutable
                     fi
                     '''
                 }
