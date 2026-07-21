@@ -3,6 +3,17 @@
 本目录（`harness/`）是抖音团长内部 SaaS V2 工程的核心自动化执行与监控基座。
 主要用于标准化 Agent 的执行流程、状态流转、质量验证及报告输出。
 
+## 开发者入口
+
+普通开发者只需要执行：
+
+```powershell
+.\harness.cmd inspect
+.\harness.cmd verify
+```
+
+这两个入口会自动选择变更范围、执行适用检查并生成 evidence；不会提交、推送或远端部署。下面的脚本、规则和目录是维护者入口。
+
 ## 目录结构说明
 - `rules/`：长期规则、执行规范、质量门禁。
 - `tasks/`：当前可执行任务卡，按领域或主题拆分。
@@ -13,6 +24,12 @@
 - `archive/`：历史归档，保留核心结果索引。
 - `templates/`：任务模板、报告模板、审计模板。
 - `engineering/`：Matt Pocock engineering skills 的项目配置。
+- `src/`：Node / TypeScript Harness 核心源码。
+- `contracts/`：JSON Schema 与机器可读策略。
+- `state/`：稳定发布、架构或验证基线，按需创建；禁止放入运行时产物。
+- `tests/`：Harness 自身测试。
+
+上述 13 个目录构成一级目录白名单。新增目录只在有真实职责和内容时创建，本任务不创建空目录；原始运行产物继续写入 `runtime/qa/out/<run-id>/`。
 
 ## 新增文件守则
 1. **活跃预算**：直接文件/子目录 40 预警、50 硬上限；非脚本文本 160 行预警、200 行硬上限。

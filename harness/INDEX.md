@@ -1,6 +1,6 @@
 # Harness Index
 
-## 当前入口
+## 一级目录白名单（13 个）
 - [rules/](./rules/)
 - [tasks/](./tasks/)
 - [probes/](./probes/)
@@ -10,6 +10,12 @@
 - [archive/](./archive/)
 - [templates/](./templates/)
 - [engineering/](./engineering/)   ← **Matt Pocock engineering skill 配置**（v2.0, 2026-06-19）
+- `src/`：Node / TypeScript Harness 核心源码，有真实实现时创建。
+- `contracts/`：JSON Schema 与机器可读策略，有真实契约时创建。
+- `state/`：稳定发布、架构或验证基线，按需创建；禁止放入运行时产物。
+- `tests/`：Harness 自身测试，有真实测试时创建。
+
+新增目录不得用空目录或占位 README 预建；原始运行产物继续进入 `runtime/qa/out/<run-id>/`。
 
 ## 最新报告
 - [reports/current/](./reports/current/)

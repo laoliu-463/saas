@@ -1,4 +1,4 @@
-param(
+﻿param(
     [Alias("Env")]
     [ValidateSet("test", "real-pre")]
     [string]$TargetEnv = "real-pre",
@@ -25,172 +25,200 @@ $ErrorActionPreference = "Stop"
 
 $config = Get-HarnessEnvConfig -Env $TargetEnv
 $deployRemoteValue = Convert-HarnessBool -Value $DeployRemote
+
+# 发布权限边界必须在 Node、Git、SSH 或任何其他外部动作之前执行。
+if ($deployRemoteValue) {
+    throw "Direct remote deployment is disabled. 普通 Codex 任务禁止直接部署；请提交候选变更，合并到 release/real-pre 后进入 Jenkins release queue（唯一发布队列）。"
+}
+
 $ownedFilesValue = @(Expand-HarnessOwnedFiles -OwnedFiles $OwnedFiles)
+$reportKeyValue = ConvertTo-HarnessReportKey -ReportKey $ReportKey
+$executionMode = Get-HarnessAgentDoExecutionMode -Scope $Scope
+$allChangedFiles = @(Get-HarnessChangedFiles)
+if (-not $DryRun -and $allChangedFiles.Count -gt 0 -and $ownedFilesValue.Count -eq 0) {
+    throw "OwnedFiles is required when the worktree has changes."
+}
+
+Write-HarnessStage "Agent do"
+Write-Host "Env: $TargetEnv"
+Write-Host "Scope: $Scope"
+Write-Host "ExecutionMode: $executionMode"
+Write-Host "DeployRemote: false (Jenkins queue only)"
+Write-Host "ReportKey: $reportKeyValue"
+Write-Host "OwnedFiles: $($ownedFilesValue.Count)"
+Write-Host "DryRun: $($DryRun.IsPresent)"
+
+if ($executionMode -eq "NODE") {
+    if ($ContentMaintenance -in @("archive", "delete")) {
+        throw "代码 Scope 不允许在验证后执行归档或删除；请拆分为独立 docs 任务并提供 manifest。"
+    }
+    if ($ContentMaintenance -eq "plan") {
+        Write-Host "代码 Scope 的 ContentMaintenance=plan 不产生文件变更；内容治理请使用独立 docs 任务。" -ForegroundColor Yellow
+    }
+
+    $stableJsonPath = Join-Path $config.RepoRoot "harness\reports\current\latest-$reportKeyValue.json"
+    $stableMarkdownPath = Join-Path $config.RepoRoot "harness\reports\current\latest-$reportKeyValue.md"
+    $previousRunId = ""
+    if (Test-Path -LiteralPath $stableJsonPath -PathType Leaf) {
+        try {
+            $previousReport = Get-Content -Raw -Encoding UTF8 -LiteralPath $stableJsonPath | ConvertFrom-Json
+            $previousRunId = [string]$previousReport.runId
+        }
+        catch {
+            $previousRunId = "UNREADABLE_PREVIOUS_REPORT"
+        }
+    }
+
+    $nodeArguments = @(New-HarnessNodeVerifyArguments `
+        -Env $TargetEnv `
+        -Scope $Scope `
+        -ReportKey $reportKeyValue `
+        -BusinessCommand $BusinessCommand `
+        -SkipBusinessValidation:$SkipBusinessValidation `
+        -DryRun:$DryRun)
+
+    Assert-HarnessNoSensitiveChangedFiles
+    $invocationId = [guid]::NewGuid().ToString("N")
+    $gitSnapshotJson = Get-HarnessNodeGitSnapshotJson -RepoRoot $config.RepoRoot
+
+    Write-HarnessStage "Node verify single source"
+    Write-Host "npm $($nodeArguments -join ' ')"
+    Push-Location $config.RepoRoot
+    $previousInvocationId = $env:HARNESS_VERIFY_INVOCATION_ID
+    $previousGitSnapshot = $env:HARNESS_VERIFY_GIT_SNAPSHOT_JSON
+    try {
+        $env:HARNESS_VERIFY_INVOCATION_ID = $invocationId
+        $env:HARNESS_VERIFY_GIT_SNAPSHOT_JSON = $gitSnapshotJson
+        $nodeOutput = @(npm @nodeArguments 2>&1)
+        $nodeExitCode = $LASTEXITCODE
+        $nodeOutput | ForEach-Object { Write-Host ([string]$_) }
+    }
+    finally {
+        $env:HARNESS_VERIFY_INVOCATION_ID = $previousInvocationId
+        $env:HARNESS_VERIFY_GIT_SNAPSHOT_JSON = $previousGitSnapshot
+        Pop-Location
+    }
+
+    $receipt = $null
+    if ($nodeExitCode -in @(0, 2)) {
+        $receipt = Get-HarnessNodeVerifyReceipt `
+            -Output $nodeOutput `
+            -ExpectedInvocationId $invocationId `
+            -ExpectedEnv $TargetEnv `
+            -ExpectedScope $Scope `
+            -ExpectedReportKey $reportKeyValue
+    }
+
+    $decision = Resolve-HarnessNodeVerifyDecision `
+        -ExitCode $nodeExitCode `
+        -StableJsonPath $stableJsonPath `
+        -StableMarkdownPath $stableMarkdownPath `
+        -ExpectedEnv $TargetEnv `
+        -ExpectedScope $Scope `
+        -ExpectedReportKey $reportKeyValue `
+        -RepoRoot $config.RepoRoot `
+        -ExpectedRunId $(if ($null -eq $receipt) { "" } else { [string]$receipt.runId }) `
+        -ExpectedReceiptStatus $(if ($null -eq $receipt) { "" } else { [string]$receipt.status }) `
+        -ExpectedRawJsonDigest $(if ($null -eq $receipt) { "" } else { [string]$receipt.evidenceDigests.rawJson }) `
+        -ExpectedStableJsonDigest $(if ($null -eq $receipt) { "" } else { [string]$receipt.evidenceDigests.stableJson }) `
+        -ExpectedStableMarkdownDigest $(if ($null -eq $receipt) { "" } else { [string]$receipt.evidenceDigests.stableMarkdown }) `
+        -PreviousRunId $previousRunId
+    Write-Host "Node decision: $($decision.Conclusion) - $($decision.Reason)"
+    if (-not $decision.AllowGit) {
+        throw $decision.Reason
+    }
+
+    $candidateOwnedFiles = @(
+        $ownedFilesValue +
+        "harness/reports/current/latest-$reportKeyValue.json" +
+        "harness/reports/current/latest-$reportKeyValue.md" |
+            Sort-Object -Unique
+    )
+
+    Write-HarnessStage "Harness file governance"
+    $governanceArgs = @(
+        "-NoProfile", "-ExecutionPolicy", "Bypass",
+        "-File", (Join-Path $config.RepoRoot "harness\scripts\check-harness-limits.ps1"),
+        "-RepoRoot", $config.RepoRoot,
+        "-BaselineRef", "HEAD",
+        "-NoReport",
+        "-OwnedFiles", ($candidateOwnedFiles -join ";")
+    )
+    & powershell @governanceArgs
+    if ($LASTEXITCODE -ne 0) {
+        throw "Harness file governance failed."
+    }
+
+    & (Join-Path $PSScriptRoot "git-push-safe.ps1") `
+        -RepoRoot $config.RepoRoot `
+        -Message $Message `
+        -OwnedFiles $candidateOwnedFiles `
+        -DryRun:$DryRun
+
+    Write-HarnessStage "Agent do result"
+    if ($decision.Conclusion -eq "PASS") {
+        Write-Host "Conclusion: PASS；候选已受控提交/推送，未合并、未部署。" -ForegroundColor Green
+        return
+    }
+    Write-Host "Conclusion: $($decision.Conclusion)；候选仅用于后续 CI，未升级为 PASS，未部署。" -ForegroundColor Yellow
+    exit 2
+}
+
+# docs / apifox 暂留 PowerShell 兼容路径，不执行应用构建、容器重启或远端发布。
 $buildResult = "not collected"
-$healthResult = "not collected"
+$healthResult = "Scope=${Scope}: Container restart and health check: NOT_REQUIRED (documentation/governance-only change)."
 $businessResult = "not collected"
 $contentMaintenanceResult = "not collected"
 $contentMaintenanceOwnedFiles = @()
 $taskOwnedFiles = @($ownedFilesValue)
-$remoteResult = "remote not deployed"
-$conclusion = "PARTIAL"
+$remoteResult = "remote not deployed; Jenkins queue required"
+$conclusion = "PASS"
 
 try {
-    Write-HarnessStage "Agent do"
-    Write-Host "Env: $TargetEnv"
-    Write-Host "Scope: $Scope"
-    Write-Host "DeployRemote: $deployRemoteValue"
-    Write-Host "ContentMaintenance: $ContentMaintenance"
-    Write-Host "ReportKey: $ReportKey"
-    Write-Host "OwnedFiles: $($ownedFilesValue.Count)"
-    Write-Host "SkipRemoteBackup: $SkipRemoteBackup"
-    Write-Host "DryRun: $($DryRun.IsPresent)"
-
-    if ($deployRemoteValue) {
-        throw "Direct remote deployment is disabled. Merge through main, promote to release/real-pre, and use the Jenkins release queue."
-    }
-
-    $allChangedFiles = @(Get-HarnessChangedFiles)
-    if (-not $DryRun -and $allChangedFiles.Count -gt 0 -and $ownedFilesValue.Count -eq 0) {
-        throw "OwnedFiles is required when the worktree has changes."
-    }
-
     & (Join-Path $PSScriptRoot "safety-check.ps1") -Env $TargetEnv -Scope $Scope -DryRun:$DryRun
 
-    Push-Location $config.RepoRoot
-    try {
-        if ($Scope -eq "docs") {
-            $buildResult = "Scope=docs: build skipped."
-            $businessResult = "Scope=docs: business validation not applicable; safety check executed."
-        }
-        elseif ($Scope -eq "apifox") {
-            Write-HarnessStage "Apifox OpenAPI local verification"
-            $bashPath = Get-HarnessBashPath
-            $repoRootForBash = Convert-HarnessPathToMsys -Path $config.RepoRoot
-            $previousApifoxCli = $env:APIFOX_CLI
-            if (Get-Command "apifox.cmd" -ErrorAction SilentlyContinue) {
-                $env:APIFOX_CLI = "apifox.cmd"
-            }
-            elseif ([string]::IsNullOrWhiteSpace($env:APIFOX_CLI)) {
-                $env:APIFOX_CLI = "apifox"
-            }
-            try {
-                $verifyCommand = "cd '$repoRootForBash' && APIFOX_CLI='${env:APIFOX_CLI}' bash scripts/verify-openapi-apifox.sh"
-                Write-Host "$bashPath -lc $verifyCommand"
-                if (-not $DryRun) {
-                    & $bashPath "-lc" $verifyCommand
-                    if ($LASTEXITCODE -ne 0) {
-                        throw "Apifox OpenAPI verification failed."
-                    }
-                }
-            }
-            finally {
-                $env:APIFOX_CLI = $previousApifoxCli
-            }
-            if ($DryRun) {
-                $buildResult = "Scope=apifox: DRY-RUN; application build skipped and Apifox/OpenAPI local harness not executed by agent-do."
-            }
-            else {
-                $buildResult = "Scope=apifox: application build skipped; Apifox/OpenAPI local harness PASS."
-            }
-            $businessResult = "Scope=apifox: business validation not applicable; cloud import not executed."
-        }
-        else {
-            if ($Scope -eq "backend" -or $Scope -eq "full") {
-                Write-HarnessStage "Build backend"
-                $cmd = "mvn -f backend/pom.xml -DskipTests package"
-                Write-Host $cmd
-                if (-not $DryRun) {
-                    mvn -f backend/pom.xml -DskipTests package
-                    if ($LASTEXITCODE -ne 0) {
-                        throw "Backend build failed."
-                    }
-                }
-                $buildResult = ($buildResult + "`nBackend build: PASS ($cmd)").Trim()
-            }
-
-            if ($Scope -eq "frontend" -or $Scope -eq "full") {
-                Write-HarnessStage "Build frontend"
-                $installCmd = if (Test-Path -LiteralPath (Join-Path $config.RepoRoot "frontend\package-lock.json")) {
-                    "npm --prefix frontend ci"
-                } else {
-                    "npm --prefix frontend install"
-                }
-                Write-Host $installCmd
-                if (-not $DryRun) {
-                    if ($installCmd -like "* ci") {
-                        npm --prefix frontend ci
-                    } else {
-                        npm --prefix frontend install
-                    }
-                    if ($LASTEXITCODE -ne 0) {
-                        throw "Frontend dependency install failed."
-                    }
-                    npm --prefix frontend run build
-                    if ($LASTEXITCODE -ne 0) {
-                        throw "Frontend build failed."
-                    }
-                }
-                $buildResult = ($buildResult + "`nFrontend build: PASS ($installCmd; npm --prefix frontend run build)").Trim()
-            }
-
-        }
-    }
-    finally {
-        Pop-Location
-    }
-
-    if ($Scope -eq "docs" -or $Scope -eq "apifox") {
-        $healthResult = "Scope=${Scope}: compose restart and HTTP health checks skipped by scoped local harness path."
+    if ($Scope -eq "docs") {
+        $buildResult = "Application build: NOT_REQUIRED (documentation/governance-only change)."
+        $businessResult = "E2E: NOT_REQUIRED (documentation/governance-only change)."
     }
     else {
-        & (Join-Path $PSScriptRoot "restart-compose.ps1") -Env $TargetEnv -Scope $Scope -DryRun:$DryRun
-        & (Join-Path $PSScriptRoot "verify-local.ps1") -Env $TargetEnv -Scope $Scope -DryRun:$DryRun
-        $healthResult = "Local health verification: PASS"
-    }
-
-    if ($Scope -ne "docs" -and $Scope -ne "apifox") {
-        if ($SkipBusinessValidation) {
-            $businessResult = "Business validation skipped by -SkipBusinessValidation; not a full PASS."
+        Write-HarnessStage "Apifox OpenAPI local verification"
+        $bashPath = Get-HarnessBashPath
+        $repoRootForBash = Convert-HarnessPathToMsys -Path $config.RepoRoot
+        $previousApifoxCli = $env:APIFOX_CLI
+        if (Get-Command "apifox.cmd" -ErrorAction SilentlyContinue) {
+            $env:APIFOX_CLI = "apifox.cmd"
+        }
+        elseif ([string]::IsNullOrWhiteSpace($env:APIFOX_CLI)) {
+            $env:APIFOX_CLI = "apifox"
+        }
+        try {
+            $verifyCommand = "cd '$repoRootForBash' && APIFOX_CLI='${env:APIFOX_CLI}' bash scripts/verify-openapi-apifox.sh"
+            Write-Host "$bashPath -lc $verifyCommand"
+            if (-not $DryRun) {
+                & $bashPath "-lc" $verifyCommand
+                if ($LASTEXITCODE -ne 0) {
+                    throw "Apifox OpenAPI verification failed."
+                }
+            }
+        }
+        finally {
+            $env:APIFOX_CLI = $previousApifoxCli
+        }
+        $buildResult = if ($DryRun) {
+            "Scope=apifox: DRY-RUN; application build skipped and Apifox/OpenAPI local harness not executed by agent-do."
         }
         else {
-            $effectiveBusinessCommand = $BusinessCommand
-            if ([string]::IsNullOrWhiteSpace($effectiveBusinessCommand)) {
-                if ($TargetEnv -eq "real-pre") {
-                    $effectiveBusinessCommand = "npm run e2e:real-pre:p0:preflight"
-                }
-                else {
-                    $effectiveBusinessCommand = "npm run e2e:v1-p0"
-                }
-            }
-
-            Write-HarnessStage "Business validation"
-            Write-Host $effectiveBusinessCommand
-            if (-not $DryRun) {
-                Push-Location $config.RepoRoot
-                try {
-                    powershell -NoProfile -ExecutionPolicy Bypass -Command $effectiveBusinessCommand
-                    if ($LASTEXITCODE -ne 0) {
-                        throw "Business validation failed: $effectiveBusinessCommand"
-                    }
-                }
-                finally {
-                    Pop-Location
-                }
-            }
-            $businessResult = "Business validation: PASS ($effectiveBusinessCommand)"
+            "Scope=apifox: application build skipped; Apifox/OpenAPI local harness PASS."
         }
+        $businessResult = "Scope=apifox: business validation not applicable; cloud import not executed."
     }
 
     if ($ContentMaintenance -eq "off") {
         $contentMaintenanceResult = "Content maintenance skipped by -ContentMaintenance off."
     }
     else {
-        $contentActionMap = @{
-            plan = "Plan"
-            archive = "Archive"
-            delete = "Delete"
-        }
+        $contentActionMap = @{ plan = "Plan"; archive = "Archive"; delete = "Delete" }
         $contentAction = $contentActionMap[$ContentMaintenance]
         Write-HarnessStage "Content maintenance"
         $retireParams = @{
@@ -216,14 +244,6 @@ try {
     }
 
     $taskOwnedFiles = @($ownedFilesValue + $contentMaintenanceOwnedFiles | Sort-Object -Unique)
-
-    if ($Scope -eq "docs" -or $SkipBusinessValidation -or $deployRemoteValue) {
-        $conclusion = "PARTIAL"
-    }
-    else {
-        $conclusion = "PASS"
-    }
-
     Write-HarnessStage "Harness file governance"
     $governanceArgs = @(
         "-NoProfile", "-ExecutionPolicy", "Bypass",
@@ -249,8 +269,8 @@ try {
         -ContentMaintenanceResult $contentMaintenanceResult `
         -RemoteResult $remoteResult `
         -Conclusion $conclusion `
-        -DeployRemote $deployRemoteValue `
-        -ReportKey $ReportKey `
+        -DeployRemote $false `
+        -ReportKey $reportKeyValue `
         -OwnedFiles $taskOwnedFiles `
         -RetroSummary $RetroSummary `
         -SkipRuntimeCollection:($Scope -eq "docs" -or $Scope -eq "apifox") `
@@ -267,9 +287,8 @@ try {
         -DryRun:$DryRun
 
     Write-Host "Review HARNESS_CHANGELOG.md and update it when Harness behavior changed." -ForegroundColor Yellow
-
     Write-HarnessStage "Agent do result"
-    Write-Host "Conclusion: $conclusion" -ForegroundColor Green
+    Write-Host "Conclusion: $conclusion；未部署，发布必须进入 Jenkins 队列。" -ForegroundColor Green
 }
 catch {
     $failure = $_.Exception.Message
@@ -284,8 +303,8 @@ catch {
             -ContentMaintenanceResult $contentMaintenanceResult `
             -RemoteResult $remoteResult `
             -Conclusion "FAIL" `
-            -DeployRemote $deployRemoteValue `
-            -ReportKey $ReportKey `
+            -DeployRemote $false `
+            -ReportKey $reportKeyValue `
             -OwnedFiles $taskOwnedFiles `
             -RetroSummary "agent-do failed: $failure" `
             -SkipRuntimeCollection:($Scope -eq "docs" -or $Scope -eq "apifox") `

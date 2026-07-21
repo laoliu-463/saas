@@ -4,7 +4,10 @@ $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
 $checker = Join-Path $repoRoot 'harness\scripts\check-harness-limits.ps1'
 $module = Join-Path $repoRoot 'harness\scripts\modules\HarnessFileGovernance.psm1'
 $powerShellHost = (Get-Process -Id $PID).Path
-$allowedRootDirs = @('rules', 'tasks', 'probes', 'reports', 'scripts', 'manifests', 'archive', 'templates', 'engineering')
+$allowedRootDirs = @(
+    'rules', 'tasks', 'probes', 'reports', 'scripts', 'manifests', 'archive', 'templates', 'engineering',
+    'src', 'contracts', 'state', 'tests'
+)
 
 function New-GovernanceTestRepo {
     param([string]$Name)
@@ -178,6 +181,30 @@ Describe 'check-harness-limits baseline-aware governance' {
         $result.Output | Should Match 'TEXT_LINE_COUNT_EXCEEDED'
     }
 
+    It 'exempts only the root Harness package lock from the text line budget' {
+        $repo = New-GovernanceTestRepo -Name 'root-package-lock'
+        Save-Baseline -Repo $repo
+        Add-TextFile -Repo $repo -RelativePath 'harness\package-lock.json' -Lines 201
+
+        $result = Invoke-GovernanceCheck -Repo $repo -OwnedFiles @('harness/package-lock.json')
+
+        $result.ExitCode | Should Be 0
+        $result.Output | Should Match 'TASK_GATE=PASS'
+        $result.Output | Should Match 'REPOSITORY_HEALTH=PASS'
+        $result.Output | Should Not Match 'TEXT_LINE_COUNT_EXCEEDED'
+    }
+
+    It 'does not exempt another package lock from the text line budget' {
+        $repo = New-GovernanceTestRepo -Name 'nested-package-lock'
+        Save-Baseline -Repo $repo
+        Add-TextFile -Repo $repo -RelativePath 'harness\contracts\package-lock.json' -Lines 201
+
+        $result = Invoke-GovernanceCheck -Repo $repo -OwnedFiles @('harness/contracts/package-lock.json')
+
+        $result.ExitCode | Should Be 1
+        $result.Output | Should Match 'TEXT_LINE_COUNT_EXCEEDED'
+    }
+
     It 'blocks a new root timestamp report even when total count does not grow' {
         $repo = New-GovernanceTestRepo -Name 'timestamp-report'
         Add-LegacyRootReports -Repo $repo -Count 20
@@ -225,15 +252,97 @@ Describe 'check-harness-limits baseline-aware governance' {
         $result.Output | Should Not Match 'TEXT_LINE_COUNT_EXCEEDED'
     }
 
-    It 'blocks a new non-whitelisted root directory' {
-        $repo = New-GovernanceTestRepo -Name 'root-whitelist'
+    It 'allows the src root directory' {
+        $repo = New-GovernanceTestRepo -Name 'root-src'
         Save-Baseline -Repo $repo
-        Add-TextFile -Repo $repo -RelativePath 'harness\rogue\file.md'
+        Add-TextFile -Repo $repo -RelativePath 'harness\src\entry.ts'
 
-        $result = Invoke-GovernanceCheck -Repo $repo -OwnedFiles @('harness/rogue/file.md')
+        $result = Invoke-GovernanceCheck -Repo $repo -OwnedFiles @('harness/src/entry.ts')
+
+        $result.ExitCode | Should Be 0
+        $result.Output | Should Not Match 'ROOT_DIRECTORY_NOT_ALLOWED'
+    }
+
+    It 'allows the contracts root directory' {
+        $repo = New-GovernanceTestRepo -Name 'root-contracts'
+        Save-Baseline -Repo $repo
+        Add-TextFile -Repo $repo -RelativePath 'harness\contracts\result.schema.json'
+
+        $result = Invoke-GovernanceCheck -Repo $repo -OwnedFiles @('harness/contracts/result.schema.json')
+
+        $result.ExitCode | Should Be 0
+        $result.Output | Should Not Match 'ROOT_DIRECTORY_NOT_ALLOWED'
+    }
+
+    It 'allows the state root directory' {
+        $repo = New-GovernanceTestRepo -Name 'root-state'
+        Save-Baseline -Repo $repo
+        Add-TextFile -Repo $repo -RelativePath 'harness\state\release-baseline.json'
+
+        $result = Invoke-GovernanceCheck -Repo $repo -OwnedFiles @('harness/state/release-baseline.json')
+
+        $result.ExitCode | Should Be 0
+        $result.Output | Should Not Match 'ROOT_DIRECTORY_NOT_ALLOWED'
+    }
+
+    It 'allows the tests root directory' {
+        $repo = New-GovernanceTestRepo -Name 'root-tests'
+        Save-Baseline -Repo $repo
+        Add-TextFile -Repo $repo -RelativePath 'harness\tests\governance.test.ts'
+
+        $result = Invoke-GovernanceCheck -Repo $repo -OwnedFiles @('harness/tests/governance.test.ts')
+
+        $result.ExitCode | Should Be 0
+        $result.Output | Should Not Match 'ROOT_DIRECTORY_NOT_ALLOWED'
+    }
+
+    It 'blocks an unknown fourteenth root directory' {
+        $repo = New-GovernanceTestRepo -Name 'root-fourteenth'
+        Save-Baseline -Repo $repo
+        Add-TextFile -Repo $repo -RelativePath 'harness\unknown-root\file.md'
+
+        $result = Invoke-GovernanceCheck -Repo $repo -OwnedFiles @('harness/unknown-root/file.md')
 
         $result.ExitCode | Should Be 1
         $result.Output | Should Match 'ROOT_DIRECTORY_NOT_ALLOWED'
+    }
+
+    It 'ignores generated Harness node_modules without allowing another root directory' {
+        $repo = New-GovernanceTestRepo -Name 'ignored-node-modules'
+        Set-Content -LiteralPath (Join-Path $repo '.gitignore') -Value 'node_modules/' -Encoding UTF8
+        Save-Baseline -Repo $repo
+        for ($i = 1; $i -le 51; $i++) {
+            Add-TextFile -Repo $repo -RelativePath ("harness\node_modules\dependency\file-{0:D2}.json" -f $i)
+        }
+        Add-TextFile -Repo $repo -RelativePath 'harness\node_modules\large.json' -Lines 201
+
+        $result = Invoke-GovernanceCheck -Repo $repo
+
+        $result.ExitCode | Should Be 0
+        $result.Output | Should Match 'TASK_GATE=PASS'
+        $result.Output | Should Match 'REPOSITORY_HEALTH=PASS'
+        $result.Output | Should Not Match 'node_modules'
+    }
+
+    It 'blocks a force-added tracked Harness node_modules file regardless of owned files' {
+        $repo = New-GovernanceTestRepo -Name 'tracked-node-modules'
+        Set-Content -LiteralPath (Join-Path $repo '.gitignore') -Value 'node_modules/' -Encoding UTF8
+        Save-Baseline -Repo $repo
+        Add-TextFile -Repo $repo -RelativePath 'harness\node_modules\dependency\index.json'
+        Push-Location $repo
+        try {
+            git add -f -- 'harness/node_modules/dependency/index.json'
+        }
+        finally {
+            Pop-Location
+        }
+
+        $result = Invoke-GovernanceCheck -Repo $repo -OwnedFiles @('harness/README.md')
+
+        $result.ExitCode | Should Be 1
+        $result.Output | Should Match 'TASK_GATE=FAIL'
+        $result.Output | Should Match 'TRACKED_GENERATED_DEPENDENCY'
+        $result.Output | Should Match 'harness/node_modules/dependency/index.json'
     }
 
     It 'expands an untracked directory when owned files are derived' {

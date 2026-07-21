@@ -1,0 +1,158 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://colonel-saas.local/harness/contracts/evidence-report.schema.json",
+  "title": "Harness 结构化证据报告",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "runId",
+    "reportKey",
+    "environment",
+    "scope",
+    "startedAt",
+    "startedAtShanghai",
+    "finishedAt",
+    "finishedAtShanghai",
+    "durationMs",
+    "git",
+    "result",
+    "evidencePaths"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "1.0.0" },
+    "runId": {
+      "type": "string",
+      "maxLength": 128,
+      "pattern": "^[a-z0-9]+(?:[._-][a-z0-9]+)*$"
+    },
+    "reportKey": {
+      "type": "string",
+      "maxLength": 64,
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "environment": { "enum": ["test", "real-pre"] },
+    "scope": { "enum": ["backend", "frontend", "full"] },
+    "startedAt": { "$ref": "#/$defs/isoTime" },
+    "startedAtShanghai": { "$ref": "#/$defs/shanghaiTime" },
+    "finishedAt": { "$ref": "#/$defs/isoTime" },
+    "finishedAtShanghai": { "$ref": "#/$defs/shanghaiTime" },
+    "durationMs": { "type": "integer", "minimum": 0 },
+    "git": { "$ref": "#/$defs/gitSnapshot" },
+    "result": {
+      "$ref": "https://colonel-saas.local/harness/contracts/run-result.schema.json"
+    },
+    "evidencePaths": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rawJson", "stableJson", "stableMarkdown"],
+      "properties": {
+        "rawJson": { "$ref": "#/$defs/relativePath" },
+        "stableJson": { "$ref": "#/$defs/relativePath" },
+        "stableMarkdown": { "$ref": "#/$defs/relativePath" }
+      }
+    }
+  },
+  "$defs": {
+    "sha": {
+      "type": "string",
+      "pattern": "^(?:[a-f0-9]{40}|[a-f0-9]{64})$"
+    },
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*(?:^|/)\\.\\.(?:/|$))[^\\\\\\u0000]+$"
+    },
+    "shanghaiTime": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2} Asia/Shanghai$"
+    },
+    "isoTime": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$"
+    },
+    "commitIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "commitSha"],
+      "properties": {
+        "kind": { "const": "COMMIT" },
+        "commitSha": { "$ref": "#/$defs/sha" }
+      }
+    },
+    "worktreeIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "headSha", "changedFiles", "patchFingerprint"],
+      "properties": {
+        "kind": { "const": "WORKTREE" },
+        "headSha": { "$ref": "#/$defs/sha" },
+        "changedFiles": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/relativePath" }
+        },
+        "patchFingerprint": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        }
+      }
+    },
+    "unavailableIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "reason"],
+      "properties": {
+        "kind": { "const": "UNAVAILABLE" },
+        "reason": { "const": "NODE_GIT_BOUNDARY" }
+      }
+    },
+    "unavailableGitSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["headSha", "branch", "clean", "changedFiles", "identity"],
+      "properties": {
+        "headSha": { "type": "null" },
+        "branch": { "type": "null" },
+        "clean": { "type": "null" },
+        "changedFiles": { "type": "array", "maxItems": 0 },
+        "identity": { "$ref": "#/$defs/unavailableIdentity" }
+      }
+    },
+    "gitSnapshot": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["headSha", "branch", "clean", "changedFiles", "identity"],
+          "properties": {
+            "headSha": { "$ref": "#/$defs/sha" },
+            "branch": { "type": "string", "minLength": 1 },
+            "clean": { "const": true },
+            "changedFiles": { "type": "array", "maxItems": 0 },
+            "identity": { "$ref": "#/$defs/commitIdentity" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["headSha", "branch", "clean", "changedFiles", "identity"],
+          "properties": {
+            "headSha": { "$ref": "#/$defs/sha" },
+            "branch": { "type": "string", "minLength": 1 },
+            "clean": { "const": false },
+            "changedFiles": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": { "$ref": "#/$defs/relativePath" }
+            },
+            "identity": { "$ref": "#/$defs/worktreeIdentity" }
+          }
+        },
+        { "$ref": "#/$defs/unavailableGitSnapshot" }
+      ]
+    }
+  }
+}
