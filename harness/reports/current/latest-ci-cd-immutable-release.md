@@ -1,9 +1,9 @@
 # CI/CD 不可变发布链路证据
 
-- 时间：2026-07-21 18:27:35 +08:00
+- 时间：2026-07-21 18:34:30 +08:00
 - 环境：本地 Windows worktree；目标环境 real-pre；本轮未连接远端服务器
 - 分支：`codex/ci-cd-immutable-release`
-- 代码提交：`8eb157fa317c020d531ca91a9f8ab1684916d7c4`（已 rebase 到 `main@4ea8e832`）
+- 代码提交：`158f8280`（已 rebase 到 `main@4ea8e832`；修复 report lifecycle 测试的跨平台 PowerShell 执行器）
 - 工作区：代码提交后仅有本报告待提交；证据提交后干净
 
 ## 变更结果
@@ -22,7 +22,7 @@
 - Shell 语法：PASS（数据库迁移、部署、回滚脚本）。
 - PowerShell AST：PASS（harness/scripts 下脚本）。
 - Docker Compose config：PASS；使用 `.env.real-pre.example` 仅做配置解析，未启动容器。
-- Pester：PASS，80 passed / 0 failed / 0 skipped；新增五类锁内失败回滚合同测试。
+- Pester：PASS；按 GitHub Actions 同一组合同测试本地 69 passed / 0 failed / 0 skipped，其中 report lifecycle 9/9；新增五类锁内失败回滚合同测试。
 - Harness limits：`TASK_GATE=PASS`；`REPOSITORY_HEALTH=PARTIAL`，仅存在历史报告数量与行数债务，本次未新增。
 - 应用构建：未执行；本轮是 CI/CD、部署合同和 Harness 变更，GitHub main workflow 负责实际后端/前端镜像构建。
 - Docker 重启、健康检查、业务验证：未执行；本轮未修改应用业务代码，也未启动本地 real-pre。
@@ -33,9 +33,9 @@
 
 - GitHub 分支保护是否已将 `CI Gate` 设为 required，未通过本地代码验证；需要仓库管理员在 GitHub 设置并用真实 PR 验证。
 - Jenkins 需要配置 `saas-container-registry` 凭证和 Lockable Resources 的 `saas-real-pre-deploy` 资源；本地没有 Jenkins 控制器，未执行流水线语法与真实部署验证。
-- 当前 PR 还需在 GitHub 上更新到 rebase 后的远端 head，之后才会产生新的 Actions 检查结果。
+- PR #212 已创建。首轮 Actions run `29822336993` 的 `Repository governance` 曾出现 6 个失败：`report-lifecycle.Tests.ps1` 在 Ubuntu Runner 将 PowerShell 执行器写死为 `powershell`，而 Runner 仅提供 `pwsh`；其余 74 个测试通过。该问题已在 `158f8280` 修复，待推送后重新触发检查。
 - 首次切换到 digest 发布前，必须为 `release/real-pre.json` 填入真实 main SHA、GHCR 两个 digest、迁移版本和可回滚的 previous manifest；不能直接使用 example 中的零值。
-- `PARTIAL`：代码与合同已完成本地验证，但外部 GitHub/GHCR/Jenkins/real-pre 环境尚未完成一次真实发布闭环。
+- `PARTIAL`：跨平台测试修复已完成并通过本地验证，PR 需要等待新一轮 GitHub Actions；GHCR/Jenkins/real-pre 环境尚未完成一次真实发布闭环。
 
 ## Retro
 
