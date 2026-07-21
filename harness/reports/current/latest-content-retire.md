@@ -2,10 +2,10 @@
 
 ## Metadata
 
-- Time: 2026-07-20 20:28:49 +08:00
+- Time: 2026-07-21 13:43:29 +08:00
 - Action: Plan
 - DryRun: False
-- Reason: ddd: route talent claim release job through application port
+- Reason: fix: prevent migrate-all from requiring or resetting admin password
 - Manifest: (none)
 - ArchiveRoot: harness/archive/retired-content
 - AllowSourceCode: False
