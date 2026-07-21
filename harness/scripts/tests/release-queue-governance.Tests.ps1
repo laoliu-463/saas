@@ -12,6 +12,12 @@ $backendService = [regex]::Match(
 ).Groups['body'].Value
 $frontendDockerfile = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'frontend\Dockerfile')
 
+# Canonical release entry script: every mutating real-pre subcommand MUST
+# route through this wrapper, which holds an exclusive flock(1) lock.
+$releaseScriptPath = Join-Path $repoRoot 'scripts\cd\release-real-pre.sh'
+$releaseScriptExists = (Test-Path -LiteralPath $releaseScriptPath -PathType Leaf)
+$releaseScript = if ($releaseScriptExists) { Get-Content -Raw -LiteralPath $releaseScriptPath } else { '' }
+
 Describe 'real-pre single release queue contract' {
     It 'only accepts the protected release branch' {
         $jenkinsfile | Should Match "defaultValue:\s*'release/real-pre'"
@@ -23,8 +29,17 @@ Describe 'real-pre single release queue contract' {
 
     It 'queues builds without aborting and holds one cross-job deployment lock' {
         $jenkinsfile | Should Match 'disableConcurrentBuilds\(abortPrevious:\s*false\)'
-        $jenkinsfile | Should Match "lock\(resource:\s*'saas-real-pre-deploy'"
-        ([regex]::Matches($jenkinsfile, "saas-real-pre-deploy").Count) | Should Be 1
+        # The previous `lock(resource: 'saas-real-pre-deploy')` directive
+        # relied on the Lockable Resources plugin, which is not installed.
+        # The contract is now enforced via flock(1) inside the canonical
+        # release entry script, so we check for the wrapper rather than
+        # the obsolete Groovy lock directive.
+        $releaseScriptExists | Should Be $true
+        $jenkinsfile | Should Match ([regex]::Escape('scripts/cd/release-real-pre.sh'))
+        $releaseScript | Should Match '\bflock\b'
+        # saas-real-pre-deploy must appear in at least the wrapper (lock file
+        # name) and the Jenkinsfile comment that explains the wrapper.
+        ([regex]::Matches($releaseScript, 'saas-real-pre-deploy').Count) | Should BeGreaterThan 0
     }
 
     It 'rejects stale releases unless rollback is explicitly approved' {

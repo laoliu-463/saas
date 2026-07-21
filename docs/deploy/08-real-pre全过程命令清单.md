@@ -1,5 +1,15 @@
 # real-pre 全过程命令清单
 
+> **⚠️ BREAK-GLASS ONLY — 2026-07-21**
+>
+> 本文用于**首次初始化一台新的 real-pre 服务器**，或 Jenkins 不可用时的人工恢复。
+> **常规发布已统一由 Jenkins real-pre CD 完成**，请勿按本文档做常规部署。
+>
+> 真实服务器 IP、SSH 用户名（`root@…`）、本机 `C:\Users\…\.ssh\` 私钥路径、SSH 公钥指纹均不得在公开仓库保留。
+> 详见 [docs/deploy/README.md](./README.md) 中"⚠️ BREAK-GLASS 紧急恢复"一节。
+>
+> Jenkins 与 BREAK-GLASS 流程调用的是同一份 `scripts/deploy-real-pre.sh`；命令口径以该脚本与 `Jenkinsfile` 为准。
+
 ## 适用场景
 
 本文把 real-pre 服务器受控部署过程中需要执行的命令按顺序集中到一处，便于第一次手动部署、端口测试、域名 SSL 联调、百应 / 抖音授权、E2E 门禁、真实订单观察、回滚和后续 Jenkins 自动化接入。
@@ -12,8 +22,8 @@
 
 | 项目 | 当前值 |
 | --- | --- |
-| 仓库 | 优先 `https://gitee.com/cao-jianing463/saas.git`；GitHub 远端为 `https://github.com/laoliu-463/saas.git` |
-| 部署分支 | `feature/auth-system` |
+| 仓库 | GitHub 主仓：`https://github.com/laoliu-463/saas.git`（已不再以 Gitee 为优先同步源） |
+| 部署分支 | `release/real-pre`（由 Jenkins CD 自动部署；BREAK-GLASS 时手工 `git checkout` 同名分支） |
 | Compose 文件 | `docker-compose.real-pre.yml` |
 | Compose project | `saas-active` |
 | 服务器 env | `/opt/saas/env/.env.real-pre` |
@@ -73,19 +83,21 @@ npm run e2e:real-pre:roles
 npm run e2e:real-pre:p0
 ```
 
-### 1. SSH 登录服务器
+### 1. SSH 登录服务器（BREAK-GLASS）
 
-如果本机已配置 SSH 别名：
+如果本机已配置 SSH 别名（**别名只在本机 `~/.ssh/config` 内有效**，不得提交到仓库）：
 
 ```bash
-ssh saas
+ssh <你的本机别名>
 ```
 
 未配置别名时：
 
 ```bash
-ssh root@服务器IP
+ssh <服务器SSH用户名>@<服务器IP>
 ```
+
+真实服务器 IP、SSH 用户名、本机私钥路径、SSH 公钥指纹均不在公开仓库保留。
 
 如果不使用 `root`，用实际部署用户登录：
 
@@ -150,40 +162,30 @@ docker --version
 docker compose version
 ```
 
-### 4. 拉取代码
+### 4. 拉取代码（BREAK-GLASS）
 
-首次部署：
+首次部署（BREAK-GLASS 初始化）：
 
 ```bash
 cd /opt/saas
-git clone -o gitee -b feature/auth-system https://gitee.com/cao-jianing463/saas.git app
+git clone -o origin -b release/real-pre https://github.com/laoliu-463/saas.git app
 cd /opt/saas/app
 git pull --ff-only
 git rev-parse --short HEAD
 ```
 
-目录已存在时：
+目录已存在时（BREAK-GLASS 同步到 `release/real-pre` HEAD）：
 
 ```bash
 cd /opt/saas/app
-git remote get-url gitee >/dev/null 2>&1 || git remote add gitee https://gitee.com/cao-jianing463/saas.git
-git fetch gitee
-git checkout feature/auth-system
+git remote get-url origin >/dev/null 2>&1 || git remote add origin https://github.com/laoliu-463/saas.git
+git fetch origin
+git checkout release/real-pre
 git pull --ff-only
 git rev-parse --short HEAD
 ```
 
-本地更新同步到服务器时，先在本地提交并推送：
-
-```bash
-cd D:/Projects/SAAS
-git status
-git add <本次修改文件>
-git commit -m "描述本次修改"
-git push gitee feature/auth-system
-```
-
-再在服务器执行上面的 `git fetch gitee && git pull --ff-only`。
+> BREAK-GLASS 不要在本机 `D:/Projects/SAAS` 推任何"开发分支" — 所有常规发布流程请走 PR + Jenkins CD。
 
 查看最近提交，记录可回滚版本：
 
@@ -759,8 +761,8 @@ ROLLBACK_REF=上一个稳定commit ENV_FILE=/opt/saas/env/.env.real-pre ./script
 
 ```bash
 cd /opt/saas/app
-git remote get-url gitee >/dev/null 2>&1 || git remote add gitee https://gitee.com/cao-jianing463/saas.git
-git fetch gitee
+git remote get-url origin >/dev/null 2>&1 || git remote add origin https://github.com/laoliu-463/saas.git
+git fetch origin
 git checkout 上一个稳定commit
 ENV_FILE=/opt/saas/env/.env.real-pre PROJECT_NAME=saas-active ./scripts/deploy-real-pre.sh
 ```
@@ -774,6 +776,8 @@ curl -fsS http://127.0.0.1:3001/healthz
 
 ### 22. Jenkins 第二阶段命令
 
+> 截至 2026-07-21，Jenkins 已**正式接管** real-pre CD，不再属于"第二阶段"。本节保留作为历史背景；现状以仓库根 [Jenkinsfile](../../Jenkinsfile) 为准。
+
 Jenkins 不参与第一次手动部署。手动部署稳定后，先在服务器验证脚本可用：
 
 ```bash
@@ -782,10 +786,10 @@ bash -n scripts/deploy-real-pre.sh scripts/health-check.sh scripts/backup-db.sh 
 ENV_FILE=/opt/saas/env/.env.real-pre PROJECT_NAME=saas-active ./scripts/health-check.sh
 ```
 
-Jenkins 默认参数：
+Jenkins 默认参数（实际以 `Jenkinsfile` 为准；以下为历史参考）：
 
 ```text
-DEPLOY_BRANCH=feature/auth-system
+DEPLOY_BRANCH=release/real-pre
 RUN_REAL_PRE_E2E=false
 ```
 

@@ -102,50 +102,29 @@ npm run e2e:real-pre:roles
 
 ## 同步到服务器
 
-当前本地分支为 `feature/auth-system`，跟踪 `gitee/feature/auth-system`。本机 SSH 已配置 `saas` 别名时，可直接：
+> **2026-07-21 更新：手工 SSH 部署已退役。所有发布由 Jenkins real-pre CD 完成。**
 
-```bash
-ssh saas
+本仓库的发布黄金路径：
+
+```text
+本地分支 → PR → main → CI → 镜像构建 → release/real-pre 提升 PR → Jenkins real-pre CD
 ```
 
-本地修改需要先提交并推送，否则服务器无法通过 `git pull` 获取：
+请按以下顺序：
 
-```bash
-git status
-git add <本次修改文件>
-git commit -m "描述本次修改"
-git push gitee feature/auth-system
-```
+1. 从 `main` 创建 worktree + 短期分支（详见 [CONTRIBUTING.md](./CONTRIBUTING.md)）。
+2. 本地完成后推分支、开 Draft PR。
+3. PR CI 全绿后合入 `main`（如使用 Merge Queue 则自动）。
+4. `release/real-pre` 的提升必须通过独立 PR；Jenkins 只在该 PR 合并后部署。
+5. 部署后由 P0 smoke + 多角色 E2E 验证，证据归档到 `releases/<sha>/`。
 
-首次同步到服务器：
+**不要执行：**
 
-```bash
-ssh saas
-mkdir -p /opt/saas/app /opt/saas/env /opt/saas/logs /opt/saas/backups /opt/saas/runtime/qa/out
-cd /opt/saas
-git clone -o gitee -b feature/auth-system https://gitee.com/cao-jianing463/saas.git app
-cd /opt/saas/app
-ln -sfn /opt/saas/env/.env.real-pre .env.real-pre
-```
+- 直接 SSH 到服务器执行 `git pull` / `docker compose up`。
+- 把本机 `.env.real-pre` / `.ssh` 私钥拷贝到服务器。
+- 跳过 Jenkins 自定义在服务器上手工改代码或重新构建镜像。
 
-后续更新：
-
-```bash
-ssh saas
-cd /opt/saas/app
-git remote get-url gitee >/dev/null 2>&1 || git remote add gitee https://gitee.com/cao-jianing463/saas.git
-git fetch gitee
-git pull --ff-only
-docker compose --env-file /opt/saas/env/.env.real-pre -f docker-compose.real-pre.yml up -d --build
-```
-
-部署后检查：
-
-```bash
-docker compose --env-file /opt/saas/env/.env.real-pre -f docker-compose.real-pre.yml ps
-curl -s http://127.0.0.1:8081/api/system/health
-curl -I http://127.0.0.1:3001/login
-```
+如发生 Jenkins 不可用或环境损坏，请走 BREAK-GLASS 流程：参考 [docs/deploy/README.md](./docs/deploy/README.md) 中"⚠️ BREAK-GLASS 紧急恢复"一节，并在事后补一份事后复盘到 `releases/<sha>/break-glass-YYYYMMDD.md`。
 
 不要执行 `docker compose down -v`，避免清空 real-pre 数据卷。
 

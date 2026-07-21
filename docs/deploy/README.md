@@ -1,12 +1,26 @@
 # 部署文档入口
 
+> **⚠️ 2026-07-21 更新：手工 SSH 部署已退役。real-pre 的唯一发布入口是 Jenkins real-pre CD。**
+>
+> 本文档以前记录的"开发分支 / Gitee 优先 / 本机 SSH 别名 / `root@` 登录 / git pull + docker compose up"等流程已不再是常规部署路径。
+>
+> **普通任务请直接走 PR + Jenkins CD**：参考根目录 [README.md](../../README.md) 的"同步到服务器"一节。
+
+---
+
 ## 适用场景
 
-本文是抖音团长 SaaS `real-pre` 服务器受控部署的入口。当前目标是先完成 Docker 手动部署和真实联调，再沉淀脚本，最后接 Jenkins 自动化。
+本文档保留历史部署知识，供以下场景使用：
 
-## 当前仓库实际情况
+1. **首次初始化一台新的 real-pre 服务器**（基线安装、目录创建、`.env.real-pre.example` → `.env.real-pre`）。
+2. **BREAK-GLASS 紧急恢复**：Jenkins 不可用、服务器环境损坏、需要手工回滚到上一份 release manifest。
+3. **审计与回溯**：查看过去部署报告、Compose 参数契约、门禁清单。
 
-当前部署以这些仓库文件为准：
+任何常规代码改动 → 部署的发布动作请通过 Jenkins（`release/real-pre` 提升 PR 触发），不要按本文档手工执行。
+
+---
+
+## 当前仓库实际文件（与 Jenkins 共用同一份）
 
 - `docker-compose.real-pre.yml`
 - `.env.real-pre.example`
@@ -15,241 +29,111 @@
 - `scripts/health-check.sh`
 - `scripts/real-pre-startup-check.sh`
 - `scripts/rollback-real-pre.sh`
-- `package.json`
+- `Jenkinsfile`
 - `backend/pom.xml`
 - `frontend/Dockerfile`
 - `frontend/nginx/default.conf.template`
 
-核心口径：
+Jenkins 与 BREAK-GLASS 流程都调用同一份 `scripts/deploy-real-pre.sh`，不接受两套命令口径。
+
+---
+
+## 当前发布黄金路径
 
 ```text
-当前开发分支: feature/auth-system
-当前优先同步仓库: https://gitee.com/cao-jianing463/saas.git
-本机 SSH 部署入口: ssh saas
-SSH 目标: root@1.14.108.159:22
-SSH IdentityFile: C:\Users\caojianing\.ssh\saas_ed25519
-Compose project: saas-active
-后端: backend-real-pre, 127.0.0.1:8081 -> 容器 8080
-前端: frontend-real-pre, 127.0.0.1:3001 -> 容器 80
-后端健康检查: /api/system/health
-前端健康检查: /healthz
+main 合并 → 镜像构建（push:main 触发）
+    ↓
+release/real-pre 提升 PR
+    ↓
+Jenkins real-pre CD
+    ├─ 校验精确 SHA
+    ├─ 校验 GitHub required checks
+    ├─ 获取全局锁（/var/lock/saas-real-pre-deploy.lock）
+    ├─ 数据库备份 + 兼容迁移
+    ├─ 暂停 scheduler → 部署 backend → readiness → 部署 frontend
+    ├─ P0 smoke + 多角色 E2E
+    └─ 恢复 scheduler + 更新 release manifest
 ```
 
-## 本机 SSH 部署入口
+详细规范见：
 
-> 记录日期：2026-06-02。这里只记录可用于部署的 SSH alias 和公钥指纹，不记录私钥内容、密码、Token 或 `.env.real-pre`。
+- [07-Jenkins自动化部署规划.md](07-Jenkins自动化部署规划.md)（历史规划文档；现状以 Jenkinsfile 为准）
+- [08-real-pre参数开关契约.md](08-real-pre参数开关契约.md)（生产参数基线）
+- 根目录 [Jenkinsfile](../../Jenkinsfile)（实际编排）
 
-当前本机 `C:\Users\caojianing\.ssh\config` 已配置：
+---
 
-```sshconfig
-Host saas
-    HostName 1.14.108.159
-    User root
-    Port 22
-    IdentityFile C:\Users\caojianing\.ssh\saas_ed25519
-    IdentitiesOnly yes
-    ServerAliveInterval 30
-    ServerAliveCountMax 3
-```
+## ⚠️ BREAK-GLASS 紧急恢复
 
-本机公钥指纹：
+仅在以下情况启动 BREAK-GLASS：
 
-```text
-saas_ed25519.pub: 256 SHA256:bXULR/UyKWCrNdXcO3pIM1xuKDvjpF1DiKPnEA8EfbQ saas-server (ED25519)
-```
+- Jenkins 长时间不可用且无法在 30 分钟内恢复。
+- 服务器环境被破坏且无法通过 Jenkins 回滚到 `previous` release。
+- 真实上游紧急关闭（订单、风控、合规）需要立即降级部署。
 
-已验证的只读连通性：
+BREAK-GLASS 启动前必须：
 
-```bash
-ssh -o BatchMode=yes -o ConnectTimeout=8 saas "hostname; whoami; test -d /opt/saas && echo OPT_SAAS_EXISTS"
-```
+1. 在团队频道声明 `BREAK-GLASS-START <YYYY-MM-DD HH:mm>`。
+2. 在服务器侧获取 `/var/lock/saas-real-pre-deploy.lock`（与 Jenkins 共用同一把锁，由 `scripts/cd/release-real-pre.sh` 持有）：
+   ```bash
+   flock -n /var/lock/saas-real-pre-deploy.lock -c '
+     cd /opt/saas/app
+     git fetch origin
+     git checkout release/real-pre
+     bash scripts/cd/release-real-pre.sh preflight
+     bash scripts/cd/release-real-pre.sh backup
+     bash scripts/cd/release-real-pre.sh migrate
+     bash scripts/cd/release-real-pre.sh deploy   # requires IMAGE_TAG=<40-char SHA>
+   '
+   ```
+   `release-real-pre.sh` 的每个子命令都会独立获取锁；任一 BREAK-GLASS 操作与正在跑的 Jenkins release 都会因锁冲突而被拒绝。
+3. BREAK-GLASS 完成后必须：
+   - 把所用 SHA 写入 `releases/<sha>/break-glass-YYYYMMDD.md`（含原因、影响范围、回滚点）。
+   - 把 `current.json` 同步更新到 BREAK-GLASS 部署的版本。
+   - 在团队频道声明 `BREAK-GLASS-END`。
 
-最近验证结果：
+**真实服务器 IP、SSH 用户名、私钥路径、SSH 公钥指纹、`.env.real-pre` 实际内容均不得在公开 Git 仓库中保留**。这些信息应放在私有 Runbook（如 Bitwarden / Confluence 私有空间 / 服务器本地 `/root/saas-private-notes/`），由运维负责人按需查阅。
 
-```text
-hostname: VM-0-12-ubuntu
-whoami: root
-/opt/saas: exists
-```
+历史 SSH 别名示例已从本文档移除。如需重建 SSH 访问，请使用你个人本机的 `~/.ssh/config`，不要把含本机用户名或私钥路径的示例提交回仓库。
 
-后续远程部署默认直接使用：
+---
 
-```bash
-ssh saas
-cd /opt/saas/app
-git fetch gitee
-git pull --ff-only gitee feature/auth-system
-ENV_FILE=/opt/saas/env/.env.real-pre ./scripts/real-pre-startup-check.sh
-ENV_FILE=/opt/saas/env/.env.real-pre ./scripts/deploy-real-pre.sh
-```
-
-## 推荐阅读顺序
+## 推荐阅读顺序（首次初始化服务器时）
 
 1. [00-服务器部署总览.md](00-服务器部署总览.md)
 2. [01-服务器初始化与宝塔配置.md](01-服务器初始化与宝塔配置.md)
-3. [02-Docker手动部署real-pre.md](02-Docker手动部署real-pre.md)
+3. [02-Docker手动部署real-pre.md](02-Docker手动部署real-pre.md)（**仅初始化时使用，后续不再手工执行**）
 4. [03-域名SSL与宝塔Nginx反向代理.md](03-域名SSL与宝塔Nginx反向代理.md)
 5. [04-百应抖音授权与Token联调.md](04-百应抖音授权与Token联调.md)
 6. [05-real-pre部署后验收门禁.md](05-real-pre部署后验收门禁.md)
 7. [06-回滚与故障排查.md](06-回滚与故障排查.md)
 8. [07-Jenkins自动化部署规划.md](07-Jenkins自动化部署规划.md)
-9. [08-real-pre全过程命令清单.md](08-real-pre全过程命令清单.md)
+9. [08-real-pre全过程命令清单.md](08-real-pre全过程命令清单.md)（**仅 BREAK-GLASS 参考**）
 10. [08-real-pre参数开关契约.md](08-real-pre参数开关契约.md)
 
-旧文档仍保留：
+旧文档仍保留（仅作审计背景，不应再作为操作步骤）：
 
 - `00-deploy-audit.md`
 - `01-xshell-manual-deploy.md`
 - `02-jenkins-later.md`
 
-如命令冲突，以本目录新文档和当前仓库实际文件为准。
+如命令冲突，以 `Jenkinsfile` + 本目录新文档为准。
+
+---
 
 ## 前置条件
 
 - 服务器已安装 Git、Docker、Docker Compose。
 - 已创建 `/opt/saas/app`、`/opt/saas/env`、`/opt/saas/logs`、`/opt/saas/backups`、`/opt/saas/runtime/qa/out`。
-- 已准备真实 `.env.real-pre`。
+- 已准备真实 `.env.real-pre`（**仅在服务器本地**，不要复制本机版本）。
 - 未把 `.env.real-pre` 提交 Git。
-- 不直接复用本机 `.env.real-pre`；服务器环境文件必须重新核对域名、OAuth 回调、CORS、快递100回调和真实推广写入开关。
-
-## 新手第一次部署步骤
-
-完整过程命令见 [08-real-pre全过程命令清单.md](08-real-pre全过程命令清单.md)。第一次只做最小部署时按下面命令执行：
-
-```bash
-sudo mkdir -p /opt/saas/app /opt/saas/env /opt/saas/logs /opt/saas/backups /opt/saas/runtime/qa/out
-sudo chown -R "$USER":"$USER" /opt/saas
-
-cd /opt/saas
-git clone -o gitee -b feature/auth-system https://gitee.com/cao-jianing463/saas.git app
-cd /opt/saas/app
-git pull --ff-only
-
-cp .env.real-pre.example /opt/saas/env/.env.real-pre
-chmod 600 /opt/saas/env/.env.real-pre
-vi /opt/saas/env/.env.real-pre
-ln -sfn /opt/saas/env/.env.real-pre /opt/saas/app/.env.real-pre
-
-# 部署前自检：验证 .env.real-pre 开关基线（参考 docs/deploy/08-real-pre参数开关契约.md）
-ENV_FILE=/opt/saas/env/.env.real-pre ./scripts/real-pre-startup-check.sh
-
-ENV_FILE=/opt/saas/env/.env.real-pre ./scripts/deploy-real-pre.sh
-```
-
-部署后检查：
-
-```bash
-curl -fsS http://127.0.0.1:8081/api/system/health
-curl -fsS http://127.0.0.1:3001/healthz
-```
-
-## 本地更新后如何同步到服务器
-
-本地修改必须先提交并推送，服务器再拉取。未提交的工作区改动不会被服务器获取。
-
-本地执行：
-
-```bash
-cd D:/Projects/SAAS
-git status
-git add <本次修改文件>
-git commit -m "描述本次修改"
-git push gitee feature/auth-system
-```
-
-服务器执行：
-
-```bash
-ssh saas
-cd /opt/saas/app
-git remote get-url gitee >/dev/null 2>&1 || git remote add gitee https://gitee.com/cao-jianing463/saas.git
-git fetch gitee
-git pull --ff-only
-ENV_FILE=/opt/saas/env/.env.real-pre ./scripts/real-pre-startup-check.sh
-ENV_FILE=/opt/saas/env/.env.real-pre ./scripts/deploy-real-pre.sh
-```
-
-如服务器没有 `saas` SSH 别名，则使用实际登录方式，例如 `ssh root@服务器IP`。
-
-## 只有服务器无域名时
-
-走 IP + 端口测试：
-
-```text
-http://服务器IP:3001
-http://服务器IP:8081/api/system/health
-```
-
-`.env.real-pre` 中临时配置：
-
-```dotenv
-CORS_ALLOWED_ORIGIN_PATTERNS=http://服务器IP:3001
-DOUYIN_OAUTH_REDIRECT_URI=http://服务器IP:8081/api/douyin/oauth/callback
-DOUYIN_OAUTH_FRONTEND_SUCCESS_URL=http://服务器IP:3001/system/douyin?oauth=success
-DOUYIN_OAUTH_FRONTEND_FAILURE_URL=http://服务器IP:3001/system/douyin?oauth=failed
-```
-
-限制：不能完整验证 HTTPS 百应授权跳转体验。
-
-## 有域名 SSL 时
-
-走完整联调：
-
-```text
-https://real-pre.xxx.com
-https://real-pre.xxx.com/api/system/health
-https://real-pre.xxx.com/api/douyin/oauth/callback
-```
-
-`.env.real-pre` 中配置：
-
-```dotenv
-CORS_ALLOWED_ORIGIN_PATTERNS=https://real-pre.xxx.com
-DOUYIN_OAUTH_REDIRECT_URI=https://real-pre.xxx.com/api/douyin/oauth/callback
-DOUYIN_OAUTH_FRONTEND_SUCCESS_URL=https://real-pre.xxx.com/system/douyin?oauth=success
-DOUYIN_OAUTH_FRONTEND_FAILURE_URL=https://real-pre.xxx.com/system/douyin?oauth=failed
-```
-
-宝塔 Nginx：
-
-```text
-/api/ -> http://127.0.0.1:8081/api/
-/     -> http://127.0.0.1:3001/
-```
-
-实际 Nginx 配置见 [03-域名SSL与宝塔Nginx反向代理.md](03-域名SSL与宝塔Nginx反向代理.md)。
-
-## Jenkins 自动化什么时候做
-
-Jenkins 放在第二阶段：
-
-1. 手动部署成功。
-2. OAuth 和真实 Token 能跑通。
-3. 健康检查和门禁结果能稳定归档。
-4. 再让 Jenkins 调用同一套 `scripts/deploy-real-pre.sh`。
-
-第一版 Jenkins 不强制接入 P0 E2E；第二版再逐步加入 preflight / roles / p0。
-
-## 执行步骤
-
-最小执行顺序：
-
-```text
-服务器初始化
--> Docker 手动部署
--> 健康检查
--> 如有域名则配置 SSL / Nginx
--> 百应 OAuth 授权
--> E2E 门禁
--> 观察真实订单
--> 输出部署验收报告
-```
+- Jenkins 已经能访问该服务器（见 [Jenkinsfile](../../Jenkinsfile) 中的 SSH 与 lock 配置）。
 
 ## 验收标准
 
 部署成功不等于正式上线。最低验收：
 
-- Docker 四个服务运行。
+- Docker 服务运行（由 Jenkins 或 BREAK-GLASS 启动）。
 - `/api/system/health` 返回 `UP`。
 - `/healthz` 返回 `ok`。
 - `APP_TEST_ENABLED=false`。
@@ -257,7 +141,7 @@ Jenkins 放在第二阶段：
 - `DOUYIN_REAL_UPSTREAM_MODE=live`。
 - real-pre 涉及上游的读、同步、刷新、回调和写入类开关默认开启；真实推广写入保持 `DOUYIN_REAL_PROMOTION_WRITE_ENABLED=true` 且 `ALLOW_REAL_PROMOTION_WRITE=true`。
 - 如因风控、上游冻结或只读排障临时关闭真实写入，必须记录关闭原因、影响范围和恢复计划；相关验收项只能记为 `BLOCKED` / `PENDING`，不能记为通过。
-- 三组门禁已执行并归档。
+- 三组门禁已执行并归档（preflight / roles / p0）。
 
 最终结论口径：
 
@@ -271,13 +155,16 @@ E2E preflight / roles / p0 已执行。
 若仍有 PENDING，原因归类为真实订单样本不足，不定义为代码硬失败。
 ```
 
+---
+
 ## 常见问题
 
 | 问题 | 处理 |
 | --- | --- |
-| 不知道先看哪篇 | 从 `00-服务器部署总览.md` 开始 |
+| 不知道先看哪篇 | 从 [00-服务器部署总览.md](00-服务器部署总览.md) 开始 |
 | 没域名能不能部署 | 可以端口测试，但不能完整验证百应授权体验 |
-| Jenkins 要不要先上 | 不要，先手动部署跑通 |
+| Jenkins 挂了怎么办 | 走 BREAK-GLASS（见本文"⚠️ BREAK-GLASS 紧急恢复"一节） |
 | PENDING 算不算成功 | 不算 PASS，也不算代码硬失败，需要按样本不足记录 |
 | 真实推广写入默认是否开启 | 开启；real-pre 是真实上游 / 生产形态环境 |
 | 复制简介不含推广链接 | 先查两个真实推广写开关是否被临时关闭；若关闭，按降级原因记录并恢复后复验 |
+| 怎么把代码推到服务器 | **不要推**。提 PR → Jenkins 会从 GitHub 拉取并部署 |

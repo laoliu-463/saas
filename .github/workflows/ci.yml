@@ -1,9 +1,6 @@
 name: CI
 
 on:
-  push:
-    branches:
-      - "**"
   pull_request:
     branches:
       - main
@@ -11,7 +8,15 @@ on:
   merge_group:
     branches:
       - main
+  push:
+    branches:
+      - main
   workflow_dispatch:
+
+# NOTE:
+#   - PR / merge_group 跑完整套件（含 backend + frontend）。
+#   - push:main 触发合并后的最终验证 + 触发镜像构建（合并门禁）。
+#   - push 到其它分支（"**"）不再独立触发，避免与 PR CI 双跑。
 
 permissions:
   contents: read
@@ -25,6 +30,8 @@ jobs:
     name: Backend tests
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    # push:main 已在 PR 阶段跑过全量测试；Jenkins 负责部署侧校验。避免冗余。
+    if: ${{ github.event_name != 'push' }}
     env:
       DB_PASSWORD: ci-test-placeholder
       REDIS_PASSWORD: ci-test-placeholder
@@ -82,6 +89,8 @@ jobs:
     name: Frontend tests and build
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # 同上：push:main 跳过前端全量，Jenkins 会负责镜像构建与发布前校验。
+    if: ${{ github.event_name != 'push' }}
     defaults:
       run:
         working-directory: frontend
@@ -118,6 +127,7 @@ jobs:
     name: Repository governance
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # Governance 始终运行：保护契约为单源真相，不能因变更范围判断而被跳过。
     steps:
       - name: Checkout complete history
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -178,9 +188,19 @@ jobs:
         run: |
           $jenkins = Get-Content -Raw Jenkinsfile
           $retired = Get-Content -Raw harness/scripts/commands/deploy-remote.ps1
+          $releaseScript = 'scripts/cd/release-real-pre.sh'
           if ($jenkins -notmatch "defaultValue:\s*'release/real-pre'") { throw 'Jenkins must only deploy release/real-pre' }
           if ($jenkins -notmatch 'IMAGE_TAG must be the full 40-character commit SHA') { throw 'Jenkins must reject floating image tags' }
-          if ($jenkins -notmatch "lock\(resource:\s*'saas-real-pre-deploy'") { throw 'Jenkins must hold the global real-pre lock' }
+          if (-not (Test-Path -LiteralPath $releaseScript -PathType Leaf)) {
+            throw "Missing canonical release entry script: $releaseScript"
+          }
+          if ($jenkins -notmatch [regex]::Escape($releaseScript)) {
+            throw "Jenkins must route mutating subcommands through $releaseScript"
+          }
+          $wrapper = Get-Content -Raw $releaseScript
+          if ($wrapper -notmatch '\bflock\b') {
+            throw "$releaseScript must invoke flock(1) for real serialization"
+          }
           if ($retired -notmatch 'Direct SSH deployment is retired') { throw 'direct SSH deploy path must remain retired' }
 
       - name: Reject generated workspace changes
