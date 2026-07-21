@@ -6,12 +6,8 @@
 -- ???????????? IF NOT EXISTS / IF NOT EXISTS
 -- =============================================
 
-\getenv admin_password ADMIN_PASSWORD
-\if :{?admin_password}
-\else
-\echo 'ADMIN_PASSWORD is required for password migration'
-\quit 3
-\endif
+-- ADMIN_PASSWORD 仅用于 init-db.sql 的首次种子初始化。
+-- migrate-all.sql 不得读取或重置已有管理员密码；如需强制重置，使用专用运维流程。
 
 
 -- ========== 以下为补充合并的增量脚本 DDL（原 migrate-all.sql 遗漏） ==========
