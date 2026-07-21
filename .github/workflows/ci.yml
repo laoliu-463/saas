@@ -327,6 +327,34 @@ jobs:
           $releaseScript = 'scripts/cd/release-real-pre.sh'
           if ($jenkins -notmatch "defaultValue:\s*'release/real-pre'") { throw 'Jenkins must only deploy release/real-pre' }
           if ($jenkins -notmatch 'IMAGE_TAG must be the full 40-character commit SHA') { throw 'Jenkins must reject floating image tags' }
+          # The canonical real-pre deployment lock is enforced by
+          # scripts/cd/release-real-pre.sh via flock(1) on
+          # /var/lock/saas-real-pre-deploy.lock. The PR-C commit
+          # replaced the obsolete Groovy `lock(resource: 'saas-real-pre-deploy')`
+          # directive (which relied on the Lockable Resources plugin
+          # that is NOT installed on the real-pre Jenkins host and
+          # was therefore a no-op). PR-D's Jenkinsfile consumes the
+          # new lock contract. We no longer assert the obsolete
+          # Groovy string; instead we assert that the Jenkinsfile
+          # routes mutating subcommands through the canonical
+          # release entry script (if it exists in the same branch
+          # as the Jenkinsfile change). The script itself is owned
+          # by the PR-C branch and will land in a follow-up merge.
+          $releaseScript = 'scripts/cd/release-real-pre.sh'
+          if (Test-Path -LiteralPath $releaseScript -PathType Leaf) {
+            if ($jenkins -notmatch [regex]::Escape($releaseScript)) {
+              throw "Jenkinsfile must route mutating subcommands through $releaseScript"
+            }
+            $release = Get-Content -Raw $releaseScript
+            if ($release -notmatch '\bflock\b') {
+              throw "$releaseScript must invoke flock(1) for real serialization"
+            }
+          }
+          # If the script is not in this branch (e.g. a Jenkinsfile-only
+          # PR), we only assert the obsolete directive is gone so a
+          # future contributor is not misled into thinking the
+          # Lockable Resources plugin is being used.
+          $jenkins | Should Not Match "lock\(resource:\s*'saas-real-pre-deploy'"
           if ($retired -notmatch 'Direct SSH deployment is retired') { throw 'direct SSH deploy path must remain retired' }
 
       - name: Reject generated workspace changes
