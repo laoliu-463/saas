@@ -170,11 +170,17 @@ Describe 'agent-do / Jenkinsfile / ci.yml / _lib.ps1 / git-push-safe unchanged a
         ($agentDo -match '\[ValidateSet\("dev",\s*"close"\)\]\s*\[string\]\$Phase') | Should Be $false
     }
 
-    It 'Jenkinsfile still has 17 stages and no RUN_BACKEND_TEST' {
+    It 'Jenkinsfile has the PR-B SHA Gate and RUN_BACKEND_TEST=false by default' {
+        # PR-B rewrote this contract: the Jenkinsfile MUST reference the
+        # canonical SHA Gate entry script, MUST inject GITHUB_TOKEN via
+        # withCredentials, and MUST expose RUN_BACKEND_TEST defaulting to
+        # false so the GHA gate is the single source of truth.
         $jf = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'Jenkinsfile')
-        $stageCount = ([regex]::Matches($jf, "stage\('[^']+'\)")).Count
-        ($stageCount) | Should Be 17
-        ($jf -match 'RUN_BACKEND_TEST') | Should Be $false
+        ($jf -match 'verify-github-ci-gate\.sh') | Should Be $true
+        ($jf -match 'github-actions-read-token') | Should Be $true
+        ($jf -match "booleanParam\(name:\s*'RUN_BACKEND_TEST',\s*defaultValue:\s*false") | Should Be $true
+        # The Backend Test stage must be guarded by RUN_BACKEND_TEST.
+        ($jf -match "expression \{ return params\.RUN_BACKEND_TEST \}") | Should Be $true
     }
 
     It 'ci.yml has the three required jobs and no github-actions-read-token' {
