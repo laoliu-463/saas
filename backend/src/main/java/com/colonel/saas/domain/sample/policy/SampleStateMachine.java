@@ -33,8 +33,36 @@ public final class SampleStateMachine {
 
     public static void ensureTransition(SampleStatus current, SampleStatus expected) {
         if (current != expected) {
-            throw BusinessException.stateInvalid("Current status does not allow this action: expected "
-                    + expected.getApiStatus() + " but was " + current.getApiStatus());
+            // PR #fix-cooperation-action-availability: 中文化 + 业务可读
+            // 例如：「合作单当前状态为【SHIPPING】（发货中），该操作仅在【PENDING_AUDIT】（待审核）状态可用」
+            String currentZh = statusToChinese(current);
+            String expectedZh = statusToChinese(expected);
+            // PR #fix-cooperation-action-availability: 中文 + 英文前缀并存
+            // 中文便于运营理解；英文前缀 "Current status does not allow this action: expected "
+            // 保留以兼容 DddSampleExceptionBranchCoverageContractTest 等
+            // DDD 架构红线测试与现有业务测试。
+            String message = String.format(
+                    "Current status does not allow this action: expected %s but was %s. " +
+                    "合作单当前状态为【%s】（%s），该操作仅在【%s】（%s）状态可用",
+                    expected.getApiStatus(), current.getApiStatus(),
+                    current.getApiStatus(), currentZh,
+                    expected.getApiStatus(), expectedZh);
+            throw BusinessException.stateInvalid(message);
+        }
+    }
+
+    private static String statusToChinese(SampleStatus status) {
+        if (status == null) return "未知";
+        switch (status) {
+            case PENDING_AUDIT: return "待审核";
+            case PENDING_SHIP:  return "待发货";
+            case SHIPPING:      return "发货中";
+            case DELIVERED:     return "已签收";
+            case PENDING_HOMEWORK: return "待交作业";
+            case COMPLETED:     return "已完成";
+            case REJECTED:      return "已驳回";
+            case CLOSED:        return "已关闭";
+            default:            return status.name();
         }
     }
 

@@ -2,10 +2,10 @@
 
 ## Metadata
 
-- Time: 2026-07-21 13:43:29 +08:00
+- Time: 2026-07-21 14:55:20 +08:00
 - Action: Plan
 - DryRun: False
-- Reason: fix: prevent migrate-all from requiring or resetting admin password
+- Reason: fix sample cooperation action availability
 - Manifest: (none)
 - ArchiveRoot: harness/archive/retired-content
 - AllowSourceCode: False
