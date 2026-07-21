@@ -111,6 +111,38 @@ Describe 'GitHub Actions CI contract' {
 
         $content | Should Match '(?m)^  ci-gate:\s*$'
         $content | Should Match '(?m)^    name: CI Gate\s*$'
-        $content | Should Match 'needs:\s*\r?\n\s{6}- backend\s*\r?\n\s{6}- frontend\s*\r?\n\s{6}- governance'
+        $content | Should Match 'needs:\s*\r?\n\s{6}- changes\s*\r?\n\s{6}- backend\s*\r?\n\s{6}- frontend\s*\r?\n\s{6}- governance'
+    }
+
+    It 'routes every job through a changes matrix and a single CI Gate (PR-C)' {
+        $content = Get-Content -Raw -LiteralPath $ciPath
+
+        # The changes job must exist and must expose per-scope outputs.
+        $content | Should Match '(?m)^  changes:\s*$'
+        $content | Should Match "outputs:"
+        foreach ($scope in 'backend','frontend','database','harness','deployment','docs','other','run_governance') {
+            $content | Should Match "outputs\.$scope"
+        }
+
+        # The ci-gate job must be the single required check.
+        $content | Should Match '(?m)^  ci-gate:\s*$'
+        $content | Should Match "name: CI Gate"
+        $content | Should Match 'needs:'
+        $content | Should Match "CI Gate: PASS"
+
+        # backend / frontend must depend on changes and run conditionally.
+        $content | Should Match "backend:"
+        $content | Should Match "needs: changes"
+        $content | Should Match "frontend:"
+        $content | Should Match "needs.changes.outputs"
+
+        # The CI Gate must be the only place that aggregates results.
+        $content | Should Match 'CHANGES_RESULT'
+        $content | Should Match 'GOVERNANCE_RESULT'
+
+        # No more push:"**" wildcard (that caused the double-run on every
+        # task-branch push; PR #206 also removed it but we re-assert here
+        # because the changes matrix is the new contract).
+        $content | Should Not Match "branches:\s*\r?\n\s*-\s*""\*\*""\s*"
     }
 }
