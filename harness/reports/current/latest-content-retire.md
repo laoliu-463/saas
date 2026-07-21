@@ -2,7 +2,7 @@
 
 ## Metadata
 
-- Time: 2026-07-21 14:41:51 +08:00
+- Time: 2026-07-21 14:45:26 +08:00
 - Action: Plan
 - DryRun: False
 - Reason: fix: prevent invalid cooperation actions after sample status changes
