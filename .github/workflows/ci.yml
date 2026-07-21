@@ -279,10 +279,13 @@ jobs:
           $activeJenkins = ($jenkins -split "`r?`n" | Where-Object { $_ -notmatch '^\s*//' }) -join "`n"
           $retired = Get-Content -Raw harness/scripts/commands/deploy-remote.ps1
           $breakGlass = Get-Content -Raw scripts/deploy-real-pre.sh
+          $rollback = Get-Content -Raw scripts/cd/rollback-real-pre.sh
           if ($jenkins -notmatch "defaultValue:\s*'release/real-pre'") { throw 'Jenkins must only deploy release/real-pre' }
           if ($jenkins -notmatch 'IMAGE_TAG must be the full 40-character commit SHA') { throw 'Jenkins must reject floating image tags' }
           if ($activeJenkins -notmatch "lock\(resource:\s*'saas-real-pre-deploy'") { throw 'Jenkins must hold the global real-pre lock in executable pipeline code' }
           if ($activeJenkins -match 'docker compose[^\r\n]+\sbuild') { throw 'Jenkins must not build images on the deployment host' }
+          if ($activeJenkins -notmatch 'scripts/cd/rollback-real-pre\.sh') { throw 'Jenkins must rollback inside the serialized release stage' }
+          if ($rollback -notmatch 'rollback-completed') { throw 'rollback helper must write rollback-completed state' }
           if ($jenkins -notmatch 'release/real-pre\.json') { throw 'Jenkins must consume the release manifest' }
           if ($retired -notmatch 'Direct SSH deployment is retired') { throw 'direct SSH deploy path must remain retired' }
           if ($breakGlass -notmatch 'Direct real-pre deployment is retired') { throw 'direct shell deploy path must remain break-glass guarded' }

@@ -2,6 +2,7 @@ $ErrorActionPreference = 'Stop'
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
 $jenkinsfile = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'Jenkinsfile')
+$rollbackScript = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'scripts\cd\rollback-real-pre.sh')
 $agentDo = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'harness\scripts\commands\agent-do.ps1')
 $deployRemote = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'harness\scripts\commands\deploy-remote.ps1')
 $ci = Get-Content -Raw -LiteralPath (Join-Path $repoRoot '.github\workflows\ci.yml')
@@ -30,17 +31,8 @@ Describe 'real-pre single release queue contract' {
 
     It 'queues builds without aborting and holds one cross-job deployment lock' {
         $jenkinsfile | Should Match 'disableConcurrentBuilds\(abortPrevious:\s*false\)'
-        # The previous `lock(resource: 'saas-real-pre-deploy')` directive
-        # relied on the Lockable Resources plugin, which is not installed.
-        # The contract is now enforced via flock(1) inside the canonical
-        # release entry script, so we check for the wrapper rather than
-        # the obsolete Groovy lock directive.
-        $releaseScriptExists | Should Be $true
-        $jenkinsfile | Should Match ([regex]::Escape('scripts/cd/release-real-pre.sh'))
-        $releaseScript | Should Match '\bflock\b'
-        # saas-real-pre-deploy must appear in at least the wrapper (lock file
-        # name) and the Jenkinsfile comment that explains the wrapper.
-        ([regex]::Matches($releaseScript, 'saas-real-pre-deploy').Count) | Should BeGreaterThan 0
+        $jenkinsfile | Should Match "lock\(resource:\s*'saas-real-pre-deploy'"
+        ([regex]::Matches($jenkinsfile, "lock\(resource:\s*'saas-real-pre-deploy'").Count) | Should Be 1
     }
 
     It 'rejects stale releases unless rollback is explicitly approved' {
@@ -110,5 +102,40 @@ Describe 'agent deployment boundary contract' {
         $ci | Should Match 'direct SSH deploy path must remain retired'
         $ci | Should Match 'Jenkins must not build images on the deployment host'
         $ci | Should Not Match 'deploy script must validate IMAGE_TAG'
+    }
+}
+
+Describe 'lock-scoped failure rollback contract' {
+    It 'rolls back when backend readiness fails' {
+        $jenkinsfile | Should Match "stage\('Backend Readiness'\)"
+        $rollbackScript | Should Match 'backend-real-pre'
+        $rollbackScript | Should Match 'BACKEND_IMAGE="\$\{OLD_BACKEND_IMAGE\}"'
+    }
+
+    It 'rolls back when frontend deployment fails' {
+        $jenkinsfile | Should Match "stage\('Deploy Frontend'\)"
+        $rollbackScript | Should Match 'frontend-real-pre'
+        $rollbackScript | Should Match 'FRONTEND_IMAGE="\$\{OLD_FRONTEND_IMAGE\}"'
+    }
+
+    It 'rolls back when P0 or role E2E fails' {
+        $jenkinsfile | Should Match "stage\('Core Smoke and Multi-role E2E'\)"
+        $jenkinsfile | Should Match '(?s)stage\(''Serialized real-pre release''\).*?post\s*\{\s*unsuccessful'
+        $jenkinsfile | Should Match 'scripts/cd/rollback-real-pre\.sh'
+    }
+
+    It 'rolls back when the final health check fails' {
+        $jenkinsfile | Should Match "stage\('Health Check'\)"
+        $jenkinsfile | Should Match '(?s)stage\(''Health Check''\).*?scripts/health-check\.sh'
+        $rollbackScript | Should Match 'health check after rollback'
+    }
+
+    It 'handles timeout or abort without post-lock scheduler mutation' {
+        $jenkinsfile | Should Match 'deployment-started'
+        $jenkinsfile | Should Match 'rollback-completed'
+        $jenkinsfile | Should Match 'release-completed'
+        $jenkinsfile | Should Match 'schedulers-restored'
+        $jenkinsfile | Should Match 'refusing post-lock mutation of real-pre'
+        $jenkinsfile | Should Not Match 'Restoring schedulers after interrupted deployment flow'
     }
 }

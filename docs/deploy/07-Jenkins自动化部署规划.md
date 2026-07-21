@@ -44,7 +44,7 @@ Checkout release/real-pre
   -> evidence + 原子更新 current.json
 ```
 
-任何 readiness、smoke、E2E 或证据核对失败，都必须保持发布失败状态；若已有上一份不可变镜像，Jenkins 尝试按部署前引用回滚，并记录回滚结果。
+任何 readiness、frontend、smoke、E2E、调度恢复或证据核对失败，都必须保持发布失败状态。`Serialized real-pre release` 阶段的 `unsuccessful` hook 会在锁释放前调用 `scripts/cd/rollback-real-pre.sh`，按部署前已验证且仍在本机的 digest 恢复 backend/frontend、恢复调度并重新健康检查；失败也必须保留失败状态和证据，不能由最外层 post 使用新镜像补救。
 
 ## 发布清单
 

@@ -37,6 +37,7 @@ pipeline {
         MIGRATION_VERSION = ''
         MIGRATION_INPUT_SHA256 = ''
         RUN_DB_MIGRATIONS = ''
+        RELEASE_STATE_DIR = 'runtime/qa/out/jenkins/release-state'
     }
 
     stages {
@@ -311,6 +312,32 @@ PY
                           docker inspect "$current_frontend_container" --format '{{.Config.Image}}' > runtime/qa/out/jenkins/pre-frontend-image.txt
                           docker inspect "$current_frontend_container" --format '{{.Image}}' > runtime/qa/out/jenkins/pre-frontend-local-image-id.txt
                         fi
+                        rollback_backend_image="${PREVIOUS_BACKEND_IMAGE:-}"
+                        rollback_frontend_image="${PREVIOUS_FRONTEND_IMAGE:-}"
+                        if [ -z "$rollback_backend_image" ]; then rollback_backend_image="$(cat runtime/qa/out/jenkins/pre-backend-image.txt 2>/dev/null || true)"; fi
+                        if [ -z "$rollback_frontend_image" ]; then rollback_frontend_image="$(cat runtime/qa/out/jenkins/pre-frontend-image.txt 2>/dev/null || true)"; fi
+                        if ! printf '%s' "$rollback_backend_image" | grep -Eq '^[^@[:space:]]+@sha256:[0-9a-f]{64}$'; then
+                          echo "ERROR: previous backend image must be an immutable repository@sha256:digest before deployment."
+                          exit 1
+                        fi
+                        if ! printf '%s' "$rollback_frontend_image" | grep -Eq '^[^@[:space:]]+@sha256:[0-9a-f]{64}$'; then
+                          echo "ERROR: previous frontend image must be an immutable repository@sha256:digest before deployment."
+                          exit 1
+                        fi
+                        if [ -n "$current_container" ] && [ -n "${PREVIOUS_BACKEND_IMAGE:-}" ]; then
+                          current_backend_repo_digests="$(docker image inspect "$(cat runtime/qa/out/jenkins/pre-backend-local-image-id.txt)" --format '{{join .RepoDigests "\n"}}')"
+                          printf '%s\n' "$current_backend_repo_digests" | grep -Fx "$rollback_backend_image" >/dev/null || {
+                            echo "ERROR: release manifest previous backend image does not match the running backend content."
+                            exit 1
+                          }
+                        fi
+                        if [ -n "$current_frontend_container" ] && [ -n "${PREVIOUS_FRONTEND_IMAGE:-}" ]; then
+                          current_frontend_repo_digests="$(docker image inspect "$(cat runtime/qa/out/jenkins/pre-frontend-local-image-id.txt)" --format '{{join .RepoDigests "\n"}}')"
+                          printf '%s\n' "$current_frontend_repo_digests" | grep -Fx "$rollback_frontend_image" >/dev/null || {
+                            echo "ERROR: release manifest previous frontend image does not match the running frontend content."
+                            exit 1
+                          }
+                        fi
                         if ! printf '%s' "$current_sha" | grep -Eq '^[0-9a-f]{40}$'; then
                           echo "ERROR: current deployed SHA is unavailable; refusing an unordered release."
                           exit 1
@@ -339,9 +366,13 @@ PY
                           printf 'CURRENT_SHA=%s\n' "$current_sha"
                           printf 'RUN_DB_MIGRATIONS=%s\n' "$RUN_DB_MIGRATIONS"
                           printf 'ROLLBACK_SOURCE_MAIN_SHA=%s\n' "$current_sha"
-                          printf 'ROLLBACK_BACKEND_IMAGE=%s\n' "$(cat runtime/qa/out/jenkins/pre-backend-image.txt 2>/dev/null || true)"
-                          printf 'ROLLBACK_FRONTEND_IMAGE=%s\n' "$(cat runtime/qa/out/jenkins/pre-frontend-image.txt 2>/dev/null || true)"
+                          printf 'ROLLBACK_BACKEND_IMAGE=%s\n' "$rollback_backend_image"
+                          printf 'ROLLBACK_FRONTEND_IMAGE=%s\n' "$rollback_frontend_image"
                         } >> runtime/qa/out/jenkins/cd-env.sh
+                        mkdir -p "$RELEASE_STATE_DIR"
+                        rm -f "$RELEASE_STATE_DIR/deployment-started" "$RELEASE_STATE_DIR/rollback-started" \
+                          "$RELEASE_STATE_DIR/rollback-completed" "$RELEASE_STATE_DIR/release-completed" \
+                          "$RELEASE_STATE_DIR/schedulers-restored" "$RELEASE_STATE_DIR/schedulers-paused"
                         printf '%s\n' "$current_sha" > runtime/qa/out/jenkins/current-sha.txt
                         printf '%s\n' "$RUN_DB_MIGRATIONS" > runtime/qa/out/jenkins/run-db-migrations.txt
                         echo "Release order guard passed: $current_sha -> $SOURCE_MAIN_SHA; RUN_DB_MIGRATIONS=$RUN_DB_MIGRATIONS"
@@ -380,7 +411,7 @@ PY
                         sh '''#!/usr/bin/env bash
                         set -eu
                         . runtime/qa/out/jenkins/cd-env.sh
-                        touch runtime/qa/out/jenkins/schedulers-paused
+                        touch "$RELEASE_STATE_DIR/deployment-started" "$RELEASE_STATE_DIR/schedulers-paused" runtime/qa/out/jenkins/schedulers-paused
                         APP_SCHEDULING_ENABLED=false IMAGE_TAG="$IMAGE_TAG" BACKEND_IMAGE="$BACKEND_IMAGE" FRONTEND_IMAGE="$FRONTEND_IMAGE" \
                           BACKEND_IMAGE_DIGEST="$BACKEND_IMAGE_DIGEST" COMPOSE_PROJECT_NAME="$PROJECT_NAME" \
                           docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d --no-build --no-deps backend-real-pre
@@ -441,7 +472,8 @@ PY
                           docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d --no-build --no-deps backend-real-pre
                         for _ in $(seq 1 120); do
                           if curl -fsS "$REAL_PRE_BACKEND/api/actuator/health/readiness" | grep -q '"status":"UP"'; then
-                            rm -f runtime/qa/out/jenkins/schedulers-paused
+                            touch "$RELEASE_STATE_DIR/schedulers-restored"
+                            rm -f "$RELEASE_STATE_DIR/schedulers-paused" runtime/qa/out/jenkins/schedulers-paused
                             exit 0
                           fi
                           sleep 2
@@ -457,30 +489,7 @@ PY
                         sh '''#!/usr/bin/env bash
                         set -eu
                         . runtime/qa/out/jenkins/cd-env.sh
-                        if ENV_FILE="$ENV_FILE" COMPOSE_FILE="$COMPOSE_FILE" COMPOSE_PROJECT_NAME="$PROJECT_NAME" bash scripts/health-check.sh; then
-                          exit 0
-                        fi
-                        echo "Health check failed; attempting rollback to the deployment-start image references."
-                        old_backend_image="${ROLLBACK_BACKEND_IMAGE:-}"
-                        old_frontend_image="${ROLLBACK_FRONTEND_IMAGE:-}"
-                        if [ -z "$old_backend_image" ] || [ -z "$old_frontend_image" ]; then
-                          echo "ERROR: previous immutable image references are unavailable; automatic rollback cannot be proven."
-                          exit 1
-                        fi
-                        if printf '%s' "$old_backend_image" | grep -q '@sha256:'; then docker pull "$old_backend_image"; fi
-                        if printf '%s' "$old_frontend_image" | grep -q '@sha256:'; then docker pull "$old_frontend_image"; fi
-                        old_backend_digest="$(docker inspect "$(cat runtime/qa/out/jenkins/pre-backend-local-image-id.txt)" --format '{{.Id}}' 2>/dev/null || true)"
-                        old_source_sha="${ROLLBACK_SOURCE_MAIN_SHA:-unknown}"
-                        IMAGE_TAG="$old_source_sha" BACKEND_IMAGE="$old_backend_image" FRONTEND_IMAGE="$old_frontend_image" \
-                          BACKEND_IMAGE_DIGEST="$old_backend_digest" COMPOSE_PROJECT_NAME="$PROJECT_NAME" \
-                          docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d --no-build --no-deps backend-real-pre
-                        IMAGE_TAG="$old_source_sha" BACKEND_IMAGE="$old_backend_image" FRONTEND_IMAGE="$old_frontend_image" \
-                          COMPOSE_PROJECT_NAME="$PROJECT_NAME" \
-                          docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d --no-build --no-deps frontend-real-pre
                         ENV_FILE="$ENV_FILE" COMPOSE_FILE="$COMPOSE_FILE" COMPOSE_PROJECT_NAME="$PROJECT_NAME" bash scripts/health-check.sh
-                        touch runtime/qa/out/jenkins/rollback-completed
-                        rm -f runtime/qa/out/jenkins/schedulers-paused
-                        exit 1
                         '''
                     }
                 }
@@ -588,8 +597,27 @@ PY
                         cp "$report" "$remote_report"
                         cat "$report"
                         test "$evidence_result" = PASS
+                        touch "$RELEASE_STATE_DIR/release-completed"
                         '''
                     }
+                }
+            }
+            post {
+                unsuccessful {
+                    sh '''#!/usr/bin/env bash
+                    set -eu
+                    if [ -f runtime/qa/out/jenkins/cd-env.sh ]; then . runtime/qa/out/jenkins/cd-env.sh; fi
+                    state_dir="${RELEASE_STATE_DIR:-runtime/qa/out/jenkins/release-state}"
+                    if [ -f "$state_dir/deployment-started" ] && [ ! -f "$state_dir/rollback-completed" ] && [ ! -f "$state_dir/release-completed" ]; then
+                      echo "Release stage failed after deployment started; rolling back while saas-real-pre-deploy lock is still held."
+                      ENV_FILE="$ENV_FILE" COMPOSE_FILE="$COMPOSE_FILE" COMPOSE_PROJECT_NAME="$PROJECT_NAME" \
+                        RELEASE_STATE_DIR="$state_dir" \
+                        ROLLBACK_SOURCE_MAIN_SHA="${ROLLBACK_SOURCE_MAIN_SHA:-}" \
+                        ROLLBACK_BACKEND_IMAGE="${ROLLBACK_BACKEND_IMAGE:-}" \
+                        ROLLBACK_FRONTEND_IMAGE="${ROLLBACK_FRONTEND_IMAGE:-}" \
+                        bash scripts/cd/rollback-real-pre.sh
+                    fi
+                    '''
                 }
             }
         }
@@ -602,13 +630,13 @@ PY
             set +e
             if [ -f runtime/qa/out/jenkins/cd-env.sh ]; then . runtime/qa/out/jenkins/cd-env.sh; fi
             mkdir -p runtime/qa/out/jenkins harness/reports/current "/opt/saas/runtime/qa/out/jenkins-${BUILD_NUMBER:-manual}"
-            if [ -f runtime/qa/out/jenkins/schedulers-paused ] && [ ! -f runtime/qa/out/jenkins/rollback-completed ]; then
-              echo "Restoring schedulers after interrupted deployment flow."
-              APP_SCHEDULING_ENABLED=true IMAGE_TAG="$IMAGE_TAG" BACKEND_IMAGE="$BACKEND_IMAGE" FRONTEND_IMAGE="$FRONTEND_IMAGE" \
-                BACKEND_IMAGE_DIGEST="$BACKEND_IMAGE_DIGEST" COMPOSE_PROJECT_NAME="$PROJECT_NAME" \
-                docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d --no-build --no-deps backend-real-pre || true
+            state_dir="${RELEASE_STATE_DIR:-runtime/qa/out/jenkins/release-state}"
+            if [ -f "$state_dir/deployment-started" ] && [ ! -f "$state_dir/rollback-completed" ] && [ ! -f "$state_dir/release-completed" ]; then
+              echo "ERROR: lock-scoped rollback did not complete; refusing post-lock mutation of real-pre." >&2
             fi
-            rm -f runtime/qa/out/jenkins/schedulers-paused
+            if [ -f "$state_dir/rollback-completed" ] || [ -f "$state_dir/release-completed" ]; then
+              rm -f runtime/qa/out/jenkins/schedulers-paused
+            fi
             docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}" > runtime/qa/out/jenkins/docker-ps-final.txt 2>&1
             docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" ps > runtime/qa/out/jenkins/docker-compose-ps-final.txt 2>&1
             if [ ! -f harness/reports/current/latest-jenkins-cd.md ]; then
