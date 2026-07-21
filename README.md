@@ -100,33 +100,26 @@ npm run e2e:real-pre:roles
 - `npm run build`：通过，仅有 Vite chunk 体积警告
 - `npm run e2e:real-pre:p0:preflight`：通过，证据目录 `runtime/qa/out/real-pre-preflight-20260531-200252/`
 
-## 同步到服务器
+## 合并与 real-pre 发布
 
-> **2026-07-21 更新：手工 SSH 部署已退役。所有发布由 Jenkins real-pre CD 完成。**
-
-本仓库的发布黄金路径：
+日常路径固定为：
 
 ```text
-本地分支 → PR → main → CI → 镜像构建 → release/real-pre 提升 PR → Jenkins real-pre CD
+短分支 -> GitHub PR + CI Gate -> main
+       -> GitHub 构建不可变后端/前端镜像
+       -> release/real-pre 发布提升 PR
+       -> Jenkins saas-real-pre-cd 串行部署
 ```
 
-请按以下顺序：
+开发人员只需要在本地按变更范围验证、提交 PR、等待 GitHub 检查和评审。Jenkins 消费 `release/real-pre.json` 中的 `repository@sha256:digest`，负责锁、迁移、健康检查、P0 / 多角色验收、证据和回滚；服务器不执行源码 `git pull` 或 Docker 构建。
 
-1. 从 `main` 创建 worktree + 短期分支（详见 [CONTRIBUTING.md](./CONTRIBUTING.md)）。
-2. 本地完成后推分支、开 Draft PR。
-3. PR CI 全绿后合入 `main`（如使用 Merge Queue 则自动）。
-4. `release/real-pre` 的提升必须通过独立 PR；Jenkins 只在该 PR 合并后部署。
-5. 部署后由 P0 smoke + 多角色 E2E 验证，证据归档到 `releases/<sha>/`。
+发布清单校验：
 
-**不要执行：**
+```bash
+python3 scripts/verify-real-pre-release.py release/real-pre.json
+```
 
-- 直接 SSH 到服务器执行 `git pull` / `docker compose up`。
-- 把本机 `.env.real-pre` / `.ssh` 私钥拷贝到服务器。
-- 跳过 Jenkins 自定义在服务器上手工改代码或重新构建镜像。
-
-如发生 Jenkins 不可用或环境损坏，请走 BREAK-GLASS 流程：参考 [docs/deploy/README.md](./docs/deploy/README.md) 中"⚠️ BREAK-GLASS 紧急恢复"一节，并在事后补一份事后复盘到 `releases/<sha>/break-glass-YYYYMMDD.md`。
-
-不要执行 `docker compose down -v`，避免清空 real-pre 数据卷。
+服务器 SSH 仅作为批准后的 Break-glass 紧急恢复入口，不是日常发布方式。不要执行 `docker compose down -v`，不要清空 real-pre 数据卷。
 
 ## 环境密钥规则
 

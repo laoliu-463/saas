@@ -57,7 +57,9 @@ services:
     networks:
       - real-pre-net
   backend-real-pre:
-    image: colonel-saas/backend:${IMAGE_TAG:-real-pre}
+    # Local real-pre keeps a tag fallback for development. Jenkins must always
+    # override this with repository@sha256:digest from release/real-pre.json.
+    image: ${BACKEND_IMAGE:-colonel-saas/backend:real-pre}
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -156,7 +158,9 @@ services:
     networks:
       - real-pre-net
   frontend-real-pre:
-    image: colonel-saas/frontend:${IMAGE_TAG:-real-pre}
+    # Local real-pre keeps a tag fallback for development. Jenkins must always
+    # override this with repository@sha256:digest from release/real-pre.json.
+    image: ${FRONTEND_IMAGE:-colonel-saas/frontend:real-pre}
     build:
       context: ./frontend
       dockerfile: Dockerfile

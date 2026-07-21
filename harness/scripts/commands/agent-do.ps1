@@ -256,15 +256,7 @@ try {
         -SkipRuntimeCollection:($Scope -eq "docs" -or $Scope -eq "apifox") `
         -DryRun:$DryRun
 
-    $commitOwnedFiles = @($taskOwnedFiles)
-    if (-not $DryRun -and (Test-Path -LiteralPath $reportPath)) {
-        $commitOwnedFiles += Get-HarnessRepoRelativePath -RepoRoot $config.RepoRoot -Path $reportPath
-    }
-    & (Join-Path $PSScriptRoot "git-push-safe.ps1") `
-        -RepoRoot $config.RepoRoot `
-        -Message $Message `
-        -OwnedFiles $commitOwnedFiles `
-        -DryRun:$DryRun
+    Write-Host "Evidence collected at $reportPath. Git commit and push are explicit follow-up commands; agent-do does not mutate Git history." -ForegroundColor Yellow
 
     Write-Host "Review HARNESS_CHANGELOG.md and update it when Harness behavior changed." -ForegroundColor Yellow
 

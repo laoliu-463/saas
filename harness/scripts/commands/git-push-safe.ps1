@@ -54,7 +54,7 @@ function Assert-NoPlainSecrets {
         )
         foreach ($hit in $hits) {
             $line = $hit.Line
-            if ($line -match 'REDACTED|placeholder|example|change-me|__FILL_ME_' -or $line.Contains('$' + '{')) { continue }
+            if ($line -match 'REDACTED|placeholder|example|change-me|MUST_CHANGE|__FILL_ME_' -or $line.Contains('$' + '{')) { continue }
             throw "Potential plaintext secret in $file line $($hit.LineNumber)."
         }
     }

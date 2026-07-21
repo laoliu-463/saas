@@ -17,6 +17,9 @@ REAL_PRE_COMPOSE_PROJECT="${REAL_PRE_COMPOSE_PROJECT:-${COMPOSE_PROJECT_NAME:-sa
 POSTGRES_SERVICE="${POSTGRES_SERVICE:-postgres-real-pre}"
 BACKEND_SERVICE="${BACKEND_SERVICE:-backend-real-pre}"
 IMAGE_TAG="${IMAGE_TAG:-real-pre}"
+BACKEND_IMAGE="${BACKEND_IMAGE:-colonel-saas/backend:${IMAGE_TAG}}"
+FRONTEND_IMAGE="${FRONTEND_IMAGE:-colonel-saas/frontend:${IMAGE_TAG}}"
+BACKEND_IMAGE_DIGEST="${BACKEND_IMAGE_DIGEST:-unknown}"
 BACKEND_HEALTH_URL="${BACKEND_HEALTH_URL:-http://127.0.0.1:8081/api/system/health}"
 
 if [ "${REQUIRE_PINNED_IMAGE:-false}" = "true" ] && ! printf '%s' "$IMAGE_TAG" | grep -Eq '^[0-9a-fA-F]{40}$'; then
@@ -51,7 +54,8 @@ if [ "$ready" != "true" ]; then
 fi
 
 echo "Starting ${BACKEND_SERVICE} with schedulers paused; Spring/Flyway owns migration ..."
-APP_SCHEDULING_ENABLED=false IMAGE_TAG="$IMAGE_TAG" COMPOSE_PROJECT_NAME="$REAL_PRE_COMPOSE_PROJECT" \
+APP_SCHEDULING_ENABLED=false IMAGE_TAG="$IMAGE_TAG" BACKEND_IMAGE="$BACKEND_IMAGE" FRONTEND_IMAGE="$FRONTEND_IMAGE" \
+  BACKEND_IMAGE_DIGEST="$BACKEND_IMAGE_DIGEST" COMPOSE_PROJECT_NAME="$REAL_PRE_COMPOSE_PROJECT" \
   docker compose --env-file "$REAL_PRE_COMPOSE_ENV" --project-name "$REAL_PRE_COMPOSE_PROJECT" \
   -f "$REAL_PRE_COMPOSE_FILE" up -d --no-build --no-deps "$BACKEND_SERVICE"
 

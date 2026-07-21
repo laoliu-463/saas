@@ -11,6 +11,7 @@ on:
   push:
     branches:
       - main
+      - release/real-pre
   workflow_dispatch:
 
 # NOTE:
@@ -26,8 +27,88 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  changes:
+    name: Changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      any_changed: ${{ steps.detect.outputs.any_changed }}
+      backend_changed: ${{ steps.detect.outputs.backend_changed }}
+      frontend_changed: ${{ steps.detect.outputs.frontend_changed }}
+      database_changed: ${{ steps.detect.outputs.database_changed }}
+      harness_changed: ${{ steps.detect.outputs.harness_changed }}
+      deployment_changed: ${{ steps.detect.outputs.deployment_changed }}
+      docs_only: ${{ steps.detect.outputs.docs_only }}
+    steps:
+      - name: Checkout complete history
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect change scope
+        id: detect
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            changed_files="$(git ls-files)"
+          else
+            base_sha="$BASE_SHA"
+            if [[ -z "$base_sha" || "$base_sha" =~ ^0+$ ]]; then
+              base_sha="$(git rev-parse "${HEAD_SHA}^" 2>/dev/null || true)"
+            fi
+            if [[ -n "$base_sha" ]]; then
+              changed_files="$(git diff --name-only "$base_sha" "$HEAD_SHA")"
+            else
+              changed_files="$(git ls-files)"
+            fi
+          fi
+
+          has_match() {
+            grep -Eq "$1" <<< "$changed_files"
+          }
+
+          any_changed=false
+          backend_changed=false
+          frontend_changed=false
+          database_changed=false
+          harness_changed=false
+          deployment_changed=false
+          docs_only=true
+
+          if [[ -n "$changed_files" ]]; then
+            any_changed=true
+          fi
+          has_match '^(backend/|docker-compose[^/]*\.ya?ml$|scripts/.*\.sh$)' && backend_changed=true || true
+          has_match '^frontend/|^(package\.json|package-lock\.json|pnpm-lock\.yaml)$' && frontend_changed=true || true
+          has_match '^backend/src/main/resources/db/|^scripts/(backup-db|run-real-pre-db-migrations|check-real-pre-schema)\.sh$' && database_changed=true || true
+          has_match '^(harness/|\.github/|AGENTS\.md$|CLAUDE\.md$|CONTEXT\.md$)' && harness_changed=true || true
+          has_match '^(Jenkinsfile$|scripts/|docker-compose|\.env\..*example$|docs/deploy/|release/)' && deployment_changed=true || true
+
+          while IFS= read -r file; do
+            [[ -z "$file" ]] && continue
+            if [[ "$file" != docs/* && "$file" != *.md ]]; then
+              docs_only=false
+              break
+            fi
+          done <<< "$changed_files"
+
+          for output in any_changed backend_changed frontend_changed database_changed harness_changed deployment_changed docs_only; do
+            printf '%s=%s\n' "$output" "${!output}" >> "$GITHUB_OUTPUT"
+          done
+
+          printf 'Detected change scope: any=%s backend=%s frontend=%s database=%s harness=%s deployment=%s docs_only=%s\n' \
+            "$any_changed" "$backend_changed" "$frontend_changed" "$database_changed" "$harness_changed" "$deployment_changed" "$docs_only"
+
   backend:
     name: Backend tests
+    needs: changes
+    if: needs.changes.outputs.backend_changed == 'true' || needs.changes.outputs.database_changed == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     # push:main 已在 PR 阶段跑过全量测试；Jenkins 负责部署侧校验。避免冗余。
@@ -87,6 +168,8 @@ jobs:
 
   frontend:
     name: Frontend tests and build
+    needs: changes
+    if: needs.changes.outputs.frontend_changed == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # 同上：push:main 跳过前端全量，Jenkins 会负责镜像构建与发布前校验。
@@ -125,6 +208,8 @@ jobs:
 
   governance:
     name: Repository governance
+    needs: changes
+    if: needs.changes.outputs.any_changed == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     # Governance 始终运行：保护契约为单源真相，不能因变更范围判断而被跳过。
@@ -155,6 +240,9 @@ jobs:
             './harness/scripts/tests/safety-check-docs.Tests.ps1',
             './harness/scripts/tests/git-push-safe.Tests.ps1',
             './harness/scripts/tests/agent-do-conclusion.Tests.ps1',
+            './harness/scripts/tests/report-lifecycle.Tests.ps1',
+            './harness/scripts/tests/release-queue-governance.Tests.ps1',
+            './harness/scripts/tests/release-manifest.Tests.ps1',
             './harness/scripts/tests/check-harness-limits.Tests.ps1',
             './harness/scripts/tests/test-impact-map.Tests.ps1'
           )
@@ -167,7 +255,8 @@ jobs:
           cp -f .env.real-pre.example /tmp/.env.real-pre
           ln -sf /tmp/.env.real-pre .env.real-pre
           full_sha=0000000000000000000000000000000000000000
-          IMAGE_TAG="$full_sha" docker compose --env-file /tmp/.env.real-pre -f docker-compose.real-pre.yml config > /tmp/compose.yml
+          BACKEND_IMAGE="colonel-saas/backend:$full_sha" FRONTEND_IMAGE="colonel-saas/frontend:$full_sha" IMAGE_TAG="$full_sha" \
+            docker compose --env-file /tmp/.env.real-pre -f docker-compose.real-pre.yml config > /tmp/compose.yml
           grep -q "colonel-saas/backend:$full_sha" /tmp/compose.yml
           grep -q "colonel-saas/frontend:$full_sha" /tmp/compose.yml
           rm -f .env.real-pre
@@ -187,22 +276,159 @@ jobs:
         shell: pwsh
         run: |
           $jenkins = Get-Content -Raw Jenkinsfile
+          $activeJenkins = ($jenkins -split "`r?`n" | Where-Object { $_ -notmatch '^\s*//' }) -join "`n"
           $retired = Get-Content -Raw harness/scripts/commands/deploy-remote.ps1
-          $releaseScript = 'scripts/cd/release-real-pre.sh'
+          $breakGlass = Get-Content -Raw scripts/deploy-real-pre.sh
           if ($jenkins -notmatch "defaultValue:\s*'release/real-pre'") { throw 'Jenkins must only deploy release/real-pre' }
           if ($jenkins -notmatch 'IMAGE_TAG must be the full 40-character commit SHA') { throw 'Jenkins must reject floating image tags' }
-          if (-not (Test-Path -LiteralPath $releaseScript -PathType Leaf)) {
-            throw "Missing canonical release entry script: $releaseScript"
-          }
-          if ($jenkins -notmatch [regex]::Escape($releaseScript)) {
-            throw "Jenkins must route mutating subcommands through $releaseScript"
-          }
-          $wrapper = Get-Content -Raw $releaseScript
-          if ($wrapper -notmatch '\bflock\b') {
-            throw "$releaseScript must invoke flock(1) for real serialization"
-          }
+          if ($activeJenkins -notmatch "lock\(resource:\s*'saas-real-pre-deploy'") { throw 'Jenkins must hold the global real-pre lock in executable pipeline code' }
+          if ($activeJenkins -match 'docker compose[^\r\n]+\sbuild') { throw 'Jenkins must not build images on the deployment host' }
+          if ($jenkins -notmatch 'release/real-pre\.json') { throw 'Jenkins must consume the release manifest' }
           if ($retired -notmatch 'Direct SSH deployment is retired') { throw 'direct SSH deploy path must remain retired' }
+          if ($breakGlass -notmatch 'Direct real-pre deployment is retired') { throw 'direct shell deploy path must remain break-glass guarded' }
 
       - name: Reject generated workspace changes
         shell: bash
         run: test -z "$(git status --porcelain)"
+
+  ci_gate:
+    name: CI Gate
+    needs: [changes, backend, frontend, governance]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Evaluate required checks
+        shell: bash
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          BACKEND_RESULT: ${{ needs.backend.result }}
+          FRONTEND_RESULT: ${{ needs.frontend.result }}
+          GOVERNANCE_RESULT: ${{ needs.governance.result }}
+          BACKEND_NEEDED: ${{ needs.changes.outputs.backend_changed == 'true' || needs.changes.outputs.database_changed == 'true' }}
+          FRONTEND_NEEDED: ${{ needs.changes.outputs.frontend_changed == 'true' }}
+          GOVERNANCE_NEEDED: ${{ needs.changes.outputs.any_changed == 'true' }}
+        run: |
+          set -euo pipefail
+          [[ "$CHANGES_RESULT" == "success" ]] || { echo "Changes job: $CHANGES_RESULT"; exit 1; }
+          if [[ "$BACKEND_NEEDED" == "true" ]]; then
+            [[ "$BACKEND_RESULT" == "success" ]] || { echo "Backend job: $BACKEND_RESULT"; exit 1; }
+          elif [[ "$BACKEND_RESULT" != "skipped" ]]; then
+            echo "Unexpected backend job result: $BACKEND_RESULT"
+            exit 1
+          fi
+          if [[ "$FRONTEND_NEEDED" == "true" ]]; then
+            [[ "$FRONTEND_RESULT" == "success" ]] || { echo "Frontend job: $FRONTEND_RESULT"; exit 1; }
+          elif [[ "$FRONTEND_RESULT" != "skipped" ]]; then
+            echo "Unexpected frontend job result: $FRONTEND_RESULT"
+            exit 1
+          fi
+          if [[ "$GOVERNANCE_NEEDED" == "true" ]]; then
+            [[ "$GOVERNANCE_RESULT" == "success" ]] || { echo "Governance job: $GOVERNANCE_RESULT"; exit 1; }
+          elif [[ "$GOVERNANCE_RESULT" != "skipped" ]]; then
+            echo "Unexpected governance job result: $GOVERNANCE_RESULT"
+            exit 1
+          fi
+          echo "CI Gate passed."
+
+  release_contract:
+    name: Release manifest
+    needs: ci_gate
+    if: github.base_ref == 'release/real-pre' || github.ref == 'refs/heads/release/real-pre'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout complete history
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate release manifest and source tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/verify-real-pre-release.py release/real-pre.json
+          git fetch --no-tags origin main
+          source_sha="$(python3 -c 'import json; print(json.load(open("release/real-pre.json", encoding="utf-8"))["sourceMainSha"])')"
+          git merge-base --is-ancestor "$source_sha" origin/main
+          git diff --check "$source_sha" "$GITHUB_SHA" -- . ':(exclude)release/real-pre.json'
+          git diff --exit-code "$source_sha" "$GITHUB_SHA" -- . ':(exclude)release/real-pre.json'
+          echo "Release manifest points to main SHA $source_sha with no non-manifest drift."
+
+  immutable_images:
+    name: Immutable images
+    needs: ci_gate
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set up Java
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - name: Package backend artifact used by the image
+        working-directory: backend
+        run: mvn -B -DskipTests package
+
+      - name: Login to GHCR
+        shell: bash
+        run: printf '%s' "$GITHUB_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push immutable images
+        shell: bash
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+          IMAGE_NAMESPACE: ghcr.io/${{ github.repository }}
+        run: |
+          set -euo pipefail
+          IMAGE_NAMESPACE="${IMAGE_NAMESPACE,,}"
+          backend_ref="$IMAGE_NAMESPACE/backend:$IMAGE_TAG"
+          frontend_ref="$IMAGE_NAMESPACE/frontend:$IMAGE_TAG"
+          docker build --pull \
+            --label "org.opencontainers.image.revision=$IMAGE_TAG" \
+            --build-arg "GIT_COMMIT=$IMAGE_TAG" \
+            --tag "$backend_ref" backend
+          docker build --pull \
+            --label "org.opencontainers.image.revision=$IMAGE_TAG" \
+            --build-arg "GIT_COMMIT=$IMAGE_TAG" \
+            --build-arg "VITE_ENV_LABEL=REAL-PRE" \
+            --tag "$frontend_ref" frontend
+          docker push "$backend_ref"
+          docker push "$frontend_ref"
+          backend_digest="$(docker image inspect "$backend_ref" --format '{{index .RepoDigests 0}}' | awk -F@ '{print $2}')"
+          frontend_digest="$(docker image inspect "$frontend_ref" --format '{{index .RepoDigests 0}}' | awk -F@ '{print $2}')"
+          printf '%s\n' "$backend_digest" | grep -Eq '^sha256:[0-9a-f]{64}$'
+          printf '%s\n' "$frontend_digest" | grep -Eq '^sha256:[0-9a-f]{64}$'
+          mkdir -p release-artifact
+          python3 - "$IMAGE_TAG" "$IMAGE_NAMESPACE/backend" "$backend_digest" "$IMAGE_NAMESPACE/frontend" "$frontend_digest" > release-artifact/image-release.json <<'PY'
+          import json
+          import sys
+          source_sha, backend_repo, backend_digest, frontend_repo, frontend_digest = sys.argv[1:]
+          print(json.dumps({
+              "schemaVersion": 1,
+              "sourceMainSha": source_sha,
+              "images": {
+                  "backend": {"repository": backend_repo, "digest": backend_digest},
+                  "frontend": {"repository": frontend_repo, "digest": frontend_digest},
+              },
+          }, indent=2))
+          PY
+          cat release-artifact/image-release.json >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload immutable image record
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: immutable-images-${{ github.sha }}
+          path: release-artifact/image-release.json
+          if-no-files-found: error

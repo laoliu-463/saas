@@ -189,7 +189,8 @@ Describe 'stable Harness report lifecycle' {
         ($parameterNames -contains 'ReportKey') | Should Be $true
         $content | Should Match 'check-harness-limits\.ps1'
         $content | Should Match 'collect-evidence\.ps1[\s\S]+-OwnedFiles'
-        $content | Should Match 'git-push-safe\.ps1[\s\S]+-OwnedFiles'
+        $content | Should Match 'Git commit and push are explicit follow-up commands'
+        $content | Should Not Match 'git-push-safe\.ps1[\s\S]+-OwnedFiles'
         $content | Should Match 'contentMaintenanceOwnedFiles'
         $content | Should Match 'taskOwnedFiles'
         $content | Should Not Match 'new-retro\.ps1'

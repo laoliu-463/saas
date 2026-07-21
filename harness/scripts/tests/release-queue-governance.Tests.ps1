@@ -24,7 +24,8 @@ Describe 'real-pre single release queue contract' {
         $jenkinsfile | Should Match 'BUILD_BRANCH"?\s*!=\s*"release/real-pre"'
         $jenkinsfile | Should Match 'refs/heads/release/real-pre'
         $jenkinsfile | Should Match 'git fetch --no-tags origin \+refs/heads/main:refs/remotes/origin/main'
-        $jenkinsfile | Should Match 'release tree does not match any commit reachable from main'
+        $jenkinsfile | Should Match 'release/real-pre\.json'
+        $jenkinsfile | Should Match 'sourceMainSha'
     }
 
     It 'queues builds without aborting and holds one cross-job deployment lock' {
@@ -44,7 +45,7 @@ Describe 'real-pre single release queue contract' {
 
     It 'rejects stale releases unless rollback is explicitly approved' {
         $jenkinsfile | Should Match "booleanParam\(name:\s*'ROLLBACK_APPROVED',\s*defaultValue:\s*false"
-        $jenkinsfile | Should Match 'git merge-base --is-ancestor "\$current_sha" "\$FULL_COMMIT"'
+        $jenkinsfile | Should Match 'git merge-base --is-ancestor "\$current_sha" "\$SOURCE_MAIN_SHA"'
         $jenkinsfile | Should Match 'ROLLBACK_APPROVED'
     }
 
@@ -64,6 +65,8 @@ Describe 'real-pre single release queue contract' {
         $jenkinsfile | Should Match 'previous\.json'
         $jenkinsfile | Should Match 'BACKEND_IMAGE_DIGEST'
         $jenkinsfile | Should Match 'FRONTEND_IMAGE_DIGEST'
+        $jenkinsfile | Should Match 'repository@sha256:digest'
+        $jenkinsfile | Should Not Match 'docker compose[^\r\n]+\sbuild'
     }
 
     It 'verifies backend, frontend, image, and source revisions before PASS' {
@@ -77,6 +80,7 @@ Describe 'real-pre single release queue contract' {
 
 Describe 'runtime version contract' {
     It 'injects the release SHA and backend image digest into the backend container' {
+        $compose | Should Match 'image:\s*\$\{BACKEND_IMAGE:-colonel-saas/backend:real-pre\}'
         $compose | Should Match 'APP_GIT_SHA:\s*\$\{IMAGE_TAG:-unknown\}'
         $compose | Should Match 'APP_IMAGE_DIGEST:\s*\$\{BACKEND_IMAGE_DIGEST:-unknown\}'
     }
@@ -104,6 +108,7 @@ Describe 'agent deployment boundary contract' {
         $ci | Should Match 'Check Jenkins release identity and retired SSH deploy path'
         $ci | Should Match 'Jenkins must reject floating image tags'
         $ci | Should Match 'direct SSH deploy path must remain retired'
+        $ci | Should Match 'Jenkins must not build images on the deployment host'
         $ci | Should Not Match 'deploy script must validate IMAGE_TAG'
     }
 }

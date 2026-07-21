@@ -162,7 +162,7 @@ Describe 'rule overlap is deterministic' {
     }
 }
 
-Describe 'agent-do / Jenkinsfile / ci.yml / _lib.ps1 / git-push-safe unchanged after PR #1' {
+Describe 'agent-do / Jenkinsfile / ci.yml / _lib.ps1 / git-push-safe governance contracts' {
     It 'agent-do.ps1 still has old parameter set' {
         $agentDo = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'harness\scripts\commands\agent-do.ps1')
         ($agentDo -match 'ContentMaintenance\s*=\s*"plan"') | Should Be $true
@@ -170,10 +170,14 @@ Describe 'agent-do / Jenkinsfile / ci.yml / _lib.ps1 / git-push-safe unchanged a
         ($agentDo -match '\[ValidateSet\("dev",\s*"close"\)\]\s*\[string\]\$Phase') | Should Be $false
     }
 
-    It 'Jenkinsfile still has 17 stages and no RUN_BACKEND_TEST' {
+    It 'Jenkinsfile pulls immutable images and has no server-side build' {
         $jf = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'Jenkinsfile')
         $stageCount = ([regex]::Matches($jf, "stage\('[^']+'\)")).Count
-        ($stageCount) | Should Be 17
+        ($stageCount) | Should BeGreaterThan 0
+        ($jf -match "stage\('Pull Immutable Images'\)") | Should Be $true
+        ($jf -match "lock\(resource:\s*'saas-real-pre-deploy'") | Should Be $true
+        ($jf -match '(?m)^\s*docker compose[^\r\n]*\sbuild') | Should Be $false
+        ($jf -match '(?m)^\s*docker build(?:\s|$)') | Should Be $false
         ($jf -match 'RUN_BACKEND_TEST') | Should Be $false
     }
 

@@ -21,7 +21,7 @@
 ## 固定入口
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\agent-do.ps1 -Env real-pre -Scope full -ReportKey task-key -OwnedFiles 'path1;path2' -DeployRemote true -Message "deploy: real-pre update"
+远端发布不通过 `agent-do.ps1` 或 SSH 执行；完成 `main` 合并和 `release/real-pre.json` 提升 PR 后，由 Jenkins `saas-real-pre-cd` 消费发布清单。
 ```
 
 回滚规则见 `../../runbooks/rollback.md`。远端分支、冻结窗口和完整 E2E 要求必须在每次部署前重新取证，不在本文件写成固定事实。

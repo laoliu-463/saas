@@ -1,178 +1,66 @@
-# Jenkins 自动化部署规划
+# Jenkins real-pre 发布规则
 
-> **✅ 状态：已实施 — 2026-07-21**
->
-> 本文最初是一份"第二阶段"规划文档。**截至 2026-07-21，Jenkins real-pre CD 已经是 release/real-pre 提升 PR 的唯一部署入口**，由仓库根目录的 [Jenkinsfile](../../Jenkinsfile) 编排。
->
-> 本文保留作为历史背景与设计思路记录；**实际状态以 Jenkinsfile 为准**。
->
-> 真实服务器 IP、SSH 用户名、私钥路径、`.env.real-pre` 实际内容均不得在公开仓库保留。详见 [docs/deploy/README.md](./README.md)。
+## 目标
 
-## 适用场景
+日常发布固定为：开发分支 -> GitHub PR / CI Gate -> `main` -> 镜像产物 -> `release/real-pre` 提升 PR -> Jenkins `saas-real-pre-cd`。
 
-本文用于 real-pre 手动部署稳定后的第二阶段自动化。第一次服务器部署不依赖 Jenkins，先用 `scripts/deploy-real-pre.sh` 跑通端口、Token、真实 API 和门禁。
+开发人员不需要登录服务器、执行 `git pull` 或现场 `docker build`。Jenkins 也不从服务器源码构建镜像，只消费 `release/real-pre.json` 中的不可变镜像摘要。
 
-## 当前仓库实际情况
+## GitHub 产物
 
-- 根目录存在 `Jenkinsfile`。
-- 当前 `Jenkinsfile` 已对齐 `PROJECT_NAME = 'saas-active'`，与 `docker-compose.real-pre.yml` 和 `.env.real-pre.example` 的 `COMPOSE_PROJECT_NAME=saas-active` 保持一致。
-- 当前 `Jenkinsfile` 默认只执行 CI：拉代码、后端测试、前端测试与构建、后端打包和证据归档。
-- 当前 `Jenkinsfile` 只有在人工开启 `DEPLOY_REAL_PRE=true` 后才调用 `scripts/deploy-real-pre.sh`，Jenkins 不自行重写部署流程。
-- 开启 `DEPLOY_REAL_PRE=true` 时必须填写 `DEPLOY_BRANCH`，避免 detached HEAD 场景下部署脚本执行 `git pull --ff-only` 失败。
-- 当前 `Jenkinsfile` 保留 `RUN_REAL_PRE_E2E` 参数，默认 `false`；只有人工打开后才运行 preflight / roles / p0。
-- 当前 `Jenkinsfile` 保留 `CONFIRM_REAL_PROMOTION_WRITE` 参数；real-pre 环境开启真实推广写双开关时，必须人工确认后才允许部署或 E2E。
+合并到 `main` 后，GitHub Actions 在 `CI Gate` 通过后执行：
 
-## 前置条件
+1. 后端打包并构建镜像。
+2. 前端构建镜像。
+3. 使用完整 `github.sha` 写入 OCI revision。
+4. 推送 `ghcr.io/laoliu-463/saas/backend:<sha>` 和 frontend 对应镜像。
+5. 记录两个 `repository@sha256:digest` 到 `image-release.json` artifact 和 Job Summary。
 
-- 手动部署流程已成功执行至少一次。
-- `/opt/saas/env/.env.real-pre` 已在服务器或 Jenkins credentials 中受控保存。
-- Jenkins 节点能执行 Docker、Git、Maven、Node / npm。
-- Jenkins 对 `/opt/saas/app`、`/opt/saas/runtime/qa/out` 有读写权限。
+PR 到 `release/real-pre` 必须包含 `release/real-pre.json`，并通过 `scripts/verify-real-pre-release.py`。该清单还必须固定迁移版本、迁移输入摘要和上一版本回滚引用。
 
-## Jenkins 职责
+## Jenkins 前置条件
 
-| 职责 | 说明 |
-| --- | --- |
-| 拉代码 | 获取部署分支 |
-| 后端测试 | 执行 `mvn test` |
-| 前端测试 / build | 执行 `npm run build` 或 `npm --prefix frontend run build` |
-| env 守卫 | 校验 real-pre 不允许 mock 开关 |
-| 数据库备份 | 调用部署脚本或 `scripts/backup-db.sh` |
-| 部署 | 调用 `scripts/deploy-real-pre.sh` |
-| 健康检查 | 调用脚本内健康检查或 `scripts/health-check.sh` |
-| 留证据 | 归档 Compose config、ps、logs、测试报告 |
+- Job 名称：`saas-real-pre-cd`。
+- 唯一部署分支：`release/real-pre`。
+- Jenkins 节点拥有 Docker Compose、Python 3、Node / pnpm、curl 和 Git。
+- Jenkins 凭据中配置 `saas-container-registry`，类型为 username/password，密码只用于读取容器仓库。
+- `/opt/saas/env/.env.real-pre` 由服务器受控保存，不进入 Git 或 Jenkins 日志。
+- Jenkins Lockable Resources 配置全局资源 `saas-real-pre-deploy`。
 
-Jenkins 不应该直接管理真实密钥明文，不应该执行 `docker compose down -v`。
-
-## Jenkins 容器部署示例
-
-如果需要用 Docker 启 Jenkins，可先作为第二阶段独立服务，不放进当前 real-pre Compose。
-
-```yaml
-services:
-  jenkins:
-    image: jenkins/jenkins:lts-jdk17
-    container_name: saas-jenkins
-    user: root
-    ports:
-      - "18080:8080"
-      - "50000:50000"
-    volumes:
-      - jenkins_home:/var/jenkins_home
-      - /var/run/docker.sock:/var/run/docker.sock
-      - /opt/saas:/opt/saas
-    restart: unless-stopped
-
-volumes:
-  jenkins_home:
-```
-
-公网开放 `18080` 时必须限制来源 IP；更推荐只通过 VPN 或内网访问。
-
-## Jenkinsfile 阶段设计
-
-当前第一版：
+## Pipeline 顺序
 
 ```text
-Checkout
--> Backend Test
--> Frontend Test / Build
--> Backend Package
--> Evidence
+Checkout release/real-pre
+  -> Preflight manifest / main ancestry / migration fingerprint
+  -> registry login + docker pull repository@digest
+  -> docker compose config（禁止 build）
+  -> saas-real-pre-deploy 全局锁
+  -> release order + migration diff
+  -> backup / Flyway / schema precheck（仅迁移输入变化时）
+  -> backend（暂停调度）+ readiness
+  -> frontend
+  -> P0 smoke + 多角色 E2E
+  -> 恢复调度 + readiness
+  -> evidence + 原子更新 current.json
 ```
 
-人工开启部署或 real-pre E2E 后追加：
+任何 readiness、smoke、E2E 或证据核对失败，都必须保持发布失败状态；若已有上一份不可变镜像，Jenkins 尝试按部署前引用回滚，并记录回滚结果。
+
+## 发布清单
+
+路径：`release/real-pre.json`。字段要求见 [release/README.md](../../release/README.md)。服务器归档：
 
 ```text
-Guard Real-Pre Env
--> Deploy (DEPLOY_REAL_PRE=true)
--> Health Check
--> Real-pre Preflight
--> Real-pre Roles
--> Real-pre P0
+/opt/saas/releases/<sourceMainSha>/release.json
+/opt/saas/releases/current.json
+/opt/saas/releases/previous.json
 ```
 
-后续版本再逐步强化：
+`current.json` 只有在镜像、运行 SHA、后端健康、前端版本、迁移和业务验收全部一致后才原子替换。
 
-```text
-Real-pre Preflight
--> Real-pre Roles
--> Real-pre P0
--> Evidence Summary Parsing
--> Rollback Drill
-```
+## 禁止事项
 
-`PENDING` 不应直接让 Jenkins 判定为代码失败，除非报告明确是 `FAIL` 或硬失败。
-
-## 执行步骤
-
-### 1. Jenkins 凭据
-
-建议配置：
-
-| ID | 类型 | 用途 |
-| --- | --- | --- |
-| `saas-real-pre-env` | Secret file | 完整 `.env.real-pre` |
-| `saas-git-ssh-key` | SSH private key | 私有仓库拉代码时使用 |
-| `jwt-secret-real-pre` | Secret text | 如拆分 env 时使用 |
-| `douyin-client-secret` | Secret text | 如拆分 env 时使用 |
-
-优先用 Secret file 管理完整 `.env.real-pre`，减少拼接错误。
-
-### 2. 当前 Jenkinsfile 执行口径
-
-当前仓库根目录 `Jenkinsfile` 已落地第一版自动化，核心参数如下：
-
-```groovy
-parameters {
-    string(name: 'DEPLOY_BRANCH', defaultValue: '', description: '留空时使用 Jenkins SCM 当前分支/提交；DEPLOY_REAL_PRE=true 时必填')
-    booleanParam(name: 'DEPLOY_REAL_PRE', defaultValue: false, description: '人工确认后执行 real-pre 受控部署；默认只跑 CI')
-    booleanParam(name: 'CONFIRM_REAL_PROMOTION_WRITE', defaultValue: false, description: 'real-pre 开启真实推广写双开关时，必须人工确认后才允许部署')
-    booleanParam(name: 'RUN_REAL_PRE_E2E', defaultValue: false, description: '第二阶段开启：运行 preflight / roles / p0 E2E 门禁')
-}
-
-environment {
-    ENV_FILE = '/opt/saas/env/.env.real-pre'
-    COMPOSE_FILE = 'docker-compose.real-pre.yml'
-    PROJECT_NAME = 'saas-active'
-    REAL_PRE_FRONTEND = 'http://127.0.0.1:3001'
-    REAL_PRE_BACKEND = 'http://127.0.0.1:8081'
-}
-```
-
-`DEPLOY_REAL_PRE=true` 时，部署阶段固定调用：
-
-```bash
-APP_DIR="$PWD" \
-ENV_FILE="$ENV_FILE" \
-COMPOSE_FILE="$COMPOSE_FILE" \
-PROJECT_NAME="$PROJECT_NAME" \
-EVIDENCE_ROOT="/opt/saas/runtime/qa/out/jenkins-${BUILD_NUMBER}" \
-IMAGE_TAG="$IMAGE_TAG" \
-REAL_PROMOTION_WRITE_CONFIRMED="$CONFIRM_REAL_PROMOTION_WRITE" \
-  ./scripts/deploy-real-pre.sh
-```
-
-说明：Jenkins 仍然是第二阶段入口，不替代第一次手动部署。第一次服务器部署应先用 `scripts/deploy-real-pre.sh` 直接验证端口、健康检查、Token 和真实 API。默认构建不会部署 real-pre，也不会重启容器。
-
-## 验收标准
-
-- Jenkins 不参与第一次手动部署。
-- Jenkins 调用同一套 `scripts/deploy-real-pre.sh`。
-- Jenkins 默认只跑 CI；`DEPLOY_REAL_PRE=true` 才允许执行部署和重启。
-- Jenkins 部署时必须显式填写 `DEPLOY_BRANCH`，确保部署脚本位于可 `git pull --ff-only` 的本地分支。
-- Jenkins 环境守卫能阻断 `APP_TEST_ENABLED=true`、`DOUYIN_TEST_ENABLED=true`、`DOUYIN_REAL_UPSTREAM_MODE` 非 `live`、真实推广双开关不一致、快递100或物流同步未开启等上线配置缺口。
-- Jenkins 在真实推广写双开关为 `true` 时，必须要求 `CONFIRM_REAL_PROMOTION_WRITE=true`，否则阻断部署或 real-pre E2E。
-- Jenkins 归档部署证据和日志。
-- 第一版 Jenkins 不强制接入 P0 E2E，`RUN_REAL_PRE_E2E` 默认关闭。
-- 第二版接入 preflight / roles / p0 时，不能把 `PENDING` 直接当 PASS 或代码失败。
-
-## 常见问题
-
-| 问题 | 判断方法 | 处理 |
-| --- | --- | --- |
-| Jenkins 和手动部署行为不一致 | 对比 Jenkinsfile 与 `deploy-real-pre.sh` | 以脚本为准，删除重复流程 |
-| Jenkins 使用旧 project | 搜索 `PROJECT_NAME = 'saas-active'` 和 `.env.real-pre` 中的 `COMPOSE_PROJECT_NAME=saas-active` | 两处必须一致 |
-| Jenkins 泄漏 env | 查看构建日志 | 使用 Secret file，不 echo 密钥 |
-| PENDING 使流水线失败 | 查看 E2E exit code 和 summary | 第二版再设计 PENDING 处理策略 |
-| Docker 权限不足 | Jenkins 日志显示 permission denied | 将 Jenkins 用户纳入 docker 组或使用受控 root 容器 |
+- 禁止 Jenkins `docker compose build`、`docker build` 或从服务器源码重新生成镜像。
+- 禁止使用 `latest`、短 SHA、浮动 tag 或未带 digest 的镜像。
+- 禁止普通 Agent 直接 SSH、服务器 `git pull` 或修改 `/opt/saas/app`。
+- 禁止 `docker compose down -v`、删除 PostgreSQL / Redis volume 或用 mock 配置证明 real-pre 通过。

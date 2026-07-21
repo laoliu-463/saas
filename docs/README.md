@@ -22,6 +22,8 @@
 8. [V1 必做] 部署和环境排障读 [10-部署运行总览.md](10-部署运行总览.md)。
 9. [V1 必做] 业务试用、用户培训和操作答疑读 [11-用户操作手册.md](11-用户操作手册.md)。
 
+开发与发布主线见 [development-flow.md](development-flow.md)，real-pre 镜像与 Jenkins 发布清单见 [release/README.md](../release/README.md)。
+
 ## 主干文档
 
 | 文档 | 作用 | 范围 |
