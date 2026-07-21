@@ -74,16 +74,19 @@ Jenkins real-pre CD
 BREAK-GLASS 启动前必须：
 
 1. 在团队频道声明 `BREAK-GLASS-START <YYYY-MM-DD HH:mm>`。
-2. 在服务器侧获取 `/var/lock/saas-real-pre-deploy.lock`（与 Jenkins 共用同一把锁）：
+2. 在服务器侧获取 `/var/lock/saas-real-pre-deploy.lock`（与 Jenkins 共用同一把锁，由 `scripts/cd/release-real-pre.sh` 持有）：
    ```bash
    flock -n /var/lock/saas-real-pre-deploy.lock -c '
      cd /opt/saas/app
      git fetch origin
      git checkout release/real-pre
-     ENV_FILE=/opt/saas/env/.env.real-pre ./scripts/real-pre-startup-check.sh
-     ENV_FILE=/opt/saas/env/.env.real-pre ./scripts/deploy-real-pre.sh
+     bash scripts/cd/release-real-pre.sh preflight
+     bash scripts/cd/release-real-pre.sh backup
+     bash scripts/cd/release-real-pre.sh migrate
+     bash scripts/cd/release-real-pre.sh deploy   # requires IMAGE_TAG=<40-char SHA>
    '
    ```
+   `release-real-pre.sh` 的每个子命令都会独立获取锁；任一 BREAK-GLASS 操作与正在跑的 Jenkins release 都会因锁冲突而被拒绝。
 3. BREAK-GLASS 完成后必须：
    - 把所用 SHA 写入 `releases/<sha>/break-glass-YYYYMMDD.md`（含原因、影响范围、回滚点）。
    - 把 `current.json` 同步更新到 BREAK-GLASS 部署的版本。

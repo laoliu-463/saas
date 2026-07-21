@@ -188,9 +188,19 @@ jobs:
         run: |
           $jenkins = Get-Content -Raw Jenkinsfile
           $retired = Get-Content -Raw harness/scripts/commands/deploy-remote.ps1
+          $releaseScript = 'scripts/cd/release-real-pre.sh'
           if ($jenkins -notmatch "defaultValue:\s*'release/real-pre'") { throw 'Jenkins must only deploy release/real-pre' }
           if ($jenkins -notmatch 'IMAGE_TAG must be the full 40-character commit SHA') { throw 'Jenkins must reject floating image tags' }
-          if ($jenkins -notmatch "lock\(resource:\s*'saas-real-pre-deploy'") { throw 'Jenkins must hold the global real-pre lock' }
+          if (-not (Test-Path -LiteralPath $releaseScript -PathType Leaf)) {
+            throw "Missing canonical release entry script: $releaseScript"
+          }
+          if ($jenkins -notmatch [regex]::Escape($releaseScript)) {
+            throw "Jenkins must route mutating subcommands through $releaseScript"
+          }
+          $wrapper = Get-Content -Raw $releaseScript
+          if ($wrapper -notmatch '\bflock\b') {
+            throw "$releaseScript must invoke flock(1) for real serialization"
+          }
           if ($retired -notmatch 'Direct SSH deployment is retired') { throw 'direct SSH deploy path must remain retired' }
 
       - name: Reject generated workspace changes

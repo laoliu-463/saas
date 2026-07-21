@@ -376,8 +376,14 @@ pipeline {
             }
 
             // The top-level disableConcurrentBuilds option serializes the sole CD job.
-            // Canonical lock: lock(resource: 'saas-real-pre-deploy', inversePrecedence: false)
-            // Lockable Resources is not installed on the real-pre Jenkins host.
+            // Per-stage global lock: every mutating subcommand (backup / migrate /
+            // deploy / rollback) goes through scripts/cd/release-real-pre.sh, which
+            // holds an exclusive flock on /var/lock/saas-real-pre-deploy.lock for the
+            // duration of the step. This replaces the `lock(resource: 'saas-real-pre-
+            // deploy')` declaration that previously relied on the Lockable Resources
+            // plugin, which is NOT installed on the real-pre Jenkins host.
+            // See docs/deploy/README.md "BREAK-GLASS 紧急恢复" for the matching manual
+            // entry point that uses the same lock file.
             stages {
         stage('Release Order and Migration Guard') {
             options {
@@ -423,6 +429,9 @@ pipeline {
                   scripts/run-real-pre-db-migrations.sh; then
                   RUN_DB_MIGRATIONS=true
                 fi
+                # NOTE: changes to scripts/cd/release-real-pre.sh (the flock
+                # wrapper) are intentionally NOT in the diff pathspec, so a
+                # wrapper change does not trigger an unnecessary DB migration.
                 {
                   printf 'CURRENT_SHA=%s\n' "$current_sha"
                   printf 'RUN_DB_MIGRATIONS=%s\n' "$RUN_DB_MIGRATIONS"
@@ -454,12 +463,12 @@ pipeline {
 
                 ENV_FILE="$ENV_FILE" COMPOSE_FILE="$COMPOSE_FILE" \
                   COMPOSE_PROJECT_NAME="$PROJECT_NAME" BACKUP_DIR="$backup_dir" \
-                  bash scripts/backup-db.sh | tee runtime/qa/out/jenkins/database-backup.txt
+                  bash scripts/cd/release-real-pre.sh backup | tee runtime/qa/out/jenkins/database-backup.txt
 
                 ENV_FILE="$ENV_FILE" COMPOSE_FILE="$COMPOSE_FILE" \
                   COMPOSE_PROJECT_NAME="$PROJECT_NAME" IMAGE_TAG="$IMAGE_TAG" \
                   BACKEND_IMAGE_DIGEST="$BACKEND_IMAGE_DIGEST" REQUIRE_PINNED_IMAGE=true \
-                  sh scripts/run-real-pre-db-migrations.sh | tee runtime/qa/out/jenkins/database-migration.txt
+                  bash scripts/cd/release-real-pre.sh migrate | tee runtime/qa/out/jenkins/database-migration.txt
 
                 REAL_PRE_COMPOSE_ENV="$ENV_FILE" REAL_PRE_COMPOSE_FILE="$COMPOSE_FILE" \
                   REAL_PRE_COMPOSE_PROJECT="$PROJECT_NAME" \
