@@ -22,7 +22,8 @@ class SampleStateMachineTest {
         assertThatThrownBy(() -> SampleStateMachine.ensureTransition(
                 SampleStatus.SHIPPING, SampleStatus.PENDING_AUDIT))
                 .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("expected PENDING_AUDIT");
+                .hasMessageContaining("合作单当前状态为【SHIPPING】（发货中）")
+                .hasMessageContaining("该操作仅在【PENDING_AUDIT】（待审核）状态可用");
     }
 
     @Test
