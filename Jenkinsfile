@@ -791,8 +791,8 @@ pipeline {
                 # jenkinsBuild, deployResult, previous, rollbackTarget).
                 # The canonical current/previous rotation is now performed
                 # by evidence-collect.sh, not by inline cp/mv.
-                previous_release_sha="$(cat "$release_root/previous.json" 2>/dev/null \\
-                  | grep -Eo '"gitSha"[[:space:]]*:[[:space:]]*"[0-9a-f]{40}"' \\
+                previous_release_sha="$(cat "$release_root/previous.json" 2>/dev/null \
+                  | grep -Eo '"gitSha"[[:space:]]*:[[:space:]]*"[0-9a-f]{40}"' \
                   | head -n 1 | grep -Eo '[0-9a-f]{40}' || true)"
                 [ -n "$previous_release_sha" ] || previous_release_sha="null"
                 cat > "$release_candidate" <<EOF
@@ -801,7 +801,7 @@ pipeline {
                   "branch": "$BUILD_BRANCH",
                   "backendDigest": "$BACKEND_IMAGE_DIGEST",
                   "frontendDigest": "$FRONTEND_IMAGE_DIGEST",
-                  "migrationVersions": $(printf '%s\\n' "${MIGRATION_VERSIONS:-}" | python -c 'import json,sys; vs=[l.strip() for l in sys.stdin if l.strip()]; print(json.dumps(vs))' 2>/dev/null || echo '[]'),
+                  "migrationVersions": $(printf '%s\n' "${MIGRATION_VERSIONS:-}" | python -c 'import json,sys; vs=[l.strip() for l in sys.stdin if l.strip()]; print(json.dumps(vs))' 2>/dev/null || echo '[]'),
                   "ciRun": {
                     "sha": "$FULL_COMMIT",
                     "workflow": "ci.yml",
@@ -838,8 +838,8 @@ EOF
                 # before; the inline block was a candidate-only path
                 # that did not enforce the schema.
                 if [ "$evidence_result" = "PASS" ]; then
-                  REPO_ROOT="${REPO_ROOT:-$WORKSPACE}" \\
-                    RELEASES_BASE="$release_root" \\
+                  REPO_ROOT="${REPO_ROOT:-$WORKSPACE}" \
+                    RELEASES_BASE="$release_root" \
                     bash scripts/cd/evidence-collect.sh release-manifest "$FULL_COMMIT" "$release_candidate"
                 fi
 
