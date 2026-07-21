@@ -251,7 +251,7 @@ jobs:
   governance:
     name: Repository governance
     needs: changes
-    if: needs.changes.outputs.any_changed == 'true'
+    if: always() && needs.changes.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     # Governance 始终运行：保护契约为单源真相，不能因变更范围判断而被跳过。
