@@ -1,5 +1,13 @@
 # Jenkins 自动化部署规划
 
+> **✅ 状态：已实施 — 2026-07-21**
+>
+> 本文最初是一份"第二阶段"规划文档。**截至 2026-07-21，Jenkins real-pre CD 已经是 release/real-pre 提升 PR 的唯一部署入口**，由仓库根目录的 [Jenkinsfile](../../Jenkinsfile) 编排。
+>
+> 本文保留作为历史背景与设计思路记录；**实际状态以 Jenkinsfile 为准**。
+>
+> 真实服务器 IP、SSH 用户名、私钥路径、`.env.real-pre` 实际内容均不得在公开仓库保留。详见 [docs/deploy/README.md](./README.md)。
+
 ## 适用场景
 
 本文用于 real-pre 手动部署稳定后的第二阶段自动化。第一次服务器部署不依赖 Jenkins，先用 `scripts/deploy-real-pre.sh` 跑通端口、Token、真实 API 和门禁。
