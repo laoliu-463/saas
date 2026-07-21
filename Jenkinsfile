@@ -25,8 +25,10 @@ pipeline {
         // without going through GHA (e.g. a server-only tag), which
         // re-enables the legacy Backend Package / Frontend Build stages
         // for one-off builds.
-        booleanParam(name: 'FORCE_LOCAL_IMAGE_BUILD', defaultValue: false, description: 'BREAK-GLASS: re-enable local Maven + pnpm + docker build. Use only when no GHCR digest is available for IMAGE_TAG.')
-    }
+        booleanParam(name: 'FORCE_LOCAL_IMAGE_BUILD', defaultValue: false, description: 'BREAK-GLASS: re-enable local Maven + pnpm + docker build. Use only when no GHCR digest is available for IMAGE_TAG.')        // PR-B: RUN_BACKEND_TEST defaults to false. The real CI gate is the
+        // GHA SHA Gate (see Preflight Guard); this parameter only enables
+        // an optional diagnostic rerun of mvn test inside Jenkins.
+        booleanParam(name: 'RUN_BACKEND_TEST', defaultValue: false, description: 'Diagnostic rerun only; does not bypass the GHA SHA Gate.')    }
 
     environment {
         JOB_PURPOSE = 'real-pre-cd'
@@ -256,9 +258,41 @@ pipeline {
                 echo "Preflight guard passed without printing secrets."
                 '''
             }
+
+            // PR-B: GHA SHA Gate. Must run inside withCredentials so the
+            // GitHub PAT never appears in the Jenkins console log. The
+            // exact FULL_COMMIT being deployed must have a successful
+            // ci.yml push run on release/real-pre (Backend tests,
+            // Frontend tests and build, Repository governance all green).
+            // RUN_BACKEND_TEST only reruns Jenkins diagnostics; it cannot
+            // bypass this gate.
+            steps {
+                withCredentials([string(credentialsId: 'github-actions-read-token', variable: 'GITHUB_TOKEN')]) {
+                    sh '''#!/usr/bin/env bash
+                    set -eu
+                    . runtime/qa/out/jenkins/cd-env.sh
+                    mkdir -p runtime/qa/out/jenkins
+                    GITHUB_REPOSITORY="${CD_GIT_URL#*github.com/}"; GITHUB_REPOSITORY="${GITHUB_REPOSITORY%.git}"
+                    export GITHUB_REPOSITORY
+                    GITHUB_WORKFLOW=ci.yml \
+                    GITHUB_BRANCH=release/real-pre \
+                    GITHUB_SHA="$FULL_COMMIT" \
+                      bash scripts/verify-github-ci-gate.sh
+                    echo "GHA SHA Gate passed for $FULL_COMMIT."
+                    '''
+                }
+            }
         }
 
         stage('Backend Test') {
+            // PR-B: skip by default. The GHA SHA Gate in Preflight Guard
+            // already validates that Backend tests passed on the same
+            // FULL_COMMIT. Setting RUN_BACKEND_TEST=true re-enables a
+            // diagnostic mvn test rerun inside Jenkins (does NOT bypass
+            // the GHA gate).
+            when {
+                expression { return params.RUN_BACKEND_TEST }
+            }
             options {
                 timeout(time: 15, unit: 'MINUTES')
             }

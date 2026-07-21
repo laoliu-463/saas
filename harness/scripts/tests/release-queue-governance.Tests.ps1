@@ -57,6 +57,27 @@ Describe 'real-pre single release queue contract' {
         $jenkinsfile | Should Not Match 'compatible database migrations are mandatory'
     }
 
+    It 'enforces a GHA SHA Gate on the exact FULL_COMMIT before deploying (PR-B)' {
+        # The SHA Gate must (a) live in scripts/verify-github-ci-gate.sh,
+        # (b) be invoked from Jenkinsfile via withCredentials, and (c)
+        # target the same FULL_COMMIT that is being deployed.
+        $shaGateScript = Join-Path $repoRoot 'scripts\verify-github-ci-gate.sh'
+        (Test-Path -LiteralPath $shaGateScript -PathType Leaf) | Should Be $true
+
+        $shaGate = Get-Content -Raw -LiteralPath $shaGateScript
+        $shaGate | Should Match 'GITHUB_SHA'
+        $shaGate | Should Match 'workflow_runs'
+        $shaGate | Should Match 'conclusion'
+
+        $jenkinsfile | Should Match 'github-actions-read-token'
+        $jenkinsfile | Should Match 'verify-github-ci-gate\.sh'
+        $jenkinsfile | Should Match 'GITHUB_SHA="\$FULL_COMMIT"'
+
+        # RUN_BACKEND_TEST must default to false so the SHA Gate is the
+        # single source of truth for the Backend tests signal.
+        $jenkinsfile | Should Match "booleanParam\(name:\s*'RUN_BACKEND_TEST',\s*defaultValue:\s*false"
+    }
+
     It 'records immutable release manifests and atomically promotes current state' {
         $jenkinsfile | Should Match '/opt/saas/releases'
         $jenkinsfile | Should Match 'release\.json'
