@@ -118,6 +118,10 @@ pipeline {
                   echo "ERROR: sourceMainSha must be a full 40-character SHA."
                   exit 1
                 fi
+                if ! printf '%s' "$IMAGE_TAG" | grep -Eq '^[0-9a-f]{40}$'; then
+                  echo "ERROR: IMAGE_TAG must be the full 40-character commit SHA."
+                  exit 1
+                fi
                 if ! git merge-base --is-ancestor "$SOURCE_MAIN_SHA" origin/main; then
                   echo "ERROR: release sourceMainSha is not reachable from main."
                   exit 1
