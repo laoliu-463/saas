@@ -20,6 +20,7 @@
 - 部署运行：[docs/10-部署运行总览.md](./docs/10-部署运行总览.md)
 - real-pre 联调：[docs/验收/real-pre联调手册.md](./docs/验收/real-pre联调手册.md)
 - 服务器部署：[docs/deploy/README.md](./docs/deploy/README.md)
+- 开发与发布流程：[docs/development-flow.md](./docs/development-flow.md)
 - Playwright：[README-e2e.md](./README-e2e.md)
 
 ## 环境与端口
@@ -100,54 +101,17 @@ npm run e2e:real-pre:roles
 - `npm run build`：通过，仅有 Vite chunk 体积警告
 - `npm run e2e:real-pre:p0:preflight`：通过，证据目录 `runtime/qa/out/real-pre-preflight-20260531-200252/`
 
-## 同步到服务器
+## real-pre 发布
 
-当前本地分支为 `feature/auth-system`，跟踪 `gitee/feature/auth-system`。本机 SSH 已配置 `saas` 别名时，可直接：
+日常开发、合并和 real-pre 发布统一遵循[开发与 real-pre 发布流程](./docs/development-flow.md)：
 
-```bash
-ssh saas
+```text
+GitHub main -> PR + CI -> release/real-pre 发布提升 PR -> Jenkins saas-real-pre-cd
 ```
 
-本地修改需要先提交并推送，否则服务器无法通过 `git pull` 获取：
+普通任务不得通过 SSH、`git pull` 或服务器现场构建部署。服务器地址、登录用户、密钥路径和环境文件只保存在私有 Runbook 或密码管理系统中。
 
-```bash
-git status
-git add <本次修改文件>
-git commit -m "描述本次修改"
-git push gitee feature/auth-system
-```
-
-首次同步到服务器：
-
-```bash
-ssh saas
-mkdir -p /opt/saas/app /opt/saas/env /opt/saas/logs /opt/saas/backups /opt/saas/runtime/qa/out
-cd /opt/saas
-git clone -o gitee -b feature/auth-system https://gitee.com/cao-jianing463/saas.git app
-cd /opt/saas/app
-ln -sfn /opt/saas/env/.env.real-pre .env.real-pre
-```
-
-后续更新：
-
-```bash
-ssh saas
-cd /opt/saas/app
-git remote get-url gitee >/dev/null 2>&1 || git remote add gitee https://gitee.com/cao-jianing463/saas.git
-git fetch gitee
-git pull --ff-only
-docker compose --env-file /opt/saas/env/.env.real-pre -f docker-compose.real-pre.yml up -d --build
-```
-
-部署后检查：
-
-```bash
-docker compose --env-file /opt/saas/env/.env.real-pre -f docker-compose.real-pre.yml ps
-curl -s http://127.0.0.1:8081/api/system/health
-curl -I http://127.0.0.1:3001/login
-```
-
-不要执行 `docker compose down -v`，避免清空 real-pre 数据卷。
+手工 SSH 仅作为经批准的 Break-glass 紧急恢复流程，执行时必须记录审批、目标 SHA、主机锁、备份、健康检查、回滚和补录证据。不得执行 `docker compose down -v`，不得删除 real-pre 数据卷。
 
 ## 环境密钥规则
 

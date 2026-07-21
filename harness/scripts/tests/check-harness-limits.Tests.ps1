@@ -107,6 +107,7 @@ Describe 'check-harness-limits baseline-aware governance' {
 
         $result.ExitCode | Should Be 0
         $result.Output | Should Match 'TASK_GATE=PASS'
+        $result.Output | Should Match 'HARNESS_NO_REGRESSION=PASS'
         $result.Output | Should Match 'REPOSITORY_HEALTH=PARTIAL'
         $result.Output | Should Not Match 'ROOT_DIRECTORY_NOT_ALLOWED'
     }
@@ -121,6 +122,7 @@ Describe 'check-harness-limits baseline-aware governance' {
 
         $result.ExitCode | Should Be 1
         $result.Output | Should Match 'TASK_GATE=FAIL'
+        $result.Output | Should Match 'HARNESS_NO_REGRESSION=FAIL'
         $result.Output | Should Match 'DIRECT_FILE_COUNT_WORSENED'
     }
 

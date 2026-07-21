@@ -1,16 +1,16 @@
 name: CI
 
 on:
-  push:
-    branches:
-      - "**"
   pull_request:
     branches:
       - main
-      - release/real-pre
   merge_group:
     branches:
       - main
+  push:
+    branches:
+      - main
+      - release/real-pre
   workflow_dispatch:
 
 permissions:
@@ -21,8 +21,88 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  changes:
+    name: Changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      any_changed: ${{ steps.detect.outputs.any_changed }}
+      backend_changed: ${{ steps.detect.outputs.backend_changed }}
+      frontend_changed: ${{ steps.detect.outputs.frontend_changed }}
+      database_changed: ${{ steps.detect.outputs.database_changed }}
+      harness_changed: ${{ steps.detect.outputs.harness_changed }}
+      deployment_changed: ${{ steps.detect.outputs.deployment_changed }}
+      docs_only: ${{ steps.detect.outputs.docs_only }}
+    steps:
+      - name: Checkout complete history
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect change scope
+        id: detect
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            changed_files="$(git ls-files)"
+          else
+            base_sha="$BASE_SHA"
+            if [[ -z "$base_sha" || "$base_sha" =~ ^0+$ ]]; then
+              base_sha="$(git rev-parse "${HEAD_SHA}^" 2>/dev/null || true)"
+            fi
+            if [[ -n "$base_sha" ]]; then
+              changed_files="$(git diff --name-only "$base_sha" "$HEAD_SHA")"
+            else
+              changed_files="$(git ls-files)"
+            fi
+          fi
+
+          has_match() {
+            grep -Eq "$1" <<< "$changed_files"
+          }
+
+          any_changed=false
+          backend_changed=false
+          frontend_changed=false
+          database_changed=false
+          harness_changed=false
+          deployment_changed=false
+          docs_only=true
+
+          if [[ -n "$changed_files" ]]; then
+            any_changed=true
+          fi
+          has_match '^(backend/|docker-compose[^/]*\.ya?ml$|scripts/.*\.sh$)' && backend_changed=true || true
+          has_match '^frontend/|^(package\.json|package-lock\.json|pnpm-lock\.yaml)$' && frontend_changed=true || true
+          has_match '^backend/src/main/resources/db/|^scripts/(backup-db|run-real-pre-db-migrations|check-real-pre-schema)\.sh$' && database_changed=true || true
+          has_match '^(harness/|\.github/|AGENTS\.md$|CLAUDE\.md$|CONTEXT\.md$)' && harness_changed=true || true
+          has_match '^(Jenkinsfile$|scripts/|docker-compose|\.env\..*example$|docs/deploy/)' && deployment_changed=true || true
+
+          while IFS= read -r file; do
+            [[ -z "$file" ]] && continue
+            if [[ "$file" != docs/* && "$file" != *.md ]]; then
+              docs_only=false
+              break
+            fi
+          done <<< "$changed_files"
+
+          for output in any_changed backend_changed frontend_changed database_changed harness_changed deployment_changed docs_only; do
+            printf '%s=%s\n' "$output" "${!output}" >> "$GITHUB_OUTPUT"
+          done
+
+          printf 'Detected change scope: any=%s backend=%s frontend=%s database=%s harness=%s deployment=%s docs_only=%s\n' \
+            "$any_changed" "$backend_changed" "$frontend_changed" "$database_changed" "$harness_changed" "$deployment_changed" "$docs_only"
+
   backend:
     name: Backend tests
+    needs: changes
+    if: needs.changes.outputs.backend_changed == 'true' || needs.changes.outputs.database_changed == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
@@ -80,6 +160,8 @@ jobs:
 
   frontend:
     name: Frontend tests and build
+    needs: changes
+    if: needs.changes.outputs.frontend_changed == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     defaults:
@@ -116,6 +198,8 @@ jobs:
 
   governance:
     name: Repository governance
+    needs: changes
+    if: needs.changes.outputs.any_changed == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -177,12 +261,58 @@ jobs:
         shell: pwsh
         run: |
           $jenkins = Get-Content -Raw Jenkinsfile
+          $activeJenkins = ($jenkins -split "`r?`n" | Where-Object { $_ -notmatch '^\s*//' }) -join "`n"
           $retired = Get-Content -Raw harness/scripts/commands/deploy-remote.ps1
           if ($jenkins -notmatch "defaultValue:\s*'release/real-pre'") { throw 'Jenkins must only deploy release/real-pre' }
           if ($jenkins -notmatch 'IMAGE_TAG must be the full 40-character commit SHA') { throw 'Jenkins must reject floating image tags' }
-          if ($jenkins -notmatch "lock\(resource:\s*'saas-real-pre-deploy'") { throw 'Jenkins must hold the global real-pre lock' }
+          if ($activeJenkins -notmatch "(?m)^\s*lock\(resource:\s*'saas-real-pre-deploy'") { throw 'Jenkins must hold the global real-pre lock in executable pipeline code' }
           if ($retired -notmatch 'Direct SSH deployment is retired') { throw 'direct SSH deploy path must remain retired' }
 
       - name: Reject generated workspace changes
         shell: bash
         run: test -z "$(git status --porcelain)"
+
+  ci_gate:
+    name: CI Gate
+    needs: [changes, backend, frontend, governance]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Evaluate required checks
+        shell: bash
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          BACKEND_RESULT: ${{ needs.backend.result }}
+          FRONTEND_RESULT: ${{ needs.frontend.result }}
+          GOVERNANCE_RESULT: ${{ needs.governance.result }}
+          BACKEND_NEEDED: ${{ needs.changes.outputs.backend_changed == 'true' || needs.changes.outputs.database_changed == 'true' }}
+          FRONTEND_NEEDED: ${{ needs.changes.outputs.frontend_changed == 'true' }}
+          GOVERNANCE_NEEDED: ${{ needs.changes.outputs.any_changed == 'true' }}
+        run: |
+          set -euo pipefail
+
+          [[ "$CHANGES_RESULT" == "success" ]] || { echo "Changes job: $CHANGES_RESULT"; exit 1; }
+
+          if [[ "$BACKEND_NEEDED" == "true" ]]; then
+            [[ "$BACKEND_RESULT" == "success" ]] || { echo "Backend job: $BACKEND_RESULT"; exit 1; }
+          elif [[ "$BACKEND_RESULT" != "skipped" ]]; then
+            echo "Unexpected backend job result: $BACKEND_RESULT"
+            exit 1
+          fi
+
+          if [[ "$FRONTEND_NEEDED" == "true" ]]; then
+            [[ "$FRONTEND_RESULT" == "success" ]] || { echo "Frontend job: $FRONTEND_RESULT"; exit 1; }
+          elif [[ "$FRONTEND_RESULT" != "skipped" ]]; then
+            echo "Unexpected frontend job result: $FRONTEND_RESULT"
+            exit 1
+          fi
+
+          if [[ "$GOVERNANCE_NEEDED" == "true" ]]; then
+            [[ "$GOVERNANCE_RESULT" == "success" ]] || { echo "Governance job: $GOVERNANCE_RESULT"; exit 1; }
+          elif [[ "$GOVERNANCE_RESULT" != "skipped" ]]; then
+            echo "Unexpected governance job result: $GOVERNANCE_RESULT"
+            exit 1
+          fi
+
+          echo "CI Gate passed."

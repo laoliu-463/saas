@@ -1,16 +1,20 @@
+# 当前执行口径
+
+> 本文以仓库根目录 [开发与 real-pre 发布流程](../development-flow.md) 和当前 `Jenkinsfile` 为准。`release/real-pre` 是唯一发布分支；Jenkins 是日常 real-pre 发布入口，手工 SSH 仅为 Break-glass。
+
 # Jenkins 自动化部署规划
 
 ## 适用场景
 
-本文用于 real-pre 手动部署稳定后的第二阶段自动化。第一次服务器部署不依赖 Jenkins，先用 `scripts/deploy-real-pre.sh` 跑通端口、Token、真实 API 和门禁。
+本文用于 real-pre 发布队列的自动化执行和门禁维护。服务器环境初始化可以由具备权限的运维人员按私有 Runbook 完成；日常代码发布不再通过手工 SSH 或现场构建。
 
 ## 当前仓库实际情况
 
 - 根目录存在 `Jenkinsfile`。
 - 当前 `Jenkinsfile` 已对齐 `PROJECT_NAME = 'saas-active'`，与 `docker-compose.real-pre.yml` 和 `.env.real-pre.example` 的 `COMPOSE_PROJECT_NAME=saas-active` 保持一致。
-- 当前 `Jenkinsfile` 默认只执行 CI：拉代码、后端测试、前端测试与构建、后端打包和证据归档。
-- 当前 `Jenkinsfile` 只有在人工开启 `DEPLOY_REAL_PRE=true` 后才调用 `scripts/deploy-real-pre.sh`，Jenkins 不自行重写部署流程。
-- 开启 `DEPLOY_REAL_PRE=true` 时必须填写 `DEPLOY_BRANCH`，避免 detached HEAD 场景下部署脚本执行 `git pull --ff-only` 失败。
+- 当前 `Jenkinsfile` 从 `release/real-pre` checkout，默认只做发布前验证；只有人工开启 `DEPLOY_REAL_PRE=true` 才执行 real-pre 部署。
+- Jenkins 校验完整 40 位 SHA、`main` 可追溯性、发布顺序、迁移计划、数据库备份、readiness、smoke / E2E 和回滚证据。
+- `DEPLOY_BRANCH` 固定为 `release/real-pre`，不得指向任务分支、Gitee 镜像或浮动标签。
 - 当前 `Jenkinsfile` 保留 `RUN_REAL_PRE_E2E` 参数，默认 `false`；只有人工打开后才运行 preflight / roles / p0。
 - 当前 `Jenkinsfile` 保留 `CONFIRM_REAL_PROMOTION_WRITE` 参数；real-pre 环境开启真实推广写双开关时，必须人工确认后才允许部署或 E2E。
 
@@ -152,7 +156,7 @@ REAL_PROMOTION_WRITE_CONFIRMED="$CONFIRM_REAL_PROMOTION_WRITE" \
 - Jenkins 不参与第一次手动部署。
 - Jenkins 调用同一套 `scripts/deploy-real-pre.sh`。
 - Jenkins 默认只跑 CI；`DEPLOY_REAL_PRE=true` 才允许执行部署和重启。
-- Jenkins 部署时必须显式填写 `DEPLOY_BRANCH`，确保部署脚本位于可 `git pull --ff-only` 的本地分支。
+- Jenkins 部署时必须保持 `DEPLOY_BRANCH=release/real-pre`，不依赖服务器上的 `git pull`。
 - Jenkins 环境守卫能阻断 `APP_TEST_ENABLED=true`、`DOUYIN_TEST_ENABLED=true`、`DOUYIN_REAL_UPSTREAM_MODE` 非 `live`、真实推广双开关不一致、快递100或物流同步未开启等上线配置缺口。
 - Jenkins 在真实推广写双开关为 `true` 时，必须要求 `CONFIRM_REAL_PROMOTION_WRITE=true`，否则阻断部署或 real-pre E2E。
 - Jenkins 归档部署证据和日志。

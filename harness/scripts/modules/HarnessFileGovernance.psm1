@@ -347,6 +347,7 @@ function Format-HarnessGovernanceReport {
         '## Status',
         '',
         "- TASK_GATE=$($Result.TaskGate)",
+        "- HARNESS_NO_REGRESSION=$($Result.TaskGate)",
         "- REPOSITORY_HEALTH=$($Result.RepositoryHealth)",
         '',
         '## Active Budgets',

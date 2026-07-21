@@ -26,7 +26,7 @@
 - `README.md` 建议不超过 120 行。
 - 禁止用空目录或占位 README 制造表面合规。
 
-本地以 `HEAD` 为基线。历史超限保持或下降只影响 `REPOSITORY_HEALTH`，不阻断当前任务；新增/恶化硬违规使 `TASK_GATE=FAIL`。归档分桶继续遵守 50/50，历史不可变证据原样迁移不追溯 200 行限制。
+本地以 `HEAD` 为基线。历史超限保持或下降只影响 `REPOSITORY_HEALTH`，不阻断当前任务；新增/恶化硬违规使 `TASK_GATE=FAIL`，并以 `HARNESS_NO_REGRESSION=FAIL` 作为 PR 门禁结果。`HARNESS_NO_REGRESSION=PASS` 表示本次没有新增或恶化 Harness 债务，不代表历史健康度为 PASS。归档分桶继续遵守 50/50，历史不可变证据原样迁移不追溯 200 行限制。
 
 ## 收敛动作
 

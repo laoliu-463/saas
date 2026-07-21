@@ -1,3 +1,7 @@
+# Break-glass 说明
+
+> 本文不是日常部署入口。普通发布必须走 `main -> release/real-pre -> Jenkins saas-real-pre-cd`。本文中的 Docker 现场构建和服务器命令只允许在有审批、主机锁、备份和回滚证据的紧急恢复中使用。
+
 # Docker 手动部署 real-pre
 
 ## 适用场景
@@ -11,7 +15,7 @@
 | 项目 | 值 |
 | --- | --- |
 | 仓库 | `https://github.com/laoliu-463/saas.git` |
-| 当前部署分支 | `feature/auth-system` |
+| 当前部署分支 | `release/real-pre`（仅限 Break-glass） |
 | Compose 文件 | `docker-compose.real-pre.yml` |
 | Compose project | `saas-active` |
 | env 示例 | `.env.real-pre.example` |
@@ -34,8 +38,8 @@
 cd /opt/saas
 git clone https://github.com/laoliu-463/saas.git app
 cd /opt/saas/app
-git checkout feature/auth-system
-git pull --ff-only
+git checkout release/real-pre
+git pull --ff-only origin release/real-pre
 git rev-parse --short HEAD
 ```
 
@@ -44,8 +48,8 @@ git rev-parse --short HEAD
 ```bash
 cd /opt/saas/app
 git fetch origin
-git checkout feature/auth-system
-git pull --ff-only
+git checkout release/real-pre
+git pull --ff-only origin release/real-pre
 ```
 
 ### 2. 创建 real-pre 环境文件

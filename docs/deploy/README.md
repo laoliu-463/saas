@@ -2,7 +2,7 @@
 
 ## 适用场景
 
-本文是抖音团长 SaaS `real-pre` 服务器受控部署的入口。当前目标是先完成 Docker 手动部署和真实联调，再沉淀脚本，最后接 Jenkins 自动化。
+本文是抖音团长 SaaS `real-pre` 运行文档入口。日常发布必须遵循 [开发与 real-pre 发布流程](../development-flow.md)，由 `main` 经 PR、`release/real-pre` 和 Jenkins 发布队列完成。
 
 ## 当前仓库实际情况
 
@@ -23,11 +23,10 @@
 核心口径：
 
 ```text
-当前开发分支: feature/auth-system
-当前优先同步仓库: https://gitee.com/cao-jianing463/saas.git
-本机 SSH 部署入口: ssh saas
-SSH 目标: root@1.14.108.159:22
-SSH IdentityFile: C:\Users\caojianing\.ssh\saas_ed25519
+集成分支: main
+real-pre 发布分支: release/real-pre
+日常发布入口: Jenkins job saas-real-pre-cd
+手工 SSH: 仅限经批准的 Break-glass 紧急恢复
 Compose project: saas-active
 后端: backend-real-pre, 127.0.0.1:8081 -> 容器 8080
 前端: frontend-real-pre, 127.0.0.1:3001 -> 容器 80
@@ -35,53 +34,11 @@ Compose project: saas-active
 前端健康检查: /healthz
 ```
 
-## 本机 SSH 部署入口
+## 远端访问与 Break-glass
 
-> 记录日期：2026-06-02。这里只记录可用于部署的 SSH alias 和公钥指纹，不记录私钥内容、密码、Token 或 `.env.real-pre`。
+服务器地址、登录用户、IdentityFile、公钥指纹和环境文件位置不属于公开仓库文档，统一保存在私有 Runbook 或密码管理系统中。
 
-当前本机 `C:\Users\caojianing\.ssh\config` 已配置：
-
-```sshconfig
-Host saas
-    HostName 1.14.108.159
-    User root
-    Port 22
-    IdentityFile C:\Users\caojianing\.ssh\saas_ed25519
-    IdentitiesOnly yes
-    ServerAliveInterval 30
-    ServerAliveCountMax 3
-```
-
-本机公钥指纹：
-
-```text
-saas_ed25519.pub: 256 SHA256:bXULR/UyKWCrNdXcO3pIM1xuKDvjpF1DiKPnEA8EfbQ saas-server (ED25519)
-```
-
-已验证的只读连通性：
-
-```bash
-ssh -o BatchMode=yes -o ConnectTimeout=8 saas "hostname; whoami; test -d /opt/saas && echo OPT_SAAS_EXISTS"
-```
-
-最近验证结果：
-
-```text
-hostname: VM-0-12-ubuntu
-whoami: root
-/opt/saas: exists
-```
-
-后续远程部署默认直接使用：
-
-```bash
-ssh saas
-cd /opt/saas/app
-git fetch gitee
-git pull --ff-only gitee feature/auth-system
-ENV_FILE=/opt/saas/env/.env.real-pre ./scripts/real-pre-startup-check.sh
-ENV_FILE=/opt/saas/env/.env.real-pre ./scripts/deploy-real-pre.sh
-```
+手工 SSH 只用于经批准的紧急恢复。执行前必须获得 real-pre 主机锁，确认目标 SHA，完成备份、启动检查、健康检查和回滚证据，并在事后通过正常发布路径补齐变更。
 
 ## 推荐阅读顺序
 
@@ -112,64 +69,23 @@ ENV_FILE=/opt/saas/env/.env.real-pre ./scripts/deploy-real-pre.sh
 - 未把 `.env.real-pre` 提交 Git。
 - 不直接复用本机 `.env.real-pre`；服务器环境文件必须重新核对域名、OAuth 回调、CORS、快递100回调和真实推广写入开关。
 
-## 新手第一次部署步骤
+## 首次环境初始化
 
-完整过程命令见 [08-real-pre全过程命令清单.md](08-real-pre全过程命令清单.md)。第一次只做最小部署时按下面命令执行：
+首次环境初始化和 Break-glass 细节见私有 Runbook；本仓库不再提供可直接复制的常规 SSH 部署命令。日常发布只使用 Jenkins `saas-real-pre-cd`。
 
-```bash
-sudo mkdir -p /opt/saas/app /opt/saas/env /opt/saas/logs /opt/saas/backups /opt/saas/runtime/qa/out
-sudo chown -R "$USER":"$USER" /opt/saas
+环境初始化只允许由具备权限的运维人员按私有 Runbook 执行；至少要核对 real-pre 开关、数据库备份路径、Compose project 和 Jenkins 所需凭证。部署后的 readiness、前端健康、业务 smoke 和 E2E 由 Jenkins 证据记录。
 
-cd /opt/saas
-git clone -o gitee -b feature/auth-system https://gitee.com/cao-jianing463/saas.git app
-cd /opt/saas/app
-git pull --ff-only
+## 本地更新后如何发布
 
-cp .env.real-pre.example /opt/saas/env/.env.real-pre
-chmod 600 /opt/saas/env/.env.real-pre
-vi /opt/saas/env/.env.real-pre
-ln -sfn /opt/saas/env/.env.real-pre /opt/saas/app/.env.real-pre
-
-# 部署前自检：验证 .env.real-pre 开关基线（参考 docs/deploy/08-real-pre参数开关契约.md）
-ENV_FILE=/opt/saas/env/.env.real-pre ./scripts/real-pre-startup-check.sh
-
-ENV_FILE=/opt/saas/env/.env.real-pre ./scripts/deploy-real-pre.sh
-```
-
-部署后检查：
+本地修改必须通过 PR 合并到 `main`，再创建 `main -> release/real-pre` 发布提升 PR。不要把任务分支或 Gitee 镜像作为 real-pre 发布源。
 
 ```bash
-curl -fsS http://127.0.0.1:8081/api/system/health
-curl -fsS http://127.0.0.1:3001/healthz
+git switch -c codex/<short-task-name> main
+git push origin codex/<short-task-name>
+# 创建 PR 到 main；发布时再通过 PR 提升到 release/real-pre
 ```
 
-## 本地更新后如何同步到服务器
-
-本地修改必须先提交并推送，服务器再拉取。未提交的工作区改动不会被服务器获取。
-
-本地执行：
-
-```bash
-cd D:/Projects/SAAS
-git status
-git add <本次修改文件>
-git commit -m "描述本次修改"
-git push gitee feature/auth-system
-```
-
-服务器执行：
-
-```bash
-ssh saas
-cd /opt/saas/app
-git remote get-url gitee >/dev/null 2>&1 || git remote add gitee https://gitee.com/cao-jianing463/saas.git
-git fetch gitee
-git pull --ff-only
-ENV_FILE=/opt/saas/env/.env.real-pre ./scripts/real-pre-startup-check.sh
-ENV_FILE=/opt/saas/env/.env.real-pre ./scripts/deploy-real-pre.sh
-```
-
-如服务器没有 `saas` SSH 别名，则使用实际登录方式，例如 `ssh root@服务器IP`。
+Jenkins 发布队列负责 checkout、SHA 校验、迁移、部署、健康检查、业务验收和回滚证据。
 
 ## 只有服务器无域名时
 

@@ -1,3 +1,7 @@
+# 使用边界
+
+> 本清单不作为日常发布教程。日常 real-pre 发布必须由 Jenkins `saas-real-pre-cd` 执行；本清单仅供经批准的 Break-glass 恢复或审计对照使用。不得执行 `docker compose down -v`，不得用 mock 配置替代真实验收。
+
 # real-pre 全过程命令清单
 
 ## 适用场景
@@ -12,8 +16,8 @@
 
 | 项目 | 当前值 |
 | --- | --- |
-| 仓库 | 优先 `https://gitee.com/cao-jianing463/saas.git`；GitHub 远端为 `https://github.com/laoliu-463/saas.git` |
-| 部署分支 | `feature/auth-system` |
+| 仓库 | `https://github.com/laoliu-463/saas.git` |
+| 部署分支 | `release/real-pre`（仅限 Break-glass） |
 | Compose 文件 | `docker-compose.real-pre.yml` |
 | Compose project | `saas-active` |
 | 服务器 env | `/opt/saas/env/.env.real-pre` |
@@ -84,7 +88,7 @@ ssh saas
 未配置别名时：
 
 ```bash
-ssh root@服务器IP
+按私有 Runbook 使用经批准的部署账号连接服务器
 ```
 
 如果不使用 `root`，用实际部署用户登录：
@@ -156,9 +160,9 @@ docker compose version
 
 ```bash
 cd /opt/saas
-git clone -o gitee -b feature/auth-system https://gitee.com/cao-jianing463/saas.git app
+git clone -o origin -b release/real-pre https://github.com/laoliu-463/saas.git app
 cd /opt/saas/app
-git pull --ff-only
+git pull --ff-only origin release/real-pre
 git rev-parse --short HEAD
 ```
 
@@ -166,24 +170,13 @@ git rev-parse --short HEAD
 
 ```bash
 cd /opt/saas/app
-git remote get-url gitee >/dev/null 2>&1 || git remote add gitee https://gitee.com/cao-jianing463/saas.git
-git fetch gitee
-git checkout feature/auth-system
-git pull --ff-only
+git fetch origin
+git checkout release/real-pre
+git pull --ff-only origin release/real-pre
 git rev-parse --short HEAD
 ```
 
-本地更新同步到服务器时，先在本地提交并推送：
-
-```bash
-cd D:/Projects/SAAS
-git status
-git add <本次修改文件>
-git commit -m "描述本次修改"
-git push gitee feature/auth-system
-```
-
-再在服务器执行上面的 `git fetch gitee && git pull --ff-only`。
+日常更新不得从本地直接推送到服务器；必须先合并到 `main`，再通过发布提升 PR 进入 `release/real-pre`，最后由 Jenkins 发布。Break-glass 只能使用已批准的 `release/real-pre` SHA 或制品。
 
 查看最近提交，记录可回滚版本：
 
@@ -759,8 +752,7 @@ ROLLBACK_REF=上一个稳定commit ENV_FILE=/opt/saas/env/.env.real-pre ./script
 
 ```bash
 cd /opt/saas/app
-git remote get-url gitee >/dev/null 2>&1 || git remote add gitee https://gitee.com/cao-jianing463/saas.git
-git fetch gitee
+git fetch origin
 git checkout 上一个稳定commit
 ENV_FILE=/opt/saas/env/.env.real-pre PROJECT_NAME=saas-active ./scripts/deploy-real-pre.sh
 ```
@@ -785,7 +777,7 @@ ENV_FILE=/opt/saas/env/.env.real-pre PROJECT_NAME=saas-active ./scripts/health-c
 Jenkins 默认参数：
 
 ```text
-DEPLOY_BRANCH=feature/auth-system
+DEPLOY_BRANCH=release/real-pre
 RUN_REAL_PRE_E2E=false
 ```
 
