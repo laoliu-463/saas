@@ -34,16 +34,53 @@ public class SampleCooperationActionPolicy {
             UUID ownerUserId,
             UUID currentUserId,
             Object roleCodes) {
+        // PR #fix-cooperation-action-availability: 前端 modal "通过合作单" 按钮
+        // 永远显示导致用户在 PENDING_AUDIT → SHIPPING 之后重复点击
+        // 触发后端 ensureTransition(SHIPPING, PENDING_AUDIT) 拒绝。
+        // 这里按 status 严格返回 availability，前端据此隐藏不可用按钮。
         LinkedHashMap<String, SampleActionAvailabilityVO> actions = new LinkedHashMap<>();
-        actions.put(APPROVE, SampleActionAvailabilityVO.available());
-        actions.put(REJECT, SampleActionAvailabilityVO.available());
-        actions.put(EDIT, SampleActionAvailabilityVO.available());
-        actions.put(PROGRESS, SampleActionAvailabilityVO.available());
+
+        // APPROVE: 仅 PENDING_AUDIT 可通过（推到 PENDING_SHIP）
+        actions.put(APPROVE, actionFor(status, SampleStatus.PENDING_AUDIT));
+
+        // REJECT: 仅 PENDING_AUDIT 可驳回（推到 REJECTED）
+        actions.put(REJECT, actionFor(status, SampleStatus.PENDING_AUDIT));
+
+        // EDIT: 与 ensureCanEdit 同语义（已有 EDITABLE_STATUSES）
+        actions.put(EDIT, inSet(status, EDITABLE_STATUSES) ? SampleActionAvailabilityVO.available() : SampleActionAvailabilityVO.unavailable("当前状态不允许编辑合作详情"));
+
+        // PROGRESS: 业务方在 PENDING_SHIP 点 "已发货" 推到 SHIPPING
+        actions.put(PROGRESS, actionFor(status, SampleStatus.PENDING_SHIP));
+
+        // COPY_LINK / COPY_ORDER / NOTE: 任意状态可用（不是状态机操作）
         actions.put(COPY_LINK, SampleActionAvailabilityVO.available());
         actions.put(COPY_ORDER, SampleActionAvailabilityVO.available());
-        actions.put(COMPLAIN, SampleActionAvailabilityVO.unavailable("投诉提交能力暂不可用"));
         actions.put(NOTE, SampleActionAvailabilityVO.available());
+
+        // COMPLAIN: 暂不可用（功能未上线）
+        actions.put(COMPLAIN, SampleActionAvailabilityVO.unavailable("投诉提交能力暂不可用"));
+
         return actions;
+    }
+
+    /**
+     * 状态匹配检查：current 等于 expected 时返回 available，否则返回 unavailable。
+     */
+    private static SampleActionAvailabilityVO actionFor(SampleStatus current, SampleStatus expected) {
+        if (current == expected) {
+            return SampleActionAvailabilityVO.available();
+        }
+        String label = expected == null ? "未知" : expected.name();
+        String currentLabel = current == null ? "未知" : current.name();
+        return SampleActionAvailabilityVO.unavailable(
+                String.format("当前状态为【%s】，该操作仅在【%s】状态可用", currentLabel, label));
+    }
+
+    /**
+     * 集合包含检查
+     */
+    private static boolean inSet(SampleStatus status, Set<SampleStatus> set) {
+        return status != null && set.contains(status);
     }
 
     public void ensureCanEdit(

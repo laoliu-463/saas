@@ -33,8 +33,30 @@ public final class SampleStateMachine {
 
     public static void ensureTransition(SampleStatus current, SampleStatus expected) {
         if (current != expected) {
-            throw BusinessException.stateInvalid("Current status does not allow this action: expected "
-                    + expected.getApiStatus() + " but was " + current.getApiStatus());
+            // PR #fix-cooperation-action-availability: 中文化 + 业务可读
+            // 例如：「合作单当前状态为【SHIPPING】（发货中），该操作仅在【PENDING_AUDIT】（待审核）状态可用」
+            String currentZh = statusToChinese(current);
+            String expectedZh = statusToChinese(expected);
+            String message = String.format(
+                    "合作单当前状态为【%s】（%s），该操作仅在【%s】（%s）状态可用",
+                    current.getApiStatus(), currentZh,
+                    expected.getApiStatus(), expectedZh);
+            throw BusinessException.stateInvalid(message);
+        }
+    }
+
+    private static String statusToChinese(SampleStatus status) {
+        if (status == null) return "未知";
+        switch (status) {
+            case PENDING_AUDIT: return "待审核";
+            case PENDING_SHIP:  return "待发货";
+            case SHIPPING:      return "发货中";
+            case DELIVERED:     return "已签收";
+            case PENDING_HOMEWORK: return "待交作业";
+            case COMPLETED:     return "已完成";
+            case REJECTED:      return "已驳回";
+            case CLOSED:        return "已关闭";
+            default:            return status.name();
         }
     }
 
