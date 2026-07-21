@@ -2,34 +2,24 @@
 
 ## Metadata
 
-- Time: 2026-07-21 20:15:18 +08:00
+- Time: 2026-07-21 20:22:47 +08:00
 - Environment: real-pre
 - Scope: docs
 - Branch: chore/developer-flow-simple
-- Commit: 4628024b
+- Commit: 9d450ab3
 - Owned worktree: dirty
 - Deploy remote: false
 
 ## Owned Files
 
 ~~~text
-docs/runbooks/break-glass.md
-docs/runbooks/ci-cd-maintenance.md
-docs/runbooks/database-migration.md
-docs/runbooks/README.md
-docs/runbooks/real-pre-release.md
-docs/runbooks/rollback.md
+harness/package-lock.json
 ~~~
 
 ## Owned Git Status
 
 ~~~text
-?? docs/runbooks/README.md
-?? docs/runbooks/break-glass.md
-?? docs/runbooks/ci-cd-maintenance.md
-?? docs/runbooks/database-migration.md
-?? docs/runbooks/real-pre-release.md
-?? docs/runbooks/rollback.md
+M harness/package-lock.json
 ~~~
 
 ## Build Result
