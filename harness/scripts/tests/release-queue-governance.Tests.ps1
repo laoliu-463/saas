@@ -29,7 +29,7 @@ Describe 'real-pre single release queue contract' {
 
     It 'queues builds without aborting and holds one cross-job deployment lock' {
         $jenkinsfile | Should Match 'disableConcurrentBuilds\(abortPrevious:\s*false\)'
-        # The previous `lock(resource: 'saas-real-pre-deploy')` directive
+          # The previous `lock(resource: 'saas-real-pre-deploy')` directive
         # relied on the Lockable Resources plugin, which is not installed.
         # The contract is now enforced via flock(1) inside the canonical
         # release entry script, so we check for the wrapper rather than
@@ -38,8 +38,8 @@ Describe 'real-pre single release queue contract' {
         $jenkinsfile | Should Match ([regex]::Escape('scripts/cd/release-real-pre.sh'))
         $releaseScript | Should Match '\bflock\b'
         # saas-real-pre-deploy must appear in at least the wrapper (lock file
-        # name) and the Jenkinsfile comment that explains the wrapper.
-        ([regex]::Matches($releaseScript, 'saas-real-pre-deploy').Count) | Should BeGreaterThan 0
+          # name) and the Jenkinsfile comment that explains the wrapper.
+          ([regex]::Matches($releaseScript, 'saas-real-pre-deploy').Count) | Should BeGreaterThan 0
     }
 
     It 'rejects stale releases unless rollback is explicitly approved' {

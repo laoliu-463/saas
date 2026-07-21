@@ -19,6 +19,13 @@ pipeline {
         booleanParam(name: 'DEPLOY_REAL_PRE', defaultValue: false, description: 'Explicit approval required to deploy real-pre.')
         booleanParam(name: 'CONFIRM_REAL_PROMOTION_WRITE', defaultValue: false, description: 'Required only when real-pre promotion-write switches are enabled.')
         booleanParam(name: 'ROLLBACK_APPROVED', defaultValue: false, description: 'Explicit approval required when the target is not a descendant of the deployed commit.')
+        // PR-D: offline-recovery escape hatch. Default false: images are
+        // pulled by digest from GHCR (built by .github/workflows/image-build.yml
+        // on push to main). Set true ONLY when a SHA was tagged locally
+        // without going through GHA (e.g. a server-only tag), which
+        // re-enables the legacy Backend Package / Frontend Build stages
+        // for one-off builds.
+        booleanParam(name: 'FORCE_LOCAL_IMAGE_BUILD', defaultValue: false, description: 'BREAK-GLASS: re-enable local Maven + pnpm + docker build. Use only when no GHCR digest is available for IMAGE_TAG.')
     }
 
     environment {
@@ -36,6 +43,10 @@ pipeline {
         BUILD_BRANCH = ''
         BACKEND_IMAGE_DIGEST = ''
         FRONTEND_IMAGE_DIGEST = ''
+        // PR-D: GHCR image coordinates. Jenkinsfile pulls by sha256 digest.
+        GHCR_OWNER = 'laoliu-463'
+        GHCR_BACKEND_IMAGE  = 'ghcr.io/laoliu-463/saas-backend'
+        GHCR_FRONTEND_IMAGE = 'ghcr.io/laoliu-463/saas-frontend'
     }
 
     stages {
@@ -67,21 +78,21 @@ pipeline {
                 }
                 sh '''#!/usr/bin/env bash
                 set -eu
-                mkdir -p runtime/qa/out/jenkins \
-                  /var/lib/jenkins/.cache/saas-real-pre-cd/m2 \
-                  /var/lib/jenkins/.cache/saas-real-pre-cd/npm \
-                  /var/lib/jenkins/.cache/saas-real-pre-cd/pnpm-store
+                  mkdir -p runtime/qa/out/jenkins \
+                    /var/lib/jenkins/.cache/saas-real-pre-cd/m2 \
+                    /var/lib/jenkins/.cache/saas-real-pre-cd/npm \
+                    /var/lib/jenkins/.cache/saas-real-pre-cd/pnpm-store
                 full_commit="$(git rev-parse HEAD)"
                 image_tag="$full_commit"
                 build_branch="${DEPLOY_BRANCH:-release/real-pre}"
                 {
-                  printf 'FULL_COMMIT=%s\n' "$full_commit"
-                  printf 'IMAGE_TAG=%s\n' "$image_tag"
-                  printf 'BUILD_BRANCH=%s\n' "$build_branch"
+                  printf 'FULL_COMMIT=%s\\n' "$full_commit"
+                  printf 'IMAGE_TAG=%s\\n' "$image_tag"
+                  printf 'BUILD_BRANCH=%s\\n' "$build_branch"
                 } > runtime/qa/out/jenkins/cd-env.sh
-                printf '%s\n' "$full_commit" > runtime/qa/out/jenkins/commit.txt
-                printf '%s\n' "$build_branch" > runtime/qa/out/jenkins/branch.txt
-                printf '%s\n' "$image_tag" > runtime/qa/out/jenkins/image-tag.txt
+                printf '%s\\n' "$full_commit" > runtime/qa/out/jenkins/commit.txt
+                printf '%s\\n' "$build_branch" > runtime/qa/out/jenkins/branch.txt
+                printf '%s\\n' "$image_tag" > runtime/qa/out/jenkins/image-tag.txt
                 echo "CD source: ${CD_GIT_URL}"
                 echo "CD branch: ${build_branch}"
                 echo "CD commit: ${full_commit}"
@@ -133,7 +144,7 @@ pipeline {
                 target_tree="$(git rev-parse "$FULL_COMMIT^{tree}")"
                 source_main_sha="$(git rev-list origin/main | while read -r candidate; do
                   if [ "$(git rev-parse "$candidate^{tree}")" = "$target_tree" ]; then
-                    printf '%s\n' "$candidate"
+                    printf '%s\\n' "$candidate"
                     break
                   fi
                 done)"
@@ -141,8 +152,8 @@ pipeline {
                   echo "ERROR: release tree does not match any commit reachable from main."
                   exit 1
                 fi
-                printf 'SOURCE_MAIN_SHA=%s\n' "$source_main_sha" >> runtime/qa/out/jenkins/cd-env.sh
-                printf '%s\n' "$source_main_sha" > runtime/qa/out/jenkins/source-main-sha.txt
+                printf 'SOURCE_MAIN_SHA=%s\\n' "$source_main_sha" >> runtime/qa/out/jenkins/cd-env.sh
+                printf '%s\\n' "$source_main_sha" > runtime/qa/out/jenkins/source-main-sha.txt
                 ln -sfn "$ENV_FILE" .env.real-pre
                 chmod +x scripts/*.sh || true
 
@@ -218,29 +229,29 @@ pipeline {
                   exit 1
                 fi
 
-                for key in \
-                  DB_PASSWORD \
-                  ADMIN_PASSWORD \
-                  REDIS_PASSWORD \
-                  JWT_SECRET \
-                  CORS_ALLOWED_ORIGIN_PATTERNS \
-                  DOUYIN_BASE_URL \
-                  DOUYIN_APP_ID \
-                  DOUYIN_CLIENT_KEY \
-                  DOUYIN_CLIENT_SECRET \
-                  DOUYIN_OAUTH_REDIRECT_URI \
-                  DOUYIN_OAUTH_FRONTEND_SUCCESS_URL \
-                  DOUYIN_OAUTH_FRONTEND_FAILURE_URL \
-                  LOGISTICS_KD100_CUSTOMER \
-                  LOGISTICS_KD100_KEY \
-                  LOGISTICS_KD100_CALLBACK_URL \
+                for key in \\
+                  DB_PASSWORD \\
+                  ADMIN_PASSWORD \\
+                  REDIS_PASSWORD \\
+                  JWT_SECRET \\
+                  CORS_ALLOWED_ORIGIN_PATTERNS \\
+                  DOUYIN_BASE_URL \\
+                  DOUYIN_APP_ID \\
+                  DOUYIN_CLIENT_KEY \\
+                  DOUYIN_CLIENT_SECRET \\
+                  DOUYIN_OAUTH_REDIRECT_URI \\
+                  DOUYIN_OAUTH_FRONTEND_SUCCESS_URL \\
+                  DOUYIN_OAUTH_FRONTEND_FAILURE_URL \\
+                  LOGISTICS_KD100_CUSTOMER \\
+                  LOGISTICS_KD100_KEY \\
+                  LOGISTICS_KD100_CALLBACK_URL \\
                   LOGISTICS_KD100_CALLBACK_SALT; do
                   require_env "$key"
                 done
 
                 docker version
                 docker compose version
-                IMAGE_TAG="$IMAGE_TAG" COMPOSE_PROJECT_NAME="$PROJECT_NAME" \
+                IMAGE_TAG="$IMAGE_TAG" COMPOSE_PROJECT_NAME="$PROJECT_NAME" \\
                   docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" config --quiet
                 echo "Preflight guard passed without printing secrets."
                 '''
@@ -257,25 +268,33 @@ pipeline {
                 set -eu
                 . runtime/qa/out/jenkins/cd-env.sh
                 docker_gid="$(stat -c '%g' /var/run/docker.sock)"
-                docker run --rm \
-                  --user "$(id -u):$(id -g)" \
-                  --group-add "$docker_gid" \
-                  --network host \
-                  -e HOME=/tmp \
-                  -e MAVEN_CONFIG=/tmp/.m2 \
-                  -e TESTCONTAINERS_HOST_OVERRIDE=127.0.0.1 \
-                  -e TESTCONTAINERS_RYUK_DISABLED=true \
-                  -v /var/run/docker.sock:/var/run/docker.sock \
-                  -v "$PWD":/workspace \
-                  -v /var/lib/jenkins/.cache/saas-real-pre-cd/m2:/tmp/.m2 \
-                  -w /workspace/backend \
-                  maven:3.9-eclipse-temurin-17 \
+                docker run --rm \\
+                  --user "$(id -u):$(id -g)" \\
+                  --group-add "$docker_gid" \\
+                  --network host \\
+                  -e HOME=/tmp \\
+                  -e MAVEN_CONFIG=/tmp/.m2 \\
+                  -e TESTCONTAINERS_HOST_OVERRIDE=127.0.0.1 \\
+                  -e TESTCONTAINERS_RYUK_DISABLED=true \\
+                  -v /var/run/docker.sock:/var/run/docker.sock \\
+                  -v "$PWD":/workspace \\
+                  -v /var/lib/jenkins/.cache/saas-real-pre-cd/m2:/tmp/.m2 \\
+                  -w /workspace/backend \\
+                  maven:3.9-eclipse-temurin-17 \\
                   mvn -B clean test
                 '''
             }
         }
 
         stage('Backend Package') {
+            // PR-D: removed from the default pipeline. The backend
+            // image is now built by .github/workflows/image-build.yml
+            // on push to main and published to GHCR; the 'Pull images
+            // by digest' stage below retrieves it. This stage is
+            // preserved with a `when` gate so it can be re-enabled
+            // on a one-off basis via the FORCE_LOCAL_IMAGE_BUILD
+            // parameter (set true for offline recovery, etc.).
+            when { expression { return params.FORCE_LOCAL_IMAGE_BUILD } }
             options {
                 timeout(time: 10, unit: 'MINUTES')
             }
@@ -285,14 +304,14 @@ pipeline {
                 set -eu
                 . runtime/qa/out/jenkins/cd-env.sh
                 rm -rf backend/target
-                docker run --rm \
-                  --user "$(id -u):$(id -g)" \
-                  -e HOME=/tmp \
-                  -e MAVEN_CONFIG=/tmp/.m2 \
-                  -v "$PWD":/workspace \
-                  -v /var/lib/jenkins/.cache/saas-real-pre-cd/m2:/tmp/.m2 \
-                  -w /workspace/backend \
-                  maven:3.9-eclipse-temurin-17 \
+                docker run --rm \\
+                  --user "$(id -u):$(id -g)" \\
+                  -e HOME=/tmp \\
+                  -e MAVEN_CONFIG=/tmp/.m2 \\
+                  -v "$PWD":/workspace \\
+                  -v /var/lib/jenkins/.cache/saas-real-pre-cd/m2:/tmp/.m2 \\
+                  -w /workspace/backend \\
+                  maven:3.9-eclipse-temurin-17 \\
                   mvn -B clean package -DskipTests
                 ls -lh backend/target/*.jar
                 '''
@@ -300,6 +319,9 @@ pipeline {
         }
 
         stage('Frontend Build') {
+            // PR-D: removed from the default pipeline; see Backend
+            // Package comment above.
+            when { expression { return params.FORCE_LOCAL_IMAGE_BUILD } }
             options {
                 timeout(time: 10, unit: 'MINUTES')
             }
@@ -319,7 +341,15 @@ pipeline {
             }
         }
 
-        stage('Docker Build') {
+        stage('Pull images by digest') {
+            // PR-D: replaces the old 'Docker Build' stage. The
+            // backend and frontend images were already built and
+            // published to GHCR by .github/workflows/image-build.yml
+            // (triggered by the push to main that this release is
+            // based on). We pull by sha256 digest so the bytes on
+            // the real-pre host are guaranteed to be exactly what
+            // GHA produced.
+            when { expression { return !params.FORCE_LOCAL_IMAGE_BUILD } }
             options {
                 timeout(time: 10, unit: 'MINUTES')
             }
@@ -328,28 +358,80 @@ pipeline {
                 sh '''#!/usr/bin/env bash
                 set -eu
                 . runtime/qa/out/jenkins/cd-env.sh
-                test -f backend/target/*.jar
-                echo "Building backend and frontend images with tag: $IMAGE_TAG"
-                IMAGE_TAG="$IMAGE_TAG" COMPOSE_PROJECT_NAME="$PROJECT_NAME" \
-                  docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" build backend-real-pre frontend-real-pre
-                docker image inspect "colonel-saas/backend:$IMAGE_TAG" >/dev/null
-                docker image inspect "colonel-saas/frontend:$IMAGE_TAG" >/dev/null
-                test "$(docker image inspect "colonel-saas/backend:$IMAGE_TAG" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')" = "$FULL_COMMIT"
-                test "$(docker image inspect "colonel-saas/frontend:$IMAGE_TAG" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')" = "$FULL_COMMIT"
-                backend_image_digest="$(docker image inspect "colonel-saas/backend:$IMAGE_TAG" --format '{{.Id}}')"
-                frontend_image_digest="$(docker image inspect "colonel-saas/frontend:$IMAGE_TAG" --format '{{.Id}}')"
-                for image_digest in "$backend_image_digest" "$frontend_image_digest"; do
-                  if ! printf '%s' "$image_digest" | grep -Eq '^sha256:[0-9a-f]{64}$'; then
-                    echo "ERROR: Docker image digests must be content-addressed sha256 values."
+                # The GHA image-build workflow writes a JSON file to
+                # releases/<sha>/image-digests.json on main. The
+                # checkout step checked out $BUILD_BRANCH (which IS
+                # main) so that file is available locally. If the
+                # file is missing (e.g. someone re-tagged the image
+                # manually), fail closed. The operator can override
+                # via FORCE_LOCAL_IMAGE_BUILD=true to use the legacy
+                # Backend Package + Frontend Build + Docker Build
+                # stages instead.
+                digest_file="releases/${IMAGE_TAG}/image-digests.json"
+                if [ ! -f "$digest_file" ]; then
+                  echo "ERROR: missing image-digests.json at $digest_file"
+                  echo "The GHA image-build.yml workflow must have published"
+                  echo "the digests for $IMAGE_TAG before this CD can run."
+                  echo "If the image was tagged locally without GHA, set"
+                  echo "FORCE_LOCAL_IMAGE_BUILD=true on this Jenkins build."
+                  exit 1
+                fi
+                echo "Reading digests from $digest_file"
+                cat "$digest_file"
+
+                # Parse the JSON without depending on jq (it may not
+                # be installed on the Jenkins host). Python is always
+                # present because the real-pre machine runs the
+                # backend JVM.
+                read BACKEND_IMAGE BACKEND_DIGEST FRONTEND_IMAGE FRONTEND_DIGEST < <(
+                  python - "$digest_file" <<'PY'
+                import json, sys
+                with open(sys.argv[1], encoding="utf-8") as f:
+                    d = json.load(f)
+                print(d["backend"]["image"])
+                print(d["backend"]["digest"])
+                print(d["frontend"]["image"])
+                print(d["frontend"]["digest"])
+                PY
+                )
+
+                for d in "$BACKEND_DIGEST" "$FRONTEND_DIGEST"; do
+                  if ! printf '%s' "$d" | grep -Eq '^sha256:[0-9a-f]{64}$'; then
+                    echo "ERROR: digests must be content-addressed sha256 values, got: $d"
                     exit 1
                   fi
                 done
+
+                echo "Pulling backend:  ${BACKEND_IMAGE}@${BACKEND_DIGEST}"
+                docker pull "${BACKEND_IMAGE}@${BACKEND_DIGEST}"
+                echo "Pulling frontend: ${FRONTEND_IMAGE}@${FRONTEND_DIGEST}"
+                docker pull "${FRONTEND_IMAGE}@${FRONTEND_DIGEST}"
+
+                # Tag the pulled images with the SHA so docker compose
+                # can reference them by tag. The local tag is just a
+                # label; digest remains the source of truth.
+                docker tag "${BACKEND_IMAGE}@${BACKEND_DIGEST}"  "colonel-saas/backend:${IMAGE_TAG}"
+                docker tag "${FRONTEND_IMAGE}@${FRONTEND_DIGEST}" "colonel-saas/frontend:${IMAGE_TAG}"
+
+                # Verify the OCI labels match the expected commit SHA.
+                actual_backend_rev="$(docker image inspect "colonel-saas/backend:${IMAGE_TAG}" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')"
+                actual_frontend_rev="$(docker image inspect "colonel-saas/frontend:${IMAGE_TAG}" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')"
+                test "$actual_backend_rev"  = "$FULL_COMMIT" || { echo "ERROR: backend image revision $actual_backend_rev != $FULL_COMMIT"; exit 1; }
+                test "$actual_frontend_rev" = "$FULL_COMMIT" || { echo "ERROR: frontend image revision $actual_frontend_rev != $FULL_COMMIT"; exit 1; }
+
+                # Capture the actual local image IDs (which ARE the
+                # digest since the image was pulled by digest).
+                backend_image_digest="$(docker image inspect "colonel-saas/backend:${IMAGE_TAG}" --format '{{.Id}}')"
+                frontend_image_digest="$(docker image inspect "colonel-saas/frontend:${IMAGE_TAG}" --format '{{.Id}}')"
+                test "$backend_image_digest"  = "$BACKEND_DIGEST"  || { echo "ERROR: backend local digest $backend_image_digest != $BACKEND_DIGEST"; exit 1; }
+                test "$frontend_image_digest" = "$FRONTEND_DIGEST" || { echo "ERROR: frontend local digest $frontend_image_digest != $FRONTEND_DIGEST"; exit 1; }
+
                 {
-                  printf 'BACKEND_IMAGE_DIGEST=%s\n' "$backend_image_digest"
-                  printf 'FRONTEND_IMAGE_DIGEST=%s\n' "$frontend_image_digest"
+                  printf 'BACKEND_IMAGE_DIGEST=%s\\n'  "$backend_image_digest"
+                  printf 'FRONTEND_IMAGE_DIGEST=%s\\n' "$frontend_image_digest"
                 } >> runtime/qa/out/jenkins/cd-env.sh
-                printf '%s\n' "$backend_image_digest" > runtime/qa/out/jenkins/backend-image-digest.txt
-                printf '%s\n' "$frontend_image_digest" > runtime/qa/out/jenkins/frontend-image-digest.txt
+                printf '%s\\n' "$backend_image_digest"  > runtime/qa/out/jenkins/backend-image-digest.txt
+                printf '%s\\n' "$frontend_image_digest" > runtime/qa/out/jenkins/frontend-image-digest.txt
                 '''
             }
         }
@@ -363,7 +445,7 @@ pipeline {
                 sh '''#!/usr/bin/env bash
                 set -eu
                 . runtime/qa/out/jenkins/cd-env.sh
-                IMAGE_TAG="$IMAGE_TAG" COMPOSE_PROJECT_NAME="$PROJECT_NAME" \
+                IMAGE_TAG="$IMAGE_TAG" COMPOSE_PROJECT_NAME="$PROJECT_NAME" \\
                   docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" config --quiet
                 echo "docker compose config passed for image tag $IMAGE_TAG"
                 '''
@@ -423,9 +505,9 @@ pipeline {
                 fi
 
                 RUN_DB_MIGRATIONS=false
-                if ! git diff --quiet "$current_sha" "$FULL_COMMIT" -- \
-                  backend/src/main/resources/db/migration \
-                  ':(glob)backend/src/main/resources/db/*.sql' \
+                if ! git diff --quiet "$current_sha" "$FULL_COMMIT" -- \\
+                  backend/src/main/resources/db/migration \\
+                  ':(glob)backend/src/main/resources/db/*.sql' \\
                   scripts/run-real-pre-db-migrations.sh; then
                   RUN_DB_MIGRATIONS=true
                 fi
@@ -433,11 +515,11 @@ pipeline {
                 # wrapper) are intentionally NOT in the diff pathspec, so a
                 # wrapper change does not trigger an unnecessary DB migration.
                 {
-                  printf 'CURRENT_SHA=%s\n' "$current_sha"
-                  printf 'RUN_DB_MIGRATIONS=%s\n' "$RUN_DB_MIGRATIONS"
+                  printf 'CURRENT_SHA=%s\\n' "$current_sha"
+                  printf 'RUN_DB_MIGRATIONS=%s\\n' "$RUN_DB_MIGRATIONS"
                 } >> runtime/qa/out/jenkins/cd-env.sh
-                printf '%s\n' "$current_sha" > runtime/qa/out/jenkins/current-sha.txt
-                printf '%s\n' "$RUN_DB_MIGRATIONS" > runtime/qa/out/jenkins/run-db-migrations.txt
+                printf '%s\\n' "$current_sha" > runtime/qa/out/jenkins/current-sha.txt
+                printf '%s\\n' "$RUN_DB_MIGRATIONS" > runtime/qa/out/jenkins/run-db-migrations.txt
                 echo "Release order guard passed: $current_sha -> $FULL_COMMIT; RUN_DB_MIGRATIONS=$RUN_DB_MIGRATIONS"
                 '''
             }
@@ -454,24 +536,24 @@ pipeline {
                 . runtime/qa/out/jenkins/cd-env.sh
                 if [ "$RUN_DB_MIGRATIONS" != "true" ]; then
                   echo "Database work skipped: no migration inputs changed" | tee runtime/qa/out/jenkins/database-migration.txt
-                  printf '%s\n' "SKIPPED: no migration inputs changed" > runtime/qa/out/jenkins/database-backup.txt
-                  printf '%s\n' "SKIPPED: no migration inputs changed" > runtime/qa/out/jenkins/schema-precheck.txt
+                  printf '%s\\n' "SKIPPED: no migration inputs changed" > runtime/qa/out/jenkins/database-backup.txt
+                  printf '%s\\n' "SKIPPED: no migration inputs changed" > runtime/qa/out/jenkins/schema-precheck.txt
                   exit 0
                 fi
                 backup_dir="/opt/saas/backups/jenkins-${BUILD_NUMBER:-manual}"
                 mkdir -p "$backup_dir"
 
-                ENV_FILE="$ENV_FILE" COMPOSE_FILE="$COMPOSE_FILE" \
+                  ENV_FILE="$ENV_FILE" COMPOSE_FILE="$COMPOSE_FILE" \
                   COMPOSE_PROJECT_NAME="$PROJECT_NAME" BACKUP_DIR="$backup_dir" \
                   bash scripts/cd/release-real-pre.sh backup | tee runtime/qa/out/jenkins/database-backup.txt
 
                 ENV_FILE="$ENV_FILE" COMPOSE_FILE="$COMPOSE_FILE" \
                   COMPOSE_PROJECT_NAME="$PROJECT_NAME" IMAGE_TAG="$IMAGE_TAG" \
-                  BACKEND_IMAGE_DIGEST="$BACKEND_IMAGE_DIGEST" REQUIRE_PINNED_IMAGE=true \
-                  bash scripts/cd/release-real-pre.sh migrate | tee runtime/qa/out/jenkins/database-migration.txt
+                    BACKEND_IMAGE_DIGEST="$BACKEND_IMAGE_DIGEST" REQUIRE_PINNED_IMAGE=true \
+                    bash scripts/cd/release-real-pre.sh migrate | tee runtime/qa/out/jenkins/database-migration.txt
 
-                REAL_PRE_COMPOSE_ENV="$ENV_FILE" REAL_PRE_COMPOSE_FILE="$COMPOSE_FILE" \
-                  REAL_PRE_COMPOSE_PROJECT="$PROJECT_NAME" \
+                REAL_PRE_COMPOSE_ENV="$ENV_FILE" REAL_PRE_COMPOSE_FILE="$COMPOSE_FILE" \\
+                  REAL_PRE_COMPOSE_PROJECT="$PROJECT_NAME" \\
                   sh scripts/check-real-pre-schema.sh | tee runtime/qa/out/jenkins/schema-precheck.txt
                 '''
             }
@@ -494,7 +576,7 @@ pipeline {
                 docker inspect saas-active-frontend-real-pre-1 --format '{{.Config.Image}}' > runtime/qa/out/jenkins/pre-frontend-image.txt 2>/dev/null || true
 
                 echo "Deploying backend real-pre with schedulers paused, image tag: $IMAGE_TAG"
-                APP_SCHEDULING_ENABLED=false IMAGE_TAG="$IMAGE_TAG" BACKEND_IMAGE_DIGEST="$BACKEND_IMAGE_DIGEST" COMPOSE_PROJECT_NAME="$PROJECT_NAME" \
+                APP_SCHEDULING_ENABLED=false IMAGE_TAG="$IMAGE_TAG" BACKEND_IMAGE_DIGEST="$BACKEND_IMAGE_DIGEST" COMPOSE_PROJECT_NAME="$PROJECT_NAME" \\
                   docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d --no-build --no-deps backend-real-pre
                 touch runtime/qa/out/jenkins/schedulers-paused
 
@@ -537,7 +619,7 @@ pipeline {
                 sh '''#!/usr/bin/env bash
                 set -eu
                 . runtime/qa/out/jenkins/cd-env.sh
-                IMAGE_TAG="$IMAGE_TAG" COMPOSE_PROJECT_NAME="$PROJECT_NAME" \
+                IMAGE_TAG="$IMAGE_TAG" COMPOSE_PROJECT_NAME="$PROJECT_NAME" \\
                   docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d --no-build --no-deps frontend-real-pre
                 '''
             }
@@ -567,7 +649,7 @@ pipeline {
                 sh '''#!/usr/bin/env bash
                 set -eu
                 . runtime/qa/out/jenkins/cd-env.sh
-                APP_SCHEDULING_ENABLED=true IMAGE_TAG="$IMAGE_TAG" BACKEND_IMAGE_DIGEST="$BACKEND_IMAGE_DIGEST" COMPOSE_PROJECT_NAME="$PROJECT_NAME" \
+                APP_SCHEDULING_ENABLED=true IMAGE_TAG="$IMAGE_TAG" BACKEND_IMAGE_DIGEST="$BACKEND_IMAGE_DIGEST" COMPOSE_PROJECT_NAME="$PROJECT_NAME" \\
                   docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d --no-build --no-deps backend-real-pre
                 for _ in $(seq 1 120); do
                   if curl -fsS "$REAL_PRE_BACKEND/api/actuator/health/readiness" | grep -q '"status":"UP"'; then
@@ -604,9 +686,9 @@ pipeline {
 
                 if [ -n "$old_backend_tag" ] && [ "$old_backend_tag" = "$old_frontend_tag" ] && [ -n "$old_backend_image_id" ]; then
                   echo "Rollback image tag: $old_backend_tag"
-                  IMAGE_TAG="$old_backend_tag" BACKEND_IMAGE_DIGEST="$old_backend_image_id" COMPOSE_PROJECT_NAME="$PROJECT_NAME" \
+                  IMAGE_TAG="$old_backend_tag" BACKEND_IMAGE_DIGEST="$old_backend_image_id" COMPOSE_PROJECT_NAME="$PROJECT_NAME" \\
                     docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d --no-build --no-deps backend-real-pre || true
-                  IMAGE_TAG="$old_backend_tag" COMPOSE_PROJECT_NAME="$PROJECT_NAME" \
+                  IMAGE_TAG="$old_backend_tag" COMPOSE_PROJECT_NAME="$PROJECT_NAME" \\
                     docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d --no-build --no-deps frontend-real-pre || true
                   ENV_FILE="$ENV_FILE" COMPOSE_FILE="$COMPOSE_FILE" COMPOSE_PROJECT_NAME="$PROJECT_NAME" bash scripts/health-check.sh || true
                 else
@@ -651,10 +733,10 @@ pipeline {
                 if ! migration_versions="$(docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" exec -T postgres-real-pre sh -lc 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -At -v ON_ERROR_STOP=1 -c "SELECT version FROM flyway_schema_history WHERE success ORDER BY installed_rank;"')"; then evidence_result="FAIL"; fi
                 if ! backend_image_id="$(docker image inspect "colonel-saas/backend:$IMAGE_TAG" --format '{{.Id}}')"; then evidence_result="FAIL"; fi
                 if ! frontend_image_id="$(docker image inspect "colonel-saas/frontend:$IMAGE_TAG" --format '{{.Id}}')"; then evidence_result="FAIL"; fi
-                printf '%s\n' "$backend_health" | grep -q '"status":"UP"' || evidence_result="FAIL"
-                printf '%s\n' "$backend_health" | grep -Eq "\"gitSha\"[[:space:]]*:[[:space:]]*\"$FULL_COMMIT\"" || evidence_result="FAIL"
-                printf '%s\n' "$backend_health" | grep -Eq "\"imageDigest\"[[:space:]]*:[[:space:]]*\"$BACKEND_IMAGE_DIGEST\"" || evidence_result="FAIL"
-                printf '%s\n' "$frontend_version" | grep -Eq "\"gitSha\"[[:space:]]*:[[:space:]]*\"$FULL_COMMIT\"" || evidence_result="FAIL"
+                printf '%s\\n' "$backend_health" | grep -q '"status":"UP"' || evidence_result="FAIL"
+                printf '%s\\n' "$backend_health" | grep -Eq "\\"gitSha\\"[[:space:]]*:[[:space:]]*\\"$FULL_COMMIT\\"" || evidence_result="FAIL"
+                printf '%s\\n' "$backend_health" | grep -Eq "\\"imageDigest\\"[[:space:]]*:[[:space:]]*\\"$BACKEND_IMAGE_DIGEST\\"" || evidence_result="FAIL"
+                printf '%s\\n' "$frontend_version" | grep -Eq "\\"gitSha\\"[[:space:]]*:[[:space:]]*\\"$FULL_COMMIT\\"" || evidence_result="FAIL"
                 test -n "$frontend_health" || evidence_result="FAIL"
                 test "$backend_running_image" = "colonel-saas/backend:$IMAGE_TAG" || evidence_result="FAIL"
                 test "$frontend_running_image" = "colonel-saas/frontend:$IMAGE_TAG" || evidence_result="FAIL"
@@ -669,21 +751,38 @@ pipeline {
                 release_dir="$release_root/$FULL_COMMIT"
                 release_candidate="runtime/qa/out/jenkins/release.json"
                 release_manifest="$release_dir/release.json"
+                # PR-C: emit a release manifest with all the fields required
+                # by scripts/cd/evidence-collect.sh (gitSha, branch,
+                # backendDigest, frontendDigest, migrationVersions, ciRun,
+                # jenkinsBuild, deployResult, previous, rollbackTarget).
+                # The canonical current/previous rotation is now performed
+                # by evidence-collect.sh, not by inline cp/mv.
+                previous_release_sha="$(cat "$release_root/previous.json" 2>/dev/null \\
+                  | grep -Eo '"gitSha"[[:space:]]*:[[:space:]]*"[0-9a-f]{40}"' \\
+                  | head -n 1 | grep -Eo '[0-9a-f]{40}' || true)"
+                [ -n "$previous_release_sha" ] || previous_release_sha="null"
                 cat > "$release_candidate" <<EOF
                 {
                   "gitSha": "$FULL_COMMIT",
-                  "sourceMainSha": "$SOURCE_MAIN_SHA",
                   "branch": "$BUILD_BRANCH",
-                  "backend": {
-                    "tag": "colonel-saas/backend:$IMAGE_TAG",
-                    "digest": "$BACKEND_IMAGE_DIGEST",
-                    "revision": "$backend_revision"
+                  "backendDigest": "$BACKEND_IMAGE_DIGEST",
+                  "frontendDigest": "$FRONTEND_IMAGE_DIGEST",
+                  "migrationVersions": $(printf '%s\\n' "${MIGRATION_VERSIONS:-}" | python -c 'import json,sys; vs=[l.strip() for l in sys.stdin if l.strip()]; print(json.dumps(vs))' 2>/dev/null || echo '[]'),
+                  "ciRun": {
+                    "sha": "$FULL_COMMIT",
+                    "workflow": "ci.yml",
+                    "branch": "release/real-pre"
                   },
-                  "frontend": {
-                    "tag": "colonel-saas/frontend:$IMAGE_TAG",
-                    "digest": "$FRONTEND_IMAGE_DIGEST",
-                    "revision": "$frontend_revision"
-                  }
+                  "jenkinsBuild": {
+                    "job": "${JOB_NAME:-unknown}",
+                    "number": ${BUILD_NUMBER:-0},
+                    "url": "${BUILD_URL:-unknown}"
+                  },
+                  "deployResult": "$evidence_result",
+                  "previous": $previous_release_sha,
+                  "rollbackTarget": $previous_release_sha,
+                  "sourceMainSha": "$SOURCE_MAIN_SHA",
+                  "imageTag": "$IMAGE_TAG"
                 }
 EOF
 
@@ -694,18 +793,20 @@ EOF
                       echo "ERROR: immutable release manifest already exists with different content."
                       evidence_result="FAIL"
                     }
-                  else
-                    install -m 0444 "$release_candidate" "$release_manifest"
                   fi
                 fi
+                # PR-C: route the release manifest through the canonical
+                # evidence-collect.sh entry point. evidence-collect.sh
+                # validates the required fields, copies the manifest to
+                # releases/<sha>/release-manifest.json, and atomically
+                # rotates releases/current.json + releases/previous.json.
+                # This replaces the inline cp/mv block that was here
+                # before; the inline block was a candidate-only path
+                # that did not enforce the schema.
                 if [ "$evidence_result" = "PASS" ]; then
-                  current_sha="$(cat runtime/qa/out/jenkins/current-sha.txt)"
-                  if [ -f "$release_root/current.json" ] && [ "$current_sha" != "$FULL_COMMIT" ]; then
-                    cp "$release_root/current.json" "$release_root/previous.json.tmp"
-                    mv "$release_root/previous.json.tmp" "$release_root/previous.json"
-                  fi
-                  cp "$release_manifest" "$release_root/current.json.tmp"
-                  mv "$release_root/current.json.tmp" "$release_root/current.json"
+                  REPO_ROOT="${REPO_ROOT:-$WORKSPACE}" \\
+                    RELEASES_BASE="$release_root" \\
+                    bash scripts/cd/evidence-collect.sh release-manifest "$FULL_COMMIT" "$release_candidate"
                 fi
 
                 {
@@ -741,14 +842,14 @@ EOF
                   echo
                   echo "## Database Migration Versions"
                   echo '```'
-                  printf '%s\n' "$migration_versions"
+                  printf '%s\\n' "$migration_versions"
                   echo '```'
                   echo
                   echo "## Health"
                   echo '```'
-                  printf '%s\n' "$backend_health"
-                  printf '%s\n' "$frontend_health"
-                  printf '%s\n' "$frontend_version"
+                  printf '%s\\n' "$backend_health"
+                  printf '%s\\n' "$frontend_health"
+                  printf '%s\\n' "$frontend_version"
                   echo '```'
                 } > "$report"
 
@@ -773,7 +874,7 @@ EOF
             mkdir -p runtime/qa/out/jenkins runtime/qa/out "/opt/saas/runtime/qa/out/jenkins-${BUILD_NUMBER:-manual}"
             if [ -f runtime/qa/out/jenkins/schedulers-paused ]; then
               echo "Restoring schedulers after interrupted deployment flow."
-              if APP_SCHEDULING_ENABLED=true IMAGE_TAG="$IMAGE_TAG" BACKEND_IMAGE_DIGEST="$BACKEND_IMAGE_DIGEST" COMPOSE_PROJECT_NAME="$PROJECT_NAME" \
+              if APP_SCHEDULING_ENABLED=true IMAGE_TAG="$IMAGE_TAG" BACKEND_IMAGE_DIGEST="$BACKEND_IMAGE_DIGEST" COMPOSE_PROJECT_NAME="$PROJECT_NAME" \\
                 docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d --no-build --no-deps backend-real-pre; then
                 rm -f runtime/qa/out/jenkins/schedulers-paused
               else
