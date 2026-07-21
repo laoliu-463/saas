@@ -1,0 +1,233 @@
+name: Image build and publish
+
+on:
+  # Build only on push to main, after the CI Gate has approved the
+  # merge. The image tags are the 40-character commit SHA so the
+  # Jenkins real-pre CD can verify it matches FULL_COMMIT exactly.
+  push:
+    branches:
+      - main
+  # Allow manual re-builds (e.g. for verifying a digest after a
+  # historical release). workflow_dispatch requires the user to
+  # supply the SHA explicitly.
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: 'Full 40-character commit SHA to build'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  packages: write
+
+# Re-use the same concurrency group as ci.yml so a rebuild cannot
+# race a CI re-run on the same SHA.
+concurrency:
+  group: image-build-${{ github.event_name }}-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build and publish backend + frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      # GHCR image names. The repo's GitHub owner is hard-coded here;
+      # the SHA is supplied by github.sha for push events or by the
+      # workflow_dispatch input.
+      GHCR_OWNER: laoliu-463
+      BACKEND_IMAGE:  ghcr.io/laoliu-463/saas-backend
+      FRONTEND_IMAGE: ghcr.io/laoliu-463/saas-frontend
+    steps:
+      - name: Resolve SHA to build
+        id: resolve_sha
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            SHA="${{ github.sha }}"
+          else
+            SHA="${{ inputs.sha }}"
+          fi
+          if ! printf '%s' "$SHA" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "ERROR: SHA must be the full 40-character commit SHA, got: $SHA"
+            exit 1
+          fi
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "Resolved SHA: $SHA"
+
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+          ref: ${{ steps.resolve_sha.outputs.sha }}
+
+      - name: Log in to GHCR
+        uses: docker/login-action@343f7c434ad8d16d0c5a78b8d2505d3c4f92f4c5 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@988b474a2862556adc409e4e028c22ce88c2b3a3 # v3
+
+      # ------------------------------------------------------------------
+      # Backend
+      # ------------------------------------------------------------------
+      - name: Build backend image
+        id: build_backend
+        shell: bash
+        env:
+          SHA: ${{ steps.resolve_sha.outputs.sha }}
+        run: |
+          set -euo pipefail
+          BACKEND_TAG="${BACKEND_IMAGE}:${SHA}"
+          docker build \
+            --build-arg "GIT_COMMIT=${SHA}" \
+            --tag "${BACKEND_TAG}" \
+            --tag "${BACKEND_IMAGE}:latest" \
+            --label "org.opencontainers.image.revision=${SHA}" \
+            --label "org.opencontainers.image.source=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}@${SHA}" \
+            --label "org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            -f backend/Dockerfile \
+            backend
+          # Capture the immutable digest and write it to a tmp file.
+          BACKEND_DIGEST="sha256:$(docker inspect --format='{{index .Id}}' "${BACKEND_TAG}" | cut -d: -f2)"
+          echo "backend_digest=${BACKEND_DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "Backend image built: ${BACKEND_TAG}"
+          echo "Backend digest:      ${BACKEND_DIGEST}"
+
+      - name: Push backend image
+        env:
+          SHA: ${{ steps.resolve_sha.outputs.sha }}
+        run: |
+          set -euo pipefail
+          docker push "${BACKEND_IMAGE}:${SHA}"
+          docker push "${BACKEND_IMAGE}@${{ steps.build_backend.outputs.backend_digest }}"
+
+      # ------------------------------------------------------------------
+      # Frontend
+      # ------------------------------------------------------------------
+      - name: Build frontend image
+        id: build_frontend
+        shell: bash
+        env:
+          SHA: ${{ steps.resolve_sha.outputs.sha }}
+        run: |
+          set -euo pipefail
+          FRONTEND_TAG="${FRONTEND_IMAGE}:${SHA}"
+          docker build \
+            --build-arg "GIT_COMMIT=${SHA}" \
+            --build-arg "VITE_ENV_LABEL=REAL-PRE" \
+            --tag "${FRONTEND_TAG}" \
+            --tag "${FRONTEND_IMAGE}:latest" \
+            --label "org.opencontainers.image.revision=${SHA}" \
+            --label "org.opencontainers.image.source=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}@${SHA}" \
+            --label "org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            -f frontend/Dockerfile \
+            frontend
+          FRONTEND_DIGEST="sha256:$(docker inspect --format='{{index .Id}}' "${FRONTEND_TAG}" | cut -d: -f2)"
+          echo "frontend_digest=${FRONTEND_DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "Frontend image built: ${FRONTEND_TAG}"
+          echo "Frontend digest:      ${FRONTEND_DIGEST}"
+
+      - name: Push frontend image
+        env:
+          SHA: ${{ steps.resolve_sha.outputs.sha }}
+        run: |
+          set -euo pipefail
+          docker push "${FRONTEND_IMAGE}:${SHA}"
+          docker push "${FRONTEND_IMAGE}@${{ steps.build_frontend.outputs.frontend_digest }}"
+
+      # ------------------------------------------------------------------
+      # Record digests as a build artifact AND commit them back to the
+      # repository under releases/<sha>/image-digests.json so Jenkins
+      # can read them on the CD side.
+      # ------------------------------------------------------------------
+      - name: Record digests
+        env:
+          SHA: ${{ steps.resolve_sha.outputs.sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p release-artifacts
+          cat > "release-artifacts/image-digests.json" <<EOF
+          {
+            "gitSha": "${SHA}",
+            "branch": "main",
+            "registry": "ghcr.io",
+            "owner": "${GHCR_OWNER}",
+            "backend": {
+              "image": "${BACKEND_IMAGE}",
+              "tag": "${SHA}",
+              "digest": "${{ steps.build_backend.outputs.backend_digest }}"
+            },
+            "frontend": {
+              "image": "${FRONTEND_IMAGE}",
+              "tag": "${SHA}",
+              "digest": "${{ steps.build_frontend.outputs.frontend_digest }}"
+            }
+          }
+          EOF
+          cat "release-artifacts/image-digests.json"
+
+      - name: Commit digests back to repository
+        env:
+          SHA: ${{ steps.resolve_sha.outputs.sha }}
+        run: |
+          set -euo pipefail
+          # Configure the image-build-bot identity (a GitHub App or a
+          # PAT is the alternative; we use GITHUB_TOKEN which has
+          # contents:write on the repo).
+          git config user.name  "image-build-bot"
+          git config user.email "image-build-bot@users.noreply.github.com"
+          # The checkout step used ref:$SHA so HEAD is at $SHA already;
+          # we must move back to main to commit there.
+          git checkout -B main origin/main
+          mkdir -p "releases/${SHA}"
+          cat > "releases/${SHA}/image-digests.json" <<EOF
+          {
+            "gitSha": "${SHA}",
+            "branch": "main",
+            "registry": "ghcr.io",
+            "owner": "laoliu-463",
+            "backend": {
+              "image": "ghcr.io/laoliu-463/saas-backend",
+              "tag": "${SHA}",
+              "digest": "${{ steps.build_backend.outputs.backend_digest }}"
+            },
+            "frontend": {
+              "image": "ghcr.io/laoliu-463/saas-frontend",
+              "tag": "${SHA}",
+              "digest": "${{ steps.build_frontend.outputs.frontend_digest }}"
+            }
+          }
+          EOF
+          git add "releases/${SHA}/image-digests.json"
+          git commit -m "chore(image): record GHCR digests for ${SHA}"
+          git push origin main
+
+      - name: Upload digest artifact
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4
+        with:
+          name: image-digests-${{ steps.resolve_sha.outputs.sha }}
+          path: release-artifacts/image-digests.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Summarize
+        env:
+          SHA: ${{ steps.resolve_sha.outputs.sha }}
+        run: |
+          echo "## Image build summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- SHA:       \`${SHA}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Backend:   \`${BACKEND_IMAGE}@${{ steps.build_backend.outputs.backend_digest }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Frontend:  \`${FRONTEND_IMAGE}@${{ steps.build_frontend.outputs.frontend_digest }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Jenkins can deploy this release with:" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "BACKEND_IMAGE_DIGEST=${{ steps.build_backend.outputs.backend_digest }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "FRONTEND_IMAGE_DIGEST=${{ steps.build_frontend.outputs.frontend_digest }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "IMAGE_TAG=${SHA}" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
