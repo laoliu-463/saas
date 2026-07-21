@@ -2,10 +2,10 @@
 
 ## Metadata
 
-- Time: 2026-07-21 14:45:26 +08:00
+- Time: 2026-07-21 14:55:20 +08:00
 - Action: Plan
 - DryRun: False
-- Reason: fix: prevent invalid cooperation actions after sample status changes
+- Reason: fix sample cooperation action availability
 - Manifest: (none)
 - ArchiveRoot: harness/archive/retired-content
 - AllowSourceCode: False
