@@ -134,7 +134,9 @@ const NODE_FILE_OPS: EvidenceFileOps = {
       if (stat.isDirectory()) return "DIRECTORY";
       return "OTHER";
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return "MISSING";
+      if (["ENOENT", "ENOTDIR"].includes((error as NodeJS.ErrnoException).code ?? "")) {
+        return "MISSING";
+      }
       throw error;
     }
   },

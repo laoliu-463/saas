@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { describe, expect, it, vi } from "vitest";
@@ -42,7 +42,7 @@ function dependencies(status: "PASS" | "FAIL" | "BLOCKED"): {
 
 describe("inspect CLI", () => {
   it("从 CLI 模块位置解析仓库根目录，不受 npm --prefix 改变 cwd 影响", () => {
-    const repoRoot = join("D:", "fixture", "repo");
+    const repoRoot = resolve("fixture", "repo");
     const moduleUrl = pathToFileURL(join(repoRoot, "harness", "src", "cli", "inspect.ts")).href;
 
     expect(resolveInspectRepoRoot(moduleUrl)).toBe(repoRoot);

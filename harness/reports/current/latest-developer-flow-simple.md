@@ -2,24 +2,26 @@
 
 ## Metadata
 
-- Time: 2026-07-21 20:22:47 +08:00
+- Time: 2026-07-21 20:28:37 +08:00
 - Environment: real-pre
 - Scope: docs
 - Branch: chore/developer-flow-simple
-- Commit: 9d450ab3
+- Commit: c3ff0e85
 - Owned worktree: dirty
 - Deploy remote: false
 
 ## Owned Files
 
 ~~~text
-harness/package-lock.json
+harness/src/core/evidence.ts
+harness/tests/inspect-cli.test.ts
 ~~~
 
 ## Owned Git Status
 
 ~~~text
-M harness/package-lock.json
+M harness/src/core/evidence.ts
+ M harness/tests/inspect-cli.test.ts
 ~~~
 
 ## Build Result
