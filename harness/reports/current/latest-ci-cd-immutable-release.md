@@ -1,16 +1,17 @@
 # CI/CD 不可变发布链路证据
 
-- 时间：2026-07-21 17:35:52 +08:00
+- 时间：2026-07-21 18:08:47 +08:00
 - 环境：本地 Windows worktree；目标环境 real-pre；本轮未连接远端服务器
 - 分支：`codex/ci-cd-immutable-release`
-- 代码提交：`0cd662a8154ee2c98c3ade061e96454281761f16`
-- 工作区：证据生成前干净
+- 代码提交：`f79037c9139486ddf446176cee9380cf356c113c`（包含前两次实现提交）
+- 工作区：代码提交后仅有本报告待提交；证据提交后干净
 
 ## 变更结果
 
 - GitHub Actions：按 changed scope 执行检查，统一 `CI Gate`，main 合并后构建并推送 SHA 标记镜像，记录镜像 digest。
 - release：增加 `release/real-pre.json` 合同、迁移输入指纹和发布前校验；实际 manifest 只应进入 `release/real-pre` 提升 PR，当前分支仅保留 shape example。
 - Jenkins：只允许 `release/real-pre`，消费 `repository@sha256:digest`，持有全局部署锁，按备份/迁移/后端/readiness/前端/P0/E2E/记录顺序执行；无服务器源码构建。
+- 失败回滚：新增 `scripts/cd/rollback-real-pre.sh`；部署开始后，任一 readiness、前端、P0/E2E、调度恢复、最终健康检查、超时或中止都在锁内统一恢复旧 digest，并使用 `deployment-started`、`rollback-completed`、`release-completed`、`schedulers-restored` 状态文件防止锁外用新镜像补救。
 - Harness：拆分 inspect、verify、evidence、release verify、显式 commit、显式 push；`agent-do` 不再隐藏提交、推送或远端部署。
 - 直连部署脚本：保留 break-glass，但必须显式提供 `BREAK_GLASS_APPROVED=true` 和原因；日常路径不使用 SSH。
 
@@ -21,11 +22,12 @@
 - Shell 语法：PASS（数据库迁移、部署、回滚脚本）。
 - PowerShell AST：PASS（harness/scripts 下脚本）。
 - Docker Compose config：PASS；使用 `.env.real-pre.example` 仅做配置解析，未启动容器。
-- Pester：PASS，75 passed / 0 failed / 0 skipped。
+- Pester：PASS，80 passed / 0 failed / 0 skipped；新增五类锁内失败回滚合同测试。
 - Harness limits：`TASK_GATE=PASS`；`REPOSITORY_HEALTH=PARTIAL`，仅存在历史报告数量与行数债务，本次未新增。
 - 应用构建：未执行；本轮是 CI/CD、部署合同和 Harness 变更，GitHub main workflow 负责实际后端/前端镜像构建。
 - Docker 重启、健康检查、业务验证：未执行；本轮未修改应用业务代码，也未启动本地 real-pre。
 - 远端部署与远端健康检查：未执行；没有 SSH 部署。
+- Jenkins 语法/真实流水线：未执行；本地没有 Groovy 或 Jenkins 控制器，仅完成静态合同审计。Jenkins post 回滚不依赖已结束的 GHCR 登录凭证，只使用发布前已验证且仍在本机的旧 digest。
 
 ## 未闭环项与风险
 
