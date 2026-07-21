@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$RepoRoot = '',
     [string]$BaselineRef = 'HEAD',
     [AllowEmptyCollection()][string[]]$OwnedFiles = @(),
@@ -64,7 +64,7 @@ $content = Format-HarnessGovernanceReport -Result $result
 Write-Output $content
 
 if (-not $NoReport) {
-    $reportDir = Join-Path $RepoRoot 'harness\reports\current'
+    $reportDir = Join-Path $RepoRoot 'runtime\qa\out'
     New-Item -ItemType Directory -Path $reportDir -Force | Out-Null
     $reportPath = Join-Path $reportDir 'latest-harness-limits-check.md'
     $existing = if (Test-Path -LiteralPath $reportPath) { Get-Content -Raw -LiteralPath $reportPath } else { '' }

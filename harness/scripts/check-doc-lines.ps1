@@ -1,4 +1,4 @@
-# Harness Document Line Count Checker
+﻿# Harness Document Line Count Checker
 # Usage: powershell -ExecutionPolicy Bypass -File harness/scripts/check-doc-lines.ps1
 # Exit 0 = PASS, Exit 1 = FAIL (violations found)
 

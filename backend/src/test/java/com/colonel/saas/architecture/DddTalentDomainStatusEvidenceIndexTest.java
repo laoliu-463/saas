@@ -13,7 +13,7 @@ class DddTalentDomainStatusEvidenceIndexTest {
     @Test
     void talentDomainStatusShouldIndexEveryTalentEvidenceCard() throws IOException {
         String matrix = readProjectFile("docs/ddd-completion-evidence-matrix.md");
-        String domainStatus = readProjectFile("harness/rules/state/snapshots/DOMAIN_STATUS.md");
+        String domainStatus = readProjectFile("docs/harness-maintenance/legacy-rules/state/snapshots/DOMAIN_STATUS.md");
 
         for (int card = 1; card <= 18; card++) {
             assertThat(matrix).contains("| T-" + card + " |");

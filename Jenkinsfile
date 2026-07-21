@@ -61,7 +61,10 @@ pipeline {
                 ])
                 sh '''#!/usr/bin/env bash
                 set -eu
-                mkdir -p runtime/qa/out/jenkins harness/reports/current
+                mkdir -p runtime/qa/out/jenkins \
+                  /var/lib/jenkins/.cache/saas-real-pre-cd/m2 \
+                  /var/lib/jenkins/.cache/saas-real-pre-cd/npm \
+                  /var/lib/jenkins/.cache/saas-real-pre-cd/pnpm-store
                 release_head_sha="$(git rev-parse HEAD)"
                 build_branch="${DEPLOY_BRANCH:-release/real-pre}"
                 {
@@ -503,7 +506,7 @@ PY
                         sh '''#!/usr/bin/env bash
                         set -eu
                         . runtime/qa/out/jenkins/cd-env.sh
-                        report="harness/reports/current/latest-jenkins-cd.md"
+                        report="runtime/qa/out/latest-jenkins-cd.md"
                         remote_report="/opt/saas/runtime/qa/out/jenkins-${BUILD_NUMBER:-manual}/latest-evidence-jenkins-cd.md"
                         evidence_result="PASS"
                         backend_container="$(docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" ps -q backend-real-pre)"
@@ -633,7 +636,7 @@ PY
             sh '''#!/usr/bin/env bash
             set +e
             if [ -f runtime/qa/out/jenkins/cd-env.sh ]; then . runtime/qa/out/jenkins/cd-env.sh; fi
-            mkdir -p runtime/qa/out/jenkins harness/reports/current "/opt/saas/runtime/qa/out/jenkins-${BUILD_NUMBER:-manual}"
+            mkdir -p runtime/qa/out/jenkins "/opt/saas/runtime/qa/out/jenkins-${BUILD_NUMBER:-manual}"
             state_dir="${RELEASE_STATE_DIR:-runtime/qa/out/jenkins/release-state}"
             if [ -f "$state_dir/deployment-started" ] && [ ! -f "$state_dir/rollback-completed" ] && [ ! -f "$state_dir/release-completed" ]; then
               echo "ERROR: lock-scoped rollback did not complete; refusing post-lock mutation of real-pre." >&2
@@ -643,7 +646,7 @@ PY
             fi
             docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}" > runtime/qa/out/jenkins/docker-ps-final.txt 2>&1
             docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" ps > runtime/qa/out/jenkins/docker-compose-ps-final.txt 2>&1
-            if [ ! -f harness/reports/current/latest-jenkins-cd.md ]; then
+            if [ ! -f runtime/qa/out/latest-jenkins-cd.md ]; then
               {
                 echo "# Jenkins CD Evidence"
                 echo
@@ -654,11 +657,11 @@ PY
                 echo "- Production touched: NO"
                 echo "- Evidence: deployment stopped before the final evidence stage; inspect archived Jenkins logs."
                 echo "- Secret leaked: NO"
-              } > harness/reports/current/latest-jenkins-cd.md
+              } > runtime/qa/out/latest-jenkins-cd.md
             fi
-            cp harness/reports/current/latest-jenkins-cd.md "/opt/saas/runtime/qa/out/jenkins-${BUILD_NUMBER:-manual}/latest-evidence-jenkins-cd.md" 2>/dev/null || true
+            cp runtime/qa/out/latest-jenkins-cd.md "/opt/saas/runtime/qa/out/jenkins-${BUILD_NUMBER:-manual}/latest-evidence-jenkins-cd.md" 2>/dev/null || true
             '''
-            archiveArtifacts artifacts: 'harness/reports/current/latest-jenkins-cd.md,runtime/qa/out/jenkins/**,backend/target/surefire-reports/**,frontend/coverage/**', allowEmptyArchive: true
+            archiveArtifacts artifacts: 'runtime/qa/out/latest-jenkins-cd.md,runtime/qa/out/jenkins/**,runtime/qa/out/real-pre-*/**,backend/target/surefire-reports/**,frontend/coverage/**', allowEmptyArchive: true
         }
         success { echo "real-pre Jenkins CD completed. sourceMainSha=${env.SOURCE_MAIN_SHA}" }
         failure { echo 'real-pre Jenkins CD failed. Check Jenkins logs and archived evidence.' }

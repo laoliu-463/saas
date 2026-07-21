@@ -129,7 +129,7 @@ public void applyDataScope(...) {
 | 任务 | 时间 | 产出 |
 |---|---|---|
 | 补回 DataScopePolicy 旧 switch（加 Feature Flag） | 2 小时 | 3 个 Service 各加开关 |
-| 建立标准 DDD 化流程文档 | 1 小时 | `harness/engineering/DDD-MIGRATION-PATTERN.md` |
+| 建立标准 DDD 化流程文档 | 1 小时 | `docs/harness-maintenance/engineering/DDD-MIGRATION-PATTERN.md` |
 | 加 `DataScopePolicy` Feature Flag | 30 分钟 | `DddRefactorProperties.dataScopePolicy` 字段 |
 
 **W1 产出**：3 个 Service 加 Feature Flag + 流程文档

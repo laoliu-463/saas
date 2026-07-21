@@ -70,7 +70,7 @@ $businessCommand = 'mvn -f backend/pom.xml -Dtest=CooperationWorkbenchActionsSch
 powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\agent-do.ps1 -Env real-pre -Scope full -ReportKey cooperation-workbench-actions -ContentMaintenance off -OwnedFiles ($ownedFiles -join ';') -BusinessCommand $businessCommand -Message 'feat(sample): add cooperation workbench actions'
 ```
 
-Expected: build, Docker restart, health check and business validation are recorded truthfully in `harness/reports/current/latest-cooperation-workbench-actions.md`.
+Expected: build, Docker restart, health check and business validation are recorded truthfully in `runtime/qa/out/latest-cooperation-workbench-actions.md`.
 
 - [ ] 运行 Harness 分层限制检查。
 

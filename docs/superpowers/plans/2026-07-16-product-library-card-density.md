@@ -203,7 +203,7 @@ Expected: PASS，0 failures。
 ### Task 4: 全量验证与 Harness 交付
 
 **Files:**
-- Modify: `harness/reports/current/latest-product-library-card-density.md`（脚本生成）
+- Modify: `runtime/qa/out/latest-product-library-card-density.md`（脚本生成）
 
 - [ ] **Step 1: 运行前端测试、类型检查和构建**
 

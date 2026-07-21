@@ -1,10 +1,12 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
 $checker = Join-Path $repoRoot 'harness\scripts\check-harness-limits.ps1'
 $module = Join-Path $repoRoot 'harness\scripts\modules\HarnessFileGovernance.psm1'
 $powerShellHost = (Get-Process -Id $PID).Path
-$allowedRootDirs = @('rules', 'tasks', 'probes', 'reports', 'scripts', 'manifests', 'archive', 'templates', 'engineering')
+$allowedRootDirs = @(
+    'policy', 'runbooks', 'checks', 'scripts', 'templates'
+)
 
 function New-GovernanceTestRepo {
     param([string]$Name)
@@ -61,7 +63,7 @@ function Add-LegacyRootReports {
     )
 
     for ($i = 1; $i -le $Count; $i++) {
-        Add-TextFile -Repo $Repo -RelativePath ("harness\reports\latest-legacy-{0:D3}.md" -f $i)
+        Add-TextFile -Repo $Repo -RelativePath ("harness\checks\latest-legacy-{0:D3}.md" -f $i)
     }
 }
 
@@ -115,9 +117,9 @@ Describe 'check-harness-limits baseline-aware governance' {
         $repo = New-GovernanceTestRepo -Name 'worsened-debt'
         Add-LegacyRootReports -Repo $repo -Count 89
         Save-Baseline -Repo $repo
-        Add-TextFile -Repo $repo -RelativePath 'harness\reports\latest-new.md'
+        Add-TextFile -Repo $repo -RelativePath 'harness\checks\latest-new.md'
 
-        $result = Invoke-GovernanceCheck -Repo $repo -OwnedFiles @('harness/reports/latest-new.md')
+        $result = Invoke-GovernanceCheck -Repo $repo -OwnedFiles @('harness/checks/latest-new.md')
 
         $result.ExitCode | Should Be 1
         $result.Output | Should Match 'TASK_GATE=FAIL'
@@ -128,9 +130,9 @@ Describe 'check-harness-limits baseline-aware governance' {
         $repo = New-GovernanceTestRepo -Name 'reduced-debt'
         Add-LegacyRootReports -Repo $repo -Count 89
         Save-Baseline -Repo $repo
-        Remove-Item -LiteralPath (Join-Path $repo 'harness\reports\latest-legacy-089.md')
+        Remove-Item -LiteralPath (Join-Path $repo 'harness\checks\latest-legacy-089.md')
 
-        $result = Invoke-GovernanceCheck -Repo $repo -OwnedFiles @('harness/reports/latest-legacy-089.md')
+        $result = Invoke-GovernanceCheck -Repo $repo -OwnedFiles @('harness/checks/latest-legacy-089.md')
 
         $result.ExitCode | Should Be 0
         $result.Output | Should Match 'TASK_GATE=PASS'
@@ -140,12 +142,12 @@ Describe 'check-harness-limits baseline-aware governance' {
     It 'warns at forty direct files without failing' {
         $repo = New-GovernanceTestRepo -Name 'file-warning'
         for ($i = 1; $i -le 39; $i++) {
-            Add-TextFile -Repo $repo -RelativePath ("harness\rules\rule-{0:D2}.md" -f $i)
+            Add-TextFile -Repo $repo -RelativePath ("harness\policy\rule-{0:D2}.md" -f $i)
         }
         Save-Baseline -Repo $repo
-        Add-TextFile -Repo $repo -RelativePath 'harness\rules\rule-40.md'
+        Add-TextFile -Repo $repo -RelativePath 'harness\policy\rule-40.md'
 
-        $result = Invoke-GovernanceCheck -Repo $repo -OwnedFiles @('harness/rules/rule-40.md')
+        $result = Invoke-GovernanceCheck -Repo $repo -OwnedFiles @('harness/policy/rule-40.md')
 
         $result.ExitCode | Should Be 0
         $result.Output | Should Match 'DIRECT_FILE_COUNT_WARNING'
@@ -154,12 +156,12 @@ Describe 'check-harness-limits baseline-aware governance' {
     It 'blocks the fifty-first direct file' {
         $repo = New-GovernanceTestRepo -Name 'file-hard-limit'
         for ($i = 1; $i -le 50; $i++) {
-            Add-TextFile -Repo $repo -RelativePath ("harness\rules\rule-{0:D2}.md" -f $i)
+            Add-TextFile -Repo $repo -RelativePath ("harness\policy\rule-{0:D2}.md" -f $i)
         }
         Save-Baseline -Repo $repo
-        Add-TextFile -Repo $repo -RelativePath 'harness\rules\rule-51.md'
+        Add-TextFile -Repo $repo -RelativePath 'harness\policy\rule-51.md'
 
-        $result = Invoke-GovernanceCheck -Repo $repo -OwnedFiles @('harness/rules/rule-51.md')
+        $result = Invoke-GovernanceCheck -Repo $repo -OwnedFiles @('harness/policy/rule-51.md')
 
         $result.ExitCode | Should Be 1
         $result.Output | Should Match 'DIRECT_FILE_COUNT_EXCEEDED'
@@ -167,31 +169,51 @@ Describe 'check-harness-limits baseline-aware governance' {
 
     It 'warns at one hundred sixty lines and blocks at two hundred one' {
         $repo = New-GovernanceTestRepo -Name 'line-budgets'
-        Add-TextFile -Repo $repo -RelativePath 'harness\rules\warning.md' -Lines 160
+        Add-TextFile -Repo $repo -RelativePath 'harness\policy\warning.md' -Lines 160
         Save-Baseline -Repo $repo
-        Add-TextFile -Repo $repo -RelativePath 'harness\rules\too-long.md' -Lines 201
+        Add-TextFile -Repo $repo -RelativePath 'harness\policy\too-long.md' -Lines 201
 
-        $result = Invoke-GovernanceCheck -Repo $repo -OwnedFiles @('harness/rules/warning.md', 'harness/rules/too-long.md')
+        $result = Invoke-GovernanceCheck -Repo $repo -OwnedFiles @('harness/policy/warning.md', 'harness/policy/too-long.md')
 
         $result.ExitCode | Should Be 1
         $result.Output | Should Match 'TEXT_LINE_COUNT_WARNING'
         $result.Output | Should Match 'TEXT_LINE_COUNT_EXCEEDED'
     }
 
-    It 'blocks a new root timestamp report even when total count does not grow' {
-        $repo = New-GovernanceTestRepo -Name 'timestamp-report'
-        Add-LegacyRootReports -Repo $repo -Count 20
+    It 'exempts only the root Harness package lock from the text line budget' {
+        $repo = New-GovernanceTestRepo -Name 'root-package-lock'
         Save-Baseline -Repo $repo
-        Remove-Item -LiteralPath (Join-Path $repo 'harness\reports\latest-legacy-020.md')
-        Add-TextFile -Repo $repo -RelativePath 'harness\reports\evidence-20260713-000000.md'
+        Add-TextFile -Repo $repo -RelativePath 'harness\package-lock.json' -Lines 201
 
-        $result = Invoke-GovernanceCheck -Repo $repo -OwnedFiles @(
-            'harness/reports/latest-legacy-020.md',
-            'harness/reports/evidence-20260713-000000.md'
-        )
+        $result = Invoke-GovernanceCheck -Repo $repo -OwnedFiles @('harness/package-lock.json')
+
+        $result.ExitCode | Should Be 0
+        $result.Output | Should Match 'TASK_GATE=PASS'
+        $result.Output | Should Match 'REPOSITORY_HEALTH=PASS'
+        $result.Output | Should Not Match 'TEXT_LINE_COUNT_EXCEEDED'
+    }
+
+    It 'does not exempt another package lock from the text line budget' {
+        $repo = New-GovernanceTestRepo -Name 'nested-package-lock'
+        Save-Baseline -Repo $repo
+        Add-TextFile -Repo $repo -RelativePath 'harness\checks\package-lock.json' -Lines 201
+
+        $result = Invoke-GovernanceCheck -Repo $repo -OwnedFiles @('harness/checks/package-lock.json')
 
         $result.ExitCode | Should Be 1
-        $result.Output | Should Match 'TIMESTAMP_REPORT_IN_ROOT'
+        $result.Output | Should Match 'TEXT_LINE_COUNT_EXCEEDED'
+    }
+
+    It 'ignores runtime evidence files outside the Harness source budget' {
+        $repo = New-GovernanceTestRepo -Name 'timestamp-report'
+        Save-Baseline -Repo $repo
+        Add-TextFile -Repo $repo -RelativePath 'runtime\qa\out\evidence-20260713-000000.md' -Lines 221
+
+        $result = Invoke-GovernanceCheck -Repo $repo -OwnedFiles @('runtime/qa/out/evidence-20260713-000000.md')
+
+        $result.ExitCode | Should Be 0
+        $result.Output | Should Not Match 'TIMESTAMP_REPORT_IN_ROOT'
+        $result.Output | Should Not Match 'TEXT_LINE_COUNT_EXCEEDED'
     }
 
     It 'does not apply the text line limit to scripts' {
@@ -205,18 +227,14 @@ Describe 'check-harness-limits baseline-aware governance' {
         $result.Output | Should Not Match 'TEXT_LINE_COUNT_EXCEEDED'
     }
 
-    It 'allows an unchanged legacy text blob to move into archive' {
-        $repo = New-GovernanceTestRepo -Name 'legacy-archive-move'
-        Add-TextFile -Repo $repo -RelativePath 'harness\reports\evidence-legacy.md' -Lines 221
+    It 'does not count long runtime evidence as Harness source debt' {
+        $repo = New-GovernanceTestRepo -Name 'runtime-evidence'
+        Add-TextFile -Repo $repo -RelativePath 'runtime\qa\out\evidence-legacy.md' -Lines 221
         Save-Baseline -Repo $repo
 
-        $archivePath = Join-Path $repo 'harness\archive\by-date\2026-07-13\evidence\evidence-legacy.md'
-        New-Item -ItemType Directory -Path (Split-Path -Parent $archivePath) -Force | Out-Null
-        Move-Item -LiteralPath (Join-Path $repo 'harness\reports\evidence-legacy.md') -Destination $archivePath
-
         $result = Invoke-GovernanceCheck -Repo $repo -OwnedFiles @(
-            'harness/reports/evidence-legacy.md',
-            'harness/archive/by-date/2026-07-13/evidence/evidence-legacy.md'
+            'runtime/qa/out/evidence-legacy.md',
+            'runtime/qa/out/evidence-legacy.md'
         )
 
         $result.ExitCode | Should Be 0
@@ -225,27 +243,109 @@ Describe 'check-harness-limits baseline-aware governance' {
         $result.Output | Should Not Match 'TEXT_LINE_COUNT_EXCEEDED'
     }
 
-    It 'blocks a new non-whitelisted root directory' {
-        $repo = New-GovernanceTestRepo -Name 'root-whitelist'
+    It 'allows the policy root directory' {
+        $repo = New-GovernanceTestRepo -Name 'root-policy'
         Save-Baseline -Repo $repo
-        Add-TextFile -Repo $repo -RelativePath 'harness\rogue\file.md'
+        Add-TextFile -Repo $repo -RelativePath 'harness\policy\entry.md'
 
-        $result = Invoke-GovernanceCheck -Repo $repo -OwnedFiles @('harness/rogue/file.md')
+        $result = Invoke-GovernanceCheck -Repo $repo -OwnedFiles @('harness/policy/entry.md')
+
+        $result.ExitCode | Should Be 0
+        $result.Output | Should Not Match 'ROOT_DIRECTORY_NOT_ALLOWED'
+    }
+
+    It 'allows the checks root directory' {
+        $repo = New-GovernanceTestRepo -Name 'root-checks'
+        Save-Baseline -Repo $repo
+        Add-TextFile -Repo $repo -RelativePath 'harness\checks\result.schema.json'
+
+        $result = Invoke-GovernanceCheck -Repo $repo -OwnedFiles @('harness/checks/result.schema.json')
+
+        $result.ExitCode | Should Be 0
+        $result.Output | Should Not Match 'ROOT_DIRECTORY_NOT_ALLOWED'
+    }
+
+    It 'blocks the retired state root directory' {
+        $repo = New-GovernanceTestRepo -Name 'root-state'
+        Save-Baseline -Repo $repo
+        Add-TextFile -Repo $repo -RelativePath 'harness\state\release-baseline.json'
+
+        $result = Invoke-GovernanceCheck -Repo $repo -OwnedFiles @('harness/state/release-baseline.json')
 
         $result.ExitCode | Should Be 1
         $result.Output | Should Match 'ROOT_DIRECTORY_NOT_ALLOWED'
     }
 
+    It 'allows the scripts root directory' {
+        $repo = New-GovernanceTestRepo -Name 'root-tests'
+        Save-Baseline -Repo $repo
+        Add-TextFile -Repo $repo -RelativePath 'harness\scripts\tests\governance.test.ts'
+
+        $result = Invoke-GovernanceCheck -Repo $repo -OwnedFiles @('harness/scripts/tests/governance.test.ts')
+
+        $result.ExitCode | Should Be 0
+        $result.Output | Should Not Match 'ROOT_DIRECTORY_NOT_ALLOWED'
+    }
+
+    It 'blocks an unknown fourteenth root directory' {
+        $repo = New-GovernanceTestRepo -Name 'root-fourteenth'
+        Save-Baseline -Repo $repo
+        Add-TextFile -Repo $repo -RelativePath 'harness\unknown-root\file.md'
+
+        $result = Invoke-GovernanceCheck -Repo $repo -OwnedFiles @('harness/unknown-root/file.md')
+
+        $result.ExitCode | Should Be 1
+        $result.Output | Should Match 'ROOT_DIRECTORY_NOT_ALLOWED'
+    }
+
+    It 'ignores generated Harness node_modules without allowing another root directory' {
+        $repo = New-GovernanceTestRepo -Name 'ignored-node-modules'
+        Set-Content -LiteralPath (Join-Path $repo '.gitignore') -Value 'node_modules/' -Encoding UTF8
+        Save-Baseline -Repo $repo
+        for ($i = 1; $i -le 51; $i++) {
+            Add-TextFile -Repo $repo -RelativePath ("harness\node_modules\dependency\file-{0:D2}.json" -f $i)
+        }
+        Add-TextFile -Repo $repo -RelativePath 'harness\node_modules\large.json' -Lines 201
+
+        $result = Invoke-GovernanceCheck -Repo $repo
+
+        $result.ExitCode | Should Be 0
+        $result.Output | Should Match 'TASK_GATE=PASS'
+        $result.Output | Should Match 'REPOSITORY_HEALTH=PASS'
+        $result.Output | Should Not Match 'node_modules'
+    }
+
+    It 'blocks a force-added tracked Harness node_modules file regardless of owned files' {
+        $repo = New-GovernanceTestRepo -Name 'tracked-node-modules'
+        Set-Content -LiteralPath (Join-Path $repo '.gitignore') -Value 'node_modules/' -Encoding UTF8
+        Save-Baseline -Repo $repo
+        Add-TextFile -Repo $repo -RelativePath 'harness\node_modules\dependency\index.json'
+        Push-Location $repo
+        try {
+            git add -f -- 'harness/node_modules/dependency/index.json'
+        }
+        finally {
+            Pop-Location
+        }
+
+        $result = Invoke-GovernanceCheck -Repo $repo -OwnedFiles @('harness/README.md')
+
+        $result.ExitCode | Should Be 1
+        $result.Output | Should Match 'TASK_GATE=FAIL'
+        $result.Output | Should Match 'TRACKED_GENERATED_DEPENDENCY'
+        $result.Output | Should Match 'harness/node_modules/dependency/index.json'
+    }
+
     It 'expands an untracked directory when owned files are derived' {
         $repo = New-GovernanceTestRepo -Name 'untracked-directory'
         Save-Baseline -Repo $repo
-        Add-TextFile -Repo $repo -RelativePath 'harness\rules\new-topic\too-long.md' -Lines 201
+        Add-TextFile -Repo $repo -RelativePath 'harness\policy\new-topic\too-long.md' -Lines 201
 
         $result = Invoke-GovernanceCheck -Repo $repo
 
         $result.ExitCode | Should Be 1
         $result.Output | Should Match 'TASK_GATE=FAIL'
-        $result.Output | Should Match 'harness/rules/new-topic/too-long.md'
+        $result.Output | Should Match 'harness/policy/new-topic/too-long.md'
         $result.Output | Should Match 'TEXT_LINE_COUNT_EXCEEDED'
     }
 
@@ -256,7 +356,7 @@ Describe 'check-harness-limits baseline-aware governance' {
         $output = & $powerShellHost -NoProfile -ExecutionPolicy Bypass -File $checker `
             -RepoRoot $repo -BaselineRef HEAD 2>&1
         $exitCode = $LASTEXITCODE
-        $reportPath = Join-Path $repo 'harness\reports\current\latest-harness-limits-check.md'
+        $reportPath = Join-Path $repo 'runtime\qa\out\latest-harness-limits-check.md'
         $bytes = [System.IO.File]::ReadAllBytes($reportPath)
 
         $exitCode | Should Be 0

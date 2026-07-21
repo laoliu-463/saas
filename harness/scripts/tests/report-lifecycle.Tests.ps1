@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
 $library = Join-Path $projectRoot 'harness\scripts\commands\_lib.ps1'
@@ -20,13 +20,16 @@ function New-ReportTestRepo {
     param([string]$Name)
 
     $path = Join-Path $TestDrive $Name
+    $hooksPath = Join-Path $TestDrive "$Name-hooks"
     New-Item -ItemType Directory -Path $path -Force | Out-Null
-    New-Item -ItemType Directory -Path (Join-Path $path 'harness\reports\current') -Force | Out-Null
+    New-Item -ItemType Directory -Path $hooksPath -Force | Out-Null
+    New-Item -ItemType Directory -Path (Join-Path $path 'runtime\qa\out') -Force | Out-Null
     Set-Content -LiteralPath (Join-Path $path 'owned.md') -Value 'baseline-owned' -Encoding UTF8
     Set-Content -LiteralPath (Join-Path $path 'unrelated.md') -Value 'baseline-unrelated' -Encoding UTF8
     Push-Location $path
     try {
         git init -q
+        git config core.hooksPath $hooksPath
         git config user.email 'harness-tests@example.invalid'
         git config user.name 'Harness Tests'
         git add -- owned.md unrelated.md
@@ -67,13 +70,61 @@ function Invoke-GitPushDryRun {
     return [pscustomobject]@{ ExitCode = $exitCode; Output = ($output -join "`n") }
 }
 
+function Invoke-GitPush {
+    param(
+        [string]$Repo,
+        [string[]]$OwnedFiles
+    )
+
+    $arguments = @(
+        '-NoProfile', '-ExecutionPolicy', 'Bypass',
+        '-File', $gitPush,
+        '-RepoRoot', $Repo,
+        '-Message', 'test: first push',
+        '-OwnedFiles', ($OwnedFiles -join ';')
+    )
+    $previousPreference = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $output = & powershell @arguments 2>&1
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousPreference
+    }
+    return [pscustomobject]@{ ExitCode = $exitCode; Output = ($output -join "`n") }
+}
+
+function Invoke-CollectEvidence {
+    param(
+        [string]$Repo,
+        [string]$Scope,
+        [string]$ReportKey
+    )
+
+    $previousPreference = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $output = & powershell -NoProfile -ExecutionPolicy Bypass -File $collectEvidence `
+            -RepoRoot $Repo `
+            -Env real-pre `
+            -Scope $Scope `
+            -ReportKey $ReportKey 2>&1
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousPreference
+    }
+    return [pscustomobject]@{ ExitCode = $exitCode; Output = ($output -join "`n") }
+}
+
 Describe 'stable Harness report lifecycle' {
     It 'builds a stable current report path' {
         $repo = New-ReportTestRepo -Name 'stable-path'
 
         $actual = New-HarnessReportPath -RepoRoot $repo -ReportKey 'file-governance'
 
-        $actual | Should Be (Join-Path $repo 'harness\reports\current\latest-file-governance.md')
+        $actual | Should Be (Join-Path $repo 'runtime\qa\out\latest-file-governance.md')
     }
 
     It 'rejects report key path traversal' {
@@ -125,6 +176,96 @@ Describe 'stable Harness report lifecycle' {
         $result.Output | Should Match 'Staged file is outside OwnedFiles'
     }
 
+    It 'sets the upstream when pushing a new branch for the first time' {
+        $repo = New-ReportTestRepo -Name 'first-push'
+        $remote = Join-Path $TestDrive 'first-push-remote.git'
+        git init --bare -q $remote
+        Push-Location $repo
+        try {
+            git checkout -q -b 'feature/first-push'
+            git remote add origin $remote
+        }
+        finally {
+            Pop-Location
+        }
+        Set-Content -LiteralPath (Join-Path $repo 'owned.md') -Value 'first-push-change' -Encoding UTF8
+
+        $result = Invoke-GitPush -Repo $repo -OwnedFiles @('owned.md')
+
+        $result.Output | Should Not Match 'RemoteException'
+        $result.ExitCode | Should Be 0
+        Push-Location $repo
+        try {
+            $upstream = (& git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}').Trim()
+            $localHead = (& git rev-parse HEAD).Trim()
+        }
+        finally {
+            Pop-Location
+        }
+        $remoteHead = (& git --git-dir $remote rev-parse 'refs/heads/feature/first-push').Trim()
+        $upstream | Should Be 'origin/feature/first-push'
+        $remoteHead | Should Be $localHead
+    }
+
+    It 'skips runtime collection automatically for docs and apifox scopes' {
+        foreach ($scope in @('docs', 'apifox')) {
+            $repo = New-ReportTestRepo -Name "evidence-$scope"
+
+            $result = Invoke-CollectEvidence -Repo $repo -Scope $scope -ReportKey "skip-runtime-$scope"
+
+            $result.Output | Should Not Match 'Runtime collection with RepoRoot override is not supported'
+            $result.ExitCode | Should Be 0
+            $reportPath = Join-Path $repo "runtime\qa\out\latest-skip-runtime-$scope.md"
+            $reportPath | Should Exist
+            $content = Get-Content -Raw -LiteralPath $reportPath
+            $content | Should Match '## Docker Status[\s\S]+not collected'
+        }
+    }
+
+    It 'trims trailing whitespace from external command output in evidence' {
+        $repo = New-ReportTestRepo -Name 'trim-runtime-output'
+        $commandsDir = Join-Path $repo 'harness\scripts\commands'
+        $fakeBin = Join-Path $repo 'fake-bin'
+        New-Item -ItemType Directory -Path $commandsDir -Force | Out-Null
+        New-Item -ItemType Directory -Path $fakeBin -Force | Out-Null
+        Copy-Item -LiteralPath $library -Destination (Join-Path $commandsDir '_lib.ps1')
+        Copy-Item -LiteralPath $collectEvidence -Destination (Join-Path $commandsDir 'collect-evidence.ps1')
+        Set-Content -LiteralPath (Join-Path $fakeBin 'docker.cmd') -Encoding ASCII -Value @(
+            '@echo off',
+            'if "%1"=="compose" (',
+            '  echo NAME   IMAGE   ',
+            '  echo svc    img     ',
+            ') else (',
+            '  echo NAMES  STATUS  PORTS   ',
+            '  echo svc    Up      8080    ',
+            ')'
+        )
+        $fixtureCollectEvidence = Join-Path $commandsDir 'collect-evidence.ps1'
+        $previousPath = $env:PATH
+        $previousPreference = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        try {
+            $env:PATH = "$fakeBin;$previousPath"
+            $output = & powershell -NoProfile -ExecutionPolicy Bypass -File $fixtureCollectEvidence `
+                -Env test `
+                -Scope full `
+                -ReportKey trim-runtime-output 2>&1
+            $exitCode = $LASTEXITCODE
+        }
+        finally {
+            $ErrorActionPreference = $previousPreference
+            $env:PATH = $previousPath
+        }
+        $reportPath = Join-Path $repo 'runtime\qa\out\latest-trim-runtime-output.md'
+
+        $exitCode | Should Be 0
+        # Pester 4 may expose TestDrive as an 8.3 path while the child process emits
+        # the canonical long path. The filename plus the file read below is representation-neutral.
+        ($output -join "`n") | Should Match ([regex]::Escape((Split-Path -Leaf $reportPath)))
+        $content = Get-Content -Raw -LiteralPath $reportPath
+        @($content -split "`r?`n" | Where-Object { $_ -match '[ \t]+$' }).Count | Should Be 0
+    }
+
     It 'writes one stable evidence report with owned files and inline retro' {
         $repo = New-ReportTestRepo -Name 'evidence'
         Set-Content -LiteralPath (Join-Path $repo 'owned.md') -Value 'changed-owned' -Encoding UTF8
@@ -139,7 +280,7 @@ Describe 'stable Harness report lifecycle' {
             -RetroSummary 'No separate retro required.' `
             -SkipRuntimeCollection 2>&1
         $exitCode = $LASTEXITCODE
-        $reportPath = Join-Path $repo 'harness\reports\current\latest-file-governance.md'
+        $reportPath = Join-Path $repo 'runtime\qa\out\latest-file-governance.md'
 
         $exitCode | Should Be 0
         $reportPath | Should Exist
@@ -159,7 +300,7 @@ Describe 'stable Harness report lifecycle' {
 
         $exitCode | Should Be 0
         ($output -join "`n") | Should Match 'Retro not generated'
-        (Join-Path $repo 'harness\reports\current\latest-retro-file-governance.md') | Should Not Exist
+        (Join-Path $repo 'runtime\qa\out\latest-retro-file-governance.md') | Should Not Exist
     }
 
     It 'writes a stable standalone retro only for an actionable improvement' {
@@ -173,7 +314,7 @@ Describe 'stable Harness report lifecycle' {
             -NextAction 'Run the regression suite.' `
             -Verification 'Pester passes.' 2>&1
         $exitCode = $LASTEXITCODE
-        $reportPath = Join-Path $repo 'harness\reports\current\latest-retro-file-governance.md'
+        $reportPath = Join-Path $repo 'runtime\qa\out\latest-retro-file-governance.md'
 
         $exitCode | Should Be 0
         $reportPath | Should Exist

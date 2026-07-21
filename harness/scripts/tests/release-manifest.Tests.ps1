@@ -23,7 +23,7 @@ Describe 'immutable release manifest contract' {
 
     It 'builds immutable images only on main after the CI Gate' {
         $ci | Should Match 'immutable_images:'
-        $ci | Should Match 'needs: ci_gate'
+        $ci | Should Match 'needs: ci-gate'
         $ci | Should Match 'packages:\s*write'
         $ci | Should Match 'docker push "\$backend_ref"'
         $ci | Should Match 'actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02'

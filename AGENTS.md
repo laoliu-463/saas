@@ -23,7 +23,7 @@ V2 核心闭环以三条主链为准：
 - 招商链：同步活动 -> 活动商品入库 -> 商品上架 -> 审核寄样 -> 订单同步 -> 招商业绩。
 - 管理链：用户角色 -> 数据范围 -> 规则配置 -> 各领域读取配置 -> 权限生效。
 
-详细状态与执行入口见 `harness/INDEX.md`，领域职责见 `docs/领域/*.md`。
+详细状态与执行入口见 `harness/README.md`，领域职责见 `docs/领域/*.md`。
 
 ## 2. 最高优先级规则
 
@@ -49,8 +49,8 @@ V2 核心闭环以三条主链为准：
 
 1. `CLAUDE.md`
 2. `docs/README.md`
-3. `harness/README.md` 与 `harness/INDEX.md`
-4. `harness/rules/` 下的核心约束与规范
+3. `harness/README.md`
+4. `harness/policy/`、`harness/runbooks/` 和当前任务对应的 `harness/checks/`
 5. 当前任务对应的领域、流程、接口、数据、权限、验收和部署文档
 
 涉及 real-pre 必须补读：
@@ -59,7 +59,7 @@ V2 核心闭环以三条主链为准：
 - `docs/10-部署运行总览.md`
 - `docs/验收/real-pre联调手册.md`
 
-涉及订单归因、寄样、商品库、业绩或看板，必须检索并读取相关领域文档及 `harness/rules/` 中的对应内容。
+涉及订单归因、寄样、商品库、业绩或看板，必须检索并读取相关领域文档及 `harness/checks/scenarios/` 中的对应验收场景。
 
 ## 4. code-review-graph 先行
 
@@ -87,7 +87,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\a
 powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\agent-do.ps1 -Env real-pre -Scope docs -ReportKey task-key -OwnedFiles 'path1;path2' -Message "docs: update harness"
 ```
 
-其他任务的 Scope 与必读文档见 `harness/INDEX.md`，后续 Agent 不允许临时发明构建、重启、部署流程。若确需绕过，必须说明原因和风险。
+其他任务的 Scope 与必读文档见 `harness/README.md`、`harness/policy/` 和 `harness/runbooks/`，后续 Agent 不允许临时发明构建、重启、部署流程。若确需绕过，必须说明原因和风险。
 
 `agent-do.ps1 -DeployRemote true` 已停用并会失败。发布候选必须先合并到 `main`，再通过 PR 串行提升到 `release/real-pre`，最后由 Jenkins `saas-real-pre-cd` 队列执行。
 
@@ -155,7 +155,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\a
 证据报告统一生成到：
 
 ```text
-harness/reports/current/latest-<report-key>.md
+runtime/qa/out/latest-<report-key>.md
 ```
 
 `ReportKey` 必须稳定且不含路径；`OwnedFiles` 必须逐项列出当前任务拥有的仓库相对路径，多个路径用分号分隔。报告覆盖同主题当前摘要，不再在 `reports/` 根生成时间戳副本。Retro 默认内联 evidence；只有存在责任人、改进动作和验证方式时才单独生成。
@@ -175,11 +175,11 @@ harness/reports/current/latest-<report-key>.md
 
 所有 Agent 修改 `harness/` 时必须遵守 ADR-013 的分层、基线感知门禁：
 
-1. **结构限制**：`harness/` 当前白名单为 9 个一级目录：`rules/`、`tasks/`、`probes/`、`reports/`、`scripts/`、`manifests/`、`archive/`、`templates/`、`engineering/`。
-2. **活跃知识预算**：直接文件和子目录 40 预警、50 硬上限；非脚本文本 160 行预警、200 行硬上限。脚本由测试、语法检查和职责边界约束。
-3. **报告预算**：`reports/` 根目标不超过 20 个直接文件；当前摘要写入 `reports/current/latest-<topic>.md`，原始输出写入 `runtime/qa/out/<run-id>/`。
+1. **结构限制**：`harness/` 当前白名单为 `policy/`、`runbooks/`、`checks/`、`scripts/`、`templates/` 五个一级目录；运行时产物禁止进入 Harness 源目录。
+2. **活跃知识预算**：直接文件和子目录 40 预警、50 硬上限；非脚本文本 160 行预警、200 行硬上限，仅标准生成的 `harness/package-lock.json` 按精确路径豁免行数预算。脚本由测试、语法检查和职责边界约束；Git 忽略的 `harness/node_modules/` 不参与结构统计且禁止提交。
+3. **报告预算**：Harness 不提交 `reports/`；当前摘要写入 `runtime/qa/out/latest-<topic>.md`，原始输出写入 `runtime/qa/out/<run-id>/`。
 4. **基线语义**：本地以 `HEAD` 为基线。历史超限保持或减少不阻断当前任务，新增或恶化必须失败；报告同时区分 `TASK_GATE` 和 `REPOSITORY_HEALTH`。
-5. **归档职责**：归档或删除必须有 manifest；archive 分桶继续遵守 50/50。历史不可变证据原样迁移可豁免行数追溯，新摘要仍不得超过 200 行。
+5. **历史职责**：Harness 不提交 archive、manifest 或运行报告；需要清理历史内容时使用可审查的 Git 迁移，运行期 manifest 和证据只写入 `runtime/qa/out/`。
 6. **合规自检**：声明完成前执行 `powershell -ExecutionPolicy Bypass -File harness/scripts/check-harness-limits.ps1 -BaselineRef HEAD`。
 
 如果发现旧文档与当前事实冲突，写入 `docs/决策/ADR-010-仓库阶段口径拍板为V2.md`（阶段口径）或 `docs/决策/ADR-002-V1范围优先级.md`（范围标记），不要自行拍板。
@@ -188,20 +188,20 @@ harness/reports/current/latest-<report-key>.md
 
 本仓库接入了 Matt Pocock 18 项 KEEP skills（执行方法，非业务总指挥）。项目级规则优先级：用户当前直接要求 > 本协议 > 当前阶段相关 `docs/*.md` > `CONTEXT.md` > skill 默认流程。
 
-> **变更说明（2026-06-19）**：原 `docs/agents/` 已**合并重构到 `harness/engineering/`**。本节内容相应更新，指向 harness 工程配置目录。
+> **变更说明（2026-07-21）**：工程维护配置已移到 `docs/harness-maintenance/engineering/`；Harness 只保留面向执行的五类目录。
 
-- **Issue tracker**：GitHub Issues（`origin` = `https://github.com/laoliu-463/saas.git`）；`gitee` 为只读镜像，外部 PR 不作为 triage 源；harness 端通过 `harness/engineering/issues-index.md` 维护镜像。详见 `harness/engineering/issue-tracker.md`。
-- **Triage labels**：五项 canonical 标签（`needs-triage` / `needs-info` / `ready-for-agent` / `ready-for-human` / `wontfix`）按默认同名映射（GitHub Labels 已建立）。详见 `harness/engineering/triage-labels.md`。
-- **Domain docs**：Single-context，主入口 `AGENTS.md` + `CONTEXT.md` + `docs/README.md`；ADR 收口在 `docs/决策/`（已有 ADR-001~010），`docs/adr/` 不启用；harness 工程 Skill 配置全部在 `harness/engineering/`。详见 `harness/engineering/context.md`。
+- **Issue tracker**：GitHub Issues（`origin` = `https://github.com/laoliu-463/saas.git`）；`gitee` 为只读镜像，外部 PR 不作为 triage 源；维护配置见 `docs/harness-maintenance/engineering/issue-tracker.md`。
+- **Triage labels**：五项 canonical 标签（`needs-triage` / `needs-info` / `ready-for-agent` / `ready-for-human` / `wontfix`）按默认同名映射（GitHub Labels 已建立）。详见 `docs/harness-maintenance/engineering/triage-labels.md`。
+- **Domain docs**：Single-context，主入口 `AGENTS.md` + `CONTEXT.md` + `docs/README.md`；ADR 收口在 `docs/决策/`（已有 ADR-001~010），`docs/adr/` 不启用；Harness 维护配置见 `docs/harness-maintenance/engineering/context.md`。
 
 **harness engineering 目录结构**：
 
 ```text
-harness/engineering/
+docs/harness-maintenance/engineering/
 ├── issue-tracker.md     ← Issue tracker 配置
 ├── triage-labels.md     ← Triage 标签映射
 ├── context.md           ← 上下文文档消费规则
 └── issues-index.md      ← GitHub Issues 本地镜像
 ```
 
-**历史位置**：原 `docs/agents/{issue-tracker,triage-labels,domain}.md` 已合并重构。后续如再启用新 skill，请在 `harness/engineering/` 下添加对应配置。
+**历史位置**：原 `docs/agents/{issue-tracker,triage-labels,domain}.md` 已合并重构。后续如再启用新 skill，请在 `docs/harness-maintenance/engineering/` 下添加对应配置。

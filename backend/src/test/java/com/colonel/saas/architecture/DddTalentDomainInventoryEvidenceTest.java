@@ -18,7 +18,7 @@ class DddTalentDomainInventoryEvidenceTest {
         String talentService = readProjectFile("backend/src/main/java/com/colonel/saas/service/TalentService.java");
         String talentQueryService = readProjectFile("backend/src/main/java/com/colonel/saas/service/TalentQueryService.java");
         String matrix = readProjectFile("docs/ddd-completion-evidence-matrix.md");
-        String domainStatus = readProjectFile("harness/rules/state/snapshots/DOMAIN_STATUS.md");
+        String domainStatus = readProjectFile("docs/harness-maintenance/legacy-rules/state/snapshots/DOMAIN_STATUS.md");
 
         assertThat(talentController)
                 .contains("@RequestMapping(\"/talents\")")

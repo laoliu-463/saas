@@ -5,7 +5,7 @@
 ## 定位
 
 - [V1 必做] 本文件只做文档收口和后续治理计划，不代表代码已经完成对应重构。
-- [V1 必做] 当前业务事实仍以 `docs/01-V2交付范围与边界.md`、`docs/03-领域架构总览.md`、`docs/领域/*.md`、`harness/rules/state/snapshots/01-当前项目状态.md` 为准。
+- [V1 必做] 当前业务事实仍以 `docs/01-V2交付范围与边界.md`、`docs/03-领域架构总览.md`、`docs/领域/*.md`、`docs/harness-maintenance/legacy-rules/state/snapshots/01-当前项目状态.md` 为准。
 - [V1 必做] DDD 负责澄清业务边界；Harness Engineering 负责约束后续 AI / 人工修改时的读取、执行、验证、证据和复盘流程。
 - [V1 不做] 本计划不引入 FastAPI、Celery、Python 爬虫、外部 MQ、微服务拆分或旧 V2.2 全量范围。
 
@@ -21,9 +21,9 @@
 | --- | --- | --- | --- |
 | 领域边界 | DDD | `docs/03-领域架构总览.md`、`docs/领域/*.md` | 能说明主责领域、上游、下游和禁止越界项 |
 | 业务流程 | DDD | `docs/02-业务闭环总览.md`、`docs/流程/*.md` | 三条主链能用脚本、API/SQL 或日志验证 |
-| 事件契约 | DDD + Harness | `docs/04-事件契约总表.md`、`harness/rules/runbooks/*.md` | 事件有生产者、消费者、幂等键和证据路径 |
-| 任务执行 | Harness | `harness/rules/governance/task-routing.md`、`harness/rules/runbooks/*.md` | 修改后按 Scope 执行固定命令 |
-| 反馈升级 | Harness | `harness/rules/feedback/*.md`、`harness/reports/*.md` | 失败经验能进入 retro、state 或 runbook |
+| 事件契约 | DDD + Harness | `docs/04-事件契约总表.md`、`docs/harness-maintenance/legacy-rules/runbooks/*.md` | 事件有生产者、消费者、幂等键和证据路径 |
+| 任务执行 | Harness | `docs/harness-maintenance/legacy-rules/governance/task-routing.md`、`docs/harness-maintenance/legacy-rules/runbooks/*.md` | 修改后按 Scope 执行固定命令 |
+| 反馈升级 | Harness | `docs/harness-maintenance/legacy-rules/feedback/*.md`、`runtime/qa/out/*.md` | 失败经验能进入 retro、state 或 runbook |
 
 ## 领域访问原则
 
@@ -42,9 +42,9 @@
 | --- | --- | --- | --- |
 | 架构边界测试 | 防止 domain 依赖 controller / dto，防止跨域 Repository 穿透 | 后端测试或架构扫描脚本 | [V2 预留] 待专项评估 |
 | Controller 复杂逻辑扫描 | 防止业务规则散落在接口层 | Harness safety-check 或代码审查 skill | [V1 简化] 先作为 review checklist |
-| 跨域访问扫描 | 防止订单域、分析模块绕过边界查表 | `harness/rules/skills/workflow/code-review.skill.md`、后续自动扫描 | [V1 简化] 先人工审查 |
-| 事件幂等检查 | 防止重复消费造成寄样、业绩、看板不一致 | `docs/04-事件契约总表.md`、`harness/evals/*.md` | [V1 必做] 按事件逐项补证据 |
-| 旧内容回收 | 防止旧 V2.2、旧 runbook、重复文档污染当前事实 | `harness/rules/feedback/retire.md` | [V1 必做] 每次任务生成候选计划 |
+| 跨域访问扫描 | 防止订单域、分析模块绕过边界查表 | `docs/harness-maintenance/legacy-rules/skills/workflow/code-review.skill.md`、后续自动扫描 | [V1 简化] 先人工审查 |
+| 事件幂等检查 | 防止重复消费造成寄样、业绩、看板不一致 | `docs/04-事件契约总表.md`、`harness/checks/scenarios/*.evals.md` | [V1 必做] 按事件逐项补证据 |
+| 旧内容回收 | 防止旧 V2.2、旧 runbook、重复文档污染当前事实 | `docs/harness-maintenance/legacy-rules/feedback/retire.md` | [V1 必做] 每次任务生成候选计划 |
 
 ## 实施顺序
 
