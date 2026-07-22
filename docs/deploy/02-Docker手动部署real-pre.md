@@ -1,5 +1,7 @@
 # Docker 手动部署 real-pre
 
+> 该文档仅用于首次初始化或经批准的 Break-glass 恢复。日常发布禁止从服务器分支拉代码或现场构建，统一走 GitHub 镜像产物和 Jenkins `saas-real-pre-cd`。
+
 ## 适用场景
 
 本文用于第一次在服务器上手动启动 real-pre，验证 PostgreSQL、Redis、后端、前端容器和端口连通。当前目标是受控部署验证，不是正式生产全量上线。
@@ -11,7 +13,7 @@
 | 项目 | 值 |
 | --- | --- |
 | 仓库 | `https://github.com/laoliu-463/saas.git` |
-| 当前部署分支 | `feature/auth-system` |
+| 日常部署来源 | `release/real-pre` 的发布清单；本手册不代表日常发布入口 |
 | Compose 文件 | `docker-compose.real-pre.yml` |
 | Compose project | `saas-active` |
 | env 示例 | `.env.real-pre.example` |
@@ -34,7 +36,7 @@
 cd /opt/saas
 git clone https://github.com/laoliu-463/saas.git app
 cd /opt/saas/app
-git checkout feature/auth-system
+git checkout release/real-pre
 git pull --ff-only
 git rev-parse --short HEAD
 ```
@@ -44,7 +46,7 @@ git rev-parse --short HEAD
 ```bash
 cd /opt/saas/app
 git fetch origin
-git checkout feature/auth-system
+git checkout release/real-pre
 git pull --ff-only
 ```
 

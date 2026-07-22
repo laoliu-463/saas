@@ -9,3 +9,4 @@
 /harness/ @laoliu-463
 /backend/src/main/resources/db/ @laoliu-463
 /docker-compose*.yml @laoliu-463
+/release/ @laoliu-463

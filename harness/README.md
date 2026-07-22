@@ -1,41 +1,55 @@
-# Harness 执行引擎
+# Harness
 
-本目录（`harness/`）是抖音团长内部 SaaS V2 工程的核心自动化执行与监控基座。
-主要用于标准化 Agent 的执行流程、状态流转、质量验证及报告输出。
+Harness 是机器执行区。普通开发者只需要记住五步：
 
-## 目录结构说明
-- `rules/`：长期规则、执行规范、质量门禁。
-- `tasks/`：当前可执行任务卡，按领域或主题拆分。
-- `probes/`：只读探针说明、接口核验模板、验证方法。
-- `reports/`：受控报告入口；稳定当前摘要位于 `reports/current/`。
-- `scripts/`：PowerShell / Bash / Python 等自动化执行脚本。
-- `manifests/`：清理、归档、删除操作的证据清单。
-- `archive/`：历史归档，保留核心结果索引。
-- `templates/`：任务模板、报告模板、审计模板。
-- `engineering/`：Matt Pocock engineering skills 的项目配置。
-
-## 新增文件守则
-1. **活跃预算**：直接文件/子目录 40 预警、50 硬上限；非脚本文本 160 行预警、200 行硬上限。
-2. **报告预算**：`reports/` 根目标不超过 20；当前摘要覆盖写入 `reports/current/latest-<topic>.md`。
-3. **增量门禁**：历史债务不阻断无关任务，但新增或恶化必须失败；同时输出任务门禁与仓库健康度。
-4. **流水分离**：原始日志和长输出写入 `runtime/qa/out/<run-id>/`；归档/删除必须有 manifest。
-
-> 详情请查阅 `rules/harness-structure-policy.md` 和 `INDEX.md`。
-
-固定入口要求显式提供稳定 `ReportKey` 与当前任务的 `OwnedFiles`；脚本只暂存这些路径及本轮自动生成的报告/归档目标。
-
-## DDD 收口验收
-
-DDD 重构收口使用固定脚本聚合检查工作区、白名单、证据矩阵、架构测试和通用安全门禁：
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\check-ddd-acceptance.ps1 -MaxRedlineDebt 11
+```text
+从 main 建短分支 → 修改代码 → harness verify → 提交 PR → CI 通过后合并
 ```
 
-常用变体：
+## 日常入口
 
-- `-DocsOnly`：跳过 Maven，只做文档、矩阵、白名单和通用 docs 安全检查。
-- `-RequireRedlineZero`：要求 architecture redline 白名单有效项为 0。
-- `-FailOnUnexpectedDirty`：遇到非 docs/harness 且非登记历史 dirty 的文件时失败。
+```powershell
+git switch main
+git pull
+git switch -c fix/example
 
-报告默认写入 `harness/reports/latest-ddd-acceptance-report.md`。详细口径见 `docs/ddd-validation-guide.md`。
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\run.ps1 inspect
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\run.ps1 verify
+
+git push -u origin fix/example
+```
+
+也可以继续使用兼容入口：`.\harness.cmd inspect` 和 `.\harness.cmd verify`。
+
+Harness 会按变更范围自动选择后端、前端、数据库、文档或完整检查，并自动生成本次运行的证据。普通开发者不需要手工选择几十个参数。
+
+三条红线：
+
+- 不直接推送 `main`。
+- 不把直接 SSH 部署作为日常发布方式。
+- 不提交 `.env`、Token、密码、私钥或真实环境配置。
+
+## 按场景找入口
+
+| 需要做什么 | 看哪里 |
+| --- | --- |
+| 确认边界、安全和完成标准 | [`policy/`](policy/) |
+| 查管理员或值班操作 | [`runbooks/`](runbooks/) |
+| 查验收场景和变更影响 | [`checks/`](checks/) |
+| 运行机器检查 | [`scripts/run.ps1`](scripts/run.ps1) |
+| 复用证据、发布或事故模板 | [`templates/`](templates/) |
+| 查历史规则、任务和工程配置 | [`../docs/harness-maintenance/`](../docs/harness-maintenance/) |
+
+## 证据与运行产物
+
+运行输出只写入 `runtime/qa/out/`：
+
+- `runtime/qa/out/<run-id>/`：单次运行的原始输出；
+- `runtime/qa/out/latest-<report-key>.json`：最新机器证据；
+- `runtime/qa/out/latest-<report-key>.md`：最新人类摘要。
+
+这些文件被 Git 忽略，由本地运行或 CI artifact 保存；不会成为仓库里的第二套规则。
+
+## 高级维护
+
+Jenkins、数据库迁移、远端部署、回滚和 Break-glass 只由维护者按 [`runbooks/`](runbooks/) 执行。复杂的实现细节位于 [`scripts/`](scripts/)，不作为日常开发流程阅读材料。

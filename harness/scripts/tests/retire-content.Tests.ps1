@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
 $retireContent = Join-Path $projectRoot 'harness\scripts\commands\retire-content.ps1'
@@ -7,7 +7,7 @@ function New-RetireTestRepo {
     param([string]$Name)
 
     $repo = Join-Path $TestDrive $Name
-    foreach ($dir in @('backend', 'frontend', 'harness\reports', 'harness\manifests', 'harness\archive')) {
+    foreach ($dir in @('backend', 'frontend', 'harness', 'runtime\qa\out')) {
         New-Item -ItemType Directory -Path (Join-Path $repo $dir) -Force | Out-Null
     }
     Set-Content -LiteralPath (Join-Path $repo 'AGENTS.md') -Value '# Test' -Encoding UTF8
@@ -28,7 +28,7 @@ function Write-RetireFixture {
         [string]$ArchiveGroup
     )
 
-    $sourceRelative = 'harness/reports/evidence-20260713-000000.md'
+    $sourceRelative = 'runtime/qa/out/evidence-20260713-000000.md'
     Set-Content -LiteralPath (Join-Path $Repo $sourceRelative) -Value '# Evidence' -Encoding UTF8
     $manifest = @{
         items = @(@{
@@ -39,7 +39,7 @@ function Write-RetireFixture {
             archiveGroup = $ArchiveGroup
         })
     } | ConvertTo-Json -Depth 5
-    Set-Content -LiteralPath (Join-Path $Repo 'harness\manifests\test-retire.json') -Value $manifest -Encoding UTF8
+    Set-Content -LiteralPath (Join-Path $Repo 'test-retire.json') -Value $manifest -Encoding UTF8
     return $sourceRelative
 }
 
@@ -55,8 +55,8 @@ function Invoke-RetireContent {
         '-File', $retireContent,
         '-RepoRoot', $Repo,
         '-Action', 'Archive',
-        '-Manifest', 'harness/manifests/test-retire.json',
-        '-ArchiveRoot', 'harness/archive/by-date/2026-07-13/harness-report-root'
+        '-Manifest', 'test-retire.json',
+        '-ArchiveRoot', 'runtime/qa/out/archive'
     )
     if ($DryRun) { $arguments += '-DryRun' }
     if ($PassThruResult) { $arguments += '-PassThruResult' }
@@ -82,8 +82,8 @@ Describe 'retire-content grouped archive' {
         $result = Invoke-RetireContent -Repo $repo -DryRun
 
         $result.ExitCode | Should Be 0
-        $result.Output | Should Match 'harness.report-root.*evidence.evidence-20260713-000000.md'
-        $result.Output | Should Match 'harness.reports.current.latest-content-retire.md'
+        $result.Output | Should Match 'runtime.qa.out.archive.*evidence.evidence-20260713-000000.md'
+        $result.Output | Should Match 'runtime.qa.out.latest-content-retire.md'
     }
 
     It 'rejects an archive group that escapes its batch directory' {
@@ -104,10 +104,10 @@ Describe 'retire-content grouped archive' {
 
         $result.ExitCode | Should Be 0
         (Join-Path $repo $sourceRelative) | Should Not Exist
-        $archived = @(Get-ChildItem -LiteralPath (Join-Path $repo 'harness\archive') -Recurse -File -Filter 'evidence-20260713-000000.md')
+        $archived = @(Get-ChildItem -LiteralPath (Join-Path $repo 'runtime\qa\out\archive') -Recurse -File -Filter 'evidence-20260713-000000.md')
         $archived.Count | Should Be 1
         $archived[0].Directory.Name | Should Be 'evidence'
-        (Join-Path $repo 'harness\reports\current\latest-content-retire.md') | Should Exist
+        (Join-Path $repo 'runtime\qa\out\latest-content-retire.md') | Should Exist
     }
 
     It 'returns the exact generated owned files for agent-do' {
@@ -119,19 +119,19 @@ Describe 'retire-content grouped archive' {
             $result = & $retireContent `
                 -RepoRoot $repo `
                 -Action Archive `
-                -Manifest 'harness/manifests/test-retire.json' `
-                -ArchiveRoot 'harness/archive/by-date/2026-07-13/harness-report-root' `
+                -Manifest 'test-retire.json' `
+                -ArchiveRoot 'runtime/qa/out/archive' `
                 -PassThruResult
         }
         finally {
             Pop-Location
         }
 
-        $expectedReportPath = (Get-Item -LiteralPath (Join-Path $repo 'harness\reports\current\latest-content-retire.md')).FullName
+        $expectedReportPath = (Get-Item -LiteralPath (Join-Path $repo 'runtime\qa\out\latest-content-retire.md')).FullName
         $result.ReportPath | Should Be $expectedReportPath
         $result.OwnedFiles.Count | Should Be 3
         ($result.OwnedFiles -contains $sourceRelative) | Should Be $true
-        ($result.OwnedFiles -join "`n") | Should Match 'harness/archive/.*/evidence/evidence-20260713-000000.md'
-        ($result.OwnedFiles -contains 'harness/reports/current/latest-content-retire.md') | Should Be $true
+        ($result.OwnedFiles -join "`n") | Should Match 'runtime/qa/out/archive/.*/evidence/evidence-20260713-000000.md'
+        ($result.OwnedFiles -contains 'runtime/qa/out/latest-content-retire.md') | Should Be $true
     }
 }

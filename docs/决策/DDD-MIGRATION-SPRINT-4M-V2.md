@@ -195,7 +195,7 @@ mvn test -Dtest='SysUserServiceTest,UserAssignmentPolicyTest,SysUserCRUDApplicat
 
 1. `docs/决策/DDD-MIGRATION-SPRINT-2M.md`（原版，已废弃）
 2. `docs/决策/DDD-MIGRATION-SPRINT-4M-V2.md`（**本文件，4M 修订版**）
-3. `harness/engineering/issues-index.md`（issue 镜像）
+3. `docs/harness-maintenance/engineering/issues-index.md`（issue 镜像）
 4. `docs/决策/DDD-MIGRATION-STATUS-20260621.md`（下次会话更新）
 
 ## 十、修订记录

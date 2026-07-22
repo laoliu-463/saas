@@ -1,5 +1,12 @@
 # real-pre 单机受控部署手册
 
+> **⚠️ BREAK-GLASS ONLY — 2026-07-21**
+>
+> 本文用于**首次初始化一台新的 real-pre 服务器**，或 Jenkins 不可用时的人工恢复操作。
+> **常规发布已统一由 Jenkins real-pre CD 完成**，请勿再按本文档做常规部署。
+> 真实服务器 IP、SSH 用户名、私钥路径、`.env.real-pre` 实际内容均不得在公开仓库保留。
+> 详见 [docs/deploy/README.md](./README.md) 中"⚠️ BREAK-GLASS 紧急恢复"一节。
+
 本文面向服务器第一轮 real-pre 部署。当前目标是“手动受控部署 -> 跑门禁 -> 观察真实订单 -> 再决定是否放量”，不是高可用、Jenkins、蓝绿发布。
 
 ## 一、部署结论口径
@@ -86,12 +93,12 @@ sudo usermod -aG docker "$USER"
 cd /opt/saas
 git clone https://github.com/laoliu-463/saas.git app
 cd /opt/saas/app
-git checkout feature/auth-system
+git checkout release/real-pre
 git pull --ff-only
 git rev-parse --short HEAD
 ```
 
-当前受控部署分支为 `feature/auth-system`；合并主干后再按实际发布分支替换。若服务器不能连 GitHub，可以本地打包上传后解压到 `/opt/saas/app`。
+BREAK-GLASS 默认对齐 `release/real-pre` 分支 HEAD。如服务器不能连 GitHub，可以本地打包上传后解压到 `/opt/saas/app`。
 
 ## 六、配置 real-pre 环境变量
 

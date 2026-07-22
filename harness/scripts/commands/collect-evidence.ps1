@@ -1,4 +1,4 @@
-param(
+﻿param(
     [Alias('Env')][ValidateSet('test', 'real-pre')][string]$TargetEnv = 'real-pre',
     [ValidateSet('backend', 'frontend', 'full', 'docs', 'apifox')][string]$Scope = 'full',
     [string]$BuildResult = 'not collected',
@@ -29,25 +29,46 @@ $deployRemoteValue = Convert-HarnessBool -Value $DeployRemote
 $owned = @(Expand-HarnessOwnedFiles -OwnedFiles $OwnedFiles)
 $reportPath = New-HarnessReportPath -RepoRoot $RepoRoot -ReportKey $ReportKey
 
+function ConvertTo-EvidenceCommandText {
+    param([AllowNull()][object[]]$Output)
+
+    $lines = foreach ($item in @($Output)) {
+        foreach ($line in @(([string]$item) -split "`r?`n")) {
+            $line.TrimEnd()
+        }
+    }
+    return ($lines -join "`n").Trim()
+}
+
 Write-HarnessStage 'Collect evidence'
 Write-Host "Report path: $reportPath"
 
 $branch = (& git -C $RepoRoot branch --show-current 2>$null).Trim()
 $commit = (& git -C $RepoRoot rev-parse --short HEAD 2>$null).Trim()
-$statusOutput = if ($owned.Count -gt 0) { @(& git -C $RepoRoot -c core.quotepath=false status --short -- $owned 2>$null) } else { @() }
-$status = ($statusOutput -join "`n").Trim()
+$statusOutput = if ($owned.Count -eq 0) {
+    @()
+}
+elseif ($owned.Count -gt 100) {
+    # Windows 命令行不能安全承载数百个 OwnedFiles 路径；OwnedFiles 已在下方
+    # 记录，因此大列表只读取一次未过滤状态用于人类摘要。
+    @(& git -C $RepoRoot -c core.quotepath=false status --short 2>$null)
+}
+else {
+    @(& git -C $RepoRoot -c core.quotepath=false status --short -- $owned 2>$null)
+}
+$status = ConvertTo-EvidenceCommandText -Output $statusOutput
 $changedFilesBlock = if ($owned.Count -eq 0) { '(none)' } else { ($owned -join "`n") }
 $dirty = if ([string]::IsNullOrWhiteSpace($status)) { 'clean' } else { 'dirty' }
 
 $composePs = 'not collected'
 $dockerPs = 'not collected'
-if (-not $DryRun -and -not $SkipRuntimeCollection) {
+if (-not $DryRun -and -not $SkipRuntimeCollection -and $Scope -notin @('docs', 'apifox')) {
     if ($null -eq $config) { throw 'Runtime collection with RepoRoot override is not supported.' }
     Push-Location $RepoRoot
     try {
         $composeArgs = Get-HarnessComposeArgs -Config $config
-        $composePs = ((& docker @($composeArgs + @('ps')) 2>&1) -join "`n").Trim()
-        $dockerPs = ((& docker ps --format "table {{.Names}}`t{{.Status}}`t{{.Ports}}" 2>&1) -join "`n").Trim()
+        $composePs = ConvertTo-EvidenceCommandText -Output @(& docker @($composeArgs + @('ps')) 2>&1)
+        $dockerPs = ConvertTo-EvidenceCommandText -Output @(& docker ps --format "table {{.Names}}`t{{.Status}}`t{{.Ports}}" 2>&1)
     }
     catch {
         $composePs = "collection failed: $($_.Exception.Message)"

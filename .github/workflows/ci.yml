@@ -1,9 +1,5 @@
 name: CI
-
 on:
-  push:
-    branches:
-      - "**"
   pull_request:
     branches:
       - main
@@ -11,20 +7,165 @@ on:
   merge_group:
     branches:
       - main
+  push:
+    branches:
+      - main
   workflow_dispatch:
-
+# NOTE:
+#   - PR / merge_group  / workflow_dispatch run the full suite gated by
+#     the changes matrix + ci-gate.
+#   - push:main triggers the post-merge verification + image build.
+#   - Push to any other branch does NOT trigger a CI run; the PR CI
+#     is the single source of truth for task-branch changes.
+#   - The changes job computes which downstream jobs MUST run.
+#   - The ci-gate job is the single required check for branch
+#     protection; it succeeds only if every required downstream job
+#     succeeded.
 permissions:
   contents: read
-
 concurrency:
   group: ci-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-
 jobs:
+  # ------------------------------------------------------------------
+  # changes: compute which downstream jobs are required.
+  # ------------------------------------------------------------------
+  changes:
+    name: Compute change scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      backend:    ${{ steps.compute.outputs.backend }}
+      frontend:   ${{ steps.compute.outputs.frontend }}
+      database:   ${{ steps.compute.outputs.database }}
+      harness:    ${{ steps.compute.outputs.harness }}
+      deployment: ${{ steps.compute.outputs.deployment }}
+      docs:       ${{ steps.compute.outputs.docs }}
+      other:      ${{ steps.compute.outputs.other }}
+      run_governance: ${{ steps.compute.outputs.run_governance }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute change scope
+        id: compute
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Diff against the merge base on PRs, against the previous
+          # commit on push, and against the empty tree on workflow_dispatch.
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+          elif [ "${{ github.event_name }}" = "merge_group" ]; then
+            BASE="${{ github.event.merge_group.base_sha }}"
+          elif [ "${{ github.event_name }}" = "push" ]; then
+            BASE="${{ github.event.before }}"
+            # On the very first push (no previous commit), diff against
+            # the empty tree.
+            if [ -z "${BASE:-}" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
+              BASE="$(git hash-object -t tree --stdin < /dev/null)"
+            fi
+          else
+            # workflow_dispatch: treat the whole tree as the change.
+            BASE="$(git hash-object -t tree --stdin < /dev/null)"
+          fi
+
+          echo "Diff base: $BASE"
+          echo "Head:     $(git rev-parse HEAD)"
+
+          # List of changed POSIX paths relative to repo root.
+          mapfile -t CHANGED < <(git diff --name-only "$BASE"...HEAD | sort -u)
+
+          echo "Changed files (${#CHANGED[@]}):"
+          for f in "${CHANGED[@]}"; do echo "  $f"; done
+
+          # Categorize each changed file. Multiple categories may match;
+          # downstream jobs are OR'd.
+          backend=0
+          frontend=0
+          database=0
+          harness=0
+          deployment=0
+          docs=0
+          other=0
+
+          for f in "${CHANGED[@]}"; do
+            case "$f" in
+              # Database migrations take precedence over the generic backend/**
+              # pattern, so a migration triggers BOTH database=true and
+              # backend=true. The downstream ci-gate OR's them, so it does not
+              # matter that backend=true is set; the point is to flag the
+              # migration explicitly so future PRs can grow a dedicated
+              # db-migration-contract job that runs only when database=true.
+              backend/src/main/resources/db/migration/*) database=1; backend=1 ;;
+              scripts/run-real-pre-db-migrations.sh)   database=1 ;;
+              backend/**)                              backend=1 ;;
+              frontend/**)                             frontend=1 ;;
+              harness/**)                              harness=1 ;;
+              Jenkinsfile)                             deployment=1 ;;
+              scripts/**/*.sh)                         deployment=1 ;;
+              docker-compose*.yml)                     deployment=1 ;;
+              .env.real-pre.example)                   deployment=1 ;;
+              *.md)
+                case "$f" in
+                  harness/*) ;;
+                  *) docs=1 ;;
+                esac
+                ;;
+              *) other=1 ;;
+            esac
+          done
+
+          # Governance always runs: it protects the contract for the
+          # branch-protection required check, regardless of scope.
+          run_governance=1
+
+          # A pure harness/ or docs/ change still wants the governance
+          # contract check, so it MUST succeed for the ci-gate to pass.
+          # No additional fan-out is required for harness-only changes
+          # (governance is the safety net).
+
+          set_outputs() {
+            local key="$1" val="$2"
+            if [ "$val" = "1" ]; then
+              echo "$key=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "$key=false" >> "$GITHUB_OUTPUT"
+            fi
+          }
+          set_outputs backend    "$backend"
+          set_outputs frontend   "$frontend"
+          set_outputs database   "$database"
+          set_outputs harness    "$harness"
+          set_outputs deployment "$deployment"
+          set_outputs docs       "$docs"
+          set_outputs other      "$other"
+          set_outputs run_governance "$run_governance"
+
+          echo "Summary:"
+          echo "  backend    : $([ "$backend"    = 1 ] && echo YES || echo no)"
+          echo "  frontend   : $([ "$frontend"   = 1 ] && echo YES || echo no)"
+          echo "  database   : $([ "$database"   = 1 ] && echo YES || echo no)"
+          echo "  harness    : $([ "$harness"    = 1 ] && echo YES || echo no)"
+          echo "  deployment : $([ "$deployment" = 1 ] && echo YES || echo no)"
+          echo "  docs       : $([ "$docs"       = 1 ] && echo YES || echo no)"
+          echo "  other      : $([ "$other"      = 1 ] && echo YES || echo no)"
+
+  # ------------------------------------------------------------------
+  # backend: Spring Boot test suite. Skipped for docs-only / harness-only.
+  # ------------------------------------------------------------------
   backend:
     name: Backend tests
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    needs: changes
+    if: |
+      needs.changes.outputs.backend == 'true' ||
+      needs.changes.outputs.database == 'true' ||
+      needs.changes.outputs.other == 'true'
     env:
       DB_PASSWORD: ci-test-placeholder
       REDIS_PASSWORD: ci-test-placeholder
@@ -32,29 +173,21 @@ jobs:
       run:
         working-directory: backend
     steps:
-      - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - name: Set up Java
         uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
         with:
           distribution: temurin
           java-version: "17"
           cache: maven
-
       - name: Compile backend
         run: mvn -B -DskipTests compile
-
       - name: Run migration and Schema contract tests
         run: >-
-          mvn -B
-          "-Dtest=RoleAwareAttributionSchemaContractTest,RoleAwareAttributionFlywayIntegrationTest,CoreEntityDatabaseSchemaContractTest,ColonelsettlementOrderMapperSchemaIntegrationTest,ColonelsettlementOrderMapperDualDimensionContractTest,RealPreMigrationContractTest"
-          test
-
+          mvn -B "-Dtest=RoleAwareAttributionSchemaContractTest,RoleAwareAttributionFlywayIntegrationTest,CoreEntityDatabaseSchemaContractTest,ColonelsettlementOrderMapperSchemaIntegrationTest,ColonelsettlementOrderMapperDualDimensionContractTest,RealPreMigrationContractTest" test
       - name: Start isolated PostgreSQL and Redis
         working-directory: .
         run: docker compose --project-name saas-ci-test --file docker-compose.test.yml up -d --wait postgres redis
-
       - name: Run backend unit, architecture and integration tests
         env:
           DB_HOST: 127.0.0.1
@@ -65,59 +198,63 @@ jobs:
           REDIS_PORT: "6379"
           REDIS_DATABASE: "1"
         run: mvn -B test
-
       - name: Capture dependency diagnostics
         if: failure()
         working-directory: .
         run: |
           docker compose --project-name saas-ci-test --file docker-compose.test.yml ps --all
           docker compose --project-name saas-ci-test --file docker-compose.test.yml logs --no-color --tail=300 postgres redis
-
       - name: Stop isolated test dependencies
         if: always()
         working-directory: .
         run: docker compose --project-name saas-ci-test --file docker-compose.test.yml down --remove-orphans
-
+  # ------------------------------------------------------------------
+  # frontend: Vue + TypeScript test suite. Skipped for docs-only changes.
+  # ------------------------------------------------------------------
   frontend:
     name: Frontend tests and build
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    needs: changes
+    if: |
+      needs.changes.outputs.frontend == 'true' ||
+      needs.changes.outputs.other == 'true'
     defaults:
       run:
         working-directory: frontend
     steps:
-      - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - name: Set up pnpm
         uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
           version: 9
           run_install: false
-
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "20"
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
-
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-
       - name: Run frontend tests
         run: pnpm test
-
       - name: Typecheck frontend
         run: pnpm typecheck
-
       - name: Build frontend
         run: pnpm build
-
+  # ------------------------------------------------------------------
+  # governance: harness contract checks. ALWAYS runs (single source of
+  # truth for the protected contract, regardless of which other jobs
+  # are skipped).
+  # ------------------------------------------------------------------
   governance:
     name: Repository governance
+    needs: changes
+    if: always() && needs.changes.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # Governance 始终运行：保护契约为单源真相，不能因变更范围判断而被跳过。
     steps:
       - name: Checkout complete history
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -145,6 +282,9 @@ jobs:
             './harness/scripts/tests/safety-check-docs.Tests.ps1',
             './harness/scripts/tests/git-push-safe.Tests.ps1',
             './harness/scripts/tests/agent-do-conclusion.Tests.ps1',
+            './harness/scripts/tests/report-lifecycle.Tests.ps1',
+            './harness/scripts/tests/release-queue-governance.Tests.ps1',
+            './harness/scripts/tests/release-manifest.Tests.ps1',
             './harness/scripts/tests/check-harness-limits.Tests.ps1',
             './harness/scripts/tests/test-impact-map.Tests.ps1'
           )
@@ -157,7 +297,8 @@ jobs:
           cp -f .env.real-pre.example /tmp/.env.real-pre
           ln -sf /tmp/.env.real-pre .env.real-pre
           full_sha=0000000000000000000000000000000000000000
-          IMAGE_TAG="$full_sha" docker compose --env-file /tmp/.env.real-pre -f docker-compose.real-pre.yml config > /tmp/compose.yml
+          BACKEND_IMAGE="colonel-saas/backend:$full_sha" FRONTEND_IMAGE="colonel-saas/frontend:$full_sha" IMAGE_TAG="$full_sha" \
+            docker compose --env-file /tmp/.env.real-pre -f docker-compose.real-pre.yml config > /tmp/compose.yml
           grep -q "colonel-saas/backend:$full_sha" /tmp/compose.yml
           grep -q "colonel-saas/frontend:$full_sha" /tmp/compose.yml
           rm -f .env.real-pre
@@ -177,12 +318,183 @@ jobs:
         shell: pwsh
         run: |
           $jenkins = Get-Content -Raw Jenkinsfile
+          $activeJenkins = ($jenkins -split "`r?`n" | Where-Object { $_ -notmatch '^\s*//' }) -join "`n"
           $retired = Get-Content -Raw harness/scripts/commands/deploy-remote.ps1
+          $breakGlass = Get-Content -Raw scripts/deploy-real-pre.sh
+          $rollback = Get-Content -Raw scripts/cd/rollback-real-pre.sh
+          $releaseScript = 'scripts/cd/release-real-pre.sh'
+          $wrapper = Get-Content -Raw $releaseScript
           if ($jenkins -notmatch "defaultValue:\s*'release/real-pre'") { throw 'Jenkins must only deploy release/real-pre' }
           if ($jenkins -notmatch 'IMAGE_TAG must be the full 40-character commit SHA') { throw 'Jenkins must reject floating image tags' }
-          if ($jenkins -notmatch "lock\(resource:\s*'saas-real-pre-deploy'") { throw 'Jenkins must hold the global real-pre lock' }
+          if ($activeJenkins -notmatch "lock\(resource:\s*'saas-real-pre-deploy'") { throw 'Jenkins must hold the global real-pre lock in executable pipeline code' }
+          if ($activeJenkins -match 'docker compose[^\r\n]+\sbuild') { throw 'Jenkins must not build images on the deployment host' }
+          if ($activeJenkins -notmatch 'scripts/cd/release-real-pre\.sh rollback-immutable') { throw 'Jenkins must rollback inside the serialized release stage' }
+          if ($activeJenkins -notmatch [regex]::Escape($releaseScript)) { throw 'Jenkins must route mutating subcommands through the canonical release wrapper' }
+          if ($wrapper -notmatch '\bflock\b') { throw 'canonical release wrapper must use flock(1)' }
+          if ($rollback -notmatch 'rollback-completed') { throw 'rollback helper must write rollback-completed state' }
+          if ($jenkins -notmatch 'release/real-pre\.json') { throw 'Jenkins must consume the release manifest' }
           if ($retired -notmatch 'Direct SSH deployment is retired') { throw 'direct SSH deploy path must remain retired' }
+          if ($breakGlass -notmatch 'Direct real-pre deployment is retired') { throw 'direct shell deploy path must remain break-glass guarded' }
 
       - name: Reject generated workspace changes
         shell: bash
         run: test -z "$(git status --porcelain)"
+
+  # ------------------------------------------------------------------
+  # ci-gate: single required check for branch protection.
+  # Succeeds only if every job that should have run actually did and
+  # succeeded. Skipped jobs are NOT treated as failure.
+  # ------------------------------------------------------------------
+  ci-gate:
+    name: CI Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs:
+      - changes
+      - backend
+      - frontend
+      - governance
+    if: always()
+    steps:
+      - name: Verify required jobs succeeded
+        shell: bash
+        env:
+          CHANGES_RESULT:    ${{ needs.changes.result }}
+          BACKEND_RESULT:    ${{ needs.backend.result }}
+          FRONTEND_RESULT:   ${{ needs.frontend.result }}
+          GOVERNANCE_RESULT: ${{ needs.governance.result }}
+        run: |
+          set -euo pipefail
+          echo "Job results:"
+          echo "  changes    : $CHANGES_RESULT"
+          echo "  backend    : $BACKEND_RESULT"
+          echo "  frontend   : $FRONTEND_RESULT"
+          echo "  governance : $GOVERNANCE_RESULT"
+
+          # changes must always succeed.
+          if [ "$CHANGES_RESULT" != "success" ]; then
+            echo "FAIL: changes job did not succeed ($CHANGES_RESULT)."
+            exit 1
+          fi
+
+          # governance must always succeed.
+          if [ "$GOVERNANCE_RESULT" != "success" ]; then
+            echo "FAIL: governance job did not succeed ($GOVERNANCE_RESULT)."
+            exit 1
+          fi
+
+          # backend and frontend may be skipped (changes job decided they
+          # were not required). If they ran, they must succeed.
+          for entry in "backend:$BACKEND_RESULT" "frontend:$FRONTEND_RESULT"; do
+            name="${entry%%:*}"
+            result="${entry##*:}"
+            if [ "$result" = "success" ] || [ "$result" = "skipped" ]; then
+              echo "  $name : OK ($result)"
+            else
+              echo "FAIL: $name job did not succeed ($result)."
+              exit 1
+            fi
+          done
+          echo "CI Gate: PASS"
+
+  release_contract:
+    name: Release manifest
+    needs: ci-gate
+    if: github.base_ref == 'release/real-pre' || github.ref == 'refs/heads/release/real-pre'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout complete history
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate release manifest and source tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/verify-real-pre-release.py release/real-pre.json
+          git fetch --no-tags origin main
+          source_sha="$(python3 -c 'import json; print(json.load(open("release/real-pre.json", encoding="utf-8"))["sourceMainSha"])')"
+          git merge-base --is-ancestor "$source_sha" origin/main
+          git diff --check "$source_sha" "$GITHUB_SHA" -- . ':(exclude)release/real-pre.json'
+          git diff --exit-code "$source_sha" "$GITHUB_SHA" -- . ':(exclude)release/real-pre.json'
+          echo "Release manifest points to main SHA $source_sha with no non-manifest drift."
+
+  immutable_images:
+    name: Immutable images
+    needs: ci-gate
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set up Java
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - name: Package backend artifact used by the image
+        working-directory: backend
+        run: mvn -B -DskipTests package
+
+      - name: Login to GHCR
+        shell: bash
+        run: printf '%s' "$GITHUB_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push immutable images
+        shell: bash
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+          IMAGE_NAMESPACE: ghcr.io/${{ github.repository }}
+        run: |
+          set -euo pipefail
+          IMAGE_NAMESPACE="${IMAGE_NAMESPACE,,}"
+          backend_ref="$IMAGE_NAMESPACE/backend:$IMAGE_TAG"
+          frontend_ref="$IMAGE_NAMESPACE/frontend:$IMAGE_TAG"
+          docker build --pull \
+            --label "org.opencontainers.image.revision=$IMAGE_TAG" \
+            --build-arg "GIT_COMMIT=$IMAGE_TAG" \
+            --tag "$backend_ref" backend
+          docker build --pull \
+            --label "org.opencontainers.image.revision=$IMAGE_TAG" \
+            --build-arg "GIT_COMMIT=$IMAGE_TAG" \
+            --build-arg "VITE_ENV_LABEL=REAL-PRE" \
+            --tag "$frontend_ref" frontend
+          docker push "$backend_ref"
+          docker push "$frontend_ref"
+          backend_digest="$(docker image inspect "$backend_ref" --format '{{index .RepoDigests 0}}' | awk -F@ '{print $2}')"
+          frontend_digest="$(docker image inspect "$frontend_ref" --format '{{index .RepoDigests 0}}' | awk -F@ '{print $2}')"
+          printf '%s\n' "$backend_digest" | grep -Eq '^sha256:[0-9a-f]{64}$'
+          printf '%s\n' "$frontend_digest" | grep -Eq '^sha256:[0-9a-f]{64}$'
+          mkdir -p release-artifact
+          python3 - "$IMAGE_TAG" "$IMAGE_NAMESPACE/backend" "$backend_digest" "$IMAGE_NAMESPACE/frontend" "$frontend_digest" > release-artifact/image-release.json <<'PY'
+          import json
+          import sys
+          source_sha, backend_repo, backend_digest, frontend_repo, frontend_digest = sys.argv[1:]
+          print(json.dumps({
+              "schemaVersion": 1,
+              "sourceMainSha": source_sha,
+              "images": {
+                  "backend": {"repository": backend_repo, "digest": backend_digest},
+                  "frontend": {"repository": frontend_repo, "digest": frontend_digest},
+              },
+          }, indent=2))
+          PY
+          cat release-artifact/image-release.json >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload immutable image record
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: immutable-images-${{ github.sha }}
+          path: release-artifact/image-release.json
+          if-no-files-found: error

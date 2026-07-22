@@ -148,9 +148,9 @@ public class SysDeptService {
 ## 九、关键文件路径
 
 - PRD: `docs/决策/PRD-DDD-MIGRATION-100.md`
-- Phase 1 推进手册: `harness/engineering/PHASE-1-DDD-USER-DATASCOPE.md`
-- Issue 镜像: `harness/engineering/issues-index.md`
-- Skill 配置: `harness/engineering/{issue-tracker,triage-labels,context,issues-index,README}.md`
+- Phase 1 推进手册: `docs/harness-maintenance/engineering/PHASE-1-DDD-USER-DATASCOPE.md`
+- Issue 镜像: `docs/harness-maintenance/engineering/issues-index.md`
+- Skill 配置: `docs/harness-maintenance/engineering/{issue-tracker,triage-labels,context,issues-index,README}.md`
 
 ## 十、用户最后已知意图
 

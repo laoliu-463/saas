@@ -1,0 +1,196 @@
+# Post Task GC
+
+> 本文件定义任务结束后的清理流程（garbage collection），包含临时文件清理、报告提交、状态文件检查、dirty 归属登记和未提交项进入下一任务队列。
+
+## 1. 触发时机
+
+- 任务执行完成并通过 Completion Gate 之后。
+- 任务标记为 `PARTIAL` 之后。
+- 任务标记为 `BLOCKED` 之后。
+- Session Exit Gate 之前必须先执行。
+
+## 2. 清理目标
+
+1. 删除临时 debug 文件。
+2. 提交或归档已生成的报告。
+3. 同步状态文件（`CURRENT_STATE.md`、`DOMAIN_STATUS.md`、`HARNESS_CHANGELOG.md`）。
+4. 登记 dirty 归属。
+5. 未提交项进入下一任务队列。
+
+## 3. 临时文件清理
+
+### 3.1 必须删除
+
+- 临时 SQL 脚本（`tmp-*.sql`、`debug-*.sql`）。
+- 临时 Python / PowerShell 脚本（`debug-*.py`、`tmp-*.ps1`）。
+- 临时日志（`*.log` 不在 `runtime/qa/` 下）。
+- 临时 Markdown（`tmp-*.md`、`scratch-*.md`、`draft-*.md`，除被明确归入报告）。
+- `*.tmp` / `*.bak` / `*.orig` / `*.rej`。
+- 调试产生的 `nul` / `debug-*` / `test-output-*`。
+- IDEA / VSCode 临时配置（`.idea/workspace.xml`、`*.swp`、`*.swo`）。
+- `node_modules/`、`backend/target/`、`frontend/dist/`、`frontend/node_modules/`（如被错误跟踪）。
+
+### 3.2 推荐保留
+
+- 稳定当前报告（`runtime/qa/out/`）。
+- QA 输出（`runtime/qa/out/`）。
+- Evidence；独立 Retro 仅保留可执行改进。
+- 计划文档。
+- 可复用脚本。
+
+### 3.3 临时文件处理命令
+
+```powershell
+# 列出可疑临时文件
+Get-ChildItem -Recurse -Include *.tmp,*.bak,*.orig,*.rej,nul,debug-*,test-output-* -Force 2>$null
+
+# 检查 node_modules / target / dist 是否被误跟踪
+git ls-files | Select-String -Pattern "node_modules/|/target/|/dist/"
+
+# 删除本地临时文件
+Remove-Item -Path "<file>" -Force -ErrorAction SilentlyContinue
+```
+
+## 4. 报告提交
+
+### 4.1 报告文件清单
+
+- 当前任务摘要：`runtime/qa/out/latest-<report-key>.md`。
+- 可执行 Retro：`runtime/qa/out/latest-retro-<report-key>.md`（可选）。
+- 原始命令、日志、SQL、JSON：`runtime/qa/out/<run-id>/`。
+
+### 4.2 报告必须完成
+
+- 时间、环境、分支、commit hash。
+- 修改文件清单。
+- 验证结果（Build / Health / API Smoke / UI Smoke / Business Flow）。
+- 结论（DONE / PARTIAL / BLOCKED / FAILED / ROLLBACK_REQUIRED）。
+- 剩余风险。
+- 下一步建议。
+
+### 4.3 报告提交原则
+
+- `agent-do` 在验证完成后生成 evidence，并把它加入同一任务的显式 owned set。
+- 不得为同一任务额外制造 reports 批次；远端部署后更新 evidence 时可做 evidence-only scoped commit。
+- 提交前必须确认 `git diff --cached --check` 通过且 staged 文件均属于 owned set。
+
+## 5. 状态文件检查
+
+### 5.1 必须更新的文件
+
+| 文件 | 何时更新 |
+| --- | --- |
+| `docs/harness-maintenance/legacy-rules/state/snapshots/01-当前项目状态.md` | 状态发生变化时 |
+| `docs/harness-maintenance/legacy-rules/state/snapshots/DOMAIN_STATUS.md` | 领域状态发生变化时 |
+| `docs/harness-maintenance/legacy-rules/state/snapshots/KNOWN_ISSUES.md` | 新问题登记 / 修复记录 |
+| `docs/harness-maintenance/legacy-rules/state/snapshots/DECISIONS.md` | 新决策索引 |
+| `docs/harness-maintenance/legacy-rules/changelog.md` | Harness 行为变化或新决策记录 |
+| `harness/QUALITY_LEDGER.md` | 模块质量变化 |
+
+### 5.2 状态文件不能与业务代码 commit 混在一起
+
+- 状态文件改动可与 harness 规则改动作为同一 docs / harness batch 提交。
+- 但业务代码 commit（feature / fix / refactor）不得包含状态文件，除非该状态文件只为该业务任务服务且范围清晰。
+
+## 6. Dirty 归属登记
+
+### 6.1 登记原则
+
+任务结束后，所有 dirty 文件必须归入以下状态之一：
+
+- `current_task`：当前任务的修改（已 commit + push 即消失）。
+- `previous_partial`：前置 PARTIAL 任务的遗留（已登记到 Batch 计划）。
+- `docs_state` / `report_only` / `cleanup_retire`：可在 docs / reports / cleanup batch 中提交。
+- `unknown`：必须先调查，不能 commit。
+
+### 6.2 登记表
+
+每个任务结束时必须在报告中记录：
+
+```text
+## Dirty 归属登记
+| 文件 | 状态 | 分类 | 下一动作 |
+| --- | --- | --- | --- |
+| <path> | M / D / A / ?? | <10 种之一> | commit / archive / delete / investigate |
+```
+
+### 6.3 禁止
+
+- 不允许 dirty 留在工作区而无归属。
+- 不允许 dirty 既未 commit 也未登记到 Batch 计划。
+- 不允许 unknown dirty 进入任何 batch。
+
+## 7. 未提交项进入下一任务队列
+
+### 7.1 队列位置
+
+下一任务队列的入口：
+
+- `runtime/qa/out/latest-<task-queue>.md`（如确有本地队列主源）。
+- `docs/harness-maintenance/legacy-rules/state/snapshots/KNOWN_ISSUES.md`。
+- `docs/harness-maintenance/legacy-rules/state/snapshots/DECISIONS.md`（如为决策类）。
+- 任务主报告（任务内 Batch 计划）。
+
+### 7.2 必须记录
+
+- 任务编号（如 `GIT-BATCH-4`、`GIT-CLEANUP-001`）。
+- 文件清单。
+- 风险说明。
+- 推荐执行顺序。
+
+### 7.3 禁止
+
+- 不允许 dirty 留在工作区而不在任何任务队列中。
+- 不允许仅口头说明"下次再处理"。
+
+## 8. Git 清理流程
+
+任务结束后必须执行：
+
+```powershell
+# 1. Git Intake Gate
+git status --short
+git diff --name-only
+git log -1 --oneline
+git branch --show-current
+git remote -v
+
+# 2. 临时文件检查
+Get-ChildItem -Recurse -Include *.tmp,*.bak,nul -Force
+
+# 3. 大文件检查
+git ls-files | Where-Object { (Get-Item $_ -ErrorAction SilentlyContinue).Length -gt 1MB }
+
+# 4. 状态文件 diff 检查
+git diff --stat -- harness/
+
+# 5. 报告文件 untracked 检查
+git ls-files --others --exclude-standard runtime/qa/out/
+```
+
+## 9. 与其他文件的关系
+
+- `docs/harness-maintenance/legacy-rules/skills/git/git-change-control.md`：必须遵守全部 Git Gate。
+- `docs/harness-maintenance/legacy-rules/skills/git/git-batch-submit.md`：批次提交流程。
+- `docs/harness-maintenance/legacy-rules/governance/session-exit-gate.md`：会话退出前必须先完成本流程。
+- `docs/harness-maintenance/legacy-rules/policies/agent-contract.md`：必须遵守总规则。
+
+## 10. 禁止事项
+
+1. 禁止留下临时文件无归档。
+2. 禁止留下 dirty 无归属。
+3. 禁止把 PARTIAL 状态写成 DONE。
+4. 禁止留下未更新的状态文件。
+5. 禁止把 unknown dirty 与其他任务一起提交。
+6. 禁止"先 commit 再说"或"下次再清理"。
+
+## 11. 完成判定
+
+post-task-gc 完成必须满足：
+
+- 无本地临时文件。
+- 无 unknown dirty。
+- 所有 dirty 已分类并登记。
+- 状态文件已更新。
+- 已生成或覆盖一份稳定 evidence（如适用）。
+- 下一任务队列已更新。

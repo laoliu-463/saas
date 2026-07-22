@@ -3,7 +3,7 @@
 > **仅使用 real-pre**（`docker-compose.real-pre.yml`，project `saas-active`）  
 > 更新时间：2026-05-21  
 > 目标：在不依赖生产库的前提下，按「快照 → 转链映射 → 订单归因 → 看板」验证 **逻辑是否正确**，定位卡点。  
-> 关联：[03-Test与Real网关契约](../../03-Test与Real网关契约.md)、[06-部署与对接计划](../../06-部署与对接计划.md)、[09-真实SDK联调准备清单](../../09-真实SDK联调准备清单.md)、[19-商品链路本地排查](./19-商品链路本地排查.md)、[16-数据口径 Open Questions 审计](../audits/16-数据口径OpenQuestions审计.md)
+> 关联：[第三方对接总览](../../08-第三方对接总览.md)、[部署运行总览](../../10-部署运行总览.md)、[real-pre 联调手册](../../验收/real-pre联调手册.md)、[19-商品链路本地排查](./19-商品链路本地排查.md)、[16-数据口径 Open Questions 审计](../audits/16-数据口径OpenQuestions审计.md)
 
 ---
 
@@ -217,7 +217,7 @@ POST http://localhost:8081/api/orders/sync
 Authorization: Bearer <admin_token>
 ```
 
-（时间窗参数以 `OrderController` / [05-接口与数据模型](../../05-接口与数据模型.md) 为准。）
+（时间窗参数以 `OrderController` / [API契约总表](../../05-API契约总表.md) 为准。）
 
 **SQL**：
 

@@ -1,0 +1,25 @@
+{
+  "name": "@colonel-saas/harness",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20.19.0 <21"
+  },
+  "scripts": {
+    "inspect": "jiti scripts/lib/node/cli/inspect.ts",
+    "verify": "jiti scripts/lib/node/cli/verify.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:result": "vitest run scripts/tests/node/result.test.ts"
+  },
+  "dependencies": {
+    "ajv": "8.20.0"
+  },
+  "devDependencies": {
+    "@types/node": "20.19.43",
+    "jiti": "2.6.1",
+    "typescript": "7.0.2",
+    "vitest": "4.1.10"
+  }
+}

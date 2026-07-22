@@ -55,7 +55,7 @@ Sprint 4M 截止:      2026-10-22（16 周）
 | `service/SysDeptService.java` | ✏️ 272→69 行（Legacy 委派壳） |
 | `domain/user/policy/UserAssignmentPolicy.java` | 🆕 231 行（Sprint W2 产出） |
 | `test/.../UserAssignmentPolicyTest.java` | 🆕 13 用例 |
-| `harness/engineering/issues-index.md` | ✏️ 镜像更新 |
+| `docs/harness-maintenance/engineering/issues-index.md` | ✏️ 镜像更新 |
 
 ## 五、GitHub Issues 状态
 
@@ -108,8 +108,8 @@ Sprint 4M 截止:      2026-10-22（16 周）
 - PRD: `docs/决策/PRD-DDD-MIGRATION-100.md`
 - **Sprint 计划（当前）**: `docs/决策/DDD-MIGRATION-SPRINT-4M-V2.md`
 - Sprint 计划（已废弃）: `docs/决策/DDD-MIGRATION-SPRINT-2M.md`
-- Phase 1 推进手册: `harness/engineering/PHASE-1-DDD-USER-DATASCOPE.md`
-- Issue 镜像: `harness/engineering/issues-index.md`
+- Phase 1 推进手册: `docs/harness-maintenance/engineering/PHASE-1-DDD-USER-DATASCOPE.md`
+- Issue 镜像: `docs/harness-maintenance/engineering/issues-index.md`
 
 ## 十、给下一轮 agent 的接力清单
 
@@ -130,8 +130,8 @@ mvn test -Dtest='SysUserServiceTest,UserAssignmentPolicyTest,SysUserCRUDApplicat
 
 1. `docs/决策/DDD-MIGRATION-SPRINT-4M-V2.md`（Sprint 计划 v2）
 2. `docs/决策/DDD-MIGRATION-STATUS-20260621.md`（本文件）
-3. `harness/engineering/issues-index.md`（issue 镜像）
-4. `harness/engineering/PHASE-1-DDD-USER-DATASCOPE.md`（Phase 1 模板）
+3. `docs/harness-maintenance/engineering/issues-index.md`（issue 镜像）
+4. `docs/harness-maintenance/engineering/PHASE-1-DDD-USER-DATASCOPE.md`（Phase 1 模板）
 
 ## 十一、修订记录
 

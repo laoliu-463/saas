@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "sourceMainSha": "0000000000000000000000000000000000000000",
+  "images": {
+    "backend": {
+      "repository": "ghcr.io/laoliu-463/saas/backend",
+      "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "frontend": {
+      "repository": "ghcr.io/laoliu-463/saas/frontend",
+      "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  },
+  "database": {
+    "migrationVersion": "20260718.002",
+    "inputSha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "bootstrap": true,
+  "previous": null
+}

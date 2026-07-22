@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     商品 backfill 异步任务提交 + 轮询进度脚本。
 .DESCRIPTION
@@ -32,7 +32,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 $repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..\..\.." )).Path
-$reportDir = Join-Path $repoRoot "harness\reports"
+$reportDir = Join-Path $repoRoot "runtime\qa\out"
 $stamp = Get-Date -Format "yyyyMMdd-HHmm"
 
 # ── helpers ──────────────────────────────────────────────────────────

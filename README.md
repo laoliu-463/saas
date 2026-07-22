@@ -1,74 +1,25 @@
-# 抖音团长 SaaS V1
+# 抖音团长 SaaS
 
-本项目是抖音团长 SaaS V1 的业务记录系统与 real-pre 联调工作台。当前事实以代码、测试、运行配置和 `docs/` 文档共同确认，旧 V2.2、FastAPI、Celery、Python 爬虫式方案只作为历史归档背景。
+抖音团长内部 SaaS，覆盖商品管理、达人 CRM、寄样、订单归因、业绩统计和看板分析。
 
-## 当前口径
+技术栈：Spring Boot / Java 17、Vue 3 / TypeScript、PostgreSQL、Redis、Docker Compose、Playwright。
 
-- 技术栈：Spring Boot 3.2、Java 17、PostgreSQL、Redis、Docker Compose、Vue 3、TypeScript、Playwright。
-- 当前环境只保留 `test` 和 `real-pre` 两类入口。
-- `test` 是 mock 回归基线。
-- `real-pre` 是真实上游 / 生产形态验证环境，不允许用 mock 数据冒充真实闭环。
-- 服务器 real-pre 目标是受控部署验证，不是正式生产全量放量。
+## 日常开发
 
-## 文档入口
+普通开发者只需阅读[日常开发流程](./docs/development-flow.md)：
 
-- 总地图：[CLAUDE.md](./CLAUDE.md)
-- 文档地图：[docs/README.md](./docs/README.md)
-- 用户手册：[docs/11-用户操作手册.md](./docs/11-用户操作手册.md)
-- V1 范围：[docs/01-V1交付范围与边界.md](./docs/01-V1交付范围与边界.md)
-- 测试验收：[docs/09-测试验收总览.md](./docs/09-测试验收总览.md)
-- 部署运行：[docs/10-部署运行总览.md](./docs/10-部署运行总览.md)
-- real-pre 联调：[docs/验收/real-pre联调手册.md](./docs/验收/real-pre联调手册.md)
-- 服务器部署：[docs/deploy/README.md](./docs/deploy/README.md)
-- Playwright：[README-e2e.md](./README-e2e.md)
+```text
+从 main 建短分支 → 修改 → harness verify → 提 PR → CI 通过后合并
+```
 
-## 环境与端口
+分支、PR 和风险分级见 [CONTRIBUTING.md](./CONTRIBUTING.md)。管理员和故障处理见 [docs/runbooks/](./docs/runbooks/)。
 
-| 环境 | 前端 | 后端 | 数据库 | Redis | 用途 |
-| --- | --- | --- | --- | --- | --- |
-| `test` | `3000` | `8080` | Compose 内 PostgreSQL | Compose 内 Redis | mock 回归、P0 基线 |
-| `real-pre` | `3001` | `8081` | `saas_real_pre` | Compose 内 Redis | 真实上游、部署验证 |
-
-强制约束：
-
-- 不混起第二个 `3001` Vite。
-- 不额外手工启动占用 `8080` 的后端。
-- real-pre 必须保持 `APP_TEST_ENABLED=false`、`DOUYIN_TEST_ENABLED=false`、`DOUYIN_REAL_UPSTREAM_MODE=live`。
-- real-pre 受控部署默认关闭真实推广写入：`DOUYIN_REAL_PROMOTION_WRITE_ENABLED=false`、`ALLOW_REAL_PROMOTION_WRITE=false`。
-
-## 本地开发
-
-安装根目录 E2E 依赖：
+## 快速开始
 
 ```bash
 npm install
 npx playwright install
-```
-
-后端回归：
-
-```bash
-cd backend
-mvn test
-```
-
-前端构建：
-
-```bash
-cd frontend
-npm run build
-```
-
-启动 test：
-
-```bash
 npm run start:test
-```
-
-启动 real-pre：
-
-```bash
-npm run start:real-pre
 ```
 
 停止本地服务：
@@ -77,77 +28,45 @@ npm run start:real-pre
 npm run stop
 ```
 
-## 验收命令
-
-test/mock 基线：
+## 常用验证
 
 ```bash
-npm run e2e:smoke
+cd backend && mvn test
+cd frontend && npm run build
 npm run e2e:v1-p0
 ```
 
-real-pre 预检和 P0：
+开发者统一入口（Windows）：
 
-```bash
-npm run e2e:real-pre:p0:preflight
-npm run e2e:real-pre:p0
-npm run e2e:real-pre:roles
+```powershell
+.\harness.cmd inspect
+.\harness.cmd verify
 ```
 
-当前最近一次本地证据：
+Harness 会按变更范围选择检查并生成 evidence，不提交、不推送、不 SSH、不远端部署。
 
-- `mvn test`：`1499 tests, 0 failures, 0 errors`
-- `npm run build`：通过，仅有 Vite chunk 体积警告
-- `npm run e2e:real-pre:p0:preflight`：通过，证据目录 `runtime/qa/out/real-pre-preflight-20260531-200252/`
+## 环境边界
 
-## 同步到服务器
+## 合并与 real-pre 发布
 
-当前本地分支为 `feature/auth-system`，跟踪 `gitee/feature/auth-system`。本机 SSH 已配置 `saas` 别名时，可直接：
+日常路径固定为：
 
-```bash
-ssh saas
+```text
+短分支 -> GitHub PR + CI Gate -> main
+       -> GitHub 构建不可变后端/前端镜像
+       -> release/real-pre 发布提升 PR
+       -> Jenkins saas-real-pre-cd 串行部署
 ```
 
-本地修改需要先提交并推送，否则服务器无法通过 `git pull` 获取：
+开发人员只需要在本地按变更范围验证、提交 PR、等待 GitHub 检查和评审。Jenkins 消费 `release/real-pre.json` 中的 `repository@sha256:digest`，负责锁、迁移、健康检查、P0 / 多角色验收、证据和回滚；服务器不执行源码 `git pull` 或 Docker 构建。
+
+发布清单校验：
 
 ```bash
-git status
-git add <本次修改文件>
-git commit -m "描述本次修改"
-git push gitee feature/auth-system
+python3 scripts/verify-real-pre-release.py release/real-pre.json
 ```
 
-首次同步到服务器：
-
-```bash
-ssh saas
-mkdir -p /opt/saas/app /opt/saas/env /opt/saas/logs /opt/saas/backups /opt/saas/runtime/qa/out
-cd /opt/saas
-git clone -o gitee -b feature/auth-system https://gitee.com/cao-jianing463/saas.git app
-cd /opt/saas/app
-ln -sfn /opt/saas/env/.env.real-pre .env.real-pre
-```
-
-后续更新：
-
-```bash
-ssh saas
-cd /opt/saas/app
-git remote get-url gitee >/dev/null 2>&1 || git remote add gitee https://gitee.com/cao-jianing463/saas.git
-git fetch gitee
-git pull --ff-only
-docker compose --env-file /opt/saas/env/.env.real-pre -f docker-compose.real-pre.yml up -d --build
-```
-
-部署后检查：
-
-```bash
-docker compose --env-file /opt/saas/env/.env.real-pre -f docker-compose.real-pre.yml ps
-curl -s http://127.0.0.1:8081/api/system/health
-curl -I http://127.0.0.1:3001/login
-```
-
-不要执行 `docker compose down -v`，避免清空 real-pre 数据卷。
+服务器 SSH 仅作为批准后的 Break-glass 紧急恢复入口，不是日常发布方式。不要执行 `docker compose down -v`，不要清空 real-pre 数据卷。
 
 ## 环境密钥规则
 
@@ -160,3 +79,15 @@ curl -I http://127.0.0.1:3001/login
 ## 核心价值
 
 流量分发有闭环，业绩归因有回流。
+
+## 环境与文档入口
+
+- `test` 用于 mock 回归；`real-pre` 用于真实上游和部署验证。
+- 不提交 `.env`、`.env.test`、`.env.real-pre`、Token、密码、私钥或证书。
+- 不直接向 `main` 或 `release/real-pre` 推送。
+- SSH、现场构建和远端重启不是日常发布方式；紧急情况只能按 Break-glass Runbook 执行。
+
+- [文档地图](./docs/README.md)：事实、领域、接口、验收和部署文档。
+- [部署文档](./docs/deploy/README.md)：详细部署材料的兼容入口。
+- [发布审查](./docs/release/README.md)：real-pre 发布审查和证据目录。
+- [Playwright 验收说明](./README-e2e.md)。

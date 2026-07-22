@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [ "${BREAK_GLASS_APPROVED:-false}" != "true" ] || [ -z "${BREAK_GLASS_REASON:-}" ]; then
+  echo "Direct real-pre deployment is retired. Use Jenkins saas-real-pre-cd; set BREAK_GLASS_APPROVED=true and BREAK_GLASS_REASON only for an approved emergency recovery." >&2
+  exit 2
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEFAULT_APP_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"

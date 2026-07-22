@@ -205,9 +205,9 @@ load_apifox_env
 OPENAPI_FILE="${APIFOX_OPENAPI_FILE:-docs/openapi/saas-openapi.json}"
 APIFOX_BRANCH="${APIFOX_BRANCH:-ddd-sync}"
 APIFOX_BRANCH_SOURCE="${APIFOX_BRANCH_SOURCE:-main}"
-IMPORT_OUTPUT="${APIFOX_IMPORT_OUTPUT:-harness/reports/apifox/import-latest.log}"
-ENDPOINT_LIST_OUTPUT="${APIFOX_ENDPOINT_LIST_OUTPUT:-harness/reports/apifox/endpoint-list-latest.json}"
-ENVIRONMENT_OUTPUT="${APIFOX_ENVIRONMENT_OUTPUT:-harness/reports/apifox/environment-latest.json}"
+IMPORT_OUTPUT="${APIFOX_IMPORT_OUTPUT:-runtime/qa/out/apifox/import-latest.log}"
+ENDPOINT_LIST_OUTPUT="${APIFOX_ENDPOINT_LIST_OUTPUT:-runtime/qa/out/apifox/endpoint-list-latest.json}"
+ENVIRONMENT_OUTPUT="${APIFOX_ENVIRONMENT_OUTPUT:-runtime/qa/out/apifox/environment-latest.json}"
 
 OPENAPI_FILE_PATH="$(resolve_workspace_path "$OPENAPI_FILE")"
 IMPORT_OUTPUT_PATH="$(resolve_workspace_path "$IMPORT_OUTPUT")"
@@ -503,7 +503,7 @@ sample_index=0
 while IFS= read -r endpoint_id; do
   [[ -n "$endpoint_id" ]] || continue
   sample_index=$((sample_index + 1))
-  sample_output="harness/reports/apifox/endpoint-sample-${sample_index}.json"
+  sample_output="runtime/qa/out/apifox/endpoint-sample-${sample_index}.json"
   sample_output_path="$(resolve_workspace_path "$sample_output")"
   endpoint_detail_output="$(apifox_cmd endpoint get "$endpoint_id" --project "$APIFOX_PROJECT_ID" --branch "$APIFOX_BRANCH" 2>&1)" || {
     echo "apifox endpoint get failed for sample $sample_index." >&2

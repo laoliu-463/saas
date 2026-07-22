@@ -1,9 +1,9 @@
-param(
+﻿param(
     [ValidateSet("Plan", "Archive", "Delete")]
     [string]$Action = "Plan",
     [string]$Manifest = "",
     [string]$Reason = "post-task content maintenance",
-    [string]$ArchiveRoot = "harness/archive/retired-content",
+    [string]$ArchiveRoot = "runtime/qa/out/archive",
     [string]$RepoRoot = "",
     [string]$ReportKey = "content-retire",
     [switch]$AllowSourceCode,
@@ -114,7 +114,7 @@ function Get-AutoCandidates {
 
     $candidates = @()
 
-    $stateDocDir = Join-Path $RepoRoot "harness\rules\state\snapshots"
+    $stateDocDir = Join-Path $RepoRoot "docs\harness-maintenance\legacy-rules\state\snapshots"
     $debtRegisterItem = Get-ChildItem -LiteralPath $stateDocDir -Filter "05-*.md" -File -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($debtRegisterItem -and (Test-Path -LiteralPath $debtRegisterItem.FullName)) {
         $content = Get-Content -Raw -Encoding UTF8 -LiteralPath $debtRegisterItem.FullName
@@ -136,7 +136,7 @@ function Get-AutoCandidates {
                 if ($candidatePath -and -not ($candidatePath.Contains("*"))) {
                     $full = Join-Path $RepoRoot $candidatePath
                     if (Test-Path -LiteralPath $full) {
-                        $candidates += New-PlanCandidate -Path $candidatePath -Category "document-debt" -SuggestedAction "review/resolve-from-debt-register" -Evidence "listed in harness/rules/state/snapshots/05-*.md debt register"
+                        $candidates += New-PlanCandidate -Path $candidatePath -Category "document-debt" -SuggestedAction "review/resolve-from-debt-register" -Evidence "listed in docs/harness-maintenance/legacy-rules/state/snapshots/05-*.md debt register"
                     }
                 }
             }
