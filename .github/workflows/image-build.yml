@@ -7,6 +7,12 @@ on:
   push:
     branches:
       - main
+    paths:
+      # Jenkins, CI, docs and release metadata changes do not alter an
+      # application image and must not trigger a duplicate image build.
+      - 'backend/**'
+      - 'frontend/**'
+      - 'docker-compose*.yml'
   # Allow manual re-builds (e.g. for verifying a digest after a
   # historical release). workflow_dispatch requires the user to
   # supply the SHA explicitly.
