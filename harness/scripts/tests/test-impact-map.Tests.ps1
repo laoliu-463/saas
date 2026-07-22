@@ -162,7 +162,7 @@ Describe 'rule overlap is deterministic' {
     }
 }
 
-Describe 'agent-do / Jenkinsfile / ci.yml / _lib.ps1 / git-push-safe governance contracts' {
+Describe 'agent-do / Jenkinsfile / ci.yml / _lib.ps1 / git-push-safe unchanged after PR #1' {
     It 'agent-do.ps1 still has old parameter set' {
         $agentDo = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'harness\scripts\commands\agent-do.ps1')
         ($agentDo -match 'ContentMaintenance\s*=\s*"plan"') | Should Be $true
@@ -170,15 +170,24 @@ Describe 'agent-do / Jenkinsfile / ci.yml / _lib.ps1 / git-push-safe governance 
         ($agentDo -match '\[ValidateSet\("dev",\s*"close"\)\]\s*\[string\]\$Phase') | Should Be $false
     }
 
-    It 'Jenkinsfile pulls immutable images and has no server-side build' {
+    It 'Jenkinsfile has the PR-B SHA Gate and RUN_BACKEND_TEST=false by default' {
+        # PR-B rewrote this contract: the Jenkinsfile MUST reference the
+        # canonical SHA Gate entry script, MUST inject GITHUB_TOKEN via
+        # withCredentials, and MUST expose RUN_BACKEND_TEST defaulting to
+        # false so the GHA gate is the single source of truth.
         $jf = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'Jenkinsfile')
-        $stageCount = ([regex]::Matches($jf, "stage\('[^']+'\)")).Count
-        ($stageCount) | Should BeGreaterThan 0
+        ($jf -match 'verify-github-ci-gate\.sh') | Should Be $true
+        ($jf -match 'github-actions-read-token') | Should Be $true
+        ($jf -match "booleanParam\(name:\s*'RUN_BACKEND_TEST',\s*defaultValue:\s*false") | Should Be $true
+        # The Backend Test stage must be guarded by RUN_BACKEND_TEST.
+        ($jf -match "expression \{ return params\.RUN_BACKEND_TEST \}") | Should Be $true
+        # The release job must consume immutable images and serialize all mutations.
         ($jf -match "stage\('Pull Immutable Images'\)") | Should Be $true
         ($jf -match "lock\(resource:\s*'saas-real-pre-deploy'") | Should Be $true
-        ($jf -match '(?m)^\s*docker compose[^\r\n]*\sbuild') | Should Be $false
+        ($jf -match 'docker compose[^\r\n]+--no-build') | Should Be $true
+        ($jf -match '(?m)^\s*docker compose[^\r\n]+\sbuild') | Should Be $false
         ($jf -match '(?m)^\s*docker build(?:\s|$)') | Should Be $false
-        ($jf -match 'RUN_BACKEND_TEST') | Should Be $false
+        ($jf -match 'evidence-collect\.sh\s+release-manifest') | Should Be $true
     }
 
     It 'ci.yml has the three required jobs and no github-actions-read-token' {
