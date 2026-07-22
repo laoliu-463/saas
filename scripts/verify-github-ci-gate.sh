@@ -4,9 +4,10 @@
 # PR-B port: GHA SHA Gate (rewritten from PR #198 to fix bash heredoc bug).
 #
 # Polls the GitHub Actions REST API and verifies that the EXACT FULL_COMMIT
-# being deployed has a successful ci.yml push run on the release/real-pre
-# branch. All three required jobs (Backend tests, Frontend tests and build,
-# Repository governance) must be completed with conclusion=success.
+# being deployed has a successful ci.yml push run on the CI source branch
+# (normally main). The workflow's stable CI Gate job must be completed with
+# conclusion=success; that job already applies the change-scope policy and may
+# legitimately mark unrelated jobs as skipped.
 #
 # Failure modes (fail-closed; the deploy must NOT proceed):
 #   - API 401 / 403 / 404:                       GITHUB_CI_GATE_API_ERROR
@@ -19,7 +20,7 @@
 #   GITHUB_REPOSITORY  e.g. laoliu-463/saas
 #   GITHUB_TOKEN       Fine-grained PAT with Actions:read on that repo
 #   GITHUB_WORKFLOW    e.g. ci.yml
-#   GITHUB_BRANCH      e.g. release/real-pre
+#   GITHUB_BRANCH      CI source branch, normally main
 #   GITHUB_SHA         the 40-character commit SHA being deployed
 #
 # Evidence files written to $EVIDENCE_DIR (default runtime/qa/out/jenkins):
@@ -46,7 +47,10 @@ if ! printf '%s' "$GITHUB_SHA" | grep -Eq '^[0-9a-f]{40}$'; then
     exit 1
 fi
 
-REQUIRED_JOBS=("Backend tests" "Frontend tests and build" "Repository governance")
+# CI Gate is the single stable aggregate check. Do not require every
+# downstream job to be successful: selective CI intentionally skips unrelated
+# backend/frontend jobs for docs, CI, or release-controller-only changes.
+REQUIRED_JOBS=("CI Gate")
 POLL_INTERVAL_SECONDS="${POLL_INTERVAL_SECONDS:-15}"
 WAIT_LIMIT_SECONDS="${WAIT_LIMIT_SECONDS:-3000}"  # 50 minutes
 
@@ -56,7 +60,7 @@ RUN_HTML_URL=""
 RUN_OBJECT=""
 RUN_CONCLUSION=""
 
-echo "GHA SHA Gate: polling workflow='$GITHUB_WORKFLOW' branch='$GITHUB_BRANCH' head_sha='$GITHUB_SHA'"
+echo "GHA SHA Gate: polling workflow='$GITHUB_WORKFLOW' source_branch='$GITHUB_BRANCH' head_sha='$GITHUB_SHA'"
 echo "GHA SHA Gate: required jobs: ${REQUIRED_JOBS[*]}"
 
 # Python parser lives in a temp file so we can pass BODY via stdin redirection
@@ -152,7 +156,7 @@ while [ "$ELAPSED" -lt "$WAIT_LIMIT_SECONDS" ]; do
         # Status is queued / in_progress / requested / waiting / pending — keep polling.
         echo "GHA SHA Gate: run $RUN_ID status=$RUN_STATUS (waiting for completion, elapsed=${ELAPSED}s)"
     else
-        echo "GHA SHA Gate: no run yet for head_sha=$GITHUB_SHA on branch=$GITHUB_BRANCH (elapsed=${ELAPSED}s)"
+        echo "GHA SHA Gate: no run yet for head_sha=$GITHUB_SHA on source_branch=$GITHUB_BRANCH (elapsed=${ELAPSED}s)"
     fi
 
     sleep "$POLL_INTERVAL_SECONDS"
@@ -218,7 +222,7 @@ if [ -n "$FAIL_REASON" ]; then
 fi
 
 {
-    echo "PASS: GHA SHA Gate for head_sha=$GITHUB_SHA on branch=$GITHUB_BRANCH"
+    echo "PASS: GHA SHA Gate for head_sha=$GITHUB_SHA on source_branch=$GITHUB_BRANCH"
     echo "Run id     : $RUN_ID"
     echo "Run url    : $RUN_HTML_URL"
     echo "Conclusion : success"
