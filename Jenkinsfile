@@ -330,11 +330,12 @@ pipeline {
         stage('Serialized real-pre release') {
             options {
                 timeout(time: 35, unit: 'MINUTES')
-                lock(resource: 'saas-real-pre-deploy', inversePrecedence: false)
             }
-            stages {
-                stage('Release Order and Migration Guard') {
-                    steps {
+            steps {
+                script {
+                    lock(resource: 'saas-real-pre-deploy', inversePrecedence: false) {
+                        try {
+            stage('Release Order and Migration Guard') {
                         sh '''#!/usr/bin/env bash
                         set -eu
                         . runtime/qa/out/jenkins/cd-env.sh
@@ -429,12 +430,9 @@ PY
                         printf '%s\n' "$RUN_DB_MIGRATIONS" > runtime/qa/out/jenkins/run-db-migrations.txt
                         echo "Release order guard passed: $current_sha -> $SOURCE_MAIN_SHA; RUN_DB_MIGRATIONS=$RUN_DB_MIGRATIONS"
                         '''
-                    }
                 }
 
                 stage('Database Backup, Migration and Schema Precheck') {
-                    options { timeout(time: 30, unit: 'MINUTES') }
-                    steps {
                         sh '''#!/usr/bin/env bash
                         set -eu
                         . runtime/qa/out/jenkins/cd-env.sh
@@ -455,11 +453,9 @@ PY
                         REAL_PRE_COMPOSE_ENV="$ENV_FILE" REAL_PRE_COMPOSE_FILE="$COMPOSE_FILE" REAL_PRE_COMPOSE_PROJECT="$PROJECT_NAME" \
                           sh scripts/check-real-pre-schema.sh | tee runtime/qa/out/jenkins/schema-precheck.txt
                         '''
-                    }
                 }
 
                 stage('Deploy Backend (Schedulers Paused)') {
-                    steps {
                         sh '''#!/usr/bin/env bash
                         set -eu
                         . runtime/qa/out/jenkins/cd-env.sh
@@ -469,12 +465,9 @@ PY
                           docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d --no-build --no-deps backend-real-pre
                         docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" ps > runtime/qa/out/jenkins/post-backend-compose-ps.txt
                         '''
-                    }
                 }
 
                 stage('Backend Readiness') {
-                    options { timeout(time: 10, unit: 'MINUTES') }
-                    steps {
                         sh '''#!/usr/bin/env bash
                         set -eu
                         for _ in $(seq 1 120); do
@@ -487,11 +480,9 @@ PY
                         docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" logs --tail=300 backend-real-pre >&2 || true
                         exit 1
                         '''
-                    }
                 }
 
                 stage('Deploy Frontend') {
-                    steps {
                         sh '''#!/usr/bin/env bash
                         set -eu
                         . runtime/qa/out/jenkins/cd-env.sh
@@ -499,23 +490,18 @@ PY
                           COMPOSE_PROJECT_NAME="$PROJECT_NAME" \
                           docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d --no-build --no-deps frontend-real-pre
                         '''
-                    }
                 }
 
                 stage('Core Smoke and Multi-role E2E') {
-                    options { timeout(time: 15, unit: 'MINUTES') }
-                    steps {
                         sh '''#!/usr/bin/env bash
                         set -eu
                         npx --yes pnpm@9 install --frozen-lockfile
                         npm run e2e:real-pre:p0
                         npm run e2e:real-pre:roles
                         '''
-                    }
                 }
 
                 stage('Restore Schedulers') {
-                    steps {
                         sh '''#!/usr/bin/env bash
                         set -eu
                         . runtime/qa/out/jenkins/cd-env.sh
@@ -532,22 +518,17 @@ PY
                         done
                         exit 1
                         '''
-                    }
                 }
 
                 stage('Health Check') {
-                    options { timeout(time: 10, unit: 'MINUTES') }
-                    steps {
                         sh '''#!/usr/bin/env bash
                         set -eu
                         . runtime/qa/out/jenkins/cd-env.sh
                         ENV_FILE="$ENV_FILE" COMPOSE_FILE="$COMPOSE_FILE" COMPOSE_PROJECT_NAME="$PROJECT_NAME" bash scripts/health-check.sh
                         '''
-                    }
                 }
 
                 stage('Evidence Report') {
-                    steps {
                         sh '''#!/usr/bin/env bash
                         set -eu
                         . runtime/qa/out/jenkins/cd-env.sh
@@ -682,28 +663,39 @@ EOF
                         test "$evidence_result" = PASS
                         touch "$RELEASE_STATE_DIR/release-completed"
                         '''
-                    }
-                }
+                        }
+                        } finally {
+                            def rollbackStatus = sh(
+                                script: '''#!/usr/bin/env bash
+                                set +e
+                                if [ -f runtime/qa/out/jenkins/cd-env.sh ]; then . runtime/qa/out/jenkins/cd-env.sh; fi
+                                state_dir="${RELEASE_STATE_DIR:-runtime/qa/out/jenkins/release-state}"
+                                if [ -f "$state_dir/deployment-started" ] && [ ! -f "$state_dir/rollback-completed" ] && [ ! -f "$state_dir/release-completed" ]; then
+                                  echo "Release stage failed after deployment started; rolling back while saas-real-pre-deploy lock is still held."
+                                  ENV_FILE="$ENV_FILE" COMPOSE_FILE="$COMPOSE_FILE" COMPOSE_PROJECT_NAME="$PROJECT_NAME" \
+                                    RELEASE_STATE_DIR="$state_dir" \
+                                    ROLLBACK_SOURCE_MAIN_SHA="${ROLLBACK_SOURCE_MAIN_SHA:-}" \
+                                    ROLLBACK_BACKEND_IMAGE="${ROLLBACK_BACKEND_IMAGE:-}" \
+                                    ROLLBACK_FRONTEND_IMAGE="${ROLLBACK_FRONTEND_IMAGE:-}" \
+                                    bash scripts/cd/release-real-pre.sh rollback-immutable
+                                fi
+                                exit 0
+                                ''',
+                                returnStatus: true
+                            )
+            if (rollbackStatus != 0) {
+                echo "Lock-scoped rollback command failed with status ${rollbackStatus}."
             }
-            post {
-                unsuccessful {
-                    sh '''#!/usr/bin/env bash
-                    set -eu
-                    if [ -f runtime/qa/out/jenkins/cd-env.sh ]; then . runtime/qa/out/jenkins/cd-env.sh; fi
-                    state_dir="${RELEASE_STATE_DIR:-runtime/qa/out/jenkins/release-state}"
-                    if [ -f "$state_dir/deployment-started" ] && [ ! -f "$state_dir/rollback-completed" ] && [ ! -f "$state_dir/release-completed" ]; then
-                      echo "Release stage failed after deployment started; rolling back while saas-real-pre-deploy lock is still held."
-                      ENV_FILE="$ENV_FILE" COMPOSE_FILE="$COMPOSE_FILE" COMPOSE_PROJECT_NAME="$PROJECT_NAME" \
-                        RELEASE_STATE_DIR="$state_dir" \
-                        ROLLBACK_SOURCE_MAIN_SHA="${ROLLBACK_SOURCE_MAIN_SHA:-}" \
-                        ROLLBACK_BACKEND_IMAGE="${ROLLBACK_BACKEND_IMAGE:-}" \
-                        ROLLBACK_FRONTEND_IMAGE="${ROLLBACK_FRONTEND_IMAGE:-}" \
-                        bash scripts/cd/release-real-pre.sh rollback-immutable
-                    fi
-                    '''
                 }
             }
         }
+    }
+    post {
+        unsuccessful {
+            echo 'Serialized release failed; rollback was attempted inside the deployment lock.'
+        }
+    }
+    }
     }
 
     post {
