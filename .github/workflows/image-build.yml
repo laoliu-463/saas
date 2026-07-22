@@ -61,6 +61,17 @@ jobs:
           fetch-depth: 0
           ref: ${{ steps.resolve_sha.outputs.sha }}
 
+      - name: Set up Java
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - name: Package backend artifact
+        working-directory: backend
+        run: mvn -B -DskipTests package
+
       - name: Log in to GHCR
         uses: docker/login-action@184bdaa0721073962dff0199f1fb9940f07167d1 # v3.5.0
         with:
@@ -91,19 +102,21 @@ jobs:
             --label "org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             -f backend/Dockerfile \
             backend
-          # Capture the immutable digest and write it to a tmp file.
-          BACKEND_DIGEST="sha256:$(docker inspect --format='{{index .Id}}' "${BACKEND_TAG}" | cut -d: -f2)"
-          echo "backend_digest=${BACKEND_DIGEST}" >> "$GITHUB_OUTPUT"
           echo "Backend image built: ${BACKEND_TAG}"
-          echo "Backend digest:      ${BACKEND_DIGEST}"
 
       - name: Push backend image
+        id: push_backend
         env:
           SHA: ${{ steps.resolve_sha.outputs.sha }}
         run: |
           set -euo pipefail
-          docker push "${BACKEND_IMAGE}:${SHA}"
-          docker push "${BACKEND_IMAGE}@${{ steps.build_backend.outputs.backend_digest }}"
+          BACKEND_TAG="${BACKEND_IMAGE}:${SHA}"
+          docker push "$BACKEND_TAG"
+          BACKEND_DIGEST="$(docker image inspect "$BACKEND_TAG" --format '{{join .RepoDigests "\n"}}' \
+            | awk -F@ -v prefix="${BACKEND_IMAGE}@" 'index($0, prefix) == 1 { print substr($0, length(prefix) + 1); exit }')"
+          printf '%s' "$BACKEND_DIGEST" | grep -Eq '^sha256:[0-9a-f]{64}$'
+          echo "backend_digest=${BACKEND_DIGEST}" >> "$GITHUB_OUTPUT"
+          docker push "${BACKEND_IMAGE}@${BACKEND_DIGEST}"
 
       # ------------------------------------------------------------------
       # Frontend
@@ -126,18 +139,21 @@ jobs:
             --label "org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             -f frontend/Dockerfile \
             frontend
-          FRONTEND_DIGEST="sha256:$(docker inspect --format='{{index .Id}}' "${FRONTEND_TAG}" | cut -d: -f2)"
-          echo "frontend_digest=${FRONTEND_DIGEST}" >> "$GITHUB_OUTPUT"
           echo "Frontend image built: ${FRONTEND_TAG}"
-          echo "Frontend digest:      ${FRONTEND_DIGEST}"
 
       - name: Push frontend image
+        id: push_frontend
         env:
           SHA: ${{ steps.resolve_sha.outputs.sha }}
         run: |
           set -euo pipefail
-          docker push "${FRONTEND_IMAGE}:${SHA}"
-          docker push "${FRONTEND_IMAGE}@${{ steps.build_frontend.outputs.frontend_digest }}"
+          FRONTEND_TAG="${FRONTEND_IMAGE}:${SHA}"
+          docker push "$FRONTEND_TAG"
+          FRONTEND_DIGEST="$(docker image inspect "$FRONTEND_TAG" --format '{{join .RepoDigests "\n"}}' \
+            | awk -F@ -v prefix="${FRONTEND_IMAGE}@" 'index($0, prefix) == 1 { print substr($0, length(prefix) + 1); exit }')"
+          printf '%s' "$FRONTEND_DIGEST" | grep -Eq '^sha256:[0-9a-f]{64}$'
+          echo "frontend_digest=${FRONTEND_DIGEST}" >> "$GITHUB_OUTPUT"
+          docker push "${FRONTEND_IMAGE}@${FRONTEND_DIGEST}"
 
       # ------------------------------------------------------------------
       # Record digests as a build artifact AND commit them back to the
@@ -159,12 +175,12 @@ jobs:
             "backend": {
               "image": "${BACKEND_IMAGE}",
               "tag": "${SHA}",
-              "digest": "${{ steps.build_backend.outputs.backend_digest }}"
+              "digest": "${{ steps.push_backend.outputs.backend_digest }}"
             },
             "frontend": {
               "image": "${FRONTEND_IMAGE}",
               "tag": "${SHA}",
-              "digest": "${{ steps.build_frontend.outputs.frontend_digest }}"
+              "digest": "${{ steps.push_frontend.outputs.frontend_digest }}"
             }
           }
           EOF
@@ -193,12 +209,12 @@ jobs:
             "backend": {
               "image": "ghcr.io/laoliu-463/saas-backend",
               "tag": "${SHA}",
-              "digest": "${{ steps.build_backend.outputs.backend_digest }}"
+              "digest": "${{ steps.push_backend.outputs.backend_digest }}"
             },
             "frontend": {
               "image": "ghcr.io/laoliu-463/saas-frontend",
               "tag": "${SHA}",
-              "digest": "${{ steps.build_frontend.outputs.frontend_digest }}"
+              "digest": "${{ steps.push_frontend.outputs.frontend_digest }}"
             }
           }
           EOF
@@ -221,13 +237,13 @@ jobs:
           echo "## Image build summary" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "- SHA:       \`${SHA}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Backend:   \`${BACKEND_IMAGE}@${{ steps.build_backend.outputs.backend_digest }}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Frontend:  \`${FRONTEND_IMAGE}@${{ steps.build_frontend.outputs.frontend_digest }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Backend:   \`${BACKEND_IMAGE}@${{ steps.push_backend.outputs.backend_digest }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Frontend:  \`${FRONTEND_IMAGE}@${{ steps.push_frontend.outputs.frontend_digest }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "Jenkins can deploy this release with:" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
-          echo "BACKEND_IMAGE_DIGEST=${{ steps.build_backend.outputs.backend_digest }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "FRONTEND_IMAGE_DIGEST=${{ steps.build_frontend.outputs.frontend_digest }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "BACKEND_IMAGE_DIGEST=${{ steps.push_backend.outputs.backend_digest }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "FRONTEND_IMAGE_DIGEST=${{ steps.push_frontend.outputs.frontend_digest }}" >> "$GITHUB_STEP_SUMMARY"
           echo "IMAGE_TAG=${SHA}" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
