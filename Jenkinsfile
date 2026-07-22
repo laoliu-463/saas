@@ -274,8 +274,11 @@ pipeline {
                     GITHUB_REPOSITORY="${CD_GIT_URL#*github.com/}"
                     GITHUB_REPOSITORY="${GITHUB_REPOSITORY%.git}"
                     export GITHUB_REPOSITORY
+                    # ci.yml push runs are produced on main. release/real-pre
+                    # is the deployment branch and intentionally has no push
+                    # workflow, so query the sourceMainSha on main instead.
                     GITHUB_WORKFLOW=ci.yml \
-                      GITHUB_BRANCH=release/real-pre \
+                      GITHUB_BRANCH=main \
                       GITHUB_SHA="$FULL_COMMIT" \
                       bash scripts/verify-github-ci-gate.sh
                     '''
@@ -610,7 +613,7 @@ PY
                             "id": "$ci_run_id",
                             "url": "$ci_run_url",
                             "workflow": "ci.yml",
-                            "branch": "release/real-pre",
+                            "branch": "main",
                             "sha": "$FULL_COMMIT"
                           },
                           "jenkinsBuild": {

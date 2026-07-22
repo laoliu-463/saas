@@ -66,6 +66,8 @@ Describe 'real-pre single release queue contract' {
         $jenkinsfile | Should Match 'github-actions-read-token'
         $jenkinsfile | Should Match 'verify-github-ci-gate\.sh'
         $jenkinsfile | Should Match 'GITHUB_SHA="\$FULL_COMMIT"'
+        $jenkinsfile | Should Match 'GITHUB_BRANCH=main'
+        $shaGate | Should Match 'REQUIRED_JOBS=\("CI Gate"\)'
 
         # RUN_BACKEND_TEST must default to false so the SHA Gate is the
         # single source of truth for the Backend tests signal.
