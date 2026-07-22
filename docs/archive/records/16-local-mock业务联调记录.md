@@ -932,7 +932,7 @@ TEST-SAMPLE-001: 5 -> 6 auto complete by order: MOCK_GEN_ATTR_1777465486371
 
 前端：
 
-- [frontend/src/views/orders/index.vue](D:/Projects/SAAS/frontend/src/views/orders/index.vue)
+- [frontend/src/views/orders/index.vue](../../../frontend/src/views/orders/index.vue)
   - 同步按钮改为调用 `syncOrders(startTime, endTime)`
   - 默认同步最近 30 天
   - 若页面已选择日期范围，则优先使用页面日期范围
@@ -941,14 +941,14 @@ TEST-SAMPLE-001: 5 -> 6 auto complete by order: MOCK_GEN_ATTR_1777465486371
 
 后端：
 
-- [backend/src/main/java/com/colonel/saas/controller/OrderController.java](D:/Projects/SAAS/backend/src/main/java/com/colonel/saas/controller/OrderController.java)
+- [backend/src/main/java/com/colonel/saas/controller/OrderController.java](../../../backend/src/main/java/com/colonel/saas/controller/OrderController.java)
   - `/orders` 新增 `orderId` 查询条件
   - `/orders/unattributed` 同步支持 `orderId`
   - `/orders/sync` 支持空 JSON body 时使用默认最近 30 天时间窗
 
 测试：
 
-- [backend/src/test/java/com/colonel/saas/controller/OrderControllerTest.java](D:/Projects/SAAS/backend/src/test/java/com/colonel/saas/controller/OrderControllerTest.java)
+- [backend/src/test/java/com/colonel/saas/controller/OrderControllerTest.java](../../../backend/src/test/java/com/colonel/saas/controller/OrderControllerTest.java)
   - 补充同步时间范围测试
   - 补充默认时间窗测试
 

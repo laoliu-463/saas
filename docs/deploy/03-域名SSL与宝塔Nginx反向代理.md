@@ -14,7 +14,7 @@
 
 ## 前置条件
 
-- 已完成 [02-Docker手动部署real-pre.md](02-Docker手动部署real-pre.md)。
+- 已完成 [real-pre 单机受控部署手册](01-xshell-manual-deploy.md)。
 - 域名已备案或满足当前服务器供应商访问要求。
 - 云服务器安全组开放 `80/443`。
 - 宝塔已安装 Nginx。
