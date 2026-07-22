@@ -141,8 +141,20 @@ pipeline {
                   echo "ERROR: release sourceMainSha is not reachable from main."
                   exit 1
                 fi
-                git diff --check "$SOURCE_MAIN_SHA" "$RELEASE_HEAD_SHA" -- . ':(exclude)release/real-pre.json'
-                git diff --exit-code "$SOURCE_MAIN_SHA" "$RELEASE_HEAD_SHA" -- . ':(exclude)release/real-pre.json'
+                # release/real-pre may carry release-controller and operator
+                # documentation updates without rebuilding application images.
+                # Keep those paths explicit; all runtime code/configuration
+                # must still match sourceMainSha exactly.
+                git diff --check "$SOURCE_MAIN_SHA" "$RELEASE_HEAD_SHA" -- . \
+                  ':(exclude)release/real-pre.json' \
+                  ':(exclude)Jenkinsfile' \
+                  ':(exclude).github/workflows/**' \
+                  ':(exclude)docs/deploy/**'
+                git diff --exit-code "$SOURCE_MAIN_SHA" "$RELEASE_HEAD_SHA" -- . \
+                  ':(exclude)release/real-pre.json' \
+                  ':(exclude)Jenkinsfile' \
+                  ':(exclude).github/workflows/**' \
+                  ':(exclude)docs/deploy/**'
                 computed_migration_input_sha="$(python3 scripts/hash-real-pre-migration-inputs.py --ref "$SOURCE_MAIN_SHA")"
                 if [ "$computed_migration_input_sha" != "$MIGRATION_INPUT_SHA256" ]; then
                   echo "ERROR: release migration input digest does not match sourceMainSha."
