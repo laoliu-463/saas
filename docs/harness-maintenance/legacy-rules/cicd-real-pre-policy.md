@@ -13,7 +13,7 @@
 - 主源码来源：`https://github.com/laoliu-463/saas.git`；Gitee 仅作只读镜像。
 - 唯一部署分支：`release/real-pre`；候选必须先进入 `main`，再通过发布提升 PR 串行进入该分支。
 - 运行环境：服务器本机 Jenkins，仅面向 real-pre。
-- 镜像标签：必须使用 40 位完整 Git commit SHA，并写入 OCI revision label。
+- 镜像来源：必须使用 `main` GitHub Actions 已推送的 `repository@sha256:digest`，镜像内写入 OCI revision label；禁止 Jenkins 在部署节点构建镜像。
 - 并发：同 Job 排队且不取消旧任务；跨 Job 使用 `saas-real-pre-deploy` 全局锁。
 
 ## 3. Required Parameters
@@ -48,23 +48,21 @@ Jenkins 部署前必须校验：
 
 Jenkins real-pre CD 必须按以下顺序执行：
 
-1. Checkout `release/real-pre` 并记录 commit / image tag。
-2. Preflight Guard。
-3. Backend Test：执行 `mvn clean test`，不得跳过测试阶段。
-4. Backend Package：执行 `mvn clean package -DskipTests`，只复用已通过的测试结果。
-5. Frontend Build：执行依赖安装、`test`、`typecheck`、`build`。
-6. Docker Build：构建 `backend-real-pre` 与 `frontend-real-pre` 镜像。
-7. Compose Config：输出并校验 `docker compose config`。
-8. 获取全局发布锁，校验当前部署 SHA、目标顺序并计算 migration diff。
-9. 仅当 `RUN_DB_MIGRATIONS=true` 时备份数据库、执行兼容迁移和 Schema 预检；否则明确记录 `SKIPPED`。
-10. 以关闭调度的方式部署 backend，验证 `/api/actuator/health/readiness`。
-11. 部署 frontend，执行核心业务 smoke 和多角色 E2E。
-12. 恢复调度并再次验证 readiness。
-13. Evidence Report：核对后端/前端运行 SHA、镜像摘要、OCI revision、迁移版本和回滚镜像；全部通过后原子更新发布清单。
+1. Checkout `release/real-pre`，记录发布分支头。
+2. Preflight Guard：验证 `release/real-pre.json`、`sourceMainSha`、迁移输入摘要和无代码漂移。
+3. 获取 `saas-container-registry` 受控凭据，拉取两个 `repository@sha256:digest` 镜像并核对 OCI revision。
+4. Compose Config：只验证配置，禁止 `docker compose build`。
+5. 获取全局发布锁，校验当前部署 SHA、目标顺序并计算 migration diff。
+6. 仅当 `RUN_DB_MIGRATIONS=true` 时备份数据库、执行兼容迁移和 Schema 预检；否则明确记录 `SKIPPED`。
+7. 以关闭调度的方式部署 backend，验证 `/api/actuator/health/readiness`。
+8. 部署 frontend，执行核心业务 smoke 和多角色 E2E。
+9. 恢复调度并再次验证 readiness。
+10. 任一部署后阶段失败时，在本阶段锁仍持有期间执行 `scripts/cd/rollback-real-pre.sh`；超时和中止也必须经过同一 `unsuccessful` hook。
+11. Evidence Report：核对后端/前端运行 SHA、镜像摘要、OCI revision、迁移版本和回滚镜像；全部通过后原子更新发布清单。
 
 ## 6. Deploy Boundary
 
-- 只允许 `backend-real-pre` 与 `frontend-real-pre` 自动重建和重启。
+- 只允许 `backend-real-pre` 与 `frontend-real-pre` 自动拉取和重启；不得在部署节点构建镜像。
 - 只允许自动执行已入库、已通过 Testcontainers 的增量兼容迁移；禁止临时 SQL 和破坏性 DDL。
 - 不允许 `docker compose down -v`。
 - 不允许删除 PostgreSQL / Redis volume。
@@ -77,12 +75,12 @@ Jenkins real-pre CD 必须按以下顺序执行：
 
 部署前必须记录当前 backend / frontend 镜像。
 
-迁移、readiness、smoke 或 E2E 失败时：
+迁移、readiness、frontend、smoke、E2E、调度恢复或最终健康检查失败时：
 
-1. 尝试切回部署前 backend / frontend 镜像标签。
-2. 重新执行健康检查。
-3. Jenkins build 标记为失败。
-4. evidence report 记录失败、回滚动作和剩余风险。
+1. 状态文件标记 `deployment-started` 后，禁止继续使用新版本做 post-lock 修复。
+2. 在 `saas-real-pre-deploy` 锁内切回部署前 backend / frontend `repository@sha256:digest`。
+3. 重新启用调度并执行健康检查；成功后写入 `rollback-completed`。
+4. Jenkins build 保持失败，evidence report 记录失败、回滚动作和剩余风险。
 
 ## 8. Evidence
 

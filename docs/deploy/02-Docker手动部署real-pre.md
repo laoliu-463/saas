@@ -1,12 +1,6 @@
 # Docker 手动部署 real-pre
 
-> **⚠️ BREAK-GLASS ONLY — 2026-07-21**
->
-> 本文用于**首次初始化一台新的 real-pre 服务器**，或 Jenkins 不可用时的人工恢复。
-> **常规发布已统一由 Jenkins real-pre CD 完成**：`release/real-pre` 提升 PR → Jenkins 校验 SHA + CI Attestation + 全局锁 + 数据库备份 + 部署 + 验证。
-> 请勿再按本文档做常规部署。
-> 真实服务器 IP、SSH 用户名、私钥路径、`.env.real-pre` 实际内容均不得在公开仓库保留。
-> 详见 [docs/deploy/README.md](./README.md) 中"⚠️ BREAK-GLASS 紧急恢复"一节。
+> 该文档仅用于首次初始化或经批准的 Break-glass 恢复。日常发布禁止从服务器分支拉代码或现场构建，统一走 GitHub 镜像产物和 Jenkins `saas-real-pre-cd`。
 
 ## 适用场景
 
@@ -19,7 +13,7 @@
 | 项目 | 值 |
 | --- | --- |
 | 仓库 | `https://github.com/laoliu-463/saas.git` |
-| 当前部署分支 | `release/real-pre`（BREAK-GLASS 时手工 `git checkout`；常规发布由 Jenkins 自动） |
+| 日常部署来源 | `release/real-pre` 的发布清单；本手册不代表日常发布入口 |
 | Compose 文件 | `docker-compose.real-pre.yml` |
 | Compose project | `saas-active` |
 | env 示例 | `.env.real-pre.example` |

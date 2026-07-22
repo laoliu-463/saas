@@ -153,15 +153,9 @@ if ($executionMode -eq "NODE") {
         throw "Harness file governance failed."
     }
 
-    & (Join-Path $PSScriptRoot "git-push-safe.ps1") `
-        -RepoRoot $config.RepoRoot `
-        -Message $Message `
-        -OwnedFiles $candidateOwnedFiles `
-        -DryRun:$DryRun
-
     Write-HarnessStage "Agent do result"
     if ($decision.Conclusion -eq "PASS") {
-        Write-Host "Conclusion: PASS；候选已受控提交/推送，未合并、未部署。" -ForegroundColor Green
+        Write-Host "Conclusion: PASS；候选已通过本地验证，未自动提交、推送、合并或部署。" -ForegroundColor Green
         return
     }
     Write-Host "Conclusion: $($decision.Conclusion)；候选仅用于后续 CI，未升级为 PASS，未部署。" -ForegroundColor Yellow
@@ -280,15 +274,7 @@ try {
         -SkipRuntimeCollection:($Scope -eq "docs" -or $Scope -eq "apifox") `
         -DryRun:$DryRun
 
-    $commitOwnedFiles = @($taskOwnedFiles)
-    if (-not $DryRun -and (Test-Path -LiteralPath $reportPath)) {
-        $commitOwnedFiles += Get-HarnessRepoRelativePath -RepoRoot $config.RepoRoot -Path $reportPath
-    }
-    & (Join-Path $PSScriptRoot "git-push-safe.ps1") `
-        -RepoRoot $config.RepoRoot `
-        -Message $Message `
-        -OwnedFiles $commitOwnedFiles `
-        -DryRun:$DryRun
+    Write-Host "Evidence collected at $reportPath. Git commit and push are explicit follow-up commands; agent-do does not mutate Git history." -ForegroundColor Yellow
 
     Write-Host "Review HARNESS_CHANGELOG.md and update it when Harness behavior changed." -ForegroundColor Yellow
     Write-HarnessStage "Agent do result"

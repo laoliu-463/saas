@@ -9,6 +9,7 @@ Describe 'agent-do evidence conclusion contract' {
         $content | Should Match 'Direct remote deployment is disabled'
         $content | Should Match 'Jenkins release queue'
         $content | Should Not Match 'deploy-remote\.ps1'
+        $content | Should Not Match 'git-push-safe\.ps1'
     }
 
     It 'skips runtime collection for docs and apifox evidence' {

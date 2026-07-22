@@ -4,17 +4,18 @@
 
 | 脚本 | 当前路径 | 当前职责 | 状态 |
 | --- | --- | --- | --- |
-| `agent-do.ps1` | `harness/scripts/commands/agent-do.ps1` | 串联安全检查、构建、重启、健康检查、业务验证、证据、Git、远端部署、复盘 | 已存在 |
+| `agent-do.ps1` | `harness/scripts/commands/agent-do.ps1` | 串联安全检查、构建、重启、健康检查、业务验证和证据；不再隐藏 Git 或远端部署 | 已存在 |
 | `safety-check.ps1` | `harness/scripts/commands/safety-check.ps1` | 敏感文件、real-pre 开关、危险命令引用检查 | 已存在 |
 | `restart-compose.ps1` | `harness/scripts/commands/restart-compose.ps1` | 按 env/scope 执行 `docker compose up -d --build` | 已存在 |
 | `verify-local.ps1` | `harness/scripts/commands/verify-local.ps1` | 本地 HTTP 健康检查 | 已存在 |
 | `collect-evidence.ps1` | `harness/scripts/commands/collect-evidence.ps1` | 生成 evidence report | 已存在 |
 | `retire-content.ps1` | `harness/scripts/commands/retire-content.ps1` | 生成旧内容维护计划，按 manifest 归档或删除旧内容 | 已存在 |
-| `deploy-remote.ps1` | `harness/scripts/commands/deploy-remote.ps1` | 远端 real-pre 拉取、重建、健康检查 | 已存在 |
+| `deploy-remote.ps1` | `harness/scripts/commands/deploy-remote.ps1` | 已退休的直接 SSH 兼容入口；实际发布进入 Jenkins | 已退休 |
 | `new-retro.ps1` | `harness/scripts/commands/new-retro.ps1` | 生成任务后复盘 | 已存在 |
-| `git-push-safe.ps1` | `harness/scripts/commands/git-push-safe.ps1` | 敏感文件检查、提交、推送 | 已存在 |
+| `inspect.ps1` / `verify.ps1` / `evidence.ps1` / `release-verify.ps1` | `harness/scripts/commands/` | 分离只读检查、本地验证、证据和发布清单校验 | 已新增 |
+| `git-commit.ps1` / `git-push.ps1` | `harness/scripts/commands/` | 显式 commit 和 push 两步执行 | 已新增 |
 
-## 未来 agent-do.ps1 应继续做什么
+## agent-do.ps1 当前职责
 
 - 根据 `Env` 和 `Scope` 选择构建、重启、健康检查与业务验证。
 - 默认使用本地 `real-pre`；`test` 必须显式指定。
@@ -22,6 +23,7 @@
 - docs-only 场景跳过构建、重启和业务 E2E，但保留安全检查、证据和复盘。
 - real-pre 场景强制检查真实开关。
 - 不把 `PARTIAL`、`PENDING` 或 `BLOCKED` 写成 `PASS`。
+- 不自动调用 Git commit、push 或远端部署；这些动作必须由独立命令显式执行。
 
 ## 未来 safety-check.ps1 应继续做什么
 
@@ -44,14 +46,10 @@
 - 前端尝试 `/healthz`、`/login` 或 `/`。
 - docs-only 只做结构检查。
 
-## 未来 deploy-remote.ps1 应继续做什么
+## deploy-remote.ps1 当前职责
 
-- 只在用户明确要求远端部署时执行。
-- 默认 Host：`saas`。
-- 默认代码目录：`/opt/saas/app`。
-- 默认 Env：`/opt/saas/env/.env.real-pre`。
-- 执行远端 `git pull --ff-only`、Compose 重建、docker ps、后端健康和前端健康。
-- 禁止远端清库、删除 volume 或切成 mock。
+- 保留失败提示，阻止直接 SSH。
+- 远端部署只由 Jenkins `saas-real-pre-cd` 使用发布清单完成。
 
 ## 未来 retire-content.ps1 应继续做什么
 

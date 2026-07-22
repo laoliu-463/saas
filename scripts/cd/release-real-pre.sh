@@ -8,9 +8,9 @@
 # run-real-pre-db-migrations.sh / rollback-real-pre.sh directly).
 #
 # The flock wrapper guarantees:
-#   1. No two CD jobs can mutate real-pre concurrently (replaces the
-#      unfulfilled `lock(resource: 'saas-real-pre-deploy')` declaration
-#      that relied on the Lockable Resources plugin, which is NOT installed).
+#   1. No two mutating subcommands can race each other. Jenkins also holds its
+#      `saas-real-pre-deploy` stage lock for the complete release when the
+#      Lockable Resources plugin is enabled.
 #   2. No concurrent BREAK-GLASS manual command can race a Jenkins run
 #      (or another BREAK-GLASS run) and corrupt the running state.
 #
@@ -20,6 +20,7 @@
 #   scripts/cd/release-real-pre.sh migrate                  # run compatible migrations
 #   scripts/cd/release-real-pre.sh deploy                   # the full deploy flow
 #   scripts/cd/release-real-pre.sh rollback <previous_sha>  # rollback to a SHA
+#   scripts/cd/release-real-pre.sh rollback-immutable       # lock-scoped digest rollback
 #
 # Env (inherited or set by caller):
 #   ENV_FILE         path to .env.real-pre (default /opt/saas/env/.env.real-pre)
@@ -52,7 +53,7 @@ die()  { printf '[cd][fatal] %s\n' "$*" >&2; exit 1; }
 # --- Argument parsing --------------------------------------------------------
 SUBCOMMAND="${1:-}"
 case "${SUBCOMMAND}" in
-  preflight|backup|migrate|deploy|rollback) ;;
+  preflight|backup|migrate|deploy|rollback|rollback-immutable) ;;
   -h|--help|"")
     sed -n '2,30p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     exit 0
@@ -156,6 +157,11 @@ case "${SUBCOMMAND}" in
   migrate)
     log "Subcommand: migrate"
     ENV_FILE="${ENV_FILE:-/opt/saas/env/.env.real-pre}" \
+    IMAGE_TAG="${IMAGE_TAG:-}" \
+    BACKEND_IMAGE="${BACKEND_IMAGE:-}" \
+    FRONTEND_IMAGE="${FRONTEND_IMAGE:-}" \
+    BACKEND_IMAGE_DIGEST="${BACKEND_IMAGE_DIGEST:-}" \
+    REQUIRE_PINNED_IMAGE="${REQUIRE_PINNED_IMAGE:-false}" \
       bash "${REPO_ROOT}/scripts/run-real-pre-db-migrations.sh" "$@"
     ;;
 
@@ -182,6 +188,18 @@ case "${SUBCOMMAND}" in
     ROLLBACK_REF="${PREVIOUS_SHA}" \
     PROJECT_NAME="${PROJECT_NAME:-saas-active}" \
       bash "${REPO_ROOT}/scripts/rollback-real-pre.sh"
+    ;;
+
+  rollback-immutable)
+    log "Subcommand: rollback-immutable"
+    ENV_FILE="${ENV_FILE:-/opt/saas/env/.env.real-pre}" \
+    COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.real-pre.yml}" \
+    COMPOSE_PROJECT_NAME="${PROJECT_NAME:-saas-active}" \
+    RELEASE_STATE_DIR="${RELEASE_STATE_DIR:-runtime/qa/out/jenkins/release-state}" \
+    ROLLBACK_SOURCE_MAIN_SHA="${ROLLBACK_SOURCE_MAIN_SHA:-}" \
+    ROLLBACK_BACKEND_IMAGE="${ROLLBACK_BACKEND_IMAGE:-}" \
+    ROLLBACK_FRONTEND_IMAGE="${ROLLBACK_FRONTEND_IMAGE:-}" \
+      bash "${REPO_ROOT}/scripts/cd/rollback-real-pre.sh"
     ;;
 esac
 

@@ -250,33 +250,25 @@ jobs:
   # ------------------------------------------------------------------
   governance:
     name: Repository governance
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
     needs: changes
     if: always() && needs.changes.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Governance 始终运行：保护契约为单源真相，不能因变更范围判断而被跳过。
     steps:
       - name: Checkout complete history
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
+
       - name: Check changed lines for whitespace errors
+        shell: bash
         run: |
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
             git diff --check "${{ github.event.pull_request.base.sha }}...HEAD"
           else
             git show --check --format= HEAD
           fi
-      - name: Set up Harness Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: "20"
-          cache: npm
-          cache-dependency-path: harness/package-lock.json
-      - name: Verify Harness core
-        run: |
-          npm ci --prefix harness
-          npm run harness:typecheck
-          npm run harness:test
 
       - name: Install pinned Pester
         shell: pwsh
@@ -290,9 +282,11 @@ jobs:
             './harness/scripts/tests/safety-check-docs.Tests.ps1',
             './harness/scripts/tests/git-push-safe.Tests.ps1',
             './harness/scripts/tests/agent-do-conclusion.Tests.ps1',
+            './harness/scripts/tests/report-lifecycle.Tests.ps1',
+            './harness/scripts/tests/release-queue-governance.Tests.ps1',
+            './harness/scripts/tests/release-manifest.Tests.ps1',
             './harness/scripts/tests/check-harness-limits.Tests.ps1',
-            './harness/scripts/tests/test-impact-map.Tests.ps1',
-            './harness/scripts/tests/release-queue-governance.Tests.ps1'
+            './harness/scripts/tests/test-impact-map.Tests.ps1'
           )
           $result = Invoke-Pester -Script $tests -PassThru
           if ($result.FailedCount -gt 0) { throw "GitHub collaboration contract failed." }
@@ -303,7 +297,8 @@ jobs:
           cp -f .env.real-pre.example /tmp/.env.real-pre
           ln -sf /tmp/.env.real-pre .env.real-pre
           full_sha=0000000000000000000000000000000000000000
-          IMAGE_TAG="$full_sha" docker compose --env-file /tmp/.env.real-pre -f docker-compose.real-pre.yml config > /tmp/compose.yml
+          BACKEND_IMAGE="colonel-saas/backend:$full_sha" FRONTEND_IMAGE="colonel-saas/frontend:$full_sha" IMAGE_TAG="$full_sha" \
+            docker compose --env-file /tmp/.env.real-pre -f docker-compose.real-pre.yml config > /tmp/compose.yml
           grep -q "colonel-saas/backend:$full_sha" /tmp/compose.yml
           grep -q "colonel-saas/frontend:$full_sha" /tmp/compose.yml
           rm -f .env.real-pre
@@ -323,41 +318,26 @@ jobs:
         shell: pwsh
         run: |
           $jenkins = Get-Content -Raw Jenkinsfile
+          $activeJenkins = ($jenkins -split "`r?`n" | Where-Object { $_ -notmatch '^\s*//' }) -join "`n"
           $retired = Get-Content -Raw harness/scripts/commands/deploy-remote.ps1
+          $breakGlass = Get-Content -Raw scripts/deploy-real-pre.sh
+          $rollback = Get-Content -Raw scripts/cd/rollback-real-pre.sh
           $releaseScript = 'scripts/cd/release-real-pre.sh'
+          $wrapper = Get-Content -Raw $releaseScript
           if ($jenkins -notmatch "defaultValue:\s*'release/real-pre'") { throw 'Jenkins must only deploy release/real-pre' }
           if ($jenkins -notmatch 'IMAGE_TAG must be the full 40-character commit SHA') { throw 'Jenkins must reject floating image tags' }
-          # The canonical real-pre deployment lock is enforced by
-          # scripts/cd/release-real-pre.sh via flock(1) on
-          # /var/lock/saas-real-pre-deploy.lock. The PR-C commit
-          # replaced the obsolete Groovy `lock(resource: 'saas-real-pre-deploy')`
-          # directive (which relied on the Lockable Resources plugin
-          # that is NOT installed on the real-pre Jenkins host and
-          # was therefore a no-op). PR-D's Jenkinsfile consumes the
-          # new lock contract. We no longer assert the obsolete
-          # Groovy string; instead we assert that the Jenkinsfile
-          # routes mutating subcommands through the canonical
-          # release entry script (if it exists in the same branch
-          # as the Jenkinsfile change). The script itself is owned
-          # by the PR-C branch and will land in a follow-up merge.
-          $releaseScript = 'scripts/cd/release-real-pre.sh'
-          if (Test-Path -LiteralPath $releaseScript -PathType Leaf) {
-            if ($jenkins -notmatch [regex]::Escape($releaseScript)) {
-              throw "Jenkinsfile must route mutating subcommands through $releaseScript"
-            }
-            $release = Get-Content -Raw $releaseScript
-            if ($release -notmatch '\bflock\b') {
-              throw "$releaseScript must invoke flock(1) for real serialization"
-            }
-          }
-          # If the script is not in this branch (e.g. a Jenkinsfile-only
-          # PR), we only assert the obsolete directive is gone so a
-          # future contributor is not misled into thinking the
-          # Lockable Resources plugin is being used.
-          $jenkins | Should Not Match "lock\(resource:\s*'saas-real-pre-deploy'"
+          if ($activeJenkins -notmatch "lock\(resource:\s*'saas-real-pre-deploy'") { throw 'Jenkins must hold the global real-pre lock in executable pipeline code' }
+          if ($activeJenkins -match 'docker compose[^\r\n]+\sbuild') { throw 'Jenkins must not build images on the deployment host' }
+          if ($activeJenkins -notmatch 'scripts/cd/release-real-pre\.sh rollback-immutable') { throw 'Jenkins must rollback inside the serialized release stage' }
+          if ($activeJenkins -notmatch [regex]::Escape($releaseScript)) { throw 'Jenkins must route mutating subcommands through the canonical release wrapper' }
+          if ($wrapper -notmatch '\bflock\b') { throw 'canonical release wrapper must use flock(1)' }
+          if ($rollback -notmatch 'rollback-completed') { throw 'rollback helper must write rollback-completed state' }
+          if ($jenkins -notmatch 'release/real-pre\.json') { throw 'Jenkins must consume the release manifest' }
           if ($retired -notmatch 'Direct SSH deployment is retired') { throw 'direct SSH deploy path must remain retired' }
+          if ($breakGlass -notmatch 'Direct real-pre deployment is retired') { throw 'direct shell deploy path must remain break-glass guarded' }
 
       - name: Reject generated workspace changes
+        shell: bash
         run: test -z "$(git status --porcelain)"
 
   # ------------------------------------------------------------------
@@ -416,3 +396,105 @@ jobs:
             fi
           done
           echo "CI Gate: PASS"
+
+  release_contract:
+    name: Release manifest
+    needs: ci-gate
+    if: github.base_ref == 'release/real-pre' || github.ref == 'refs/heads/release/real-pre'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout complete history
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate release manifest and source tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/verify-real-pre-release.py release/real-pre.json
+          git fetch --no-tags origin main
+          source_sha="$(python3 -c 'import json; print(json.load(open("release/real-pre.json", encoding="utf-8"))["sourceMainSha"])')"
+          git merge-base --is-ancestor "$source_sha" origin/main
+          git diff --check "$source_sha" "$GITHUB_SHA" -- . ':(exclude)release/real-pre.json'
+          git diff --exit-code "$source_sha" "$GITHUB_SHA" -- . ':(exclude)release/real-pre.json'
+          echo "Release manifest points to main SHA $source_sha with no non-manifest drift."
+
+  immutable_images:
+    name: Immutable images
+    needs: ci-gate
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set up Java
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - name: Package backend artifact used by the image
+        working-directory: backend
+        run: mvn -B -DskipTests package
+
+      - name: Login to GHCR
+        shell: bash
+        run: printf '%s' "$GITHUB_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push immutable images
+        shell: bash
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+          IMAGE_NAMESPACE: ghcr.io/${{ github.repository }}
+        run: |
+          set -euo pipefail
+          IMAGE_NAMESPACE="${IMAGE_NAMESPACE,,}"
+          backend_ref="$IMAGE_NAMESPACE/backend:$IMAGE_TAG"
+          frontend_ref="$IMAGE_NAMESPACE/frontend:$IMAGE_TAG"
+          docker build --pull \
+            --label "org.opencontainers.image.revision=$IMAGE_TAG" \
+            --build-arg "GIT_COMMIT=$IMAGE_TAG" \
+            --tag "$backend_ref" backend
+          docker build --pull \
+            --label "org.opencontainers.image.revision=$IMAGE_TAG" \
+            --build-arg "GIT_COMMIT=$IMAGE_TAG" \
+            --build-arg "VITE_ENV_LABEL=REAL-PRE" \
+            --tag "$frontend_ref" frontend
+          docker push "$backend_ref"
+          docker push "$frontend_ref"
+          backend_digest="$(docker image inspect "$backend_ref" --format '{{index .RepoDigests 0}}' | awk -F@ '{print $2}')"
+          frontend_digest="$(docker image inspect "$frontend_ref" --format '{{index .RepoDigests 0}}' | awk -F@ '{print $2}')"
+          printf '%s\n' "$backend_digest" | grep -Eq '^sha256:[0-9a-f]{64}$'
+          printf '%s\n' "$frontend_digest" | grep -Eq '^sha256:[0-9a-f]{64}$'
+          mkdir -p release-artifact
+          python3 - "$IMAGE_TAG" "$IMAGE_NAMESPACE/backend" "$backend_digest" "$IMAGE_NAMESPACE/frontend" "$frontend_digest" > release-artifact/image-release.json <<'PY'
+          import json
+          import sys
+          source_sha, backend_repo, backend_digest, frontend_repo, frontend_digest = sys.argv[1:]
+          print(json.dumps({
+              "schemaVersion": 1,
+              "sourceMainSha": source_sha,
+              "images": {
+                  "backend": {"repository": backend_repo, "digest": backend_digest},
+                  "frontend": {"repository": frontend_repo, "digest": frontend_digest},
+              },
+          }, indent=2))
+          PY
+          cat release-artifact/image-release.json >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload immutable image record
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: immutable-images-${{ github.sha }}
+          path: release-artifact/image-release.json
+          if-no-files-found: error

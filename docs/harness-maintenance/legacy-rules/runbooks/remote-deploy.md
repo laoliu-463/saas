@@ -20,7 +20,8 @@
 1. 候选提交已经进入 `main`，禁止发布未合并的任务分支。
 2. `main` 的 `Backend tests`、`Frontend tests and build`、`Repository governance` 全部通过。
 3. 通过独立 PR 将目标提交串行提升到 `release/real-pre`。
-4. 发布人确认目标是 40 位完整 SHA，并检查回滚版本。
+4. 发布清单 `release/real-pre.json` 固定 `sourceMainSha`、后端/前端镜像摘要、迁移输入摘要和上一版本回滚引用。
+5. 发布人确认目标是 40 位完整 SHA，并检查回滚版本。
 5. 真实推广写开关开启时，必须显式确认 `CONFIRM_REAL_PROMOTION_WRITE=true`。
 
 ## Jenkins 参数
@@ -37,6 +38,7 @@
 - 同 Job 使用 `disableConcurrentBuilds(abortPrevious: false)` 排队，不取消运行中的发布。
 - 所有 Job 共享 `saas-real-pre-deploy` 全局锁。
 - Jenkins 比较 `/opt/saas/releases/current.json` 或当前运行镜像的 SHA。
+- Jenkins 从受控容器仓库拉取 `repository@sha256:digest`；部署节点不执行源码构建。
 - 目标不是当前版本后继提交时默认拒绝；只有 `ROLLBACK_APPROVED=true` 才允许。
 
 ## 数据库边界

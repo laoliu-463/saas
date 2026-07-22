@@ -46,6 +46,12 @@ CI / Harness / Jenkins 负责按变更范围选择测试、检查治理规则、
 
 数据库、认证、结算、定时任务、CI/CD 和发布基础设施变更，会由 PR 模板要求补充兼容性、回滚和故障说明。
 
+## real-pre 发布边界
+
+合并到 `main` 后，GitHub Actions 构建不可变后端和前端镜像；发布提升 PR 将 `main` 的源代码 SHA、镜像 digest、迁移版本和回滚引用写入 `release/real-pre.json`，再由 Jenkins 串行部署、验收、留证据或回滚。
+
+普通开发者不直接 SSH、`git pull`、现场 `docker build` 或重启远端容器。缺少真实 Token、订单或授权样本时保留 `BLOCKED` / `PENDING`，不得改写为 `PASS`。
+
 ## 相关入口
 
 - [贡献与 PR 规则](../CONTRIBUTING.md)
