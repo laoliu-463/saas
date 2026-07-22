@@ -69,6 +69,18 @@ Describe 'real-pre single release queue contract' {
         $jenkinsfile | Should Match 'GITHUB_BRANCH=main'
         $shaGate | Should Match 'REQUIRED_JOBS=\("CI Gate"\)'
 
+        $ciWorkflow = Get-Content -Raw -LiteralPath (Join-Path $repoRoot '.github\workflows\ci.yml')
+        foreach ($allowedPath in @(
+            '\(exclude\)release/real-pre\.json',
+            '\(exclude\)Jenkinsfile',
+            '\(exclude\)\.github/workflows/\*\*',
+            '\(exclude\)docs/deploy/\*\*',
+            '\(exclude\)scripts/verify-github-ci-gate\.sh',
+            '\(exclude\)harness/scripts/tests/release-queue-governance\.Tests\.ps1'
+        )) {
+            $ciWorkflow | Should Match $allowedPath
+        }
+
         # RUN_BACKEND_TEST must default to false so the SHA Gate is the
         # single source of truth for the Backend tests signal.
         $jenkinsfile | Should Match "booleanParam\(name:\s*'RUN_BACKEND_TEST',\s*defaultValue:\s*false"

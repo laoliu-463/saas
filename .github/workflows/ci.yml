@@ -421,9 +421,24 @@ jobs:
           git fetch --no-tags origin main
           source_sha="$(python3 -c 'import json; print(json.load(open("release/real-pre.json", encoding="utf-8"))["sourceMainSha"])')"
           git merge-base --is-ancestor "$source_sha" origin/main
-          git diff --check "$source_sha" "$GITHUB_SHA" -- . ':(exclude)release/real-pre.json'
-          git diff --exit-code "$source_sha" "$GITHUB_SHA" -- . ':(exclude)release/real-pre.json'
-          echo "Release manifest points to main SHA $source_sha with no non-manifest drift."
+          # The release branch may carry release-controller changes without
+          # rebuilding application images. Runtime code/configuration must
+          # still match sourceMainSha exactly.
+          git diff --check "$source_sha" "$GITHUB_SHA" -- . \
+            ':(exclude)release/real-pre.json' \
+            ':(exclude)Jenkinsfile' \
+            ':(exclude).github/workflows/**' \
+            ':(exclude)docs/deploy/**' \
+            ':(exclude)scripts/verify-github-ci-gate.sh' \
+            ':(exclude)harness/scripts/tests/release-queue-governance.Tests.ps1'
+          git diff --exit-code "$source_sha" "$GITHUB_SHA" -- . \
+            ':(exclude)release/real-pre.json' \
+            ':(exclude)Jenkinsfile' \
+            ':(exclude).github/workflows/**' \
+            ':(exclude)docs/deploy/**' \
+            ':(exclude)scripts/verify-github-ci-gate.sh' \
+            ':(exclude)harness/scripts/tests/release-queue-governance.Tests.ps1'
+          echo "Release manifest points to main SHA $source_sha with no runtime drift."
 
   immutable_images:
     name: Immutable images
