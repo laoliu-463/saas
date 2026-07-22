@@ -23,6 +23,9 @@ PR 到 `release/real-pre` 必须包含 `release/real-pre.json`，并通过 `scri
 - Job 名称：`saas-real-pre-cd`。
 - 唯一部署分支：`release/real-pre`。
 - Jenkins 节点拥有 Docker Compose、Python 3、Node / pnpm、curl 和 Git。
+- Jenkins 节点必须维护非 shallow 的本地 Git reference cache：
+  `/var/lib/jenkins/caches/saas-real-pre-git-reference.git`。
+  Pipeline 使用 `depth=1`、`noTags` 和该 cache 检出 `release/real-pre`，避免每次重新传输完整对象库；cache 不可用时应先修复节点，不得改回现场全量 checkout。
 - Jenkins 凭据中配置 `saas-container-registry`，类型为 username/password，密码只用于读取容器仓库。
 - `/opt/saas/env/.env.real-pre` 由服务器受控保存，不进入 Git 或 Jenkins 日志。
 - Jenkins Lockable Resources 配置全局资源 `saas-real-pre-deploy`。

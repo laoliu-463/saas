@@ -77,7 +77,10 @@ jobs:
           echo "Head:     $(git rev-parse HEAD)"
 
           # List of changed POSIX paths relative to repo root.
-          mapfile -t CHANGED < <(git diff --name-only "$BASE"...HEAD | sort -u)
+          # Keep non-ASCII paths unquoted. Git's default C-style quoting
+          # turns docs/deploy/中文.md into a string that no case pattern
+          # below can classify, incorrectly setting other=true.
+          mapfile -t CHANGED < <(git -c core.quotePath=false diff --name-only "$BASE"...HEAD | sort -u)
 
           echo "Changed files (${#CHANGED[@]}):"
           for f in "${CHANGED[@]}"; do echo "  $f"; done
@@ -104,6 +107,7 @@ jobs:
               scripts/run-real-pre-db-migrations.sh)   database=1 ;;
               backend/**)                              backend=1 ;;
               frontend/**)                             frontend=1 ;;
+              .github/workflows/**)                    harness=1 ;;
               harness/**)                              harness=1 ;;
               Jenkinsfile)                             deployment=1 ;;
               scripts/**/*.sh)                         deployment=1 ;;
