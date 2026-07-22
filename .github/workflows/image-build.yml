@@ -18,7 +18,7 @@ on:
         type: string
 
 permissions:
-  contents: write
+  contents: read
   packages: write
 
 # Re-use the same concurrency group as ci.yml so a rebuild cannot
@@ -154,9 +154,9 @@ jobs:
           echo "frontend_digest=${FRONTEND_DIGEST}" >> "$GITHUB_OUTPUT"
 
       # ------------------------------------------------------------------
-      # Record digests as a build artifact AND commit them back to the
-      # repository under releases/<sha>/image-digests.json so Jenkins
-      # can read them on the CD side.
+      # Record digests as a build artifact. Release promotion consumes the
+      # release/real-pre manifest; this workflow must not push generated
+      # files directly to protected main.
       # ------------------------------------------------------------------
       - name: Record digests
         env:
@@ -183,42 +183,6 @@ jobs:
           }
           EOF
           cat "release-artifacts/image-digests.json"
-
-      - name: Commit digests back to repository
-        env:
-          SHA: ${{ steps.resolve_sha.outputs.sha }}
-        run: |
-          set -euo pipefail
-          # Configure the image-build-bot identity (a GitHub App or a
-          # PAT is the alternative; we use GITHUB_TOKEN which has
-          # contents:write on the repo).
-          git config user.name  "image-build-bot"
-          git config user.email "image-build-bot@users.noreply.github.com"
-          # The checkout step used ref:$SHA so HEAD is at $SHA already;
-          # we must move back to main to commit there.
-          git checkout -B main origin/main
-          mkdir -p "releases/${SHA}"
-          cat > "releases/${SHA}/image-digests.json" <<EOF
-          {
-            "gitSha": "${SHA}",
-            "branch": "main",
-            "registry": "ghcr.io",
-            "owner": "laoliu-463",
-            "backend": {
-              "image": "ghcr.io/laoliu-463/saas-backend",
-              "tag": "${SHA}",
-              "digest": "${{ steps.push_backend.outputs.backend_digest }}"
-            },
-            "frontend": {
-              "image": "ghcr.io/laoliu-463/saas-frontend",
-              "tag": "${SHA}",
-              "digest": "${{ steps.push_frontend.outputs.frontend_digest }}"
-            }
-          }
-          EOF
-          git add "releases/${SHA}/image-digests.json"
-          git commit -m "chore(image): record GHCR digests for ${SHA}"
-          git push origin main
 
       - name: Upload digest artifact
         uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4
