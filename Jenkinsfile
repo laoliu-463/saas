@@ -107,6 +107,10 @@ pipeline {
                 test -f "$ENV_FILE"
                 test -f "$COMPOSE_FILE"
                 test -f "$RELEASE_MANIFEST"
+                # Compose keeps the local real-pre contract at .env.real-pre;
+                # Jenkins injects the protected file outside the workspace.
+                ln -sfn "$ENV_FILE" .env.real-pre
+                test -f .env.real-pre
                 test -z "$(git status --porcelain)"
 
                 remote_release="$(git ls-remote "$CD_GIT_URL" refs/heads/release/real-pre | awk '{print $1}')"
