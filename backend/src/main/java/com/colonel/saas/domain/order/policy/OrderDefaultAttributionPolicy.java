@@ -49,7 +49,18 @@ public final class OrderDefaultAttributionPolicy {
 
         UUID defaultRecruiterId = resolveDefaultRecruiter(recruiterLookup);
 
-        if (!DomainText.hasText(input.pickSource()) && !DomainText.hasText(input.pickExtra())) {
+        if (input.hasNativeColonelIdentity() && channelMapping == null) {
+            return OrderDefaultAttributionResult.unattributed(
+                    input.talentId(),
+                    input.talentUid(),
+                    input.activityId(),
+                    defaultRecruiterId,
+                    AttributionService.REASON_MAPPING_NOT_FOUND);
+        }
+
+        if (!input.hasNativeColonelIdentity()
+                && !DomainText.hasText(input.pickSource())
+                && !DomainText.hasText(input.pickExtra())) {
             return OrderDefaultAttributionResult.unattributed(
                     input.talentId(),
                     input.talentUid(),

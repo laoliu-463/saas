@@ -67,6 +67,29 @@ class OrderDefaultAttributionResolverTest {
     }
 
     @Test
+    void resolve_shouldUseNativeColonelMappingWhenPickSourceIsMissing() {
+        ColonelsettlementOrder order = baseOrder();
+        order.setPickSource(null);
+        order.setColonelBuyinId(3859423L);
+        UUID channelUserId = UUID.randomUUID();
+        PickSourceMapping mapping = new PickSourceMapping();
+        mapping.setUserId(channelUserId);
+        mapping.setDeptId(UUID.randomUUID());
+
+        when(pickSourceMappingAdapter.findByNativeOrder("3859423", "act-1", "prod-1", true))
+                .thenReturn(new OrderPickSourceMappingAdapter.NativeMappingLookup(mapping, false));
+        when(productDomainFacade.findProductAssigneeId("act-1", "prod-1")).thenReturn(null);
+        when(productDomainFacade.findActivityDefaultRecruiterId("act-1")).thenReturn(null);
+
+        OrderDefaultAttributionResult result = resolver.resolve(order, Map.of());
+
+        verify(pickSourceMappingAdapter).findByNativeOrder("3859423", "act-1", "prod-1", true);
+        assertThat(result.defaultChannelUserId()).isEqualTo(channelUserId);
+        assertThat(result.attributionStatus()).isEqualTo(AttributionService.STATUS_ATTRIBUTED);
+        verify(pickSourceMappingAdapter, never()).findByPickSourceOrExtra(any(), any());
+    }
+
+    @Test
     void resolve_productFacadeException_shouldStillReturnChannelResult() {
         ColonelsettlementOrder order = baseOrder();
         PickSourceMapping mapping = new PickSourceMapping();
