@@ -116,7 +116,6 @@ jobs:
             | awk -F@ -v prefix="${BACKEND_IMAGE}@" 'index($0, prefix) == 1 { print substr($0, length(prefix) + 1); exit }')"
           printf '%s' "$BACKEND_DIGEST" | grep -Eq '^sha256:[0-9a-f]{64}$'
           echo "backend_digest=${BACKEND_DIGEST}" >> "$GITHUB_OUTPUT"
-          docker push "${BACKEND_IMAGE}@${BACKEND_DIGEST}"
 
       # ------------------------------------------------------------------
       # Frontend
@@ -153,7 +152,6 @@ jobs:
             | awk -F@ -v prefix="${FRONTEND_IMAGE}@" 'index($0, prefix) == 1 { print substr($0, length(prefix) + 1); exit }')"
           printf '%s' "$FRONTEND_DIGEST" | grep -Eq '^sha256:[0-9a-f]{64}$'
           echo "frontend_digest=${FRONTEND_DIGEST}" >> "$GITHUB_OUTPUT"
-          docker push "${FRONTEND_IMAGE}@${FRONTEND_DIGEST}"
 
       # ------------------------------------------------------------------
       # Record digests as a build artifact AND commit them back to the
