@@ -20,6 +20,7 @@ pipeline {
         JOB_PURPOSE = 'real-pre-cd'
         DEPLOY_ENV = 'real-pre'
         CD_GIT_URL = 'git@github.com:laoliu-463/saas.git'
+        CD_GIT_REFERENCE = '/var/lib/jenkins/caches/saas-real-pre-git-reference.git'
         ENV_FILE = '/opt/saas/env/.env.real-pre'
         COMPOSE_FILE = 'docker-compose.real-pre.yml'
         PROJECT_NAME = 'saas-active'
@@ -43,17 +44,23 @@ pipeline {
 
     stages {
         stage('Checkout') {
-            options { timeout(time: 5, unit: 'MINUTES') }
+            options { timeout(time: 15, unit: 'MINUTES') }
             steps {
                 deleteDir()
+                sh '''#!/usr/bin/env bash
+                set -eu
+                test -d "$CD_GIT_REFERENCE"
+                test ! -e "$CD_GIT_REFERENCE/shallow"
+                test "$(git --git-dir="$CD_GIT_REFERENCE" rev-parse --is-bare-repository)" = true
+                '''
                 checkout([
                     $class: 'GitSCM',
                     branches: [[name: "*/${params.DEPLOY_BRANCH}"]],
                     doGenerateSubmoduleConfigurations: false,
                     extensions: [
                         [$class: 'CleanBeforeCheckout'],
-                        [$class: 'CloneOption', honorRefspec: true, noTags: true,
-                         reference: '', shallow: false, timeout: 60]
+                        [$class: 'CloneOption', depth: 1, honorRefspec: true, noTags: true,
+                         reference: env.CD_GIT_REFERENCE, shallow: true, timeout: 60]
                     ],
                     userRemoteConfigs: [[
                         refspec: "+refs/heads/${params.DEPLOY_BRANCH}:refs/remotes/origin/${params.DEPLOY_BRANCH}",
