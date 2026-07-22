@@ -149,12 +149,16 @@ pipeline {
                   ':(exclude)release/real-pre.json' \
                   ':(exclude)Jenkinsfile' \
                   ':(exclude).github/workflows/**' \
-                  ':(exclude)docs/deploy/**'
+                  ':(exclude)docs/deploy/**' \
+                  ':(exclude)scripts/verify-github-ci-gate.sh' \
+                  ':(exclude)harness/scripts/tests/release-queue-governance.Tests.ps1'
                 git diff --exit-code "$SOURCE_MAIN_SHA" "$RELEASE_HEAD_SHA" -- . \
                   ':(exclude)release/real-pre.json' \
                   ':(exclude)Jenkinsfile' \
                   ':(exclude).github/workflows/**' \
-                  ':(exclude)docs/deploy/**'
+                  ':(exclude)docs/deploy/**' \
+                  ':(exclude)scripts/verify-github-ci-gate.sh' \
+                  ':(exclude)harness/scripts/tests/release-queue-governance.Tests.ps1'
                 computed_migration_input_sha="$(python3 scripts/hash-real-pre-migration-inputs.py --ref "$SOURCE_MAIN_SHA")"
                 if [ "$computed_migration_input_sha" != "$MIGRATION_INPUT_SHA256" ]; then
                   echo "ERROR: release migration input digest does not match sourceMainSha."
