@@ -17,8 +17,8 @@
 | real-pre 渠道链真实订单归因样本不足 | blocked | `01-当前项目状态.md`、`03-P0-P1问题台账.md` | 等待真实通过系统转链产生的订单样本，不能写 PASS |
 | 寄样自动完成依赖真实归因订单 | blocked | `03-P0-P1问题台账.md`、`docs/验收/real-pre联调手册.md` | 有订单后验证 `channel_id + talent_id + product_id + pay_time` |
 | 推广中商品历史入库可能漂移 | open | `03-P0-P1问题台账.md`、商品域文档 | 优先走商品域同步/repair 入口，先 dry-run |
-| `docs/归档/旧版V2.2完整方案/商品域未实现功能详细清单.md` 为空文件 | deferred | 当前仓库扫描 | 不直接删除；纳入旧内容维护候选 |
-| `CODEX.md` 曾默认 `Env=test` | fixed | 本轮修改 | 已改为 `real-pre`，后续验证入口一致性 |
+| `Git 历史中的旧 V2.2 资料 为空文件 | deferred | 当前仓库扫描 | 不直接删除；纳入旧内容维护候选 |
+| 旧 Codex 独立入口曾默认 `Env=test` | fixed | 本轮修改 | 已收敛到 `AGENTS.md` 与当前 Harness 入口 |
 | U-2.5-B 后端全量测试失败 | fixed | `runtime/qa/out/test-1-full-backend-failures-fix-20260603-104601.md` | TEST-1 已修复：全量 `mvn -f backend/pom.xml test` 通过 1671 tests / 0 failures / 0 errors |
 | real-pre 前端 Google Fonts 被 CSP 阻止 | open | `runtime/qa/out/func-001-product-card-hover-ui-20260603-111451.md`、`runtime/qa/out/func-001-product-card-hover-expanded.png` | 决定是否自托管字体或调整 CSP；本轮商品卡片功能验证仅记录为 `PASS_WITH_NON_TASK_WARNING` |
 | P-FIX-001C 任务模板要求的 Harness 路径/Scope 与当前脚本不一致 | fixed | `runtime/qa/out/p-fix-001c-product-library-pagination-20260603-113616.md`、当前路径检查 | 当前使用 `docs/harness-maintenance/legacy-rules/skills/workflow/post-task-gc.md`；脚本 Scope 以 `agent-do.ps1` 参数为准 |

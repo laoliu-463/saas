@@ -89,4 +89,4 @@ ci(github): <描述>
 - [Commit / Push / Deploy Gate](git-change-control.commit.md)
 - [Git Exit Gate / Unknown Policy / Rollback](git-change-control.exit.md)
 - [批次提交流程](git-batch-submit.md)
-- [任务后清理](post-task-gc.md)
+- [任务后清理](../workflow/post-task-gc.md)

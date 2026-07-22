@@ -28,8 +28,7 @@
 - 路线图：[DDD_OPTIMIZATION_ROADMAP.md](../../runbooks/ddd/DDD_OPTIMIZATION_ROADMAP.md)
 - 任务矩阵：[DDD_DOMAIN_TASK_MATRIX.md](../../runbooks/ddd/DDD_DOMAIN_TASK_MATRIX.md)
 - 领域地图：[domains-map.md](../../governance/domains-map.md)
-- 任务看板：[ddd-multi-agent-board.md](../../../tasks/ddd-multi-agent-board.md)
-- 依赖图：[ddd-task-dependency-graph.md](../../../tasks/ddd-task-dependency-graph.md)
+- 任务看板与依赖图已退役；当前任务统一从 GitHub Issues 和 [Harness 总入口](../../../../../harness/README.md) 进入。
 - 锁索引：[INDEX.md](../../locks/INDEX.md)
 
 ## 多 Agent 协作核心规则
