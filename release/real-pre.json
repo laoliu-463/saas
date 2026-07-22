@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "sourceMainSha": "42fe9d9365de9a7ea0e12dfadd4e0f4f903a6a3e",
+  "images": {
+    "backend": {
+      "repository": "ghcr.io/laoliu-463/saas-backend",
+      "digest": "sha256:7a9fdf0429cb45657c84ca23ceb0da0da4c76fb211ef7489c57e4026dd3d5328"
+    },
+    "frontend": {
+      "repository": "ghcr.io/laoliu-463/saas-frontend",
+      "digest": "sha256:9f18993fc865f9ae9bfa7774c253fe3c24486305f60f4dcd1a9cfe4da8135b38"
+    }
+  },
+  "database": {
+    "migrationVersion": "20260719.002",
+    "inputSha256": "sha256:41afff928a5d08be86c2650fe8a8d12134c71dea17e7310ff0c939705f909722"
+  },
+  "bootstrap": false,
+  "previous": {
+    "sourceMainSha": "8827b2a70ff3c5eb0f6a47a61623a8b9d5787a51",
+    "images": {
+      "backend": {
+        "repository": "colonel-saas/backend",
+        "digest": "sha256:386206688a69625f3b3eb6cb9cadf6340fabc8fe2051de7ad7519dc2c6e48210"
+      },
+      "frontend": {
+        "repository": "colonel-saas/frontend",
+        "digest": "sha256:c7f9be3ffe53f2d8e27a72f3e049c47c6f42afa4925c1ea98dcb42c95f6dcad2"
+      }
+    }
+  }
+}
