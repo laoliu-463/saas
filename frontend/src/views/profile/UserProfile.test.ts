@@ -32,4 +32,12 @@ describe('user profile page wiring', () => {
     expect(source).toContain("key: 'profile'")
     expect(source).toContain("await safeNavigate('/profile')")
   })
+
+  it('keeps an explicit return path from personal center to the role-resolved workspace', () => {
+    const source = componentSource()
+
+    expect(source).toContain('data-testid="profile-return-to-workspace"')
+    expect(source).toContain('handleReturnToWorkspace')
+    expect(source).toContain("await router.push('/')")
+  })
 })

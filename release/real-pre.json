@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
-  "sourceMainSha": "42fe9d9365de9a7ea0e12dfadd4e0f4f903a6a3e",
+  "sourceMainSha": "a4521e790aaa90fc2a32bfc8c03fe1e4dc5aa88f",
   "images": {
     "backend": {
       "repository": "ghcr.io/laoliu-463/saas-backend",
-      "digest": "sha256:7a9fdf0429cb45657c84ca23ceb0da0da4c76fb211ef7489c57e4026dd3d5328"
+      "digest": "sha256:e2eb4090ca5230523789c4647a323e6c49e502ec0cac21309b91816257e9ca28"
     },
     "frontend": {
       "repository": "ghcr.io/laoliu-463/saas-frontend",
-      "digest": "sha256:9f18993fc865f9ae9bfa7774c253fe3c24486305f60f4dcd1a9cfe4da8135b38"
+      "digest": "sha256:a901889ed185b377f11dc5ba0f3aa8b8326d8506cc99a6c68b81860345aa28e6"
     }
   },
   "database": {

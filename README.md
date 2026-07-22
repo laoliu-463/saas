@@ -90,4 +90,4 @@ python3 scripts/verify-real-pre-release.py release/real-pre.json
 - [文档地图](./docs/README.md)：事实、领域、接口、验收和部署文档。
 - [部署文档](./docs/deploy/README.md)：详细部署材料的兼容入口。
 - [发布审查](./docs/release/README.md)：real-pre 发布审查和证据目录。
-- [Playwright 验收说明](./README-e2e.md)。
+- [Playwright 验收说明](./docs/验收/E2E浏览器测试手册.md)。

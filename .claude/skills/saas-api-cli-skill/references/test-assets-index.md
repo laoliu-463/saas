@@ -6,7 +6,6 @@
 - `docs/验收/回归测试脚本索引.md`
 - `docs/验收/E2E浏览器测试手册.md`
 - `docs/验收/V1-P0验收清单.md`
-- `README-e2e.md`
 
 ## 测试类型
 
