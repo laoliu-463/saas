@@ -68,6 +68,7 @@ import {
   getLeftMenus,
   resolveActiveLeftKey,
   resolveActiveTopKey,
+  resolveSidebarTopKey,
   TALENT_MENU_KEYS,
   type MenuTreeNode
 } from '../../router/menuTree'
@@ -176,8 +177,25 @@ interface SidebarMenuOption {
 /** 根据当前用户角色构建可访问的菜单树 */
 const accessibleMenuTree = computed(() => buildAccessibleMenuTree(authStore.permissionCodes))
 
-/** 当前激活的顶部菜单 key，用于确定左侧菜单的归属 */
-const activeTopKey = computed(() => resolveActiveTopKey(route.path))
+/** 当前路由所属的业务分区；个人中心等全局页面会返回 null。 */
+const routeTopKey = computed(() => resolveActiveTopKey(route.path))
+
+/** 用户进入全局页面前所在的业务分区，用于保持可返回的侧边导航。 */
+const previousTopKey = ref<string | null>(null)
+
+watch(routeTopKey, (topKey) => {
+  if (topKey) {
+    previousTopKey.value = topKey
+  }
+}, { immediate: true })
+
+/**
+ * 侧边栏分区：普通业务页面使用当前路由分区；个人中心等全局页面复用上一个
+ * 可访问分区，直接打开时回退到当前账号第一个可访问分区。
+ */
+const activeTopKey = computed(() =>
+  resolveSidebarTopKey(route.path, authStore.permissionCodes, previousTopKey.value)
+)
 
 /** 当前激活的左侧菜单项 key，用于高亮当前页面对应的菜单 */
 const activeLeftKey = computed(() => {
