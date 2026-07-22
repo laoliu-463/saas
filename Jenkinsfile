@@ -13,6 +13,7 @@ pipeline {
         booleanParam(name: 'DEPLOY_REAL_PRE', defaultValue: false, description: 'Explicit approval required to deploy real-pre.')
         booleanParam(name: 'CONFIRM_REAL_PROMOTION_WRITE', defaultValue: false, description: 'Required only when real-pre promotion-write switches are enabled.')
         booleanParam(name: 'ROLLBACK_APPROVED', defaultValue: false, description: 'Explicit approval required when the target is not a descendant of the deployed commit.')
+        booleanParam(name: 'RUN_BACKEND_TEST', defaultValue: false, description: 'Diagnostic rerun only; does not bypass the GHA SHA Gate.')
     }
 
     environment {
@@ -236,6 +237,50 @@ pipeline {
                   COMPOSE_PROJECT_NAME="$PROJECT_NAME" \
                   docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" config --quiet
                 echo "Preflight guard passed without printing secrets."
+                '''
+            }
+        }
+
+        stage('GitHub CI SHA Gate') {
+            options { timeout(time: 55, unit: 'MINUTES') }
+            steps {
+                withCredentials([string(credentialsId: 'github-actions-read-token', variable: 'GITHUB_TOKEN')]) {
+                    sh '''#!/usr/bin/env bash
+                    set -eu
+                    . runtime/qa/out/jenkins/cd-env.sh
+                    GITHUB_REPOSITORY="${CD_GIT_URL#*github.com/}"
+                    GITHUB_REPOSITORY="${GITHUB_REPOSITORY%.git}"
+                    export GITHUB_REPOSITORY
+                    GITHUB_WORKFLOW=ci.yml \
+                      GITHUB_BRANCH=release/real-pre \
+                      GITHUB_SHA="$FULL_COMMIT" \
+                      bash scripts/verify-github-ci-gate.sh
+                    '''
+                }
+            }
+        }
+
+        stage('Backend Test') {
+            when { expression { return params.RUN_BACKEND_TEST } }
+            options { timeout(time: 15, unit: 'MINUTES') }
+            steps {
+                sh '''#!/usr/bin/env bash
+                set -eu
+                docker_gid="$(stat -c '%g' /var/run/docker.sock)"
+                docker run --rm \
+                  --user "$(id -u):$(id -g)" \
+                  --group-add "$docker_gid" \
+                  --network host \
+                  -e HOME=/tmp \
+                  -e MAVEN_CONFIG=/tmp/.m2 \
+                  -e TESTCONTAINERS_HOST_OVERRIDE=127.0.0.1 \
+                  -e TESTCONTAINERS_RYUK_DISABLED=true \
+                  -v /var/run/docker.sock:/var/run/docker.sock \
+                  -v "$PWD":/workspace \
+                  -v /var/lib/jenkins/.cache/saas-real-pre-cd/m2:/tmp/.m2 \
+                  -w /workspace/backend \
+                  maven:3.9-eclipse-temurin-17 \
+                  mvn -B clean test
                 '''
             }
         }
@@ -538,10 +583,44 @@ PY
                         fi
 
                         release_root="/opt/saas/releases"
-                        release_dir="$release_root/$SOURCE_MAIN_SHA"
+                        release_dir="$release_root/$FULL_COMMIT"
                         release_candidate="runtime/qa/out/jenkins/release.json"
-                        cp "$RELEASE_MANIFEST" "$release_candidate"
                         release_manifest="$release_dir/release.json"
+                        previous_release_sha="$(cat "$release_root/previous.json" 2>/dev/null \
+                          | grep -Eo '"gitSha"[[:space:]]*:[[:space:]]*"[0-9a-f]{40}"' \
+                          | head -n 1 | grep -Eo '[0-9a-f]{40}' || true)"
+                        [ -n "$previous_release_sha" ] || previous_release_sha="null"
+                        ci_run_id="$(cat runtime/qa/out/jenkins/github-ci-run-id.txt 2>/dev/null || true)"
+                        ci_run_url="$(cat runtime/qa/out/jenkins/github-ci-run-url.txt 2>/dev/null || true)"
+                        [ -n "$ci_run_id" ] || ci_run_id="unknown"
+                        [ -n "$ci_run_url" ] || ci_run_url="unknown"
+                        migration_versions_json="$(printf '%s\n' "$migration_versions" | python3 -c 'import json,sys; print(json.dumps([line.strip() for line in sys.stdin if line.strip()]))')"
+                        cat > "$release_candidate" <<EOF
+                        {
+                          "gitSha": "$FULL_COMMIT",
+                          "branch": "$BUILD_BRANCH",
+                          "backendDigest": "$BACKEND_IMAGE_DIGEST",
+                          "frontendDigest": "$FRONTEND_IMAGE_DIGEST",
+                          "migrationVersions": $migration_versions_json,
+                          "ciRun": {
+                            "id": "$ci_run_id",
+                            "url": "$ci_run_url",
+                            "workflow": "ci.yml",
+                            "branch": "release/real-pre",
+                            "sha": "$FULL_COMMIT"
+                          },
+                          "jenkinsBuild": {
+                            "job": "${JOB_NAME:-unknown}",
+                            "number": ${BUILD_NUMBER:-0},
+                            "url": "${BUILD_URL:-unknown}"
+                          },
+                          "deployResult": "$evidence_result",
+                          "previous": $previous_release_sha,
+                          "rollbackTarget": $previous_release_sha,
+                          "sourceMainSha": "$SOURCE_MAIN_SHA",
+                          "imageTag": "$IMAGE_TAG"
+                        }
+EOF
                         if [ "$evidence_result" = "PASS" ]; then
                           mkdir -p "$release_dir"
                           if [ -f "$release_manifest" ]; then
@@ -551,12 +630,9 @@ PY
                           fi
                         fi
                         if [ "$evidence_result" = "PASS" ]; then
-                          if [ -f "$release_root/current.json" ]; then
-                            cp "$release_root/current.json" "$release_root/previous.json.tmp"
-                            mv "$release_root/previous.json.tmp" "$release_root/previous.json"
-                          fi
-                          cp "$release_manifest" "$release_root/current.json.tmp"
-                          mv "$release_root/current.json.tmp" "$release_root/current.json"
+                          REPO_ROOT="${WORKSPACE:-$PWD}" \
+                            RELEASES_BASE="$release_root" \
+                            bash scripts/cd/evidence-collect.sh release-manifest "$FULL_COMMIT" "$release_candidate"
                         fi
 
                         mkdir -p "$(dirname "$remote_report")"

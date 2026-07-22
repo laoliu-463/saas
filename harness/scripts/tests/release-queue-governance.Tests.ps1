@@ -51,6 +51,27 @@ Describe 'real-pre single release queue contract' {
         $jenkinsfile | Should Not Match 'compatible database migrations are mandatory'
     }
 
+    It 'enforces a GHA SHA Gate on the exact FULL_COMMIT before deploying (PR-B)' {
+        # The SHA Gate must (a) live in scripts/verify-github-ci-gate.sh,
+        # (b) be invoked from Jenkinsfile via withCredentials, and (c)
+        # target the same FULL_COMMIT that is being deployed.
+        $shaGateScript = Join-Path $repoRoot 'scripts\verify-github-ci-gate.sh'
+        (Test-Path -LiteralPath $shaGateScript -PathType Leaf) | Should Be $true
+
+        $shaGate = Get-Content -Raw -LiteralPath $shaGateScript
+        $shaGate | Should Match 'GITHUB_SHA'
+        $shaGate | Should Match 'workflow_runs'
+        $shaGate | Should Match 'conclusion'
+
+        $jenkinsfile | Should Match 'github-actions-read-token'
+        $jenkinsfile | Should Match 'verify-github-ci-gate\.sh'
+        $jenkinsfile | Should Match 'GITHUB_SHA="\$FULL_COMMIT"'
+
+        # RUN_BACKEND_TEST must default to false so the SHA Gate is the
+        # single source of truth for the Backend tests signal.
+        $jenkinsfile | Should Match "booleanParam\(name:\s*'RUN_BACKEND_TEST',\s*defaultValue:\s*false"
+    }
+
     It 'records immutable release manifests and atomically promotes current state' {
         $jenkinsfile | Should Match '/opt/saas/releases'
         $jenkinsfile | Should Match 'release\.json'
@@ -60,6 +81,30 @@ Describe 'real-pre single release queue contract' {
         $jenkinsfile | Should Match 'FRONTEND_IMAGE_DIGEST'
         $jenkinsfile | Should Match 'repository@sha256:digest'
         $jenkinsfile | Should Not Match 'docker compose[^\r\n]+\sbuild'
+    }
+
+    It 'routes the release manifest through scripts/cd/evidence-collect.sh (PR-C)' {
+        # PR-C moves the current/previous rotation out of inline cp/mv and
+        # into the canonical evidence-collect.sh entry point. The
+        # manifest schema is now enforced by evidence-collect.sh's
+        # python validator rather than by ad-hoc heredoc JSON.
+        $evidenceCollect = Join-Path $repoRoot 'scripts\cd\evidence-collect.sh'
+        (Test-Path -LiteralPath $evidenceCollect -PathType Leaf) | Should Be $true
+
+        $ec = Get-Content -Raw -LiteralPath $evidenceCollect
+        # The script must define the release-manifest subcommand and
+        # enforce every required field of the manifest schema.
+        $ec | Should Match 'release-manifest\)'
+        foreach ($field in 'gitSha','branch','backendDigest','frontendDigest','migrationVersions','ciRun','jenkinsBuild','deployResult','previous','rollbackTarget') {
+            $ec | Should Match $field
+        }
+
+        # The Jenkinsfile must call the script as the final release step.
+        $jenkinsfile | Should Match 'evidence-collect\.sh\s+release-manifest'
+        $jenkinsfile | Should Match 'RELEASES_BASE='
+        # The old inline cp/mv block must be gone so there is no second
+        # writer competing with evidence-collect.sh.
+        $jenkinsfile | Should Not Match 'release_root/current\.json\.tmp'
     }
 
     It 'verifies backend, frontend, image, and source revisions before PASS' {
