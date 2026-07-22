@@ -282,6 +282,29 @@ export function resolveActiveTopKey(path: string): string | null {
 }
 
 /**
+ * 解析侧边栏所属的业务分区。
+ *
+ * 个人中心等全局页面不属于任何业务分区；此时优先保留用户进入全局页面前
+ * 所在且仍可访问的分区，避免把可用的侧边导航误显示为“没有可见菜单”。
+ * 若没有历史分区（例如直接打开个人中心），则回退到当前角色的第一个可访问分区。
+ */
+export function resolveSidebarTopKey(
+  path: string,
+  permissionCodes: readonly string[],
+  previousTopKey?: string | null
+): string | null {
+  const activeTopKey = resolveActiveTopKey(path)
+  if (activeTopKey) return activeTopKey
+
+  const accessibleTree = buildAccessibleMenuTree(permissionCodes)
+  if (previousTopKey && findTopMenuNode(accessibleTree, previousTopKey)) {
+    return previousTopKey
+  }
+
+  return getTopMenus(permissionCodes)[0]?.key || null
+}
+
+/**
  * 在菜单树中查找指定 topKey 的一级节点
  *
  * @param tree - 菜单树
