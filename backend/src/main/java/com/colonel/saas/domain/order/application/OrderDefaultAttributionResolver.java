@@ -1,6 +1,7 @@
 package com.colonel.saas.domain.order.application;
 
 import com.colonel.saas.domain.order.infrastructure.OrderPickSourceMappingAdapter;
+import com.colonel.saas.domain.order.infrastructure.OrderPickSourceMappingAdapter.NativeMappingLookup;
 import com.colonel.saas.domain.order.policy.OrderAttributionInput;
 import com.colonel.saas.domain.order.policy.OrderDefaultAttributionPolicy;
 import com.colonel.saas.domain.order.policy.OrderDefaultAttributionPolicy.RecruiterLookup;
@@ -47,15 +48,40 @@ public class OrderDefaultAttributionResolver {
                 input.activityId(),
                 input.pickSource(),
                 input.pickExtra(),
+                input.colonelBuyinId(),
+                input.secondColonelBuyinId(),
+                input.secondActivityId(),
                 input.talentUid(),
                 talentId);
 
-        PickSourceMapping channelMapping = pickSourceMappingAdapter.findByPickSourceOrExtra(
-                enriched.pickSource(),
-                enriched.pickExtra());
+        PickSourceMapping channelMapping = resolveChannelMapping(enriched);
         RecruiterLookup recruiterLookup = loadRecruiterLookup(enriched.activityId(), enriched.productId());
 
         return OrderDefaultAttributionPolicy.resolve(enriched, channelMapping, recruiterLookup);
+    }
+
+    private PickSourceMapping resolveChannelMapping(OrderAttributionInput input) {
+        if (input.hasNativeColonelIdentity()) {
+            NativeMappingLookup first = pickSourceMappingAdapter.findByNativeOrder(
+                    input.colonelBuyinId(),
+                    input.activityId(),
+                    input.productId(),
+                    !StringUtils.hasText(input.secondActivityId()));
+            if (first.mapping() != null || first.ambiguous()) {
+                return first.mapping();
+            }
+            if (StringUtils.hasText(input.secondColonelBuyinId())
+                    || StringUtils.hasText(input.secondActivityId())) {
+                NativeMappingLookup second = pickSourceMappingAdapter.findByNativeOrder(
+                        input.secondColonelBuyinId(),
+                        input.secondActivityId(),
+                        input.productId(),
+                        false);
+                return second.mapping();
+            }
+            return null;
+        }
+        return pickSourceMappingAdapter.findByPickSourceOrExtra(input.pickSource(), input.pickExtra());
     }
 
     private RecruiterLookup loadRecruiterLookup(String activityId, String productId) {

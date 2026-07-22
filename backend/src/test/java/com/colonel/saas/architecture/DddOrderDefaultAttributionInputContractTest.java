@@ -31,6 +31,9 @@ class DddOrderDefaultAttributionInputContractTest {
         order.setProductId("prod-1");
         order.setActivityId("order-act");
         order.setPickSource("ps-1");
+        order.setColonelBuyinId(3859423L);
+        order.setSecondColonelBuyinId(3859424L);
+        order.setSecondActivityId("order-second-act");
         order.setTalentId(talentId);
         order.setTalentName("fallback-talent");
 
@@ -38,6 +41,9 @@ class DddOrderDefaultAttributionInputContractTest {
                 "colonel_activity_id", " raw-act ",
                 "activity_id", "ignored-act",
                 "pick_extra", " extra-1 ",
+                "colonel_buyin_id", " native-buyin-1 ",
+                "second_colonel_buyin_id", " native-buyin-2 ",
+                "second_colonel_activity_id", " raw-second-act ",
                 "author_id", " uid-author ",
                 "talent_uid", "ignored-talent",
                 "promotion_talent_uid", "ignored-promotion"));
@@ -46,6 +52,9 @@ class DddOrderDefaultAttributionInputContractTest {
         assertThat(input.activityId()).isEqualTo("raw-act");
         assertThat(input.pickSource()).isEqualTo("ps-1");
         assertThat(input.pickExtra()).isEqualTo("extra-1");
+        assertThat(input.colonelBuyinId()).isEqualTo("native-buyin-1");
+        assertThat(input.secondColonelBuyinId()).isEqualTo("native-buyin-2");
+        assertThat(input.secondActivityId()).isEqualTo("raw-second-act");
         assertThat(input.talentUid()).isEqualTo("uid-author");
         assertThat(input.talentId()).isEqualTo(talentId);
     }
@@ -63,6 +72,8 @@ class DddOrderDefaultAttributionInputContractTest {
         assertThat(input.talentUid()).isEqualTo("talent-name-fallback");
         assertThat(input.pickSource()).isNull();
         assertThat(input.pickExtra()).isNull();
+        assertThat(input.colonelBuyinId()).isNull();
+        assertThat(input.secondColonelBuyinId()).isNull();
     }
 
     @Test
