@@ -20,6 +20,7 @@ import {
   resolveActiveLeftKey,
   resolveFirstAccessiblePath,
   resolveActiveTopKey,
+  resolveSidebarTopKey,
   resolveTopMenuDefaultPath
 } from './menuTree'
 
@@ -86,6 +87,15 @@ describe('menuTree', () => {
     expect(resolveActiveTopKey('/sample')).toBe('sample')
     // /ops/shipping 隶属于「合作管理」而非独立域
     expect(resolveActiveTopKey('/ops/shipping')).toBe('sample')
+    // 个人中心不是业务分区，原始分区解析结果为空。
+    // 侧边栏必须使用回退分区，不能把这类页面误提示为“没有可见菜单”。
+    expect(resolveActiveTopKey('/profile')).toBeNull()
+  })
+
+  it('keeps an accessible system navigation path while viewing the personal center', () => {
+    expect(resolveSidebarTopKey('/profile', ADMIN_PERMISSIONS, 'system')).toBe('system')
+    expect(resolveSidebarTopKey('/profile', BIZ_STAFF_PERMISSIONS, 'system')).toBe('product')
+    expect(resolveSidebarTopKey('/profile', OPS_PERMISSIONS)).toBe('sample')
   })
 
   // 验证：左侧菜单 key 解析，包括达人 CRM 的 query 参数视图路由

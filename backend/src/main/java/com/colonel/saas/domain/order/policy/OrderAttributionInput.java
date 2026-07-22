@@ -14,8 +14,22 @@ public record OrderAttributionInput(
         String activityId,
         String pickSource,
         String pickExtra,
+        String colonelBuyinId,
+        String secondColonelBuyinId,
+        String secondActivityId,
         String talentUid,
         UUID talentId) {
+
+    /** Compatibility constructor for policy tests and callers that only have pick-source facts. */
+    public OrderAttributionInput(
+            String productId,
+            String activityId,
+            String pickSource,
+            String pickExtra,
+            String talentUid,
+            UUID talentId) {
+        this(productId, activityId, pickSource, pickExtra, null, null, null, talentUid, talentId);
+    }
 
     public static OrderAttributionInput from(ColonelsettlementOrder order, Map<String, Object> rawPayload) {
         String activityId = firstNonBlank(
@@ -24,9 +38,29 @@ public record OrderAttributionInput(
         String productId = order == null ? null : order.getProductId();
         String pickSource = order == null ? null : order.getPickSource();
         String pickExtra = rawValue(rawPayload, "pick_extra", "pickExtra");
+        String colonelBuyinId = firstNonBlank(
+                rawValue(rawPayload, "colonel_buyin_id", "colonelBuyinId"),
+                order == null || order.getColonelBuyinId() == null
+                        ? null : String.valueOf(order.getColonelBuyinId()));
+        String secondColonelBuyinId = firstNonBlank(
+                rawValue(rawPayload, "second_colonel_buyin_id", "secondColonelBuyinId"),
+                order == null || order.getSecondColonelBuyinId() == null
+                        ? null : String.valueOf(order.getSecondColonelBuyinId()));
+        String secondActivityId = firstNonBlank(
+                rawValue(rawPayload, "second_colonel_activity_id", "secondColonelActivityId"),
+                order == null ? null : order.getSecondActivityId());
         String talentUid = talentUid(rawPayload, order);
         UUID talentId = order == null ? null : order.getTalentId();
-        return new OrderAttributionInput(productId, activityId, pickSource, pickExtra, talentUid, talentId);
+        return new OrderAttributionInput(
+                productId,
+                activityId,
+                pickSource,
+                pickExtra,
+                colonelBuyinId,
+                secondColonelBuyinId,
+                secondActivityId,
+                talentUid,
+                talentId);
     }
 
     private static String talentUid(Map<String, Object> rawPayload, ColonelsettlementOrder order) {
@@ -66,5 +100,9 @@ public record OrderAttributionInput(
             }
         }
         return null;
+    }
+
+    public boolean hasNativeColonelIdentity() {
+        return DomainText.hasText(colonelBuyinId) || DomainText.hasText(secondColonelBuyinId);
     }
 }

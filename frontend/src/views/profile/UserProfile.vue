@@ -2,7 +2,10 @@
   <div class="profile-page app-page" data-testid="profile-current-user">
     <PageHeader title="个人中心" description="查看当前账号、数据范围与权限包，并维护自己的登录密码。">
       <template #actions>
-        <n-button :loading="loading" data-testid="profile-refresh" @click="loadProfile">刷新资料</n-button>
+        <n-space>
+          <n-button data-testid="profile-return-to-workspace" @click="handleReturnToWorkspace">返回工作台</n-button>
+          <n-button :loading="loading" data-testid="profile-refresh" @click="loadProfile">刷新资料</n-button>
+        </n-space>
       </template>
     </PageHeader>
 
@@ -115,6 +118,7 @@
 import { notifyApiFailure } from '../../utils/requestError'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useMessage } from 'naive-ui'
+import { useRouter } from 'vue-router'
 import PageHeader from '../../components/PageHeader.vue'
 import {
   changeCurrentUserPassword,
@@ -127,6 +131,7 @@ import { useAuthStore } from '../../stores/auth'
 import { ROLE_NAME_MAP } from '../../constants/rbac'
 
 const message = useMessage()
+const router = useRouter()
 const authStore = useAuthStore()
 const loading = ref(false)
 const checkingPermission = ref(false)
@@ -200,6 +205,16 @@ const syncCurrentUserToAuthStore = (user: any) => {
     id: user?.id || user?.userId,
     dataScope: user?.dataScopeName || user?.dataScope
   })
+}
+
+const handleReturnToWorkspace = async () => {
+  try {
+    // 统一回到根路由，让路由守卫按当前角色选择默认工作台。
+    await router.push('/')
+  } catch (error) {
+    console.error('[profile navigation] failed to return to workspace', error)
+    message.error('返回工作台失败，请稍后重试')
+  }
 }
 
 const loadProfile = async () => {
