@@ -1,1 +1,0 @@
-[warning] [router guard] redirect {from: /, to: /product, roleCodes: Array(0), redirectTarget: /login?redirect=%2Fproduct, reason: anonymous}

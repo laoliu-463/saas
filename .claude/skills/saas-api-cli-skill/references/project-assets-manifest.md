@@ -5,7 +5,7 @@
 - Full OpenAPI: docs/openapi/openapi-full.json
 - Business OpenAPI: docs/openapi/openapi-business.json
 - SDK debug OpenAPI: docs/openapi/openapi-sdk-debug.json
-- Interface docs indexed: 22
+- Interface docs indexed: 14
 - Test assets indexed: 853
 
 ## Contents
@@ -27,14 +27,6 @@
 ~~~text
 docs/.apifox-mcp-config.json | bytes=1821 | updatedAt=2026-07-09 19:56:42
 docs/05-API契约总表.md | bytes=19111 | updatedAt=2026-06-28 15:06:29
-docs/09-01-MCP商品主链接口梳理.md | bytes=16443 | updatedAt=2026-07-09 19:57:42
-docs/09-02-MCP订单归因接口梳理.md | bytes=28127 | updatedAt=2026-07-09 19:57:42
-docs/09-03-MCP用户权限与数据范围接口梳理.md | bytes=19352 | updatedAt=2026-07-09 19:57:42
-docs/09-04-MCP配置规则接口梳理.md | bytes=21210 | updatedAt=2026-07-09 19:57:42
-docs/09-05-MCP寄样接口梳理.md | bytes=24194 | updatedAt=2026-07-09 19:57:42
-docs/09-06-MCP达人接口梳理.md | bytes=24387 | updatedAt=2026-07-09 19:57:42
-docs/09-07-MCP接口梳理总收口与E2E测试计划.md | bytes=13969 | updatedAt=2026-07-09 19:57:42
-docs/09-MCP接口梳理-第一版.md | bytes=11090 | updatedAt=2026-07-09 19:57:42
 docs/archive/audits/13-接口导入APIFOX整改任务单.md | bytes=5527 | updatedAt=2026-06-16 12:27:24
 docs/archive/audits/dead-code-api-layer.md | bytes=3484 | updatedAt=2026-06-16 12:27:24
 docs/archive/records/18-real-pre-API联调记录.md | bytes=41280 | updatedAt=2026-06-16 12:27:24

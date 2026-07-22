@@ -31,7 +31,7 @@
 2. Documentation source has drift.
    - `docs/README.md` and DDD roadmap reference `docs/01-V1交付范围与边界.md`.
    - Current tree does not contain that file.
-   - Existing nearby files include `docs/01-V2交付范围与边界.md`, `docs/01-V1交付合同.md`, and `docs/00-V1范围冻结说明.md`.
+   - Existing nearby files include `docs/01-V2交付范围与边界.md` and `docs/01-V1交付合同.md`.
 
 3. Backend domain package structure exists.
    - Domains observed: analytics, config, event, order, performance, product, sample, shared, talent, user.
