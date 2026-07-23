@@ -319,7 +319,7 @@ pipeline {
         }
 
         stage('Pull Immutable Images') {
-            options { timeout(time: 10, unit: 'MINUTES') }
+            options { timeout(time: 25, unit: 'MINUTES') }
             steps {
                 withCredentials([usernamePassword(credentialsId: 'saas-container-registry', usernameVariable: 'REGISTRY_USERNAME', passwordVariable: 'REGISTRY_PASSWORD')]) {
                     sh '''#!/usr/bin/env bash
@@ -329,18 +329,7 @@ pipeline {
                     printf '%s' "$REGISTRY_PASSWORD" | docker login "$registry_host" --username "$REGISTRY_USERNAME" --password-stdin
                     cleanup_registry_login() { docker logout "$registry_host" >/dev/null 2>&1 || true; }
                     trap cleanup_registry_login EXIT
-                    docker pull "$BACKEND_IMAGE"
-                    docker pull "$FRONTEND_IMAGE"
-                    backend_revision="$(docker image inspect "$BACKEND_IMAGE" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')"
-                    frontend_revision="$(docker image inspect "$FRONTEND_IMAGE" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')"
-                    test "$backend_revision" = "$FULL_COMMIT"
-                    test "$frontend_revision" = "$FULL_COMMIT"
-                    docker image inspect "$BACKEND_IMAGE" --format '{{.Id}}' > runtime/qa/out/jenkins/backend-local-image-id.txt
-                    docker image inspect "$FRONTEND_IMAGE" --format '{{.Id}}' > runtime/qa/out/jenkins/frontend-local-image-id.txt
-                    docker image inspect "$BACKEND_IMAGE" --format '{{join .RepoDigests "\n"}}' > runtime/qa/out/jenkins/backend-repo-digests.txt
-                    docker image inspect "$FRONTEND_IMAGE" --format '{{join .RepoDigests "\n"}}' > runtime/qa/out/jenkins/frontend-repo-digests.txt
-                    grep -Fx "$BACKEND_IMAGE" runtime/qa/out/jenkins/backend-repo-digests.txt
-                    grep -Fx "$FRONTEND_IMAGE" runtime/qa/out/jenkins/frontend-repo-digests.txt
+                    bash scripts/cd/pull-immutable-images.sh
                     '''
                 }
             }
