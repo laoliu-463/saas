@@ -17,8 +17,10 @@ Describe 'immutable release manifest contract' {
 
     It 'requires Jenkins to pull immutable references without building' {
         $jenkinsfile | Should Match 'pull-immutable-images\.sh'
-        $immutablePullScript | Should Match 'docker pull "\$image"'
+        $immutablePullScript | Should Match 'docker pull "\$source_image"'
         $immutablePullScript | Should Match 'repository@sha256:digest'
+        $immutablePullScript | Should Match 'IMAGE_PULL_REGISTRY'
+        $immutablePullScript | Should Match 'docker tag "\$source_image"'
         $jenkinsfile | Should Not Match '(?m)^\s*docker compose[^\r\n]+\sbuild'
         $jenkinsfile | Should Match "credentialsId: 'saas-container-registry'"
     }
