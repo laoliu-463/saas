@@ -7,6 +7,7 @@ set -eu
 
 pull_timeout_seconds="${PULL_TIMEOUT_SECONDS:-900}"
 pull_attempts="${PULL_ATTEMPTS:-2}"
+pull_registry="${IMAGE_PULL_REGISTRY:-}"
 
 case "$pull_timeout_seconds" in
   ''|*[!0-9]*)
@@ -22,6 +23,11 @@ case "$pull_attempts" in
 esac
 if [ "$pull_timeout_seconds" -le 0 ] || [ "$pull_attempts" -le 0 ]; then
   echo "ERROR: PULL_TIMEOUT_SECONDS and PULL_ATTEMPTS must be greater than zero."
+  exit 1
+fi
+
+if [ -n "$pull_registry" ] && ! printf '%s' "$pull_registry" | grep -Eq '^[A-Za-z0-9.-]+(:[0-9]+)?$'; then
+  echo "ERROR: IMAGE_PULL_REGISTRY must be a registry host, without a scheme or path."
   exit 1
 fi
 
@@ -51,17 +57,50 @@ image_is_ready() {
   docker image inspect "$image" --format '{{join .RepoDigests "\n"}}' 2>/dev/null | grep -Fx "$image" >/dev/null
 }
 
+pull_image_ref() {
+  image="$1"
+  if [ -z "$pull_registry" ]; then
+    printf '%s\n' "$image"
+    return 0
+  fi
+  repository="${image#*/}"
+  digest="${image##*@}"
+  printf '%s/%s@%s\n' "$pull_registry" "$repository" "$digest"
+}
+
+canonicalize_image_ref() {
+  image="$1"
+  source_image="$2"
+  canonical_tag="${image%@*}:${FULL_COMMIT}"
+
+  # A mirror is transport only. Tagging the pulled image under the canonical
+  # repository causes Docker to register the same content digest for the
+  # canonical repository, so Compose can continue to use repository@digest.
+  docker tag "$source_image" "$canonical_tag"
+  docker image inspect "$source_image" --format '{{join .RepoDigests "\n"}}' \
+    | grep -Fx "$source_image" >/dev/null
+  image_is_ready "$image"
+}
+
 pull_image_with_retry() {
   image="$1"
   if image_is_ready "$image"; then
     echo "Immutable image already available locally: $image"
     return 0
   fi
+  source_image="$(pull_image_ref "$image")"
   attempt=1
   while [ "$attempt" -le "$pull_attempts" ]; do
     echo "Pulling immutable image (attempt ${attempt}/${pull_attempts}): $image"
-    if timeout --foreground --kill-after=30s "${pull_timeout_seconds}s" docker pull "$image"; then
-      return 0
+    if [ "$source_image" != "$image" ]; then
+      echo "Using pull-only registry transport: $pull_registry"
+    fi
+    if timeout --foreground --kill-after=30s "${pull_timeout_seconds}s" docker pull "$source_image"; then
+      if canonicalize_image_ref "$image" "$source_image"; then
+        return 0
+      fi
+      echo "ERROR: pulled image failed canonical digest or revision verification: $source_image"
+      status=1
     else
       status=$?
     fi

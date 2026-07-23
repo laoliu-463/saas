@@ -109,10 +109,14 @@ Describe 'real-pre single release queue contract' {
         $immutablePullScript | Should Match 'PULL_ATTEMPTS'
         $immutablePullScript | Should Match 'Retrying with Docker''s partially downloaded layer cache'
         $immutablePullScript | Should Match 'image_is_ready'
+        $immutablePullScript | Should Match 'pull_image_ref'
+        $immutablePullScript | Should Match 'canonicalize_image_ref'
+        $immutablePullScript | Should Match 'IMAGE_PULL_REGISTRY'
         $immutablePullScript | Should Match 'repository@sha256:digest'
         $immutablePullScript | Should Match 'org\.opencontainers\.image\.revision'
         $immutablePullScript | Should Match 'docker-system-df\.txt'
         $jenkinsfile | Should Match 'export BACKEND_IMAGE FRONTEND_IMAGE FULL_COMMIT'
+        $jenkinsfile | Should Match "IMAGE_PULL_REGISTRY = 'ghcr\.1ms\.run'"
         $immutablePullScript | Should Not Match 'docker pull[^\r\n]*:latest'
     }
 
