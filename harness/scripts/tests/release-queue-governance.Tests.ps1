@@ -111,6 +111,7 @@ Describe 'real-pre single release queue contract' {
         $immutablePullScript | Should Match 'repository@sha256:digest'
         $immutablePullScript | Should Match 'org\.opencontainers\.image\.revision'
         $immutablePullScript | Should Match 'docker-system-df\.txt'
+        $jenkinsfile | Should Match 'export BACKEND_IMAGE FRONTEND_IMAGE FULL_COMMIT'
         $immutablePullScript | Should Not Match 'docker pull[^\r\n]*:latest'
     }
 
