@@ -136,6 +136,31 @@ canonicalize_image_ref() {
   image_is_ready "$image"
 }
 
+pull_image_ref() {
+  image="$1"
+  if [ -z "$pull_registry" ]; then
+    printf '%s\n' "$image"
+    return 0
+  fi
+  repository="${image#*/}"
+  digest="${image##*@}"
+  printf '%s/%s@%s\n' "$pull_registry" "$repository" "$digest"
+}
+
+canonicalize_image_ref() {
+  image="$1"
+  source_image="$2"
+  canonical_tag="${image%@*}:${FULL_COMMIT}"
+
+  # A mirror is transport only. Tagging the pulled image under the canonical
+  # repository causes Docker to register the same content digest for the
+  # canonical repository, so Compose can continue to use repository@digest.
+  docker tag "$source_image" "$canonical_tag"
+  docker image inspect "$source_image" --format '{{join .RepoDigests "\n"}}' \
+    | grep -Fx "$source_image" >/dev/null
+  image_is_ready "$image"
+}
+
 pull_image_with_retry() {
   image="$1"
   if image_is_ready "$image"; then
