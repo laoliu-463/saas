@@ -384,7 +384,7 @@ function Convert-HarnessBool {
 function Get-HarnessAgentDoExecutionMode {
     param(
         [Parameter(Mandatory = $true)]
-        [ValidateSet("backend", "frontend", "full", "docs", "apifox")]
+        [ValidateSet("backend", "frontend", "full", "docs", "apifox", "deploy", "ci")]
         [string]$Scope
     )
 

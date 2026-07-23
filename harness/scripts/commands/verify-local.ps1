@@ -2,7 +2,7 @@
     [Alias("Env")]
     [ValidateSet("test", "real-pre")]
     [string]$TargetEnv = "real-pre",
-    [ValidateSet("backend", "frontend", "full", "docs", "apifox")]
+    [ValidateSet("backend", "frontend", "full", "docs", "apifox", "deploy", "ci")]
     [string]$Scope = "full",
     [switch]$DryRun
 )
@@ -12,11 +12,6 @@ $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "_lib.ps1")
 
 $config = Get-HarnessEnvConfig -Env $TargetEnv
-$envMap = Read-HarnessEnvFile -Path $config.EnvFile
-$backendDefault = Get-HarnessPortFromCompose -ComposeFile $config.ComposeFile -EnvKey "BACKEND_HOST_PORT" -Default $config.BackendPort
-$frontendDefault = Get-HarnessPortFromCompose -ComposeFile $config.ComposeFile -EnvKey "FRONTEND_HOST_PORT" -Default $config.FrontendPort
-$backendPort = Get-HarnessPort -EnvMap $envMap -Key "BACKEND_HOST_PORT" -Default $backendDefault
-$frontendPort = Get-HarnessPort -EnvMap $envMap -Key "FRONTEND_HOST_PORT" -Default $frontendDefault
 
 Write-HarnessStage "Local verification"
 Write-Host "Env: $TargetEnv"
@@ -25,10 +20,16 @@ Write-Host "Scope: $Scope"
 $repoRoot = Get-HarnessRepoRoot
 Assert-HarnessRepoRoot -RepoRoot $repoRoot
 
-if ($Scope -eq "docs" -or $Scope -eq "apifox") {
+if ($Scope -in @("docs", "apifox", "deploy", "ci")) {
     Write-Host "Scope=${Scope}: repository structure check passed; HTTP health checks skipped."
     return
 }
+
+$envMap = Read-HarnessEnvFile -Path $config.EnvFile
+$backendDefault = Get-HarnessPortFromCompose -ComposeFile $config.ComposeFile -EnvKey "BACKEND_HOST_PORT" -Default $config.BackendPort
+$frontendDefault = Get-HarnessPortFromCompose -ComposeFile $config.ComposeFile -EnvKey "FRONTEND_HOST_PORT" -Default $config.FrontendPort
+$backendPort = Get-HarnessPort -EnvMap $envMap -Key "BACKEND_HOST_PORT" -Default $backendDefault
+$frontendPort = Get-HarnessPort -EnvMap $envMap -Key "FRONTEND_HOST_PORT" -Default $frontendDefault
 
 $failures = @()
 

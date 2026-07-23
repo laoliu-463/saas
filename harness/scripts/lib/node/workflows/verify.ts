@@ -55,6 +55,11 @@ export function createVerifyWorkflow(scope: VerifyScope): readonly WorkflowNode[
     throw new Error(`不支持的验证范围：${String(scope)}。`);
   }
 
+  // Isolated application scopes are intentionally build/test only. Runtime
+  // checks belong to the explicit full workflow so a frontend/backend change
+  // does not rebuild or restart the other service as a side effect.
+  if (scope !== "full") return buildNodes;
+
   return [
     ...buildNodes,
     verifyNode("docker", buildDependencies),

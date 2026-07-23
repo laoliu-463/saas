@@ -31,5 +31,6 @@ Describe 'immutable release manifest contract' {
         $ci | Should Match 'packages:\s*write'
         $ci | Should Match 'docker push "\$backend_ref"'
         $ci | Should Match 'actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02'
+        (Test-Path -LiteralPath (Join-Path $repoRoot '.github\workflows\image-build.yml')) | Should Be $false
     }
 }
