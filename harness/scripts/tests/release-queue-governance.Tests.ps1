@@ -106,6 +106,14 @@ Describe 'real-pre single release queue contract' {
         (Test-Path -LiteralPath (Join-Path $repoRoot 'package-lock.json') -PathType Leaf) | Should Be $true
     }
 
+    It 'passes the protected real-pre admin credential to E2E without printing it' {
+        $jenkinsfile | Should Match 'dotenv\.parse'
+        $jenkinsfile | Should Match 'values\.ADMIN_PASSWORD'
+        $jenkinsfile | Should Match 'export QA_ADMIN_PASSWORD'
+        $jenkinsfile | Should Match 'unset qa_admin_password'
+        $jenkinsfile | Should Not Match 'echo "\$qa_admin_password"'
+    }
+
     It 'bounds and retries immutable image pulls without mutable fallback' {
         $jenkinsfile | Should Match "stage\('Pull Immutable Images'\)"
         $jenkinsfile | Should Match "timeout\(time:\s*70,\s*unit:\s*'MINUTES'\)"
