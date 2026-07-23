@@ -531,6 +531,20 @@ PY
                         # package-lock.json; do not require a pnpm lockfile that is
                         # not part of this repository.
                         npm ci --no-audit --no-fund
+                        qa_admin_password="$(node - "$ENV_FILE" <<'NODE'
+const fs = require('node:fs');
+const dotenv = require('dotenv');
+const values = dotenv.parse(fs.readFileSync(process.argv[2], 'utf8'));
+process.stdout.write(values.ADMIN_PASSWORD || '');
+NODE
+                        )"
+                        test -n "$qa_admin_password" || {
+                          echo "ERROR: ADMIN_PASSWORD is missing from the protected real-pre environment file."
+                          exit 1
+                        }
+                        export QA_ADMIN_USER="${QA_ADMIN_USER:-admin}"
+                        export QA_ADMIN_PASSWORD="$qa_admin_password"
+                        unset qa_admin_password
                         npm run e2e:real-pre:p0
                         npm run e2e:real-pre:roles
                         '''
