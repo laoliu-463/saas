@@ -54,6 +54,7 @@ image_is_ready() {
   image="$1"
   revision="$(docker image inspect "$image" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' 2>/dev/null || true)"
   [ "$revision" = "$FULL_COMMIT" ] || return 1
+  # range/println avoids Docker 29.5 template parsing differences for \\n.
   docker image inspect "$image" --format '{{range .RepoDigests}}{{println .}}{{end}}' 2>/dev/null | grep -Fx "$image" >/dev/null
 }
 
