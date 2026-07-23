@@ -44,6 +44,7 @@ pipeline {
         // transport-only; the pull helper re-tags and verifies the exact
         // canonical digest before Compose is allowed to use it.
         IMAGE_PULL_REGISTRY = 'ghcr.1ms.run'
+        // Digest evidence uses range/println templates for Docker 29.5 compatibility.
     }
 
     stages {
@@ -405,14 +406,14 @@ PY
                           exit 1
                         fi
                         if [ -n "$current_container" ] && [ -n "${PREVIOUS_BACKEND_IMAGE:-}" ]; then
-                          current_backend_repo_digests="$(docker image inspect "$(cat runtime/qa/out/jenkins/pre-backend-local-image-id.txt)" --format '{{join .RepoDigests "\n"}}')"
+                          current_backend_repo_digests="$(docker image inspect "$(cat runtime/qa/out/jenkins/pre-backend-local-image-id.txt)" --format '{{range .RepoDigests}}{{println .}}{{end}}')"
                           printf '%s\n' "$current_backend_repo_digests" | grep -Fx "$rollback_backend_image" >/dev/null || {
                             echo "ERROR: release manifest previous backend image does not match the running backend content."
                             exit 1
                           }
                         fi
                         if [ -n "$current_frontend_container" ] && [ -n "${PREVIOUS_FRONTEND_IMAGE:-}" ]; then
-                          current_frontend_repo_digests="$(docker image inspect "$(cat runtime/qa/out/jenkins/pre-frontend-local-image-id.txt)" --format '{{join .RepoDigests "\n"}}')"
+                          current_frontend_repo_digests="$(docker image inspect "$(cat runtime/qa/out/jenkins/pre-frontend-local-image-id.txt)" --format '{{range .RepoDigests}}{{println .}}{{end}}')"
                           printf '%s\n' "$current_frontend_repo_digests" | grep -Fx "$rollback_frontend_image" >/dev/null || {
                             echo "ERROR: release manifest previous frontend image does not match the running frontend content."
                             exit 1
@@ -570,8 +571,8 @@ PY
                         frontend_running_id="$(docker inspect "$frontend_container" --format '{{.Image}}')"
                         backend_revision="$(docker image inspect "$backend_running_id" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')"
                         frontend_revision="$(docker image inspect "$frontend_running_id" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')"
-                        backend_repo_digests="$(docker image inspect "$backend_running_id" --format '{{join .RepoDigests "\n"}}')"
-                        frontend_repo_digests="$(docker image inspect "$frontend_running_id" --format '{{join .RepoDigests "\n"}}')"
+                        backend_repo_digests="$(docker image inspect "$backend_running_id" --format '{{range .RepoDigests}}{{println .}}{{end}}')"
+                        frontend_repo_digests="$(docker image inspect "$frontend_running_id" --format '{{range .RepoDigests}}{{println .}}{{end}}')"
                         backend_health="$(curl -fsS "$REAL_PRE_BACKEND/api/system/health" || true)"
                         frontend_health="$(curl -fsS "$REAL_PRE_FRONTEND/healthz" || true)"
                         frontend_version="$(curl -fsS "$REAL_PRE_FRONTEND/version.json" || true)"

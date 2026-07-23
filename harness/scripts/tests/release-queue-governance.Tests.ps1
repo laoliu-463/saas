@@ -115,6 +115,7 @@ Describe 'real-pre single release queue contract' {
         $immutablePullScript | Should Match 'IMAGE_PULL_REGISTRY'
         $immutablePullScript | Should Match 'repository@sha256:digest'
         $immutablePullScript | Should Match 'org\.opencontainers\.image\.revision'
+        $immutablePullScript | Should Match 'range \.RepoDigests'
         $immutablePullScript | Should Match 'docker-system-df\.txt'
         $jenkinsfile | Should Match 'export BACKEND_IMAGE FRONTEND_IMAGE FULL_COMMIT'
         $jenkinsfile | Should Match "IMAGE_PULL_REGISTRY = 'ghcr\.1ms\.run'"
