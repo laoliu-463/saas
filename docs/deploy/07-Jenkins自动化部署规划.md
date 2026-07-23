@@ -13,7 +13,7 @@
 1. 后端打包并构建镜像。
 2. 前端构建镜像。
 3. 使用完整 `github.sha` 写入 OCI revision。
-4. 推送 `ghcr.io/laoliu-463/saas/backend:<sha>` 和 frontend 对应镜像。
+4. 推送 `ghcr.io/laoliu-463/saas-backend:<sha>` 和 `ghcr.io/laoliu-463/saas-frontend:<sha>`。
 5. 记录两个 `repository@sha256:digest` 到 `image-release.json` artifact 和 Job Summary。
 
 PR 到 `release/real-pre` 必须包含 `release/real-pre.json`，并通过 `scripts/verify-real-pre-release.py`。该清单还必须固定迁移版本、迁移输入摘要和上一版本回滚引用。
@@ -28,9 +28,14 @@ PR 到 `release/real-pre` 必须包含 `release/real-pre.json`，并通过 `scri
   Pipeline 使用 `depth=1`、`noTags` 和该 cache 检出 `release/real-pre`，避免每次重新传输完整对象库；cache 不可用时应先修复节点，不得改回现场全量 checkout。
 - Jenkins 节点必须提供 GNU `timeout`。镜像拉取由
   `scripts/cd/pull-immutable-images.sh` 执行：本机已经存在且 revision、digest
-  均匹配的镜像直接复用；否则每个 `repository@sha256:digest` 最多尝试两次，
+  均匹配的镜像直接复用；否则从 `IMAGE_PULL_REGISTRY` 指定的传输源拉取，默认
+  为 `ghcr.1ms.run`。传输源只负责下载，release manifest 仍固定记录 canonical
+  `ghcr.io/...@sha256:digest`；拉取后脚本会在 canonical repository 下重新登记
+  同一 digest，并同时校验 manifest digest 和 OCI revision。每个镜像最多尝试两次，
   每次最多 15 分钟。重试复用 Docker 已下载的层缓存，不回退到 tag、不重新构建
   镜像。失败时保留 Docker 磁盘和缓存诊断，且在进入 Compose 前终止发布。
+- `IMAGE_PULL_REGISTRY` 不接受 URL 或路径，只能是 registry host。留空时才直连
+  `ghcr.io`；不得把 GitHub 读取凭据发送给传输镜像，当前默认通道使用匿名只读拉取。
 - Jenkins 凭据中配置 `saas-container-registry`，类型为 username/password，密码只用于读取容器仓库。
 - `/opt/saas/env/.env.real-pre` 由服务器受控保存，不进入 Git 或 Jenkins 日志。
 - Jenkins Lockable Resources 配置全局资源 `saas-real-pre-deploy`。
