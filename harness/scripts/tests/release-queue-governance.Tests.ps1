@@ -110,6 +110,7 @@ Describe 'real-pre single release queue contract' {
         $immutablePullScript | Should Match 'Retrying with Docker''s partially downloaded layer cache'
         $immutablePullScript | Should Match 'image_is_ready'
         $immutablePullScript | Should Match 'pull_image_ref'
+        $immutablePullScript | Should Match 'repository="\$\{repository%@\*\}"'
         $immutablePullScript | Should Match 'canonicalize_image_ref'
         $immutablePullScript | Should Match 'IMAGE_PULL_REGISTRY'
         $immutablePullScript | Should Match 'repository@sha256:digest'
