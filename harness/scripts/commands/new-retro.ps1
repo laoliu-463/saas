@@ -1,6 +1,6 @@
 ﻿param(
     [Alias('Env')][ValidateSet('test', 'real-pre')][string]$TargetEnv = 'real-pre',
-    [ValidateSet('backend', 'frontend', 'full', 'docs', 'apifox')][string]$Scope = 'full',
+    [ValidateSet('backend', 'frontend', 'full', 'docs', 'apifox', 'deploy', 'ci')][string]$Scope = 'full',
     [object]$UsedAgentDo = $true,
     [object]$DeployRemote = $false,
     [string]$Notes = '',

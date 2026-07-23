@@ -47,7 +47,7 @@ if (-not (Test-Path -LiteralPath $mapPath)) {
     throw "test-impact-map.json not found at $mapPath"
 }
 
-$mapJson = Get-Content -Raw -LiteralPath $mapPath
+$mapJson = Get-Content -Raw -Encoding UTF8 -LiteralPath $mapPath
 $map = $mapJson | ConvertFrom-Json
 
 Describe 'test-impact-map.json schema contract' {
@@ -162,11 +162,11 @@ Describe 'rule overlap is deterministic' {
     }
 }
 
-Describe 'agent-do / Jenkinsfile / ci.yml / _lib.ps1 / git-push-safe unchanged after PR #1' {
-    It 'agent-do.ps1 still has old parameter set' {
+Describe 'selective release flow contracts' {
+    It 'agent-do.ps1 exposes application, deployment and CI scopes' {
         $agentDo = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'harness\scripts\commands\agent-do.ps1')
         ($agentDo -match 'ContentMaintenance\s*=\s*"plan"') | Should Be $true
-        ($agentDo -match 'backend.*frontend.*full.*docs.*apifox') | Should Be $true
+        ($agentDo -match 'backend.*frontend.*full.*docs.*apifox.*deploy.*ci') | Should Be $true
         ($agentDo -match '\[ValidateSet\("dev",\s*"close"\)\]\s*\[string\]\$Phase') | Should Be $false
     }
 

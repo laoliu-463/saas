@@ -34,8 +34,7 @@ describe("verify 工作流组合构建检查", () => {
     [
       "backend",
       [
-        "mvn -f backend/pom.xml test",
-        "mvn -f backend/pom.xml -DskipTests package",
+        "mvn -f backend/pom.xml package",
       ],
     ],
     [
@@ -44,18 +43,15 @@ describe("verify 工作流组合构建检查", () => {
         "npm --prefix frontend ci",
         "npm --prefix frontend run typecheck",
         "npm --prefix frontend run test",
-        "npm --prefix frontend run build",
       ],
     ],
     [
       "full",
       [
-        "mvn -f backend/pom.xml test",
-        "mvn -f backend/pom.xml -DskipTests package",
+        "mvn -f backend/pom.xml package",
         "npm --prefix frontend ci",
         "npm --prefix frontend run typecheck",
         "npm --prefix frontend run test",
-        "npm --prefix frontend run build",
       ],
     ],
   ] as const)("scope=%s 只调用所选 build 检查", async (scope, expectedCommands) => {
@@ -103,6 +99,6 @@ describe("verify 工作流组合构建检查", () => {
 
     expect(result.status).toBe("PASS");
     expect(executed).toEqual(expectedCommands);
-    expect(nonBuildNodes).toEqual(["docker", "health", "business"]);
+    expect(nonBuildNodes).toEqual(scope === "full" ? ["docker", "health", "business"] : []);
   });
 });

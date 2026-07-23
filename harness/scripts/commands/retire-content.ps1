@@ -24,8 +24,15 @@ function Assert-PathInside {
 
     $resolvedPath = (Get-Item -LiteralPath $Path).FullName
     $resolvedRoot = (Get-Item -LiteralPath $Root).FullName
-    $rootPrefix = $resolvedRoot.TrimEnd("\") + "\"
-    if ($resolvedPath -ne $resolvedRoot -and -not $resolvedPath.StartsWith($rootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+    $separatorChars = [char[]]@([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
+    $rootPrefix = $resolvedRoot.TrimEnd($separatorChars) + [System.IO.Path]::DirectorySeparatorChar
+    $comparison = if ([System.IO.Path]::DirectorySeparatorChar -eq "\") {
+        [System.StringComparison]::OrdinalIgnoreCase
+    }
+    else {
+        [System.StringComparison]::Ordinal
+    }
+    if ($resolvedPath -ne $resolvedRoot -and -not $resolvedPath.StartsWith($rootPrefix, $comparison)) {
         throw "$Label is outside allowed root. path=$resolvedPath root=$resolvedRoot"
     }
     return $resolvedPath
@@ -37,13 +44,20 @@ function Get-RepoRelativePath {
         [Parameter(Mandatory = $true)][string]$Path
     )
 
-    $resolvedRoot = (Get-Item -LiteralPath $RepoRoot).FullName.TrimEnd("\")
+    $separatorChars = [char[]]@([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
+    $resolvedRoot = (Get-Item -LiteralPath $RepoRoot).FullName.TrimEnd($separatorChars)
     $resolvedPath = (Get-Item -LiteralPath $Path).FullName
     if ($resolvedPath -eq $resolvedRoot) {
         return "."
     }
-    $rootPrefix = $resolvedRoot + "\"
-    if (-not $resolvedPath.StartsWith($rootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+    $rootPrefix = $resolvedRoot + [System.IO.Path]::DirectorySeparatorChar
+    $comparison = if ([System.IO.Path]::DirectorySeparatorChar -eq "\") {
+        [System.StringComparison]::OrdinalIgnoreCase
+    }
+    else {
+        [System.StringComparison]::Ordinal
+    }
+    if (-not $resolvedPath.StartsWith($rootPrefix, $comparison)) {
         throw "Cannot compute relative path outside repo. path=$resolvedPath root=$resolvedRoot"
     }
     return $resolvedPath.Substring($rootPrefix.Length)
@@ -226,7 +240,7 @@ else {
         if ([string]::IsNullOrWhiteSpace($item.path)) {
             throw "Manifest item missing path."
         }
-        $relativePath = ([string]$item.path).Replace("/", "\").TrimStart("\")
+        $relativePath = ([string]$item.path).Replace("/", [string][System.IO.Path]::DirectorySeparatorChar).Replace("\", [string][System.IO.Path]::DirectorySeparatorChar).TrimStart([char[]]@([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar))
         $requestedAction = if ($item.action) { ([string]$item.action).ToLowerInvariant() } else { $Action.ToLowerInvariant() }
         if ($Action -ne "Plan" -and $requestedAction -ne $Action.ToLowerInvariant()) {
             throw "Manifest item action '$requestedAction' does not match command action '$Action' for path $relativePath."
@@ -293,7 +307,9 @@ if ($Action -eq "Archive" -and $operations.Count -gt 0) {
             throw "Archive destination collision: $destination"
         }
         $destinationParent = Split-Path -Parent $destination
-        $destinationRelative = $destination.Substring(((Get-Item -LiteralPath $repoRoot).FullName.TrimEnd("\") + "\").Length)
+        $separatorChars = [char[]]@([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
+        $repoRootPrefix = (Get-Item -LiteralPath $repoRoot).FullName.TrimEnd($separatorChars) + [System.IO.Path]::DirectorySeparatorChar
+        $destinationRelative = $destination.Substring($repoRootPrefix.Length)
         $applied += "ARCHIVE $($operation.path) -> $destinationRelative"
         if (-not $DryRun) {
             New-Item -ItemType Directory -Force -Path $destinationParent | Out-Null

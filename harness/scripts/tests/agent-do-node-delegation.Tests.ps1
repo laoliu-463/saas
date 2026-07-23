@@ -346,7 +346,8 @@ Describe 'agent-do rejects direct deployment before external actions' {
         try {
             $env:PATH = "$fakeBin;$previousPath"
             $env:HARNESS_ACTION_MARKER = $marker
-            $output = & powershell -NoProfile -ExecutionPolicy Bypass -File $agentDo `
+            $powerShell = if (Get-Command pwsh -ErrorAction SilentlyContinue) { 'pwsh' } else { 'powershell' }
+            $output = & $powerShell -NoProfile -ExecutionPolicy Bypass -File $agentDo `
                 -Env test -Scope full -ReportKey task10 -DeployRemote true -DryRun 2>&1
             $exitCode = $LASTEXITCODE
         }
