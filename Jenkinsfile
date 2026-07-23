@@ -275,7 +275,10 @@ pipeline {
                     sh '''#!/usr/bin/env bash
                     set -eu
                     . runtime/qa/out/jenkins/cd-env.sh
-                    GITHUB_REPOSITORY="${CD_GIT_URL#*github.com/}"
+                    GITHUB_REPOSITORY="$CD_GIT_URL"
+                    GITHUB_REPOSITORY="${GITHUB_REPOSITORY#git@github.com:}"
+                    GITHUB_REPOSITORY="${GITHUB_REPOSITORY#https://github.com/}"
+                    GITHUB_REPOSITORY="${GITHUB_REPOSITORY#ssh://git@github.com/}"
                     GITHUB_REPOSITORY="${GITHUB_REPOSITORY%.git}"
                     export GITHUB_REPOSITORY
                     # ci.yml push runs are produced on main. release/real-pre

@@ -67,6 +67,8 @@ Describe 'real-pre single release queue contract' {
         $jenkinsfile | Should Match 'verify-github-ci-gate\.sh'
         $jenkinsfile | Should Match 'GITHUB_SHA="\$FULL_COMMIT"'
         $jenkinsfile | Should Match 'GITHUB_BRANCH=main'
+        $jenkinsfile | Should Match 'GITHUB_REPOSITORY="\$CD_GIT_URL"'
+        $jenkinsfile | Should Match 'git@github\.com:'
         $shaGate | Should Match 'REQUIRED_JOBS=\("CI Gate"\)'
 
         $ciWorkflow = Get-Content -Raw -LiteralPath (Join-Path $repoRoot '.github\workflows\ci.yml')
