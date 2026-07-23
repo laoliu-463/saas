@@ -102,12 +102,13 @@ Describe 'real-pre single release queue contract' {
 
     It 'bounds and retries immutable image pulls without mutable fallback' {
         $jenkinsfile | Should Match "stage\('Pull Immutable Images'\)"
-        $jenkinsfile | Should Match "timeout\(time:\s*25,\s*unit:\s*'MINUTES'\)"
+        $jenkinsfile | Should Match "timeout\(time:\s*70,\s*unit:\s*'MINUTES'\)"
         $jenkinsfile | Should Match 'pull-immutable-images\.sh'
         $immutablePullScript | Should Match 'timeout --foreground --kill-after=30s'
-        $immutablePullScript | Should Match 'PULL_TIMEOUT_SECONDS'
+        $immutablePullScript | Should Match 'PULL_TIMEOUT_SECONDS:-900'
         $immutablePullScript | Should Match 'PULL_ATTEMPTS'
         $immutablePullScript | Should Match 'Retrying with Docker''s partially downloaded layer cache'
+        $immutablePullScript | Should Match 'image_is_ready'
         $immutablePullScript | Should Match 'repository@sha256:digest'
         $immutablePullScript | Should Match 'org\.opencontainers\.image\.revision'
         $immutablePullScript | Should Match 'docker-system-df\.txt'

@@ -5,7 +5,7 @@ set -eu
 : "${FRONTEND_IMAGE:?FRONTEND_IMAGE is required}"
 : "${FULL_COMMIT:?FULL_COMMIT is required}"
 
-pull_timeout_seconds="${PULL_TIMEOUT_SECONDS:-300}"
+pull_timeout_seconds="${PULL_TIMEOUT_SECONDS:-900}"
 pull_attempts="${PULL_ATTEMPTS:-2}"
 
 case "$pull_timeout_seconds" in
@@ -44,8 +44,19 @@ record_pull_diagnostics() {
   df -h /var/lib/docker > runtime/qa/out/jenkins/docker-disk-free.txt 2>&1 || df -h > runtime/qa/out/jenkins/docker-disk-free.txt 2>&1 || true
 }
 
+image_is_ready() {
+  image="$1"
+  revision="$(docker image inspect "$image" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' 2>/dev/null || true)"
+  [ "$revision" = "$FULL_COMMIT" ] || return 1
+  docker image inspect "$image" --format '{{join .RepoDigests "\n"}}' 2>/dev/null | grep -Fx "$image" >/dev/null
+}
+
 pull_image_with_retry() {
   image="$1"
+  if image_is_ready "$image"; then
+    echo "Immutable image already available locally: $image"
+    return 0
+  fi
   attempt=1
   while [ "$attempt" -le "$pull_attempts" ]; do
     echo "Pulling immutable image (attempt ${attempt}/${pull_attempts}): $image"
