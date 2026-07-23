@@ -523,7 +523,10 @@ PY
                 stage('Core Smoke and Multi-role E2E') {
                         sh '''#!/usr/bin/env bash
                         set -eu
-                        npx --yes pnpm@9 install --frozen-lockfile
+                        # The repository's deterministic Node dependency contract is
+                        # package-lock.json; do not require a pnpm lockfile that is
+                        # not part of this repository.
+                        npm ci --no-audit --no-fund
                         npm run e2e:real-pre:p0
                         npm run e2e:real-pre:roles
                         '''
