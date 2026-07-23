@@ -5,7 +5,7 @@ pipeline {
         disableConcurrentBuilds(abortPrevious: false)
         buildDiscarder(logRotator(numToKeepStr: '20'))
         skipDefaultCheckout(true)
-        timeout(time: 60, unit: 'MINUTES')
+        timeout(time: 150, unit: 'MINUTES')
     }
 
     parameters {
@@ -323,7 +323,7 @@ pipeline {
         }
 
         stage('Pull Immutable Images') {
-            options { timeout(time: 25, unit: 'MINUTES') }
+            options { timeout(time: 70, unit: 'MINUTES') }
             steps {
                 withCredentials([usernamePassword(credentialsId: 'saas-container-registry', usernameVariable: 'REGISTRY_USERNAME', passwordVariable: 'REGISTRY_PASSWORD')]) {
                     sh '''#!/usr/bin/env bash
