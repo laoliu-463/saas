@@ -2,6 +2,7 @@
 
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
 $retireContent = Join-Path $projectRoot 'harness\scripts\commands\retire-content.ps1'
+$powerShell = if (Get-Command pwsh -ErrorAction SilentlyContinue) { 'pwsh' } else { 'powershell' }
 
 function New-RetireTestRepo {
     param([string]$Name)
@@ -64,7 +65,7 @@ function Invoke-RetireContent {
     $ErrorActionPreference = 'Continue'
     Push-Location $Repo
     try {
-        $output = & powershell @arguments 2>&1
+        $output = & $powerShell @arguments 2>&1
         $exitCode = $LASTEXITCODE
     }
     finally {
