@@ -118,7 +118,7 @@ jobs:
           set -euo pipefail
           BACKEND_TAG="${BACKEND_IMAGE}:${SHA}"
           docker push "$BACKEND_TAG"
-          BACKEND_DIGEST="$(docker image inspect "$BACKEND_TAG" --format '{{range .RepoDigests}}{{println .}}{{end}}' \
+          BACKEND_DIGEST="$(docker image inspect "$BACKEND_TAG" --format '{{join .RepoDigests "\n"}}' \
             | awk -F@ -v prefix="${BACKEND_IMAGE}@" 'index($0, prefix) == 1 { print substr($0, length(prefix) + 1); exit }')"
           printf '%s' "$BACKEND_DIGEST" | grep -Eq '^sha256:[0-9a-f]{64}$'
           echo "backend_digest=${BACKEND_DIGEST}" >> "$GITHUB_OUTPUT"
@@ -154,7 +154,7 @@ jobs:
           set -euo pipefail
           FRONTEND_TAG="${FRONTEND_IMAGE}:${SHA}"
           docker push "$FRONTEND_TAG"
-          FRONTEND_DIGEST="$(docker image inspect "$FRONTEND_TAG" --format '{{range .RepoDigests}}{{println .}}{{end}}' \
+          FRONTEND_DIGEST="$(docker image inspect "$FRONTEND_TAG" --format '{{join .RepoDigests "\n"}}' \
             | awk -F@ -v prefix="${FRONTEND_IMAGE}@" 'index($0, prefix) == 1 { print substr($0, length(prefix) + 1); exit }')"
           printf '%s' "$FRONTEND_DIGEST" | grep -Eq '^sha256:[0-9a-f]{64}$'
           echo "frontend_digest=${FRONTEND_DIGEST}" >> "$GITHUB_OUTPUT"
