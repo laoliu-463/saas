@@ -54,7 +54,8 @@ image_is_ready() {
   image="$1"
   revision="$(docker image inspect "$image" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' 2>/dev/null || true)"
   [ "$revision" = "$FULL_COMMIT" ] || return 1
-  docker image inspect "$image" --format '{{join .RepoDigests "\n"}}' 2>/dev/null | grep -Fx "$image" >/dev/null
+  # range/println avoids Docker 29.5 template parsing differences for \\n.
+  docker image inspect "$image" --format '{{range .RepoDigests}}{{println .}}{{end}}' 2>/dev/null | grep -Fx "$image" >/dev/null
 }
 
 pull_image_ref() {
@@ -78,7 +79,7 @@ canonicalize_image_ref() {
   # repository causes Docker to register the same content digest for the
   # canonical repository, so Compose can continue to use repository@digest.
   docker tag "$source_image" "$canonical_tag"
-  docker image inspect "$source_image" --format '{{join .RepoDigests "\n"}}' \
+  docker image inspect "$source_image" --format '{{range .RepoDigests}}{{println .}}{{end}}' \
     | grep -Fx "$source_image" >/dev/null
   image_is_ready "$image"
 }
@@ -132,7 +133,7 @@ test "$frontend_revision" = "$FULL_COMMIT"
 
 docker image inspect "$BACKEND_IMAGE" --format '{{.Id}}' > runtime/qa/out/jenkins/backend-local-image-id.txt
 docker image inspect "$FRONTEND_IMAGE" --format '{{.Id}}' > runtime/qa/out/jenkins/frontend-local-image-id.txt
-docker image inspect "$BACKEND_IMAGE" --format '{{join .RepoDigests "\n"}}' > runtime/qa/out/jenkins/backend-repo-digests.txt
-docker image inspect "$FRONTEND_IMAGE" --format '{{join .RepoDigests "\n"}}' > runtime/qa/out/jenkins/frontend-repo-digests.txt
+docker image inspect "$BACKEND_IMAGE" --format '{{range .RepoDigests}}{{println .}}{{end}}' > runtime/qa/out/jenkins/backend-repo-digests.txt
+docker image inspect "$FRONTEND_IMAGE" --format '{{range .RepoDigests}}{{println .}}{{end}}' > runtime/qa/out/jenkins/frontend-repo-digests.txt
 grep -Fx "$BACKEND_IMAGE" runtime/qa/out/jenkins/backend-repo-digests.txt
 grep -Fx "$FRONTEND_IMAGE" runtime/qa/out/jenkins/frontend-repo-digests.txt
