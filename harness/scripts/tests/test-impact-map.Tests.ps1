@@ -193,7 +193,7 @@ Describe 'selective release flow contracts' {
     It 'ci.yml has the three required jobs and no github-actions-read-token' {
         $ci = Get-Content -Raw -LiteralPath (Join-Path $repoRoot '.github\workflows\ci.yml')
         ($ci -match 'Backend tests') | Should Be $true
-        ($ci -match 'Frontend tests and typecheck') | Should Be $true
+        ($ci -match 'Frontend tests and build') | Should Be $true
         ($ci -match 'Repository governance') | Should Be $true
         ($ci -match 'github-actions-read-token') | Should Be $false
     }

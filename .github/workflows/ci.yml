@@ -216,7 +216,9 @@ jobs:
   # frontend: Vue + TypeScript test suite. Skipped for docs-only changes.
   # ------------------------------------------------------------------
   frontend:
-    name: Frontend tests and typecheck
+    # Keep the protected check context stable while the job now only runs
+    # frontend tests and typecheck; production build belongs to image CI.
+    name: Frontend tests and build
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: changes
