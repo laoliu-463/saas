@@ -333,6 +333,7 @@ pipeline {
                     printf '%s' "$REGISTRY_PASSWORD" | docker login "$registry_host" --username "$REGISTRY_USERNAME" --password-stdin
                     cleanup_registry_login() { docker logout "$registry_host" >/dev/null 2>&1 || true; }
                     trap cleanup_registry_login EXIT
+                    export BACKEND_IMAGE FRONTEND_IMAGE FULL_COMMIT
                     bash scripts/cd/pull-immutable-images.sh
                     '''
                 }
