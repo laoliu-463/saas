@@ -100,6 +100,12 @@ Describe 'real-pre single release queue contract' {
         $jenkinsfile | Should Not Match 'docker compose[^\r\n]+\sbuild'
     }
 
+    It 'installs E2E dependencies from the repository lockfile' {
+        $jenkinsfile | Should Match 'npm ci --no-audit --no-fund'
+        $jenkinsfile | Should Not Match 'pnpm@9 install --frozen-lockfile'
+        (Test-Path -LiteralPath (Join-Path $repoRoot 'package-lock.json') -PathType Leaf) | Should Be $true
+    }
+
     It 'bounds and retries immutable image pulls without mutable fallback' {
         $jenkinsfile | Should Match "stage\('Pull Immutable Images'\)"
         $jenkinsfile | Should Match "timeout\(time:\s*70,\s*unit:\s*'MINUTES'\)"
