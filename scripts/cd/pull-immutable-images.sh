@@ -64,6 +64,7 @@ pull_image_ref() {
     return 0
   fi
   repository="${image#*/}"
+  repository="${repository%@*}"
   digest="${image##*@}"
   printf '%s/%s@%s\n' "$pull_registry" "$repository" "$digest"
 }
