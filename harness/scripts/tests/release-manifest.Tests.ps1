@@ -4,6 +4,7 @@ $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
 $manifestScript = Join-Path $repoRoot 'scripts\verify-real-pre-release.py'
 $exampleManifest = Join-Path $repoRoot 'release\real-pre.example.json'
 $jenkinsfile = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'Jenkinsfile')
+$immutablePullScript = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'scripts\cd\pull-immutable-images.sh')
 $ci = Get-Content -Raw -LiteralPath (Join-Path $repoRoot '.github\workflows\ci.yml')
 
 Describe 'immutable release manifest contract' {
@@ -15,8 +16,9 @@ Describe 'immutable release manifest contract' {
     }
 
     It 'requires Jenkins to pull immutable references without building' {
-        $jenkinsfile | Should Match 'docker pull "\$BACKEND_IMAGE"'
-        $jenkinsfile | Should Match 'docker pull "\$FRONTEND_IMAGE"'
+        $jenkinsfile | Should Match 'pull-immutable-images\.sh'
+        $immutablePullScript | Should Match 'docker pull "\$image"'
+        $immutablePullScript | Should Match 'repository@sha256:digest'
         $jenkinsfile | Should Not Match '(?m)^\s*docker compose[^\r\n]+\sbuild'
         $jenkinsfile | Should Match "credentialsId: 'saas-container-registry'"
     }

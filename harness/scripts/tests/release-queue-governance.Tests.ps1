@@ -4,6 +4,7 @@ $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
 $jenkinsfile = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'Jenkinsfile')
 $rollbackScript = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'scripts\cd\rollback-real-pre.sh')
 $releaseWrapper = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'scripts\cd\release-real-pre.sh')
+$immutablePullScript = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'scripts\cd\pull-immutable-images.sh')
 $agentDo = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'harness\scripts\commands\agent-do.ps1')
 $deployRemote = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'harness\scripts\commands\deploy-remote.ps1')
 $ci = Get-Content -Raw -LiteralPath (Join-Path $repoRoot '.github\workflows\ci.yml')
@@ -97,6 +98,20 @@ Describe 'real-pre single release queue contract' {
         $jenkinsfile | Should Match 'FRONTEND_IMAGE_DIGEST'
         $jenkinsfile | Should Match 'repository@sha256:digest'
         $jenkinsfile | Should Not Match 'docker compose[^\r\n]+\sbuild'
+    }
+
+    It 'bounds and retries immutable image pulls without mutable fallback' {
+        $jenkinsfile | Should Match "stage\('Pull Immutable Images'\)"
+        $jenkinsfile | Should Match "timeout\(time:\s*25,\s*unit:\s*'MINUTES'\)"
+        $jenkinsfile | Should Match 'pull-immutable-images\.sh'
+        $immutablePullScript | Should Match 'timeout --foreground --kill-after=30s'
+        $immutablePullScript | Should Match 'PULL_TIMEOUT_SECONDS'
+        $immutablePullScript | Should Match 'PULL_ATTEMPTS'
+        $immutablePullScript | Should Match 'Retrying with Docker''s partially downloaded layer cache'
+        $immutablePullScript | Should Match 'repository@sha256:digest'
+        $immutablePullScript | Should Match 'org\.opencontainers\.image\.revision'
+        $immutablePullScript | Should Match 'docker-system-df\.txt'
+        $immutablePullScript | Should Not Match 'docker pull[^\r\n]*:latest'
     }
 
     It 'routes the release manifest through scripts/cd/evidence-collect.sh (PR-C)' {
