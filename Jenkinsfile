@@ -44,6 +44,7 @@ pipeline {
         // transport-only; the pull helper re-tags and verifies the exact
         // canonical digest before Compose is allowed to use it.
         IMAGE_PULL_REGISTRY = 'ghcr.1ms.run'
+        // Digest evidence uses range/println templates for Docker 29.5 compatibility.
     }
 
     stages {
