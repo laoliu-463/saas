@@ -26,6 +26,10 @@ PR 到 `release/real-pre` 必须包含 `release/real-pre.json`，并通过 `scri
 - Jenkins 节点必须维护非 shallow 的本地 Git reference cache：
   `/var/lib/jenkins/caches/saas-real-pre-git-reference.git`。
   Pipeline 使用 `depth=1`、`noTags` 和该 cache 检出 `release/real-pre`，避免每次重新传输完整对象库；cache 不可用时应先修复节点，不得改回现场全量 checkout。
+- Jenkins 节点必须提供 GNU `timeout`。镜像拉取由
+  `scripts/cd/pull-immutable-images.sh` 执行：每个
+  `repository@sha256:digest` 最多尝试两次，每次最多 5 分钟；重试复用 Docker
+  已下载的层缓存，不回退到 tag、不重新构建镜像。失败时保留 Docker 磁盘和缓存诊断，且在进入 Compose 前终止发布。
 - Jenkins 凭据中配置 `saas-container-registry`，类型为 username/password，密码只用于读取容器仓库。
 - `/opt/saas/env/.env.real-pre` 由服务器受控保存，不进入 Git 或 Jenkins 日志。
 - Jenkins Lockable Resources 配置全局资源 `saas-real-pre-deploy`。
