@@ -437,7 +437,7 @@ jobs:
     # The push trigger above is already restricted to main. Do not add a
     # second ref check: GitHub can omit ref metadata on post-merge runs,
     # which would silently skip this required image publication job.
-    if: needs.ci-gate.result == 'success' && github.event_name == 'push'
+    if: needs['ci-gate'].result == 'success' && github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 35
     permissions:
