@@ -38,7 +38,7 @@ bash scripts/verify-openapi-apifox.sh
 bash scripts/sync-apifox.sh
 ```
 
-5. 查测试覆盖时，先读 `references/test-assets-index.md`，再按 `references/project-assets-manifest.md` 定位具体文件。
+5. 查测试覆盖时，先读 `references/test-assets-index.md`，再按 `references/project-assets-manifest.md` 的资产根目录使用 `rg --files` 定位具体文件；不要把清单当作测试通过证据。
 
 ## 输出
 
@@ -49,5 +49,5 @@ bash scripts/sync-apifox.sh
 ## 验证
 
 - `docs/openapi/openapi-full.json`、`openapi-business.json`、`openapi-sdk-debug.json` 均可解析且 paths 非空。
-- `references/project-assets-manifest.md` 已记录接口文档数量和测试资产数量。
+- `references/project-assets-manifest.md` 已记录当前 OpenAPI 统计、接口文档数量和测试资产根目录计数，且不包含重复的逐文件清单。
 - 缺少 Apifox Token、Project ID、开发入口或 endpoint 回读时，只能写 `BLOCKED` / `PARTIAL`，不能写云端同步 `PASS`。

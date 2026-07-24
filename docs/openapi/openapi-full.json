@@ -25451,6 +25451,5 @@
                                                               }
                                            }
                    },
-    "x-saas-generated-from":  "docs/openapi/saas-openapi.json",
-    "x-saas-generated-at":  "2026-07-09T20:00:17.7438836+08:00"
+    "x-saas-generated-from":  "docs/openapi/saas-openapi.json"
 }
