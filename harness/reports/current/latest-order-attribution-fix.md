@@ -37,6 +37,8 @@
 
 ## 业务验证
 
+测试服务器创建了测试账号 `zhuangyun_attribution_test`，绑定现有 `channel_staff` 角色，姓名为“壮云”，数据范围为 `self`。同时只在测试库建立了该订单对应的原生映射，未写入生产。
+
 同样的原生归因场景订单 `6928194636077432731` dry-run 结果：
 
 ```text
@@ -49,7 +51,24 @@ safeToUpdate=1
 updated=0
 ```
 
-用户指定订单 `6928228692853423377` 在测试库的 dry-run 结果为 `attributed=0`。原因不是运行错误，而是测试库没有该商品/活动对应的“壮云”原生映射；生产只读证据已确认该映射存在。dry-run 未修改该订单，订单仍保持原状态。
+首次 dry-run 时，用户指定订单 `6928228692853423377` 返回 `attributed=0`，原因是测试库没有该商品/活动对应的“壮云”原生映射；生产只读证据已确认该映射存在。补齐测试映射后重新验证并成功回放。
+
+补齐测试映射后，用户指定订单验证结果：
+
+```text
+dry-run: scanned=1, attributed=1, unattributed=0, nativeKeyMatched=1,
+         colonelBuyinIdMismatch=1, safeToUpdate=1
+apply:   scanned=1, attributed=1, unattributed=0, updated=1
+```
+
+使用测试账号调用订单列表接口，`self` 数据范围能够查到该订单，返回字段为：
+
+```text
+channelUserName=壮云
+colonelUserName=招商组长测试
+attributionStatus=ATTRIBUTED
+attributionRemark=COLONEL_ORDER_INFO
+```
 
 ## 生产安全
 
@@ -58,11 +77,11 @@ updated=0
 
 ## 结论
 
-`PARTIAL`：修复代码、定向测试、测试服务器部署和同形态业务 dry-run 均通过；指定订单在测试库缺少对应映射，不能在测试服务器直接宣称该订单已归属“壮云”。等待用户在测试服务器验证；确认后再进入生产发布流程。
+`PASS`：修复代码、定向测试、测试服务器部署、指定订单回放和 `channel_staff/self` 数据范围验证均通过。生产仍未部署，等待用户确认后进入正式发布流程。
 
 ## Retro
 
-后续真实订单验收必须同时准备订单、活动、商品和原生映射四件样本，不能只复制订单表。验收脚本应先检查映射存在且归属用户可解析，再执行 dry-run，避免把测试数据缺失误判为代码回归。
+后续真实订单验收必须同时准备订单、活动、商品和原生映射四件样本，不能只复制订单表。验收脚本应先检查映射存在且归属用户可解析，再执行 dry-run，避免把测试数据缺失误判为代码回归。本次测试账号和映射均为测试数据，生产发布前不应复制这些测试记录。
 
 ## 工具限制
 
