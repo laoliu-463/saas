@@ -78,11 +78,16 @@ class SampleActionPermissionPolicyTest {
                 .isInstanceOf(ForbiddenException.class)
                 .hasMessageContaining("仅运营或管理员可触发物流同步");
 
+        assertThatCode(() -> policy.ensureCanExport(List.of(RoleCodes.ADMIN))).doesNotThrowAnyException();
         assertThatCode(() -> policy.ensureCanExport(List.of(RoleCodes.BIZ_LEADER))).doesNotThrowAnyException();
-        assertThatCode(() -> policy.ensureCanExport(List.of(RoleCodes.CHANNEL_LEADER))).doesNotThrowAnyException();
         assertThatCode(() -> policy.ensureCanExport(List.of(RoleCodes.OPS_STAFF))).doesNotThrowAnyException();
         assertThatCode(() -> policy.ensureCanExport(List.of(RoleCodes.BIZ_STAFF))).doesNotThrowAnyException();
-        assertThatCode(() -> policy.ensureCanExport(List.of(RoleCodes.CHANNEL_STAFF))).doesNotThrowAnyException();
+        assertThatThrownBy(() -> policy.ensureCanExport(List.of(RoleCodes.CHANNEL_LEADER)))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessageContaining("仅管理员、招商或运营账号可导出寄样数据");
+        assertThatThrownBy(() -> policy.ensureCanExport(List.of(RoleCodes.CHANNEL_STAFF)))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessageContaining("仅管理员、招商或运营账号可导出寄样数据");
     }
 
     @Test
