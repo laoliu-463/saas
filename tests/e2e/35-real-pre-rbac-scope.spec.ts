@@ -37,9 +37,8 @@ interface RoleCase {
   allowedPages: string[];
   forbiddenPages: string[];
   forbiddenApis: Array<{ method: 'GET' | 'POST' | 'PUT'; path: string; data?: JsonMap }>;
+  allowedApis?: Array<{ method: 'GET'; path: string }>;
 }
-
-const PASSWORD = process.env.E2E_DEFAULT_PASSWORD || 'admin123';
 
 const ROLE_CASES: RoleCase[] = [
   {
@@ -65,8 +64,8 @@ const ROLE_CASES: RoleCase[] = [
   },
   {
     label: 'biz_staff',
-    username: 'biz_staff',
-    password: PASSWORD,
+    username: accounts.bizStaff.username,
+    password: accounts.bizStaff.password,
     allowedPages: ['/product', '/sample', '/orders'],
     forbiddenPages: ['/system/users'],
     forbiddenApis: [
@@ -76,12 +75,14 @@ const ROLE_CASES: RoleCase[] = [
   },
   {
     label: 'channel_leader',
-    username: 'channel_leader',
-    password: PASSWORD,
+    username: accounts.channelLeader.username,
+    password: accounts.channelLeader.password,
     allowedPages: ['/product', '/talent', '/sample', '/orders', '/data'],
     forbiddenPages: ['/system/users', '/system/douyin'],
     forbiddenApis: [
       { method: 'GET', path: '/api/users?page=1&size=5' },
+    ],
+    allowedApis: [
       { method: 'GET', path: '/api/samples/exports?page=1&size=1' }
     ]
   },
@@ -93,6 +94,8 @@ const ROLE_CASES: RoleCase[] = [
     forbiddenPages: ['/system/users', '/system/douyin'],
     forbiddenApis: [
       { method: 'GET', path: '/api/users?page=1&size=5' },
+    ],
+    allowedApis: [
       { method: 'GET', path: '/api/samples/exports?page=1&size=1' }
     ]
   },
@@ -159,6 +162,18 @@ test('real-pre P0 / 35 / RBAC', async ({ browser }, testInfo) => {
           }
         }
         roleResult.api403Checks = apiChecks;
+
+        const allowedApiChecks: JsonMap[] = [];
+        for (const probe of roleCase.allowedApis || []) {
+          const result = await rawApi(api, probe.method, probe.path, String(auth.token || ''));
+          const code = Number((result.body as JsonMap | undefined)?.code);
+          const allowed = ![401, 403].includes(result.status) && ![401, 403].includes(code);
+          allowedApiChecks.push({ method: probe.method, path: probe.path, status: result.status, code, allowed });
+          if (!allowed) {
+            markFail(ctx, `${roleCase.label} ${probe.method} ${probe.path} 应允许访问但被拒绝 (HTTP ${result.status}, code=${code})`);
+          }
+        }
+        roleResult.allowedApiChecks = allowedApiChecks;
 
         roleResult.dataScopeChecks = await sampleDataScope(api, auth, roleCase.label);
       } catch (error) {
