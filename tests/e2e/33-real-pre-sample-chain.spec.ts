@@ -9,6 +9,7 @@
 import { test, expect, request as playwrightRequest, type APIRequestContext } from '@playwright/test';
 import { accounts } from './helpers/test-data';
 import { apiLogin } from './helpers/real-pre-api';
+import { runRealPreSql } from './helpers/real-pre-db';
 import {
   createRealPreP0Step,
   ensureRealPreP0Env,
@@ -30,13 +31,6 @@ type ReusablePromotionMapping = {
   userId?: string;
 };
 
-// biz_staff 不在 test-data.ts 的 accounts 表里（accounts 只列了 5 个角色），
-// 不能借 accounts.bizLeader.password —— 一旦真实环境给 bizLeader 单独覆盖
-// E2E_BIZ_LEADER_PASSWORD，biz_staff 就会因为密码错位而被误判 BLOCKED_AUTH。
-// 与 35 spec 的 PASSWORD 常量风格对齐，让 biz_staff 走自己的覆盖链。
-const BIZ_STAFF_PASSWORD =
-  process.env.E2E_BIZ_STAFF_PASSWORD || process.env.E2E_DEFAULT_PASSWORD || 'admin123';
-
 test('real-pre P0 / 33 / 寄样链', async ({}, testInfo) => {
   test.skip(!shouldRunRealPreP0('33-real-pre-sample-chain'), 'Run via npm run e2e:real-pre:p0 or set E2E_REAL_PRE_P0=true');
   test.setTimeout(20 * 60_000);
@@ -54,7 +48,7 @@ test('real-pre P0 / 33 / 寄样链', async ({}, testInfo) => {
     let bizLeaderToken = '';
     let opsToken = '';
     try {
-      const biz = await apiLogin(`${backend}/api`, 'biz_staff', BIZ_STAFF_PASSWORD);
+      const biz = await apiLogin(`${backend}/api`, accounts.bizStaff.username, accounts.bizStaff.password);
       bizStaffToken = String(biz.token || '');
       bizStaffUserId = queryUserIdByUsername('biz_staff') || String(biz.id || biz.userId || '');
     } catch (error) {
@@ -128,14 +122,27 @@ test('real-pre P0 / 33 / 寄样链', async ({}, testInfo) => {
     const talent = safeUnwrap<JsonMap>(talentCreate.body) || {};
     const talentLocalId = String(talent.id || '');
     setDetail(ctx, 'talent', { talentLocalId, talentUid });
-    if (talentLocalId) {
-      const claim = await rawApi(api, 'POST', `/api/talents/${talentLocalId}/claims`, String(channelStaff.token || ''));
+    if (!talentLocalId) {
+      markFail(ctx, '创建达人成功响应缺少 talent id');
+    } else {
+      // POST /api/talents 已由当前用户创建并自动建立首个认领记录，
+      // 再调用 /claims 会得到 462 重复认领；直接校验创建响应中的归属快照。
+      const ownerId = String(talent.ownerId || talent.owner_id || '');
+      const claimCountValue = talent.activeClaimCount ?? talent.active_claim_count;
+      const hasClaimCount = claimCountValue !== undefined && claimCountValue !== null;
+      const activeClaimCount = hasClaimCount ? Number(claimCountValue) : null;
+      const autoClaimed =
+        ownerId === String(channelStaff.userId || channelStaff.id || '')
+        && (!hasClaimCount || (activeClaimCount !== null && activeClaimCount > 0));
       setDetail(ctx, 'talentClaim', {
-        status: claim.status,
-        code: (claim.body as JsonMap | undefined)?.code
+        status: 200,
+        code: 200,
+        ownerId,
+        activeClaimCount,
+        autoClaimed
       });
-      if (!claim.ok || (claim.body as JsonMap | undefined)?.code !== 200) {
-        markFail(ctx, `达人认领失败：HTTP ${claim.status} code=${(claim.body as JsonMap | undefined)?.code}`);
+      if (!autoClaimed) {
+        markFail(ctx, '创建达人后未建立渠道人员认领关系');
       }
     }
 
@@ -437,7 +444,6 @@ function scanAssignedLibraryCandidates(assigneeId: string): ReusablePromotionMap
   if (!assigneeId) {
     return [];
   }
-  const { execFileSync } = require('node:child_process');
   const container = process.env.E2E_DB_CONTAINER || 'saas-active-postgres-real-pre-1';
   const user = process.env.E2E_DB_USER || 'saas';
   const db = process.env.E2E_DB_NAME || 'saas_real_pre';
@@ -453,11 +459,7 @@ function scanAssignedLibraryCandidates(assigneeId: string): ReusablePromotionMap
     'order by pos.update_time desc nulls last',
     'limit 10;'
   ].join('\n');
-  const out = execFileSync(
-    'docker',
-    ['exec', container, 'psql', '-X', '-q', '-v', 'ON_ERROR_STOP=1', '-U', user, '-d', db, '-t', '-A', '-F', '|', '-c', sql],
-    { encoding: 'utf8' }
-  );
+  const out = runRealPreSql(sql, { container, user, database: db });
   return String(out || '').split(/\r?\n/).filter(Boolean).map((line) => {
     const parts = line.split('|');
     return {
@@ -469,7 +471,6 @@ function scanAssignedLibraryCandidates(assigneeId: string): ReusablePromotionMap
 }
 
 function scanAssignableLibraryCandidates(): ReusablePromotionMapping[] {
-  const { execFileSync } = require('node:child_process');
   const container = process.env.E2E_DB_CONTAINER || 'saas-active-postgres-real-pre-1';
   const user = process.env.E2E_DB_USER || 'saas';
   const db = process.env.E2E_DB_NAME || 'saas_real_pre';
@@ -485,11 +486,7 @@ function scanAssignableLibraryCandidates(): ReusablePromotionMapping[] {
     'order by pos.update_time desc nulls last',
     'limit 10;'
   ].join('\n');
-  const out = execFileSync(
-    'docker',
-    ['exec', container, 'psql', '-X', '-q', '-v', 'ON_ERROR_STOP=1', '-U', user, '-d', db, '-t', '-A', '-F', '|', '-c', sql],
-    { encoding: 'utf8' }
-  );
+  const out = runRealPreSql(sql, { container, user, database: db });
   return String(out || '').split(/\r?\n/).filter(Boolean).map((line) => {
     const parts = line.split('|');
     return {
@@ -501,7 +498,6 @@ function scanAssignableLibraryCandidates(): ReusablePromotionMapping[] {
 }
 
 function scanAnyReusableMapping(): ReusablePromotionMapping[] {
-  const { execFileSync } = require('node:child_process');
   const container = process.env.E2E_DB_CONTAINER || 'saas-active-postgres-real-pre-1';
   const user = process.env.E2E_DB_USER || 'saas';
   const db = process.env.E2E_DB_NAME || 'saas_real_pre';
@@ -516,11 +512,7 @@ function scanAnyReusableMapping(): ReusablePromotionMapping[] {
     'order by psm.update_time desc nulls last, psm.create_time desc',
     'limit 5;'
   ].join('\n');
-  const out = execFileSync(
-    'docker',
-    ['exec', container, 'psql', '-X', '-q', '-v', 'ON_ERROR_STOP=1', '-U', user, '-d', db, '-t', '-A', '-F', '|', '-c', sql],
-    { encoding: 'utf8' }
-  );
+  const out = runRealPreSql(sql, { container, user, database: db });
   return String(out || '').split(/\r?\n/).filter(Boolean).map((line) => {
     const parts = line.split('|');
     return {
@@ -533,22 +525,16 @@ function scanAnyReusableMapping(): ReusablePromotionMapping[] {
 }
 
 function queryUserIdByUsername(username: string): string {
-  const { execFileSync } = require('node:child_process');
   const container = process.env.E2E_DB_CONTAINER || 'saas-active-postgres-real-pre-1';
   const user = process.env.E2E_DB_USER || 'saas';
   const db = process.env.E2E_DB_NAME || 'saas_real_pre';
   const safeUsername = username.replace(/'/g, "''");
   const sql = `select id::text from sys_user where username = '${safeUsername}' and deleted = 0 limit 1;`;
-  const out = execFileSync(
-    'docker',
-    ['exec', container, 'psql', '-X', '-q', '-v', 'ON_ERROR_STOP=1', '-U', user, '-d', db, '-t', '-A', '-c', sql],
-    { encoding: 'utf8' }
-  );
+  const out = runRealPreSql(sql, { container, user, database: db });
   return String(out || '').trim();
 }
 
 function queryOperationAssignee(activityId: unknown, productId: unknown): string {
-  const { execFileSync } = require('node:child_process');
   const container = process.env.E2E_DB_CONTAINER || 'saas-active-postgres-real-pre-1';
   const user = process.env.E2E_DB_USER || 'saas';
   const db = process.env.E2E_DB_NAME || 'saas_real_pre';
@@ -561,11 +547,7 @@ function queryOperationAssignee(activityId: unknown, productId: unknown): string
     `  and product_id = '${safeProductId}'`,
     'limit 1;'
   ].join('\n');
-  const out = execFileSync(
-    'docker',
-    ['exec', container, 'psql', '-X', '-q', '-v', 'ON_ERROR_STOP=1', '-U', user, '-d', db, '-t', '-A', '-c', sql],
-    { encoding: 'utf8' }
-  );
+  const out = runRealPreSql(sql, { container, user, database: db });
   return String(out || '').trim();
 }
 

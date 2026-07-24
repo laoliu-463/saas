@@ -339,6 +339,22 @@ async function openProductManageAndAssertImages(page: Page, activityId?: string 
   page.on('requestfailed', onRequestFailed);
   try {
     await gotoApp(page, route, { timeout: REAL_PRE_NAV_TIMEOUT_MS });
+    // 外链图片可能晚于 networkidle 完成，先等待已渲染图片进入完成态，
+    // 再根据 naturalWidth 判断真实加载失败，避免把正常慢加载误报成 FAIL。
+    await page.waitForFunction(() => {
+      const pageOrigin = window.location.origin;
+      const externalImages = Array.from(document.images).filter((img) => {
+        const src = img.currentSrc || img.getAttribute('src') || '';
+        if (!src || src.startsWith('data:') || src.startsWith('blob:')) return false;
+        try {
+          const url = new URL(src, window.location.href);
+          return (url.protocol === 'http:' || url.protocol === 'https:') && url.origin !== pageOrigin;
+        } catch {
+          return false;
+        }
+      });
+      return externalImages.every((img) => img.complete);
+    }, { timeout: 30_000 }).catch(() => undefined);
     const finalPath = new URL(page.url()).pathname;
     const images = await page.locator('img').evaluateAll((nodes) => {
       return nodes
