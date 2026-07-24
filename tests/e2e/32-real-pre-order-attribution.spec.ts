@@ -7,6 +7,7 @@
 import { test, expect, request as playwrightRequest, type APIRequestContext } from '@playwright/test';
 import { accounts } from './helpers/test-data';
 import { apiLogin } from './helpers/real-pre-api';
+import { runRealPreSql } from './helpers/real-pre-db';
 import {
   createRealPreP0Step,
   ensureRealPreP0Env,
@@ -37,6 +38,7 @@ const safeUpstream = require('../../runtime/qa/real-pre-safe-upstream.cjs') as {
   queryReusablePromotionMapping: (options: JsonMap) => ReusablePromotionMapping[];
   selectReusablePromotionMapping: (rows: ReusablePromotionMapping[]) => ReusablePromotionMapping;
   buildPromotionBlockerMessage: (options: JsonMap) => string;
+  parsePipeRows?: (rows: string) => ReusablePromotionMapping[];
 };
 
 const SYNC_WINDOW_MINUTES = Number(process.env.E2E_ORDER_SYNC_WINDOW_MINUTES || 30);
@@ -173,7 +175,16 @@ test('real-pre P0 / 32 / 订单同步 + 归因', async ({}, testInfo) => {
     } else if (fieldGaps.length && ctx.summary.conclusion === 'PASS') {
       markFail(ctx, `订单字段不完整：${fieldGaps.slice(0, 5).join(' | ')}`);
     } else if (attributionStats.ATTRIBUTED === 0 && ctx.summary.conclusion === 'PASS') {
-      markPending(ctx, 'PENDING_NO_UPSTREAM_ORDERS: 当前真实订单全部未归因，无法证明归因链');
+      if (attributed > 0) {
+        markPending(
+          ctx,
+          'PENDING_ATTRIBUTED_ORDER_SAMPLE: 同步结果报告 attributed='
+            + attributed
+            + '，但当前订单页抽样未命中归因订单'
+        );
+      } else {
+        markPending(ctx, 'PENDING_NO_ATTRIBUTED_ORDER: 当前订单抽样没有归因订单，无法证明归因链');
+      }
     }
   } catch (error) {
     markFail(ctx, error instanceof Error ? error.message : String(error));
@@ -197,7 +208,6 @@ test('real-pre P0 / 32 / 订单同步 + 归因', async ({}, testInfo) => {
 function scanAnyReusableMapping(): ReusablePromotionMapping[] {
   // 安全上游 helper 强制需要 activityId/productId/userId；这里不指定具体业务样本，
   // 复用同样的 SQL 但放宽过滤，仅做存在性检查。
-  const { execFileSync } = require('node:child_process');
   const container = process.env.E2E_DB_CONTAINER || 'saas-active-postgres-real-pre-1';
   const user = process.env.E2E_DB_USER || 'saas';
   const db = process.env.E2E_DB_NAME || 'saas_real_pre';
@@ -214,11 +224,7 @@ function scanAnyReusableMapping(): ReusablePromotionMapping[] {
     'limit 5;'
   ].join('\n');
   try {
-    const out = execFileSync(
-      'docker',
-      ['exec', container, 'psql', '-X', '-q', '-v', 'ON_ERROR_STOP=1', '-U', user, '-d', db, '-t', '-A', '-F', '|', '-c', sql],
-      { encoding: 'utf8' }
-    );
+    const out = runRealPreSql(sql, { container, user, database: db });
     return safeUpstream.parsePipeRows
       ? (safeUpstream as unknown as { parsePipeRows: (rows: string) => ReusablePromotionMapping[] }).parsePipeRows(out)
       : String(out || '').split(/\r?\n/).filter(Boolean).map((line) => {
