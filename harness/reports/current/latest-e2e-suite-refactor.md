@@ -3,61 +3,66 @@
 ## 运行摘要
 
 - 时间：2026-07-24
-- 环境：本地 test 代码检查；`my-second-brain-server` 只读 Docker / SSH 隧道烟测
+- 环境：本地 TypeScript 检查；`my-second-brain-server` 测试服务器通过 SSH 隧道验收
 - 分支：`codex/e2e-suite-refactor`
 - 基线：`c125188b`
-- 本轮验证提交：`d08915d1`
-- 工作树：干净
-- 远端部署：未执行；仅通过 SSH 隧道访问已运行容器
+- 本轮验证提交：`6677a7bf`
+- 工作树：代码已提交并推送；本报告待提交
+- 远端部署：未执行；未构建、重启或部署测试服务器和生产服务器
 
-## 已完成
+## 本轮修复
+
+- 商品链等待外链图片进入完成态后再检查 `naturalWidth`，避免把正常慢加载误报为失败。
+- 订单归因和寄样链的数据库探针支持 `E2E_SSH_TARGET`，可直接读取测试服务器容器内 PostgreSQL，不再依赖本机 Docker。
+- 订单归因证据区分“同步结果有归因订单”和“当前页面抽样命中归因订单”，避免把两者混为一谈。
+- 寄样链使用统一账号配置；按当前后端合同校验创建达人时自动建立首个渠道认领，移除会返回重复认领码 462 的二次调用。
+
+## 已完成的 E2E 收敛
 
 - 认证协议收敛到 `tests/e2e/helpers/auth.ts`。
 - `auth.setup.ts`、API 断言和 real-pre 认证注入共用同一登录实现。
 - 新增 `LoginPage`、`AppShellPage` 和共享 `fixtures.ts`。
-- 普通页面跳转统一使用 `gotoApp`；业务 spec 中不再直接写 `localStorage`、固定页面跳转或重复认证。
+- 普通页面跳转统一使用 `gotoApp`；业务 spec 不再直接写重复认证和固定跳转。
 - 35 个 E2E 文件完成迁移；当前 Playwright 可发现 153 个用例、45 个文件。
-- 新增 `npm run e2e:login` 和 `tests/e2e/README.md`。
-- 统一 real-pre RBAC 用例的账号密码来源，移除角色级硬编码密码。
-- 统一 real-pre 导出权限合同：渠道组长和渠道专员按当前后端授权可访问导出接口。
-- 认证 helper 对 HTTP 401 立即停止重试，避免错误配置反复撞击 real-pre 登录锁。
+- real-pre RBAC 用例统一账号密码来源，401 立即停止重试，避免错误配置锁死测试账号。
 
 ## 验证结果
 
 | 检查 | 结果 |
 | --- | --- |
-| 前端生产构建 | PASS |
 | 变更 E2E TypeScript 检查 | PASS |
+| `git diff --check` | PASS |
 | Playwright `--list` | PASS：153 tests / 45 files |
-| 本地前端登录页浏览器烟测 | PASS：1 passed |
-| Harness typecheck | PASS |
-| Harness tests | PASS：293 passed / 1 skipped |
-| Harness 文件门禁 | TASK_GATE=PASS；REPOSITORY_HEALTH=PARTIAL（历史目录债务） |
-| `my-second-brain-server` Compose | PASS：4 个服务均 healthy，未执行启动或重启 |
-| 远端镜像摘要 | PASS：backend/frontend 均存在 RepoDigest |
-| 远端 `/healthz` | PASS：通过 `localhost:3001` SSH 隧道 |
-| 远端管理员登录 API | PASS：使用未提交的受控 `ADMIN_PASSWORD`，HTTP 200 且返回 Token |
-| 远端登录页浏览器烟测 | PASS：`00-health`、`01-login` 共 2 passed |
-| 远端业务账号密码修复 | PASS：管理员重置 5 个业务账号均返回业务码 200，5 个账号随后均登录 200 |
-| 远端六角色 storageState setup | PASS：管理员、招商组长、招商专员、渠道组长、渠道专员、运营共 6 个状态生成成功 |
-| 远端管理员 Dashboard | PASS：`02-dashboard` 与 setup 共 2 passed |
-| 远端 real-pre RBAC 35 | PASS：六角色登录、页面权限、关键接口权限与范围探针，`1 passed` |
-| test 容器、后端和完整 E2E | NOT RUN：当前远端是 real-pre 形态栈，不是本地 mock test 栈 |
-| real-pre 完整业务 P0 | NOT RUN：本轮只执行无副作用 RBAC 35，商品、订单、寄样和真实上游链路未执行 |
+| real-pre 31 商品链 | PASS：`1 passed`；真实商品链和图片检查通过 |
+| real-pre 32 订单同步 + 归因 | 测试 PASS：`1 passed`；业务结论 `PENDING` |
+| real-pre 33 寄样链 | 测试 PASS：`1 passed`；业务结论 `PENDING` |
+| real-pre 34 业绩看板 | PASS：`1 passed`；公式和页面无运行时错误 |
+| real-pre 35 RBAC | PASS：`1 passed`；六角色登录、权限和范围探针通过 |
+| real-pre 36 清理计划 | PASS：`1 passed`；仅生成 PlanOnly 计划，未执行删除 |
+| 测试服务器后端健康 | PASS：`/api/system/health` HTTP 200 |
+| 测试服务器前端健康 | PASS：`/login` HTTP 200 |
+| 测试服务器容器 | PASS：前端、后端、PostgreSQL、Redis 均 healthy |
+| 生产服务器 | 未触碰 |
 
-## 阻塞与风险
+## 真实业务证据
 
-- 标准 `agent-do` 未能启动 Node Harness 验证，当前本机 Node 环境缺少 `jiti`。
-- 兼容入口 `harness:verify` 还受到当前 PowerShell 环境缺少 `Get-FileHash` 的阻塞。
-- 当前干净 worktree 没有 `.env.test`；远端验证按文档使用 `my-second-brain-server` 隧道和 `localhost:3001/18081`，没有复制或提交任何环境文件。
-- 六个角色账号均存在且启用；已按管理员操作重置 5 个业务账号密码。一次错误配置触发两个账号临时登录锁，已等待锁自然过期；未删除 Redis 键、未绕过认证。
-- RBAC 35 首次暴露的是测试合同与后端权限不一致，已修正为当前真实授权后通过；验证过程只读取页面和接口。
-- 本次只读检查未执行远端 Docker 启动、重启、构建、部署或生产服务器操作。
+- 订单同步窗口 30 分钟：`totalFetched=34`、`created=4`、`updated=30`、`attributed=1`、`unattributed=33`、`failed=0`。
+- 当前订单页抽样未命中归因订单，因此 32 只能记为 `PENDING_ATTRIBUTED_ORDER_SAMPLE`，不能写成归因闭环 PASS。
+- 寄样链已验证：达人创建自动认领、重复寄样请求被业务码 462 拦截、状态经过 `PENDING_AUDIT -> PENDING_SHIP -> SHIPPED -> PENDING_TASK`。
+- 当前没有真实成交订单触发寄样自动完成，因此 33 只能记为 `PENDING_REAL_ORDER_FOR_HOMEWORK`。
+- `QA20260724172035`、`QA20260724172129`、`QA20260724172306`、`QA20260724172353` 已生成 PlanOnly 清理计划；未执行清理 SQL。测试服务器仍保留这些 QA 范围数据，待管理员确认后按计划清理。
+
+## 未执行项与风险
+
+- 完整 P0 编排器未直接运行：其 preflight 依赖本机 Docker，不能指向远端测试服务器。
+- `08-real-pre-douyin-integration` 未运行：一键刷新可能触发真实上游写操作，本轮没有扩大副作用范围。
+- 真实业务闭环仍缺“真实付款订单 -> 归因命中 -> 寄样自动完成 -> 业绩和 Dashboard 逐字段对账”。
+- 本轮只修改和验证 E2E 测试代码，没有应用代码变更，因此不需要重启容器；远端服务保持原样。
 
 ## 结论
 
-`PARTIAL`。E2E 代码结构、认证入口、页面对象、跳转等待、远端健康、管理员登录、六角色认证 setup、管理员 Dashboard 和 RBAC 35 已通过；商品、订单、寄样、真实上游和完整 P0 业务套件尚未运行。未触碰生产环境。
+`PARTIAL`。E2E 代码、远端登录、商品链、RBAC、看板基础检查和远端数据库探针已通过；订单归因和寄样自动完成仍缺真实业务样本，不能宣称完整 P0 闭环通过。生产环境未触碰。
 
 ## Retro
 
-本次有效改进：将认证和导航的重复实现集中到共享 helper；账号密码统一从环境配置读取；401 不再重试，避免测试把账号锁死；RBAC 合同与当前后端权限保持一致。远端验证继续遵守只读优先，下一步再决定是否进入有明确样本和回滚方案的业务 P0。
+本轮把远端数据库读取封装为统一 SSH/本地双模式 helper，避免测试环境必须安装 Docker；对外链图片增加完成态等待，消除已确认的慢加载误报；同时按后端真实合同校正寄样链认领断言。后续若要把 32、33 从 `PENDING` 提升为 `PASS`，必须补真实订单和自动完成功能的可核验样本，不应继续放宽断言。
