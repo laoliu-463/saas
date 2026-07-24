@@ -434,7 +434,10 @@ jobs:
   immutable_images:
     name: Immutable images
     needs: ci-gate
-    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+    # Use ref_name here. GitHub's run metadata can omit the fully-qualified
+    # ref on post-merge and manually dispatched runs, which otherwise causes
+    # this required post-main image publication job to be skipped silently.
+    if: needs.ci-gate.result == 'success' && github.ref_name == 'main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     timeout-minutes: 35
     permissions:
