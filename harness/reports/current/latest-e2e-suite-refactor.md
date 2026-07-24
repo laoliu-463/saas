@@ -32,6 +32,7 @@
 | 独立测试服务器 `/healthz` | FAIL：返回另一套 Vben Admin 页面，不是本项目前端健康响应 |
 | 独立测试服务器登录页 | FAIL：缺少本项目 `login-username` 测试标识 |
 | 独立测试服务器 `/api/auth/login` | FAIL：使用项目默认测试账号返回 HTTP 500 |
+| 独立测试服务器 Docker 只读巡检 | BLOCKED：`pi@192.168.101.220` SSH 公钥/密码认证失败，未取得容器清单 |
 | test 容器、后端和完整 E2E | NOT RUN：当前测试服务器与本项目构建不匹配 |
 | real-pre E2E | NOT RUN：未满足真实环境前置条件 |
 
@@ -41,7 +42,8 @@
 - 兼容入口 `harness:verify` 还受到当前 PowerShell 环境缺少 `Get-FileHash` 的阻塞。
 - 当前干净 worktree 没有 `.env.test`；用户工作区的 `.env.test` 仍指向本机 `127.0.0.1:3000/8080`，不能直接作为远端测试配置。
 - 用户提供的测试服务器前端返回另一套管理系统，后端登录返回 HTTP 500；登录 API、角色 storageState、V1-P0 和后端业务闭环尚未运行。
-- 本次没有 SSH、Docker real-pre 或生产环境操作。
+- 未取得远端 Docker 清单；SSH 只读认证失败，不能据此判断容器是否仍在运行。
+- 本次未成功登录测试服务器 SSH，未执行 Docker、real-pre 或生产环境操作。
 
 ## 结论
 
