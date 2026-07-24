@@ -1,6 +1,7 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { readFixture } from './helpers/fixtures';
 import { storageStates } from './helpers/test-data';
+import { gotoApp } from './helpers/page-ready';
 
 test.use({ storageState: storageStates.channelLeader });
 
@@ -40,7 +41,7 @@ async function mockTalentProtectionApis(page: Page) {
 test('认领保护期达人时提示保护期冲突', async ({ page }) => {
   await mockTalentProtectionApis(page);
 
-  await page.goto('/talent?view=TEAM_PUBLIC');
+  await gotoApp(page, '/talent?view=TEAM_PUBLIC');
   await expect(page.getByTestId('talent-table')).toBeVisible({ timeout: 30_000 });
   await expect(page.locator('body')).toContainText('保护期达人');
 

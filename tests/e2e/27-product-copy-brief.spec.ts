@@ -1,5 +1,6 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { readFixture } from './helpers/fixtures';
+import { gotoApp } from './helpers/page-ready';
 import { storageStates } from './helpers/test-data';
 import { testIds } from './helpers/selectors';
 
@@ -39,7 +40,7 @@ test('复制讲解会先转链并写入剪贴板', async ({ page }) => {
     });
   });
 
-  await page.goto('/product');
+  await gotoApp(page, '/product');
   await expect(page.getByTestId(testIds.productCard).first()).toBeVisible({ timeout: 30_000 });
   await page.getByTestId(testIds.productCard).first().hover();
   await page.getByTestId(testIds.productCopyLink).first().click();
@@ -58,7 +59,7 @@ test('转链失败时仍复制不含短链的讲解', async ({ page }) => {
     await fulfillJson(route, { code: 'PROMOTION_FAILED', msg: 'mock promotion failed' }, 500);
   });
 
-  await page.goto('/product');
+  await gotoApp(page, '/product');
   await expect(page.getByTestId(testIds.productCard).first()).toBeVisible({ timeout: 30_000 });
   await page.getByTestId(testIds.productCard).first().hover();
   await page.getByTestId(testIds.productCopyLink).first().click();

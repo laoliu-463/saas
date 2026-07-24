@@ -15,6 +15,8 @@
  */
 import { test, expect, request as playwrightRequest, type APIRequestContext, type Page, type Request } from '@playwright/test';
 import { accounts } from './helpers/test-data';
+import { installAuth } from './helpers/auth';
+import { gotoApp } from './helpers/page-ready';
 import { apiLogin } from './helpers/real-pre-api';
 import {
   createRealPreP0Step,
@@ -59,7 +61,6 @@ type ProductImageCheck = {
 const BUSINESS_READY = new Set(['PENDING_AUDIT', 'APPROVED', 'BOUND', 'ASSIGNED', 'LINKED', 'FOLLOWING']);
 const FATAL_TEXT = /Unexpected Application Error|Application Error|Bad Gateway|Internal Server Error/i;
 const REAL_PRE_NAV_TIMEOUT_MS = Number(process.env.E2E_REAL_PRE_NAV_TIMEOUT_MS || 120_000);
-const REAL_PRE_NETWORK_IDLE_TIMEOUT_MS = Number(process.env.E2E_REAL_PRE_NETWORK_IDLE_TIMEOUT_MS || 30_000);
 
 test('real-pre P0 / 31 / 商品链', async ({ page }, testInfo) => {
   test.skip(!shouldRunRealPreP0('31-real-pre-product-chain'), 'Run via npm run e2e:real-pre:p0 or set E2E_REAL_PRE_P0=true');
@@ -309,21 +310,8 @@ function isLinkableContext(row: JsonMap): boolean {
   return hasLinkedState || hasUrlContext || hasOriginContext;
 }
 
-async function installAuth(page: Page, auth: Record<string, unknown>): Promise<void> {
-  await page.addInitScript((payload: Record<string, unknown>) => {
-    localStorage.setItem('token', String(payload.token ?? ''));
-    if (payload.refreshToken) localStorage.setItem('refreshToken', String(payload.refreshToken));
-    if (payload.refreshExpiresIn) localStorage.setItem('refreshExpiresIn', String(payload.refreshExpiresIn));
-    if (payload.accessTokenExpiresIn || payload.expiresIn) {
-      localStorage.setItem('accessTokenExpiresIn', String(payload.accessTokenExpiresIn ?? payload.expiresIn ?? ''));
-    }
-    localStorage.setItem('userInfo', JSON.stringify(payload));
-  }, auth);
-}
-
 async function openAndAssertNoFatal(page: Page, route: string): Promise<{ route: string; finalPath: string; runtimeError: boolean }> {
-  await page.goto(route, { waitUntil: 'domcontentloaded', timeout: REAL_PRE_NAV_TIMEOUT_MS });
-  await page.waitForLoadState('networkidle', { timeout: REAL_PRE_NETWORK_IDLE_TIMEOUT_MS }).catch(() => undefined);
+  await gotoApp(page, route, { timeout: REAL_PRE_NAV_TIMEOUT_MS });
   const bodyText = await page.locator('body').innerText({ timeout: 10_000 }).catch(() => '');
   const finalPath = new URL(page.url()).pathname;
   return {
@@ -350,9 +338,7 @@ async function openProductManageAndAssertImages(page: Page, activityId?: string 
 
   page.on('requestfailed', onRequestFailed);
   try {
-    await page.goto(route, { waitUntil: 'domcontentloaded', timeout: REAL_PRE_NAV_TIMEOUT_MS });
-    await page.waitForLoadState('networkidle', { timeout: REAL_PRE_NETWORK_IDLE_TIMEOUT_MS }).catch(() => undefined);
-    await page.waitForTimeout(2_000);
+    await gotoApp(page, route, { timeout: REAL_PRE_NAV_TIMEOUT_MS });
     const finalPath = new URL(page.url()).pathname;
     const images = await page.locator('img').evaluateAll((nodes) => {
       return nodes

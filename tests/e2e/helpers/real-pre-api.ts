@@ -1,5 +1,6 @@
 import type { APIRequestContext } from '@playwright/test';
 import { request as playwrightRequest } from '@playwright/test';
+import { loginWithCredentials, type AuthPayload } from './auth';
 
 /** 后端 REST API 前缀，例如 http://localhost:8080/api */
 export function getBackendApiBase(): string {
@@ -26,25 +27,8 @@ export interface BackendProbeResults {
   skuProbe?: ProbeResult;
 }
 
-export async function apiLogin(apiBase: string, username: string, password: string): Promise<Record<string, unknown>> {
-  const ctx: APIRequestContext = await playwrightRequest.newContext({
-    baseURL: apiBase.replace(/\/api\/?$/, ''),
-    ignoreHTTPSErrors: true
-  });
-  try {
-    const res = await ctx.post('/api/auth/login', {
-      data: { username, password },
-      headers: { 'Content-Type': 'application/json' }
-    });
-    const body = (await res.json()) as { data?: Record<string, unknown>; msg?: string };
-    const data = body?.data ?? {};
-    if (!res.ok() || !data?.token) {
-      throw new Error(`管理员登录失败: HTTP ${res.status()} ${body?.msg ?? ''}`);
-    }
-    return data;
-  } finally {
-    await ctx.dispose();
-  }
+export async function apiLogin(apiBase: string, username: string, password: string): Promise<AuthPayload> {
+  return loginWithCredentials({ username, password }, { backendUrl: apiBase });
 }
 
 /** 从活动列表响应中提取第一个活动的 ID */

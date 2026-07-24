@@ -82,7 +82,6 @@ test.describe('A. 管理员视角数据平台 UI', () => {
     await expect(timeField).toBeVisible({ timeout: 8_000 });
     // 点击 settleTime radio
     await timeField.getByText('按结算时间').click();
-    await page.waitForTimeout(1500);
     // 不应出现 500 错误
     await expect(page.locator('body')).not.toContainText(/500|服务器错误|Internal Server Error/i);
     await capturePage(page, testInfo, '24-admin-data-dashboard-settle-time', { visual: false });
@@ -125,7 +124,6 @@ test.describe('A. 管理员视角数据平台 UI', () => {
 
     await gotoApp(page, '/ops/exclusive');
     await expect(page.getByTestId('exclusive-status-page')).toBeVisible({ timeout: 15_000 });
-    await page.waitForTimeout(1_000);
 
     expect(runtimeErrors).toEqual([]);
   });

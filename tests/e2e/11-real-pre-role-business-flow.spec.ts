@@ -2,6 +2,8 @@ import { expect, request as playwrightRequest, test, type APIRequestContext, typ
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { installAuth, loginWithCredentials } from './helpers/auth';
+import { gotoApp } from './helpers/page-ready';
 
 type JsonMap = Record<string, unknown>;
 type ReusablePromotionMapping = {
@@ -88,7 +90,6 @@ const EVIDENCE_DIR = process.env.E2E_ROLE_EVIDENCE_DIR || join(
 const DEFAULT_PASSWORD = 'admin123';
 const REAL_PRE_NAV_TIMEOUT_MS = Number(process.env.E2E_REAL_PRE_NAV_TIMEOUT_MS || 120_000);
 const REAL_PRE_UI_TIMEOUT_MS = Number(process.env.E2E_REAL_PRE_UI_TIMEOUT_MS || 120_000);
-const REAL_PRE_NETWORK_IDLE_TIMEOUT_MS = Number(process.env.E2E_REAL_PRE_NETWORK_IDLE_TIMEOUT_MS || 5_000);
 const ROLE_PRODUCT_SYNC_POLL_TIMEOUT_MS = Number(process.env.E2E_ROLE_PRODUCT_SYNC_POLL_TIMEOUT_MS || 180_000);
 const ROLE_PRODUCT_SYNC_POLL_INTERVAL_MS = Number(process.env.E2E_ROLE_PRODUCT_SYNC_POLL_INTERVAL_MS || 5_000);
 const DOUYIN_ONE_CLICK_REQUIRED_CHECKS = [
@@ -189,7 +190,7 @@ test('P3-5 real-pre role business flow validates menus, permissions, and handoff
 
   try {
     await record(run, '00-env', 'real-pre environment guard', async () => {
-      const adminAuth = await login(api, 'admin');
+      const adminAuth = await login('admin');
       const env = await apiSuccess(api, 'GET', '/api/system/env', adminAuth);
       const health = await rawApi(api, 'GET', '/api/system/health');
       const envData = unwrap(env.body) as JsonMap;
@@ -206,7 +207,7 @@ test('P3-5 real-pre role business flow validates menus, permissions, and handoff
 
     await record(run, '01-login-all', 'all six role accounts login and expose expected user context', async () => {
       for (const roleCase of ROLE_CASES) {
-        const auth = await login(api, roleCase.username);
+        const auth = await login(roleCase.username);
         run.accounts[roleCase.label] = auth;
         assertTrue(auth.roleCodes.includes(roleCase.roleCode), `${roleCase.username} should include ${roleCase.roleCode}`);
         assertEqual(Number(auth.dataScope), roleCase.expectedDataScope, `${roleCase.username} dataScope`);
@@ -549,7 +550,7 @@ test('P3-5 real-pre role business flow validates menus, permissions, and handoff
     await record(run, '10-logout-protection', 'all accounts revoke tokens and cannot keep accessing protected APIs', async () => {
       const results: JsonMap[] = [];
       for (const roleCase of ROLE_CASES) {
-        const auth = await login(api, roleCase.username);
+        const auth = await login(roleCase.username);
         const logout = await rawApi(api, 'POST', '/api/auth/logout', auth, {
           data: {
             ['access' + 'Token']: auth.token,
@@ -635,21 +636,19 @@ async function record(
   }
 }
 
-async function login(api: APIRequestContext, username: string): Promise<AuthState> {
-  const result = await rawApi(api, 'POST', '/api/auth/login', undefined, {
-    data: { username, ['password']: DEFAULT_PASSWORD }
-  });
-  if (!isSuccess(result)) {
-    throw new Error(`login failed for ${username}: HTTP ${result.status}, code=${(result.body as JsonMap | undefined)?.code}`);
-  }
-  const data = unwrap(result.body) as JsonMap;
-  const token = String(data.token || '');
+async function login(username: string): Promise<AuthState> {
+  const auth = await loginWithCredentials(
+    { username, password: DEFAULT_PASSWORD },
+    { backendUrl: BACKEND }
+  );
+  const data = (auth.user && typeof auth.user === 'object' ? auth.user : auth) as JsonMap;
+  const token = String(auth.token || auth.accessToken || '');
   if (!token) {
     throw new Error(`login returned empty token for ${username}`);
   }
   return {
-    ['token']: token,
-    ['refresh' + 'Token']: String(data.refreshToken || ''),
+    token,
+    refreshToken: String(auth.refreshToken || ''),
     user: data,
     userId: String(data.userId || data.id || ''),
     username: String(data.username || username),
@@ -711,8 +710,7 @@ async function verifyDouyinOneClick(browser: Browser, auth: AuthState): Promise<
   });
 
   try {
-    await page.goto('/system/douyin', { waitUntil: 'domcontentloaded', timeout: REAL_PRE_NAV_TIMEOUT_MS });
-    await waitForAppReady(page);
+    await gotoApp(page, '/system/douyin', { timeout: REAL_PRE_NAV_TIMEOUT_MS });
     await page.getByRole('button', { name: '一键刷新联调状态' }).click({ timeout: REAL_PRE_UI_TIMEOUT_MS });
 
     const checked: string[] = [];
@@ -750,8 +748,7 @@ async function openPage(browser: Browser, auth: AuthState, route: string, should
     }
   });
   try {
-    await page.goto(route, { waitUntil: 'domcontentloaded', timeout: REAL_PRE_NAV_TIMEOUT_MS });
-    await waitForAppReady(page);
+    await gotoApp(page, route, { timeout: REAL_PRE_NAV_TIMEOUT_MS });
     const finalPath = new URL(page.url()).pathname;
     const bodyText = await page.locator('body').innerText({ timeout: 10_000 }).catch(() => '');
     const headerText = await page.locator('.top-header').innerText().catch(() => '');
@@ -780,16 +777,6 @@ async function openPage(browser: Browser, auth: AuthState, route: string, should
   }
 }
 
-async function waitForAppReady(page: import('@playwright/test').Page): Promise<void> {
-  const bootLoading = page.locator('#boot-loading');
-  await bootLoading.waitFor({ state: 'detached', timeout: REAL_PRE_UI_TIMEOUT_MS }).catch(async () => {
-    await bootLoading.waitFor({ state: 'hidden', timeout: 5_000 }).catch(() => undefined);
-  });
-  await page.waitForLoadState('networkidle', { timeout: REAL_PRE_NETWORK_IDLE_TIMEOUT_MS }).catch(() => undefined);
-  await page.locator('.n-spin-body').waitFor({ state: 'hidden', timeout: 5_000 }).catch(() => undefined);
-  await page.waitForTimeout(300);
-}
-
 async function waitForAnyVisibleText(
   page: import('@playwright/test').Page,
   texts: readonly string[],
@@ -814,11 +801,7 @@ async function waitForAnyVisibleText(
 
 async function newAuthContext(browser: Browser, auth: AuthState): Promise<BrowserContext> {
   const context = await browser.newContext({ baseURL: FRONTEND, viewport: { width: 1440, height: 960 } });
-  await context.addInitScript((payload: AuthState) => {
-    localStorage.setItem('token', payload.token);
-    if (payload.refreshToken) localStorage.setItem('refreshToken', payload.refreshToken);
-    localStorage.setItem('userInfo', JSON.stringify(payload.user));
-  }, auth);
+  await installAuth(context, { ...auth });
   return context;
 }
 

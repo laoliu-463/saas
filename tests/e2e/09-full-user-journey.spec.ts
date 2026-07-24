@@ -1,7 +1,8 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures';
 import { capturePage } from './helpers/screenshot';
 import { testIds } from './helpers/selectors';
 import { accounts } from './helpers/test-data';
+import { gotoApp, waitForAppReady } from './helpers/page-ready';
 
 test.describe.configure({ mode: 'serial' });
 
@@ -14,28 +15,30 @@ const CRED = accounts.admin;
 /**
  * 管理员从登录到全功能巡检 — 真实用户旅程。
  *
- * 导航策略：仅允许 page.goto('/login')，其余页面一律通过
- * 顶部 Header 导航 + 侧边栏菜单点击进入。
+ * 导航策略：登录统一走 LoginPage，其余页面通过
+ * 顶部 Header 导航、侧边栏菜单或统一 gotoApp 进入。
  */
-test('管理员从登录到全功能巡检（真实用户旅程）', async ({ page }, testInfo) => {
+test('管理员从登录到全功能巡检（真实用户旅程）', async ({ page, loginPage, appShell }, testInfo) => {
+
   // ── Step 1: 打开登录页 ──────────────────────────────────────
   await test.step('1. 打开登录页', async () => {
-    await page.goto('/login');
-    await expect(page.locator(`[data-testid="${testIds.loginUsername}"]`)).toBeVisible();
+    await loginPage.open();
+    await loginPage.expectLoaded();
     await capturePage(page, testInfo, 'step-01-login-page');
   });
 
   // ── Step 2: 输入用户名密码 ──────────────────────────────────
   await test.step('2. 输入用户名密码', async () => {
-    await page.locator(`[data-testid="${testIds.loginUsername}"] input`).fill(CRED.username);
-    await page.locator(`[data-testid="${testIds.loginPassword}"] input`).fill(CRED.password);
+    await loginPage.usernameInput.fill(CRED.username);
+    await loginPage.passwordInput.fill(CRED.password);
     await capturePage(page, testInfo, 'step-02-credentials-filled');
   });
 
   // ── Step 3: 点击登录 ────────────────────────────────────────
   await test.step('3. 点击登录', async () => {
-    await page.locator(`[data-testid="${testIds.loginSubmit}"]`).click();
-    await page.waitForURL((url) => !url.pathname.startsWith('/login'), { timeout: 15_000 });
+    await loginPage.submitButton.click();
+    await expect(page).not.toHaveURL(/\/login(?:$|\?)/, { timeout: 15_000 });
+    await waitForAppReady(page);
     await capturePage(page, testInfo, 'step-03-after-login');
   });
 
@@ -48,7 +51,7 @@ test('管理员从登录到全功能巡检（真实用户旅程）', async ({ pa
 
   // ── Step 5: 点击"商品库"菜单 ────────────────────────────────
   await test.step('5. 点击"商品库"菜单', async () => {
-    await page.locator(`[data-testid="${testIds.navProduct}"]`).click();
+    await appShell.productNav.click();
     // 点击商品库 header tab 后路由到 /product，侧边栏切换到 product section
     await page.waitForURL('**/product**', { timeout: 10_000 });
   });
@@ -96,7 +99,7 @@ test('管理员从登录到全功能巡检（真实用户旅程）', async ({ pa
 
   // ── Step 11: 点击"数据看板"菜单（切换到数据平台 section）──
   await test.step('11. 点击"数据看板"菜单', async () => {
-    await page.locator(`[data-testid="${testIds.navDashboard}"]`).click();
+    await appShell.dashboardNav.click();
     // Header tab 切换到 /data，侧边栏变为数据平台
     await expect(page.locator(`[data-testid="${testIds.sidebarMenu}"]`)).toBeVisible({ timeout: 10_000 });
     await capturePage(page, testInfo, 'step-11-data-section');
@@ -130,7 +133,7 @@ test('管理员从登录到全功能巡检（真实用户旅程）', async ({ pa
 
   // ── Step 16: 点击"达人CRM"菜单 ─────────────────────────────
   await test.step('16. 点击"达人CRM"菜单', async () => {
-    await page.locator(`[data-testid="${testIds.navTalent}"]`).click();
+    await appShell.talentNav.click();
     await page.waitForURL('**/talent**', { timeout: 10_000 });
   });
 
@@ -145,14 +148,14 @@ test('管理员从登录到全功能巡检（真实用户旅程）', async ({ pa
     const menuItem = page.locator('.n-menu-item-content', { hasText: '团队公海' }).first();
     if (await menuItem.isVisible({ timeout: 3_000 }).catch(() => false)) {
       await menuItem.click();
-      await page.waitForTimeout(1000);
+      await waitForAppReady(page);
     }
     await capturePage(page, testInfo, 'step-18-talent-team-public');
   });
 
   // ── Step 19: 点击"数据看板"回到数据平台 ────────────────────
   await test.step('19. 点击"数据看板"回到数据平台', async () => {
-    await page.locator(`[data-testid="${testIds.navDashboard}"]`).click();
+    await appShell.dashboardNav.click();
     await expect(page.locator(`[data-testid="${testIds.sidebarMenu}"]`)).toBeVisible({ timeout: 10_000 });
   });
 
@@ -164,7 +167,7 @@ test('管理员从登录到全功能巡检（真实用户旅程）', async ({ pa
 
   // ── Step 21: 点击"系统管理"菜单（仅 admin 可见）─────────────
   await test.step('21. 点击"系统管理"菜单', async () => {
-    await page.locator(`[data-testid="${testIds.navSystem}"]`).click();
+    await appShell.systemNav.click();
     await page.waitForURL('**/system**', { timeout: 10_000 });
   });
 
@@ -177,14 +180,14 @@ test('管理员从登录到全功能巡检（真实用户旅程）', async ({ pa
 
   // ── Step 23: 点击侧边栏"抖店联调" ──────────────────────────
   await test.step('23. 点击侧边栏"抖店联调"', async () => {
-    await page.goto('/system/douyin');
+    await gotoApp(page, '/system/douyin');
     await expect(page).toHaveURL(/\/system\/douyin/);
     await capturePage(page, testInfo, 'step-23-system-douyin');
   });
 
   // ── Step 24: 打开归因概览（Dashboard） ──────────────────────
   await test.step('24. 回到归因概览', async () => {
-    await page.goto('/dashboard');
+    await gotoApp(page, '/dashboard');
     await page.waitForURL('**/dashboard', { timeout: 10_000 });
     await expect(page.locator(`[data-testid="${testIds.dashboardOverviewPage}"]`)).toBeVisible({ timeout: 10_000 });
     await capturePage(page, testInfo, 'step-24-dashboard-overview');

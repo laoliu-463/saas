@@ -1,6 +1,7 @@
 import { expect, test, type Page, type Route } from '@playwright/test'
 import { readFixture } from './helpers/fixtures'
 import { storageStates } from './helpers/test-data'
+import { gotoApp } from './helpers/page-ready'
 
 test.use({ storageState: storageStates.channelLeader })
 
@@ -97,7 +98,7 @@ async function mockTalentApis(page: Page) {
 test.describe('达人域 V1.1 收尾', () => {
   test.beforeEach(async ({ page }) => {
     await mockTalentApis(page)
-    await page.goto('/talent')
+    await gotoApp(page, '/talent')
     await expect(page.getByTestId('talent-page')).toBeVisible({ timeout: 30_000 })
   })
 

@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { storageStates } from './helpers/test-data';
 import { capturePage } from './helpers/screenshot';
+import { gotoApp } from './helpers/page-ready';
 import { testIds } from './helpers/selectors';
 import { apiPost, loginApi } from './helpers/api-assertions';
 
@@ -12,7 +13,7 @@ test.beforeAll(async () => {
 });
 
 test('订单归因页可展示真实订单与归因字段', async ({ page }, testInfo) => {
-  await page.goto('/orders');
+  await gotoApp(page, '/orders');
   await expect(page.getByTestId(testIds.ordersPage)).toBeVisible();
   const firstRow = page.getByTestId(testIds.orderRow).first();
   const hasRows = await firstRow.isVisible({ timeout: 10_000 }).catch(() => false);

@@ -13,6 +13,18 @@ export function afterActionPauseMs(): number {
   return envNumber('PW_AFTER_ACTION_PAUSE_MS', 600);
 }
 
+export async function waitForVisualIdle(page: Page, timeout = envNumber('E2E_REAL_PRE_NETWORK_IDLE_TIMEOUT_MS', 30_000)): Promise<void> {
+  await page.waitForLoadState('networkidle', { timeout }).catch(() => undefined);
+  await page.locator('.n-spin-body').waitFor({ state: 'hidden', timeout: 5_000 }).catch(() => undefined);
+  await waitForVisualSettle(page, 500);
+}
+
+export async function waitForVisualSettle(page: Page, pauseMs = afterActionPauseMs()): Promise<void> {
+  if (pauseMs > 0) {
+    await page.waitForTimeout(pauseMs);
+  }
+}
+
 export async function showStepBanner(page: Page, text: string, pauseMs = stepPauseMs()): Promise<void> {
   await page.evaluate((message) => {
     const old = document.getElementById('qa-step-banner');
