@@ -1,14 +1,10 @@
-import { test, expect } from '@playwright/test';
-import { accounts } from './helpers/test-data';
+import { test, expect } from './fixtures';
 import { capturePage } from './helpers/screenshot';
-import { gotoApp } from './helpers/page-ready';
-import { testIds } from './helpers/selectors';
+import { accounts } from './helpers/test-data';
 
-test('管理员可以通过浏览器登录系统', async ({ page }, testInfo) => {
-  await gotoApp(page, '/login');
-  await page.getByTestId(testIds.loginUsername).locator('input').fill(accounts.admin.username);
-  await page.getByTestId(testIds.loginPassword).locator('input').fill(accounts.admin.password);
-  await page.getByTestId(testIds.loginSubmit).click();
+test('管理员可以通过浏览器登录系统', async ({ page, loginPage }, testInfo) => {
+  await loginPage.open();
+  await loginPage.login(accounts.admin);
 
   await expect(page).toHaveURL(/\/(dashboard|data|system\/users|orders)/, { timeout: 20_000 });
   await expect(page.locator('body')).toContainText(/数据|商品|订单|寄样/);

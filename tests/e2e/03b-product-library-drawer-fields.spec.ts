@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { storageStates } from './helpers/test-data';
 import { capturePage } from './helpers/screenshot';
+import { gotoApp } from './helpers/page-ready';
 import { testIds } from './helpers/selectors';
 import { seedTestData } from './helpers/api-assertions';
 
@@ -23,7 +24,7 @@ test.beforeAll(async () => {
 test.use({ storageState: storageStates.channelLeader });
 
 test('商品库抽屉显示商家评分 + 活动字段', async ({ page }, testInfo) => {
-  await page.goto('/product');
+  await gotoApp(page, '/product');
   await expect(page.getByTestId(testIds.productLibraryPage)).toBeVisible({ timeout: 15_000 });
   await expect(page.getByTestId(testIds.productGrid)).toBeVisible({ timeout: 30_000 });
 

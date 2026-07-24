@@ -6,7 +6,8 @@
  * 弥补纯 UI 断言无法验证数据层的盲区。
  */
 import { request as playwrightRequest, type APIRequestContext } from '@playwright/test';
-import { accounts, type AccountKey } from './test-data';
+import { loginAs } from './auth';
+import { type AccountKey } from './test-data';
 
 const BACKEND = () =>
   (process.env.E2E_BACKEND_URL || 'http://127.0.0.1:8080').replace(/\/$/, '');
@@ -23,26 +24,10 @@ function unwrapMetricsPayload(data: unknown): Record<string, unknown> | undefine
 
 /** 通过用户名密码登录，返回 accessToken */
 export async function loginApi(role: AccountKey): Promise<string> {
-  const { username, password } = accounts[role];
-  const ctx: APIRequestContext = await playwrightRequest.newContext({
-    baseURL: BACKEND(),
-    ignoreHTTPSErrors: true,
-  });
-  try {
-    const res = await ctx.post('/api/auth/login', {
-      data: { username, password },
-      headers: { 'Content-Type': 'application/json' },
-    });
-    if (!res.ok()) {
-      throw new Error(`登录失败 [${username}]: HTTP ${res.status()}`);
-    }
-    const body = (await res.json()) as { data?: { token?: string } };
-    const token = body?.data?.token;
-    if (!token) throw new Error(`登录无 token [${username}]`);
-    return token;
-  } finally {
-    await ctx.dispose();
-  }
+  const auth = await loginAs(role, { backendUrl: BACKEND() });
+  const token = String(auth.token || auth.accessToken || '');
+  if (!token) throw new Error(`登录无 token [${role}]`);
+  return token;
 }
 
 export interface ApiAssertOptions {

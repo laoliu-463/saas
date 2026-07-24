@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { storageStates } from './helpers/test-data';
 import { loginApi, seedTestData } from './helpers/api-assertions';
+import { gotoApp } from './helpers/page-ready';
 import { testIds } from './helpers/selectors';
 
 /**
@@ -15,7 +16,7 @@ test.describe('商品域增强 - 商品库与筛选', () => {
   test.use({ storageState: storageStates.bizStaff });
 
   test('全量筛选项 UI 可见', async ({ page }) => {
-    await page.goto('/product');
+    await gotoApp(page, '/product');
     await expect(page.getByTestId(testIds.productLibraryPage)).toBeVisible({ timeout: 15_000 });
     await expect(page.getByTestId('product-library-checkbox-filters')).toBeVisible();
     await expect(page.getByTestId('filter-colonel-name')).toBeVisible();
@@ -26,7 +27,7 @@ test.describe('商品域增强 - 快速寄样', () => {
   test.use({ storageState: storageStates.channelLeader });
 
   test('快速寄样弹窗提交或降级提示', async ({ page }) => {
-    await page.goto('/product');
+    await gotoApp(page, '/product');
     const card = page.getByTestId(testIds.productCard).first();
     await expect(card).toBeVisible({ timeout: 30_000 });
     await card.hover();

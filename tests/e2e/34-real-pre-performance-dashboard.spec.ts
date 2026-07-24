@@ -7,6 +7,8 @@
  */
 import { test, expect, request as playwrightRequest, type APIRequestContext, type Page } from '@playwright/test';
 import { accounts } from './helpers/test-data';
+import { installAuth } from './helpers/auth';
+import { gotoApp } from './helpers/page-ready';
 import { apiLogin } from './helpers/real-pre-api';
 import {
   createRealPreP0Step,
@@ -182,21 +184,8 @@ function toNumber(value: unknown): number | null {
   return Number.isFinite(num) ? num : null;
 }
 
-async function installAuth(page: Page, auth: Record<string, unknown>): Promise<void> {
-  await page.addInitScript((payload: Record<string, unknown>) => {
-    localStorage.setItem('token', String(payload.token ?? ''));
-    if (payload.refreshToken) localStorage.setItem('refreshToken', String(payload.refreshToken));
-    if (payload.refreshExpiresIn) localStorage.setItem('refreshExpiresIn', String(payload.refreshExpiresIn));
-    if (payload.accessTokenExpiresIn || payload.expiresIn) {
-      localStorage.setItem('accessTokenExpiresIn', String(payload.accessTokenExpiresIn ?? payload.expiresIn ?? ''));
-    }
-    localStorage.setItem('userInfo', JSON.stringify(payload));
-  }, auth);
-}
-
 async function openAndAssertNoFatal(page: Page, route: string): Promise<{ route: string; runtimeError: boolean; finalPath: string }> {
-  await page.goto(route, { waitUntil: 'domcontentloaded', timeout: 120_000 });
-  await page.waitForLoadState('networkidle', { timeout: 30_000 }).catch(() => undefined);
+  await gotoApp(page, route, { timeout: 120_000 });
   const bodyText = await page.locator('body').innerText({ timeout: 10_000 }).catch(() => '');
   return {
     route,

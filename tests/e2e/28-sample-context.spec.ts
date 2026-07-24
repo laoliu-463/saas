@@ -1,5 +1,6 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { readFixture } from './helpers/fixtures';
+import { gotoApp } from './helpers/page-ready';
 import { storageStates } from './helpers/test-data';
 import { testIds } from './helpers/selectors';
 
@@ -66,7 +67,7 @@ test('从商品卡快速寄样会打开商品上下文弹窗', async ({ page }) 
   await mockSampleApplyLookups(page);
   await mockTalentApis(page);
 
-  await page.goto('/product');
+  await gotoApp(page, '/product');
   const card = page.getByTestId(testIds.productCard).first();
   await expect(card).toBeVisible({ timeout: 30_000 });
   await card.hover();
@@ -80,7 +81,7 @@ test('从达人详情快速寄样会带入达人和收货地址', async ({ page 
   await mockSampleApplyLookups(page);
   await mockTalentApis(page);
 
-  await page.goto('/talent?view=MY_TALENTS');
+  await gotoApp(page, '/talent?view=MY_TALENTS');
   await expect(page.getByTestId('talent-table')).toBeVisible({ timeout: 30_000 });
   await page.getByRole('button', { name: '查看详情' }).first().click();
   await expect(page.locator('body')).toContainText('达人详情');

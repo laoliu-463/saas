@@ -12,6 +12,8 @@
  */
 import { test, expect, request as playwrightRequest, type APIRequestContext, type Browser } from '@playwright/test';
 import { accounts } from './helpers/test-data';
+import { installAuth } from './helpers/auth';
+import { gotoApp } from './helpers/page-ready';
 import { apiLogin } from './helpers/real-pre-api';
 import {
   createRealPreP0Step,
@@ -205,15 +207,10 @@ async function checkPage(
   shouldAllow: boolean
 ): Promise<JsonMap> {
   const context = await browser.newContext({ baseURL: frontend, viewport: { width: 1440, height: 900 } });
-  await context.addInitScript((payload: Record<string, unknown>) => {
-    localStorage.setItem('token', String(payload.token ?? ''));
-    if (payload.refreshToken) localStorage.setItem('refreshToken', String(payload.refreshToken));
-    localStorage.setItem('userInfo', JSON.stringify(payload));
-  }, auth);
+  await installAuth(context, auth);
   const page = await context.newPage();
   try {
-    await page.goto(route, { waitUntil: 'domcontentloaded', timeout: 120_000 });
-    await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => undefined);
+    await gotoApp(page, route, { timeout: 120_000 });
     const bodyText = await page.locator('body').innerText({ timeout: 10_000 }).catch(() => '');
     return {
       route,

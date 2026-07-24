@@ -4,6 +4,8 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { accounts } from './helpers/test-data';
 import { apiLogin } from './helpers/real-pre-api';
+import { installAuth } from './helpers/auth';
+import { gotoApp } from './helpers/page-ready';
 
 type AuthPayload = Record<string, unknown>;
 type JsonMap = Record<string, unknown>;
@@ -29,7 +31,6 @@ const DEFAULT_ACTIVITY_ID = '3916506';
 const DEFAULT_PRODUCT_ID = '3810562766247428542';
 const BUSINESS_READY = new Set(['APPROVED', 'BOUND', 'ASSIGNED', 'LINKED', 'FOLLOWING']);
 const REAL_PRE_NAV_TIMEOUT_MS = Number(process.env.E2E_REAL_PRE_NAV_TIMEOUT_MS || 120_000);
-const REAL_PRE_NETWORK_IDLE_TIMEOUT_MS = Number(process.env.E2E_REAL_PRE_NETWORK_IDLE_TIMEOUT_MS || 60_000);
 const SHOULD_RUN =
   process.env.E2E_REAL_PRE_BUSINESS === 'true' ||
   process.env.npm_lifecycle_event === 'e2e:real-pre:business' ||
@@ -116,7 +117,7 @@ test('real-pre business flow reuses promotion mapping and keeps dashboard readab
     const beforeStatus = String(detail.bizStatus || 'PENDING_AUDIT');
     if (beforeStatus === 'PENDING_AUDIT') {
       detail = await apiJson(api, 'PUT', `/api/colonel/activities/${activityId}/products/${productId}/audit-result`, bizStaff, {
-        data: buildAuditPayload(String(summary.runId))
+        data: buildAuditPayload()
       });
       expect(detail.selectedToLibrary || detail.libraryVisible, 'audited product enters local library').toBeTruthy();
       expect(BUSINESS_READY.has(String(detail.bizStatus)), 'audited product reaches business-ready state').toBe(true);
@@ -336,19 +337,8 @@ function buildAuditPayload(): JsonMap {
   };
 }
 
-async function installAuth(page: Page, auth: AuthPayload): Promise<void> {
-  await page.addInitScript((payload: AuthPayload) => {
-    localStorage.setItem('token', String(payload.token ?? ''));
-    localStorage.setItem('refreshToken', String(payload.refreshToken ?? ''));
-    localStorage.setItem('refreshExpiresIn', String(payload.refreshExpiresIn ?? ''));
-    localStorage.setItem('accessTokenExpiresIn', String(payload.accessTokenExpiresIn ?? payload.expiresIn ?? ''));
-    localStorage.setItem('userInfo', JSON.stringify(payload));
-  }, auth);
-}
-
 async function assertPageOpens(page: Page, path: string): Promise<void> {
-  await page.goto(path, { waitUntil: 'domcontentloaded', timeout: REAL_PRE_NAV_TIMEOUT_MS });
-  await page.waitForLoadState('networkidle', { timeout: REAL_PRE_NETWORK_IDLE_TIMEOUT_MS }).catch(() => undefined);
+  await gotoApp(page, path, { timeout: REAL_PRE_NAV_TIMEOUT_MS });
   await expect(page.locator('body'), `${path} should not show runtime error`).not.toContainText(
     /Unexpected Application Error|Application Error|Bad Gateway|Internal Server Error/i
   );

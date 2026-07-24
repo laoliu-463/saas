@@ -136,10 +136,8 @@ test.describe('渠道链 UI 层验收', () => {
   // ──────────────────────────────────────────────
   test('渠道组长访问系统管理被重定向', async ({ page }) => {
     await gotoApp(page, '/system/users');
-    // 不应停留在 /system 路由
-    await page.waitForTimeout(2000);
-    const url = page.url();
-    expect(url).not.toMatch(/\/system/);
+    // 路由守卫完成后不应停留在 /system 路由
+    await expect(page).not.toHaveURL(/\/system/, { timeout: 10_000 });
   });
 });
 
