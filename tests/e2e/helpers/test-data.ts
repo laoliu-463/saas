@@ -14,31 +14,33 @@ export interface AccountCredential {
 }
 
 const authDir = path.join(process.cwd(), 'tests', 'e2e', '.auth');
+const defaultPassword =
+  process.env.E2E_DEFAULT_PASSWORD || process.env.ADMIN_PASSWORD || 'admin123';
 
 const defaults: Record<AccountKey, AccountCredential> = {
   admin: {
     username: process.env.E2E_ADMIN_USERNAME || 'admin',
-    password: process.env.E2E_ADMIN_PASSWORD || 'admin123'
+    password: process.env.E2E_ADMIN_PASSWORD || defaultPassword
   },
   bizLeader: {
     username: process.env.E2E_BIZ_LEADER_USERNAME || 'biz_leader',
-    password: process.env.E2E_BIZ_LEADER_PASSWORD || 'admin123'
+    password: process.env.E2E_BIZ_LEADER_PASSWORD || defaultPassword
   },
   bizStaff: {
     username: process.env.E2E_BIZ_STAFF_USERNAME || 'biz_staff',
-    password: process.env.E2E_BIZ_STAFF_PASSWORD || 'admin123'
+    password: process.env.E2E_BIZ_STAFF_PASSWORD || defaultPassword
   },
   channelLeader: {
     username: process.env.E2E_CHANNEL_LEADER_USERNAME || process.env.E2E_CHANNEL_USERNAME || 'channel_leader',
-    password: process.env.E2E_CHANNEL_LEADER_PASSWORD || process.env.E2E_CHANNEL_PASSWORD || 'admin123'
+    password: process.env.E2E_CHANNEL_LEADER_PASSWORD || process.env.E2E_CHANNEL_PASSWORD || defaultPassword
   },
   channelStaff: {
     username: process.env.E2E_CHANNEL_STAFF_USERNAME || 'channel_staff',
-    password: process.env.E2E_CHANNEL_STAFF_PASSWORD || 'admin123'
+    password: process.env.E2E_CHANNEL_STAFF_PASSWORD || defaultPassword
   },
   ops: {
     username: process.env.E2E_OPS_USERNAME || 'ops_staff',
-    password: process.env.E2E_OPS_PASSWORD || 'admin123'
+    password: process.env.E2E_OPS_PASSWORD || defaultPassword
   }
 };
 

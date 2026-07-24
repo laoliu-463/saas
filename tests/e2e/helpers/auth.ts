@@ -65,6 +65,10 @@ export async function loginWithCredentials(
           return { ...data, token: String(token) };
         }
         lastError = `HTTP ${response.status()}: ${body?.msg || response.statusText()}`;
+        // 凭据错误或临时锁定是确定性失败；继续重试只会加重 real-pre 账号锁定。
+        if (response.status() === 401) {
+          break;
+        }
       } catch (error) {
         lastError = error instanceof Error ? error.message : String(error);
       }
