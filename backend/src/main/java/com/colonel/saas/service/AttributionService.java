@@ -200,15 +200,18 @@ public class AttributionService {
         /* 第三优先级：原生团长映射（通过 colonel_order_info 字段） */
         String colonelsBuyinId = firstNonBlank(
                 asString(source.get("colonel_buyin_id")),
-                asString(source.get("colonelBuyinId"))
+                asString(source.get("colonelBuyinId")),
+                order.getColonelBuyinId() == null ? null : String.valueOf(order.getColonelBuyinId())
         );
         String secondColonelsBuyinId = firstNonBlank(
                 asString(source.get("second_colonel_buyin_id")),
-                asString(source.get("secondColonelBuyinId"))
+                asString(source.get("secondColonelBuyinId")),
+                order.getSecondColonelBuyinId() == null ? null : String.valueOf(order.getSecondColonelBuyinId())
         );
         String secondActivityId = firstNonBlank(
                 asString(source.get("second_colonel_activity_id")),
-                asString(source.get("secondColonelActivityId"))
+                asString(source.get("secondColonelActivityId")),
+                order.getSecondActivityId()
         );
         if (StringUtils.hasText(colonelsBuyinId) || StringUtils.hasText(secondColonelsBuyinId)) {
             NativeColonelMappingResolution colonelResolution = resolveNativeColonelAttribution(

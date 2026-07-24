@@ -90,6 +90,44 @@ class OrderDefaultAttributionResolverTest {
     }
 
     @Test
+    void resolve_shouldUseUniqueActivityProductNativeMappingWhenBuyinKeyDiffers() {
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setProductId("3829691670191014167");
+        order.setActivityId("3916506");
+        order.setPickSource(null);
+        order.setColonelBuyinId(7351155267604218149L);
+
+        UUID channelUserId = UUID.randomUUID();
+        UUID recruiterUserId = UUID.randomUUID();
+        PickSourceMapping mapping = new PickSourceMapping();
+        mapping.setUserId(channelUserId);
+        mapping.setDeptId(UUID.randomUUID());
+        mapping.setActivityId("3916506");
+        mapping.setProductId("3829691670191014167");
+        mapping.setColonelBuyinId("0");
+        mapping.setSourceType("NATIVE");
+
+        when(pickSourceMappingAdapter.findByNativeOrder(
+                "7351155267604218149", "3916506", "3829691670191014167", true))
+                .thenReturn(new OrderPickSourceMappingAdapter.NativeMappingLookup(mapping, false));
+        when(productDomainFacade.findProductAssigneeId("3916506", "3829691670191014167"))
+                .thenReturn(recruiterUserId);
+        when(productDomainFacade.findActivityDefaultRecruiterId("3916506"))
+                .thenReturn(null);
+
+        OrderDefaultAttributionResult result = resolver.resolve(order, Map.of());
+
+        assertThat(result.defaultChannelUserId()).isEqualTo(channelUserId);
+        assertThat(result.defaultRecruiterId()).isEqualTo(recruiterUserId);
+        assertThat(result.channelAttributionStatus())
+                .isEqualTo(OrderDefaultAttributionResult.CHANNEL_ATTRIBUTED);
+        assertThat(result.recruiterAttributionStatus())
+                .isEqualTo(OrderDefaultAttributionResult.RECRUITER_ATTRIBUTED);
+        assertThat(result.attributionStatus()).isEqualTo(AttributionService.STATUS_ATTRIBUTED);
+        verify(pickSourceMappingAdapter, never()).findByPickSourceOrExtra(any(), any());
+    }
+
+    @Test
     void resolve_productFacadeException_shouldStillReturnChannelResult() {
         ColonelsettlementOrder order = baseOrder();
         PickSourceMapping mapping = new PickSourceMapping();
