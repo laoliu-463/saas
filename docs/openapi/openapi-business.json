@@ -24230,6 +24230,5 @@
                      "description":  "订单回流摘要与未归因订单排查接口。"
                  }
              ],
-    "x-saas-generated-from":  "docs/openapi/saas-openapi.json",
-    "x-saas-generated-at":  "2026-07-09T20:00:18.0454138+08:00"
+    "x-saas-generated-from":  "docs/openapi/saas-openapi.json"
 }
