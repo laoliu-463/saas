@@ -2,6 +2,7 @@ package com.colonel.saas.domain.product.event;
 
 import com.colonel.saas.constant.ProductDomainEventTypes;
 import com.colonel.saas.domain.event.OutboxEventAppender;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
@@ -44,6 +45,9 @@ public class ProductDomainEventPublisher {
     /** Spring 本地事件发布器，用于同步通知同进程监听器。 */
     private final ApplicationEventPublisher applicationEventPublisher;
 
+    /** Outbox 事件重新分发时，将负责人变更载荷恢复为类型化事件。 */
+    private final ObjectMapper objectMapper;
+
     /**
      * 构造函数，注入 Outbox 写入器和 Spring 事件发布器。
      *
@@ -52,9 +56,11 @@ public class ProductDomainEventPublisher {
      */
     public ProductDomainEventPublisher(
             OutboxEventAppender outboxEventAppender,
-            ApplicationEventPublisher applicationEventPublisher) {
+            ApplicationEventPublisher applicationEventPublisher,
+            ObjectMapper objectMapper) {
         this.outboxEventAppender = outboxEventAppender;
         this.applicationEventPublisher = applicationEventPublisher;
+        this.objectMapper = objectMapper;
     }
 
     /**
@@ -134,14 +140,19 @@ public class ProductDomainEventPublisher {
             UUID oldAssigneeId,
             UUID newAssigneeId,
             UUID operatorId) {
+        UUID eventId = UUID.randomUUID();
+        LocalDateTime occurredAt = LocalDateTime.now();
         Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("eventId", eventId.toString());
         payload.put("activityId", activityId);
         payload.put("productId", productId);
         payload.put("oldAssigneeId", oldAssigneeId == null ? null : oldAssigneeId.toString());
         payload.put("newAssigneeId", newAssigneeId == null ? null : newAssigneeId.toString());
-        payload.put("occurredAt", LocalDateTime.now().toString());
+        payload.put("operatorId", operatorId == null ? null : operatorId.toString());
+        payload.put("occurredAt", occurredAt.toString());
+        payload.put("traceId", null);
         appendOutbox(
-                "ProductOwnerChanged:" + productId + ":" + newAssigneeId,
+                "ProductOwnerChanged:" + productId + ":" + eventId,
                 ProductDomainEventTypes.PRODUCT_OWNER_CHANGED,
                 OutboxEventAppender.AGGREGATE_PRODUCT,
                 productId,
@@ -465,6 +476,11 @@ public class ProductDomainEventPublisher {
     /** 由 Outbox 分发器调用，将 Outbox 载荷转为 Spring 本地事件供既有监听器消费。 */
     public void republishSpringEvent(String eventType, String payloadJson) {
         try {
+            if (ProductDomainEventTypes.PRODUCT_OWNER_CHANGED.equals(eventType)) {
+                ProductOwnerChangedEvent event = objectMapper.readValue(payloadJson, ProductOwnerChangedEvent.class);
+                applicationEventPublisher.publishEvent(event);
+                return;
+            }
             applicationEventPublisher.publishEvent(Map.of("eventType", eventType, "payload", payloadJson));
         } catch (Exception ex) {
             log.warn("Spring republish failed for eventType={}", eventType, ex);

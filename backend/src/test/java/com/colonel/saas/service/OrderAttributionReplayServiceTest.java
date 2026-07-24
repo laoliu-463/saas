@@ -92,6 +92,7 @@ class OrderAttributionReplayServiceTest {
         assertThat(orderCaptor.getValue().getActivityId()).isEqualTo("3543332");
         assertThat(orderCaptor.getValue().getChannelUserName()).isEqualTo("渠道A");
         assertThat(orderCaptor.getValue().getColonelUserName()).isEqualTo("团长A");
+        verify(persistenceService).publishAttributionReplayEvent(orderCaptor.getValue());
     }
 
     @Test

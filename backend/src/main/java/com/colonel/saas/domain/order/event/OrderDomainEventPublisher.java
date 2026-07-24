@@ -10,6 +10,7 @@ public interface OrderDomainEventPublisher {
     void appendOrderSyncedInTransaction(String eventKey, OrderSyncedEvent event);
     void appendOrderRefundFactSyncedInTransaction(String eventKey, OrderRefundFactSyncedEvent event);
     void publishOrderSynced(OrderSyncedEvent event);
+    void publishOrderSyncedForAttributionReplay(OrderSyncedEvent event);
     void publishOrderSyncedDirect(OrderSyncedEvent event);
     void publishOrderRefundFactSynced(OrderRefundFactSyncedEvent event);
     void publishOrderRefundFactSyncedDirect(OrderRefundFactSyncedEvent event);

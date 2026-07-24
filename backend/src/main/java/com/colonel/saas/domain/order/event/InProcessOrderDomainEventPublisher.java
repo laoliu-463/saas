@@ -98,6 +98,20 @@ public class InProcessOrderDomainEventPublisher implements OrderDomainEventPubli
     }
 
     @Override
+    public void publishOrderSyncedForAttributionReplay(OrderSyncedEvent event) {
+        if (event == null || !StringUtils.hasText(event.orderId())) {
+            return;
+        }
+        if (isOutboxRoutingEnabled()) {
+            String eventKey = "OrderAttributionReplay:" + event.orderId() + ":"
+                    + event.orderRowId() + ":" + event.occurredAt();
+            appendOrderSyncedInTransaction(eventKey, event);
+            return;
+        }
+        publishOrderSyncedDirect(event);
+    }
+
+    @Override
     public void publishOrderRefundFactSynced(OrderRefundFactSyncedEvent event) {
         if (event == null || !StringUtils.hasText(event.orderId())) {
             return;

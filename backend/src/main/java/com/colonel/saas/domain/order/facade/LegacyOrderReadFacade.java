@@ -137,6 +137,21 @@ public class LegacyOrderReadFacade implements OrderReadFacade {
     }
 
     @Override
+    public List<ColonelsettlementOrder> findUnsettledOrdersByActivityAndProduct(
+            String activityId,
+            String productId) {
+        if (!StringUtils.hasText(activityId) || !StringUtils.hasText(productId)) {
+            return List.of();
+        }
+        return orderMapper.selectList(new LambdaQueryWrapper<ColonelsettlementOrder>()
+                .eq(ColonelsettlementOrder::getDeleted, 0)
+                .eq(ColonelsettlementOrder::getActivityId, activityId.trim())
+                .eq(ColonelsettlementOrder::getProductId, productId.trim())
+                .isNull(ColonelsettlementOrder::getSettleTime)
+                .orderByDesc(ColonelsettlementOrder::getCreateTime));
+    }
+
+    @Override
     public Set<String> findActiveOrderIdsBySettleTimeRange(LocalDateTime settleStart, LocalDateTime settleEnd) {
         if (settleStart == null || settleEnd == null) {
             return Set.of();
