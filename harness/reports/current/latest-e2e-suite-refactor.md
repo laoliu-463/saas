@@ -6,6 +6,7 @@
 - 环境：本地 test 代码检查；`my-second-brain-server` 只读 Docker / SSH 隧道烟测
 - 分支：`codex/e2e-suite-refactor`
 - 基线：`c125188b`
+- 本轮验证提交：`d08915d1`
 - 工作树：干净
 - 远端部署：未执行；仅通过 SSH 隧道访问已运行容器
 
