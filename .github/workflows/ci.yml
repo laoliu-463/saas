@@ -103,7 +103,7 @@ jobs:
               # matter that backend=true is set; the point is to flag the
               # migration explicitly so future PRs can grow a dedicated
               # db-migration-contract job that runs only when database=true.
-              backend/src/main/resources/db/migration/*) database=1; backend=1 ;;
+              backend/src/main/resources/db/migrate/*) database=1; backend=1 ;;
               scripts/run-real-pre-db-migrations.sh)   database=1 ;;
               backend/**)                              backend=1 ;;
               frontend/**)                             frontend=1 ;;

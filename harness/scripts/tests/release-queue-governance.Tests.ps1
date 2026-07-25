@@ -45,7 +45,7 @@ Describe 'real-pre single release queue contract' {
     }
 
     It 'runs database work only when migration inputs changed' {
-        $jenkinsfile | Should Match 'backend/src/main/resources/db/migration'
+        $jenkinsfile | Should Match 'backend/src/main/resources/db/migrate'
         $jenkinsfile | Should Match 'RUN_DB_MIGRATIONS=false'
         $jenkinsfile | Should Match 'RUN_DB_MIGRATIONS=true'
         $jenkinsfile | Should Match 'Database work skipped: no migration inputs changed'
