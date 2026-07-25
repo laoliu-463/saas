@@ -1,6 +1,7 @@
 package com.colonel.saas.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.colonel.saas.domain.order.policy.OrderDefaultAttributionResult;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
 import org.springframework.stereotype.Service;
@@ -209,6 +210,12 @@ public class OrderAttributionReplayService {
         }
         order.setAttributionStatus(result.attributionStatus());
         order.setAttributionRemark(result.attributionRemark());
+        order.setChannelAttributionStatus(result.channelUserId() == null
+                ? OrderDefaultAttributionResult.CHANNEL_UNATTRIBUTED
+                : OrderDefaultAttributionResult.CHANNEL_ATTRIBUTED);
+        order.setRecruiterAttributionStatus(result.colonelUserId() == null
+                ? OrderDefaultAttributionResult.RECRUITER_UNATTRIBUTED
+                : OrderDefaultAttributionResult.RECRUITER_ATTRIBUTED);
         order.setUpdateTime(LocalDateTime.now());
         fillUserNames(order);
     }

@@ -320,6 +320,56 @@ class OrderDefaultAttributionPolicyTest {
     }
 
     @Test
+    void applyAttributionResult_shouldRefreshBothLegacyDimensionStatuses() {
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        UUID channelUserId = UUID.randomUUID();
+        UUID recruiterId = UUID.randomUUID();
+
+        OrderDefaultAttributionPolicy.applyAttributionResult(
+                order,
+                AttributionService.AttributionResult.attributed(
+                        channelUserId,
+                        UUID.randomUUID(),
+                        channelUserId,
+                        UUID.randomUUID(),
+                        "talent-uid-1",
+                        "act-1",
+                        recruiterId,
+                        "legacy bridge"),
+                "act-fallback",
+                "达人A");
+
+        assertThat(order.getChannelAttributionStatus())
+                .isEqualTo(OrderDefaultAttributionResult.CHANNEL_ATTRIBUTED);
+        assertThat(order.getRecruiterAttributionStatus())
+                .isEqualTo(OrderDefaultAttributionResult.RECRUITER_ATTRIBUTED);
+    }
+
+    @Test
+    void applyAttributionResult_shouldKeepRecruiterAttributedWhenLegacyChannelIsMissing() {
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setChannelAttributionStatus(OrderDefaultAttributionResult.CHANNEL_ATTRIBUTED);
+        order.setRecruiterAttributionStatus(OrderDefaultAttributionResult.RECRUITER_ATTRIBUTED);
+        UUID recruiterId = UUID.randomUUID();
+
+        OrderDefaultAttributionPolicy.applyAttributionResult(
+                order,
+                AttributionService.AttributionResult.unattributed(
+                        UUID.randomUUID(),
+                        "talent-uid-1",
+                        "act-1",
+                        recruiterId,
+                        "channel mapping missing"),
+                "act-fallback",
+                "达人A");
+
+        assertThat(order.getChannelAttributionStatus())
+                .isEqualTo(OrderDefaultAttributionResult.CHANNEL_UNATTRIBUTED);
+        assertThat(order.getRecruiterAttributionStatus())
+                .isEqualTo(OrderDefaultAttributionResult.RECRUITER_ATTRIBUTED);
+    }
+
+    @Test
     void toLegacyResult_shouldNotReferenceExclusiveTypes() {
         OrderDefaultAttributionResult result = OrderDefaultAttributionResult.unattributed(
                 null, null, "act-1", UUID.randomUUID(), AttributionService.REASON_NO_PICK_SOURCE);
