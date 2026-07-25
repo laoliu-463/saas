@@ -80,6 +80,34 @@ if [ "${ready}" != "true" ]; then
   exit 1
 fi
 
+# Refuse to start a dump when the host cannot safely hold the database backup.
+# The dump is streamed to a temporary file, so leave one database-sized reserve
+# plus 1 GiB for PostgreSQL / Docker overhead and the validated catalog.
+database_size_bytes="$(docker compose --env-file "${ENV_FILE}" --project-name "${PROJECT_NAME}" -f "${COMPOSE_FILE}" \
+  exec -T -e PGPASSWORD="${DB_PASSWORD}" "${POSTGRES_SERVICE}" \
+  psql -U "${DB_USER}" -d "${DB_NAME}" -Atqc 'SELECT pg_database_size(current_database());' | tr -d '[:space:]')"
+case "${database_size_bytes}" in
+  ''|*[!0-9]*)
+    echo "ERROR: could not determine PostgreSQL database size; refusing backup." >&2
+    exit 1
+    ;;
+esac
+
+available_bytes="$(df -PB1 "${BACKUP_DIR}" | awk 'NR == 2 { print $4 }')"
+case "${available_bytes}" in
+  ''|*[!0-9]*)
+    echo "ERROR: could not determine free space for ${BACKUP_DIR}; refusing backup." >&2
+    exit 1
+    ;;
+esac
+
+minimum_free_bytes="${BACKUP_MIN_FREE_BYTES:-$((database_size_bytes + 1073741824))}"
+if [ "${available_bytes}" -lt "${minimum_free_bytes}" ]; then
+  echo "ERROR: insufficient free space for a safe PostgreSQL backup: available=${available_bytes}B required=${minimum_free_bytes}B database=${database_size_bytes}B path=${BACKUP_DIR}." >&2
+  exit 1
+fi
+echo "Database backup space preflight: database=${database_size_bytes}B available=${available_bytes}B required=${minimum_free_bytes}B path=${BACKUP_DIR}"
+
 timestamp="$(date +%Y%m%d-%H%M%S)"
 backup_file="${BACKUP_DIR}/${DB_NAME}-${timestamp}.dump"
 tmp_file="${backup_file}.tmp"
