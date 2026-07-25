@@ -6,7 +6,7 @@
 - Environment: real-pre
 - Scope: full
 - Branch: codex/183-talent-claim-oom-guard-release
-- Commit: 2bd6494a
+- Commit: 0825607e
 - Owned worktree: dirty
 - Deploy remote: false
 
@@ -94,7 +94,7 @@ SSH Docker verification only; no formal release/deployment. Jenkins release queu
 ## Git Publish Result
 
 ~~~text
-Git commit/push not yet collected.
+Git commit/push: PASS. Commit 0825607e created and pushed to origin/codex/183-talent-claim-oom-guard-release.
 ~~~
 
 ## Retro Summary
