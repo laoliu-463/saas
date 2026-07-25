@@ -72,7 +72,7 @@ not collected
 ## Remote Deploy Result
 
 ~~~text
-SSH Docker verification only; no formal release/deployment. Jenkins release queue was not invoked.
+Test-server deployment PASS on my-second-brain-server:/home/caojianing/saas-production. Backend image colonel-saas/backend:colonel-audit-ba0c0156 is running; /api/system/health returned status=UP and gitSha=colonel-audit-ba0c0156; frontend /healthz returned 200. Docker Hub base-image pull timed out, so the verified local JAR was injected into the existing Java 17 runtime image; the previous remote JAR was backed up. Jenkins release queue was not invoked.
 ~~~
 
 ## Verification Addendum (2026-07-25 14:12 +08:00)
@@ -82,6 +82,12 @@ Backend targeted audit/API/gateway/controller tests: PASS. ProductApiTest=13, Re
 Local npm run e2e:real-pre:p0:preflight: FAIL because localhost:3001/8081 are not running and the local Docker engine is unavailable; evidence: runtime/qa/out/real-pre-preflight-20260725-141041/. This is not remote real-pre evidence.
 Remote-verify: PASS for health only. Remote backend/frontend images remain migration-20260723 and are not this commit. Read-only remote SQL found colonel_activity_product count=0, so no real pending product was available for a safe approve/reject mutation test.
 Conclusion for interface effectiveness: code path is verified; real-pre upstream side effect remains BLOCKED/PENDING until this commit is formally deployed and an authorized real sample is provided.
+~~~
+
+## Test Server Browser Smoke (2026-07-25)
+
+~~~text
+SSH tunnel to my-second-brain-server; http://127.0.0.1:3001/login loaded successfully. Playwright smoke: page loaded, console errors=0, HTTP 4xx/5xx responses=0. The URL is available while the SSH tunnel remains open.
 ~~~
 
 ## Git Publish Result
