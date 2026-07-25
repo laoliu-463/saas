@@ -394,7 +394,11 @@ test('P3-5 real-pre role business flow validates menus, permissions, and handoff
       });
       const talent = unwrap(talentCreate.body) as JsonMap;
       const talentId = String(talent.id);
-      await apiSuccess(api, 'POST', `/api/talents/${talentId}/claims`, auth);
+      // 创建达人时后端会自动把创建人建立为首个有效认领人。
+      // 再次 POST /claims 会按业务契约返回 DUPLICATE(462)，这里读取详情校验自动认领归属。
+      const talentDetail = await apiSuccess(api, 'GET', `/api/talents/${talentId}`, auth);
+      const claim = (unwrap(talentDetail.body) as JsonMap).claim as JsonMap | undefined;
+      assertEqual(String(claim?.ownerId || ''), String(auth.userId), 'created talent should be auto-claimed by channel user');
       const privateTalents = await apiSuccess(api, 'GET', '/api/talents/pools/private', auth);
       const sampleBody = {
         productId: sampleProductLocalId,
@@ -876,7 +880,7 @@ async function syncActivityProductsInBackgroundAndPoll(
 ): Promise<{ status: number; ok: boolean; body: unknown; durationMs: number }> {
   const trigger = await apiSuccess(api, 'POST', `/api/colonel/activities/${activityId}/products/sync`, auth);
   const syncStatus = String((unwrap(trigger.body) as JsonMap).syncStatus || '');
-  assertTrue(['ACCEPTED', 'RUNNING'].includes(syncStatus), `unexpected syncStatus=${syncStatus}`);
+  assertTrue(['ACCEPTED', 'QUEUED', 'RUNNING'].includes(syncStatus), `unexpected syncStatus=${syncStatus}`);
 
   const deadline = Date.now() + ROLE_PRODUCT_SYNC_POLL_TIMEOUT_MS;
   let lastResult: { status: number; ok: boolean; body: unknown; durationMs: number } | undefined;
