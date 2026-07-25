@@ -1,8 +1,10 @@
 package com.colonel.saas.listener;
 
 import com.colonel.saas.domain.order.event.OrderRefundFactSyncedEvent;
+import com.colonel.saas.domain.order.application.OrderAttributionRouter;
 import com.colonel.saas.domain.order.facade.OrderReadFacade;
 import com.colonel.saas.domain.performance.application.PerformanceCalculationApplicationService;
+import com.colonel.saas.domain.product.event.ProductOwnerChangedEvent;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.PerformanceRecord;
 import com.colonel.saas.event.OrderSyncedEvent;
@@ -17,6 +19,7 @@ import org.springframework.context.ApplicationEventPublisher;
 
 import java.util.Map;
 import java.util.UUID;
+import java.time.LocalDateTime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -25,12 +28,15 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.doAnswer;
 
 @ExtendWith(MockitoExtension.class)
 class PerformanceRecordSyncListenerTest {
 
     @Mock
     private OrderReadFacade orderReadFacade;
+    @Mock
+    private OrderAttributionRouter orderAttributionRouter;
     @Mock
     private PerformanceCalculationApplicationService performanceCalculationApplicationService;
     @Mock
@@ -42,6 +48,7 @@ class PerformanceRecordSyncListenerTest {
     void setUp() {
         listener = new PerformanceRecordSyncListener(
                 orderReadFacade,
+                orderAttributionRouter,
                 performanceCalculationApplicationService,
                 eventPublisher);
     }
@@ -145,6 +152,46 @@ class PerformanceRecordSyncListenerTest {
         assertThat(calculatedEvent.orderId()).isEqualTo("ORD-REFUND-FACT");
         assertThat(calculatedEvent.correctionType()).isEqualTo("REVERSAL");
         assertThat(calculatedEvent.reversed()).isTrue();
+    }
+
+    @Test
+    void onProductOwnerChanged_shouldRecalculateUnsettledProductOrders() {
+        ProductOwnerChangedEvent event = new ProductOwnerChangedEvent(
+                UUID.randomUUID(),
+                "ACT-OWNER-1",
+                "PROD-OWNER-1",
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                null,
+                LocalDateTime.now(),
+                null);
+        ColonelsettlementOrder order = order("ORD-OWNER-1");
+        PerformanceRecord record = performanceRecord(
+                "ORD-OWNER-1",
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                1L,
+                1L,
+                2L,
+                2L,
+                3L,
+                3L,
+                false);
+        when(orderReadFacade.findUnsettledOrdersByActivityAndProduct("ACT-OWNER-1", "PROD-OWNER-1"))
+                .thenReturn(java.util.List.of(order));
+        doAnswer(invocation -> {
+            order.setColonelUserId(UUID.fromString("11111111-1111-1111-1111-111111111111"));
+            return null;
+        }).when(orderAttributionRouter).resolveAndApply(order, order.getExtraData(), order.getTalentName());
+        when(performanceCalculationApplicationService.upsertFromOrder(order)).thenReturn(record);
+
+        listener.onProductOwnerChanged(event);
+
+        verify(orderAttributionRouter).resolveAndApply(order, order.getExtraData(), order.getTalentName());
+        assertThat(order.getColonelUserId())
+                .isEqualTo(UUID.fromString("11111111-1111-1111-1111-111111111111"));
+        verify(performanceCalculationApplicationService).upsertFromOrder(order);
+        verify(eventPublisher).publishEvent(any(PerformanceCalculatedEvent.class));
     }
 
     @Test

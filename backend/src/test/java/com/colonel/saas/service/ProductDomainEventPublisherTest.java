@@ -5,7 +5,9 @@ import com.colonel.saas.domain.event.OutboxEventAppender;
 import com.colonel.saas.domain.product.event.ActivitySyncCompletedEvent;
 import com.colonel.saas.domain.product.event.PartnerSyncCompletedEvent;
 import com.colonel.saas.domain.product.event.ProductDomainEventPublisher;
+import com.colonel.saas.domain.product.event.ProductOwnerChangedEvent;
 import com.colonel.saas.domain.product.event.ProductPromotionLinkGeneratedEvent;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -35,7 +37,7 @@ class ProductDomainEventPublisherTest {
 
     @BeforeEach
     void setUp() {
-        publisher = new ProductDomainEventPublisher(outboxEventAppender, applicationEventPublisher);
+        publisher = new ProductDomainEventPublisher(outboxEventAppender, applicationEventPublisher, new ObjectMapper());
     }
 
     @Test
@@ -70,6 +72,21 @@ class ProductDomainEventPublisherTest {
                 eq(null),
                 eq(null));
         assertThat(keyCaptor.getValue()).contains("ACTIVITY_EXPIRED");
+    }
+
+    @Test
+    void republishProductOwnerChanged_shouldRestoreTypedEventForPerformanceListeners() {
+        String payload = "{\"eventId\":\"00000000-0000-0000-0000-000000000001\","
+                + "\"activityId\":\"ACT-1\",\"productId\":\"PROD-1\"}";
+
+        publisher.republishSpringEvent(ProductDomainEventTypes.PRODUCT_OWNER_CHANGED, payload);
+
+        ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
+        verify(applicationEventPublisher).publishEvent(captor.capture());
+        assertThat(captor.getValue()).isInstanceOf(ProductOwnerChangedEvent.class);
+        ProductOwnerChangedEvent event = (ProductOwnerChangedEvent) captor.getValue();
+        assertThat(event.activityId()).isEqualTo("ACT-1");
+        assertThat(event.productId()).isEqualTo("PROD-1");
     }
 
     @Test

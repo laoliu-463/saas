@@ -45,6 +45,11 @@ public interface OrderReadFacade {
             LocalDateTime createEnd,
             int limit);
 
+    /** 按活动和商品读取未结算订单，用于商品负责人变更后的业绩重算。 */
+    List<ColonelsettlementOrder> findUnsettledOrdersByActivityAndProduct(
+            String activityId,
+            String productId);
+
     /** 按 settleTime 半开区间读取有效订单号，用于只读对账。 */
     Set<String> findActiveOrderIdsBySettleTimeRange(LocalDateTime settleStart, LocalDateTime settleEnd);
 

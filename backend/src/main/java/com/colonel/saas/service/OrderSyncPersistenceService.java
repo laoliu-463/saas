@@ -108,6 +108,21 @@ public class OrderSyncPersistenceService {
         return Optional.of(epoch);
     }
 
+    /**
+     * 为归因回放发布一次新的订单同步事件。
+     *
+     * <p>普通订单同步使用固定幂等键；历史归因回放必须使用独立事件键，
+     * 否则 Outbox 会认为旧事件已经消费，业绩域不会重新读取新归属。</p>
+     */
+    public void publishAttributionReplayEvent(ColonelsettlementOrder order) {
+        if (order == null || orderDomainEventPublisher == null
+                || !orderDomainEventPublisher.isOutboxRoutingEnabled()) {
+            return;
+        }
+        OrderSyncedEvent event = orderEventPayloadMapper.toOrderSyncedEvent(order, false);
+        orderDomainEventPublisher.publishOrderSyncedForAttributionReplay(event);
+    }
+
 
 
     /**
