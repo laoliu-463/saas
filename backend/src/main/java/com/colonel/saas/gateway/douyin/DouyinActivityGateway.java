@@ -87,6 +87,23 @@ public interface DouyinActivityGateway {
     Map<String, Object> cancelActivityProduct(String appId, Map<String, Object> payload);
 
     /**
+     * 审核活动商品。
+     *
+     * @param appId       应用 ID
+     * @param activityId  活动 ID
+     * @param applyIds    商品申请 ID 列表
+     * @param approved    是否审核通过
+     * @param suggestInfo 审核建议或拒绝原因
+     * @return 上游原始响应 Map
+     */
+    Map<String, Object> auditActivityProduct(
+            String appId,
+            String activityId,
+            List<Long> applyIds,
+            boolean approved,
+            String suggestInfo);
+
+    /**
      * 创建或更新活动（新接口，使用 alliance 域命令）。
      * <p>
      * 调用 alliance.colonelActivityCreateOrUpdate 创建或更新活动。

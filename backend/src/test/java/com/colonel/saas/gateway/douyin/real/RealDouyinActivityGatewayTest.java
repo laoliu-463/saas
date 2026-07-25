@@ -223,6 +223,18 @@ class RealDouyinActivityGatewayTest {
     }
 
     @Test
+    void auditActivityProduct_shouldForwardToProductApi() {
+        when(productApi.auditActivityProduct("app", "20260428001", List.of(456L), false, "资质不完整"))
+                .thenReturn(Map.of("ok", true));
+
+        assertThat(gateway.auditActivityProduct(
+                "app", "20260428001", List.of(456L), false, "资质不完整"))
+                .containsEntry("ok", true);
+
+        verify(productApi).auditActivityProduct("app", "20260428001", List.of(456L), false, "资质不完整");
+    }
+
+    @Test
     void createOrUpdateActivity_shouldTranslateGatewayCommandToApiCommand() {
         var command = new DouyinActivityGateway.ActivityMutateCommand(
                 "app",

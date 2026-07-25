@@ -7,6 +7,9 @@
 
 ## 最近版本摘要
 
+### v0.8.7 — 2026-07-25
+- 接通 `alliance.colonelActivityProductAudit`：系统内活动商品审核通过/拒绝先调用真实上游，校验返回审核明细后再写本地状态；快照同步保留 `apply_id`，缺失时阻止审核并要求重新同步。证据：`harness/reports/current/latest-colonel-activity-product-audit.md`。
+
 ### v0.8.4 — 2026-07-19
 - real-pre 唯一部署来源固定为 `release/real-pre`，Jenkins 同 Job 排队且使用 `saas-real-pre-deploy` 跨 Job 全局锁。
 - 发布前校验目标 release tree 来自 `main`，并拒绝非当前部署后继提交；回滚必须显式设置 `ROLLBACK_APPROVED=true`。
