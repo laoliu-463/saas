@@ -129,13 +129,23 @@ test('real-pre P0 / 33 / 寄样链', async ({}, testInfo) => {
     const talentLocalId = String(talent.id || '');
     setDetail(ctx, 'talent', { talentLocalId, talentUid });
     if (talentLocalId) {
-      const claim = await rawApi(api, 'POST', `/api/talents/${talentLocalId}/claims`, String(channelStaff.token || ''));
+      // 手动创建达人时，后端会把创建人自动建立为首个有效认领人。
+      // 这里再次 POST /claims 会按设计返回 DUPLICATE(462)，但并不代表认领链路失败。
+      // 读取详情确认自动认领归属，避免把业务契约误判为失败。
+      const talentDetail = await rawApi(api, 'GET', `/api/talents/${talentLocalId}`, String(channelStaff.token || ''));
+      const detail = safeUnwrap<JsonMap>(talentDetail.body) || {};
+      const claim = (detail.claim as JsonMap | undefined) || {};
+      const channelStaffUserId = String(channelStaff.userId || channelStaff.id || '');
+      const claimOwnerId = String(claim.ownerId || '');
       setDetail(ctx, 'talentClaim', {
-        status: claim.status,
-        code: (claim.body as JsonMap | undefined)?.code
+        status: talentDetail.status,
+        code: (talentDetail.body as JsonMap | undefined)?.code,
+        source: 'create-auto-claim',
+        ownerId: claimOwnerId,
+        activeClaimCount: claim.activeClaimCount
       });
-      if (!claim.ok || (claim.body as JsonMap | undefined)?.code !== 200) {
-        markFail(ctx, `达人认领失败：HTTP ${claim.status} code=${(claim.body as JsonMap | undefined)?.code}`);
+      if (!talentDetail.ok || (talentDetail.body as JsonMap | undefined)?.code !== 200 || claimOwnerId !== channelStaffUserId) {
+        markFail(ctx, `达人自动认领校验失败：HTTP ${talentDetail.status} code=${(talentDetail.body as JsonMap | undefined)?.code} ownerId=${claimOwnerId || '<empty>'}`);
       }
     }
 
