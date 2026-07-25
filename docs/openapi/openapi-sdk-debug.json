@@ -14133,6 +14133,5 @@
                      "description":  "外部抖店 quick_sample_apply 联通状态诊断。"
                  }
              ],
-    "x-saas-generated-from":  "docs/openapi/saas-openapi.json",
-    "x-saas-generated-at":  "2026-07-09T20:00:18.1815002+08:00"
+    "x-saas-generated-from":  "docs/openapi/saas-openapi.json"
 }

@@ -27,8 +27,8 @@ class AuthorizationPermissionCatalogMigrationIntegrationTest extends BaseIntegra
                 "admin", 129,
                 "biz_leader", 57,
                 "biz_staff", 49,
-                "channel_leader", 41,
-                "channel_staff", 28,
+                "channel_leader", 40,
+                "channel_staff", 27,
                 "ops_staff", 16,
                 "custom_role", 0);
         expected.keySet().forEach(this::insertRole);
@@ -41,7 +41,7 @@ class AuthorizationPermissionCatalogMigrationIntegrationTest extends BaseIntegra
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM sys_permission", Integer.class))
                 .isEqualTo(129);
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM sys_role_permission", Integer.class))
-                .isEqualTo(320);
+                .isEqualTo(318);
         expected.forEach((roleCode, count) -> assertThat(permissionCount(roleCode))
                 .as(roleCode)
                 .isEqualTo(count));

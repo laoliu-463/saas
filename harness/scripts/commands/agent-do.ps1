@@ -2,7 +2,7 @@
     [Alias("Env")]
     [ValidateSet("test", "real-pre")]
     [string]$TargetEnv = "real-pre",
-    [ValidateSet("backend", "frontend", "full", "docs", "apifox")]
+    [ValidateSet("backend", "frontend", "full", "docs", "apifox", "deploy", "ci")]
     [string]$Scope = "full",
     [object]$DeployRemote = $false,
     [string]$Message = "chore: harness automated run",
@@ -25,6 +25,7 @@ $ErrorActionPreference = "Stop"
 
 $config = Get-HarnessEnvConfig -Env $TargetEnv
 $deployRemoteValue = Convert-HarnessBool -Value $DeployRemote
+$harnessPowerShell = if (Get-Command pwsh -ErrorAction SilentlyContinue) { "pwsh" } else { "powershell" }
 
 # 发布权限边界必须在 Node、Git、SSH 或任何其他外部动作之前执行。
 if ($deployRemoteValue) {
@@ -69,12 +70,14 @@ if ($executionMode -eq "NODE") {
         }
     }
 
+    $scopedSkipBusinessValidation = $SkipBusinessValidation -or `
+        ($Scope -in @("backend", "frontend") -and [string]::IsNullOrWhiteSpace($BusinessCommand))
     $nodeArguments = @(New-HarnessNodeVerifyArguments `
         -Env $TargetEnv `
         -Scope $Scope `
         -ReportKey $reportKeyValue `
         -BusinessCommand $BusinessCommand `
-        -SkipBusinessValidation:$SkipBusinessValidation `
+        -SkipBusinessValidation:$scopedSkipBusinessValidation `
         -DryRun:$DryRun)
 
     Assert-HarnessNoSensitiveChangedFiles
@@ -148,7 +151,7 @@ if ($executionMode -eq "NODE") {
         "-NoReport",
         "-OwnedFiles", ($candidateOwnedFiles -join ";")
     )
-    & powershell @governanceArgs
+    & $harnessPowerShell @governanceArgs
     if ($LASTEXITCODE -ne 0) {
         throw "Harness file governance failed."
     }
@@ -162,7 +165,7 @@ if ($executionMode -eq "NODE") {
     exit 2
 }
 
-# docs / apifox 暂留 PowerShell 兼容路径，不执行应用构建、容器重启或远端发布。
+# docs / apifox / deploy / ci 暂留 PowerShell 兼容路径，不执行应用构建、容器重启或远端发布。
 $buildResult = "not collected"
 $healthResult = "Scope=${Scope}: Container restart and health check: NOT_REQUIRED (documentation/governance-only change)."
 $businessResult = "not collected"
@@ -178,6 +181,40 @@ try {
     if ($Scope -eq "docs") {
         $buildResult = "Application build: NOT_REQUIRED (documentation/governance-only change)."
         $businessResult = "E2E: NOT_REQUIRED (documentation/governance-only change)."
+    }
+    elseif ($Scope -eq "deploy") {
+        Write-HarnessStage "Deployment-only verification"
+        $bashPath = Get-HarnessBashPath
+        $shellScripts = @(Get-ChildItem -LiteralPath (Join-Path $config.RepoRoot "scripts") -Filter "*.sh" -File -ErrorAction SilentlyContinue)
+        foreach ($shellScript in $shellScripts) {
+            $scriptPath = Convert-HarnessPathToMsys -Path $shellScript.FullName
+            if (-not $DryRun) { & $bashPath "-n" $scriptPath; if ($LASTEXITCODE -ne 0) { throw "Deployment shell syntax failed: $($shellScript.Name)" } }
+        }
+        if (-not (Test-Path -LiteralPath $config.EnvFile)) { throw "Deployment validation requires $($config.EnvFile)." }
+        $composeArgs = Get-HarnessComposeArgs -Config $config
+        if (-not $DryRun) { Invoke-HarnessExternal -CommandName "docker compose config" -Script { docker @($composeArgs + @("config", "--quiet")) } }
+        $releaseQueueTest = Join-Path $config.RepoRoot "harness\scripts\tests\release-queue-governance.Tests.ps1"
+        if ((Test-Path -LiteralPath $releaseQueueTest) -and (-not $DryRun)) {
+            $pester = Get-Command Invoke-Pester -ErrorAction SilentlyContinue
+            if (-not $pester) { throw "Pester is required for deployment governance validation." }
+            $releaseResult = Invoke-Pester -Script $releaseQueueTest -PassThru
+            if ($releaseResult.FailedCount -gt 0) { throw "Deployment governance tests failed." }
+        }
+        $buildResult = "Scope=deploy: shell syntax, Compose config and release-queue governance validated; application build/restart skipped."
+        $businessResult = "Scope=deploy: business validation not applicable."
+    }
+    elseif ($Scope -eq "ci") {
+        Write-HarnessStage "CI-only verification"
+        $pester = Get-Command Invoke-Pester -ErrorAction SilentlyContinue
+        if (-not $pester) { throw "Pester is required for Scope=ci." }
+        $ciTests = @(Get-ChildItem -LiteralPath (Join-Path $config.RepoRoot "harness\scripts\tests") -Filter "*.Tests.ps1" -File)
+        if ($ciTests.Count -eq 0) { throw "No Harness tests found." }
+        if (-not $DryRun) {
+            $pesterResult = Invoke-Pester -Script @($ciTests.FullName) -PassThru
+            if ($pesterResult.FailedCount -gt 0) { throw "CI-only Harness tests failed." }
+        }
+        $buildResult = "Scope=ci: Harness Pester validated; application/Docker build, restart and business validation skipped."
+        $businessResult = "Scope=ci: business validation not applicable."
     }
     else {
         Write-HarnessStage "Apifox OpenAPI local verification"
@@ -253,7 +290,7 @@ try {
     if ($taskOwnedFiles.Count -gt 0) {
         $governanceArgs += @("-OwnedFiles", ($taskOwnedFiles -join ";"))
     }
-    & powershell @governanceArgs
+    & $harnessPowerShell @governanceArgs
     if ($LASTEXITCODE -ne 0) {
         throw "Harness file governance failed."
     }
@@ -271,7 +308,7 @@ try {
         -ReportKey $reportKeyValue `
         -OwnedFiles $taskOwnedFiles `
         -RetroSummary $RetroSummary `
-        -SkipRuntimeCollection:($Scope -eq "docs" -or $Scope -eq "apifox") `
+        -SkipRuntimeCollection:($Scope -in @("docs", "apifox", "deploy", "ci")) `
         -DryRun:$DryRun
 
     Write-Host "Evidence collected at $reportPath. Git commit and push are explicit follow-up commands; agent-do does not mutate Git history." -ForegroundColor Yellow
@@ -297,7 +334,7 @@ catch {
             -ReportKey $reportKeyValue `
             -OwnedFiles $taskOwnedFiles `
             -RetroSummary "agent-do failed: $failure" `
-            -SkipRuntimeCollection:($Scope -eq "docs" -or $Scope -eq "apifox") `
+            -SkipRuntimeCollection:($Scope -in @("docs", "apifox", "deploy", "ci")) `
             -DryRun:$DryRun
     }
     catch {

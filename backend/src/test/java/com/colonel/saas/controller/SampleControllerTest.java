@@ -913,26 +913,18 @@ class SampleControllerTest {
     }
 
     @Test
-    void exportSamples_shouldAllowChannelRoles() throws Exception {
-        Page<SampleRequest> emptyPage = new Page<>(1, 500, 0);
-        emptyPage.setRecords(List.of());
-        when(sampleRequestMapper.findPageWithScope(any(Page.class), any(QueryWrapper.class)))
-                .thenReturn(emptyPage);
-
+    void exportSamples_shouldRejectChannelRoles() {
         for (String role : List.of(RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF)) {
-            MockHttpServletResponse response = new MockHttpServletResponse();
-            exportSamplesBasic(
+            assertThatThrownBy(() -> exportSamplesBasic(
                     null,
                     null,
                     UUID.randomUUID(),
                     null,
                     DataScope.ALL,
                     List.of(role),
-                    response);
-
-            assertThat(response.getContentType()).isEqualTo("text/csv; charset=UTF-8");
-            assertThat(response.getContentAsString(java.nio.charset.StandardCharsets.UTF_8))
-                    .startsWith("\ufeff寄样单号");
+                    new MockHttpServletResponse()))
+                    .isInstanceOf(ForbiddenException.class)
+                    .hasMessageContaining("仅管理员、招商或运营账号可导出寄样数据");
         }
     }
 

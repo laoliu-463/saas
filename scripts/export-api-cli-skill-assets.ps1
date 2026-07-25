@@ -138,7 +138,6 @@ function New-OpenApiSplit {
     }
 
     $split | Add-Member -MemberType NoteProperty -Name "x-saas-generated-from" -Value $SourcePath -Force
-    $split | Add-Member -MemberType NoteProperty -Name "x-saas-generated-at" -Value ((Get-Date).ToString("o")) -Force
     return $split
 }
 
@@ -163,8 +162,6 @@ function New-ManifestRecord {
 
     return [pscustomobject]@{
         path = Get-RelativePath -RepoRoot $RepoRoot -Path $Item.FullName
-        bytes = $Item.Length
-        updatedAt = $Item.LastWriteTime.ToString("yyyy-MM-dd HH:mm:ss")
     }
 }
 
@@ -191,6 +188,17 @@ function Get-InterfaceDocs {
     } | ForEach-Object {
         New-ManifestRecord -RepoRoot $RepoRoot -Item $_
     } | Sort-Object path)
+}
+
+function Get-ManifestPathCount {
+    param(
+        [Parameter(Mandatory = $true)][object[]]$Items,
+        [Parameter(Mandatory = $true)][string]$Root
+    )
+
+    return @($Items | Where-Object {
+        $_.path -eq $Root -or $_.path.StartsWith("$Root/", [System.StringComparison]::OrdinalIgnoreCase)
+    }).Count
 }
 
 function Get-TestAssets {
@@ -238,11 +246,9 @@ function Write-Manifest {
         New-Item -ItemType Directory -Force -Path $parent | Out-Null
     }
 
-    $generatedAt = Get-Date -Format "yyyy-MM-dd HH:mm:ss zzz"
     $lines = @(
         "# SAAS API CLI / Skill Asset Manifest",
         "",
-        "- Generated at: $generatedAt",
         "- Source OpenAPI: $OpenApiFile",
         "- Full OpenAPI: $FullOutput",
         "- Business OpenAPI: $BusinessOutput",
@@ -264,20 +270,26 @@ function Write-Manifest {
         "| Business | $BusinessOutput | $($BusinessStats.paths) | $($BusinessStats.operations) | $($BusinessStats.schemas) | $($BusinessStats.tags) |",
         "| SDK debug | $SdkDebugOutput | $($SdkDebugStats.paths) | $($SdkDebugStats.operations) | $($SdkDebugStats.schemas) | $($SdkDebugStats.tags) |",
         "",
-        "## Interface Docs",
+        "## Asset Roots",
         "",
-        "~~~text"
+        "The manifest records counts and stable source roots only. Detailed file lists are intentionally not committed; use ``rg --files`` in the roots below to locate the current asset.",
+        "",
+        "| Asset type | Root | Count |",
+        "| --- | --- | ---: |",
+        "| Interface docs | ``docs/`` | $($InterfaceDocs.Count) |",
+        "| Browser / shared tests | ``tests/`` | $(Get-ManifestPathCount -Items $TestAssets -Root 'tests') |",
+        "| Backend tests | ``backend/src/test/`` | $(Get-ManifestPathCount -Items $TestAssets -Root 'backend/src/test') |",
+        "| Frontend tests and fixtures | ``frontend/src/`` | $(Get-ManifestPathCount -Items $TestAssets -Root 'frontend/src') |",
+        "| QA / real-pre scripts | ``runtime/qa/`` | $(Get-ManifestPathCount -Items $TestAssets -Root 'runtime/qa') |",
+        "| QA helpers | ``scripts/qa/`` | $(Get-ManifestPathCount -Items $TestAssets -Root 'scripts/qa') |",
+        "",
+        "## Lookup",
+        "",
+        "- Interface contract: ``docs/`` and the OpenAPI files listed above.",
+        "- Test paths: ``rg --files tests backend/src/test frontend/src runtime/qa scripts/qa``.",
+        "- Refresh this summary with ``scripts/export-api-cli-skill-assets.ps1``.",
+        "- This file is an index, not evidence that any test or cloud sync passed."
     )
-    $lines += @($InterfaceDocs | ForEach-Object { "$($_.path) | bytes=$($_.bytes) | updatedAt=$($_.updatedAt)" })
-    $lines += @(
-        "~~~",
-        "",
-        "## Test Assets",
-        "",
-        "~~~text"
-    )
-    $lines += @($TestAssets | ForEach-Object { "$($_.path) | bytes=$($_.bytes) | updatedAt=$($_.updatedAt)" })
-    $lines += "~~~"
 
     Set-Content -LiteralPath $Path -Value $lines -Encoding UTF8
 }
@@ -300,7 +312,6 @@ if (-not $source.openapi -or -not $source.paths) {
 
 $full = Copy-JsonObject -Value $source
 $full | Add-Member -MemberType NoteProperty -Name "x-saas-generated-from" -Value $OpenApiFile -Force
-$full | Add-Member -MemberType NoteProperty -Name "x-saas-generated-at" -Value ((Get-Date).ToString("o")) -Force
 
 $business = New-OpenApiSplit -Source $source -SdkDebug $false -TitleSuffix "business" -SourcePath $OpenApiFile
 $sdkDebug = New-OpenApiSplit -Source $source -SdkDebug $true -TitleSuffix "sdk-debug" -SourcePath $OpenApiFile

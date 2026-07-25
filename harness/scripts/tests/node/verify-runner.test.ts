@@ -103,8 +103,8 @@ afterEach(() => {
 
 describe("Node verify 唯一执行器", () => {
   it.each([
-    ["backend", ["backend", "docker", "health", "business"]],
-    ["frontend", ["frontend", "docker", "health", "business"]],
+    ["backend", ["backend"]],
+    ["frontend", ["frontend"]],
     ["full", ["backend", "frontend", "docker", "health", "business"]],
   ] as const)("scope=%s 只执行对应检查链", async (scope, expectedCalls) => {
     const fixture = dependencies();
@@ -155,11 +155,11 @@ describe("Node verify 唯一执行器", () => {
     expect(outcome.result.status).toBe("PARTIAL");
     expect(outcome.result.checks.slice(1).map(({ checkId, status }) => [checkId, status]))
       .toEqual([
-        ["backend", "SKIPPED"],
-        ["frontend", "SKIPPED"],
-        ["docker", "SKIPPED"],
-        ["health", "SKIPPED"],
-        ["business", "SKIPPED"],
+      ["backend", "SKIPPED"],
+      ["frontend", "SKIPPED"],
+      ["docker", "SKIPPED"],
+      ["health", "SKIPPED"],
+      ["business", "SKIPPED"],
         ["evidence.git-identity", "PASS"],
       ]);
   });
@@ -170,7 +170,7 @@ describe("Node verify 唯一执行器", () => {
     const outcome = await runNodeVerify({
       repoRoot: makeRoot(),
       environment: "test",
-      scope: "backend",
+      scope: "full",
       reportKey: "task10",
       skipBusinessValidation: true,
     }, fixture.dependencies);
@@ -194,7 +194,7 @@ describe("Node verify 唯一执行器", () => {
       reportKey: "task10",
     }, withoutInjectedGit);
 
-    expect(fixture.calls).toEqual(["backend", "docker", "health", "business"]);
+    expect(fixture.calls).toEqual(["backend"]);
     expect(outcome.context.git.identity.kind).toBe("UNAVAILABLE");
     expect(outcome.result.status).toBe("PARTIAL");
     expect(outcome.result.checks.find(({ checkId }) => checkId === "evidence.git-identity"))
@@ -207,7 +207,7 @@ describe("Node verify 唯一执行器", () => {
     const outcome = await runNodeVerify({
       repoRoot: makeRoot(),
       environment: "test",
-      scope: "backend",
+      scope: "full",
       reportKey: "task10",
     }, fixture.dependencies);
 

@@ -136,6 +136,7 @@ public class OrderAttributionReplayService {
             // 第四步（续）：应用归因结果并持久化
             applyAttribution(order, result);
             persistenceService.persistOrder(order);
+            persistenceService.publishAttributionReplayEvent(order);
             updated++;
         }
 

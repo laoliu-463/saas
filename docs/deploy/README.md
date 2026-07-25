@@ -12,6 +12,7 @@
 - `main` 是唯一集成主线。
 - `release/real-pre` 是唯一远端 real-pre 部署来源。
 - GitHub Actions 负责检查和在 `main` 合并后构建一次镜像。
+- CI 的前端 job 只运行测试和 typecheck；生产前端构建只由镜像构建 workflow 执行一次。
 - Jenkins 负责拉取发布清单中的镜像摘要、锁定部署、迁移、验收、证据和回滚。
 - 普通 Agent 不直接 SSH、不在服务器 `git pull`、不在服务器构建镜像。
 

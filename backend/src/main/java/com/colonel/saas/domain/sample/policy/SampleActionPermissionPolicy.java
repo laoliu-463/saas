@@ -81,8 +81,13 @@ public class SampleActionPermissionPolicy {
     }
 
     public void ensureCanExport(Object roleCodes) {
-        if (!hasAnyInternalRole(roleCodes)) {
-            throw new ForbiddenException("仅内部账号可导出寄样数据");
+        if (!currentUserPermissionChecker.hasAnyRole(
+                roleCodes,
+                RoleCodes.ADMIN,
+                RoleCodes.BIZ_LEADER,
+                RoleCodes.BIZ_STAFF,
+                RoleCodes.OPS_STAFF)) {
+            throw new ForbiddenException("仅管理员、招商或运营账号可导出寄样数据");
         }
     }
 

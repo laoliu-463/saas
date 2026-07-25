@@ -23,3 +23,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\run.ps1 ve
 - 运行产物写入 `runtime/qa/out/`，不得写回 `harness/`。
 - 远端部署只能进入 Jenkins 发布队列；脚本不得新增直接 SSH 发布入口。
 - 修改脚本后运行 Harness 自测、PowerShell 语法检查和必要的 CI Gate。
+
+变更范围的最小验证边界如下：
+
+- `backend`：Node Harness 只执行一次 `mvn -f backend/pom.xml package`；不重建容器、不做健康检查、不跑跨服务业务 E2E。
+- `frontend`：Node Harness 只执行前端依赖安装、typecheck 和测试；不重建容器、不做健康检查；前端生产构建由 Docker 镜像阶段唯一执行。
+- `full`：执行后端、前端、Docker、健康检查和业务验证完整链路。
+- `deploy`：只检查部署脚本、Compose 配置和 Jenkins release-queue 契约，不构建应用、不重启容器。
+- `ci`：只运行 Harness Pester，不触发应用构建、Docker 构建或业务验证。

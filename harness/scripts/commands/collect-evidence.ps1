@@ -1,6 +1,6 @@
 ﻿param(
     [Alias('Env')][ValidateSet('test', 'real-pre')][string]$TargetEnv = 'real-pre',
-    [ValidateSet('backend', 'frontend', 'full', 'docs', 'apifox')][string]$Scope = 'full',
+    [ValidateSet('backend', 'frontend', 'full', 'docs', 'apifox', 'deploy', 'ci')][string]$Scope = 'full',
     [string]$BuildResult = 'not collected',
     [string]$HealthResult = 'not collected',
     [string]$BusinessResult = 'not collected',
@@ -62,7 +62,7 @@ $dirty = if ([string]::IsNullOrWhiteSpace($status)) { 'clean' } else { 'dirty' }
 
 $composePs = 'not collected'
 $dockerPs = 'not collected'
-if (-not $DryRun -and -not $SkipRuntimeCollection -and $Scope -notin @('docs', 'apifox')) {
+if (-not $DryRun -and -not $SkipRuntimeCollection -and $Scope -notin @('docs', 'apifox', 'deploy', 'ci')) {
     if ($null -eq $config) { throw 'Runtime collection with RepoRoot override is not supported.' }
     Push-Location $RepoRoot
     try {

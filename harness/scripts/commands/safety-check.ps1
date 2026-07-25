@@ -2,7 +2,7 @@
     [Alias("Env")]
     [ValidateSet("test", "real-pre")]
     [string]$TargetEnv = "real-pre",
-    [ValidateSet("backend", "frontend", "full", "docs", "apifox")]
+    [ValidateSet("backend", "frontend", "full", "docs", "apifox", "deploy", "ci")]
     [string]$Scope = "full",
     [switch]$DryRun
 )
@@ -12,7 +12,7 @@ $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "_lib.ps1")
 
 $config = Get-HarnessEnvConfig -Env $TargetEnv
-$requiresRuntimeEnvironment = $Scope -ne "docs"
+$requiresRuntimeEnvironment = $Scope -notin @("docs", "ci")
 
 Write-HarnessStage "Safety check"
 Assert-HarnessRepoRoot -RepoRoot $config.RepoRoot
@@ -73,7 +73,7 @@ if ($requiresRuntimeEnvironment) {
     Write-Host "Env file: $($config.EnvFile)"
 }
 else {
-    Write-Host "Runtime environment config: not required for Scope=docs"
+    Write-Host "Runtime environment config: not required for Scope=$Scope"
 }
 Write-Host "DryRun: $($DryRun.IsPresent)"
 Write-Host "Harness dir: present"

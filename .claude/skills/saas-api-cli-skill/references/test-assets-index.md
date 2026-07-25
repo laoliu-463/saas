@@ -29,4 +29,4 @@ npm run e2e:real-pre:p0
 
 - 测试文件存在不等于测试通过。
 - real-pre 缺 Token、权限包、真实订单、`pick_source` 样本时标记 `BLOCKED` 或 `PENDING`。
-- Skill 不复制测试源文件内容，使用 `project-assets-manifest.md` 指向当前项目主源，避免重复内容漂移。
+- Skill 不复制测试源文件内容；`project-assets-manifest.md` 只记录计数和稳定资产根目录，具体路径用 `rg --files` 获取，避免生成清单随文件时间戳反复膨胀。

@@ -2,9 +2,10 @@
     [Alias("Env")]
     [ValidateSet("test", "real-pre")]
     [string]$TargetEnv = "real-pre",
-    [ValidateSet("backend", "frontend", "full", "docs", "apifox")]
+    [ValidateSet("backend", "frontend", "full", "docs", "apifox", "deploy", "ci")]
     [string]$Scope = "full",
-    [switch]$DryRun
+    [switch]$DryRun,
+    [switch]$SkipSafetyCheck
 )
 
 $ErrorActionPreference = "Stop"
@@ -14,9 +15,11 @@ $ErrorActionPreference = "Stop"
 $config = Get-HarnessEnvConfig -Env $TargetEnv
 
 Write-HarnessStage "Compose restart"
-& (Join-Path $PSScriptRoot "safety-check.ps1") -Env $TargetEnv -Scope $Scope -DryRun:$DryRun
+if (-not $SkipSafetyCheck) {
+    & (Join-Path $PSScriptRoot "safety-check.ps1") -Env $TargetEnv -Scope $Scope -DryRun:$DryRun
+}
 
-if ($Scope -eq "docs" -or $Scope -eq "apifox") {
+if ($Scope -in @("docs", "apifox", "deploy", "ci")) {
     Write-Host "Scope=${Scope}: compose restart skipped."
     return
 }
@@ -30,7 +33,9 @@ if ($Scope -eq "frontend" -or $Scope -eq "full") {
 }
 
 $composeArgs = Get-HarnessComposeArgs -Config $config
-$upArgs = $composeArgs + @("up", "-d", "--build") + $services
+$upArgs = $composeArgs + @("up", "-d", "--build")
+if ($Scope -eq "backend" -or $Scope -eq "frontend") { $upArgs += "--no-deps" }
+$upArgs += $services
 $psArgs = $composeArgs + @("ps")
 
 Push-Location $config.RepoRoot

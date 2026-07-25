@@ -22,7 +22,7 @@ class RoleAwareAttributionFlywayIntegrationTest {
             createLegacySchema(jdbc);
 
             Flyway flyway = flyway(database);
-            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(4);
+            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(5);
             assertThat(flyway.migrate().migrationsExecuted).isZero();
             assertRoleAwareColumns(jdbc, "colonelsettlement_order");
             assertRoleAwareColumns(jdbc, "colonelsettlement_order_202607");
@@ -32,7 +32,7 @@ class RoleAwareAttributionFlywayIntegrationTest {
             assertOperationLogObservabilityColumns(jdbc, "operation_log_202607");
             assertThat(jdbc.queryForObject(
                     "SELECT COUNT(*) FROM flyway_schema_history WHERE success = TRUE", Long.class))
-                    .isEqualTo(5L);
+                    .isEqualTo(6L);
         }
     }
 
@@ -57,14 +57,14 @@ class RoleAwareAttributionFlywayIntegrationTest {
                     .isZero();
 
             Flyway flyway = flyway(database);
-            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(4);
+            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(5);
             assertThat(flyway.migrate().migrationsExecuted).isZero();
             assertRoleAwareColumns(jdbc, "colonelsettlement_order");
             assertOperationLogObservabilityColumns(jdbc, "operation_log");
             assertOperationLogObservabilityColumns(jdbc, "op_log_2026_07");
             assertThat(jdbc.queryForObject(
                     "SELECT COUNT(*) FROM flyway_schema_history WHERE success = TRUE", Long.class))
-                    .isEqualTo(5L);
+                    .isEqualTo(6L);
         }
     }
 

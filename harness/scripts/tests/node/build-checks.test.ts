@@ -50,19 +50,13 @@ function processResult(success = true): ProcessResult {
 }
 
 describe("后端构建检查命令计划", () => {
-  it("严格按测试、打包顺序生成固定 Maven 参数", () => {
+  it("只生成一次 Maven package，同时完成测试与打包", () => {
     expect(buildBackendCommandPlan()).toEqual([
-      {
-        stepId: "backend-test",
-        command: "mvn",
-        args: ["-f", "backend/pom.xml", "test"],
-        timeoutMs: 30 * 60_000,
-      },
       {
         stepId: "backend-package",
         command: "mvn",
-        args: ["-f", "backend/pom.xml", "-DskipTests", "package"],
-        timeoutMs: 15 * 60_000,
+        args: ["-f", "backend/pom.xml", "package"],
+        timeoutMs: 30 * 60_000,
       },
     ]);
   });
@@ -83,7 +77,7 @@ describe("后端构建检查命令计划", () => {
     expect(createPlan()[0]?.command).not.toBe("unsafe");
   });
 
-  it("两步成功时写入独立日志并返回全部 artifact", async () => {
+  it("一次成功时写入 artifact", async () => {
     const executed: ProcessOptions[] = [];
     const written: BuildLogInput[] = [];
     const processRunner = vi.fn(async (options: ProcessOptions) => {
@@ -110,12 +104,8 @@ describe("后端构建检查命令计划", () => {
         cwd: "D:/repo",
         timeoutMs,
       })));
-    expect(written.map(({ stepId }) => stepId)).toEqual([
-      "backend-test",
-      "backend-package",
-    ]);
+    expect(written.map(({ stepId }) => stepId)).toEqual(["backend-package"]);
     expect(result.artifacts).toEqual([
-      "runtime/qa/out/run-task8/backend-test.log",
       "runtime/qa/out/run-task8/backend-package.log",
     ]);
   });
@@ -141,9 +131,7 @@ describe("后端构建检查命令计划", () => {
       "安全重试：修复直接原因后重试一次。",
       "停止条件：错误未变化时停止重试。",
     ]);
-    expect(result.artifacts).toEqual([
-      "runtime/qa/out/run-task8/backend-test.log",
-    ]);
+    expect(result.artifacts).toEqual(["runtime/qa/out/run-task8/backend-package.log"]);
   });
 
   it("dry-run 只返回完整计划，不执行进程也不创建日志", async () => {
@@ -165,8 +153,7 @@ describe("后端构建检查命令计划", () => {
     expect(result.status).toBe("SKIPPED");
     expect(result.artifacts).toEqual([]);
     expect(result.nextActions).toEqual([
-      "计划命令：mvn -f backend/pom.xml test",
-      "计划命令：mvn -f backend/pom.xml -DskipTests package",
+      "计划命令：mvn -f backend/pom.xml package",
       "移除 dry-run 参数后执行后端验证。",
     ]);
   });
@@ -363,7 +350,7 @@ describe("后端构建检查命令计划", () => {
 });
 
 describe("前端构建检查命令计划", () => {
-  it("严格按安装、类型、测试、构建顺序生成固定 npm 参数", () => {
+  it("只生成安装、类型与测试命令，生产构建交给 Docker", () => {
     expect(buildFrontendCommandPlan()).toEqual([
       {
         stepId: "frontend-install",
@@ -383,16 +370,10 @@ describe("前端构建检查命令计划", () => {
         args: ["--prefix", "frontend", "run", "test"],
         timeoutMs: 15 * 60_000,
       },
-      {
-        stepId: "frontend-build",
-        command: "npm",
-        args: ["--prefix", "frontend", "run", "build"],
-        timeoutMs: 10 * 60_000,
-      },
     ]);
   });
 
-  it("四步成功时写入独立日志并返回全部 artifact", async () => {
+  it("三步成功时写入独立日志并返回全部 artifact", async () => {
     const executed: ProcessOptions[] = [];
     const processRunner = vi.fn(async (options: ProcessOptions) => {
       executed.push(options);
@@ -421,7 +402,6 @@ describe("前端构建检查命令计划", () => {
       "runtime/qa/out/run-task8/frontend-install.log",
       "runtime/qa/out/run-task8/frontend-typecheck.log",
       "runtime/qa/out/run-task8/frontend-test.log",
-      "runtime/qa/out/run-task8/frontend-build.log",
     ]);
   });
 
@@ -452,7 +432,7 @@ describe("前端构建检查命令计划", () => {
     ]);
   });
 
-  it("dry-run 只展示四步计划且不执行或写日志", async () => {
+  it("dry-run 只展示三步计划且不执行或写日志", async () => {
     const processRunner = vi.fn(async () => processResult());
     const logWriter = vi.fn(async (input: BuildLogInput) =>
       `${input.rawDir}/${input.stepId}.log`
@@ -474,12 +454,11 @@ describe("前端构建检查命令计划", () => {
       "计划命令：npm --prefix frontend ci",
       "计划命令：npm --prefix frontend run typecheck",
       "计划命令：npm --prefix frontend run test",
-      "计划命令：npm --prefix frontend run build",
       "移除 dry-run 参数后执行前端验证。",
     ]);
   });
 
-  it("默认日志写入器为四个前端步骤生成固定 artifact", async () => {
+  it("默认日志写入器为三个前端步骤生成固定 artifact", async () => {
     const root = temporaryRepository();
 
     const result = await runFrontendCheck({
@@ -493,7 +472,6 @@ describe("前端构建检查命令计划", () => {
       "runtime/qa/out/run-task8-frontend/frontend-install.log",
       "runtime/qa/out/run-task8-frontend/frontend-typecheck.log",
       "runtime/qa/out/run-task8-frontend/frontend-test.log",
-      "runtime/qa/out/run-task8-frontend/frontend-build.log",
     ]);
     for (const artifact of result.artifacts) {
       expect(readFileSync(join(root, ...artifact.split("/")), "utf8"))

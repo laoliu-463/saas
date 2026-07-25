@@ -12,10 +12,10 @@ Describe 'agent-do evidence conclusion contract' {
         $content | Should Not Match 'git-push-safe\.ps1'
     }
 
-    It 'skips runtime collection for docs and apifox evidence' {
+    It 'skips runtime collection for non-runtime scopes' {
         $matches = [regex]::Matches(
             $content,
-            '-SkipRuntimeCollection:\(\$Scope -eq "docs" -or \$Scope -eq "apifox"\)'
+            '-SkipRuntimeCollection:\(\$Scope -in @\("docs", "apifox", "deploy", "ci"\)\)'
         )
 
         $matches.Count | Should BeGreaterThan 1

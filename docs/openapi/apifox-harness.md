@@ -25,7 +25,7 @@ Apifox / OpenAPI 同步不是一次性脚本，而是接口文档交付链路的
   - `docs/openapi/openapi-sdk-debug.json`
 - `.codex/config.toml` 和 `docs/.apifox-mcp-config.json` 必须指向上述可生成文件。
 - `.claude/skills/saas-api-cli-skill/` 只保存 Skill 流程和索引，不复制接口 / 测试源文件正文，避免双写漂移。
-- `references/project-assets-manifest.md` 必须记录接口文档和测试资产路径清单。
+- `references/project-assets-manifest.md` 只记录接口文档数量、测试资产根目录和计数；具体文件路径通过 `rg --files` 查询，避免提交重复的逐文件清单。
 
 ### A. Local OpenAPI Guard
 

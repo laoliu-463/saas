@@ -1,31 +1,29 @@
 ---
-name: Review Changes
-description: Perform a structured code review using change detection and impact
+name: review-changes
+description: 使用变更检测、依赖图谱和测试覆盖进行结构化代码审查，按风险给出合并建议。
 ---
 
-> [历史归档] 兼容旧 skill。V1 审查入口优先使用 `.claude/commands/审计V1.md` 和 `.claude/commands/审计领域.md`，本文件保留给图谱代码审查。
+# 变更审查（兼容入口）
 
-## Review Changes
+## 触发场景
 
-Perform a thorough, risk-aware code review using the knowledge graph.
+- 用户要求审查 PR、提交、工作树变更、回归风险或测试缺口。
 
-### Steps
+## 输入
 
-1. Run `detect_changes` to get risk-scored change analysis.
-2. Run `get_affected_flows` to find impacted execution paths.
-3. For each high-risk function, run `query_graph` with pattern="tests_for" to check test coverage.
-4. Run `get_impact_radius` to understand the blast radius.
-5. For any untested changes, suggest specific test cases.
+- 输入：变更范围、目标分支、需求/领域合同、测试证据和部署风险。
 
-### Output Format
+## 步骤
+- 必须先调用 `get_minimal_context(task="...")`，再用 `detect_changes` 获取风险变化。
+- 用 `get_affected_flows`、`get_impact_radius` 识别影响路径；对高风险函数用 `query_graph(pattern="tests_for")` 检查测试覆盖。
+- 对代码、配置、数据库、权限、CI/CD 和文档变化分别判断；不要把格式偏好当成高风险问题。
 
-Provide findings grouped by risk level (high/medium/low) with:
-- What changed and why it matters
-- Test coverage status
-- Suggested improvements
-- Overall merge recommendation
+## 输出
 
-## Token Efficiency Rules
-- ALWAYS start with `get_minimal_context(task="<your task>")` before any other graph tool.
-- Use `detail_level="minimal"` on all calls. Only escalate to "standard" when minimal is insufficient.
-- Target: complete any review/debug/refactor task in ≤5 tool calls and ≤800 total output tokens.
+按 `高/中/低风险 | 位置 | 影响 | 证据 | 建议` 输出，并给出总体合并建议。没有明确问题时直接说明，并列出未覆盖风险。
+
+## 验证
+
+- 图谱不可用时标记 `BLOCKED` 或注明降级范围，不编造影响半径。
+- 结论必须区分代码审查、测试通过和运行部署证据。
+- 若审查发现代码修改需求，另行执行项目 Definition of Done；审查本身不直接部署生产。

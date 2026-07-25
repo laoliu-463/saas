@@ -1,6 +1,6 @@
 param(
     [Alias('Env')][ValidateSet('test', 'real-pre')][string]$TargetEnv = 'real-pre',
-    [ValidateSet('backend', 'frontend', 'full', 'docs', 'apifox')][string]$Scope = 'full',
+    [ValidateSet('backend', 'frontend', 'full', 'docs', 'apifox', 'deploy', 'ci')][string]$Scope = 'full',
     [Parameter(Mandatory = $true)][string]$ReportKey,
     [AllowEmptyCollection()][string[]]$OwnedFiles = @(),
     [string]$BuildResult = 'not collected',

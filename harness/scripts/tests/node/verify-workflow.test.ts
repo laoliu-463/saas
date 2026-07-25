@@ -27,8 +27,8 @@ function executorWith(
 
 describe("verify 工作流选择", () => {
   it.each([
-    ["backend", ["backend", "docker", "health", "business"]],
-    ["frontend", ["frontend", "docker", "health", "business"]],
+    ["backend", ["backend"]],
+    ["frontend", ["frontend"]],
     ["full", ["backend", "frontend", "docker", "health", "business"]],
   ] as const)("scope=%s 只选择确定节点", (scope, expectedIds) => {
     expect(createVerifyWorkflow(scope).map((node) => node.id)).toEqual(expectedIds);
@@ -74,13 +74,16 @@ describe("verify 工作流依赖与聚合", () => {
     },
   );
 
-  it("docker 依赖当前 scope 的全部 build 节点", () => {
-    expect(createVerifyWorkflow("backend").find((node) => node.id === "docker"))
-      .toMatchObject({ dependencies: ["backend"] });
-    expect(createVerifyWorkflow("frontend").find((node) => node.id === "docker"))
-      .toMatchObject({ dependencies: ["frontend"] });
+  it("docker 依赖 full scope 的全部 build 节点", () => {
     expect(createVerifyWorkflow("full").find((node) => node.id === "docker"))
       .toMatchObject({ dependencies: ["backend", "frontend"] });
+  });
+
+  it("isolated scope 不包含 Docker、health 或 business 节点", () => {
+    expect(createVerifyWorkflow("backend").map((node) => node.id))
+      .toEqual(["backend"]);
+    expect(createVerifyWorkflow("frontend").map((node) => node.id))
+      .toEqual(["frontend"]);
   });
 
   it("health 依赖 docker，business 依赖 health", () => {

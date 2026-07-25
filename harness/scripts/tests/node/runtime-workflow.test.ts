@@ -31,17 +31,17 @@ describe("运行时检查工作流", () => {
     expect(calls).toEqual(["backend", "frontend", "docker", "health", "business"]);
   });
 
-  it("Docker FAIL 时 health 与 business 保留 BLOCKED 且不调用执行器", async () => {
+  it("full workflow 中 Docker FAIL 时 health 与 business 保留 BLOCKED 且不调用执行器", async () => {
     const calls: string[] = [];
     const executor: WorkflowCheckExecutor = vi.fn(async ({ node }) => {
       calls.push(node.id);
       return result(node.id, node.id === "docker" ? "FAIL" : "PASS");
     });
 
-    const run = await runVerifyWorkflow({ scope: "backend", executor });
+    const run = await runVerifyWorkflow({ scope: "full", executor });
 
     expect(run.status).toBe("FAIL");
-    expect(calls).toEqual(["backend", "docker"]);
+    expect(calls).toEqual(["backend", "frontend", "docker"]);
     expect(run.checks.find(({ checkId }) => checkId === "health")?.status).toBe("BLOCKED");
     expect(run.checks.find(({ checkId }) => checkId === "business")?.status).toBe("BLOCKED");
   });
@@ -53,10 +53,10 @@ describe("运行时检查工作流", () => {
       return result(node.id, node.id === "health" ? "FAIL" : "PASS");
     });
 
-    const run = await runVerifyWorkflow({ scope: "frontend", executor });
+    const run = await runVerifyWorkflow({ scope: "full", executor });
 
     expect(run.status).toBe("FAIL");
-    expect(calls).toEqual(["frontend", "docker", "health"]);
+    expect(calls).toEqual(["backend", "frontend", "docker", "health"]);
     expect(run.checks.find(({ checkId }) => checkId === "business")?.status).toBe("BLOCKED");
   });
 
@@ -70,7 +70,7 @@ describe("运行时检查工作流", () => {
       })
       : result(node.id, "PASS");
 
-    const run = await runVerifyWorkflow({ scope: "backend", executor });
+    const run = await runVerifyWorkflow({ scope: "full", executor });
 
     expect(run.status).toBe("PARTIAL");
     expect(run.checks.find(({ checkId }) => checkId === "business"))

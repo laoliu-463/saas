@@ -129,7 +129,7 @@ class DddEventSampleNamingIdempotencyContractTest {
                         "private static final int EVENT_VERSION = 1;",
                         "\"ProductListed:\" + operationStateId + \":\" + displayRuleVersion",
                         "\"ProductHidden:\" + operationStateId + \":\" + reason",
-                        "\"ProductOwnerChanged:\" + productId + \":\" + newAssigneeId",
+                        "\"ProductOwnerChanged:\" + productId + \":\" + eventId",
                         "\"ActivitySyncCompleted:\" + activityId + \":\" + occurredAt.toLocalDate()",
                         "\"PartnerSyncCompleted:\" + partnerId + \":\" + occurredAt.toLocalDate()",
                         "\"ActivityExtended:\" + activityId + \":\" + newEndTime",

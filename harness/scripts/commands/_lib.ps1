@@ -315,10 +315,17 @@ function Get-HarnessRepoRelativePath {
         [Parameter(Mandatory = $true)][string]$Path
     )
 
-    $root = (Get-Item -LiteralPath $RepoRoot).FullName.TrimEnd('\')
+    $separatorChars = [char[]]@([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
+    $root = (Get-Item -LiteralPath $RepoRoot).FullName.TrimEnd($separatorChars)
     $resolved = (Get-Item -LiteralPath $Path).FullName
-    $prefix = $root + '\'
-    if (-not $resolved.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+    $prefix = $root + [System.IO.Path]::DirectorySeparatorChar
+    $comparison = if ([System.IO.Path]::DirectorySeparatorChar -eq '\') {
+        [System.StringComparison]::OrdinalIgnoreCase
+    }
+    else {
+        [System.StringComparison]::Ordinal
+    }
+    if (-not $resolved.StartsWith($prefix, $comparison)) {
         throw "Path is outside repository. path=$resolved root=$root"
     }
     return $resolved.Substring($prefix.Length).Replace('\', '/')
@@ -384,7 +391,7 @@ function Convert-HarnessBool {
 function Get-HarnessAgentDoExecutionMode {
     param(
         [Parameter(Mandatory = $true)]
-        [ValidateSet("backend", "frontend", "full", "docs", "apifox")]
+        [ValidateSet("backend", "frontend", "full", "docs", "apifox", "deploy", "ci")]
         [string]$Scope
     )
 
