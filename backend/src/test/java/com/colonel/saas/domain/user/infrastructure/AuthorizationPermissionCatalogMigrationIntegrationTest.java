@@ -27,7 +27,7 @@ class AuthorizationPermissionCatalogMigrationIntegrationTest extends BaseIntegra
                 "admin", 129,
                 "biz_leader", 57,
                 "biz_staff", 49,
-                "channel_leader", 40,
+                "channel_leader", 39,
                 "channel_staff", 27,
                 "ops_staff", 16,
                 "custom_role", 0);
@@ -41,14 +41,28 @@ class AuthorizationPermissionCatalogMigrationIntegrationTest extends BaseIntegra
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM sys_permission", Integer.class))
                 .isEqualTo(129);
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM sys_role_permission", Integer.class))
-                .isEqualTo(318);
+                .isEqualTo(317);
         expected.forEach((roleCode, count) -> assertThat(permissionCount(roleCode))
                 .as(roleCode)
                 .isEqualTo(count));
         assertThat(hasPermission("ops_staff", "sample:refresh-logistics")).isTrue();
         assertThat(hasPermission("biz_staff", "talent:access")).isTrue();
         assertThat(hasPermission("channel_staff", "product:page")).isTrue();
+        assertThat(hasPermission("channel_leader", "sys-dept:access")).isFalse();
         assertThat(hasPermission("biz_staff", "commission-rule:access")).isFalse();
+
+        jdbcTemplate.update("""
+                INSERT INTO sys_role_permission (role_id, permission_id)
+                SELECT r.id, p.id
+                FROM sys_role r, sys_permission p
+                WHERE r.role_code = 'channel_leader'
+                  AND p.permission_code = 'sys-dept:access'
+                ON CONFLICT (role_id, permission_id) DO NOTHING
+                """);
+        ResourceDatabasePopulator revokeMigration = new ResourceDatabasePopulator(
+                new ClassPathResource("db/migrate/V20260725_002__restrict_system_menu_permissions.sql"));
+        revokeMigration.execute(dataSource);
+        assertThat(hasPermission("channel_leader", "sys-dept:access")).isFalse();
 
         jdbcTemplate.update("""
                 DELETE FROM sys_role_permission
