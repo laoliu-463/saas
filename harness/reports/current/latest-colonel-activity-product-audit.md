@@ -75,6 +75,15 @@ not collected
 SSH Docker verification only; no formal release/deployment. Jenkins release queue was not invoked.
 ~~~
 
+## Verification Addendum (2026-07-25 14:12 +08:00)
+
+~~~text
+Backend targeted audit/API/gateway/controller tests: PASS. ProductApiTest=13, RealDouyinActivityGatewayTest=11, controller audit set=31, no failures. Frontend activityProduct API tests=58 PASS. Backend package and frontend production build: PASS.
+Local npm run e2e:real-pre:p0:preflight: FAIL because localhost:3001/8081 are not running and the local Docker engine is unavailable; evidence: runtime/qa/out/real-pre-preflight-20260725-141041/. This is not remote real-pre evidence.
+Remote-verify: PASS for health only. Remote backend/frontend images remain migration-20260723 and are not this commit. Read-only remote SQL found colonel_activity_product count=0, so no real pending product was available for a safe approve/reject mutation test.
+Conclusion for interface effectiveness: code path is verified; real-pre upstream side effect remains BLOCKED/PENDING until this commit is formally deployed and an authorized real sample is provided.
+~~~
+
 ## Git Publish Result
 
 ~~~text
