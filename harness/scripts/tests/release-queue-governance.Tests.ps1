@@ -3,6 +3,7 @@
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
 $jenkinsfile = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'Jenkinsfile')
 $rollbackScript = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'scripts\cd\rollback-real-pre.sh')
+$backupScript = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'scripts\backup-db.sh')
 $releaseWrapper = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'scripts\cd\release-real-pre.sh')
 $immutablePullScript = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'scripts\cd\pull-immutable-images.sh')
 $agentDo = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'harness\scripts\commands\agent-do.ps1')
@@ -44,7 +45,7 @@ Describe 'real-pre single release queue contract' {
     }
 
     It 'runs database work only when migration inputs changed' {
-        $jenkinsfile | Should Match 'backend/src/main/resources/db/migration'
+        $jenkinsfile | Should Match 'backend/src/main/resources/db/migrate'
         $jenkinsfile | Should Match 'RUN_DB_MIGRATIONS=false'
         $jenkinsfile | Should Match 'RUN_DB_MIGRATIONS=true'
         $jenkinsfile | Should Match 'Database work skipped: no migration inputs changed'
@@ -207,6 +208,22 @@ Describe 'agent deployment boundary contract' {
 }
 
 Describe 'lock-scoped failure rollback contract' {
+    It 'marks mutation before database migration and records truthful failure state' {
+        $jenkinsfile | Should Match '(?s)touch "\$RELEASE_STATE_DIR/deployment-started".*?stage\(''Database Backup, Migration and Schema Precheck''\)'
+        $jenkinsfile | Should Match 'production_touched=NO'
+        $jenkinsfile | Should Match 'recovery_state=NOT_STARTED'
+        $jenkinsfile | Should Match 'scheduler_state=UNKNOWN'
+        $jenkinsfile | Should Match 'echo "- Production touched: \$production_touched"'
+        $jenkinsfile | Should Match 'echo "- Recovery state: \$recovery_state"'
+    }
+
+    It 'refuses database backup when the host cannot hold a safe dump' {
+        $backupScript | Should Match 'pg_database_size\(current_database\(\)\)'
+        $backupScript | Should Match 'df -PB1'
+        $backupScript | Should Match 'BACKUP_MIN_FREE_BYTES'
+        $backupScript | Should Match 'insufficient free space for a safe PostgreSQL backup'
+    }
+
     It 'rolls back when backend readiness fails' {
         $jenkinsfile | Should Match "stage\('Backend Readiness'\)"
         $rollbackScript | Should Match 'backend-real-pre'

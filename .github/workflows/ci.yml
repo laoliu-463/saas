@@ -103,7 +103,7 @@ jobs:
               # matter that backend=true is set; the point is to flag the
               # migration explicitly so future PRs can grow a dedicated
               # db-migration-contract job that runs only when database=true.
-              backend/src/main/resources/db/migration/*) database=1; backend=1 ;;
+              backend/src/main/resources/db/migrate/*) database=1; backend=1 ;;
               scripts/run-real-pre-db-migrations.sh)   database=1 ;;
               backend/**)                              backend=1 ;;
               frontend/**)                             frontend=1 ;;
@@ -424,6 +424,7 @@ jobs:
             ':(exclude)docs/deploy/**' \
             ':(exclude)tests/e2e/**' \
             ':(exclude)scripts/verify-github-ci-gate.sh' \
+            ':(exclude)scripts/hash-real-pre-migration-inputs.py' \
             ':(exclude)harness/scripts/tests/release-queue-governance.Tests.ps1'
           git diff --exit-code "$source_sha" "$GITHUB_SHA" -- . \
             ':(exclude)release/real-pre.json' \
@@ -432,6 +433,7 @@ jobs:
             ':(exclude)docs/deploy/**' \
             ':(exclude)tests/e2e/**' \
             ':(exclude)scripts/verify-github-ci-gate.sh' \
+            ':(exclude)scripts/hash-real-pre-migration-inputs.py' \
             ':(exclude)harness/scripts/tests/release-queue-governance.Tests.ps1'
           echo "Release manifest points to main SHA $source_sha with no runtime drift."
 

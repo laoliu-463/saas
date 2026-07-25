@@ -75,17 +75,17 @@ const router = createRouter({
         {
           path: 'sample',
           component: () => import('../views/sample/index.vue'),
-          meta: { title: '合作单', permissions: [PERMISSION.SAMPLE_ACCESS] }
+          meta: { title: '合作单', permissions: [PERMISSION.SAMPLE_WORKBENCH_ACCESS] }
         },
         {
           path: 'sample/apply',
           component: () => import('../views/sample/Apply.vue'),
-          meta: { title: '寄样申请', permissions: [PERMISSION.SAMPLE_ACCESS] }
+          meta: { title: '寄样申请', permissions: [PERMISSION.SAMPLE_WORKBENCH_ACCESS] }
         },
         {
           path: 'sample/:id',
           component: () => import('../views/sample/SampleDetail.vue'),
-          meta: { title: '寄样详情', permissions: [PERMISSION.SAMPLE_ACCESS, PERMISSION.SHIPPING_ACCESS] }
+          meta: { title: '寄样详情', permissions: [PERMISSION.SAMPLE_WORKBENCH_ACCESS, PERMISSION.SHIPPING_ACCESS] }
         },
         {
           path: 'ops/exclusive',
