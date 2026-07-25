@@ -128,14 +128,14 @@ export const MENU_TREE: MenuTreeNode[] = [
     topKey: 'sample',
     testId: 'nav-sample',
     showInTop: true,
-    permissions: [PERMISSION.SAMPLE_ACCESS, PERMISSION.SHIPPING_ACCESS],
+    permissions: [PERMISSION.SAMPLE_WORKBENCH_ACCESS, PERMISSION.SHIPPING_ACCESS],
     children: [
       {
         label: '合作单',
         key: '/sample',
         topKey: 'sample',
         path: '/sample',
-        permissions: [PERMISSION.SAMPLE_ACCESS]
+        permissions: [PERMISSION.SAMPLE_WORKBENCH_ACCESS]
       },
       {
         label: '发货台',
@@ -172,16 +172,7 @@ export const MENU_TREE: MenuTreeNode[] = [
     topKey: 'system',
     testId: 'nav-system',
     showInTop: true,
-    permissions: [
-      PERMISSION.SYS_USER_ACCESS,
-      PERMISSION.SYS_ROLE_ACCESS,
-      PERMISSION.SYS_DEPT_ACCESS,
-      PERMISSION.RULE_CENTER_ACCESS,
-      PERMISSION.SYS_CONFIG_ACCESS,
-      PERMISSION.COMMISSION_RULE_ACCESS,
-      PERMISSION.DOUYIN_ACCESS,
-      PERMISSION.OPERATION_LOG_ACCESS
-    ],
+    permissions: [PERMISSION.SYS_USER_ACCESS],
     children: [
       { label: '用户管理', key: '/system/users', topKey: 'system', path: '/system/users', permissions: [PERMISSION.SYS_USER_ACCESS] },
       { label: '角色管理', key: '/system/roles', topKey: 'system', path: '/system/roles', permissions: [PERMISSION.SYS_ROLE_ACCESS] },

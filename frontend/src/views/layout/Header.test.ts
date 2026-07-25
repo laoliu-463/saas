@@ -53,7 +53,7 @@ const mountHeader = async () => {
   authStore.setUserInfo({
     username: 'alice',
     roleCodes: ['admin'],
-    permissionCodes: [PERMISSION_CODES.SAMPLE_ACCESS]
+    permissionCodes: [PERMISSION_CODES.SAMPLE_WORKBENCH_ACCESS]
   })
   authStore.updateTokens({ token: '', refreshToken: 'refresh-token' })
 

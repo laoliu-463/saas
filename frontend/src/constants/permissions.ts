@@ -5,6 +5,7 @@ export const PERMISSION_CODES = {
   PRODUCT_MANAGE_ACCESS: 'colonel-activity:access',
   TALENT_ACCESS: 'talent:access',
   SAMPLE_ACCESS: 'sample:access',
+  SAMPLE_WORKBENCH_ACCESS: 'sample:workbench',
   SHIPPING_ACCESS: 'admin-sample-logistics:access',
   DATA_ACCESS: 'data:access',
   EXCLUSIVE_ACCESS: 'data:get-exclusive-talent-status',
