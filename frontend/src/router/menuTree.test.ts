@@ -28,10 +28,15 @@ const BIZ_STAFF_PERMISSIONS = [
   PERMISSION_CODES.PRODUCT_ACCESS,
   PERMISSION_CODES.PRODUCT_MANAGE_ACCESS,
   PERMISSION_CODES.TALENT_ACCESS,
-  PERMISSION_CODES.SAMPLE_ACCESS,
+  PERMISSION_CODES.SAMPLE_WORKBENCH_ACCESS,
   PERMISSION_CODES.DATA_ACCESS
 ]
 const OPS_PERMISSIONS = [PERMISSION_CODES.SHIPPING_ACCESS]
+const CHANNEL_LEADER_PERMISSIONS = [
+  PERMISSION_CODES.SAMPLE_WORKBENCH_ACCESS,
+  PERMISSION_CODES.SYS_DEPT_ACCESS,
+  PERMISSION_CODES.SYS_CONFIG_ACCESS
+]
 const ADMIN_PERMISSIONS = Object.values(PERMISSION_CODES)
 
 describe('menuTree', () => {
@@ -71,6 +76,11 @@ describe('menuTree', () => {
     expect(getLeftMenus(tree, 'sample').map((menu) => ({ key: menu.key, label: menu.label }))).toEqual([
       { key: '/ops/shipping', label: '发货台' }
     ])
+  })
+
+  // 细粒度系统权限不应把系统管理一级菜单泄露给业务角色。
+  it('does not expose system management from non-admin detail permissions', () => {
+    expect(getTopMenus(CHANNEL_LEADER_PERMISSIONS).map((menu) => menu.key)).not.toContain('system')
   })
 
   // 验证：管理员可以看到合作管理下的全部子菜单（合作单 + 发货台）
