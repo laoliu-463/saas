@@ -82,6 +82,8 @@ test('real-pre P0 / 33 / 寄样链', async ({}, testInfo) => {
       opsLoginOk: Boolean(opsToken)
     });
 
+    const channelStaffUserId = String(channelStaff.userId || channelStaff.id || '');
+
     // 1) 选商品候选：复用现有商品库列表（不真实创建新商品）。
     const libraryResult = await rawApi(api, 'GET', '/api/products', String(channelStaff.token || ''), {
       params: { page: 1, size: 20 }
@@ -129,13 +131,19 @@ test('real-pre P0 / 33 / 寄样链', async ({}, testInfo) => {
     const talentLocalId = String(talent.id || '');
     setDetail(ctx, 'talent', { talentLocalId, talentUid });
     if (talentLocalId) {
-      const claim = await rawApi(api, 'POST', `/api/talents/${talentLocalId}/claims`, String(channelStaff.token || ''));
+      // POST /api/talents already assigns the creator as the first active claimant.
+      // Calling /claims again here only tests the duplicate-claim guard and produces
+      // the expected business code 462, which is not a sample-chain failure.
+      const createdOwnerId = String(talent.ownerId || talent.owner_id || '');
       setDetail(ctx, 'talentClaim', {
-        status: claim.status,
-        code: (claim.body as JsonMap | undefined)?.code
+        mode: 'create-auto-claim',
+        status: talentCreate.status,
+        code: (talentCreate.body as JsonMap | undefined)?.code,
+        ownerId: createdOwnerId,
+        expectedOwnerId: channelStaffUserId
       });
-      if (!claim.ok || (claim.body as JsonMap | undefined)?.code !== 200) {
-        markFail(ctx, `达人认领失败：HTTP ${claim.status} code=${(claim.body as JsonMap | undefined)?.code}`);
+      if (channelStaffUserId && createdOwnerId !== channelStaffUserId) {
+        markFail(ctx, `创建达人后的首个认领人错误：实际=${createdOwnerId || '空'} 期望=${channelStaffUserId}`);
       }
     }
 
