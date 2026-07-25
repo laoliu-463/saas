@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.init.ScriptUtils;
 import org.springframework.jdbc.datasource.init.ResourceDatabasePopulator;
 
 import javax.sql.DataSource;
@@ -61,6 +62,9 @@ class AuthorizationPermissionCatalogMigrationIntegrationTest extends BaseIntegra
                 """);
         ResourceDatabasePopulator revokeMigration = new ResourceDatabasePopulator(
                 new ClassPathResource("db/migrate/V20260725_002__restrict_system_menu_permissions.sql"));
+        // The migration contains a PostgreSQL DO $$...$$ block; execute it as
+        // one script so Spring's default semicolon separator does not split it.
+        revokeMigration.setSeparator(ScriptUtils.EOF_STATEMENT_SEPARATOR);
         revokeMigration.execute(dataSource);
         assertThat(hasPermission("channel_leader", "sys-dept:access")).isFalse();
 
