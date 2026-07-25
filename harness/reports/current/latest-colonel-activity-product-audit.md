@@ -35,23 +35,7 @@ harness/rules/state/snapshots/DOMAIN_STATUS.md
 ## Owned Git Status
 
 ~~~text
-M backend/src/main/java/com/colonel/saas/douyin/api/ProductApi.java
- M backend/src/main/java/com/colonel/saas/gateway/douyin/DouyinActivityGateway.java
- M backend/src/main/java/com/colonel/saas/gateway/douyin/contract/DouyinContractFixtureProvider.java
- M backend/src/main/java/com/colonel/saas/gateway/douyin/real/RealDouyinActivityGateway.java
- M backend/src/main/java/com/colonel/saas/gateway/douyin/test/TestDouyinActivityGateway.java
- M backend/src/main/java/com/colonel/saas/gateway/douyin/test/TestDouyinProductGateway.java
- M backend/src/main/java/com/colonel/saas/service/ProductService.java
- M backend/src/test/java/com/colonel/saas/douyin/api/ProductApiTest.java
- M backend/src/test/java/com/colonel/saas/gateway/douyin/real/RealDouyinActivityGatewayTest.java
- M backend/src/test/java/com/colonel/saas/service/ProductServiceActivityStatusIndependenceTest.java
- M docs/对接/活动商品同步.md
- M docs/接口/活动分配与推广入库API契约.md
- M docs/领域/商品域.md
- M harness/rules/changelog.md
- M harness/rules/state/snapshots/01-当前项目状态.md
- M harness/rules/state/snapshots/DOMAIN_STATUS.md
-?? backend/src/main/java/com/colonel/saas/service/ProductAuditApplyIdResolver.java
+No owned files dirty after commit; unrelated pre-existing worktree changes remain.
 ~~~
 
 ## Build Result
