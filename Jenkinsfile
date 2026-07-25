@@ -454,6 +454,10 @@ PY
                         rm -f "$RELEASE_STATE_DIR/deployment-started" "$RELEASE_STATE_DIR/rollback-started" \
                           "$RELEASE_STATE_DIR/rollback-completed" "$RELEASE_STATE_DIR/release-completed" \
                           "$RELEASE_STATE_DIR/schedulers-restored" "$RELEASE_STATE_DIR/schedulers-paused"
+                        # Mark the release as mutating before backup/migration starts.
+                        # A migration failure is still a release failure and must enter
+                        # the same lock-scoped recovery path as a container failure.
+                        touch "$RELEASE_STATE_DIR/deployment-started"
                         printf '%s\n' "$current_sha" > runtime/qa/out/jenkins/current-sha.txt
                         printf '%s\n' "$RUN_DB_MIGRATIONS" > runtime/qa/out/jenkins/run-db-migrations.txt
                         echo "Release order guard passed: $current_sha -> $SOURCE_MAIN_SHA; RUN_DB_MIGRATIONS=$RUN_DB_MIGRATIONS"
@@ -751,6 +755,23 @@ EOF
             if [ -f runtime/qa/out/jenkins/cd-env.sh ]; then . runtime/qa/out/jenkins/cd-env.sh; fi
             mkdir -p runtime/qa/out/jenkins "/opt/saas/runtime/qa/out/jenkins-${BUILD_NUMBER:-manual}"
             state_dir="${RELEASE_STATE_DIR:-runtime/qa/out/jenkins/release-state}"
+            production_touched=NO
+            recovery_state=NOT_STARTED
+            scheduler_state=UNKNOWN
+            if [ -f "$state_dir/deployment-started" ]; then
+              production_touched=YES
+              recovery_state=DEPLOYMENT_STARTED
+            fi
+            if [ -f "$state_dir/rollback-completed" ]; then
+              recovery_state=ROLLBACK_COMPLETED
+            elif [ -f "$state_dir/release-completed" ]; then
+              recovery_state=RELEASE_COMPLETED
+            fi
+            if [ -f "$state_dir/schedulers-restored" ]; then
+              scheduler_state=RESTORED
+            elif [ -f "$state_dir/schedulers-paused" ]; then
+              scheduler_state=PAUSED
+            fi
             if [ -f "$state_dir/deployment-started" ] && [ ! -f "$state_dir/rollback-completed" ] && [ ! -f "$state_dir/release-completed" ]; then
               echo "ERROR: lock-scoped rollback did not complete; refusing post-lock mutation of real-pre." >&2
             fi
@@ -767,7 +788,9 @@ EOF
                 echo "- Environment: real-pre"
                 echo "- Release branch head: ${RELEASE_HEAD_SHA:-unknown}"
                 echo "- Source main commit: ${SOURCE_MAIN_SHA:-unknown}"
-                echo "- Production touched: NO"
+                echo "- Production touched: $production_touched"
+                echo "- Recovery state: $recovery_state"
+                echo "- Scheduler state: $scheduler_state"
                 echo "- Evidence: deployment stopped before the final evidence stage; inspect archived Jenkins logs."
                 echo "- Secret leaked: NO"
               } > runtime/qa/out/latest-jenkins-cd.md
