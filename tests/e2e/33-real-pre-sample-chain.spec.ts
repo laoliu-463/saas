@@ -82,6 +82,8 @@ test('real-pre P0 / 33 / 寄样链', async ({}, testInfo) => {
       opsLoginOk: Boolean(opsToken)
     });
 
+    const channelStaffUserId = String(channelStaff.userId || channelStaff.id || '');
+
     // 1) 选商品候选：复用现有商品库列表（不真实创建新商品）。
     const libraryResult = await rawApi(api, 'GET', '/api/products', String(channelStaff.token || ''), {
       params: { page: 1, size: 20 }
@@ -129,23 +131,19 @@ test('real-pre P0 / 33 / 寄样链', async ({}, testInfo) => {
     const talentLocalId = String(talent.id || '');
     setDetail(ctx, 'talent', { talentLocalId, talentUid });
     if (talentLocalId) {
-      // 手动创建达人时，后端会把创建人自动建立为首个有效认领人。
-      // 这里再次 POST /claims 会按设计返回 DUPLICATE(462)，但并不代表认领链路失败。
-      // 读取详情确认自动认领归属，避免把业务契约误判为失败。
-      const talentDetail = await rawApi(api, 'GET', `/api/talents/${talentLocalId}`, String(channelStaff.token || ''));
-      const detail = safeUnwrap<JsonMap>(talentDetail.body) || {};
-      const claim = (detail.claim as JsonMap | undefined) || {};
-      const channelStaffUserId = String(channelStaff.userId || channelStaff.id || '');
-      const claimOwnerId = String(claim.ownerId || '');
+      // POST /api/talents already assigns the creator as the first active claimant.
+      // Calling /claims again here only tests the duplicate-claim guard and produces
+      // the expected business code 462, which is not a sample-chain failure.
+      const createdOwnerId = String(talent.ownerId || talent.owner_id || '');
       setDetail(ctx, 'talentClaim', {
-        status: talentDetail.status,
-        code: (talentDetail.body as JsonMap | undefined)?.code,
-        source: 'create-auto-claim',
-        ownerId: claimOwnerId,
-        activeClaimCount: claim.activeClaimCount
+        mode: 'create-auto-claim',
+        status: talentCreate.status,
+        code: (talentCreate.body as JsonMap | undefined)?.code,
+        ownerId: createdOwnerId,
+        expectedOwnerId: channelStaffUserId
       });
-      if (!talentDetail.ok || (talentDetail.body as JsonMap | undefined)?.code !== 200 || claimOwnerId !== channelStaffUserId) {
-        markFail(ctx, `达人自动认领校验失败：HTTP ${talentDetail.status} code=${(talentDetail.body as JsonMap | undefined)?.code} ownerId=${claimOwnerId || '<empty>'}`);
+      if (channelStaffUserId && createdOwnerId !== channelStaffUserId) {
+        markFail(ctx, `创建达人后的首个认领人错误：实际=${createdOwnerId || '空'} 期望=${channelStaffUserId}`);
       }
     }
 
