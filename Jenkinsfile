@@ -156,16 +156,18 @@ pipeline {
                   ':(exclude).github/workflows/**' \
                   ':(exclude)docs/deploy/**' \
                   ':(exclude)scripts/verify-github-ci-gate.sh' \
-                  ':(exclude)harness/scripts/tests/release-queue-governance.Tests.ps1' \
-                  ':(exclude)tests/e2e/**'
+                          ':(exclude)harness/scripts/tests/release-queue-governance.Tests.ps1' \
+                          ':(exclude)scripts/hash-real-pre-migration-inputs.py' \
+                          ':(exclude)tests/e2e/**'
                 git diff --exit-code "$SOURCE_MAIN_SHA" "$RELEASE_HEAD_SHA" -- . \
                   ':(exclude)release/real-pre.json' \
                   ':(exclude)Jenkinsfile' \
                   ':(exclude).github/workflows/**' \
                   ':(exclude)docs/deploy/**' \
                   ':(exclude)scripts/verify-github-ci-gate.sh' \
-                  ':(exclude)harness/scripts/tests/release-queue-governance.Tests.ps1' \
-                  ':(exclude)tests/e2e/**'
+                          ':(exclude)harness/scripts/tests/release-queue-governance.Tests.ps1' \
+                          ':(exclude)scripts/hash-real-pre-migration-inputs.py' \
+                          ':(exclude)tests/e2e/**'
                 computed_migration_input_sha="$(python3 scripts/hash-real-pre-migration-inputs.py --ref "$SOURCE_MAIN_SHA")"
                 if [ "$computed_migration_input_sha" != "$MIGRATION_INPUT_SHA256" ]; then
                   echo "ERROR: release migration input digest does not match sourceMainSha."
@@ -440,7 +442,7 @@ PY
 
                         RUN_DB_MIGRATIONS=false
                         if ! git diff --quiet "$current_sha" "$SOURCE_MAIN_SHA" -- \
-                          backend/src/main/resources/db/migration \
+                          backend/src/main/resources/db/migrate \
                           ':(glob)backend/src/main/resources/db/*.sql' \
                           scripts/run-real-pre-db-migrations.sh scripts/check-real-pre-schema.sh; then
                           RUN_DB_MIGRATIONS=true

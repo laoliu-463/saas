@@ -10,7 +10,7 @@ from pathlib import PurePosixPath
 
 
 PREFIXES = (
-    "backend/src/main/resources/db/migration/",
+    "backend/src/main/resources/db/migrate/",
     "scripts/run-real-pre-db-migrations.sh",
     "scripts/check-real-pre-schema.sh",
 )

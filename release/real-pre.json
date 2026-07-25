@@ -1,19 +1,19 @@
 {
   "schemaVersion": 1,
-  "sourceMainSha": "1285624e05f7b38a002556674e13f4d0d323d140",
+  "sourceMainSha": "a2ca1745fc4d6defc0d5fe365c79c10a8577bd7e",
   "images": {
     "backend": {
       "repository": "ghcr.io/laoliu-463/saas/backend",
-      "digest": "sha256:39730c8a7d6be36c227757c8871479f610f954a77e7e81572bea90a5b9d2dd89"
+      "digest": "sha256:b4e3b25e0dc56add5537478405c9becdd04e1612f3b41e0d9f56db5f025f554a"
     },
     "frontend": {
       "repository": "ghcr.io/laoliu-463/saas/frontend",
-      "digest": "sha256:1dfb488edeeb2d0a26a6ef4c8fd1c9314a873e4858daca8ec9a5a4542a0f2c1a"
+      "digest": "sha256:5831e71fe0bf5ec038a0dea2567729f002a8de3251b064a1623f091a215bf1b3"
     }
   },
   "database": {
-    "migrationVersion": "20260724.001",
-    "inputSha256": "sha256:41afff928a5d08be86c2650fe8a8d12134c71dea17e7310ff0c939705f909722"
+    "migrationVersion": "20260725.002",
+    "inputSha256": "sha256:1c4642fd32d941320454af50412d62ddd7e2a3f7c9f83b4ebcca8359f7b80522"
   },
   "bootstrap": false,
   "previous": {
