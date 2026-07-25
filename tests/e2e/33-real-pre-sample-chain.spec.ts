@@ -82,6 +82,8 @@ test('real-pre P0 / 33 / 寄样链', async ({}, testInfo) => {
       opsLoginOk: Boolean(opsToken)
     });
 
+    const channelStaffUserId = String(channelStaff.userId || channelStaff.id || '');
+
     // 1) 选商品候选：复用现有商品库列表（不真实创建新商品）。
     const libraryResult = await rawApi(api, 'GET', '/api/products', String(channelStaff.token || ''), {
       params: { page: 1, size: 20 }
