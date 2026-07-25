@@ -422,6 +422,7 @@ jobs:
             ':(exclude)Jenkinsfile' \
             ':(exclude).github/workflows/**' \
             ':(exclude)docs/deploy/**' \
+            ':(exclude)tests/e2e/**' \
             ':(exclude)scripts/verify-github-ci-gate.sh' \
             ':(exclude)harness/scripts/tests/release-queue-governance.Tests.ps1'
           git diff --exit-code "$source_sha" "$GITHUB_SHA" -- . \
@@ -429,6 +430,7 @@ jobs:
             ':(exclude)Jenkinsfile' \
             ':(exclude).github/workflows/**' \
             ':(exclude)docs/deploy/**' \
+            ':(exclude)tests/e2e/**' \
             ':(exclude)scripts/verify-github-ci-gate.sh' \
             ':(exclude)harness/scripts/tests/release-queue-governance.Tests.ps1'
           echo "Release manifest points to main SHA $source_sha with no runtime drift."

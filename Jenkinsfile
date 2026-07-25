@@ -543,8 +543,37 @@ NODE
                         export QA_ADMIN_USER="${QA_ADMIN_USER:-admin}"
                         export QA_ADMIN_PASSWORD="$qa_admin_password"
                         unset qa_admin_password
-                        npm run e2e:real-pre:p0
-                        npm run e2e:real-pre:roles
+                        # real-pre P0 uses exit code 2 for an auditable PENDING result
+                        # (for example, no real upstream orders in the current window).
+                        # That is not a business-flow PASS, but it does not mean that
+                        # the deployed environment is unhealthy and must be rolled back.
+                        p0_exit=0
+                        if npm run e2e:real-pre:p0; then
+                          p0_exit=0
+                        else
+                          p0_exit=$?
+                        fi
+                        if [ "$p0_exit" -ne 0 ] && [ "$p0_exit" -ne 2 ]; then
+                          echo "real-pre P0 failed with exit code $p0_exit; deployment will roll back."
+                          exit "$p0_exit"
+                        fi
+                        if [ "$p0_exit" -eq 2 ]; then
+                          echo "real-pre P0 is PENDING; preserving the deployment and archiving evidence."
+                        fi
+
+                        roles_exit=0
+                        if npm run e2e:real-pre:roles; then
+                          roles_exit=0
+                        else
+                          roles_exit=$?
+                        fi
+                        if [ "$roles_exit" -ne 0 ] && [ "$roles_exit" -ne 2 ]; then
+                          echo "real-pre role E2E failed with exit code $roles_exit; deployment will roll back."
+                          exit "$roles_exit"
+                        fi
+                        if [ "$roles_exit" -eq 2 ]; then
+                          echo "real-pre role E2E is PENDING; preserving the deployment and archiving evidence."
+                        fi
                         '''
                 }
 
