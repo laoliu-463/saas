@@ -3,6 +3,7 @@ package com.colonel.saas.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
+import com.colonel.saas.domain.order.policy.OrderDefaultAttributionResult;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -89,6 +90,10 @@ class OrderAttributionReplayServiceTest {
         ArgumentCaptor<ColonelsettlementOrder> orderCaptor = ArgumentCaptor.forClass(ColonelsettlementOrder.class);
         verify(persistenceService).persistOrder(orderCaptor.capture());
         assertThat(orderCaptor.getValue().getAttributionStatus()).isEqualTo(AttributionService.STATUS_ATTRIBUTED);
+        assertThat(orderCaptor.getValue().getChannelAttributionStatus())
+                .isEqualTo(OrderDefaultAttributionResult.CHANNEL_ATTRIBUTED);
+        assertThat(orderCaptor.getValue().getRecruiterAttributionStatus())
+                .isEqualTo(OrderDefaultAttributionResult.RECRUITER_ATTRIBUTED);
         assertThat(orderCaptor.getValue().getActivityId()).isEqualTo("3543332");
         assertThat(orderCaptor.getValue().getChannelUserName()).isEqualTo("渠道A");
         assertThat(orderCaptor.getValue().getColonelUserName()).isEqualTo("团长A");

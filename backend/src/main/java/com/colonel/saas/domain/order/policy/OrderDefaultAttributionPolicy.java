@@ -140,6 +140,12 @@ public final class OrderDefaultAttributionPolicy {
         order.setActivityId(firstNonBlank(result.activityId(), fallbackActivityId));
         order.setAttributionStatus(result.attributionStatus());
         order.setAttributionRemark(result.attributionRemark());
+        order.setChannelAttributionStatus(result.channelUserId() == null
+                ? OrderDefaultAttributionResult.CHANNEL_UNATTRIBUTED
+                : OrderDefaultAttributionResult.CHANNEL_ATTRIBUTED);
+        order.setRecruiterAttributionStatus(result.colonelUserId() == null
+                ? OrderDefaultAttributionResult.RECRUITER_UNATTRIBUTED
+                : OrderDefaultAttributionResult.RECRUITER_ATTRIBUTED);
         order.setProductTitle(order.getProductName());
         order.setTalentName(talentName);
     }
