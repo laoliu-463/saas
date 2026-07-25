@@ -590,8 +590,12 @@ NODE
                         APP_SCHEDULING_ENABLED=true IMAGE_TAG="$IMAGE_TAG" BACKEND_IMAGE="$BACKEND_IMAGE" FRONTEND_IMAGE="$FRONTEND_IMAGE" \
                           BACKEND_IMAGE_DIGEST="$BACKEND_IMAGE_DIGEST" COMPOSE_PROJECT_NAME="$PROJECT_NAME" \
                           docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d --no-build --no-deps backend-real-pre
-                        for _ in $(seq 1 120); do
-                          if curl -fsS "$REAL_PRE_BACKEND/api/actuator/health/readiness" | grep -q '"status":"UP"'; then
+                        # Enabling schedulers recreates the backend and can take several
+                        # minutes while Spring restores scheduled jobs. Keep the release
+                        # lock and wait long enough to avoid a false rollback window.
+                        for _ in $(seq 1 300); do
+                          readiness="$(curl -fsS "$REAL_PRE_BACKEND/api/actuator/health/readiness" 2>/dev/null || true)"
+                          if printf '%s' "$readiness" | grep -q '"status":"UP"'; then
                             touch "$RELEASE_STATE_DIR/schedulers-restored"
                             rm -f "$RELEASE_STATE_DIR/schedulers-paused" runtime/qa/out/jenkins/schedulers-paused
                             exit 0
@@ -617,6 +621,14 @@ NODE
                         report="runtime/qa/out/latest-jenkins-cd.md"
                         remote_report="/opt/saas/runtime/qa/out/jenkins-${BUILD_NUMBER:-manual}/latest-evidence-jenkins-cd.md"
                         evidence_result="PASS"
+                        evidence_failures=""
+                        mark_evidence_failure() {
+                          evidence_result="FAIL"
+                          if [ -n "$evidence_failures" ]; then
+                            evidence_failures="$evidence_failures, "
+                          fi
+                          evidence_failures="${evidence_failures}$1"
+                        }
                         backend_container="$(docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" ps -q backend-real-pre)"
                         frontend_container="$(docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" ps -q frontend-real-pre)"
                         backend_running_image="$(docker inspect "$backend_container" --format '{{.Config.Image}}')"
@@ -631,18 +643,18 @@ NODE
                         frontend_health="$(curl -fsS "$REAL_PRE_FRONTEND/healthz" || true)"
                         frontend_version="$(curl -fsS "$REAL_PRE_FRONTEND/version.json" || true)"
                         migration_versions="$(docker compose --env-file "$ENV_FILE" --project-name "$PROJECT_NAME" -f "$COMPOSE_FILE" exec -T postgres-real-pre sh -lc 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -At -v ON_ERROR_STOP=1 -c "SELECT version FROM flyway_schema_history WHERE success ORDER BY installed_rank;"' || true)"
-                        printf '%s\n' "$backend_health" | grep -q '"status":"UP"' || evidence_result="FAIL"
-                        printf '%s\n' "$backend_health" | grep -Eq "\"gitSha\"[[:space:]]*:[[:space:]]*\"$FULL_COMMIT\"" || evidence_result="FAIL"
-                        printf '%s\n' "$backend_health" | grep -Eq "\"imageDigest\"[[:space:]]*:[[:space:]]*\"$BACKEND_IMAGE_DIGEST\"" || evidence_result="FAIL"
-                        printf '%s\n' "$frontend_version" | grep -Eq "\"gitSha\"[[:space:]]*:[[:space:]]*\"$FULL_COMMIT\"" || evidence_result="FAIL"
-                        test "$backend_running_image" = "$BACKEND_IMAGE" || evidence_result="FAIL"
-                        test "$frontend_running_image" = "$FRONTEND_IMAGE" || evidence_result="FAIL"
-                        printf '%s\n' "$backend_repo_digests" | grep -Fx "$BACKEND_IMAGE" >/dev/null || evidence_result="FAIL"
-                        printf '%s\n' "$frontend_repo_digests" | grep -Fx "$FRONTEND_IMAGE" >/dev/null || evidence_result="FAIL"
-                        test "$backend_revision" = "$FULL_COMMIT" || evidence_result="FAIL"
-                        test "$frontend_revision" = "$FULL_COMMIT" || evidence_result="FAIL"
+                        printf '%s\n' "$backend_health" | grep -q '"status":"UP"' || mark_evidence_failure "backend health is not UP"
+                        printf '%s\n' "$backend_health" | grep -Eq "\"gitSha\"[[:space:]]*:[[:space:]]*\"$FULL_COMMIT\"" || mark_evidence_failure "backend gitSha mismatch"
+                        printf '%s\n' "$backend_health" | grep -Eq "\"imageDigest\"[[:space:]]*:[[:space:]]*\"$BACKEND_IMAGE_DIGEST\"" || mark_evidence_failure "backend health image digest mismatch"
+                        printf '%s\n' "$frontend_version" | grep -Eq "\"gitSha\"[[:space:]]*:[[:space:]]*\"$FULL_COMMIT\"" || mark_evidence_failure "frontend gitSha mismatch"
+                        test "$backend_running_image" = "$BACKEND_IMAGE" || mark_evidence_failure "backend configured image mismatch"
+                        test "$frontend_running_image" = "$FRONTEND_IMAGE" || mark_evidence_failure "frontend configured image mismatch"
+                        printf '%s\n' "$backend_repo_digests" | grep -Fx "$BACKEND_IMAGE" >/dev/null || mark_evidence_failure "backend repo digest mismatch"
+                        printf '%s\n' "$frontend_repo_digests" | grep -Fx "$FRONTEND_IMAGE" >/dev/null || mark_evidence_failure "frontend repo digest mismatch"
+                        test "$backend_revision" = "$FULL_COMMIT" || mark_evidence_failure "backend OCI revision mismatch"
+                        test "$frontend_revision" = "$FULL_COMMIT" || mark_evidence_failure "frontend OCI revision mismatch"
                         if [ "$RUN_DB_MIGRATIONS" = "true" ]; then
-                          printf '%s\n' "$migration_versions" | grep -F "$MIGRATION_VERSION" >/dev/null || evidence_result="FAIL"
+                          printf '%s\n' "$migration_versions" | grep -F "$MIGRATION_VERSION" >/dev/null || mark_evidence_failure "required migration version missing"
                         fi
 
                         release_root="/opt/saas/releases"
@@ -687,7 +699,7 @@ EOF
                         if [ "$evidence_result" = "PASS" ]; then
                           mkdir -p "$release_dir"
                           if [ -f "$release_manifest" ]; then
-                            cmp -s "$release_candidate" "$release_manifest" || { echo "ERROR: immutable release manifest differs."; evidence_result="FAIL"; }
+                            cmp -s "$release_candidate" "$release_manifest" || { echo "ERROR: immutable release manifest differs."; mark_evidence_failure "immutable release manifest differs"; }
                           else
                             install -m 0444 "$release_candidate" "$release_manifest"
                           fi
@@ -719,6 +731,7 @@ EOF
                           echo "- Previous backend image: ${ROLLBACK_BACKEND_IMAGE:-unknown}"
                           echo "- Previous frontend image: ${ROLLBACK_FRONTEND_IMAGE:-unknown}"
                           echo "- Secret leaked: NO"
+                          echo "- Evidence mismatches: ${evidence_failures:-none}"
                           echo
                           echo "## Health"
                           echo '```'
