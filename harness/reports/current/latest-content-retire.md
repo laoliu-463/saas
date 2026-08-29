@@ -2,10 +2,10 @@
 
 ## Metadata
 
-- Time: 2026-07-18 20:11:22 +08:00
+- Time: 2026-08-29 12:42:15 +08:00
 - Action: Plan
 - DryRun: False
-- Reason: verify: validate douyin token credentials and refresh flow
+- Reason: docs: add 13-业务流程总图 (3-chain + event bus + permission map)
 - Manifest: (none)
 - ArchiveRoot: harness/archive/retired-content
 - AllowSourceCode: False
