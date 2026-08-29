@@ -6,9 +6,7 @@ ALTER TABLE pick_source_mapping
 
 ALTER TABLE colonelsettlement_order
     ADD COLUMN IF NOT EXISTS channel_attribution_source VARCHAR(64),
-    ADD COLUMN IF NOT EXISTS recruiter_attribution_source VARCHAR(64),
-    ADD COLUMN IF NOT EXISTS channel_attribution_status VARCHAR(32),
-    ADD COLUMN IF NOT EXISTS recruiter_attribution_status VARCHAR(32);
+    ADD COLUMN IF NOT EXISTS recruiter_attribution_source VARCHAR(64);
 
 DO $$
 BEGIN

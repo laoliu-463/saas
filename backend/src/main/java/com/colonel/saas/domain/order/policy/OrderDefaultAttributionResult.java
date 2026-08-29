@@ -1,28 +1,51 @@
 package com.colonel.saas.domain.order.policy;
 
+import com.colonel.saas.domain.shared.attribution.AttributionSource;
+import com.colonel.saas.service.AttributionService;
+
 import java.util.UUID;
 
-/**
- * 订单默认归因结果（DDD-ORDER-004）。
- *
- * <p>表达订单事实层的默认归属：渠道维度（pick_source → mapping → channel）和
- * 招商维度（商品负责人 / 活动默认负责人）独立计算，分别落渠道归属状态
- * 和招商归属状态。
- *
- * <p>不包含独家/最终归属/提成——这些由业绩域在收到事件后计算。</p>
- */
+/** 订单默认归因结果；渠道和招商是两个互不覆盖的事实维度。 */
 public record OrderDefaultAttributionResult(
         UUID defaultChannelUserId,
         UUID channelDeptId,
         UUID defaultRecruiterId,
-        UUID recruiterDeptId,
-        UUID talentId,
-        String talentUid,
-        String activityId,
+        String channelAttributionSource,
+        String recruiterAttributionSource,
         String channelAttributionStatus,
         String recruiterAttributionStatus,
         String attributionStatus,
-        String attributionRemark) {
+        String attributionRemark,
+        OrderLinkAttributionResolution linkResolution,
+        UUID talentId,
+        String talentUid,
+        String activityId) {
+
+    public static OrderDefaultAttributionResult attributed(
+            UUID defaultChannelUserId,
+            UUID channelDeptId,
+            UUID defaultRecruiterId,
+            String channelAttributionSource,
+            String recruiterAttributionSource,
+            UUID talentId,
+            String talentUid,
+            String activityId,
+            OrderLinkAttributionResolution linkResolution) {
+        return new OrderDefaultAttributionResult(
+                defaultChannelUserId,
+                channelDeptId,
+                defaultRecruiterId,
+                sourceOrUnattributed(channelAttributionSource),
+                sourceOrUnattributed(recruiterAttributionSource),
+                statusFor(defaultChannelUserId),
+                statusFor(defaultRecruiterId),
+                aggregateStatus(defaultChannelUserId, defaultRecruiterId),
+                linkResolution == null ? AttributionService.REASON_ATTRIBUTED : linkResolution.reason(),
+                linkResolution,
+                talentId,
+                talentUid,
+                activityId);
+    }
 
     public static final String CHANNEL_ATTRIBUTED = "CHANNEL_ATTRIBUTED";
     public static final String CHANNEL_UNATTRIBUTED = "CHANNEL_UNATTRIBUTED";
@@ -35,52 +58,41 @@ public record OrderDefaultAttributionResult(
             UUID talentId,
             String talentUid,
             String activityId,
-            UUID defaultRecruiterId,
-            String remark) {
-        boolean recruiterAttributed = defaultRecruiterId != null;
-        boolean channelAttributed = false;
+            String channelAttributionSource,
+            String recruiterAttributionSource,
+            String remark,
+            OrderLinkAttributionResolution linkResolution) {
         return new OrderDefaultAttributionResult(
                 null,
                 null,
-                defaultRecruiterId,
                 null,
+                sourceOrUnattributed(channelAttributionSource),
+                sourceOrUnattributed(recruiterAttributionSource),
+                AttributionService.STATUS_UNATTRIBUTED,
+                AttributionService.STATUS_UNATTRIBUTED,
+                AttributionService.STATUS_UNATTRIBUTED,
+                remark,
+                linkResolution,
                 talentId,
                 talentUid,
-                activityId,
-                channelAttributed ? CHANNEL_ATTRIBUTED : CHANNEL_UNATTRIBUTED,
-                recruiterAttributed ? RECRUITER_ATTRIBUTED : RECRUITER_UNATTRIBUTED,
-                aggregateStatus(channelAttributed, recruiterAttributed),
-                remark);
+                activityId);
     }
 
-    public static OrderDefaultAttributionResult attributedChannel(
-            UUID defaultChannelUserId,
-            UUID channelDeptId,
-            UUID talentId,
-            String talentUid,
-            String activityId,
-            UUID defaultRecruiterId,
-            String remark) {
-        boolean channelAttributed = defaultChannelUserId != null;
-        boolean recruiterAttributed = defaultRecruiterId != null;
-        return new OrderDefaultAttributionResult(
-                defaultChannelUserId,
-                channelDeptId,
-                defaultRecruiterId,
-                null,
-                talentId,
-                talentUid,
-                activityId,
-                channelAttributed ? CHANNEL_ATTRIBUTED : CHANNEL_UNATTRIBUTED,
-                recruiterAttributed ? RECRUITER_ATTRIBUTED : RECRUITER_UNATTRIBUTED,
-                aggregateStatus(channelAttributed, recruiterAttributed),
-                remark);
+    private static String sourceOrUnattributed(String source) {
+        return source == null || source.isBlank() ? AttributionSource.UNATTRIBUTED : source;
     }
 
-    private static String aggregateStatus(boolean channel, boolean recruiter) {
-        if (channel || recruiter) {
-            return STATUS_ATTRIBUTED;
+    private static String statusFor(UUID userId) {
+        return userId == null ? AttributionService.STATUS_UNATTRIBUTED : AttributionService.STATUS_ATTRIBUTED;
+    }
+
+    private static String aggregateStatus(UUID channelUserId, UUID recruiterUserId) {
+        if (channelUserId != null && recruiterUserId != null) {
+            return AttributionService.STATUS_ATTRIBUTED;
         }
-        return STATUS_UNATTRIBUTED;
+        if (channelUserId != null || recruiterUserId != null) {
+            return "PARTIAL";
+        }
+        return AttributionService.STATUS_UNATTRIBUTED;
     }
 }

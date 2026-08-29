@@ -190,7 +190,7 @@ import {
   PRODUCT_LIBRARY_GRID_GAP,
   PRODUCT_LIBRARY_ROW_HEIGHT
 } from './product-library-layout'
-import { canApplyQuickSampleByRole } from './product-permissions'
+import { canGenerateAttributionPromotionLink } from './product-actions'
 
 const PRODUCT_LIBRARY_REQUEST_BATCH_SIZE = 100
 const PRODUCT_LIBRARY_BACKEND_MAX_LIMIT = 500
@@ -238,14 +238,20 @@ let loadMoreObserverRoot: Element | null = null
 let productGridViewportRaf: number | null = null
 let productScrollTarget: Window | HTMLElement | null = null
 
+const canCopyPromotionLink = computed(() =>
+  canGenerateAttributionPromotionLink({ roles: authStore.roleCodes })
+)
+
 const convertLinkForBriefCopy = (
   activityId: string | number,
   productId: string | number,
   data: { scene: 'PRODUCT_LIBRARY' | 'PRODUCT_DETAIL' | 'TALENT_SHARE' | 'SAMPLE_DESK' }
 ) => convertActivityProductLink(activityId, productId, data, { suppressErrorNotice: true })
 
-/** 招商、渠道与管理员可发起快速寄样（后端 quick-sample 同限） */
-const canQuickSample = computed(() => canApplyQuickSampleByRole(authStore.roleCodes, authStore.isAdmin))
+/** 快速寄样仍只沿用渠道与管理员权限，不能随推广链接权限扩大。 */
+const canQuickSample = computed(() =>
+  hasAccess(authStore.roleCodes, [ROLE_CODES.CHANNEL_LEADER, ROLE_CODES.CHANNEL_STAFF]) || authStore.isAdmin
+)
 
 const normalizeText = (value?: string | number | null) => {
   if (value === null || value === undefined) return ''
@@ -703,6 +709,10 @@ const handleDetailAction = (_payload: { action: string; row: any }) => {
 }
 
 const copyPromotionLink = async (item: any) => {
+  if (!canCopyPromotionLink.value) {
+    message.warning('仅渠道或招商角色可生成可归因推广链接')
+    return
+  }
   const productId = String(item?.productId || '')
   const activityId = String(item?.sourceActivityId || item?.activityId || '')
   if (!productId || !activityId) {
@@ -756,18 +766,14 @@ const copyPromotionLink = async (item: any) => {
         message.warning('简介已生成，但浏览器未允许写入剪贴板，请手动复制')
       }
     } else {
-      if (result.imageCopyAttempted && !result.imageCopied) {
-        message.warning('商品链接文案已复制，但商品图片受浏览器或图片源跨域限制未能复制')
-      } else if (result.imageCopyAttempted && result.imageCopied) {
-        message.success('商品图片和推广链接已按模板复制')
-      } else {
-        const notice = resolveProductBriefCopyMessage({
-          clipboardWriteFailed: !result.copied,
-          linkGenerationFailed: result.linkGenerationFailed,
-          promotionLinkGenerated: result.promotionLinkGenerated
-        })
-        message[notice.type](notice.content)
-      }
+      const notice = resolveProductBriefCopyMessage({
+        clipboardWriteFailed: !result.copied,
+        linkGenerationFailed: result.linkGenerationFailed,
+        promotionLinkGenerated: result.promotionLinkGenerated,
+        imageCopyAttempted: result.imageCopyAttempted,
+        imageCopied: result.imageCopied
+      })
+      message[notice.type](notice.content)
     }
   } catch (error: any) {
     notifyApiFailure(error, message, { fallbackMessage: '讲解复制失败，请稍后重试' })

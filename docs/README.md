@@ -76,11 +76,23 @@
 - [V1 必做] [../harness/README.md](../harness/README.md)：AI Agent 固定执行入口、policy、runbooks、checks、scripts 和 runtime evidence。
 - [V2 必做] [决策/ADR-013-Harness分层文件门禁.md](决策/ADR-013-Harness分层文件门禁.md)：Harness 文件预算、基线感知门禁和报告生命周期的已批准设计。
 - [V2 必做] [决策/ADR-014-Harness跨平台核心目录与渐进迁移.md](决策/ADR-014-Harness跨平台核心目录与渐进迁移.md)：扩展 Harness 目录边界并批准 Node 核心的绞杀式迁移。
+<<<<<<< HEAD
 - [V1 必做] [历史状态快照](harness-maintenance/legacy-rules/state/snapshots/01-当前项目状态.md)：仅供维护者追溯。
 - [V1 必做] [../harness/policy/](../harness/policy/)：当前安全、验证、real-pre 和证据保留规则。
 - [V1 必做] [../harness/runbooks/](../harness/runbooks/)：当前操作手册。
 - [V1 必做] [../harness/checks/](../harness/checks/)：当前验收场景和变更影响映射。
 - [V2 必做] [../docs/harness-maintenance/](harness-maintenance/)：历史规则、任务和工程维护配置，不是普通开发入口。
+=======
+- [V2 必做] [决策/ADR-015-real-pre单通道CD与不可变发布.md](决策/ADR-015-real-pre单通道CD与不可变发布.md)：并行开发、串行合并/发布、完整 SHA/digest 与 Jenkins 唯一发布队列。
+- [V1 必做] [../harness/rules/state/snapshots/01-当前项目状态.md](../harness/rules/state/snapshots/01-当前项目状态.md)：当前技术栈、V2 闭环、real-pre 状态和旧文档冲突处理。
+- [V1 必做] [../harness/rules/governance/task-routing.md](../harness/rules/governance/task-routing.md)：任务分流到领域、验证和执行 Scope。
+- [V1 必做] [../harness/rules/governance/forbidden-scope.md](../harness/rules/governance/forbidden-scope.md)：real-pre、Git 密钥和模块边界禁止项。
+- [V1 必做] [../harness/rules/instructions/](../harness/rules/instructions/)：Instructions 指令系统。
+- [V1 必做] [../harness/rules/skills/](../harness/rules/skills/)：Skills 工具化规则系统。
+- [V1 必做] [../harness/rules/environment/](../harness/rules/environment/)：Environment 环境系统。
+- [V1 必做] [../harness/rules/state/](../harness/rules/state/)：State 状态系统。
+- [V1 必做] [../harness/rules/feedback/](../harness/rules/feedback/)：Feedback 反馈系统。
+>>>>>>> b8cb837b (refactor: establish real-pre single-channel CD)
 - [V1 必做] Harness 不替代本目录事实主源；涉及业务规则仍以 `docs/*.md` 和当前代码证据为准。
 
 ## 不变量

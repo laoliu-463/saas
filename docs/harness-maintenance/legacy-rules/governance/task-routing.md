@@ -4,7 +4,11 @@
 
 任务开始后先判断所属类型和领域，再读取对应文档。不能只凭文件名或报错内容直接下结论。
 
+<<<<<<< HEAD:docs/harness-maintenance/legacy-rules/governance/task-routing.md
 默认执行环境为本地 `real-pre`。除非用户明确要求 `test`，或专项测试只能在 `test` 中验证，否则后端、前端、全链路和 Harness 变更都应使用 `-Env real-pre`。远端发布必须经 `main -> release/real-pre -> Jenkins` 唯一队列，普通 Agent 不得直接部署。
+=======
+默认执行环境为本地 `real-pre`。除非用户明确要求 `test`，或专项测试只能在 `test` 中验证，否则后端、前端、全链路和 Harness 变更都应使用 `-Env real-pre`。远端 `real-pre` 只能由 `release/real-pre` 经 Jenkins 唯一发布队列部署，普通任务不得添加 `-DeployRemote true`。
+>>>>>>> b8cb837b (refactor: establish real-pre single-channel CD):harness/rules/governance/task-routing.md
 
 所有 `agent-do.ps1` 调用必须提供稳定 `-ReportKey <key>` 和显式 `-OwnedFiles '<path1>;<path2>'`。Evidence 覆盖 `reports/current/latest-<key>.md`；retro 默认内联。
 
@@ -16,6 +20,7 @@
 | 前端功能修改 / 修复 | `CLAUDE.md`、`docs/README.md`、对应流程、`docs/05-API契约总表.md`、`docs/harness-maintenance/legacy-rules/runbooks/frontend-change.md` | `docs/harness-maintenance/legacy-rules/skills/workflow/frontend-ux.skill.md`、页面相关 API 文档 | `frontend` | `agent-do.ps1 -Env real-pre -Scope frontend` | 前端构建、前端健康、页面/E2E、截图或日志证据 |
 | 数据库结构变更 | `docs/06-数据模型总表.md`、相关领域合同、`docs/harness-maintenance/legacy-rules/runbooks/database-change.md`、`docs/harness-maintenance/legacy-rules/governance/forbidden-scope.md` | `docs/10-部署运行总览.md` | `backend` 或 `full` | `agent-do.ps1 -Env real-pre -Scope backend`；必要时只读 SQL 取证 | migration 幂等性、历史数据/回滚风险、构建、健康、DB 事实 |
 | 接口联调 | `docs/05-API契约总表.md`、对应领域合同、对应流程、`docs/09-测试验收总览.md` | 前端 API 文件、后端 Controller/Service | `full` | `agent-do.ps1 -Env real-pre -Scope full` | 请求/响应、错误码、权限、日志、页面或 API 验证 |
+<<<<<<< HEAD:docs/harness-maintenance/legacy-rules/governance/task-routing.md
 | 第三方 API 联调 | `docs/08-第三方对接总览.md`、`docs/对接/*.md`、`docs/验收/real-pre联调手册.md`、`docs/harness-maintenance/legacy-rules/runbooks/third-party-integration.md` | `docs/harness-maintenance/legacy-rules/skills/ddd/real-pre-debug.skill.md` | `full` | `npm run e2e:real-pre:p0:preflight` | 真实 Token/开关/上游响应；缺权限或样本只能记 `BLOCKED`/`PENDING` |
 | Docker / 容器 / 服务重启 | `docs/10-部署运行总览.md`、`docs/harness-maintenance/legacy-rules/environment/envs/docker-compose-map.md`、`docs/harness-maintenance/legacy-rules/runbooks/governance/docker-compose-operations.md` | `docs/harness-maintenance/legacy-rules/governance/forbidden-scope.md` | 按任务 | `restart-compose.ps1`、`verify-local.ps1` | 不执行 `down -v`；记录 compose ps、健康检查 |
 | 本地部署 / real-pre 变更 | `docs/10-部署运行总览.md`、`docs/harness-maintenance/legacy-rules/environment/envs/real-pre-env.md`、`docs/harness-maintenance/legacy-rules/runbooks/real-pre-change.md` | `docs/deploy/README.md` | `full` | `agent-do.ps1 -Env real-pre -Scope full` | 构建、重启、健康、preflight、稳定 evidence |
@@ -24,6 +29,16 @@
 | 业务规则修改 | `docs/01-V2交付范围与边界.md`、对应领域合同、对应流程、`docs/决策/ADR-002-V1范围优先级.md`、`docs/决策/ADR-010-仓库阶段口径拍板为V2.md` | `docs/harness-maintenance/legacy-rules/governance/domains-map.md` | `full` | 按领域选择 `agent-do.ps1` Scope | 明确业务来源、状态机合法性、历史数据影响、回归测试 |
 | Bug 排查 | `docs/harness-maintenance/legacy-rules/state/snapshots/01-当前项目状态.md`、`docs/harness-maintenance/legacy-rules/state/snapshots/KNOWN_ISSUES.md`、对应领域/流程/API/数据文档 | 相关 skill、日志、最近 diff | 先不定 | 先收集日志/API/DB 证据，再选 Scope | 复现路径、证据链、阶段性结论、修复后验证 |
 | 文档 / Harness 调整 | `AGENTS.md`、`CLAUDE.md`、`docs/README.md`、`harness/README.md`、`docs/harness-maintenance/legacy-rules/governance/task-routing.md` | `docs/harness-maintenance/legacy-rules/feedback/retire.md` | `docs` | `agent-do.ps1 -Env real-pre -Scope docs` | safety-check、结构检查、旧内容维护计划、稳定 evidence |
+=======
+| 第三方 API 联调 | `docs/08-第三方对接总览.md`、`docs/对接/*.md`、`docs/验收/real-pre联调手册.md`、`harness/rules/runbooks/third-party-integration.md` | `harness/rules/skills/ddd/real-pre-debug.skill.md` | `full` | `npm run e2e:real-pre:p0:preflight` | 真实 Token/开关/上游响应；缺权限或样本只能记 `BLOCKED`/`PENDING` |
+| Docker / 容器 / 服务重启 | `docs/10-部署运行总览.md`、`harness/rules/environment/envs/docker-compose-map.md`、`harness/rules/runbooks/governance/docker-compose-operations.md` | `harness/rules/governance/forbidden-scope.md` | 按任务 | `restart-compose.ps1`、`verify-local.ps1` | 不执行 `down -v`；记录 compose ps、健康检查 |
+| 本地部署 / real-pre 变更 | `docs/10-部署运行总览.md`、`harness/rules/environment/envs/real-pre-env.md`、`harness/rules/runbooks/real-pre-change.md` | `docs/deploy/README.md` | `full` | `agent-do.ps1 -Env real-pre -Scope full` | 构建、重启、健康、preflight、稳定 evidence |
+| 远端发布候选 | `harness/rules/environment/envs/remote-real-pre-env.md`、`harness/rules/runbooks/remote-deploy.md`、`docs/deploy/README.md` | `docs/10-部署运行总览.md` | `full` | 本地验证、推送、PR/候选 SHA；等待 Merge Queue/Jenkins | CI 结果、完整 SHA/digest、Jenkins 队列与发布报告 |
+| 测试与验收 | `docs/09-测试验收总览.md`、`docs/验收/*.md`、`harness/rules/runbooks/governance/test-validation.md` | 对应 eval | 按任务 | `npm run e2e:v1-p0`、`npm run e2e:real-pre:p0:preflight`、`mvn -f backend/pom.xml test` | 测试报告、失败截图/日志、结论不能夸大 |
+| 业务规则修改 | `docs/01-V2交付范围与边界.md`、对应领域合同、对应流程、`docs/决策/ADR-002-V1范围优先级.md`、`docs/决策/ADR-010-仓库阶段口径拍板为V2.md` | `harness/rules/governance/domains-map.md` | `full` | 按领域选择 `agent-do.ps1` Scope | 明确业务来源、状态机合法性、历史数据影响、回归测试 |
+| Bug 排查 | `harness/rules/state/snapshots/01-当前项目状态.md`、`harness/rules/state/snapshots/KNOWN_ISSUES.md`、对应领域/流程/API/数据文档 | 相关 skill、日志、最近 diff | 先不定 | 先收集日志/API/DB 证据，再选 Scope | 复现路径、证据链、阶段性结论、修复后验证 |
+| 文档 / Harness 调整 | `AGENTS.md`、`CLAUDE.md`、`docs/README.md`、`harness/README.md`、`harness/rules/governance/task-routing.md` | `harness/rules/feedback/retire.md` | `docs` | `agent-do.ps1 -Env real-pre -Scope docs` | safety-check、结构检查、旧内容维护计划、稳定 evidence |
+>>>>>>> b8cb837b (refactor: establish real-pre single-channel CD):harness/rules/governance/task-routing.md
 | 性能问题 | 现象对应领域、`docs/09-测试验收总览.md`、相关日志/SQL/API 证据 | `docs/10-部署运行总览.md`、历史性能报告 | 先不定 | 先复现与采样，再选 Scope | 响应时间、SQL/日志、前端性能证据、回归风险 |
 | 权限 / 数据范围 | `docs/07-权限与数据范围.md`、用户域、对应业务域 | `harness/evals/rbac-scope.evals.md` | `full` | `npm run e2e:real-pre:roles` 或专项 API/SQL | admin/group/self 多账号对比、越权负例 |
 | 数据问题 / 数据漂移 | `docs/06-数据模型总表.md`、对应领域合同、`docs/harness-maintenance/legacy-rules/state/snapshots/KNOWN_ISSUES.md` | 对应 repair/backfill runbook | 先不定 | 先只读 SQL/API 取证；禁止裸 SQL 批量直改 | 数据前置、影响范围、repair dry-run、回滚计划 |
@@ -172,11 +187,19 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\a
 # real-pre 全链路验证
 powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\agent-do.ps1 -Env real-pre -Scope full -ReportKey task-key -OwnedFiles 'path1;path2' -Message "fix: update real-pre flow"
 
+<<<<<<< HEAD:docs/harness-maintenance/legacy-rules/governance/task-routing.md
 # 远端发布前的本地候选验证；本命令不会部署服务器
 powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\agent-do.ps1 -Env real-pre -Scope full -ReportKey task-key -OwnedFiles 'path1;path2' -Message "release: validate real-pre candidate"
 ```
 
 `-DeployRemote true` 已停用。远端发布只能由 Jenkins 从 `release/real-pre` 执行。
+=======
+# 远端发布候选仍只做本地验证；随后提交 PR，进入 Merge Queue/Jenkins。
+powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\agent-do.ps1 -Env real-pre -Scope full -ReportKey task-key -OwnedFiles 'path1;path2' -Message "release candidate: real-pre"
+```
+
+`-DeployRemote true` 和远端部署子命令已停用，任何普通任务调用都必须失败。
+>>>>>>> b8cb837b (refactor: establish real-pre single-channel CD):harness/rules/governance/task-routing.md
 
 ## 直接子命令
 
@@ -190,6 +213,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\a
 # 旧内容维护候选计划
 powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\retire-content.ps1 -Action Plan -DryRun
 
+<<<<<<< HEAD:docs/harness-maintenance/legacy-rules/governance/task-routing.md
 # 直接 SSH 部署入口已退休；调用会失败并提示进入 Jenkins 发布队列
 powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\deploy-remote.ps1 -DryRun
+=======
+# deploy-remote.ps1 仅保留阻断提示，不是备用发布入口。
+>>>>>>> b8cb837b (refactor: establish real-pre single-channel CD):harness/rules/governance/task-routing.md
 ```

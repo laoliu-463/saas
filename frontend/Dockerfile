@@ -15,6 +15,7 @@ RUN pnpm install --frozen-lockfile
 
 COPY . .
 ARG VITE_ENV_LABEL=REAL-PRE
+<<<<<<< HEAD
 ARG GIT_COMMIT=unknown
 ENV VITE_ENV_LABEL=${VITE_ENV_LABEL}
 RUN pnpm build \
@@ -24,6 +25,17 @@ RUN pnpm build \
 FROM nginx:1.27-alpine
 ARG GIT_COMMIT=unknown
 LABEL org.opencontainers.image.revision=${GIT_COMMIT}
+=======
+ARG GIT_SHA=UNAVAILABLE
+ENV VITE_ENV_LABEL=${VITE_ENV_LABEL}
+RUN pnpm build \
+    && printf '{"gitSha":"%s"}\n' "$GIT_SHA" > /app/dist/version.json
+
+# Stage 2: Serve
+FROM nginx:1.27-alpine
+ARG GIT_SHA=UNAVAILABLE
+LABEL org.opencontainers.image.revision="${GIT_SHA}"
+>>>>>>> b8cb837b (refactor: establish real-pre single-channel CD)
 
 # Remove default nginx site
 RUN rm -rf /usr/share/nginx/html/*

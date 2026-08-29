@@ -2,18 +2,19 @@ package com.colonel.saas.common.exception;
 
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.baomidou.mybatisplus.core.exceptions.MybatisPlusException;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.common.result.ResultCode;
 import com.colonel.saas.douyin.DouyinApiException;
+import com.colonel.saas.domain.user.api.AuthorizationUnavailableException;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DuplicateKeyException;
-import org.springframework.dao.DataAccessResourceFailureException;
-import org.slf4j.MDC;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -107,6 +108,46 @@ class GlobalExceptionHandlerTest {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
         assertThat(result.getCode()).isEqualTo(403);
         assertThat(result.getMsg()).isEqualTo("无权限访问该资源");
+    }
+
+    @Test
+    void handleAuthorizationUnavailable_returnsSafe503AndLogsOnlyCauseClass() {
+        IllegalStateException cause = new IllegalStateException(
+                "token=forbidden password=forbidden redis=forbidden");
+        AuthorizationUnavailableException ex = new AuthorizationUnavailableException(cause);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        handlerLogger.setLevel(Level.WARN);
+        handlerLogger.addAppender(appender);
+        try {
+            ResponseEntity<ApiResult<Void>> response = handler.handleAuthorizationUnavailable(ex);
+            ApiResult<Void> result = response.getBody();
+
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+            assertThat(result.getCode()).isEqualTo(503);
+            assertThat(result.getMsg()).isEqualTo("授权事实暂时不可用");
+            assertThat(result.getErrorCode()).isEqualTo("AUTHORIZATION_UNAVAILABLE");
+            assertThat(result.getData()).isNull();
+            assertThat(result.getMsg()).doesNotContain(cause.getMessage());
+            assertThat(appender.list).singleElement().satisfies(event -> {
+                assertThat(event.getFormattedMessage())
+                        .isEqualTo("授权事实暂时不可用: cause=IllegalStateException")
+                        .doesNotContain(cause.getMessage());
+                assertThat(event.getThrowableProxy()).isNull();
+            });
+        } finally {
+            handlerLogger.detachAppender(appender);
+            appender.stop();
+        }
+    }
+
+    @Test
+    void serviceUnavailableResultCode_is503AndDoesNotConflict() {
+        assertThat(ResultCode.SERVICE_UNAVAILABLE.getCode()).isEqualTo(503);
+        assertThat(ResultCode.SERVICE_UNAVAILABLE.getMsg()).isEqualTo("服务暂时不可用");
+        assertThat(ResultCode.values())
+                .extracting(ResultCode::getCode)
+                .doesNotHaveDuplicates();
     }
 
     @Test
@@ -227,18 +268,4 @@ class GlobalExceptionHandlerTest {
         assertThat(result.getCode()).isEqualTo(500);
         assertThat(result.getMsg()).isEqualTo("服务器异常");
     }
-
-    @Test
-    void handleDatabase_shouldReturnStableErrorCodeAndRequestId() {
-        MDC.put("requestId", "req-db-contract-001");
-
-        ApiResult<Void> result = handler.handleDatabase(
-                new DataAccessResourceFailureException("query failed", new RuntimeException("missing column")));
-
-        assertThat(result.getCode()).isEqualTo(500);
-        assertThat(result.getErrorCode()).isEqualTo("DATABASE_ERROR");
-        assertThat(result.getRequestId()).isEqualTo("req-db-contract-001");
-        assertThat(result.getMsg()).doesNotContain("missing column");
-    }
-
 }

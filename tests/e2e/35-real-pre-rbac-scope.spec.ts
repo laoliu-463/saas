@@ -12,6 +12,8 @@
  */
 import { test, expect, request as playwrightRequest, type APIRequestContext, type Browser } from '@playwright/test';
 import { accounts } from './helpers/test-data';
+import { installAuth } from './helpers/auth';
+import { gotoApp } from './helpers/page-ready';
 import { apiLogin } from './helpers/real-pre-api';
 import {
   createRealPreP0Step,
@@ -35,9 +37,8 @@ interface RoleCase {
   allowedPages: string[];
   forbiddenPages: string[];
   forbiddenApis: Array<{ method: 'GET' | 'POST' | 'PUT'; path: string; data?: JsonMap }>;
+  allowedApis?: Array<{ method: 'GET'; path: string }>;
 }
-
-const PASSWORD = process.env.E2E_DEFAULT_PASSWORD || 'admin123';
 
 const ROLE_CASES: RoleCase[] = [
   {
@@ -63,8 +64,8 @@ const ROLE_CASES: RoleCase[] = [
   },
   {
     label: 'biz_staff',
-    username: 'biz_staff',
-    password: PASSWORD,
+    username: accounts.bizStaff.username,
+    password: accounts.bizStaff.password,
     allowedPages: ['/product', '/sample', '/orders'],
     forbiddenPages: ['/system/users'],
     forbiddenApis: [
@@ -74,12 +75,14 @@ const ROLE_CASES: RoleCase[] = [
   },
   {
     label: 'channel_leader',
-    username: 'channel_leader',
-    password: PASSWORD,
+    username: accounts.channelLeader.username,
+    password: accounts.channelLeader.password,
     allowedPages: ['/product', '/talent', '/sample', '/orders', '/data'],
     forbiddenPages: ['/system/users', '/system/douyin'],
     forbiddenApis: [
       { method: 'GET', path: '/api/users?page=1&size=5' },
+    ],
+    allowedApis: [
       { method: 'GET', path: '/api/samples/exports?page=1&size=1' }
     ]
   },
@@ -91,6 +94,8 @@ const ROLE_CASES: RoleCase[] = [
     forbiddenPages: ['/system/users', '/system/douyin'],
     forbiddenApis: [
       { method: 'GET', path: '/api/users?page=1&size=5' },
+    ],
+    allowedApis: [
       { method: 'GET', path: '/api/samples/exports?page=1&size=1' }
     ]
   },
@@ -158,6 +163,18 @@ test('real-pre P0 / 35 / RBAC', async ({ browser }, testInfo) => {
         }
         roleResult.api403Checks = apiChecks;
 
+        const allowedApiChecks: JsonMap[] = [];
+        for (const probe of roleCase.allowedApis || []) {
+          const result = await rawApi(api, probe.method, probe.path, String(auth.token || ''));
+          const code = Number((result.body as JsonMap | undefined)?.code);
+          const allowed = ![401, 403].includes(result.status) && ![401, 403].includes(code);
+          allowedApiChecks.push({ method: probe.method, path: probe.path, status: result.status, code, allowed });
+          if (!allowed) {
+            markFail(ctx, `${roleCase.label} ${probe.method} ${probe.path} 应允许访问但被拒绝 (HTTP ${result.status}, code=${code})`);
+          }
+        }
+        roleResult.allowedApiChecks = allowedApiChecks;
+
         roleResult.dataScopeChecks = await sampleDataScope(api, auth, roleCase.label);
       } catch (error) {
         markFail(ctx, `${roleCase.label} RBAC 检查异常：${error instanceof Error ? error.message : String(error)}`);
@@ -205,15 +222,10 @@ async function checkPage(
   shouldAllow: boolean
 ): Promise<JsonMap> {
   const context = await browser.newContext({ baseURL: frontend, viewport: { width: 1440, height: 900 } });
-  await context.addInitScript((payload: Record<string, unknown>) => {
-    localStorage.setItem('token', String(payload.token ?? ''));
-    if (payload.refreshToken) localStorage.setItem('refreshToken', String(payload.refreshToken));
-    localStorage.setItem('userInfo', JSON.stringify(payload));
-  }, auth);
+  await installAuth(context, auth);
   const page = await context.newPage();
   try {
-    await page.goto(route, { waitUntil: 'domcontentloaded', timeout: 120_000 });
-    await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => undefined);
+    await gotoApp(page, route, { timeout: 120_000 });
     const bodyText = await page.locator('body').innerText({ timeout: 10_000 }).catch(() => '');
     return {
       route,

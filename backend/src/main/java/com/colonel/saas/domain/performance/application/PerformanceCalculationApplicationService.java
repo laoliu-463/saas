@@ -1,5 +1,6 @@
 package com.colonel.saas.domain.performance.application;
 
+import com.colonel.saas.domain.shared.attribution.AttributionSource;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.PerformanceRecord;
 import com.colonel.saas.mapper.PerformanceRecordMapper;
@@ -8,6 +9,7 @@ import com.colonel.saas.service.CommissionService;
 import com.colonel.saas.service.OrderCommissionPolicy;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
@@ -37,7 +39,7 @@ public class PerformanceCalculationApplicationService {
 
     private final PerformanceRecordMapper performanceRecordMapper;
     private final CommissionService commissionService;
-    private final PerformanceAttributionResolver attributionResolver;
+    private final PerformanceAttributionResolver performanceAttributionResolver;
 
     @Autowired
     public PerformanceCalculationApplicationService(
@@ -55,7 +57,17 @@ public class PerformanceCalculationApplicationService {
     public PerformanceCalculationApplicationService(
             PerformanceRecordMapper performanceRecordMapper,
             CommissionService commissionService) {
-        this(performanceRecordMapper, commissionService, PerformanceCalculationApplicationService::defaultAttribution);
+        this(performanceRecordMapper, commissionService, null);
+    }
+
+    @Autowired
+    public PerformanceCalculationApplicationService(
+            PerformanceRecordMapper performanceRecordMapper,
+            CommissionService commissionService,
+            PerformanceAttributionResolver performanceAttributionResolver) {
+        this.performanceRecordMapper = performanceRecordMapper;
+        this.commissionService = commissionService;
+        this.performanceAttributionResolver = performanceAttributionResolver;
     }
 
     /**
@@ -97,18 +109,37 @@ public class PerformanceCalculationApplicationService {
         record.setOrderRowId(order.getId());
 
         // 第一步（续）：归因信息 — 渠道和招商
+        PerformanceAttributionResolver.ResolvedAttribution resolvedAttribution = performanceAttributionResolver == null
+                ? null
+                : performanceAttributionResolver.resolve(order);
+        if (resolvedAttribution == null) {
+            resolvedAttribution = PerformanceAttributionResolver.defaultOnly(order);
+        }
+        var attribution = resolvedAttribution.result();
         UUID channelUserId = order.getChannelUserId();
-        UUID recruiterUserId = order.getColonelUserId() != null ? order.getColonelUserId() : order.getUserId();
+        UUID recruiterUserId = order.getColonelUserId();
         PerformanceAttributionPolicy.AttributionResult attribution = attributionResolver.resolve(order);
         if (attribution == null) {
             throw new IllegalStateException("Performance attribution resolver returned null");
         }
         record.setDefaultChannelUserId(channelUserId);
         record.setDefaultRecruiterUserId(recruiterUserId);
+        record.setDefaultChannelDeptId(resolvedAttribution.defaultChannelDeptId());
+        record.setDefaultRecruiterDeptId(resolvedAttribution.defaultRecruiterDeptId());
+        record.setDefaultChannelAttribution(firstNonBlank(
+                order.getChannelAttributionSource(),
+                channelUserId == null ? null : AttributionSource.PICK_SOURCE));
+        record.setDefaultRecruiterAttribution(firstNonBlank(
+                order.getRecruiterAttributionSource(),
+                recruiterUserId == null ? null : AttributionSource.ACTIVITY_OWNER));
         record.setFinalChannelUserId(attribution.finalChannelId());
         record.setFinalRecruiterUserId(attribution.finalRecruiterId());
+        record.setFinalChannelDeptId(attribution.finalChannelDeptId());
+        record.setFinalRecruiterDeptId(attribution.finalRecruiterDeptId());
         record.setChannelAttribution(attribution.channelAttributionType());
         record.setRecruiterAttribution(attribution.recruiterAttributionType());
+        record.setAttributionRuleVersion(resolvedAttribution.ruleVersion());
+        record.setAttributionDecisionSnapshot(resolvedAttribution.decisionSnapshot());
 
         // 第一步（续）：关联实体
         record.setTalentId(order.getTalentId());
@@ -135,6 +166,7 @@ public class PerformanceCalculationApplicationService {
         record.setEffectiveTechServiceFee(effectiveTechServiceFee);
         record.setEstimateServiceFeeExpense(estimateServiceFeeExpense);
         record.setEffectiveServiceFeeExpense(effectiveServiceFeeExpense);
+        record.setTalentCommission(talentCommission);
 
         // 第三步：判断是否已取消/失效
         boolean reversed = !OrderCommissionPolicy.countsTowardPerformance(order.getOrderStatus());
@@ -167,7 +199,7 @@ public class PerformanceCalculationApplicationService {
                 0L,
                 order.getActivityId(),
                 order.getProductId(),
-                recruiterUserId,
+                attribution.finalRecruiterId(),
                 order.getSettleTime());
         // 结算轨：使用实际达人佣金，不重复扣 effectiveTechServiceFee。
         CommissionService.CommissionSummary effectiveTrack = commissionService.calculateTrack(
@@ -177,7 +209,7 @@ public class PerformanceCalculationApplicationService {
                 talentCommission,
                 order.getActivityId(),
                 order.getProductId(),
-                recruiterUserId,
+                attribution.finalRecruiterId(),
                 order.getSettleTime());
 
         // 将计算结果映射到记录字段
@@ -197,8 +229,7 @@ public class PerformanceCalculationApplicationService {
     private static PerformanceAttributionPolicy.AttributionResult defaultAttribution(
             ColonelsettlementOrder order) {
         UUID channelUserId = order == null ? null : order.getChannelUserId();
-        UUID recruiterUserId = order == null ? null
-                : order.getColonelUserId() != null ? order.getColonelUserId() : order.getUserId();
+        UUID recruiterUserId = order == null ? null : order.getColonelUserId();
         UUID channelDeptId = order == null ? null : order.getChannelDeptId();
         UUID recruiterDeptId = order == null ? null : order.getDeptId();
         String channelType = channelUserId == null ? "unattributed" : "pick_source";
@@ -238,5 +269,17 @@ public class PerformanceCalculationApplicationService {
      */
     private int nvlInt(Integer value) {
         return value == null ? 0 : value;
+    }
+
+    private String firstNonBlank(String... values) {
+        if (values == null) {
+            return AttributionSource.UNATTRIBUTED;
+        }
+        for (String value : values) {
+            if (StringUtils.hasText(value)) {
+                return value.trim();
+            }
+        }
+        return AttributionSource.UNATTRIBUTED;
     }
 }

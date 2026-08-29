@@ -1,0 +1,83 @@
+Phase 4-1 rerun baseline captured at 2026-06-15 13:54 +08:00 (UTC 05:54).
+Time-stamped pre-flight, pre-dry-run baseline for activityId=3859423 single-activity real backfill.
+Captured right before backfill to detect drift and prove idempotency.
+
+== Environment ==
+- Branch: feature/ddd/DDD-VERIFY-001
+- Commit: 2adb0bb2 (tip before this run)
+- Backend: saas-active-backend-real-pre-1 (host 127.0.0.1:8081)
+- Frontend: saas-active-frontend-real-pre-1 (host 127.0.0.1:3001)
+- Postgres: saas_active-postgres-real-pre-1 / db=saas_real_pre / user=saas
+- backend /api/system/health: UP
+- frontend /login: 200
+- docker ps: backend/frontend/postgres/redis all healthy
+
+== 6.1 activityId=3859423 事实层 ==
+- product_operation_state rows (activity=3859423): 2000
+- product_operation_state distinct products (activity=3859423): 2000
+- product_operation_state status distribution for 3859423:
+  - DISPLAYING: 1480
+  - HIDDEN: 503
+  - PENDING: 17
+- product_snapshot rows (activity=3859423): 2000
+- product_snapshot distinct products (activity=3859423): 2000
+
+== 6.2 product_snapshot 总量 ==
+- snapshot_rows: 7983
+- snapshot_distinct_products: 7024
+- snapshot_distinct_activities: 24
+
+== 6.3 product_operation_state 展示状态分布 ==
+- DISPLAYING: 2977
+- HIDDEN: 4732
+- PENDING: 274
+
+== 6.4 商品库展示总量 ==
+- DB DISPLAYING rows: 2977
+- DB DISPLAYING distinct products: 2977
+- API /api/products?page=1&size=100: total=2977, records=100
+- API still uses DISPLAYING semantics: YES
+
+== 6.5 管理统计接口 /api/products/admin/counts ==
+- snapshotTotal: 7983
+- relationTotal: 7983
+- distinctProductTotal: 7024
+- displayingTotal: 2977
+- pendingTotal: 274
+- hiddenTotal: 4732
+- activityTotal: 24
+
+== 6.6 job log / sync state baseline ==
+- product_sync_job_log count: 3 (most recent first)
+  1) job_id=product-backfill-6af56b55-0dae-446f-90a6-599dea5501c0
+     job_type=sync_activity_product_full_backfill, scope=CUSTOM_ACTIVITY_IDS
+     dry_run=false, status=FAILED
+     activities_scanned=1, success=0, failed=1
+     started_at=2026-06-15 05:24:56.765575 (UTC)
+  2) job_id=product-backfill-f4f27f1b-102e-4060-9e0f-6a1d3984012b
+     dry_run=true, status=SUCCESS, success=1
+     started_at=2026-06-15 05:21:39.395673 (UTC)
+  3) job_id=product-backfill-1cb2233e-47f1-47c8-87d2-987f2baa75ac
+     dry_run=true, status=PARTIAL
+     started_at=2026-06-15 03:49:38.180899 (UTC)
+- product_activity_sync_state row for 3859423 (id=e8a9988c-c393-4479-a3fd-770777bd6e3d):
+  - activity_id=3859423, scope=CUSTOM_ACTIVITY_IDS
+  - last_status=FAILED
+  - last_stop_reason=API_ERROR
+  - last_attempt_at=2026-06-15 05:29:20.897204 (UTC)
+  - last_fetched_rows=0, last_distinct_product_ids=0
+  - last_inserted=0, last_updated=0, last_skipped=0
+  - last_failed=1
+  - consecutive_failures=1
+  - last_error_message contains PostgreSQL deadlock detected:
+    "Process 6176 waits for ShareLock on transaction 2628589; blocked by process 6209.
+     Process 6209 waits for ShareLock on transaction 2627870; blocked by process 6176.
+     ... while updating tuple (66,84) in relation \"product_operation_state\""
+    Triggered SQL: ProductOperationStateMapper.updateById (with version optimistic lock + deleted=0)
+    Same error already recorded in product-library-backfill-3859423-evidence-20260615-1342.md (FAIL).
+
+== Notes ==
+- Baseline matches the previous Phase 4-1 evidence at 13:42. No data drift.
+- Backend log already shows the prior deadlock detail; this rerun will re-trigger the
+  same backfill code path and we must capture whether deadlock reproduces.
+- We will hold execution until docker + backend are healthy, then proceed.

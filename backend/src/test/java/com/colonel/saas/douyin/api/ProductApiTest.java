@@ -137,6 +137,66 @@ class ProductApiTest {
     }
 
     @Test
+    void auditActivityProduct_shouldCallAllianceColonelActivityProductAuditForApproval() {
+        when(douyinApiClient.post(eq("alliance.colonelActivityProductAudit"), anyMap()))
+                .thenReturn(Map.of(
+                        "code", 10000,
+                        "data", Map.of(
+                                "product_audit_info", List.of(Map.of(
+                                        "apply_id", 987654L,
+                                        "reject_reason", "")))));
+
+        productApi.auditActivityProduct("app-1", "12345", List.of(987654L), true, "审核通过");
+
+        ArgumentCaptor<Map<String, Object>> captor = mapCaptor();
+        verify(douyinApiClient).post(eq("alliance.colonelActivityProductAudit"), captor.capture());
+        assertThat(captor.getValue())
+                .containsEntry("appId", "app-1")
+                .containsEntry("activity_id", 12345L)
+                .containsEntry("apply_ids", List.of(987654L))
+                .containsEntry("operation", 0L)
+                .containsEntry("suggest_info", "审核通过");
+    }
+
+    @Test
+    void auditActivityProduct_shouldUseRejectOperationAndSurfacePerItemFailure() {
+        when(douyinApiClient.post(eq("alliance.colonelActivityProductAudit"), anyMap()))
+                .thenReturn(Map.of(
+                        "data", Map.of(
+                                "product_audit_info", List.of(Map.of(
+                                        "apply_id", 987654L,
+                                        "reject_reason", "商品资质不完整")))));
+
+        assertThatThrownBy(() -> productApi.auditActivityProduct(
+                "app-1", "12345", List.of(987654L), false, "商品资质不完整"))
+                .hasMessageContaining("商品资质不完整");
+
+        ArgumentCaptor<Map<String, Object>> captor = mapCaptor();
+        verify(douyinApiClient).post(eq("alliance.colonelActivityProductAudit"), captor.capture());
+        assertThat(captor.getValue())
+                .containsEntry("activity_id", 12345L)
+                .containsEntry("apply_ids", List.of(987654L))
+                .containsEntry("operation", 1L);
+    }
+
+    @Test
+    void auditActivityProduct_shouldRequireApplyIds() {
+        assertThatThrownBy(() -> productApi.auditActivityProduct(
+                "app-1", "12345", List.of(), true, null))
+                .hasMessageContaining("applyIds");
+    }
+
+    @Test
+    void auditActivityProduct_shouldRejectResponseWithoutAuditResult() {
+        when(douyinApiClient.post(eq("alliance.colonelActivityProductAudit"), anyMap()))
+                .thenReturn(Map.of("code", 10000));
+
+        assertThatThrownBy(() -> productApi.auditActivityProduct(
+                "app-1", "12345", List.of(987654L), true, null))
+                .hasMessageContaining("审核明细");
+    }
+
+    @Test
     @SuppressWarnings("unchecked")
     void listProductsByActivity_shouldAdaptDualCommissionFields() {
         Map<String, Object> item = new HashMap<>();

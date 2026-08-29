@@ -1,0 +1,9 @@
+{
+  "scope": "CUSTOM_ACTIVITY_IDS",
+  "activityIds": ["3859423"],
+  "pageSize": 20,
+  "maxActivities": 1,
+  "maxPagesPerActivity": 1000,
+  "maxRowsPerActivity": 50000,
+  "dryRun": true
+}

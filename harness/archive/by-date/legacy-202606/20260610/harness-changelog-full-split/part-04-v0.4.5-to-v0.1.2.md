@@ -1,0 +1,158 @@
+# Harness Changelog 4
+
+Source: ../harness-changelog-full.md (split archive index)
+
+## v0.4.5
+
+- 完成 P-DIAG-002 商品库数量不足排查（2026-06-03）。
+- 生成报告：`harness/reports/p-diag-002-product-library-count-sync-remote-20260603-114742.md`。
+- 纯只读排查，未修改 Java/Vue/SQL 代码，未执行数据库写操作，未重启容器，未部署远端。
+- 执行本地 real-pre 只读 SQL 对账（24 活动 / 7278 快照 / 2673 推广中 / 1958 展示中 / 684 PENDING）。
+- 执行后端商品库接口排查（API total=1958 与 SQL 完全一致，P-FIX-001C pageSize=100 正确生效，@Max(100) 限制正常拦截）。
+- 执行同步链路排查（`ProductActivitySyncJob` 默认每 2 小时，默认禁用；`refreshActivitySnapshots` @Transactional 包裹完整事务；`applyForActivityId` 展示去重失败导致事务回滚）。
+- 执行远端服务器只读对账（远端 3601 快照 / 420 展示中 vs 本地 7278 / 1958，远端同步任务禁用、唯一索引冲突、过期活动商品卡 PENDING）。
+- 确认 P-FIX-001C 前端分页改造已生效（PAGE_SIZE=100，loadMore 追加）。
+- 三个并存根因：A) 远端同步任务禁用；B) 唯一索引冲突导致事务回滚；C) 过期活动商品卡 PENDING。
+- 建议下一步：P-FIX-002A 同步链路修复、P-FIX-002B 展示规则重算、P-FIX-002D 远端部署对齐。
+- 更新 `CURRENT_STATE.md`、`state/DOMAIN_STATUS.md`、`state/KNOWN_ISSUES.md`，记录 P-DIAG-002 完成状态和下一步建议。
+
+## v0.4.4
+
+- 完成 P-FIX-001C 商品库分页弱化改造（2026-06-03）。
+- 生成任务报告：`harness/reports/p-fix-001c-product-library-pagination-20260603-113616.md`；生成 evidence：`harness/reports/2026-06-12/evidence-20260603-113632.md`；生成 retro：`harness/reports/retro-20260603-113645.md`。
+- 修改前端商品库 `ProductLibrary.vue`：默认 `PAGE_SIZE` 调整为 100；新增 `currentPage`；加载更多按下一页追加；筛选和推广状态变更重置第一页；加载更多增加 loading 锁。
+- 新增 `ProductLibrary.test.ts`，覆盖默认 `size=100`、加载更多 append、筛选重置。
+- 验证通过：相关前端单测 4 files / 50 tests PASS、typecheck PASS、frontend build PASS、`git diff --check` PASS、frontend safety-check PASS、real-pre frontend restart PASS、verify-local PASS、页面 smoke PASS_WITH_NON_TASK_WARNING。
+- 未修改后端或数据库；未部署远端。最终会话状态为 `PARTIAL`，原因是工作区存在任务前遗留 dirty / untracked 且未安全提交/推送。
+- 暴露 Harness 差异：任务模板要求的 `frontend-domain-change.md`、`post-task-gc.md` 不存在；`safety-check -Scope code` 与当前脚本 ValidateSet 不一致，已记录到 `KNOWN_ISSUES.md`。
+
+## v0.4.3
+
+- 完成 FUNC-001 商品库卡片默认态与悬浮展开态改造（2026-06-03）。
+- 生成任务报告：`harness/reports/func-001-product-card-hover-ui-20260603-111451.md`；生成 evidence：`harness/reports/2026-06-12/evidence-20260603-111733.md`。
+- 修改前端卡片 `ProductSelectionCard.vue`：修正默认态公开佣金兜底（投放期佣金为 `-` 时回退普通佣金率），调整 hover 详情字段顺序为招商、寄样、时间、团长、店铺、活动、库存、商家评分。
+- 补充 `ProductSelectionCard.test.ts` 测试用例，验证佣金回退和 FUNC-001 字段顺序；更新 `tests/e2e/03b-product-library-drawer-fields.spec.ts`，支持 real-pre 通过 `E2E_SKIP_TEST_SEED=true` 跳过测试种子接口。
+- 验证通过：前端构建（`vue-tsc -b && vite build`）PASS、ProductSelectionCard 12 tests PASS、相关前端单测 82 tests PASS、real-pre 商品库 hover E2E 2 tests PASS、`git diff --check` PASS、frontend safety-check PASS、verify-local PASS。
+- 已执行本地 real-pre 前端 Scope 容器重启；Docker Compose 实际重建/重启了 frontend/backend，最终均 healthy。
+- 未修改任何后端代码或数据库表结构；未部署远端。最终会话状态为 `PARTIAL`，原因是工作区存在任务前遗留 dirty 变更且未安全提交/推送。
+
+## v0.4.2
+
+- 完成 TEST-1 全量后端测试 failures 归因与最小修复（2026-06-03）。
+- 生成报告：`harness/reports/test-1-full-backend-failures-fix-20260603-104601.md`；生成 evidence：`harness/reports/2026-06-12/evidence-20260603-104601.md`。
+- 复现指定失败集合时实际为 53 tests / 3 failures / 7 errors；根因为测试夹具/断言未同步当前 `SysUserService.findPage` 4 参数调用、全局 `BusinessException` HTTP 语义，以及 MyBatis-Plus `LambdaQueryWrapper` 表元数据初始化。
+- 最小修改 `SysUserServiceTest`、`SysUserControllerTest`、`CommissionRuleServiceTest`、`CommissionRuleControllerTest`，未修改 Java 业务代码、Vue 前端、数据库、Docker/Compose 或部署配置。
+- 验证通过：4 个失败测试类单跑、失败集合组合测试、U-2.5-B 定向测试、全量 `mvn -f backend/pom.xml test`（1671 tests / 0 failures / 0 errors）、`mvn -f backend/pom.xml -DskipTests package`、`git diff --check`、Harness backend safety-check 和 verify-local。
+- 未执行 real-pre 数据库写操作；未重启容器；未部署远端。U-2.5-B 运行态加载与 real-pre 历史 `dept_type` 写库修复仍需后续独立任务。
+
+## v0.4.1
+
+- 完成用户域 U-2.5-B dept_type 最小修复（2026-06-03）。
+- 生成报告：`harness/reports/user-domain-u2_5b-dept-type-minimal-fix-20260603-101503.md`。
+- 统一 Java dept_type 标准为 `department/recruiter_group/channel_group/ops_group`，以 `DeptType.java` 为唯一标准；删除旧 `DeptTypes.java`，迁移 `service.SysDeptService` 调用点。
+- 更新 `init-db.sql`、`alter-sys-dept.sql`、`alter-sys-dept-uuid-canonical-20260530.sql` 和 `migrate-sys-dept-dept-type.sql`，避免新环境继续写入 `recruiter/channel/dept` 作为 dept_type 标准值。
+- 未新增独立 migration；未执行 real-pre 数据库写操作；未重启容器；未部署远端。real-pre 历史 `dept_type` 写库修复需单独 DB 任务执行。
+- 下一步：用户域 U-3 CurrentUser / PermissionContext 统一。
+
+## v0.4.0
+
+- 新增 Session Exit Gate 会话退出门禁系统（2026-06-03）。
+- 新增 `harness/SESSION_EXIT_GATE.md`：定义 Clean State 五项硬门禁（Build Clean、Test Clean、Progress Recorded、Artifacts Clean、Startup Path Clean）、最终状态规则（DONE / PARTIAL / BLOCKED_BY_SAMPLE / BLOCKED_BY_EXTERNAL / FAILED）、退出检查模板和 10 条禁止事项。
+- 新增 `harness/QUALITY_LEDGER.md`：初始化 9 个模块质量评分（用户域 C、配置域 B、商品域 C、达人域 C、寄样域 B-、订单域 C、业绩域 B-、分析模块 C、Harness B），定义评分标准和更新规则。
+- 修改 `harness/AGENT_CONTRACT.md`：新增"Session Exit Gate"章节，DONE 必须同时满足 Completion Gate + Session Exit Gate。
+- 修改 `harness/FORBIDDEN_SCOPE.md`：新增"禁止留下脏状态"章节，列出 10 条禁止行为。
+- 修改 `harness/TASK_ROUTING.md`：新增"Session Exit Gate 路由"章节，所有任务结束后必须进入退出门禁。
+- 修改 `harness/state/DOMAIN_STATUS.md`：新增"Session Exit 时的领域状态更新"规则。
+- 核心约束：Agent 只有在"任务跑通 + 仓库干净 + 状态可交接"三者同时满足时，才允许说 DONE。
+
+## v0.3.0
+
+- 新增 Completion Gate 完成门禁系统（2026-06-03）。
+- 新增 `harness/COMPLETION_GATES.md`：定义 Gate 0（Docs Only）、Gate 1（Backend Change）、Gate 2（Frontend Change）、Gate 3（Domain Change）、Gate 4（E2E Business Flow）五个完成门禁，包含统一最终输出模板和 9 条强制规则。
+- 修改 `harness/AGENT_CONTRACT.md`：在 Definition of Done 前新增"Completion Gate：禁止提前完成"章节，要求 DONE 必须同时满足 10 项条件；Definition of Done 增加 Gate 选择和统一输出模板要求。
+- 修改 `harness/FORBIDDEN_SCOPE.md`：新增"禁止提前完成 / 虚假完成"章节，列出 13 条禁止行为、6 种合法状态（DONE / PARTIAL / BLOCKED_BY_SAMPLE / BLOCKED_BY_EXTERNAL / FAILED / RISK_ACCEPTED_BY_USER）和 5 种禁止模糊状态。
+- 修改 `harness/TASK_ROUTING.md`：新增"Task -> Completion Gate 路由"章节，按任务关键词绑定默认 Gate；新增 Gate 选择升级规则。
+- 修改 `harness/state/DOMAIN_STATUS.md`：新增"任务结束状态更新规则"章节，要求每次任务结束前必须更新相关领域状态。
+- 核心约束：Agent 不得仅因代码修改、编译通过、单接口通过或单页面打开而声明 DONE；必须按 Gate 验证通过并有证据才能 DONE。
+
+## v0.2.1
+
+- 完成用户域 U-2.5-A dept_type 统一与最小修复方案设计（2026-06-03）。
+- 生成报告：`harness/reports/user-domain-u2_5-dept-type-unification-plan-20260603-094513.md`，覆盖常量类、migration / seed、real-pre 只读数据、代码调用点、group 数据范围影响、统一标准、最小修复顺序、migration 需求和 U-2.5-B 建议。
+- 核心发现：`DeptType.java` 标准为 `department/recruiter_group/channel_group/ops_group`，`DeptTypes.java` 仍定义旧值 `recruiter/channel/dept`，且 `service.SysDeptService` 仍引用旧常量。
+- real-pre 只读查询确认：当前有效 `sys_dept` 共 3 条，`dept_type` 全部为 `department`；`sys_user.dept_id` 当前无孤儿活跃用户；`sys_user.dept_id` 无 FK，`sys_role_menu` 仅有联合主键无 FK。
+- 阶段性结论：先执行 U-2.5-B dept_type 最小修复，再进入 U-3；U-2.5-B 应统一到 `DeptType.java`、替换/废弃 `DeptTypes.java`、更新 seed 并新增幂等 migration，FK/CHECK 等 DB hardening 可后置。
+- 未修改 Java 业务代码、Vue 前端代码或 SQL migration；未执行数据库写操作；未重启容器；未部署远端。
+
+## v0.2.0
+
+- 完成用户域 U-2 表结构与领域模型对齐任务（2026-06-03）。
+- 生成报告：`harness/reports/user-domain-u2-model-schema-alignment-20260603-150000.md`，覆盖 15 个章节：表清单、DDD 模型映射、一人多角色、数据范围、菜单权限、部门组别、Token/黑名单、操作日志、跨域访问风险、schema 问题清单、迁移建议、结论和下一步。
+- 核心发现：7 张表字段与 Entity 完全对齐；一人多角色表结构真正支持（非代码临时拼凑）；P0 问题——`dept_type` 值和两个常量类（`DeptType.java` vs `DeptTypes.java`）严重冲突，三套 migration 脚本设置不同 dept_type 值。
+- 识别 12 处跨域 Mapper 直接访问（DDD 越界），PerformanceAccessScope 含硬编码 SQL 子查询 sys_user。
+- 建议 U-2.5 最小 migration：统一 dept_type 值、为 sys_user.dept_id 添加 FK 约束、为 sys_role_menu 添加 FK CASCADE。
+- 更新 `CURRENT_STATE.md`、`state/DOMAIN_STATUS.md`，记录 U-2 完成状态和 U-3 下一步。
+- 未修改 Java 业务代码、Vue 前端代码或数据库；仅执行只读盘点和 Harness 状态更新。
+
+## v0.1.9
+
+- 完成用户域 U-1 现状盘点任务（2026-06-03）。
+- 生成 U-1 报告：`harness/reports/user-domain-u1-inventory-20260603-090000.md`，覆盖认证链路、权限模型、数据范围模型、对外能力、跨域关系、DDD 越界风险、测试覆盖 13 个维度。
+- 完成用户域 U-2 表结构与领域模型对齐（2026-06-03）。
+- 生成 U-2 报告：`harness/reports/user-domain-u2-model-schema-alignment-20260603-093000.md`，覆盖 8 张表清单、12 个 DDD 模型映射、跨域访问风险、schema 问题分级。
+- U-2 核心结论：用户域 schema 无需任何 migration；7 张表（sys_user/sys_role/sys_dept/sys_menu/sys_user_role/sys_role_menu/operation_log）完整对齐 DDD 模型；V1 阶段所有抽象均可纯代码层实现；P1 风险为跨域直接访问 Mapper 和 DEPT scope 不区分 dept_type。
+- 更新 `CURRENT_STATE.md`、`state/DOMAIN_STATUS.md`，记录 U-1 + U-2 完成状态和 U-3 下一步。
+- 未修改 Java 业务代码、Vue 前端代码或数据库；仅执行只读盘点和 Harness 状态更新。
+
+## v0.1.8
+
+- 增量合并 DDD 优化路线到现有 Harness，不重建 Harness，不覆盖既有入口。
+- 新增 `harness/plans/DDD_OPTIMIZATION_ROADMAP.md` 和 `harness/plans/DDD_DOMAIN_TASK_MATRIX.md`，记录领域优化顺序、阶段验收和任务矩阵。
+- 新增八个领域 instruction，约束领域职责、不负责事项、V1 规则、禁止越界、测试和 state / feedback 同步。
+- 新增 DDD 三个 skill，用于领域优化执行、边界检查和任务后同步。
+- 扩展 `TASK_ROUTING.md`、`FORBIDDEN_SCOPE.md`、`AGENT_CONTRACT.md`、`CURRENT_STATE.md` 和 `state/DECISIONS.md`，把 DDD 路由、禁止范围、总规则和决策摘要接入现有主线。
+
+## v0.1.7
+
+- 修正 `CODEX.md` 默认入口为本地 `real-pre`，与 `AGENTS.md`、Harness 命令默认值保持一致。
+- 将 `CONTEXT.md` 标题从 V2.2 改为 V1 术语上下文，明确旧 V2.2 仅作历史参考。
+- 压缩 `AGENTS.md` 执行入口示例，保持入口文件短小，并把 Scope 细节交给 `harness/TASK_ROUTING.md`。
+- 扩展 `TASK_ROUTING.md`，覆盖数据库变更、接口联调、第三方联调、Docker、部署、测试验收、Bug、性能、权限、数据问题和任务收尾。
+- 新增环境索引、local dev 环境事实、状态索引和变更类 runbook，补齐 Harness 五子系统可发现性。
+- 新增 `harness/feedback/garbage-collection-policy.md`，明确保留、归档、删除、合并和删除前检查规则。
+
+## v0.1.6
+
+- `deploy-remote.ps1` 在远端构建和重启后端前，先启动 `postgres-real-pre` 并执行活动商品依赖的幂等结构迁移 `V20260529_001__alter-colonel-activity-add-recruiter-fields.sql`。
+- 新增远端活动商品 schema guard：校验 `colonel_activity` 已存在 `recruiter_user_id`、`recruiter_dept_id`、`assigned_at`、`assigned_by`、`activity_status_code`、`activity_status_text` 6 个字段，否则中止远端部署。
+- 暂不将 `scripts/run-real-pre-db-migrations.sh` 的聚合 `migrate-all.sql` 接入每次 Harness 远端部署；该文件仍含历史非幂等 DML，重复执行存在数据漂移风险。
+
+## v0.1.5
+
+- 将 `agent-do.ps1`、`safety-check.ps1`、`restart-compose.ps1`、`verify-local.ps1`、`collect-evidence.ps1` 和 `new-retro.ps1` 的默认环境切换为本地 `real-pre`；`test` 仅作为显式专项环境。
+- 调整 `agent-do.ps1` 顺序为安全检查 -> 构建 -> Compose 重建 -> 健康检查 -> 业务验证，避免业务验证失败时跳过重启和健康证据。
+- `agent-do.ps1` 成功路径按实际验证状态写入 evidence conclusion：docs / 跳过业务验证 / 待远端部署为 `PARTIAL`，本地完整验证通过为 `PASS`。
+- 修复 `Get-HarnessChangedFiles` 和 `collect-evidence.ps1` 对 `git status` 首行前导空格的处理，避免首个 modified 文件名被截断。
+- `deploy-remote.ps1` 在远端 `git pull --ff-only` 后通过 `maven:3.9.10-eclipse-temurin-17` Docker 镜像执行 `mvn -f backend/pom.xml -DskipTests package`，适配后端 Dockerfile 需要预构建 `backend/target/*.jar` 且服务器未安装 Maven 的场景。
+- 更新 AGENTS、Task Routing、Tools、Runbook 和 Harness 文档中的默认入口示例，明确远端部署仍必须显式传 `-DeployRemote true`。
+
+## v0.1.4
+
+- 修复 `git-push-safe.ps1` 对非 ASCII 文件名的兼容性：`Get-ChangedFiles` 和 `git diff --cached --name-only` 改用 `git -c core.quotepath=false` 输出原始 UTF-8 路径，避免 octal 转义导致 `Test-Path` 报错。
+- `Assert-NoPlainSecrets` 对 `Test-Path` 增加 try-catch 容错，跳过无法解析的路径而非中断流程。
+- `verify-local.ps1` 后端健康检查从单次尝试改为重试机制（最多 12 次，间隔 10 秒，总计最长 120 秒），适配 Spring Boot 容器启动延迟。
+- 新增已知风险：test 环境 E2E auth setup 可能因后端容器初始化未完成而超时。
+
+## v0.1.3
+
+- 新增 `harness/commands/retire-content.ps1`，提供旧内容维护计划、manifest 驱动归档和 manifest 驱动删除能力。
+- `agent-do.ps1` 默认在任务后执行 `ContentMaintenance=plan`，生成旧内容候选报告；归档和删除必须显式传 manifest。
+- `collect-evidence.ps1` 新增 Content Maintenance Result 字段，用于记录旧内容维护结果。
+- 新增旧内容生命周期规则，明确 keep / update / archive / delete 的判断口径和受保护路径。
+
+## v0.1.2
+
+- 新增 `harness/doc/` Harness Engineering 聚合文档入口，按 Instructions、Tools、Environment、State、Feedback 五个子模型组织。
+- 将旧文档冲突、real-pre 安全边界、当前项目状态、业务闭环验证标准和任务证据模板集中到 `harness/doc/`，供后续 Agent 快速读取。
+- 本次仅做文档层重构；原 `docs/` 和既有 `harness/` 仍作为事实主源与执行入口，不删除旧文档。
+

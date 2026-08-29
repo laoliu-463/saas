@@ -149,35 +149,41 @@ class RealPreMigrationContractTest {
     }
 
     @Test
-    void unifiedMigration_shouldCreatePerformanceRecordsBeforeAlteringExpenseColumns() throws IOException {
-        String migrateAll = readLower(DB_DIR.resolve("migrate-all.sql"));
+    void roleAwareAttributionMigration_shouldBeDeployedWithRequiredFacts() throws IOException {
+        Path migrationPath = DB_DIR.resolve("alter-role-aware-promotion-link-attribution-20260716.sql");
 
-        int createTable = migrateAll.indexOf("create table if not exists performance_records");
-        int addExpenseColumns = migrateAll.indexOf("alter table performance_records\n"
-                + "    add column if not exists estimate_service_fee_expense");
+        assertThat(migrationPath).exists();
+        String migration = readLower(migrationPath);
+        assertThat(migration)
+                .contains("alter table promotion_link")
+                .contains("add column if not exists attribution_owner_type")
+                .contains("alter table pick_source_mapping")
+                .contains("alter table colonelsettlement_order")
+                .contains("add column if not exists channel_attribution_source")
+                .contains("add column if not exists recruiter_attribution_source")
+                .contains("'channel', 'recruiter'");
 
-        assertThat(createTable).isNotNegative();
-        assertThat(addExpenseColumns).isGreaterThan(createTable);
+        String deployScript = Files.readString(
+                REPO_ROOT.resolve("harness/scripts/commands/deploy-remote.ps1"));
+        assertThat(deployScript)
+                .contains("alter-role-aware-promotion-link-attribution-20260716.sql");
     }
 
     @Test
-    void unifiedMigrationIncludes_shouldResolveAgainstMountedDbDirectory() throws IOException {
-        String migrateAll = readLower(DB_DIR.resolve("migrate-all.sql"));
-        String initEnvironment = readLower(DB_DIR.resolve("00-set-env.sh"));
-        String testCompose = Files.readString(REPO_ROOT.resolve("docker-compose.test.yml"));
-        String realPreCompose = Files.readString(COMPOSE_FILE);
+    void performanceAttributionMigrations_shouldBeAppliedAndVerifiedByRemoteDeploy() throws IOException {
+        Path orderDimensionsMigration = DB_DIR.resolve("alter-order-default-attribution-dimensions-20260716.sql");
+        Path performanceMigration = DB_DIR.resolve("alter-performance-final-attribution-20260716.sql");
 
-        int includeRoot = migrateAll.indexOf("\\cd /tmp/saas-db");
-        int firstInclude = migrateAll.indexOf("\\i alter-colonel-activity-recruiter-assignment.sql");
+        assertThat(orderDimensionsMigration).exists();
+        assertThat(performanceMigration).exists();
 
-        assertThat(includeRoot).isNotNegative();
-        assertThat(firstInclude).isGreaterThan(includeRoot);
-        assertThat(initEnvironment)
-                .contains("db_source_dir=\"/opt/saas-db-source\"")
-                .contains("db_stage_dir=\"/tmp/saas-db\"")
-                .contains("cp -r \"${db_source_dir}/.\" \"${db_stage_dir}/\"");
-        assertThat(testCompose).contains("./backend/src/main/resources/db:/opt/saas-db-source:ro");
-        assertThat(realPreCompose).contains("./backend/src/main/resources/db:/opt/saas-db-source:ro");
+        String deployScript = Files.readString(
+                REPO_ROOT.resolve("harness/scripts/commands/deploy-remote.ps1"));
+        assertThat(deployScript)
+                .contains("alter-order-default-attribution-dimensions-20260716.sql")
+                .contains("alter-performance-final-attribution-20260716.sql")
+                .contains("Order attribution dimensions schema guard passed.")
+                .contains("Performance final attribution schema guard passed.");
     }
 
     private static void assertFinancialAndExclusiveConstraints(String sql) {

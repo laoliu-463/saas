@@ -96,6 +96,11 @@ class PerformanceQueryServiceTest {
         assertThat(response.getOrderStatus()).isEqualTo("FINISHED");
         assertThat(response.getPayTime()).isEqualTo(LocalDateTime.of(2026, 5, 24, 10, 30, 45));
         assertThat(response.getSettleTime()).isEqualTo(LocalDateTime.of(2026, 5, 25, 11, 5, 6));
+
+        ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
+        verify(jdbcTemplate).query(sqlCaptor.capture(), org.mockito.ArgumentMatchers.<RowMapper<?>>any(), any(Object[].class));
+        assertThat(sqlCaptor.getValue()).contains("ca.activity_name AS activity_name");
+        assertThat(sqlCaptor.getValue()).doesNotContain("ca.name AS activity_name");
     }
 
     @Test
@@ -183,8 +188,12 @@ class PerformanceQueryServiceTest {
 
         ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
         verify(jdbcTemplate).query(sqlCaptor.capture(), org.mockito.ArgumentMatchers.<RowMapper<?>>any(), any(Object[].class));
+        assertThat(sqlCaptor.getValue()).contains("LEFT JOIN colonel_activity ca ON ca.activity_id = pr.activity_id");
+        assertThat(sqlCaptor.getValue()).doesNotContain("colonelsettlement_activity");
         assertThat(sqlCaptor.getValue()).contains("pr.calculated_at");
         assertThat(sqlCaptor.getValue()).contains("pr.final_recruiter_user_id = ?");
+        assertThat(sqlCaptor.getValue()).contains("LEFT JOIN colonel_activity ca ON ca.activity_id = pr.activity_id");
+        assertThat(sqlCaptor.getValue()).doesNotContain("colonelsettlement_activity");
         assertThat(sqlCaptor.getValue()).contains("LIMIT ?");
     }
 

@@ -48,6 +48,8 @@ type ProductBriefCopyMessageInput = {
   clipboardWriteFailed: boolean
   linkGenerationFailed: boolean
   promotionLinkGenerated?: boolean
+  imageCopyAttempted?: boolean
+  imageCopied?: boolean
 }
 
 type ProductBriefCopyMessage = {
@@ -283,10 +285,20 @@ export const copyProductBriefWithLink = async ({
 export const resolveProductBriefCopyMessage = ({
   clipboardWriteFailed,
   linkGenerationFailed,
-  promotionLinkGenerated
+  promotionLinkGenerated,
+  imageCopyAttempted,
+  imageCopied
 }: ProductBriefCopyMessageInput): ProductBriefCopyMessage => {
   if (clipboardWriteFailed) {
     return { type: 'warning', content: '简介已生成，但浏览器未允许写入剪贴板，请手动复制' }
+  }
+  if (imageCopyAttempted === true) {
+    return imageCopied
+      ? { type: 'success', content: '商品图片和完整简介已按模板复制' }
+      : { type: 'warning', content: '完整简介已复制，但商品图片受浏览器或图片源限制未能显示' }
+  }
+  if (imageCopyAttempted === false) {
+    return { type: 'warning', content: '完整简介已复制；商品库未提供可复制的商品图片' }
   }
   if (promotionLinkGenerated === true) {
     return { type: 'success', content: '复制成功，已生成推广链接' }

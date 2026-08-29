@@ -279,13 +279,15 @@ const handleChangePassword = async () => {
   changingPassword.value = true
   try {
     await changeCurrentUserPassword({
-      oldPassword: passwordForm.oldPassword,
-      newPassword: passwordForm.newPassword
+      oldPassword: String(passwordForm.oldPassword),
+      newPassword: String(passwordForm.newPassword)
     })
     passwordForm.oldPassword = ''
     passwordForm.newPassword = ''
     passwordForm.confirmPassword = ''
-    message.success('密码已更新')
+    authStore.clearAuth()
+    message.success('密码已更新，请使用新密码重新登录')
+    await router.replace('/login')
   } catch (error: any) {
     notifyApiFailure(error, message, { fallbackMessage: '密码更新失败' })
   } finally {

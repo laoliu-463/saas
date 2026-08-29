@@ -47,9 +47,14 @@ public class OrderAttributionRouter {
             Map<String, Object> rawPayload,
             String talentName) {
         if (isPolicyEnabled()) {
-            OrderDefaultAttributionResult result = defaultAttributionResolver.resolve(order, rawPayload);
+            OrderDefaultAttributionResolver.Resolution resolution =
+                    defaultAttributionResolver.resolveWithTrace(order, rawPayload);
+            OrderDefaultAttributionResult result = resolution.result();
             OrderDefaultAttributionPolicy.applyToOrder(order, result, talentName);
-            return OrderDefaultAttributionPolicy.toLegacyResult(result);
+            return OrderDefaultAttributionPolicy.toLegacyResult(
+                    result,
+                    resolution.nativeMappingMatched(),
+                    resolution.mappingCreatedAt());
         }
         AttributionResult legacy = attributionService.resolveAttribution(order, rawPayload);
         OrderDefaultAttributionPolicy.applyAttributionResult(

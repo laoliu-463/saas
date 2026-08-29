@@ -43,6 +43,12 @@ public class TalentVO {
     private Long fansCount;
     /** 达人等级 */
     private String level;
+    /** 平台达人等级 */
+    private String talentLevel;
+    /** 近 30 天销售额（单位：分） */
+    private Long sales30d;
+    /** 资料同步时未支持的字段 */
+    private List<String> unsupportedFields;
     /** 达人头像 URL */
     private String avatarUrl;
     /** 达人类目（多个类目以逗号分隔） */
@@ -130,6 +136,9 @@ public class TalentVO {
         vo.setNickname(talent.getNickname());
         vo.setFansCount(talent.getFans());
         vo.setLevel(talent.getLevel());
+        vo.setTalentLevel(talent.getTalentLevel());
+        vo.setSales30d(talent.getSales30d());
+        vo.setUnsupportedFields(talent.getUnsupportedFields());
         vo.setAvatarUrl(talent.getAvatarUrl());
         vo.setCategories(talent.getCategories());
         vo.setRemark(talent.getIntro());

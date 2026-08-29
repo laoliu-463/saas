@@ -593,6 +593,37 @@ CREATE INDEX IF NOT EXISTS idx_cti_region ON crawler_talent_info(region);
 -- 6. 归因与推广
 -- =============================================
 
+CREATE TABLE IF NOT EXISTS promotion_link (
+    id                     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    product_id             VARCHAR(50) NOT NULL,
+    activity_id            VARCHAR(50),
+    talent_id              VARCHAR(50),
+    talent_name            VARCHAR(200),
+    channel_user_id        UUID,
+    channel_user_name      VARCHAR(100),
+    attribution_owner_type VARCHAR(32),
+    original_product_url   TEXT,
+    promotion_url          TEXT,
+    short_url              TEXT,
+    doukouling             VARCHAR(200),
+    pick_source            VARCHAR(128),
+    pick_extra             VARCHAR(128),
+    link_status            VARCHAR(20) DEFAULT 'ACTIVE',
+    expire_time            TIMESTAMP,
+    raw_response           JSONB,
+    operator_id            UUID,
+    operator_name          VARCHAR(100),
+    created_at             TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at             TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted                SMALLINT NOT NULL DEFAULT 0,
+    CONSTRAINT chk_promotion_link_attribution_owner_type
+        CHECK (attribution_owner_type IS NULL
+            OR attribution_owner_type IN ('CHANNEL', 'RECRUITER'))
+);
+CREATE INDEX IF NOT EXISTS idx_pl_product_id ON promotion_link(product_id);
+CREATE INDEX IF NOT EXISTS idx_pl_pick_source ON promotion_link(pick_source);
+CREATE INDEX IF NOT EXISTS idx_pl_channel_user ON promotion_link(channel_user_id);
+
 CREATE TABLE IF NOT EXISTS pick_source_mapping (
     id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id          UUID NOT NULL,                       -- 渠道用户ID
@@ -860,16 +891,10 @@ CREATE INDEX IF NOT EXISTS idx_cso_attribution_status ON colonelsettlement_order
 
 -- 双维度归属状态：与 alter-cso-dual-attribution-status-20260716.sql 保持一致。
 ALTER TABLE colonelsettlement_order
-    ADD COLUMN IF NOT EXISTS channel_attribution_status VARCHAR(32);
+    ADD COLUMN IF NOT EXISTS channel_attribution_status VARCHAR(32) DEFAULT 'CHANNEL_UNATTRIBUTED';
 
 ALTER TABLE colonelsettlement_order
-    ADD COLUMN IF NOT EXISTS recruiter_attribution_status VARCHAR(32);
-
-ALTER TABLE colonelsettlement_order
-    ALTER COLUMN channel_attribution_status DROP DEFAULT;
-
-ALTER TABLE colonelsettlement_order
-    ALTER COLUMN recruiter_attribution_status DROP DEFAULT;
+    ADD COLUMN IF NOT EXISTS recruiter_attribution_status VARCHAR(32) DEFAULT 'RECRUITER_UNATTRIBUTED';
 
 COMMENT ON COLUMN colonelsettlement_order.channel_attribution_status
     IS '渠道归属状态：CHANNEL_ATTRIBUTED / CHANNEL_UNATTRIBUTED，由 OrderDefaultAttributionPolicy.applyToOrder 写入';
@@ -877,14 +902,12 @@ COMMENT ON COLUMN colonelsettlement_order.recruiter_attribution_status
     IS '招商归属状态：RECRUITER_ATTRIBUTED / RECRUITER_UNATTRIBUTED，由 OrderDefaultAttributionPolicy.applyToOrder 写入';
 
 UPDATE colonelsettlement_order
-SET channel_attribution_status = 'CHANNEL_ATTRIBUTED'
-WHERE channel_user_id IS NOT NULL
-  AND channel_attribution_status IS DISTINCT FROM 'CHANNEL_ATTRIBUTED';
+SET channel_attribution_status = 'CHANNEL_UNATTRIBUTED'
+WHERE channel_attribution_status IS NULL;
 
 UPDATE colonelsettlement_order
-SET recruiter_attribution_status = 'RECRUITER_ATTRIBUTED'
-WHERE colonel_user_id IS NOT NULL
-  AND recruiter_attribution_status IS DISTINCT FROM 'RECRUITER_ATTRIBUTED';
+SET recruiter_attribution_status = 'RECRUITER_UNATTRIBUTED'
+WHERE recruiter_attribution_status IS NULL;
 
 CREATE INDEX IF NOT EXISTS idx_cso_channel_attribution_status
     ON colonelsettlement_order (channel_attribution_status);
@@ -1068,7 +1091,7 @@ VALUES
     ('sample.timeout_homework_days',      '30',       'int',     'sample',     '寄样待交作业自动关闭天数',   1),
     ('sample.timeout_pending_ship_days',  '15',       'int',     'sample',     '寄样待发货自动关闭天数',     1),
     ('sample.default_standard',
-     '{"min_30day_sales":30000,"min_level":"LV1"}', 'json', 'sample', '寄样默认标准', 1),
+     '{}', 'json', 'sample', '寄样默认标准', 1),
     ('commission.business_default_ratio', '0.15',     'numeric', 'commission', '招商默认提成比例',          1),
     ('commission.channel_default_ratio',  '0.15',     'numeric', 'commission', '渠道默认提成比例',          1),
     ('promotion.pick_extra_rule', '{"format":"channel_{channel_code}","encode":"none"}',

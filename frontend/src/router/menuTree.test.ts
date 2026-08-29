@@ -42,7 +42,7 @@ const ADMIN_PERMISSIONS = Object.values(PERMISSION_CODES)
 describe('menuTree', () => {
   // 验证：按角色过滤后，顶部菜单只包含该角色有权访问且 showInTop 不为 false 的业务域
   it('builds top menus from accessible tree only', () => {
-    const topMenus = getTopMenus(BIZ_STAFF_PERMISSIONS)
+    const topMenus = getTopMenus([ROLE_CODES.BIZ_STAFF])
     expect(topMenus.map((menu) => menu.key)).toEqual(['product', 'product-manage', 'talent', 'sample', 'data'])
     expect(topMenus.find((menu) => menu.key === 'sample')?.label).toBe('合作管理')
   })

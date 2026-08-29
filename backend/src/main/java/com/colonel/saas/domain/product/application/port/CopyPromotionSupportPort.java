@@ -2,6 +2,7 @@ package com.colonel.saas.domain.product.application.port;
 
 import com.colonel.saas.entity.ProductOperationState;
 import com.colonel.saas.entity.ProductSnapshot;
+import com.colonel.saas.domain.shared.attribution.AttributionOwnerType;
 
 import java.util.UUID;
 
@@ -26,6 +27,23 @@ public interface CopyPromotionSupportPort {
             String scene,
             String talentId,
             String idempotencyKey);
+
+    default GeneratedPromotionLink generatePromotionLinkForCopy(
+            String activityId,
+            String productId,
+            UUID userId,
+            UUID deptId,
+            String externalUniqueId,
+            Integer promotionScene,
+            boolean needShortLink,
+            String scene,
+            String talentId,
+            String idempotencyKey,
+            AttributionOwnerType attributionOwnerType) {
+        return generatePromotionLinkForCopy(
+                activityId, productId, userId, deptId, externalUniqueId, promotionScene,
+                needShortLink, scene, talentId, idempotencyKey);
+    }
 
     record Context(ProductSnapshot snapshot, ProductOperationState state) {
     }

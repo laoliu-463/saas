@@ -1,6 +1,7 @@
 package com.colonel.saas.douyin.api;
 
 import com.colonel.saas.common.exception.BusinessException;
+import com.colonel.saas.common.exception.UpstreamErrorCode;
 import com.colonel.saas.douyin.DouyinApiClient;
 import com.colonel.saas.gateway.douyin.contract.DouyinContractFixtureProvider;
 import com.colonel.saas.gateway.douyin.contract.DouyinUpstreamModeSupport;
@@ -205,6 +206,40 @@ public class ProductApi {
     }
 
     /**
+     * 审核专属团长活动商品。
+     *
+     * <p>上游接口使用活动商品申请 ID（{@code apply_id}），不是商品 ID。
+     * {@code operation=0} 表示通过，{@code operation=1} 表示拒绝。</p>
+     *
+     * @param appId       应用 ID，可为空
+     * @param activityId  团长活动 ID
+     * @param applyIds    团长商品申请 ID 列表
+     * @param approved    是否审核通过
+     * @param suggestInfo 审核建议或拒绝原因
+     * @return 上游审核响应
+     */
+    public Map<String, Object> auditActivityProduct(
+            String appId,
+            String activityId,
+            List<Long> applyIds,
+            boolean approved,
+            String suggestInfo) {
+        if (applyIds == null || applyIds.isEmpty()) {
+            throw BusinessException.param("applyIds 不能为空");
+        }
+        Map<String, Object> params = new HashMap<>();
+        putIfNotBlank(params, "appId", appId);
+        params.put("activity_id", parseActivityId(activityId));
+        params.put("apply_ids", List.copyOf(applyIds));
+        params.put("operation", approved ? 0L : 1L);
+        putIfNotBlank(params, "suggest_info", suggestInfo);
+
+        Map<String, Object> response = douyinApiClient.post("alliance.colonelActivityProductAudit", params);
+        assertProductAuditAccepted(response);
+        return response;
+    }
+
+    /**
      * 查询精选联盟商品 SKU（/buyin/productSkus/v2）。
      * @param productId 精选联盟商品 ID（19位数字字符串）
      */
@@ -252,6 +287,42 @@ public class ProductApi {
             return Long.parseLong(activityId.trim());
         } catch (NumberFormatException e) {
             throw BusinessException.param("activityId 必须为数字类型", e);
+        }
+    }
+
+    private void assertProductAuditAccepted(Map<String, Object> response) {
+        if (response == null) {
+            throw BusinessException.upstream(UpstreamErrorCode.UPSTREAM_SERVICE_ERROR, "抖音商品审核返回为空");
+        }
+        Object dataValue = response.get("data");
+        if (!(dataValue instanceof Map<?, ?> data)) {
+            throw BusinessException.upstream(
+                    UpstreamErrorCode.UPSTREAM_SERVICE_ERROR,
+                    "抖音商品审核响应缺少审核明细");
+        }
+        Object auditInfoValue = data.get("product_audit_info");
+        if (!(auditInfoValue instanceof Iterable<?> auditInfo)) {
+            throw BusinessException.upstream(
+                    UpstreamErrorCode.UPSTREAM_SERVICE_ERROR,
+                    "抖音商品审核响应缺少审核明细");
+        }
+        boolean hasAuditItem = false;
+        for (Object item : auditInfo) {
+            hasAuditItem = true;
+            if (!(item instanceof Map<?, ?> auditItem)) {
+                throw BusinessException.upstream(
+                        UpstreamErrorCode.UPSTREAM_SERVICE_ERROR,
+                        "抖音商品审核响应包含无效审核明细");
+            }
+            Object rejectReason = auditItem.get("reject_reason");
+            if (rejectReason != null && !String.valueOf(rejectReason).trim().isEmpty()) {
+                throw BusinessException.stateInvalid("抖音商品审核失败：" + rejectReason);
+            }
+        }
+        if (!hasAuditItem) {
+            throw BusinessException.upstream(
+                    UpstreamErrorCode.UPSTREAM_SERVICE_ERROR,
+                    "抖音商品审核响应没有审核结果");
         }
     }
 

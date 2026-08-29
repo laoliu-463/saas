@@ -70,7 +70,7 @@ const router = createRouter({
         {
           path: 'talent',
           component: () => import('../views/talent/index.vue'),
-          meta: { title: '达人 CRM', permissions: [PERMISSION.TALENT_ACCESS] }
+          meta: { title: '达人 CRM', roles: [ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] }
         },
         {
           path: 'sample',
@@ -80,7 +80,7 @@ const router = createRouter({
         {
           path: 'sample/apply',
           component: () => import('../views/sample/Apply.vue'),
-          meta: { title: '寄样申请', permissions: [PERMISSION.SAMPLE_WORKBENCH_ACCESS] }
+          meta: { title: '寄样申请', roles: [ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] }
         },
         {
           path: 'sample/:id',

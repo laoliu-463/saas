@@ -39,7 +39,7 @@ public class TalentClaimReleaseJob {
     /** 分布式锁 TTL，30 分钟覆盖大批量更新场景 */
     private static final Duration LOCK_TTL = Duration.ofMinutes(30);
 
-    /** 达人认领释放应用服务 */
+    /** 达人服务 */
     private final TalentClaimReleaseApplicationService talentClaimReleaseApplicationService;
     /** 分布式锁服务 */
     private final DistributedJobLockService jobLockService;

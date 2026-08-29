@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.colonel.saas.mapper.PerformanceAdjustmentLedgerMapper">
+
+    <insert id="insert" parameterType="com.colonel.saas.entity.PerformanceAdjustmentLedger">
+        INSERT INTO performance_adjustment_ledger (
+            id, event_key, order_id, refund_id, adjustment_type,
+            refund_amount, delta_pay_amount, delta_settle_amount,
+            delta_estimate_service_fee, delta_effective_service_fee,
+            delta_estimate_tech_service_fee, delta_effective_tech_service_fee,
+            delta_estimate_service_fee_expense, delta_effective_service_fee_expense,
+            delta_talent_commission, delta_estimate_service_profit,
+            delta_effective_service_profit, delta_estimate_recruiter_commission,
+            delta_effective_recruiter_commission, delta_estimate_channel_commission,
+            delta_effective_channel_commission, delta_estimate_gross_profit,
+            delta_effective_gross_profit, occurred_at, input_snapshot, created_at
+        ) VALUES (
+            #{id}, #{eventKey}, #{orderId}, #{refundId}, #{adjustmentType},
+            #{refundAmount}, #{deltaPayAmount}, #{deltaSettleAmount},
+            #{deltaEstimateServiceFee}, #{deltaEffectiveServiceFee},
+            #{deltaEstimateTechServiceFee}, #{deltaEffectiveTechServiceFee},
+            #{deltaEstimateServiceFeeExpense}, #{deltaEffectiveServiceFeeExpense},
+            #{deltaTalentCommission}, #{deltaEstimateServiceProfit},
+            #{deltaEffectiveServiceProfit}, #{deltaEstimateRecruiterCommission},
+            #{deltaEffectiveRecruiterCommission}, #{deltaEstimateChannelCommission},
+            #{deltaEffectiveChannelCommission}, #{deltaEstimateGrossProfit},
+            #{deltaEffectiveGrossProfit}, #{occurredAt},
+            CAST(#{inputSnapshot, typeHandler=com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler} AS JSONB),
+            COALESCE(#{createdAt}, CURRENT_TIMESTAMP)
+        )
+    </insert>
+</mapper>

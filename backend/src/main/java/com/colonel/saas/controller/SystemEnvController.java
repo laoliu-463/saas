@@ -4,9 +4,11 @@ import com.colonel.saas.common.base.BaseController;
 import com.colonel.saas.common.exception.BusinessException;
 import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.config.RuntimeExposurePolicy;
+import com.colonel.saas.config.RuntimeVersionProvider;
 import com.colonel.saas.constant.RoleCodes;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.env.Environment;
 import org.springframework.util.StringUtils;
 import org.springframework.web.context.request.RequestAttributes;
@@ -53,10 +55,15 @@ public class SystemEnvController extends BaseController {
     private final String dbNameProp;
     /** 数据源连接 URL（spring.datasource.url） */
     private final String datasourceUrl;
+<<<<<<< HEAD
     /** 当前运行镜像对应的完整 Git SHA */
     private final String gitSha;
     /** 当前运行后端镜像的内容摘要 */
     private final String imageDigest;
+=======
+    /** 运行镜像与数据库版本事实读取器 */
+    private final RuntimeVersionProvider runtimeVersionProvider;
+>>>>>>> b8cb837b (refactor: establish real-pre single-channel CD)
 
     /**
      * 构造注入.
@@ -71,6 +78,7 @@ public class SystemEnvController extends BaseController {
      * @param gitSha                      当前运行镜像对应的完整 Git SHA
      * @param imageDigest                 当前运行后端镜像的内容摘要
      */
+    @Autowired
     public SystemEnvController(
             Environment environment,
             CurrentUserPermissionPolicy currentUserPermissionPolicy,
@@ -79,8 +87,12 @@ public class SystemEnvController extends BaseController {
             @Value("${douyin.test.enabled:false}") boolean douyinTestEnabled,
             @Value("${DB_NAME:}") String dbNameProp,
             @Value("${spring.datasource.url:}") String datasourceUrl,
+<<<<<<< HEAD
             @Value("${APP_GIT_SHA:unknown}") String gitSha,
             @Value("${APP_IMAGE_DIGEST:unknown}") String imageDigest) {
+=======
+            RuntimeVersionProvider runtimeVersionProvider) {
+>>>>>>> b8cb837b (refactor: establish real-pre single-channel CD)
         this.environment = environment;
         this.currentUserPermissionPolicy = currentUserPermissionPolicy;
         this.envLabel = envLabel;
@@ -88,8 +100,35 @@ public class SystemEnvController extends BaseController {
         this.douyinTestEnabled = douyinTestEnabled;
         this.dbNameProp = dbNameProp;
         this.datasourceUrl = datasourceUrl;
+<<<<<<< HEAD
         this.gitSha = gitSha;
         this.imageDigest = imageDigest;
+=======
+        this.runtimeVersionProvider = runtimeVersionProvider;
+    }
+
+    /**
+     * 仅供不启动 Spring 容器的轻量单元测试使用。
+     */
+    public SystemEnvController(
+            Environment environment,
+            CurrentUserPermissionPolicy currentUserPermissionPolicy,
+            String envLabel,
+            boolean appTestEnabled,
+            boolean douyinTestEnabled,
+            String dbNameProp,
+            String datasourceUrl) {
+        this(
+                environment,
+                currentUserPermissionPolicy,
+                envLabel,
+                appTestEnabled,
+                douyinTestEnabled,
+                dbNameProp,
+                datasourceUrl,
+                RuntimeVersionProvider.unavailable()
+        );
+>>>>>>> b8cb837b (refactor: establish real-pre single-channel CD)
     }
 
     /**
@@ -132,10 +171,20 @@ public class SystemEnvController extends BaseController {
      */
     @GetMapping("/health")
     public Map<String, Object> health() {
+<<<<<<< HEAD
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("status", "UP");
         body.put("gitSha", gitSha);
         body.put("imageDigest", imageDigest);
+=======
+        RuntimeVersionProvider.RuntimeVersionSnapshot version = runtimeVersionProvider.current();
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("status", "UP");
+        body.put("gitSha", version.gitSha());
+        body.put("imageDigest", version.imageDigest());
+        body.put("databaseMigrationVersion", version.databaseMigrationVersion());
+        body.put("flywayVersion", version.flywayVersion());
+>>>>>>> b8cb837b (refactor: establish real-pre single-channel CD)
         return body;
     }
 

@@ -6,6 +6,7 @@ import com.colonel.saas.common.result.PageResult;
 import com.colonel.saas.config.DddRefactorProperties;
 import com.colonel.saas.domain.sample.application.port.SampleBoardQueryPort;
 import com.colonel.saas.domain.sample.application.port.SampleDetailQueryPort;
+import com.colonel.saas.domain.sample.application.port.SampleBoardQueryPort;
 import com.colonel.saas.domain.sample.application.port.SampleExportQueryPort;
 import com.colonel.saas.domain.sample.application.port.SampleLogisticsQueryPort;
 import com.colonel.saas.domain.sample.application.port.SamplePageQueryPort;

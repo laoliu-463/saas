@@ -30,6 +30,8 @@ class ManualTalentProviderTest {
         talent.setFollowingCount(12L);
         talent.setWorksCount(40L);
         talent.setIpLocation("  上海  ");
+        talent.setTalentLevel(" LV2 ");
+        talent.setSales30d(68000L);
 
         var result = provider.enrich(new TalentEnrichContext(talent, false));
 
@@ -42,7 +44,9 @@ class ManualTalentProviderTest {
                 .containsEntry("likesCount", 300L)
                 .containsEntry("followingCount", 12L)
                 .containsEntry("worksCount", 40L)
-                .containsEntry("ipLocation", "上海");
+                .containsEntry("ipLocation", "上海")
+                .containsEntry("talentLevel", "LV2")
+                .containsEntry("sales30d", 68000L);
     }
 
     @Test

@@ -216,6 +216,40 @@ class AttributionServiceTest {
     }
 
     @Test
+    void resolveAttribution_shouldUsePersistedNativeOrderFieldsWhenRawPayloadIsIncomplete() {
+        UUID mappingUser = UUID.randomUUID();
+        UUID mappingDept = UUID.randomUUID();
+        UUID recruiterUser = UUID.randomUUID();
+        ProductOperationState state = new ProductOperationState();
+        state.setAssigneeId(recruiterUser);
+        PickSourceAttributionMappingDTO mapping = nativeMapping(
+                mappingUser,
+                mappingDept,
+                "3916506",
+                "3829691670191014167",
+                "0");
+        when(productOperationStateMapper.selectOne(any())).thenReturn(state);
+        when(pickSourceMappingService.findNativeAttributionMappings(
+                "7351155267604218149", "3916506", "3829691670191014167"))
+                .thenReturn(List.of());
+        when(pickSourceMappingService.findNativeAttributionMappingsByActivityProduct(
+                "3916506", "3829691670191014167"))
+                .thenReturn(List.of(mapping));
+
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setProductId("3829691670191014167");
+        order.setActivityId("3916506");
+        order.setColonelBuyinId(7351155267604218149L);
+
+        AttributionService.AttributionResult result = service.resolveAttribution(order, Map.of());
+
+        assertThat(result.userId()).isEqualTo(mappingUser);
+        assertThat(result.channelUserId()).isEqualTo(mappingUser);
+        assertThat(result.colonelUserId()).isEqualTo(recruiterUser);
+        assertThat(result.attributionRemark()).isEqualTo(AttributionService.REASON_COLONEL_ORDER_INFO);
+    }
+
+    @Test
     void resolveAttribution_shouldNotUseShortIdLookupForNativeColonelBuyinId() {
         UUID mappingUser = UUID.randomUUID();
         PickSourceAttributionMappingDTO mapping = nativeMapping(mappingUser, UUID.randomUUID(), null, "pid-native", "7351155267604218149");

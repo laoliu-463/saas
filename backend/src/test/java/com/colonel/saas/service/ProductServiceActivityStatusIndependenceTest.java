@@ -44,6 +44,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
@@ -460,6 +461,7 @@ class ProductServiceActivityStatusIndependenceTest {
         String activityId = "ACT004";
         String productId = "4";
         ProductSnapshot snapshot = snapshot(activityId, productId);
+        snapshot.setRawPayload("{\"apply_id\":\"987654\"}");
         ProductOperationState state = state(activityId, productId);
         state.setSelectedToLibrary(true);
         state.setDisplayStatus(ProductDisplayStatus.DISPLAYING.name());
@@ -491,7 +493,28 @@ class ProductServiceActivityStatusIndependenceTest {
         assertThat(state.getAuditRemark()).isEqualTo("不符合商品库要求");
         assertThat(detail.get("selectedToLibrary")).isEqualTo(false);
         assertThat(detail.get("displayStatus")).isEqualTo(ProductDisplayStatus.HIDDEN.name());
+        verify(douyinActivityGateway).auditActivityProduct(
+                eq(null), eq(activityId), eq(List.of(987654L)), eq(false), eq("不符合商品库要求"));
         verify(productDisplayRuleService, never()).applyForProductId(productId);
+    }
+
+    @Test
+    void auditProduct_shouldRequireUpstreamApplyIdBeforeCallingAudit() {
+        String activityId = "ACT004_NO_APPLY_ID";
+        String productId = "44";
+        ProductSnapshot snapshot = snapshot(activityId, productId);
+        snapshot.setRawPayload(null);
+        ProductOperationState state = state(activityId, productId);
+
+        when(snapshotMapper.selectOne(any())).thenReturn(snapshot);
+        when(operationStateMapper.selectOne(any())).thenReturn(state);
+        when(productBizStatusService.readBizStatus(state)).thenReturn(ProductBizStatus.PENDING_AUDIT);
+
+        assertThatThrownBy(() -> productService.auditProduct(
+                activityId, productId, false, "缺少申请 ID", null, null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("请先重新同步活动商品");
+        verify(douyinActivityGateway, never()).auditActivityProduct(any(), any(), any(), anyBoolean(), any());
     }
 
     @Test
@@ -1091,6 +1114,7 @@ class ProductServiceActivityStatusIndependenceTest {
         snapshot.setActivityCosRatioText("20%");
         snapshot.setDetailUrl("https://detail.test/products/" + productId);
         snapshot.setPromotionEndTime("2099-12-31 23:59:59");
+        snapshot.setRawPayload("{\"apply_id\":\"987654\"}");
         return snapshot;
     }
 

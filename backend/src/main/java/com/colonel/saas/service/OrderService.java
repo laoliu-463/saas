@@ -8,6 +8,9 @@ import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.domain.product.facade.ProductDomainFacade;
 import com.colonel.saas.domain.product.facade.dto.ProductOrderDisplayDTO;
 import com.colonel.saas.domain.product.facade.dto.ProductSnapshotOrderDisplayDTO;
+import com.colonel.saas.domain.order.policy.OrderAccessContext;
+import com.colonel.saas.domain.order.policy.OrderAccessScope;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
 import com.colonel.saas.domain.user.policy.DataScopeResolver;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.mapper.ColonelsettlementOrderMapper;
@@ -66,6 +69,9 @@ public class OrderService {
      */
     private final DataScopeResolver dataScopeResolver;
 
+    /** 用户域提供的角色事实解释器。 */
+    private final CurrentUserPermissionChecker currentUserPermissionChecker;
+
     /**
      * DDD 化灰度开关（DDD-DATASCOPE-001）。
      */
@@ -82,11 +88,13 @@ public class OrderService {
             DashboardService dashboardService,
             ProductDomainFacade productDomainFacade,
             DataScopeResolver dataScopeResolver,
+            CurrentUserPermissionChecker currentUserPermissionChecker,
             com.colonel.saas.config.DddRefactorProperties dddRefactorProperties) {
         this.orderMapper = orderMapper;
         this.dashboardService = dashboardService;
         this.productDomainFacade = productDomainFacade;
         this.dataScopeResolver = dataScopeResolver;
+        this.currentUserPermissionChecker = currentUserPermissionChecker;
         this.dddRefactorProperties = dddRefactorProperties;
     }
 
@@ -121,6 +129,36 @@ public class OrderService {
             UUID userId,
             UUID deptId,
             DataScope dataScope) {
+        return findPage(
+                page, size, orderId, attributionStatus, unattributedReason, activityId, productId,
+                channelKeyword, colonelKeyword, orderStatus, startTime, endTime, timeField,
+                dashboardDiagnosis, recruiterDeptIds, channelDeptIds, userId, deptId, dataScope, null);
+    }
+
+    /**
+     * 分页查询订单，使用请求中已认证的角色事实解释订单归因维度。
+     */
+    public IPage<ColonelsettlementOrder> findPage(
+            long page,
+            long size,
+            String orderId,
+            String attributionStatus,
+            String unattributedReason,
+            String activityId,
+            String productId,
+            String channelKeyword,
+            String colonelKeyword,
+            Integer orderStatus,
+            String startTime,
+            String endTime,
+            String timeField,
+            String dashboardDiagnosis,
+            List<UUID> recruiterDeptIds,
+            List<UUID> channelDeptIds,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            Object roleCodes) {
         Page<ColonelsettlementOrder> query = new Page<>(page, size);
         LambdaQueryWrapper<ColonelsettlementOrder> wrapper = buildWrapper(
                 orderId,
@@ -139,7 +177,7 @@ public class OrderService {
                 normalizeUuidList(channelDeptIds)
         );
         selectOrderListColumns(wrapper);
-        applyDataScope(wrapper, userId, deptId, dataScope);
+        applyDataScope(wrapper, userId, deptId, dataScope, roleCodes);
         wrapper.orderByDesc(ColonelsettlementOrder::getUpdateTime)
                 .orderByDesc(ColonelsettlementOrder::getCreateTime);
         IPage<ColonelsettlementOrder> result = orderMapper.selectPage(query, wrapper);
@@ -175,6 +213,35 @@ public class OrderService {
             UUID deptId,
             DataScope dataScope,
             LocalDateTime lastSyncTime) {
+        return findStats(
+                orderId, attributionStatus, unattributedReason, activityId, productId, channelKeyword,
+                colonelKeyword, orderStatus, startTime, endTime, timeField, dashboardDiagnosis,
+                recruiterDeptIds, channelDeptIds, userId, deptId, dataScope, lastSyncTime, null);
+    }
+
+    /**
+     * 订单统计，使用与列表一致的角色化归因事实范围。
+     */
+    public OrderStatsResult findStats(
+            String orderId,
+            String attributionStatus,
+            String unattributedReason,
+            String activityId,
+            String productId,
+            String channelKeyword,
+            String colonelKeyword,
+            Integer orderStatus,
+            String startTime,
+            String endTime,
+            String timeField,
+            String dashboardDiagnosis,
+            List<UUID> recruiterDeptIds,
+            List<UUID> channelDeptIds,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            LocalDateTime lastSyncTime,
+            Object roleCodes) {
         List<UUID> normalizedRecruiterDeptIds = normalizeUuidList(recruiterDeptIds);
         List<UUID> normalizedChannelDeptIds = normalizeUuidList(channelDeptIds);
 
@@ -194,7 +261,7 @@ public class OrderService {
                 normalizedRecruiterDeptIds,
                 normalizedChannelDeptIds
         );
-        applyQueryDataScope(statusWrapper, userId, deptId, dataScope);
+        applyQueryDataScope(statusWrapper, userId, deptId, dataScope, roleCodes);
         statusWrapper.select("attribution_status AS attributionStatus", "COUNT(*) AS total")
                 .groupBy("attribution_status");
 
@@ -233,7 +300,7 @@ public class OrderService {
                 normalizedRecruiterDeptIds,
                 normalizedChannelDeptIds
         );
-        applyQueryDataScope(reasonWrapper, userId, deptId, dataScope);
+        applyQueryDataScope(reasonWrapper, userId, deptId, dataScope, roleCodes);
         reasonWrapper.eq("attribution_status", AttributionService.STATUS_UNATTRIBUTED)
                 .isNotNull("attribution_remark")
                 .select("attribution_remark AS reason", "COUNT(*) AS total")
@@ -557,6 +624,29 @@ public class OrderService {
                 ColonelsettlementOrder::getUserId, ColonelsettlementOrder::getDeptId);
     }
 
+    /**
+     * 角色化订单列表范围：招商和渠道分别依赖订单中已冻结的归因事实。
+     */
+    public void applyDataScope(
+            LambdaQueryWrapper<ColonelsettlementOrder> wrapper,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            Object roleCodes) {
+        if (roleCodes == null) {
+            applyDataScope(wrapper, userId, deptId, dataScope);
+            return;
+        }
+        OrderAccessScope.applyTo(
+                wrapper,
+                new OrderAccessContext(
+                        userId,
+                        deptId,
+                        dataScope,
+                        currentUserPermissionChecker.normalizeRoleCodes(roleCodes)),
+                currentUserPermissionChecker);
+    }
+
     public void applyQueryDataScope(
             QueryWrapper<ColonelsettlementOrder> wrapper,
             UUID userId,
@@ -587,6 +677,29 @@ public class OrderService {
         }
         // 新路径（DDD-USER-DATASCOPE-004：委托 DataScopeResolver，行为 1:1 等价于原 switch 实现）
         dataScopeResolver.applyTo(wrapper, userId, deptId, dataScope, "user_id", "dept_id");
+    }
+
+    /**
+     * 角色化订单统计范围：必须与列表使用同一归因事实维度。
+     */
+    public void applyQueryDataScope(
+            QueryWrapper<ColonelsettlementOrder> wrapper,
+            UUID userId,
+            UUID deptId,
+            DataScope dataScope,
+            Object roleCodes) {
+        if (roleCodes == null) {
+            applyQueryDataScope(wrapper, userId, deptId, dataScope);
+            return;
+        }
+        OrderAccessScope.applyTo(
+                wrapper,
+                new OrderAccessContext(
+                        userId,
+                        deptId,
+                        dataScope,
+                        currentUserPermissionChecker.normalizeRoleCodes(roleCodes)),
+                currentUserPermissionChecker);
     }
 
     public void normalizeOrderRow(ColonelsettlementOrder order) {

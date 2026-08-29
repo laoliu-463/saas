@@ -93,7 +93,6 @@ test.describe('招商链 UI 层验收', () => {
 
     // hover 商品卡 → 不应出现转链按钮
     await firstCard.hover();
-    await page.waitForTimeout(800);
     const copyLinkCount = await page.getByTestId('product-copy-link').count();
     expect(copyLinkCount).toBe(0);
   });
@@ -128,9 +127,7 @@ test.describe('招商链 UI 层验收', () => {
   // ──────────────────────────────────────────────
   test('招商组长访问达人 CRM 被重定向', async ({ page }) => {
     await gotoApp(page, '/talent');
-    await page.waitForTimeout(2000);
-    const url = page.url();
-    expect(url).not.toMatch(/\/talent/);
+    await expect(page).not.toHaveURL(/\/talent/, { timeout: 10_000 });
   });
 
   // ──────────────────────────────────────────────
@@ -138,9 +135,7 @@ test.describe('招商链 UI 层验收', () => {
   // ──────────────────────────────────────────────
   test('招商组长访问系统管理被重定向', async ({ page }) => {
     await gotoApp(page, '/system/users');
-    await page.waitForTimeout(2000);
-    const url = page.url();
-    expect(url).not.toMatch(/\/system/);
+    await expect(page).not.toHaveURL(/\/system/, { timeout: 10_000 });
   });
 });
 

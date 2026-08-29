@@ -217,6 +217,19 @@ GET /colonel/products/library/health
 
 **返回指标**：`snapshotTotal`、`promotingTotal`、`promotingNotSelected`、`promotingNotDisplaying`、`displayingWithHiddenReason`、`selectedButNotPromoting`、`upstreamNotPromoting`、`localRejected`、`localPaused`、`lastSyncTime`、`lastSyncError`。
 
+### 2.8 活动商品人工审核与上游同步
+
+```
+PUT /colonel/activities/{activityId}/products/{productId}/audit-result
+```
+
+**权限**：`BIZ_STAFF`。
+
+**审核语义**：系统先从活动商品快照的 `raw_payload.apply_id` 读取抖音活动商品申请 ID，调用
+`alliance.colonelActivityProductAudit`；`operation=0` 表示通过，`operation=1` 表示拒绝。
+只有上游调用成功且没有返回单商品 `reject_reason` 时，才写入本地 `audit_status`、`biz_status`
+和商品库状态。快照缺少 `apply_id` 时必须先重新同步活动商品，不能只修改本地状态。
+
 ---
 
 ## 三、前端字段契约

@@ -51,6 +51,18 @@ public class TalentDetailResponse {
         private String ipLocation;
         /** 达人等级 */
         private String level;
+        /** 平台达人等级 */
+        private String talentLevel;
+        /** 近 30 天销售额（单位：分） */
+        private Long sales30d;
+        /** 资料同步时未支持的字段 */
+        private List<String> unsupportedFields;
+        /** 资料同步状态 */
+        private String syncStatus;
+        /** 资料来源 */
+        private String dataSource;
+        /** 最近一次同步错误信息 */
+        private String syncErrorMessage;
         /** 月销售额（单位：分） */
         private Long monthlySales;
         /** 主推类目 */

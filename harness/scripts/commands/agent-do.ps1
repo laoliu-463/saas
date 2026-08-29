@@ -244,7 +244,31 @@ try {
             "Scope=apifox: DRY-RUN; application build skipped and Apifox/OpenAPI local harness not executed by agent-do."
         }
         else {
-            "Scope=apifox: application build skipped; Apifox/OpenAPI local harness PASS."
+            $effectiveBusinessCommand = $BusinessCommand
+            if ([string]::IsNullOrWhiteSpace($effectiveBusinessCommand)) {
+                if ($TargetEnv -eq "real-pre") {
+                    $effectiveBusinessCommand = "npm run e2e:real-pre:p0:preflight"
+                }
+                else {
+                    $effectiveBusinessCommand = "npm run e2e:v1-p0"
+                }
+            }
+
+            Write-HarnessStage "Business validation"
+            Write-Host $effectiveBusinessCommand
+            if (-not $DryRun) {
+                Push-Location $config.RepoRoot
+                try {
+                    powershell -NoProfile -ExecutionPolicy Bypass -Command $effectiveBusinessCommand
+                    if ($LASTEXITCODE -ne 0) {
+                        throw "Business validation failed: $effectiveBusinessCommand"
+                    }
+                }
+                finally {
+                    Pop-Location
+                }
+            }
+            $businessResult = "Business validation: PASS ($effectiveBusinessCommand)"
         }
         $businessResult = "Scope=apifox: business validation not applicable; cloud import not executed."
     }
@@ -311,7 +335,48 @@ try {
         -SkipRuntimeCollection:($Scope -in @("docs", "apifox", "deploy", "ci")) `
         -DryRun:$DryRun
 
-    Write-Host "Evidence collected at $reportPath. Git commit and push are explicit follow-up commands; agent-do does not mutate Git history." -ForegroundColor Yellow
+    $commitOwnedFiles = @($taskOwnedFiles)
+    if (-not $DryRun -and (Test-Path -LiteralPath $reportPath)) {
+        $commitOwnedFiles += Get-HarnessRepoRelativePath -RepoRoot $config.RepoRoot -Path $reportPath
+    }
+    & (Join-Path $PSScriptRoot "git-push-safe.ps1") `
+        -RepoRoot $config.RepoRoot `
+        -Message $Message `
+        -OwnedFiles $commitOwnedFiles `
+        -DryRun:$DryRun
+
+    if ($deployRemoteValue) {
+        & (Join-Path $PSScriptRoot "deploy-remote.ps1") -Env real-pre -DryRun:$DryRun
+        $remoteResult = "Remote deploy: PASS"
+        $remoteConclusion = if ($SkipBusinessValidation -or $Scope -eq "docs" -or $Scope -eq "apifox") {
+            "PARTIAL"
+        }
+        else {
+            "PASS"
+        }
+        $remoteReportPath = & (Join-Path $PSScriptRoot "collect-evidence.ps1") `
+            -Env $TargetEnv `
+            -Scope $Scope `
+            -BuildResult $buildResult `
+            -HealthResult $healthResult `
+            -BusinessResult $businessResult `
+            -ContentMaintenanceResult $contentMaintenanceResult `
+            -RemoteResult $remoteResult `
+            -Conclusion $remoteConclusion `
+            -DeployRemote $true `
+            -ReportKey $ReportKey `
+            -OwnedFiles $taskOwnedFiles `
+            -RetroSummary $RetroSummary `
+            -DryRun:$DryRun
+        if (-not $DryRun -and (Test-Path -LiteralPath $remoteReportPath)) {
+            $remoteReportRelative = Get-HarnessRepoRelativePath -RepoRoot $config.RepoRoot -Path $remoteReportPath
+            & (Join-Path $PSScriptRoot "git-push-safe.ps1") `
+                -RepoRoot $config.RepoRoot `
+                -Message "docs(harness): record remote deployment evidence" `
+                -OwnedFiles @($remoteReportRelative)
+        }
+        $conclusion = $remoteConclusion
+    }
 
     Write-Host "Review HARNESS_CHANGELOG.md and update it when Harness behavior changed." -ForegroundColor Yellow
     Write-HarnessStage "Agent do result"

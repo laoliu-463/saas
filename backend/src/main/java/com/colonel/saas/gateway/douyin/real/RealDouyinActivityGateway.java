@@ -178,6 +178,23 @@ public class RealDouyinActivityGateway implements DouyinActivityGateway {
     }
 
     /**
+     * 审核专属团长活动商品。
+     *
+     * <p>将活动商品申请 ID 和审核决定透传给
+     * {@code alliance.colonelActivityProductAudit}。</p>
+     */
+    @Override
+    public Map<String, Object> auditActivityProduct(
+            String appId,
+            String activityId,
+            List<Long> applyIds,
+            boolean approved,
+            String suggestInfo) {
+        logGateway("RealDouyinActivityGateway.auditActivityProduct", appId);
+        return productApi.auditActivityProduct(appId, activityId, applyIds, approved, suggestInfo);
+    }
+
+    /**
      * 查询活动详情。
      *
      * <p>处理流程：

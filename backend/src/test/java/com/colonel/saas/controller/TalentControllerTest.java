@@ -1,7 +1,7 @@
 package com.colonel.saas.controller;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
-import com.colonel.saas.annotation.RequirePermission;
+import com.colonel.saas.annotation.RequireRoles;
 import com.colonel.saas.common.enums.DataScope;
 import com.colonel.saas.common.exception.GlobalExceptionHandler;
 import com.colonel.saas.constant.RoleCodes;
@@ -213,9 +213,9 @@ class TalentControllerTest {
 
     @Test
     void talentCrm_shouldAllowBizStaffAtControllerBoundary() {
-        RequirePermission roles = TalentController.class.getAnnotation(RequirePermission.class);
+        RequireRoles roles = TalentController.class.getAnnotation(RequireRoles.class);
 
         assertThat(roles).isNotNull();
-        assertThat(roles.value()).isEqualTo("talent:access");
+        assertThat(List.of(roles.value())).contains(RoleCodes.BIZ_STAFF);
     }
 }

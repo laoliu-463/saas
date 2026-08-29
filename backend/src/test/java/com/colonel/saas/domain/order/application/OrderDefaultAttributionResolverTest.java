@@ -2,11 +2,14 @@ package com.colonel.saas.domain.order.application;
 
 import com.colonel.saas.domain.order.infrastructure.OrderPickSourceMappingAdapter;
 import com.colonel.saas.domain.order.policy.OrderDefaultAttributionResult;
+import com.colonel.saas.domain.order.policy.OrderLinkAttributionResolution;
+import com.colonel.saas.domain.order.policy.OrderLinkAttributionResolution.Status;
 import com.colonel.saas.domain.product.facade.ProductDomainFacade;
+import com.colonel.saas.domain.shared.attribution.AttributionOwnerType;
+import com.colonel.saas.domain.shared.attribution.AttributionSource;
 import com.colonel.saas.domain.talent.facade.TalentDomainFacade;
 import com.colonel.saas.domain.talent.facade.dto.TalentReadDTO;
 import com.colonel.saas.entity.ColonelsettlementOrder;
-import com.colonel.saas.entity.PickSourceMapping;
 import com.colonel.saas.service.AttributionService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -14,6 +17,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.UUID;
 
@@ -45,18 +49,15 @@ class OrderDefaultAttributionResolverTest {
     }
 
     @Test
-    void resolve_shouldUsePickSourceMappingForChannel() {
+    void resolveShouldUseRecruiterLinkBeforeActivityRecruiter() {
         ColonelsettlementOrder order = baseOrder();
-        UUID channelUserId = UUID.randomUUID();
-        PickSourceMapping mapping = new PickSourceMapping();
-        mapping.setUserId(channelUserId);
-        mapping.setDeptId(UUID.randomUUID());
+        UUID linkRecruiter = UUID.randomUUID();
+        UUID activityRecruiter = UUID.randomUUID();
+        when(pickSourceMappingAdapter.resolve(any())).thenReturn(unique(linkRecruiter, AttributionOwnerType.RECRUITER));
+        when(productDomainFacade.findActivityDefaultRecruiterId("act-1")).thenReturn(activityRecruiter);
 
-        when(pickSourceMappingAdapter.findByPickSourceOrExtra("ps-1", null)).thenReturn(mapping);
-        when(productDomainFacade.findProductAssigneeId("act-1", "prod-1")).thenReturn(null);
-        when(productDomainFacade.findActivityDefaultRecruiterId("act-1")).thenReturn(null);
-
-        OrderDefaultAttributionResult result = resolver.resolve(order, Map.of());
+        OrderDefaultAttributionResolver.Resolution resolution = resolver.resolveWithTrace(order, Map.of());
+        OrderDefaultAttributionResult result = resolution.result();
 
         assertThat(result.defaultChannelUserId()).isEqualTo(channelUserId);
         assertThat(result.channelAttributionStatus())
@@ -64,6 +65,8 @@ class OrderDefaultAttributionResolverTest {
         assertThat(result.recruiterAttributionStatus())
                 .isEqualTo(OrderDefaultAttributionResult.RECRUITER_UNATTRIBUTED);
         assertThat(result.attributionStatus()).isEqualTo(AttributionService.STATUS_ATTRIBUTED);
+        assertThat(resolution.nativeMappingMatched()).isTrue();
+        assertThat(resolution.mappingCreatedAt()).isEqualTo(mapping.getCreateTime());
     }
 
     @Test
@@ -90,42 +93,71 @@ class OrderDefaultAttributionResolverTest {
     }
 
     @Test
-    void resolve_productFacadeException_shouldStillReturnChannelResult() {
-        ColonelsettlementOrder order = baseOrder();
-        PickSourceMapping mapping = new PickSourceMapping();
-        mapping.setUserId(UUID.randomUUID());
+    void resolve_shouldUseUniqueActivityProductNativeMappingWhenBuyinKeyDiffers() {
+        ColonelsettlementOrder order = new ColonelsettlementOrder();
+        order.setProductId("3829691670191014167");
+        order.setActivityId("3916506");
+        order.setPickSource(null);
+        order.setColonelBuyinId(7351155267604218149L);
 
-        when(pickSourceMappingAdapter.findByPickSourceOrExtra("ps-1", null)).thenReturn(mapping);
-        when(productDomainFacade.findProductAssigneeId(any(), any()))
+        UUID channelUserId = UUID.randomUUID();
+        UUID recruiterUserId = UUID.randomUUID();
+        PickSourceMapping mapping = new PickSourceMapping();
+        mapping.setUserId(channelUserId);
+        mapping.setDeptId(UUID.randomUUID());
+        mapping.setActivityId("3916506");
+        mapping.setProductId("3829691670191014167");
+        mapping.setColonelBuyinId("0");
+        mapping.setSourceType("NATIVE");
+
+        when(pickSourceMappingAdapter.findByNativeOrder(
+                "7351155267604218149", "3916506", "3829691670191014167", true))
+                .thenReturn(new OrderPickSourceMappingAdapter.NativeMappingLookup(mapping, false));
+        when(productDomainFacade.findProductAssigneeId("3916506", "3829691670191014167"))
+                .thenReturn(recruiterUserId);
+        when(productDomainFacade.findActivityDefaultRecruiterId("3916506"))
+                .thenReturn(null);
+
+        OrderDefaultAttributionResult result = resolver.resolve(order, Map.of());
+
+        assertThat(result.defaultRecruiterId()).isEqualTo(linkRecruiter);
+        assertThat(result.recruiterAttributionSource()).isEqualTo(AttributionSource.PICK_SOURCE);
+        verify(productDomainFacade, never()).findProductAssigneeId(any(), any());
+    }
+
+    @Test
+    void resolveProductFacadeExceptionShouldStillReturnChannelResult() {
+        ColonelsettlementOrder order = baseOrder();
+        UUID channelUser = UUID.randomUUID();
+        when(pickSourceMappingAdapter.resolve(any())).thenReturn(unique(channelUser, AttributionOwnerType.CHANNEL));
+        when(productDomainFacade.findActivityDefaultRecruiterId("act-1"))
                 .thenThrow(new RuntimeException("product domain down"));
 
         OrderDefaultAttributionResult result = resolver.resolve(order, Map.of());
 
-        assertThat(result.defaultChannelUserId()).isNotNull();
+        assertThat(result.defaultChannelUserId()).isEqualTo(channelUser);
         assertThat(result.defaultRecruiterId()).isNull();
     }
 
     @Test
-    void resolve_shouldNotCallExclusiveServices() {
+    void resolveShouldOnlyLookupActivityRecruiterAndTalent() {
         ColonelsettlementOrder order = baseOrder();
-        when(pickSourceMappingAdapter.findByPickSourceOrExtra("ps-1", null)).thenReturn(null);
-        when(productDomainFacade.findProductAssigneeId("act-1", "prod-1")).thenReturn(UUID.randomUUID());
-        when(productDomainFacade.findActivityDefaultRecruiterId("act-1")).thenReturn(null);
+        when(pickSourceMappingAdapter.resolve(any())).thenReturn(notFound());
+        when(productDomainFacade.findActivityDefaultRecruiterId("act-1")).thenReturn(UUID.randomUUID());
 
         resolver.resolve(order, Map.of("author_id", "uid-1"));
 
-        verify(productDomainFacade).findProductAssigneeId(eq("act-1"), eq("prod-1"));
+        verify(productDomainFacade).findActivityDefaultRecruiterId(eq("act-1"));
+        verify(productDomainFacade, never()).findProductAssigneeId(any(), any());
         verify(talentDomainFacade).findByDouyinUid("uid-1");
     }
 
     @Test
-    void resolve_shouldResolveTalentIdFromUid() {
+    void resolveShouldResolveTalentIdFromUid() {
         ColonelsettlementOrder order = baseOrder();
         UUID talentId = UUID.randomUUID();
         TalentReadDTO talent = new TalentReadDTO(talentId, "uid-1", null, "达人A", null, 1, null, null, null, null);
-
-        when(pickSourceMappingAdapter.findByPickSourceOrExtra("ps-1", null)).thenReturn(null);
-        when(productDomainFacade.findProductAssigneeId(any(), any())).thenReturn(null);
+        when(pickSourceMappingAdapter.resolve(any())).thenReturn(notFound());
         when(productDomainFacade.findActivityDefaultRecruiterId(any())).thenReturn(null);
         when(talentDomainFacade.findByDouyinUid("uid-1")).thenReturn(talent);
 
@@ -140,5 +172,17 @@ class OrderDefaultAttributionResolverTest {
         order.setActivityId("act-1");
         order.setPickSource("ps-1");
         return order;
+    }
+
+    private OrderLinkAttributionResolution unique(UUID userId, AttributionOwnerType ownerType) {
+        return new OrderLinkAttributionResolution(
+                Status.UNIQUE, userId, UUID.randomUUID(), ownerType, AttributionSource.PICK_SOURCE,
+                "UNIQUE_LINK_OWNER", false, false, null);
+    }
+
+    private OrderLinkAttributionResolution notFound() {
+        return new OrderLinkAttributionResolution(
+                Status.NOT_FOUND, null, null, null, AttributionSource.UNATTRIBUTED,
+                "MAPPING_NOT_FOUND", false, false, null);
     }
 }

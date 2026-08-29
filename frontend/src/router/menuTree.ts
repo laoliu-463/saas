@@ -113,7 +113,7 @@ export const MENU_TREE: MenuTreeNode[] = [
     topKey: 'talent',
     testId: 'nav-talent',
     showInTop: true,
-    permissions: [PERMISSION.TALENT_ACCESS],
+    roles: [ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF, ROLE.ADMIN],
     children: [
       { label: '团队公海', key: TALENT_MENU_KEYS.teamPublic, topKey: 'talent', path: TALENT_MENU_KEYS.teamPublic },
       { label: '我的达人', key: TALENT_MENU_KEYS.myTalents, topKey: 'talent', path: TALENT_MENU_KEYS.myTalents },

@@ -6,7 +6,6 @@ import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
 
-/** 将达人认领释放端口适配到现有 TalentService。 */
 @Component
 public class LegacyTalentClaimReleaseAdapter implements TalentClaimReleasePort {
 

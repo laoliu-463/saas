@@ -18,6 +18,7 @@ import com.colonel.saas.domain.product.application.ProductQuickSampleApplication
 import com.colonel.saas.domain.product.application.dto.ProductLibraryCursorPage;
 import com.colonel.saas.domain.product.application.dto.ProductLibraryPageQuery;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
+import com.colonel.saas.domain.shared.attribution.AttributionOwnerType;
 import com.colonel.saas.service.ProductService;
 import com.colonel.saas.service.ProductSampleSettingService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -653,7 +654,7 @@ public class ProductController extends BaseController {
      * @deprecated 请迁移到 {@code /colonel/activities/{activityId}/products/{productId}/promotion-links}
      */
     @Operation(summary = "[已废弃] 商品转链", description = "兼容旧版商品转链入口。请迁移到 /colonel/activities/{activityId}/products/{productId}/promotion-links。")
-    @RequirePermission("product:generate-promotion-link")
+    @RequireRoles({RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF})
     @PostMapping("/{id}/promotion-links")
     public ApiResult<PromotionLinkResponse> generatePromotionLink(
             @Parameter(description = "商品主键 ID，使用 UUID 格式。") @PathVariable UUID id,
@@ -675,7 +676,8 @@ public class ProductController extends BaseController {
                 safeRequest.getNeedShortLink(),
                 safeRequest.getScene(),
                 safeRequest.getTalentId(),
-                idempotencyKey
+                idempotencyKey,
+                AttributionOwnerType.parseNullable(safeRequest.getAttributionOwnerType())
         );
         return ok(new PromotionLinkResponse(
                 result.pickSource(),
@@ -1104,6 +1106,9 @@ public class ProductController extends BaseController {
         @Schema(description = "达人标识，用于特定转链场景。", example = "test_talent_001")
         private String talentId;
 
+        @Schema(description = "双角色用户必须指定本次推广链接归属维度。", allowableValues = {"CHANNEL", "RECRUITER"})
+        private String attributionOwnerType;
+
         public String getExternalUniqueId() {
             return externalUniqueId;
         }
@@ -1142,6 +1147,14 @@ public class ProductController extends BaseController {
 
         public void setTalentId(String talentId) {
             this.talentId = talentId;
+        }
+
+        public String getAttributionOwnerType() {
+            return attributionOwnerType;
+        }
+
+        public void setAttributionOwnerType(String attributionOwnerType) {
+            this.attributionOwnerType = attributionOwnerType;
         }
     }
 

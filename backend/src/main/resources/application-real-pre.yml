@@ -19,6 +19,14 @@ spring:
   devtools:
     restart:
       enabled: false
+  flyway:
+    enabled: ${FLYWAY_ENABLED:false}
+    locations: classpath:db/migrate
+    baseline-on-migrate: true
+    baseline-version: 20260717
+    baseline-description: pre-flyway-schema
+    validate-on-migrate: true
+    clean-disabled: true
 
 server:
   port: 8080
@@ -31,6 +39,12 @@ knife4j:
 security:
   jwt:
     secret: ${JWT_SECRET}
+
+authorization:
+  runtime:
+    default-mode: ${AUTHORIZATION_RUNTIME_DEFAULT_MODE:LEGACY}
+    snapshot-cache-ttl: ${AUTHORIZATION_SNAPSHOT_CACHE_TTL:5m}
+    domain-modes: {}
 
 app:
   cors:

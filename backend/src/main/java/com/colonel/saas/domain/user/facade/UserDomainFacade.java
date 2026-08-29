@@ -8,6 +8,7 @@ import com.colonel.saas.dto.user.UserOptionResponse;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -106,6 +107,9 @@ public interface UserDomainFacade {
      * 用于推广链接归因参数构造，避免业务域读取完整用户 DTO。
      */
     Map<UUID, String> loadUserChannelCodesByIds(Collection<UUID> ids);
+
+    /** 批量加载用户当前启用的角色编码。 */
+    Map<UUID, Set<String>> loadActiveRoleCodesByUserIds(Collection<UUID> ids);
 
     /**
      * 批量加载用户归属引用，返回 userId -> ownership reference 映射。

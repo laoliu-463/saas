@@ -7,6 +7,7 @@ import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.common.result.PageResult;
 import com.colonel.saas.auth.service.SysUserService;
 import com.colonel.saas.domain.product.application.CopyPromotionApplicationService;
+import com.colonel.saas.domain.shared.attribution.AttributionOwnerType;
 import com.colonel.saas.entity.ProductOperationLog;
 import com.colonel.saas.service.ProductPinService;
 import com.colonel.saas.service.ProductService;
@@ -325,7 +326,7 @@ public class ColonelActivityProductController extends BaseController {
      * @return 转链结果，包含推广链接、短链等信息
      */
     @Operation(summary = "活动商品转链", description = "为活动商品生成推广链接。")
-    @RequirePermission("colonel-activity-product:generate-promotion-link")
+    @RequireRoles({RoleCodes.CHANNEL_LEADER, RoleCodes.CHANNEL_STAFF, RoleCodes.BIZ_LEADER, RoleCodes.BIZ_STAFF})
     @PostMapping("/{productId}/promotion-links")
     public ApiResult<com.colonel.saas.domain.product.application.dto.PromotionLinkCopyResult> generatePromotionLink(
             @Parameter(description = "团长活动 ID。") @PathVariable String activityId,
@@ -352,7 +353,8 @@ public class ColonelActivityProductController extends BaseController {
                 safeRequest.getNeedShortLink(),
                 safeRequest.getScene(),
                 safeRequest.getTalentId(),
-                idempotencyKey
+                idempotencyKey,
+                AttributionOwnerType.parseNullable(safeRequest.getAttributionOwnerType())
         );
         return ok(result);
     }
@@ -1052,6 +1054,10 @@ public class ColonelActivityProductController extends BaseController {
         @Schema(description = "达人标识。", example = "test_talent_001")
         private String talentId;
 
+        /** 双角色用户本次链接的归属维度：CHANNEL 或 RECRUITER。 */
+        @Schema(description = "双角色用户必须指定本次推广链接的归属维度。", allowableValues = {"CHANNEL", "RECRUITER"})
+        private String attributionOwnerType;
+
         public String getExternalUniqueId() {
             return externalUniqueId;
         }
@@ -1090,6 +1096,14 @@ public class ColonelActivityProductController extends BaseController {
 
         public void setTalentId(String talentId) {
             this.talentId = talentId;
+        }
+
+        public String getAttributionOwnerType() {
+            return attributionOwnerType;
+        }
+
+        public void setAttributionOwnerType(String attributionOwnerType) {
+            this.attributionOwnerType = attributionOwnerType;
         }
     }
 

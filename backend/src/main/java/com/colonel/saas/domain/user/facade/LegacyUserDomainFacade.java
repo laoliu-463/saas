@@ -7,6 +7,7 @@ import com.colonel.saas.domain.user.port.DepartmentOptionLookup;
 import com.colonel.saas.domain.user.port.DepartmentOptionLookup.DepartmentEntry;
 import com.colonel.saas.domain.user.port.UserBasicLookup;
 import com.colonel.saas.domain.user.port.UserBasicLookup.BasicUser;
+import com.colonel.saas.domain.user.port.UserRoleCodeLookup;
 import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
 import com.colonel.saas.dto.user.CheckPermissionRequest;
 import com.colonel.saas.dto.user.CurrentUserResponse;
@@ -22,6 +23,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -36,18 +38,21 @@ public class LegacyUserDomainFacade implements UserDomainFacade {
     private final DepartmentOptionLookup departmentOptionLookup;
     private final UserBasicLookup userBasicLookup;
     private final CurrentUserPermissionChecker currentUserPermissionChecker;
+    private final UserRoleCodeLookup userRoleCodeLookup;
 
     public LegacyUserDomainFacade(
             UserDomainService userDomainService,
             UserMasterDataService userMasterDataService,
             DepartmentOptionLookup departmentOptionLookup,
             UserBasicLookup userBasicLookup,
-            CurrentUserPermissionChecker currentUserPermissionChecker) {
+            CurrentUserPermissionChecker currentUserPermissionChecker,
+            UserRoleCodeLookup userRoleCodeLookup) {
         this.userDomainService = userDomainService;
         this.userMasterDataService = userMasterDataService;
         this.departmentOptionLookup = departmentOptionLookup;
         this.userBasicLookup = userBasicLookup;
         this.currentUserPermissionChecker = currentUserPermissionChecker;
+        this.userRoleCodeLookup = userRoleCodeLookup;
     }
 
     @Override
@@ -201,6 +206,11 @@ public class LegacyUserDomainFacade implements UserDomainFacade {
                         user -> user.channelCode().trim(),
                         (left, right) -> left
                 ));
+    }
+
+    @Override
+    public Map<UUID, Set<String>> loadActiveRoleCodesByUserIds(Collection<UUID> ids) {
+        return userRoleCodeLookup.findActiveRoleCodesByUserIds(ids);
     }
 
     @Override

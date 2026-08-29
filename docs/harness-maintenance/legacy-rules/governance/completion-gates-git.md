@@ -35,9 +35,10 @@
 
 适用：Docker / Compose / env / 部署脚本变更。
 
-- 远端 `git pull --ff-only` 成功
-- 远端 `git rev-parse HEAD` 等于本地 HEAD
-- 部署后 `docker compose ps` 全部 healthy
+- 候选提交已推送到当前 upstream，PR/CI 证据可追踪
+- real-pre 只接受 `release/real-pre` 当前 40 位完整 SHA
+- CI 镜像 tag、OCI revision、digest 与发布清单一致
+- Jenkins 全局锁和运行版本一致性门禁通过；普通任务不得直接部署
 - `.env` 文件未 commit
 
 ## Gate G4：Session clean

@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { accounts } from './helpers/test-data';
+import { installAuth } from './helpers/auth';
+import { gotoApp } from './helpers/page-ready';
 import {
   apiLogin,
   getBackendApiBase,
@@ -41,18 +43,9 @@ test('管理员在前端完成一键刷新联调状态（UI + 后端 API 双验�
     throw new Error(apiResults.institution?.reason || 'REAL_PRE_INSTITUTION_PRECONDITION_BLOCKED: institution probe failed');
   }
 
-  await context.addInitScript((payload: Record<string, unknown>) => {
-    localStorage.setItem('token', String(payload.token ?? ''));
-    localStorage.setItem('refreshToken', String(payload.refreshToken ?? ''));
-    localStorage.setItem('refreshExpiresIn', String(payload.refreshExpiresIn ?? ''));
-    localStorage.setItem(
-      'accessTokenExpiresIn',
-      String(payload.accessTokenExpiresIn ?? payload.expiresIn ?? '')
-    );
-    localStorage.setItem('userInfo', JSON.stringify(payload));
-  }, auth);
+  await installAuth(context, auth);
 
-  await page.goto('/system/douyin', { waitUntil: 'domcontentloaded', timeout: REAL_PRE_UI_TIMEOUT_MS });
+  await gotoApp(page, '/system/douyin', { timeout: REAL_PRE_UI_TIMEOUT_MS });
   await expect(page.getByRole('button', { name: '一键刷新联调状态' })).toBeVisible({ timeout: REAL_PRE_UI_TIMEOUT_MS });
 
   const pageErrors: string[] = [];

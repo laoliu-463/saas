@@ -1,6 +1,12 @@
 # Jenkins real-pre 发布规则
 
+<<<<<<< HEAD
 ## 目标
+=======
+> **历史方案，已被单通道 CD 替代。** 当前事实以根目录 `Jenkinsfile` 和 `harness/rules/cicd-real-pre-policy.md` 为准。
+
+## 适用场景
+>>>>>>> b8cb837b (refactor: establish real-pre single-channel CD)
 
 日常发布固定为：开发分支 -> GitHub PR / CI Gate -> `main` -> 镜像产物 -> `release/real-pre` 提升 PR -> Jenkins `saas-real-pre-cd`。
 

@@ -175,7 +175,8 @@ class PickSourceMappingServiceTest {
                 "LIVE",
                 "  PICK_EXTRA_TRACE  ",
                 "  BUYIN-TRACE  ",
-                "pick_source"
+                "pick_source",
+                "RECRUITER"
         );
 
         verify(pickSourceMappingMapper).insert(captor.capture());
@@ -198,6 +199,7 @@ class PickSourceMappingServiceTest {
         assertThat(inserted.getPromotionLinkId()).isEqualTo(promotionLinkId);
         assertThat(inserted.getScene()).isEqualTo("LIVE");
         assertThat(inserted.getSourceType()).isEqualTo(PickSourceMappingService.SOURCE_TYPE_PICK_SOURCE);
+        assertThat(inserted.getAttributionOwnerType()).isEqualTo("RECRUITER");
         assertThat(inserted.getStatus()).isEqualTo(1);
         assertThat(inserted.getValidFrom()).isNotNull();
         assertThat(inserted.getValidUntil()).isAfter(inserted.getValidFrom());

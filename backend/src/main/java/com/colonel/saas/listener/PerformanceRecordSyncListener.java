@@ -1,10 +1,11 @@
 package com.colonel.saas.listener;
 
 import com.colonel.saas.domain.order.event.OrderRefundFactSyncedEvent;
-import com.colonel.saas.domain.order.application.OrderAttributionRouter;
+import com.colonel.saas.domain.order.event.OrderAttributionReplayedEvent;
 import com.colonel.saas.domain.order.facade.OrderReadFacade;
 import com.colonel.saas.domain.performance.application.PerformanceCalculationApplicationService;
-import com.colonel.saas.domain.product.event.ProductOwnerChangedEvent;
+import com.colonel.saas.domain.performance.application.PerformanceCalculationExecutionService;
+import com.colonel.saas.domain.performance.application.PerformanceRefundAdjustmentService;
 import com.colonel.saas.entity.ColonelsettlementOrder;
 import com.colonel.saas.entity.PerformanceRecord;
 import com.colonel.saas.event.OrderSyncedEvent;
@@ -12,10 +13,13 @@ import com.colonel.saas.event.PerformanceCalculatedEvent;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.event.EventListener;
-import org.springframework.scheduling.annotation.Async;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
-import java.util.List;
+import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.function.Consumer;
 
 /**
  * 业绩记录同步事件监听器。
@@ -33,110 +37,139 @@ public class PerformanceRecordSyncListener {
     private final OrderAttributionRouter orderAttributionRouter;
     private final PerformanceCalculationApplicationService performanceCalculationApplicationService;
     private final ApplicationEventPublisher eventPublisher;
+    private final PerformanceCalculationExecutionService executionService;
+    private final PerformanceRefundAdjustmentService refundAdjustmentService;
 
     public PerformanceRecordSyncListener(
             OrderReadFacade orderReadFacade,
             OrderAttributionRouter orderAttributionRouter,
             PerformanceCalculationApplicationService performanceCalculationApplicationService,
             ApplicationEventPublisher eventPublisher) {
+        this(orderReadFacade, performanceCalculationApplicationService, eventPublisher, null, null);
+    }
+
+    @Autowired
+    public PerformanceRecordSyncListener(
+            OrderReadFacade orderReadFacade,
+            PerformanceCalculationApplicationService performanceCalculationApplicationService,
+            ApplicationEventPublisher eventPublisher,
+            PerformanceCalculationExecutionService executionService,
+            PerformanceRefundAdjustmentService refundAdjustmentService) {
         this.orderReadFacade = orderReadFacade;
         this.orderAttributionRouter = orderAttributionRouter;
         this.performanceCalculationApplicationService = performanceCalculationApplicationService;
         this.eventPublisher = eventPublisher;
+        this.executionService = executionService;
+        this.refundAdjustmentService = refundAdjustmentService;
     }
 
-    @Async
     @EventListener
     public void onOrderSynced(OrderSyncedEvent event) {
         if (event == null || event.orderId() == null) {
             return;
         }
-        try {
-            ColonelsettlementOrder order = orderReadFacade.findByOrderId(event.orderId());
-            recalculate(order, event.orderId());
-        } catch (Exception ex) {
-            log.warn("Performance calculation failed, orderId={}", event.orderId(), ex);
-        }
+        ColonelsettlementOrder order = orderReadFacade.findByOrderId(event.orderId());
+        recalculateOrThrow(order, event.orderId(), "OrderSynced", event.orderVersion(),
+                "OrderSynced:" + event.orderId() + ":" + event.orderVersion(), Map.of(), null);
     }
 
-    @Async
     @EventListener
     public void onOrderRefundFactSynced(OrderRefundFactSyncedEvent event) {
         if (event == null || event.orderId() == null) {
             return;
         }
-        recalculate(event.orderId());
+        ColonelsettlementOrder order = orderReadFacade.findByOrderId(event.orderId());
+        int refundVersion = refundVersion(event);
+        recalculateOrThrow(order, event.orderId(), "OrderRefundFactSynced", refundVersion,
+                "OrderRefundFactSynced:" + event.orderId() + ":" + refundEventIdentity(event),
+                refundPayload(event),
+                record -> {
+                    if (refundAdjustmentService != null) {
+                        refundAdjustmentService.recordRefund(record, event);
+                    }
+                });
     }
 
     /**
-     * 商品负责人变更后，重算该活动商品下仍未结算的订单。
-     *
-     * <p>商品负责人是业绩域的默认招商归属来源。负责人变更只影响未结算订单，
-     * 已结算订单保留历史归属，避免改写已结算业绩。</p>
+     * 受控归因更正由 Outbox dispatcher 同步投递；异常必须向上抛出，
+     * 使既有 FAILED/retry/DEAD 机制能够可靠处理。
      */
-    @Async
     @EventListener
-    public void onProductOwnerChanged(ProductOwnerChangedEvent event) {
-        if (event == null || event.activityId() == null || event.productId() == null) {
+    public void onOrderAttributionReplayed(OrderAttributionReplayedEvent event) {
+        if (event == null || event.orderId() == null) {
+            return;
+        }
+        ColonelsettlementOrder order = orderReadFacade.findByOrderId(event.orderId());
+        recalculateOrThrow(order, event.orderId(), "OrderAttributionReplayed", event.orderVersion(),
+                "OrderAttributionReplayed:" + event.orderId() + ":" + event.orderVersion(), Map.of(), null);
+    }
+
+    private void recalculateOrThrow(
+            ColonelsettlementOrder order,
+            String orderId,
+            String eventType,
+            int eventVersion,
+            String eventKey,
+            Map<String, Object> eventPayload,
+            Consumer<PerformanceRecord> postCalculation) {
+        if (executionService != null && !executionService.start(
+                eventKey, eventType, orderId, eventVersion, eventPayload)) {
             return;
         }
         try {
-            List<ColonelsettlementOrder> orders = orderReadFacade.findUnsettledOrdersByActivityAndProduct(
-                    event.activityId(), event.productId());
-            if (orders == null) {
-                return;
+            if (order == null) {
+                throw new IllegalStateException("Performance calculation order not found: " + orderId);
             }
-            for (ColonelsettlementOrder order : orders) {
-                if (order == null || order.getOrderId() == null) {
-                    continue;
+            PerformanceRecord record = performanceCalculationApplicationService.upsertFromOrder(order);
+            if (record != null) {
+                if (postCalculation != null) {
+                    postCalculation.accept(record);
                 }
-                try {
-                    // 商品负责人变更后，订单中保存的是旧默认归属快照；未结算订单必须按当前商品负责人重新解析，
-                    // 再交给业绩域计算最终归属。已结算订单已在查询层排除。
-                    orderAttributionRouter.resolveAndApply(
-                            order, order.getExtraData(), order.getTalentName());
-                    recalculate(order, order.getOrderId());
-                } catch (Exception ex) {
-                    log.warn("Performance recalculation failed after product owner change, orderId={}",
-                            order.getOrderId(), ex);
-                }
+                eventPublisher.publishEvent(new PerformanceCalculatedEvent(
+                        record.getOrderId(),
+                        record.getFinalChannelUserId(),
+                        record.getFinalRecruiterUserId(),
+                        nvl(record.getEstimateRecruiterCommission()),
+                        nvl(record.getEffectiveRecruiterCommission()),
+                        nvl(record.getEstimateChannelCommission()),
+                        nvl(record.getEffectiveChannelCommission()),
+                        nvl(record.getEstimateGrossProfit()),
+                        nvl(record.getEffectiveGrossProfit()),
+                        Boolean.TRUE.equals(record.getReversed()) ? "REVERSAL" : "NORMAL",
+                        Boolean.TRUE.equals(record.getReversed())));
             }
-        } catch (Exception ex) {
-            log.warn("Performance recalculation lookup failed after product owner change, activityId={}, productId={}",
-                    event.activityId(), event.productId(), ex);
+            if (executionService != null) {
+                executionService.markSucceeded(eventKey);
+            }
+        } catch (RuntimeException error) {
+            if (executionService != null) {
+                executionService.markFailed(eventKey, error);
+            }
+            throw error;
         }
     }
 
-    private void recalculate(String orderId) {
-        try {
-            ColonelsettlementOrder order = orderReadFacade.findByOrderId(orderId);
-            recalculate(order, orderId);
-        } catch (Exception ex) {
-            log.warn("Performance calculation failed, orderId={}", orderId, ex);
-        }
+    private static int refundVersion(OrderRefundFactSyncedEvent event) {
+        return refundEventIdentity(event).hashCode();
     }
 
-    private void recalculate(ColonelsettlementOrder order, String orderId) {
-        if (order == null) {
-            log.warn("Performance calculation skipped, order not found: {}", orderId);
-            return;
-        }
-        PerformanceRecord record = performanceCalculationApplicationService.upsertFromOrder(order);
-        if (record == null) {
-            return;
-        }
-        eventPublisher.publishEvent(new PerformanceCalculatedEvent(
-                record.getOrderId(),
-                record.getFinalChannelUserId(),
-                record.getFinalRecruiterUserId(),
-                nvl(record.getEstimateRecruiterCommission()),
-                nvl(record.getEffectiveRecruiterCommission()),
-                nvl(record.getEstimateChannelCommission()),
-                nvl(record.getEffectiveChannelCommission()),
-                nvl(record.getEstimateGrossProfit()),
-                nvl(record.getEffectiveGrossProfit()),
-                Boolean.TRUE.equals(record.getReversed()) ? "REVERSAL" : "NORMAL",
-                Boolean.TRUE.equals(record.getReversed())));
+    private static String refundEventIdentity(OrderRefundFactSyncedEvent event) {
+        return event.refundId() == null || event.refundId().isBlank()
+                ? String.valueOf(event.occurredAt())
+                : event.refundId();
+    }
+
+    private static Map<String, Object> refundPayload(OrderRefundFactSyncedEvent event) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("refundId", event.refundId());
+        payload.put("refundAmount", event.refundAmount());
+        payload.put("previousStatus", event.previousStatus());
+        payload.put("status", event.status());
+        payload.put("flowPoint", event.flowPoint());
+        payload.put("extraData", event.extraData());
+        LocalDateTime occurredAt = event.occurredAt();
+        payload.put("occurredAt", occurredAt == null ? null : occurredAt.toString());
+        return payload;
     }
 
     private long nvl(Long value) {

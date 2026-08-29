@@ -1,0 +1,50 @@
+# 仅供 Jenkins 唯一发布通道使用。镜像引用必须是 release manifest 中的 digest 固定值。
+name: saas-active
+
+services:
+  backend-real-pre:
+    image: ${BACKEND_IMAGE_REF:?BACKEND_IMAGE_REF must be repository@sha256:digest}
+    env_file:
+      - ${REAL_PRE_ENV_FILE:-/opt/saas/env/.env.real-pre}
+    environment:
+      SPRING_PROFILES_ACTIVE: real-pre
+      APP_GIT_SHA: ${APP_GIT_SHA:?APP_GIT_SHA must be a full SHA}
+      APP_IMAGE_DIGEST: ${APP_IMAGE_DIGEST:?APP_IMAGE_DIGEST is required}
+      APP_DATABASE_MIGRATION_VERSION: ${APP_DATABASE_MIGRATION_VERSION:?database migration version is required}
+      APP_FLYWAY_VERSION: ${APP_FLYWAY_VERSION:?Flyway version is required}
+    ports:
+      - "127.0.0.1:${BACKEND_HOST_PORT:-8081}:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/api/system/health | grep -q '\"gitSha\":\"${APP_GIT_SHA}\"'"]
+      interval: 15s
+      timeout: 10s
+      retries: 12
+      start_period: 120s
+    restart: always
+    networks:
+      - real-pre-net
+
+  frontend-real-pre:
+    image: ${FRONTEND_IMAGE_REF:?FRONTEND_IMAGE_REF must be repository@sha256:digest}
+    environment:
+      DOMAIN: ${FRONTEND_DOMAIN:-_}
+      BACKEND_UPSTREAM: backend-real-pre:8080
+    ports:
+      - "127.0.0.1:${FRONTEND_HOST_PORT:-3001}:80"
+    depends_on:
+      backend-real-pre:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:80/version.json | grep -q '\"gitSha\":\"${APP_GIT_SHA}\"'"]
+      interval: 15s
+      timeout: 10s
+      retries: 8
+      start_period: 30s
+    restart: always
+    networks:
+      - real-pre-net
+
+networks:
+  real-pre-net:
+    external: true
+    name: saas-active_real_pre_net

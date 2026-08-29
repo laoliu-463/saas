@@ -1,4 +1,3 @@
-import fs from 'node:fs';
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { storageStates } from './helpers/test-data';
 import { gotoApp } from './helpers/page-ready';
@@ -168,17 +167,6 @@ async function mockDeptApis(page: Page) {
   };
 }
 
-async function seedAuthLocalStorage(page: Page) {
-  const raw = fs.readFileSync(storageStates.admin, 'utf-8');
-  const state = JSON.parse(raw) as { origins?: Array<{ localStorage?: Array<{ name: string; value: string }> }> };
-  const entries = state.origins?.[0]?.localStorage || [];
-  await page.addInitScript((items) => {
-    for (const item of items) {
-      window.localStorage.setItem(item.name, item.value);
-    }
-  }, entries);
-}
-
 async function fillDeptForm(page: Page, values: { code?: string; name: string }) {
   if (values.code) {
     await page.getByTestId('dept-code-input').locator('input').fill(values.code);
@@ -187,7 +175,6 @@ async function fillDeptForm(page: Page, values: { code?: string; name: string })
 }
 
 test('管理员可完成部门新增、编辑、删除闭环', async ({ page }) => {
-  await seedAuthLocalStorage(page);
   const apiState = await mockDeptApis(page);
 
   await gotoApp(page, '/system/depts');

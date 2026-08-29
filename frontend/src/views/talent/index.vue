@@ -127,7 +127,7 @@ import {
   TALENT_VIEW_LABEL_MAP,
   getAccessibleTalentViewOptions
 } from './constants'
-import { ROLE_CODES, hasOnlyCanonicalRole } from '../../constants/rbac'
+import { ROLE_CODES } from '../../constants/rbac'
 
 const message = useMessage()
 const dialog = useDialog()

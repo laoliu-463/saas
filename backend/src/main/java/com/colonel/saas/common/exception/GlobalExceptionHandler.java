@@ -5,11 +5,11 @@ import com.colonel.saas.common.result.ApiResult;
 import com.colonel.saas.common.result.ResultCode;
 import com.colonel.saas.common.web.RequestIdContext;
 import com.colonel.saas.douyin.DouyinApiException;
+import com.colonel.saas.domain.user.api.AuthorizationUnavailableException;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.CannotAcquireLockException;
 import org.springframework.dao.DuplicateKeyException;
-import org.springframework.dao.DataAccessException;
 import org.springframework.dao.QueryTimeoutException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -130,6 +130,26 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * 处理数据库唯一键冲突。
+     *
+     * <p>用户名在数据库中是包含软删除记录的全局唯一键。创建请求在并发场景下
+     * 可能通过前置查询后同时进入 INSERT，因此仍需在数据库异常边界补充映射，
+     * 避免把可识别的用户名冲突包装成“服务器异常”。</p>
+     *
+     * @param e 数据库唯一键异常
+     * @return 用户名冲突返回重复业务错误，其他唯一键异常继续返回通用服务器错误
+     */
+    @ExceptionHandler(DuplicateKeyException.class)
+    public ApiResult<Void> handleDuplicateKey(DuplicateKeyException e) {
+        if (containsConstraint(e, "sys_user_username_key")) {
+            log.warn("用户名唯一约束冲突: {}", e.getMessage());
+            return ApiResult.of(ResultCode.DUPLICATE.getCode(), "用户名已存在", null);
+        }
+        log.error("数据库唯一键异常", e);
+        return ApiResult.of(ResultCode.SERVER_ERROR, null);
+    }
+
+    /**
      * 处理业务异常。
      *
      * <p>携带业务状态码的异常，大多数情况返回 HTTP 200（前端通过 code 判断），
@@ -176,6 +196,28 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResult<Void>> handleForbidden(ForbiddenException e) {
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
                 .body(ApiResult.of(ResultCode.FORBIDDEN.getCode(), e.getMessage(), null));
+    }
+
+    /**
+     * 处理授权事实暂时不可用异常（503 Service Unavailable）。
+     *
+     * @param exception 授权事实不可用异常
+     * @return 状态码 503 的统一响应
+     */
+    @ExceptionHandler(AuthorizationUnavailableException.class)
+    public ResponseEntity<ApiResult<Void>> handleAuthorizationUnavailable(
+            AuthorizationUnavailableException exception) {
+        log.warn(
+                "授权事实暂时不可用: cause={}",
+                exception.getCause() == null
+                        ? exception.getClass().getSimpleName()
+                        : exception.getCause().getClass().getSimpleName());
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(ApiResult.of(
+                        ResultCode.SERVICE_UNAVAILABLE.getCode(),
+                        "授权事实暂时不可用",
+                        null,
+                        "AUTHORIZATION_UNAVAILABLE"));
     }
 
     /**

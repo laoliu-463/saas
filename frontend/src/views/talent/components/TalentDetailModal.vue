@@ -253,7 +253,12 @@ const detail = ref<TalentDetailResponse | null>(null)
 const isChannelStaffOnly = computed(() => {
   return hasOnlyCanonicalRole(authStore.roleCodes, ROLE_CODES.CHANNEL_STAFF)
 })
-const canApplySample = computed(() => canApplySamplesByRole(authStore.roleCodes))
+const canApplySample = computed(() =>
+  authStore.isAdmin
+    || authStore.roleCodes.includes(ROLE_CODES.CHANNEL_LEADER)
+    || authStore.roleCodes.includes(ROLE_CODES.CHANNEL_STAFF)
+    || authStore.roleCodes.includes(ROLE_CODES.BIZ_STAFF)
+)
 const canEditCollaboration = computed(() => canApplySample.value)
 
 const talentTags = computed(() =>

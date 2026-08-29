@@ -71,12 +71,22 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "Not a Git worktree: $RepoRoot" }
 
     $changedFiles = @(Get-ChangedFiles)
+    $owned = @(Expand-HarnessOwnedFiles -OwnedFiles $OwnedFiles)
+    $ignoredOwnedArchives = @()
+    foreach ($file in $owned) {
+        if (-not $file.StartsWith('harness/archive/', [System.StringComparison]::OrdinalIgnoreCase)) { continue }
+        if (-not (Test-Path -LiteralPath (Join-Path $RepoRoot $file) -PathType Leaf)) { continue }
+        $trackedEntry = @(& git ls-files --stage -- $file)
+        if ($trackedEntry.Count -gt 0) { continue }
+        & git check-ignore -q -- $file
+        if ($LASTEXITCODE -eq 0) { $ignoredOwnedArchives += $file }
+    }
+    $changedFiles = @($changedFiles + $ignoredOwnedArchives | Sort-Object -Unique)
     if ($changedFiles.Count -eq 0) {
         Write-Host 'No changes to commit.' -ForegroundColor Yellow
         return
     }
 
-    $owned = @(Expand-HarnessOwnedFiles -OwnedFiles $OwnedFiles)
     if ($owned.Count -eq 0) { throw 'OwnedFiles is required when the worktree has changes.' }
     $ownedSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     foreach ($file in $owned) { [void]$ownedSet.Add($file) }
@@ -104,7 +114,12 @@ try {
     }
 
     foreach ($file in $ownedChanged) {
-        & git add -- $file
+        if ($file.StartsWith('harness/archive/', [System.StringComparison]::OrdinalIgnoreCase)) {
+            & git add -f -- $file
+        }
+        else {
+            & git add -- $file
+        }
         if ($LASTEXITCODE -ne 0) { throw "git staging failed: $file" }
     }
 
@@ -124,8 +139,8 @@ try {
 
     $branch = (& git branch --show-current).Trim()
     if ([string]::IsNullOrWhiteSpace($branch)) { throw 'Cannot determine current branch for push.' }
-    $upstream = (& git for-each-ref --format='%(upstream:short)' "refs/heads/$branch").Trim()
-    if (-not [string]::IsNullOrWhiteSpace($upstream)) {
+    & git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>$null | Out-Null
+    if ($LASTEXITCODE -eq 0) {
         $upstreamRemote = (& git config --get "branch.$branch.remote").Trim()
         $upstreamMerge = (& git config --get "branch.$branch.merge").Trim()
         if ([string]::IsNullOrWhiteSpace($upstreamRemote) -or $upstreamRemote -eq '.') {

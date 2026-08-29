@@ -59,17 +59,17 @@ vi.mock('vue-router', () => ({
       }),
       resolve: vi.fn((path: string) => {
         resolveCalls.push(path)
-        const permissionsByPath: Record<string, string[] | undefined> = {
-          '/dashboard': [PERMISSION_CODES.DASHBOARD_ACCESS],
-          '/orders': [PERMISSION_CODES.ORDER_ACCESS],
-          '/data': [PERMISSION_CODES.DATA_ACCESS],
-          '/product': [PERMISSION_CODES.PRODUCT_ACCESS],
-          '/product/manage': [PERMISSION_CODES.PRODUCT_MANAGE_ACCESS],
-          '/product/manage/products': [PERMISSION_CODES.PRODUCT_MANAGE_ACCESS],
-          '/talent': [PERMISSION_CODES.TALENT_ACCESS],
-          '/sample': [PERMISSION_CODES.SAMPLE_WORKBENCH_ACCESS],
-          '/ops/shipping': [PERMISSION_CODES.SHIPPING_ACCESS],
-          '/system/users': [PERMISSION_CODES.SYS_USER_ACCESS]
+        const rolesByPath: Record<string, string[] | undefined> = {
+          '/dashboard': [ROLE_CODES.BIZ_LEADER, ROLE_CODES.CHANNEL_LEADER, ROLE_CODES.ADMIN],
+          '/orders': [ROLE_CODES.BIZ_LEADER, ROLE_CODES.CHANNEL_LEADER, ROLE_CODES.ADMIN],
+          '/data': [ROLE_CODES.BIZ_LEADER, ROLE_CODES.BIZ_STAFF, ROLE_CODES.CHANNEL_LEADER, ROLE_CODES.CHANNEL_STAFF],
+          '/product': [ROLE_CODES.BIZ_LEADER, ROLE_CODES.BIZ_STAFF, ROLE_CODES.CHANNEL_LEADER, ROLE_CODES.CHANNEL_STAFF],
+          '/product/manage': [ROLE_CODES.BIZ_LEADER],
+          '/product/manage/products': [ROLE_CODES.BIZ_LEADER, ROLE_CODES.BIZ_STAFF],
+          '/talent': [ROLE_CODES.BIZ_STAFF, ROLE_CODES.CHANNEL_LEADER, ROLE_CODES.CHANNEL_STAFF],
+          '/sample': [ROLE_CODES.BIZ_LEADER, ROLE_CODES.BIZ_STAFF, ROLE_CODES.CHANNEL_LEADER, ROLE_CODES.CHANNEL_STAFF],
+          '/ops/shipping': [ROLE_CODES.OPS_STAFF],
+          '/system/users': [ROLE_CODES.ADMIN]
         }
         return { matched: [{ meta: { permissions: permissionsByPath[path] } }] }
       })
@@ -207,14 +207,28 @@ describe('router guards', () => {
     ])
   })
 
-  it('does not collapse a composite business account into the ops-only home route', () => {
-    authState.permissionCodes = [
-      PERMISSION_CODES.PRODUCT_MANAGE_ACCESS,
-      PERMISSION_CODES.ORDER_ACCESS,
-      PERMISSION_CODES.PRODUCT_ACCESS,
-      PERMISSION_CODES.DATA_ACCESS,
-      PERMISSION_CODES.SHIPPING_ACCESS
-    ]
+  it('sends biz staff to product management when it is the first accessible home route', () => {
+    authState.roleCodes = [ROLE_CODES.BIZ_STAFF]
+
+    const result = beforeEachHook?.(route('/', {}), route('/login'))
+
+    expect(result).toBe('/product/manage/products')
+    expect(resolveCalls).toEqual(['/product/manage/products'])
+  })
+
+  it('registers the talent CRM route for biz staff', () => {
+    const allRoutes = flattenRoutes(routesConfig)
+    const talentRoute = allRoutes.find((route) => route.path === 'talent') as {
+      meta?: { roles?: string[] }
+    } | undefined
+
+    expect(talentRoute?.meta?.roles).toEqual(
+      expect.arrayContaining([ROLE_CODES.BIZ_STAFF])
+    )
+  })
+
+  it('sends admin users through the default home candidates', () => {
+    authState.roleCodes = [ROLE_CODES.ADMIN]
 
     const result = beforeEachHook?.(route('/', {}), route('/login'))
 

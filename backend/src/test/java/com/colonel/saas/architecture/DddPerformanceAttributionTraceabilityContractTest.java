@@ -11,21 +11,29 @@ import static org.assertj.core.api.Assertions.assertThat;
 class DddPerformanceAttributionTraceabilityContractTest {
 
     @Test
-    void calculationShouldMapCurrentOrderAttributionInputsToPerformanceRecord() throws IOException {
+    void calculationShouldPreserveDefaultInputsAndPersistPerformanceOwnedFinalAttribution() throws IOException {
         String service = readProjectFile(
                 "src/main/java/com/colonel/saas/domain/performance/application/PerformanceCalculationApplicationService.java");
 
         assertThat(service)
                 .contains(
                         "UUID channelUserId = order.getChannelUserId();",
-                        "UUID recruiterUserId = order.getColonelUserId() != null ? order.getColonelUserId() : order.getUserId();",
+                        "UUID recruiterUserId = order.getColonelUserId();",
                         "PerformanceAttributionPolicy.AttributionResult attribution = attributionResolver.resolve(order);",
                         "record.setDefaultChannelUserId(channelUserId);",
                         "record.setDefaultRecruiterUserId(recruiterUserId);",
+                        "performanceAttributionResolver.resolve(order)",
+                        "PerformanceAttributionResolver.defaultOnly(order)",
                         "record.setFinalChannelUserId(attribution.finalChannelId());",
                         "record.setFinalRecruiterUserId(attribution.finalRecruiterId());",
                         "record.setChannelAttribution(attribution.channelAttributionType());",
                         "record.setRecruiterAttribution(attribution.recruiterAttributionType());",
+                        "record.setAttributionRuleVersion(resolvedAttribution.ruleVersion());",
+                        "record.setAttributionDecisionSnapshot(resolvedAttribution.decisionSnapshot());",
+                        "order.getChannelAttributionSource(),",
+                        "channelUserId == null ? null : AttributionSource.PICK_SOURCE));",
+                        "order.getRecruiterAttributionSource(),",
+                        "recruiterUserId == null ? null : AttributionSource.ACTIVITY_OWNER));",
                         "record.setTalentId(order.getTalentId());",
                         "record.setPartnerId(order.getShopId());",
                         "record.setProductId(order.getProductId());",
@@ -40,8 +48,12 @@ class DddPerformanceAttributionTraceabilityContractTest {
                 .contains(
                         "property=\"defaultChannelUserId\" column=\"default_channel_user_id\"",
                         "property=\"defaultRecruiterUserId\" column=\"default_recruiter_user_id\"",
+                        "property=\"defaultChannelDeptId\" column=\"default_channel_dept_id\"",
+                        "property=\"defaultRecruiterDeptId\" column=\"default_recruiter_dept_id\"",
                         "property=\"finalChannelUserId\" column=\"final_channel_user_id\"",
                         "property=\"finalRecruiterUserId\" column=\"final_recruiter_user_id\"",
+                        "property=\"finalChannelDeptId\" column=\"final_channel_dept_id\"",
+                        "property=\"finalRecruiterDeptId\" column=\"final_recruiter_dept_id\"",
                         "property=\"channelAttribution\" column=\"channel_attribution\"",
                         "property=\"recruiterAttribution\" column=\"recruiter_attribution\"",
                         "property=\"talentId\" column=\"talent_id\"",
@@ -52,6 +64,8 @@ class DddPerformanceAttributionTraceabilityContractTest {
                         "default_recruiter_user_id = EXCLUDED.default_recruiter_user_id",
                         "final_channel_user_id = EXCLUDED.final_channel_user_id",
                         "final_recruiter_user_id = EXCLUDED.final_recruiter_user_id",
+                        "attribution_rule_version = EXCLUDED.attribution_rule_version",
+                        "attribution_decision_snapshot = EXCLUDED.attribution_decision_snapshot",
                         "channel_attribution = EXCLUDED.channel_attribution",
                         "recruiter_attribution = EXCLUDED.recruiter_attribution");
     }
@@ -67,17 +81,17 @@ class DddPerformanceAttributionTraceabilityContractTest {
                         "order.setChannelUserId(channelUserId)",
                         "order.setColonelUserId(recruiterUserId)",
                         "order.setUserId(fallbackUserId)",
+                        "order.setChannelAttributionSource(\"native_unique_link_owner\")",
+                        "order.setRecruiterAttributionSource(\"pick_source\")",
                         "order.setTalentId(talentId)",
                         "order.setShopId(90000001L)",
                         "order.setProductId(\"PROD-TRACE-1\")",
                         "order.setActivityId(\"ACT-TRACE-1\")",
                         "assertThat(result.getDefaultChannelUserId()).isEqualTo(channelUserId)",
                         "assertThat(result.getDefaultRecruiterUserId()).isEqualTo(recruiterUserId)",
-                        "assertThat(result.getFinalChannelUserId()).isEqualTo(channelUserId)",
-                        "assertThat(result.getFinalRecruiterUserId()).isEqualTo(recruiterUserId)",
-                        "upsertFromOrder_shouldUseResolvedFinalAttributionInsteadOfCopyingOrderDefaults",
-                        "assertThat(result.getFinalRecruiterUserId()).isEqualTo(exclusiveMerchantUserId)",
-                        "assertThat(result.getRecruiterAttribution()).isEqualTo(\"EXCLUSIVE_MERCHANT\")");
+                        "assertThat(result.getFinalChannelUserId()).isEqualTo(finalChannel)",
+                        "assertThat(result.getFinalRecruiterUserId()).isEqualTo(finalRecruiter)",
+                        "assertThat(result.getAttributionRuleVersion()).isEqualTo(\"PERFORMANCE_ATTRIBUTION_V1\")");
     }
 
     private static String readProjectFile(String relativePath) throws IOException {

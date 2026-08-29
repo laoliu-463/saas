@@ -204,13 +204,13 @@ const rankingTitle = computed(() => {
 const quickEntries = computed(() => {
   const permissions = authStore.permissionCodes
   return [
-    { label: '订单归因', path: '/orders', permissions: [PERMISSION.ORDER_ACCESS] },
-    { label: '商品库', path: '/product', permissions: [PERMISSION.PRODUCT_ACCESS] },
-    { label: '商品管理', path: '/product/manage', permissions: [PERMISSION.PRODUCT_MANAGE_ACCESS] },
-    { label: '我的商品', path: '/product/manage/products', permissions: [PERMISSION.PRODUCT_MANAGE_ACCESS] },
-    { label: '达人 CRM', path: '/talent', permissions: [PERMISSION.TALENT_ACCESS] },
-    { label: '数据看板', path: '/data', permissions: [PERMISSION.DATA_ACCESS] },
-    { label: '合作单', path: '/sample', permissions: [PERMISSION.SAMPLE_WORKBENCH_ACCESS] }
+    { label: '订单归因', path: '/orders', roles: [ROLE.BIZ_LEADER, ROLE.CHANNEL_LEADER, ROLE.ADMIN] },
+    { label: '商品库', path: '/product', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] },
+    { label: '商品管理', path: '/product/manage', roles: [ROLE.BIZ_LEADER] },
+    { label: '我的商品', path: '/product/manage/products', roles: [ROLE.BIZ_STAFF] },
+    { label: '达人 CRM', path: '/talent', roles: [ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] },
+    { label: '数据看板', path: '/data', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] },
+    { label: '合作单', path: '/sample', roles: [ROLE.BIZ_LEADER, ROLE.BIZ_STAFF, ROLE.CHANNEL_LEADER, ROLE.CHANNEL_STAFF] }
   ]
     .filter((entry) => hasPermission(permissions, entry.permissions))
     .map((entry) => {

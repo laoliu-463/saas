@@ -7,6 +7,8 @@ import com.colonel.saas.domain.order.application.OrderFilterOptionsQueryService;
 import com.colonel.saas.domain.order.facade.OrderDomainFacade;
 import com.colonel.saas.domain.order.facade.OrderReadFacade;
 import com.colonel.saas.domain.product.facade.ProductDomainFacade;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.domain.user.policy.DataScopeResolver;
@@ -83,7 +85,12 @@ class OrderSyncControllerTest {
         DataScopePolicy dataScopePolicy = new DataScopePolicy();
         DataScopeResolver dataScopeResolver = new DataScopeResolver(dataScopePolicy);
         OrderService orderService = new OrderService(
-                orderMapper, dashboardService, productDomainFacade, dataScopeResolver, new com.colonel.saas.config.DddRefactorProperties());
+                orderMapper,
+                dashboardService,
+                productDomainFacade,
+                dataScopeResolver,
+                new CurrentUserPermissionChecker(new CurrentUserPermissionPolicy()),
+                new com.colonel.saas.config.DddRefactorProperties());
         mockMvc = MockMvcBuilders
                 .standaloneSetup(new OrderController(
                         orderSyncService,

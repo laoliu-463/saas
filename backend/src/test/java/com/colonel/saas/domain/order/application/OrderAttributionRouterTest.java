@@ -1,9 +1,13 @@
 package com.colonel.saas.domain.order.application;
 
 import com.colonel.saas.config.DddRefactorProperties;
+import com.colonel.saas.domain.order.policy.OrderAttributionInput;
+import com.colonel.saas.domain.order.policy.OrderDefaultAttributionPolicy;
 import com.colonel.saas.entity.ColonelsettlementOrder;
+import com.colonel.saas.entity.PickSourceMapping;
 import com.colonel.saas.service.AttributionService;
 import com.colonel.saas.domain.order.policy.OrderDefaultAttributionResult;
+import com.colonel.saas.domain.shared.attribution.AttributionSource;
 import com.colonel.saas.service.AttributionService.AttributionResult;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -11,6 +15,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.UUID;
 
@@ -79,20 +84,24 @@ class OrderAttributionRouterTest {
 
         ColonelsettlementOrder order = new ColonelsettlementOrder();
         UUID channelUserId = UUID.randomUUID();
-        OrderDefaultAttributionResult result = OrderDefaultAttributionResult.attributedChannel(
+        OrderDefaultAttributionResult result = OrderDefaultAttributionResult.attributed(
                 channelUserId,
                 channelUserId,
+                null,
+                AttributionSource.PICK_SOURCE,
+                AttributionSource.UNATTRIBUTED,
                 null,
                 null,
                 "act-1",
-                null,
-                AttributionService.REASON_ATTRIBUTED);
+                null);
         when(defaultAttributionResolver.resolve(any(), any())).thenReturn(result);
 
         AttributionResult applied = router.resolveAndApply(order, Map.of(), "达人A");
 
-        verify(defaultAttributionResolver).resolve(order, Map.of());
+        verify(defaultAttributionResolver).resolveWithTrace(order, Map.of());
         assertThat(applied.channelUserId()).isEqualTo(channelUserId);
+        assertThat(applied.nativeTrace().nativeKeyMatched()).isTrue();
+        assertThat(applied.nativeTrace().mappingCreatedAt()).isEqualTo(mappingCreatedAt);
         assertThat(order.getChannelUserId()).isEqualTo(channelUserId);
     }
 }

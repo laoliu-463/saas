@@ -278,6 +278,36 @@ describe('product copy helpers', () => {
     expect(resolveProductBriefCopyMessage({
       clipboardWriteFailed: false,
       linkGenerationFailed: false,
+      promotionLinkGenerated: true,
+      imageCopyAttempted: true,
+      imageCopied: true
+    })).toEqual({ type: 'success', content: '商品图片和完整简介已按模板复制' })
+
+    expect(resolveProductBriefCopyMessage({
+      clipboardWriteFailed: false,
+      linkGenerationFailed: false,
+      promotionLinkGenerated: true,
+      imageCopyAttempted: true,
+      imageCopied: false
+    })).toEqual({
+      type: 'warning',
+      content: '完整简介已复制，但商品图片受浏览器或图片源限制未能显示'
+    })
+
+    expect(resolveProductBriefCopyMessage({
+      clipboardWriteFailed: false,
+      linkGenerationFailed: false,
+      promotionLinkGenerated: true,
+      imageCopyAttempted: false,
+      imageCopied: false
+    })).toEqual({
+      type: 'warning',
+      content: '完整简介已复制；商品库未提供可复制的商品图片'
+    })
+
+    expect(resolveProductBriefCopyMessage({
+      clipboardWriteFailed: false,
+      linkGenerationFailed: false,
       promotionLinkGenerated: true
     })).toEqual({ type: 'success', content: '复制成功，已生成推广链接' })
 

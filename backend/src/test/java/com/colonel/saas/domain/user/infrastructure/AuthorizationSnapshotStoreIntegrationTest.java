@@ -3,7 +3,6 @@ package com.colonel.saas.domain.user.infrastructure;
 import com.colonel.saas.domain.user.api.AuthorizationScope;
 import com.colonel.saas.domain.user.domain.AuthorizationSnapshot;
 import com.colonel.saas.domain.user.domain.GrantedRolePermission;
-import com.colonel.saas.domain.user.port.AuthorizationSnapshotStore;
 import com.colonel.saas.testsupport.BaseIntegrationTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -21,7 +20,7 @@ class AuthorizationSnapshotStoreIntegrationTest extends BaseIntegrationTest {
     private static final int DELETED = 1;
 
     @Autowired
-    private AuthorizationSnapshotStore store;
+    private SysAuthorizationSnapshotStoreAdapter store;
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -56,7 +55,7 @@ class AuthorizationSnapshotStoreIntegrationTest extends BaseIntegrationTest {
         insertDomainScope(deletedMembershipRoleId, "sample", "ALL");
         insertDomainScope(scopeOnlyRoleId, "sample", "ALL");
 
-        AuthorizationSnapshot snapshot = store.loadActiveSnapshot(userId).orElseThrow();
+        AuthorizationSnapshot snapshot = store.loadActiveSnapshot(userId, 7L).orElseThrow();
 
         assertThat(snapshot.subject().userId()).isEqualTo(userId);
         assertThat(snapshot.subject().authzVersion()).isEqualTo(7L);
@@ -79,7 +78,7 @@ class AuthorizationSnapshotStoreIntegrationTest extends BaseIntegrationTest {
 
     @Test
     void loadActiveSnapshot_whenUserIsMissing_shouldReturnEmpty() {
-        assertThat(store.loadActiveSnapshot(UUID.randomUUID())).isEmpty();
+        assertThat(store.loadActiveSnapshot(UUID.randomUUID(), 1L)).isEmpty();
     }
 
     @Test
@@ -87,8 +86,8 @@ class AuthorizationSnapshotStoreIntegrationTest extends BaseIntegrationTest {
         UUID inactiveUserId = insertUser(UUID.randomUUID(), 2L, INACTIVE, NOT_DELETED);
         UUID deletedUserId = insertUser(UUID.randomUUID(), 3L, ACTIVE, DELETED);
 
-        assertThat(store.loadActiveSnapshot(inactiveUserId)).isEmpty();
-        assertThat(store.loadActiveSnapshot(deletedUserId)).isEmpty();
+        assertThat(store.loadActiveSnapshot(inactiveUserId, 2L)).isEmpty();
+        assertThat(store.loadActiveSnapshot(deletedUserId, 3L)).isEmpty();
     }
 
     @Test
@@ -96,7 +95,7 @@ class AuthorizationSnapshotStoreIntegrationTest extends BaseIntegrationTest {
         UUID deptId = UUID.randomUUID();
         UUID userId = insertUser(deptId, 5L, ACTIVE, NOT_DELETED);
 
-        AuthorizationSnapshot snapshot = store.loadActiveSnapshot(userId).orElseThrow();
+        AuthorizationSnapshot snapshot = store.loadActiveSnapshot(userId, 5L).orElseThrow();
 
         assertThat(snapshot.subject().userId()).isEqualTo(userId);
         assertThat(snapshot.subject().deptId()).isEqualTo(deptId);
@@ -112,7 +111,7 @@ class AuthorizationSnapshotStoreIntegrationTest extends BaseIntegrationTest {
         assignRole(userId, roleId);
         grantPermission(roleId, permissionId);
 
-        AuthorizationSnapshot snapshot = store.loadActiveSnapshot(userId).orElseThrow();
+        AuthorizationSnapshot snapshot = store.loadActiveSnapshot(userId, 4L).orElseThrow();
 
         assertThat(snapshot.grants())
                 .singleElement()
@@ -139,7 +138,7 @@ class AuthorizationSnapshotStoreIntegrationTest extends BaseIntegrationTest {
         insertDomainScope(secondRoleId, "sample", "ALL");
         insertDomainScope(firstRoleId, "sample", "SELF");
 
-        AuthorizationSnapshot snapshot = store.loadActiveSnapshot(userId).orElseThrow();
+        AuthorizationSnapshot snapshot = store.loadActiveSnapshot(userId, 9L).orElseThrow();
 
         assertThat(snapshot.subject().userId()).isEqualTo(userId);
         assertThat(snapshot.subject().deptId()).isEqualTo(deptId);
@@ -153,6 +152,15 @@ class AuthorizationSnapshotStoreIntegrationTest extends BaseIntegrationTest {
         assertThat(snapshot.grants())
                 .extracting(GrantedRolePermission::scope)
                 .containsExactly(AuthorizationScope.SELF, AuthorizationScope.ALL);
+    }
+
+    @Test
+    void loadActiveSnapshot_whenExpectedVersionIsStaleOrFuture_shouldReturnEmpty() {
+        UUID userId = insertUser(UUID.randomUUID(), 12L, ACTIVE, NOT_DELETED);
+
+        assertThat(store.loadActiveSnapshot(userId, 11L)).isEmpty();
+        assertThat(store.loadActiveSnapshot(userId, 13L)).isEmpty();
+        assertThat(store.loadActiveSnapshot(userId, 12L)).isPresent();
     }
 
     private UUID insertUser(UUID deptId, long authzVersion, int status, int deleted) {

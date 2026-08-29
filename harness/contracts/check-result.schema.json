@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://colonel-saas.local/harness/contracts/check-result.schema.json",
+  "title": "Harness 单项检查结果",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "checkId",
+    "title",
+    "status",
+    "statusLabel",
+    "blocking",
+    "summary",
+    "nextActions",
+    "artifacts"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "1.0.0"
+    },
+    "checkId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "[\\u3400-\\u9fff]"
+    },
+    "status": {
+      "enum": [
+        "PASS",
+        "FAIL",
+        "BLOCKED",
+        "WARN",
+        "SKIPPED",
+        "NOT_COLLECTED"
+      ]
+    },
+    "statusLabel": {
+      "enum": ["通过", "失败", "阻塞", "警告", "已跳过", "未采集"]
+    },
+    "blocking": {
+      "type": "boolean"
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "[\\u3400-\\u9fff]"
+    },
+    "nextActions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    }
+  },
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "status": { "const": "PASS" },
+        "statusLabel": { "const": "通过" }
+      }
+    },
+    {
+      "type": "object",
+      "properties": {
+        "status": { "const": "FAIL" },
+        "statusLabel": { "const": "失败" }
+      }
+    },
+    {
+      "type": "object",
+      "properties": {
+        "status": { "const": "BLOCKED" },
+        "statusLabel": { "const": "阻塞" }
+      }
+    },
+    {
+      "type": "object",
+      "properties": {
+        "status": { "const": "WARN" },
+        "statusLabel": { "const": "警告" }
+      }
+    },
+    {
+      "type": "object",
+      "properties": {
+        "status": { "const": "SKIPPED" },
+        "statusLabel": { "const": "已跳过" }
+      }
+    },
+    {
+      "type": "object",
+      "properties": {
+        "status": { "const": "NOT_COLLECTED" },
+        "statusLabel": { "const": "未采集" }
+      }
+    }
+  ]
+}

@@ -11,9 +11,13 @@
 - 数据库：PostgreSQL
 - 缓存：Redis
 - 部署：Docker Compose
-- 环境：`test`、`real-pre`、远端 `real-pre`
+- 环境：`test`、本地 `real-pre`、Jenkins 受控远端 `real-pre`
 
+<<<<<<< HEAD
 默认工程修改环境为本地 `real-pre`。`test` 仅在用户明确要求或专项测试需要时使用；远端 `real-pre` 只能由 Jenkins 从 `release/real-pre` 串行部署，普通 Agent 不拥有直接部署权限。
+=======
+默认工程修改环境为本地 `real-pre`。`test` 仅在用户明确要求或专项测试需要时使用；远端 `real-pre` 只允许 `release/real-pre` 经 CI 和 Jenkins 唯一发布队列部署，普通 Agent 不拥有部署权限。
+>>>>>>> b8cb837b (refactor: establish real-pre single-channel CD)
 
 旧文档中的 FastAPI、Celery、Python 爬虫、旧 V2.2 全量方案只作为历史背景，不作为当前运行事实。
 
@@ -34,7 +38,11 @@ V2 核心闭环以三条主链为准：
 3. 修改代码后必须执行健康检查。
 4. 修改代码后必须执行相关业务验证。
 5. 修改代码后必须生成 evidence report。
+<<<<<<< HEAD
 6. 需要远端部署时必须进入 Jenkins 唯一发布队列，禁止 Agent 直接 SSH 部署。
+=======
+6. 需要远端发布时只能提交候选 SHA 并进入 `release/real-pre` 与 Jenkins 队列，禁止 Agent 直接部署。
+>>>>>>> b8cb837b (refactor: establish real-pre single-channel CD)
 7. 禁止只修改代码后声明完成。
 8. 禁止口头说“建议重启”，必须实际执行可用脚本。
 9. 禁止把未验证项写成已完成。
@@ -89,7 +97,18 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\a
 
 其他任务的 Scope 与必读文档见 `harness/README.md`、`harness/policy/` 和 `harness/runbooks/`，后续 Agent 不允许临时发明构建、重启、部署流程。若确需绕过，必须说明原因和风险。
 
+<<<<<<< HEAD
 `agent-do.ps1 -DeployRemote true` 已停用并会失败。发布候选必须先合并到 `main`，再通过 PR 串行提升到 `release/real-pre`，最后由 Jenkins `saas-real-pre-cd` 队列执行。
+=======
+`-DeployRemote true` 已停用并会直接失败。用户明确要求远端发布时，当前任务只能完成本地验证、提交、推送、PR/候选证据，并等待 Merge Queue 与 Jenkins：
+
+```text
+codex/* → PR/CI → Merge Queue → release/real-pre
+→ 完整 SHA/digest 镜像 → Jenkins saas-real-pre-deploy 全局锁 → real-pre
+```
+>>>>>>> b8cb837b (refactor: establish real-pre single-channel CD)
+
+禁止直接调用 `deploy-remote.ps1`、`deploy-real-pre.sh`、`rollback-real-pre.sh` 或 SSH 修改服务器。
 
 ## 6. 禁止事项
 
@@ -146,7 +165,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\harness\scripts\commands\a
 
 ## 7. Definition of Done
 
+<<<<<<< HEAD
 任务同时满足以下全部条件，才允许声明完成：代码或文档已修改；构建通过（或 `Scope=docs` 明确跳过）；对应 Docker 容器已重启（或 `Scope=docs` 明确不需要）；健康检查通过（或明确说明阻塞原因）；相关业务验证通过（或明确说明 `BLOCKED` / `PENDING` / `FAIL` 证据）；稳定 evidence 已生成并含 retro 结论；Git commit 已生成并 push 到当前分支上游（或用户明确要求本轮不提交 / 不推送）；如要求发布则 Jenkins 队列结果与远端版本证据已记录；剩余风险已列出。
+=======
+任务同时满足以下全部条件，才允许声明完成：代码或文档已修改；构建通过（或 `Scope=docs` 明确跳过）；对应本地 Docker 容器已重启（或 `Scope=docs` 明确不需要）；健康检查通过（或明确说明阻塞原因）；相关业务验证通过（或明确说明 `BLOCKED` / `PENDING` / `FAIL` 证据）；稳定 evidence 已生成并含 retro 结论；Git commit 已生成并 push 到当前分支上游（或用户明确要求本轮不提交 / 不推送）；如用户要求远端发布，则候选 SHA、CI/Jenkins 队列状态和最终发布结果已如实记录；剩余风险已列出。普通 Agent 不得为满足 DoD 绕过发布控制器。
+>>>>>>> b8cb837b (refactor: establish real-pre single-channel CD)
 
 没有完成这些步骤，不允许声明任务完成。
 

@@ -62,7 +62,7 @@ class PerformanceAggregateApplicationServiceTest {
 
     @Test
     void aggregateRange_shouldUseEstimateColumnsForCreateTrack() {
-        when(jdbcTemplate.queryForMap(contains("co.estimate_service_fee"), any(Object[].class)))
+        when(jdbcTemplate.queryForMap(contains("pr.estimate_service_fee"), any(Object[].class)))
                 .thenReturn(Map.of(
                         "order_count", 3L,
                         "order_amount_cent", 7500L,
@@ -90,7 +90,7 @@ class PerformanceAggregateApplicationServiceTest {
 
     @Test
     void aggregateRange_shouldUseEffectiveColumnsForSettleTrack() {
-        when(jdbcTemplate.queryForMap(contains("co.settle_amount"), any(Object[].class)))
+        when(jdbcTemplate.queryForMap(contains("pr.settle_amount"), any(Object[].class)))
                 .thenReturn(Map.of(
                         "order_count", 2L,
                         "order_amount_cent", 6000L,
@@ -117,8 +117,8 @@ class PerformanceAggregateApplicationServiceTest {
         ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
         verify(jdbcTemplate).queryForMap(sqlCaptor.capture(), any(Object[].class));
         assertThat(sqlCaptor.getValue())
-                .contains("co.settle_amount")
-                .contains("co.effective_service_fee")
+                .contains("pr.settle_amount")
+                .contains("pr.effective_service_fee")
                 .contains("pr.effective_gross_profit")
                 .contains("settle_time IS NOT NULL");
     }
@@ -153,9 +153,10 @@ class PerformanceAggregateApplicationServiceTest {
         verify(jdbcTemplate).queryForMap(sqlCaptor.capture(), argsCaptor.capture());
 
         assertThat(sqlCaptor.getValue())
-                .contains("co.user_id = ?")
-                .doesNotContain("co.dept_id = ?");
+                .contains("pr.final_channel_user_id = ? OR pr.final_recruiter_user_id = ?")
+                .doesNotContain("pr.final_channel_dept_id = ?");
         assertThat(argsCaptor.getValue()[0]).isEqualTo(userId);
+        assertThat(argsCaptor.getValue()[1]).isEqualTo(userId);
         verify(dataScopePolicy, never()).decide(any(), any(), any());
     }
 
@@ -190,75 +191,15 @@ class PerformanceAggregateApplicationServiceTest {
         verify(jdbcTemplate).queryForMap(sqlCaptor.capture(), argsCaptor.capture());
 
         assertThat(sqlCaptor.getValue())
-                .contains("co.user_id = ?")
-                .doesNotContain("co.dept_id = ?");
+                .contains("pr.final_channel_user_id = ? OR pr.final_recruiter_user_id = ?")
+                .doesNotContain("pr.final_channel_dept_id = ?");
         assertThat(argsCaptor.getValue()[0]).isEqualTo(userId);
+        assertThat(argsCaptor.getValue()[1]).isEqualTo(userId);
         verify(dataScopePolicy).decide(userId, deptId, DataScope.PERSONAL);
     }
 
     @Test
-    void aggregateRange_shouldScopeChannelStaffByFinalChannelUser() {
-        when(jdbcTemplate.queryForMap(any(String.class), any(Object[].class)))
-                .thenReturn(Map.of(
-                        "order_count", 1L,
-                        "order_amount_cent", 1000L,
-                        "service_fee_income_cent", 100L,
-                        "tech_service_fee_cent", 10L,
-                        "service_fee_expense_cent", 0L,
-                        "talent_commission_cent", 0L,
-                        "service_profit_cent", 90L,
-                        "recruiter_commission_cent", 9L,
-                        "channel_commission_cent", 18L,
-                        "gross_profit_cent", 63L));
-
-        UUID userId = UUID.randomUUID();
-        LocalDate today = LocalDate.now();
-        applicationService.aggregateRange(
-                today.atStartOfDay(),
-                today.plusDays(1).atStartOfDay(),
-                "settleTime",
-                userId,
-                null,
-                DataScope.PERSONAL,
-                List.of(RoleCodes.CHANNEL_STAFF));
-
-        ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
-        verify(jdbcTemplate).queryForMap(sqlCaptor.capture(), any(Object[].class));
-        assertThat(sqlCaptor.getValue())
-                .contains("pr.final_channel_user_id = ?")
-                .doesNotContain("co.user_id = ?");
-    }
-
-    @Test
-    void aggregateDashboardSummary_shouldScopeChannelStaffByFinalChannelUser() {
-        when(jdbcTemplate.queryForMap(any(String.class), any(Object[].class)))
-                .thenReturn(Map.of());
-        when(jdbcTemplate.queryForList(any(String.class), any(Object[].class)))
-                .thenReturn(List.of());
-
-        UUID userId = UUID.randomUUID();
-        applicationService.aggregateDashboardSummary(
-                LocalDate.now().minusDays(1).atStartOfDay(),
-                LocalDate.now().atTime(23, 59, 59),
-                userId,
-                null,
-                DataScope.PERSONAL,
-                List.of(RoleCodes.CHANNEL_STAFF));
-
-        ArgumentCaptor<String> totalsSqlCaptor = ArgumentCaptor.forClass(String.class);
-        verify(jdbcTemplate).queryForMap(totalsSqlCaptor.capture(), any(Object[].class));
-        assertThat(totalsSqlCaptor.getValue())
-                .contains("pr.final_channel_user_id = ?")
-                .doesNotContain("co.user_id = ?");
-
-        ArgumentCaptor<String> leaderboardSqlCaptor = ArgumentCaptor.forClass(String.class);
-        verify(jdbcTemplate, times(2)).queryForList(leaderboardSqlCaptor.capture(), any(Object[].class));
-        assertThat(leaderboardSqlCaptor.getAllValues())
-                .allSatisfy(sql -> assertThat(sql).contains("pr.final_channel_user_id = ?"));
-    }
-
-    @Test
-    void aggregateRange_shouldReadTalentCommissionFromOrderSettlementField() {
+    void aggregateRange_shouldReadTalentCommissionFromPerformanceSnapshot() {
         when(jdbcTemplate.queryForMap(any(String.class), any(Object[].class)))
                 .thenReturn(Map.of(
                         "order_count", 1L,
@@ -281,7 +222,7 @@ class PerformanceAggregateApplicationServiceTest {
                 DataScope.ALL);
 
         verify(jdbcTemplate).queryForMap(
-                contains("settle_second_colonel_commission"),
+                contains("pr.talent_commission"),
                 any(Object[].class));
     }
 
@@ -343,9 +284,9 @@ class PerformanceAggregateApplicationServiceTest {
         ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
         verify(jdbcTemplate).queryForList(sqlCaptor.capture(), any(Object[].class));
         assertThat(sqlCaptor.getValue())
-                .contains("DATE(co.create_time) AS stat_date")
-                .contains("COALESCE(SUM(co.order_amount), 0) AS order_amount_cent")
-                .contains("GROUP BY DATE(co.create_time)");
+                .contains("DATE(pr.order_create_time) AS stat_date")
+                .contains("COALESCE(SUM(pr.pay_amount + COALESCE(adj.delta_pay_amount, 0)), 0) AS order_amount_cent")
+                .contains("GROUP BY DATE(pr.order_create_time)");
     }
 
     @Test
@@ -390,13 +331,13 @@ class PerformanceAggregateApplicationServiceTest {
         List<String> leaderboardSql = sqlCaptor.getAllValues();
         assertThat(leaderboardSql.get(0))
                 .contains("pr.final_channel_user_id::text AS user_id")
-                .contains("co.attribution_status = 'ATTRIBUTED' AND pr.final_channel_user_id IS NOT NULL")
+                .contains("pr.final_channel_user_id IS NOT NULL")
                 .contains("GROUP BY pr.final_channel_user_id")
                 .contains("ORDER BY order_count DESC, order_amount_cent DESC")
                 .contains("LIMIT 10");
         assertThat(leaderboardSql.get(1))
                 .contains("pr.final_recruiter_user_id::text AS user_id")
-                .contains("co.attribution_status = 'ATTRIBUTED' AND pr.final_recruiter_user_id IS NOT NULL")
+                .contains("pr.final_recruiter_user_id IS NOT NULL")
                 .contains("GROUP BY pr.final_recruiter_user_id")
                 .contains("ORDER BY order_count DESC, order_amount_cent DESC")
                 .contains("LIMIT 10");

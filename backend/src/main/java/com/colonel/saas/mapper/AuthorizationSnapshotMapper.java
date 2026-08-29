@@ -37,9 +37,12 @@ public interface AuthorizationSnapshotMapper {
               ON rds.role_id = r.id
              AND rds.domain_code = p.domain_code
             WHERE u.id = #{userId}
+              AND u.authz_version = #{authzVersion}
               AND u.status = 1
               AND u.deleted = 0
             ORDER BY p.permission_code, r.id
             """)
-    List<AuthorizationSnapshotRow> findActiveSnapshotRows(@Param("userId") UUID userId);
+    List<AuthorizationSnapshotRow> findActiveSnapshotRows(
+            @Param("userId") UUID userId,
+            @Param("authzVersion") long authzVersion);
 }

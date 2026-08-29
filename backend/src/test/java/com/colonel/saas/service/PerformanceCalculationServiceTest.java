@@ -181,7 +181,7 @@ class PerformanceCalculationServiceTest {
         ColonelsettlementOrder order = new ColonelsettlementOrder();
         order.setId(orderRowId);
         order.setOrderId("ORD-RECALC");
-        order.setUserId(recruiterId);
+        order.setColonelUserId(recruiterId);
         order.setOrderStatus(1);
         order.setOrderAmount(15000L);
         order.setSettleAmount(0L);

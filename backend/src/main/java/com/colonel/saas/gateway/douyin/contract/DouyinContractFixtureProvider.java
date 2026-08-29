@@ -761,7 +761,10 @@ public class DouyinContractFixtureProvider {
                 "2026-05-01 00:00:00",
                 "https://haohuo.jinritemai.com/views/product/item2?id=" + productId + "&activity_id=" + activityId,
                 "7293293346398011698",
-                Map.of("origin_colonel_buyin_id", "7293293346398011698")
+                Map.of(
+                        "origin_colonel_buyin_id", "7293293346398011698",
+                        "apply_id", String.valueOf(productId)
+                )
         );
     }
 

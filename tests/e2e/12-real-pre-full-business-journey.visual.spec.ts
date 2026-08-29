@@ -2,7 +2,9 @@ import { expect, request as playwrightRequest, test, type APIRequestContext, typ
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { showStepBanner, visibleClick, visibleFill, visiblePause } from './helpers/visual-journey';
+import { showStepBanner, visibleClick, visibleFill, visiblePause, waitForVisualIdle, waitForVisualSettle } from './helpers/visual-journey';
+import { gotoApp } from './helpers/page-ready';
+import { LoginPage } from './pages/login.page';
 
 type JsonMap = Record<string, unknown>;
 type ReusablePromotionMapping = {
@@ -110,7 +112,6 @@ const DEFAULT_PASSWORD = 'admin123';
 const VIEWPORT = { width: 1440, height: 900 } as const;
 const REAL_PRE_NAV_TIMEOUT_MS = Number(process.env.E2E_REAL_PRE_NAV_TIMEOUT_MS || 120_000);
 const REAL_PRE_UI_TIMEOUT_MS = Number(process.env.E2E_REAL_PRE_UI_TIMEOUT_MS || 120_000);
-const REAL_PRE_NETWORK_IDLE_TIMEOUT_MS = Number(process.env.E2E_REAL_PRE_NETWORK_IDLE_TIMEOUT_MS || 5_000);
 const DOUYIN_ONE_CLICK_CHECKS = [
   /^Token 正常$/,
   /^授权主体正常$/,
@@ -343,7 +344,7 @@ async function runAdminInitial(browser: Browser, api: APIRequestContext, run: Ru
   try {
     const login = await roleAction(run, 'admin', '管理员登录与系统入口确认', async () => {
       assertTrue(session.auth.roleCodes.includes('admin'), 'admin role should be present');
-      await waitForIdle(session.page);
+      await waitForVisualIdle(session.page);
       await expect(session.page.locator('.top-header')).toBeVisible({ timeout: REAL_PRE_UI_TIMEOUT_MS });
       const path = currentPath(session.page);
       await expect(session.page.locator('[data-testid="nav-system"]')).toBeVisible();
@@ -384,7 +385,7 @@ async function runBizLeader(browser: Browser, api: APIRequestContext, run: RunSt
   beginRoleFlow(run, 'biz-leader', session.username);
   try {
     const landing = await roleAction(run, 'biz-leader', '招商组长登录、菜单和越权路由校验', async () => {
-      await waitForIdle(session.page);
+      await waitForVisualIdle(session.page);
       await expect(session.page.locator('[data-testid="nav-activity-product"]')).toBeVisible();
       await assertRouteRedirect(session.page, '/system/config');
       await navigate(session.page, '/product/manage');
@@ -483,7 +484,7 @@ async function runMerchantProduct(browser: Browser, api: APIRequestContext, run:
   beginRoleFlow(run, 'merchant', session.username);
   try {
     const landing = await roleAction(run, 'merchant', '招商登录、我的商品页和越权校验', async () => {
-      await waitForIdle(session.page);
+      await waitForVisualIdle(session.page);
       await assertRouteRedirect(session.page, '/talent');
       await navigate(session.page, '/product/manage/products');
       const screenshot = await capture(run, session.page, 'merchant-product-manage');
@@ -581,7 +582,7 @@ async function runChannel(browser: Browser, api: APIRequestContext, run: RunStat
   beginRoleFlow(run, 'channel', session.username);
   try {
     const landing = await roleAction(run, 'channel', '渠道登录、达人页和越权校验', async () => {
-      await waitForIdle(session.page);
+      await waitForVisualIdle(session.page);
       await assertRouteRedirect(session.page, '/system/config');
       await navigate(session.page, '/talent?view=MY_TALENTS');
       const screenshot = await capture(run, session.page, 'channel-talent-home');
@@ -730,7 +731,7 @@ async function runChannel(browser: Browser, api: APIRequestContext, run: RunStat
       await navigate(session.page, '/sample/apply');
       await visibleFill(session.page, session.page.getByPlaceholder('昵称/达人号'), talentUid, '【渠道账号】填写寄样达人 UID');
       await visibleClick(session.page, session.page.getByRole('button', { name: '搜索我的达人' }), '【渠道账号】点击搜索我的达人');
-      await waitForIdle(session.page);
+      await waitForVisualIdle(session.page);
       const selectedTalentRow = await chooseFirstTalentRow(session.page);
       const selectedProductLabel = await selectSampleProduct(session.page, productId);
 
@@ -745,7 +746,7 @@ async function runChannel(browser: Browser, api: APIRequestContext, run: RunStat
       await visibleClick(session.page, session.page.getByRole('button', { name: '确认' }).last(), '【渠道账号】确认提交寄样申请');
       const createResponse = await createResponsePromise;
       await session.page.waitForURL('**/sample', { timeout: 30_000 });
-      await waitForIdle(session.page);
+      await waitForVisualIdle(session.page);
       const createBody = await createResponse.json().catch(() => ({}));
       const sampleData = unwrap(createBody) as JsonMap;
       const sampleId = String(sampleData.id || '');
@@ -815,7 +816,7 @@ async function runMerchantSample(browser: Browser, api: APIRequestContext, run: 
       assertTrue(bodyBefore.includes(requestNo), 'merchant sample detail should show current request');
       await showStepBanner(session.page, `【招商账号】准备审核寄样\n单号：${requestNo}\n状态：PENDING_AUDIT -> PENDING_SHIP`);
       await visibleClick(session.page, session.page.getByRole('button', { name: '审核通过' }), '【招商账号】点击审核通过');
-      await waitForIdle(session.page);
+      await waitForVisualIdle(session.page);
       const bodyAfter = await session.page.locator('body').innerText().catch(() => '');
       assertTrue(bodyAfter.includes('待发货'), 'sample should move to pending shipment after approval');
       const sample = await apiSuccess(api, 'GET', `/api/samples/${sampleId}`, session.auth);
@@ -856,11 +857,11 @@ async function runOperator(browser: Browser, api: APIRequestContext, run: RunSta
       await visibleClick(session.page, session.page.getByRole('button', { name: '发货' }), '【运营账号】点击发货');
       await visibleFill(session.page, session.page.getByPlaceholder('SF1234567890').last(), trackingNo, '【运营账号】填写物流单号');
       await visibleClick(session.page, session.page.getByRole('button', { name: '确认发货' }).last(), '【运营账号】确认发货');
-      await waitForIdle(session.page);
+      await waitForVisualIdle(session.page);
       await expect(session.page.locator('body')).toContainText('快递中', { timeout: 20_000 });
       await showStepBanner(session.page, '【运营账号】发货成功\n状态：PENDING_SHIP -> SHIPPED\n页面显示：快递中');
       await visibleClick(session.page, session.page.getByRole('button', { name: '签收' }), '【运营账号】点击签收，推进到待交作业');
-      await waitForIdle(session.page);
+      await waitForVisualIdle(session.page);
       await expect(session.page.locator('body')).toContainText('待交作业', { timeout: 20_000 });
       const sample = await apiSuccess(api, 'GET', `/api/samples/${sampleId}`, session.auth);
       const sampleData = unwrap(sample.body) as JsonMap;
@@ -1043,20 +1044,22 @@ async function openRoleSession(browser: Browser, username: string, run: RunState
     viewport: VIEWPORT
   });
   const page = await context.newPage();
-  await page.goto('/login', { waitUntil: 'domcontentloaded', timeout: REAL_PRE_NAV_TIMEOUT_MS });
+  const loginPage = new LoginPage(page);
+  await loginPage.open();
+  await loginPage.expectLoaded();
   await visiblePause(page, `准备登录：${roleName}\n账号：${username}`);
-  await visibleFill(page, page.locator('[data-testid="login-username"] input'), username, `填写登录账号：${roleName}`);
-  await visibleFill(page, page.locator('[data-testid="login-password"] input'), DEFAULT_PASSWORD, `填写登录密码：${roleName}`, {
+  await visibleFill(page, loginPage.usernameInput, username, `填写登录账号：${roleName}`);
+  await visibleFill(page, loginPage.passwordInput, DEFAULT_PASSWORD, `填写登录密码：${roleName}`, {
     displayValue: '演示账号密码'
   });
   const loginResponse = page.waitForResponse((response) =>
     response.url().includes('/api/auth/login') && response.request().method() === 'POST',
   { timeout: REAL_PRE_UI_TIMEOUT_MS });
-  await visibleClick(page, page.locator('[data-testid="login-submit"]'), `点击登录：${roleName}`);
+  await visibleClick(page, loginPage.submitButton, `点击登录：${roleName}`);
   const response = await loginResponse;
   assertTrue(response.ok(), `${username} login response should be OK`);
   await page.waitForURL((url) => !url.pathname.startsWith('/login'), { timeout: REAL_PRE_UI_TIMEOUT_MS });
-  await waitForIdle(page);
+  await waitForVisualIdle(page);
   const auth = await readAuthFromPage(page, username);
   await visiblePause(page, `登录成功：${roleName}\n当前账号：${auth.username}\n角色：${auth.roleCodes.join(', ')}`);
   await capture(run, page, `${roleSlug(username)}-login`);
@@ -1087,27 +1090,17 @@ async function readAuthFromPage(page: Page, fallbackUsername: string): Promise<A
   };
 }
 
-async function waitForIdle(page: Page): Promise<void> {
-  const bootLoading = page.locator('#boot-loading');
-  await bootLoading.waitFor({ state: 'detached', timeout: REAL_PRE_UI_TIMEOUT_MS }).catch(async () => {
-    await bootLoading.waitFor({ state: 'hidden', timeout: 5_000 }).catch(() => undefined);
-  });
-  await page.waitForLoadState('networkidle', { timeout: REAL_PRE_NETWORK_IDLE_TIMEOUT_MS }).catch(() => undefined);
-  await page.locator('.n-spin-body').waitFor({ state: 'hidden', timeout: 5_000 }).catch(() => undefined);
-  await page.waitForTimeout(500);
-}
-
 async function navigate(page: Page, route: string): Promise<void> {
-  await page.goto(route, { waitUntil: 'domcontentloaded', timeout: REAL_PRE_NAV_TIMEOUT_MS });
-  await waitForIdle(page);
+  await gotoApp(page, route, { timeout: REAL_PRE_NAV_TIMEOUT_MS });
+  await waitForVisualIdle(page);
   await showStepBanner(page, `打开页面：${route}`);
   await expect(page.locator('body')).not.toContainText(/Unexpected Application Error|Application Error|Bad Gateway|Internal Server Error/i);
 }
 
 async function assertRouteRedirect(page: Page, route: string): Promise<void> {
   await showStepBanner(page, `验证权限边界：访问 ${route} 应被拦截或重定向`);
-  await page.goto(route, { waitUntil: 'domcontentloaded', timeout: REAL_PRE_NAV_TIMEOUT_MS });
-  await waitForIdle(page);
+  await gotoApp(page, route, { timeout: REAL_PRE_NAV_TIMEOUT_MS });
+  await waitForVisualIdle(page);
   const finalPath = currentPath(page);
   await showStepBanner(page, `权限边界通过：${route} -> ${finalPath}`);
   assertTrue(finalPath !== route, `route ${route} should redirect away, got ${finalPath}`);
@@ -1178,14 +1171,14 @@ async function openSelectAndChoose(trigger: ReturnType<Page['locator']>, page: P
   const option = page.locator('.n-base-select-option').filter({ hasText: label }).first();
   await option.waitFor({ state: 'visible', timeout: 10_000 });
   await visibleClick(page, option, `确认下拉项：${label}`, { force: true });
-  await page.waitForTimeout(300);
+  await waitForVisualSettle(page, 300);
 }
 
 async function pageSearchAndQuery(page: Page, keyword: string): Promise<void> {
   const input = page.locator('.config-toolbar input').last();
   await visibleFill(page, input, keyword, '填写查询关键字');
   await visibleClick(page, page.locator('.config-toolbar').getByRole('button', { name: '查询' }), '点击查询');
-  await waitForIdle(page);
+  await waitForVisualIdle(page);
 }
 
 async function verifyDouyinOneClick(page: Page, run: RunState): Promise<JsonMap> {
@@ -1209,7 +1202,7 @@ async function chooseFirstTalentRow(page: Page): Promise<string> {
   await button.waitFor({ state: 'visible', timeout: 20_000 });
   const rowText = await button.locator('xpath=ancestor::tr').innerText().catch(() => '');
   await visibleClick(page, button, `【渠道账号】选择寄样达人\n${short(rowText, 120)}`, { force: true });
-  await waitForIdle(page);
+  await waitForVisualIdle(page);
   return short(rowText, 180);
 }
 
@@ -1221,7 +1214,7 @@ async function selectSampleProduct(page: Page, query: string): Promise<string> {
   await option.waitFor({ state: 'visible', timeout: 20_000 });
   const label = short(await option.innerText().catch(() => query), 200);
   await visibleClick(page, option, `【渠道账号】选择寄样商品\n${label}`, { force: true });
-  await page.waitForTimeout(400);
+  await waitForVisualSettle(page, 400);
   return label;
 }
 

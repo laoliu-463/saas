@@ -22,6 +22,8 @@ import com.colonel.saas.domain.product.facade.ProductDomainFacade;
 import com.colonel.saas.domain.user.facade.UserDomainFacade;
 import com.colonel.saas.domain.user.policy.DataScopePolicy;
 import com.colonel.saas.domain.user.policy.DataScopeResolver;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionChecker;
+import com.colonel.saas.domain.user.policy.CurrentUserPermissionPolicy;
 import com.colonel.saas.service.DashboardService;
 import com.colonel.saas.service.OperationLogService;
 import com.colonel.saas.service.OrderAttributionReplayService;
@@ -109,7 +111,12 @@ class OrderControllerTest {
         DataScopePolicy dataScopePolicy = new DataScopePolicy();
         DataScopeResolver dataScopeResolver = new DataScopeResolver(dataScopePolicy);
         orderService = new com.colonel.saas.service.OrderService(
-                orderMapper, dashboardService, productDomainFacade, dataScopeResolver, dddRefactorProperties);
+                orderMapper,
+                dashboardService,
+                productDomainFacade,
+                dataScopeResolver,
+                new CurrentUserPermissionChecker(new CurrentUserPermissionPolicy()),
+                dddRefactorProperties);
         OrderFilterOptionsQueryService orderFilterOptionsQueryService = new OrderFilterOptionsQueryService(
                 new OrderFilterOptionsMapperAdapter(orderMapper, dataScopeResolver, dddRefactorProperties));
         shortTtlCacheService = new ShortTtlCacheService();
@@ -165,6 +172,28 @@ class OrderControllerTest {
                 .andExpect(jsonPath("$.data.orderId").value("mock-order-1"))
                 .andExpect(jsonPath("$.data.attributionStatus").value("ATTRIBUTED"))
                 .andExpect(jsonPath("$.data.promotion.matched").value(true));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getOrders_shouldForwardAuthenticatedBizRoleToRecruiterAttributionScope() throws Exception {
+        java.util.UUID userId = java.util.UUID.randomUUID();
+        Page<ColonelsettlementOrder> page = new Page<>(1, 20);
+        page.setRecords(List.of());
+        when(orderMapper.selectPage(any(Page.class), any(LambdaQueryWrapper.class))).thenReturn(page);
+
+        mockMvc.perform(get("/orders")
+                        .requestAttr("userId", userId)
+                        .requestAttr("deptId", java.util.UUID.randomUUID())
+                        .requestAttr("dataScope", DataScope.PERSONAL)
+                        .requestAttr("roleCodes", List.of(RoleCodes.BIZ_STAFF)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+
+        ArgumentCaptor<LambdaQueryWrapper<ColonelsettlementOrder>> wrapperCaptor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(orderMapper).selectPage(any(Page.class), wrapperCaptor.capture());
+        assertThat(wrapperCaptor.getValue().getSqlSegment()).contains("colonel_user_id");
+        assertThat(wrapperCaptor.getValue().getParamNameValuePairs().values()).contains(userId);
     }
 
     @Test
@@ -328,6 +357,18 @@ class OrderControllerTest {
                 org.mockito.ArgumentMatchers.eq("SYNC_FAILED"),
                 org.mockito.ArgumentMatchers.eq("apply"),
                 org.mockito.ArgumentMatchers.contains("updated=2"));
+    }
+
+    @Test
+    void replayAttribution_shouldRequireReasonForApply() throws Exception {
+        mockMvc.perform(post("/orders/replay-attribution")
+                        .requestAttr("userId", java.util.UUID.randomUUID())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"orderIds\":[\"order-1\"]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(400));
+
+        verify(orderAttributionReplayService, never()).replay(any(), any(), any(), anyBoolean());
     }
 
     @Test

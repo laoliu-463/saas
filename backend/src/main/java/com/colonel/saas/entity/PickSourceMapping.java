@@ -3,12 +3,14 @@ package com.colonel.saas.entity;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.colonel.saas.common.base.VersionedEntity;
+import com.colonel.saas.common.typehandler.JsonbTypeHandler;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
+import java.util.Map;
 
 /**
  * 推广来源映射实体。
@@ -26,7 +28,7 @@ import java.util.UUID;
  */
 @Data
 @EqualsAndHashCode(callSuper = true)
-@TableName("pick_source_mapping")
+@TableName(value = "pick_source_mapping", autoResultMap = true)
 public class PickSourceMapping extends VersionedEntity {
 
     /**
@@ -131,6 +133,10 @@ public class PickSourceMapping extends VersionedEntity {
     /** 创建推广链接时固化的归属维度：CHANNEL 或 RECRUITER。 */
     @TableField("attribution_owner_type")
     private String attributionOwnerType;
+
+    /** 建链时的 owner、部门、活动、商品及来源类型快照。 */
+    @TableField(value = "attribution_snapshot", typeHandler = JsonbTypeHandler.class)
+    private Map<String, Object> attributionSnapshot;
 
     /**
      * 达人 ID

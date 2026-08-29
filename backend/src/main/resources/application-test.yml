@@ -2,7 +2,16 @@ security:
   jwt:
     secret: test-jwt-secret-for-unit-testing-only-placeholder-32chars
 
+authorization:
+  runtime:
+    default-mode: ${AUTHORIZATION_RUNTIME_DEFAULT_MODE:LEGACY}
+    snapshot-cache-ttl: ${AUTHORIZATION_SNAPSHOT_CACHE_TTL:5m}
+    domain-modes: {}
+
 spring:
+  flyway:
+    # 测试环境不自动迁移；Flyway 集成测试显式创建独立数据库。
+    enabled: false
   main:
     banner-mode: off
     log-startup-info: false

@@ -176,7 +176,11 @@ class SystemEnvControllerTest {
     }
 
     @Test
+<<<<<<< HEAD
     void health_returnsUpStatusAndImmutableReleaseIdentity() throws Exception {
+=======
+    void health_returnsUpStatusAndExplicitUnavailableVersionFacts() throws Exception {
+>>>>>>> b8cb837b (refactor: establish real-pre single-channel CD)
         MockEnvironment environment = new MockEnvironment();
         SystemEnvController controller = new SystemEnvController(
                 environment,
@@ -194,8 +198,15 @@ class SystemEnvControllerTest {
         mockMvc.perform(get("/system/health"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("UP"))
+<<<<<<< HEAD
                 .andExpect(jsonPath("$.gitSha").value("0123456789abcdef0123456789abcdef01234567"))
                 .andExpect(jsonPath("$.imageDigest").value("sha256:0123456789abcdef"))
+=======
+                .andExpect(jsonPath("$.gitSha").value("UNAVAILABLE"))
+                .andExpect(jsonPath("$.imageDigest").value("UNAVAILABLE"))
+                .andExpect(jsonPath("$.databaseMigrationVersion").value("NOT_MANAGED"))
+                .andExpect(jsonPath("$.flywayVersion").value("NOT_MANAGED"))
+>>>>>>> b8cb837b (refactor: establish real-pre single-channel CD)
                 .andExpect(jsonPath("$.database").doesNotExist())
                 .andExpect(jsonPath("$.activeProfiles").doesNotExist());
     }

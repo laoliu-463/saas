@@ -64,6 +64,24 @@ public class InProcessOrderDomainEventPublisher implements OrderDomainEventPubli
     }
 
     @Override
+    public void appendOrderAttributionReplayedInTransaction(
+            String eventKey,
+            OrderAttributionReplayedEvent event) {
+        if (event == null || !StringUtils.hasText(event.orderId())) {
+            return;
+        }
+        outboxEventAppender.appendIfAbsent(
+                eventKey,
+                OrderDomainEventTypes.ORDER_ATTRIBUTION_REPLAYED,
+                OutboxEventAppender.AGGREGATE_ORDER,
+                event.orderId(),
+                EVENT_VERSION,
+                event,
+                null,
+                null);
+    }
+
+    @Override
     public void appendOrderRefundFactSyncedInTransaction(String eventKey, OrderRefundFactSyncedEvent event) {
         if (event == null || !StringUtils.hasText(event.orderId())) {
             return;
@@ -90,7 +108,7 @@ public class InProcessOrderDomainEventPublisher implements OrderDomainEventPubli
             return;
         }
         if (isOutboxRoutingEnabled()) {
-            String eventKey = "OrderSynced:" + event.orderId() + ":" + event.orderRowId();
+            String eventKey = "OrderSynced:" + event.orderId() + ":" + event.orderVersion();
             appendOrderSyncedInTransaction(eventKey, event);
             return;
         }
@@ -98,17 +116,16 @@ public class InProcessOrderDomainEventPublisher implements OrderDomainEventPubli
     }
 
     @Override
-    public void publishOrderSyncedForAttributionReplay(OrderSyncedEvent event) {
+    public void publishOrderAttributionReplayed(OrderAttributionReplayedEvent event) {
         if (event == null || !StringUtils.hasText(event.orderId())) {
             return;
         }
         if (isOutboxRoutingEnabled()) {
-            String eventKey = "OrderAttributionReplay:" + event.orderId() + ":"
-                    + event.orderRowId() + ":" + event.occurredAt();
-            appendOrderSyncedInTransaction(eventKey, event);
+            String eventKey = "OrderAttributionReplayed:" + event.orderId() + ":" + event.orderVersion();
+            appendOrderAttributionReplayedInTransaction(eventKey, event);
             return;
         }
-        publishOrderSyncedDirect(event);
+        publishOrderAttributionReplayedDirect(event);
     }
 
     @Override
@@ -126,6 +143,23 @@ public class InProcessOrderDomainEventPublisher implements OrderDomainEventPubli
 
     @Override
     public void publishOrderSyncedDirect(OrderSyncedEvent event) {
+        if (event == null) {
+            return;
+        }
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            applicationEventPublisher.publishEvent(event);
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                applicationEventPublisher.publishEvent(event);
+            }
+        });
+    }
+
+    @Override
+    public void publishOrderAttributionReplayedDirect(OrderAttributionReplayedEvent event) {
         if (event == null) {
             return;
         }
@@ -187,6 +221,12 @@ public class InProcessOrderDomainEventPublisher implements OrderDomainEventPubli
         try {
             if (OrderDomainEventTypes.ORDER_SYNCED.equals(eventType)) {
                 OrderSyncedEvent event = objectMapper.readValue(payloadJson, OrderSyncedEvent.class);
+                applicationEventPublisher.publishEvent(event);
+                return;
+            }
+            if (OrderDomainEventTypes.ORDER_ATTRIBUTION_REPLAYED.equals(eventType)) {
+                OrderAttributionReplayedEvent event = objectMapper.readValue(
+                        payloadJson, OrderAttributionReplayedEvent.class);
                 applicationEventPublisher.publishEvent(event);
                 return;
             }
