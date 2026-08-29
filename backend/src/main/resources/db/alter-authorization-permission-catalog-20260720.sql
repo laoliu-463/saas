@@ -408,7 +408,6 @@ FROM (VALUES
     ('channel_leader', 'sample:batch-approve'),
     ('channel_leader', 'sample:batch-reject'),
     ('channel_leader', 'sys-config:grouped'),
-    ('channel_leader', 'sys-dept:access'),
     ('channel_leader', 'sys-user:assignable'),
     ('channel_leader', 'talent:access'),
     ('channel_leader', 'talent:batch-import'),

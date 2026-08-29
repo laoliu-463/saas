@@ -210,7 +210,7 @@ const quickEntries = computed(() => {
     { label: '我的商品', path: '/product/manage/products', permissions: [PERMISSION.PRODUCT_MANAGE_ACCESS] },
     { label: '达人 CRM', path: '/talent', permissions: [PERMISSION.TALENT_ACCESS] },
     { label: '数据看板', path: '/data', permissions: [PERMISSION.DATA_ACCESS] },
-    { label: '合作单', path: '/sample', permissions: [PERMISSION.SAMPLE_ACCESS] }
+    { label: '合作单', path: '/sample', permissions: [PERMISSION.SAMPLE_WORKBENCH_ACCESS] }
   ]
     .filter((entry) => hasPermission(permissions, entry.permissions))
     .map((entry) => {

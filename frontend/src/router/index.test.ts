@@ -67,7 +67,7 @@ vi.mock('vue-router', () => ({
           '/product/manage': [PERMISSION_CODES.PRODUCT_MANAGE_ACCESS],
           '/product/manage/products': [PERMISSION_CODES.PRODUCT_MANAGE_ACCESS],
           '/talent': [PERMISSION_CODES.TALENT_ACCESS],
-          '/sample': [PERMISSION_CODES.SAMPLE_ACCESS],
+          '/sample': [PERMISSION_CODES.SAMPLE_WORKBENCH_ACCESS],
           '/ops/shipping': [PERMISSION_CODES.SHIPPING_ACCESS],
           '/system/users': [PERMISSION_CODES.SYS_USER_ACCESS]
         }

@@ -395,7 +395,8 @@ test('P3-5 real-pre role business flow validates menus, permissions, and handoff
       });
       const talent = unwrap(talentCreate.body) as JsonMap;
       const talentId = String(talent.id);
-      await apiSuccess(api, 'POST', `/api/talents/${talentId}/claims`, auth);
+      const createdOwnerId = String(talent.ownerId || talent.owner_id || '');
+      assertTrue(createdOwnerId === auth.userId, `created talent should be auto-claimed by ${auth.username}, got ${createdOwnerId || 'empty'}`);
       const privateTalents = await apiSuccess(api, 'GET', '/api/talents/pools/private', auth);
       const sampleBody = {
         productId: sampleProductLocalId,
@@ -859,7 +860,7 @@ async function syncActivityProductsInBackgroundAndPoll(
 ): Promise<{ status: number; ok: boolean; body: unknown; durationMs: number }> {
   const trigger = await apiSuccess(api, 'POST', `/api/colonel/activities/${activityId}/products/sync`, auth);
   const syncStatus = String((unwrap(trigger.body) as JsonMap).syncStatus || '');
-  assertTrue(['ACCEPTED', 'RUNNING'].includes(syncStatus), `unexpected syncStatus=${syncStatus}`);
+  assertTrue(['ACCEPTED', 'QUEUED', 'RUNNING'].includes(syncStatus), `unexpected syncStatus=${syncStatus}`);
 
   const deadline = Date.now() + ROLE_PRODUCT_SYNC_POLL_TIMEOUT_MS;
   let lastResult: { status: number; ok: boolean; body: unknown; durationMs: number } | undefined;
