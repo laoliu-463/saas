@@ -144,7 +144,10 @@ public class TestDouyinActivityGateway implements DouyinActivityGateway {
                     mockPromotionEndDate(),
                     "https://example.com/test-detail/" + productId,
                     String.valueOf(46128341673481000L + (productId % 1000)),
-                    Map.of("origin_colonel_buyin_id", String.valueOf(46128341673481000L + (productId % 1000)))
+                    Map.of(
+                            "origin_colonel_buyin_id", String.valueOf(46128341673481000L + (productId % 1000)),
+                            "apply_id", String.valueOf(productId)
+                    )
             ));
         }
         // 第三步：按状态和关键词过滤商品
@@ -215,6 +218,31 @@ public class TestDouyinActivityGateway implements DouyinActivityGateway {
                 "data", Map.of(
                         "app_id", appId == null ? "test-app" : appId,
                         "payload", payload == null ? Map.of() : payload
+                )
+        );
+    }
+
+    /**
+     * Mock 审核活动商品，保留审核决定和申请 ID 供测试断言。
+     */
+    @Override
+    public Map<String, Object> auditActivityProduct(
+            String appId,
+            String activityId,
+            List<Long> applyIds,
+            boolean approved,
+            String suggestInfo) {
+        return Map.of(
+                "code", 10000,
+                "msg", "success",
+                "data", Map.of(
+                        "activity_id", activityId == null ? "" : activityId,
+                        "apply_ids", applyIds == null ? List.of() : List.copyOf(applyIds),
+                        "operation", approved ? 0 : 1,
+                        "suggest_info", suggestInfo == null ? "" : suggestInfo,
+                        "product_audit_info", applyIds == null ? List.of() : applyIds.stream()
+                                .map(applyId -> Map.of("apply_id", applyId, "reject_reason", ""))
+                                .toList()
                 )
         );
     }

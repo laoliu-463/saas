@@ -1,0 +1,109 @@
+# Evidence Report
+
+## Metadata
+
+- Time: 2026-07-25 13:48:33 +08:00
+- Environment: real-pre
+- Scope: full
+- Branch: codex/183-talent-claim-oom-guard-release
+- Commit: 0825607e
+- Owned worktree: dirty
+- Deploy remote: false
+
+## Owned Files
+
+~~~text
+backend/src/main/java/com/colonel/saas/douyin/api/ProductApi.java
+backend/src/main/java/com/colonel/saas/gateway/douyin/contract/DouyinContractFixtureProvider.java
+backend/src/main/java/com/colonel/saas/gateway/douyin/DouyinActivityGateway.java
+backend/src/main/java/com/colonel/saas/gateway/douyin/real/RealDouyinActivityGateway.java
+backend/src/main/java/com/colonel/saas/gateway/douyin/test/TestDouyinActivityGateway.java
+backend/src/main/java/com/colonel/saas/gateway/douyin/test/TestDouyinProductGateway.java
+backend/src/main/java/com/colonel/saas/service/ProductAuditApplyIdResolver.java
+backend/src/main/java/com/colonel/saas/service/ProductService.java
+backend/src/test/java/com/colonel/saas/douyin/api/ProductApiTest.java
+backend/src/test/java/com/colonel/saas/gateway/douyin/real/RealDouyinActivityGatewayTest.java
+backend/src/test/java/com/colonel/saas/service/ProductServiceActivityStatusIndependenceTest.java
+docs/对接/活动商品同步.md
+docs/接口/活动分配与推广入库API契约.md
+docs/领域/商品域.md
+harness/rules/changelog.md
+harness/rules/state/snapshots/01-当前项目状态.md
+harness/rules/state/snapshots/DOMAIN_STATUS.md
+~~~
+
+## Owned Git Status
+
+~~~text
+No owned files dirty after commit; unrelated pre-existing worktree changes remain.
+~~~
+
+## Build Result
+
+~~~text
+mvn -f backend/pom.xml -DskipTests package: PASS. Targeted regression: 78 tests, 0 failures, 0 errors. Full mvn package: PARTIAL/FAIL in the existing dirty workspace: 3275 tests ran with 4 failures and 10 errors; blockers include no local Docker/Testcontainers, pre-existing missing docker-compose.test.yml, and unrelated repository/state contract failures.
+~~~
+
+## Docker Status
+
+~~~text
+not collected
+not collected
+~~~
+
+## Health Check Result
+
+~~~text
+remote-verify.ps1 -Start: PASS. Remote saas-active backend/frontend/PostgreSQL/Redis healthy; /api/system/health and /healthz passed. Remote image is existing migration-20260723, not this branch.
+~~~
+
+## Business Validation Result
+
+~~~text
+Local targeted business/service tests: PASS. Real-pre approve/reject side-effect validation: BLOCKED/PENDING; it requires an explicit real activity/product sample and authorized business decision, and remote currently runs the existing migration-20260723 image. No real upstream product state was mutated.
+~~~
+
+## Content Maintenance Result
+
+~~~text
+not collected
+~~~
+
+## Remote Deploy Result
+
+~~~text
+Test-server deployment PASS on my-second-brain-server:/home/caojianing/saas-production. Backend image colonel-saas/backend:colonel-audit-ba0c0156 is running; /api/system/health returned status=UP and gitSha=colonel-audit-ba0c0156; frontend /healthz returned 200. Docker Hub base-image pull timed out, so the verified local JAR was injected into the existing Java 17 runtime image; the previous remote JAR was backed up. Jenkins release queue was not invoked.
+~~~
+
+## Verification Addendum (2026-07-25 14:12 +08:00)
+
+~~~text
+Backend targeted audit/API/gateway/controller tests: PASS. ProductApiTest=13, RealDouyinActivityGatewayTest=11, controller audit set=31, no failures. Frontend activityProduct API tests=58 PASS. Backend package and frontend production build: PASS.
+Local npm run e2e:real-pre:p0:preflight: FAIL because localhost:3001/8081 are not running and the local Docker engine is unavailable; evidence: runtime/qa/out/real-pre-preflight-20260725-141041/. This is not remote real-pre evidence.
+Remote-verify: PASS for health only. Remote backend/frontend images remain migration-20260723 and are not this commit. Read-only remote SQL found colonel_activity_product count=0, so no real pending product was available for a safe approve/reject mutation test.
+Conclusion for interface effectiveness: code path is verified; real-pre upstream side effect remains BLOCKED/PENDING until this commit is formally deployed and an authorized real sample is provided.
+~~~
+
+## Test Server Browser Smoke (2026-07-25)
+
+~~~text
+SSH tunnel to my-second-brain-server; http://127.0.0.1:3001/login loaded successfully. Playwright smoke: page loaded, console errors=0, HTTP 4xx/5xx responses=0. The URL is available while the SSH tunnel remains open.
+~~~
+
+## Git Publish Result
+
+~~~text
+Git commit/push: PASS. Commit 0825607e created and pushed to origin/codex/183-talent-claim-oom-guard-release.
+~~~
+
+## Retro Summary
+
+本轮已补齐 apply_id 夹具、上游审核明细校验和缺失申请 ID 的阻断测试；未发现可执行的独立 Harness 改进项，retro 内联完成。
+
+## Conclusion
+
+PARTIAL
+
+## Residual Risk
+
+- Items marked as not collected are not proof of success.

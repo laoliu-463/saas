@@ -4031,6 +4031,7 @@ public class ProductService implements CopyPromotionSupportPort {
             auditPayload = writeAuditPayload(normalizedSupplement);
             assertNoExistingLibraryDuplicate(activityId, productId);
         }
+        douyinActivityGateway.auditActivityProduct(null, activityId, ProductAuditApplyIdResolver.resolve(snapshot, OBJECT_MAPPER), approved, reason);
         final String approvedAuditPayload = auditPayload;
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("approved", approved);
@@ -4072,7 +4073,6 @@ public class ProductService implements CopyPromotionSupportPort {
             detail.put("libraryVisible", true);
             return detail;
         }
-
         state.setSelectedToLibrary(false);
         state.setSelectedAt(null);
         state.setSelectedBy(null);

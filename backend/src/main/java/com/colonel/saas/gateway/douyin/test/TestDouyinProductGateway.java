@@ -86,7 +86,10 @@ public class TestDouyinProductGateway implements DouyinProductGateway {
                     mockPromotionEndDate(),
                     "https://example.com/test-detail/" + productId,
                     String.valueOf(46128341673481000L + (productId % 1000)),
-                    Map.of("origin_colonel_buyin_id", String.valueOf(46128341673481000L + (productId % 1000)))
+                    Map.of(
+                            "origin_colonel_buyin_id", String.valueOf(46128341673481000L + (productId % 1000)),
+                            "apply_id", String.valueOf(productId)
+                    )
             ));
         }
         List<ActivityProductItem> filtered = all.stream()
